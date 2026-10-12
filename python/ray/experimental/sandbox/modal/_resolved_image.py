@@ -1,13 +1,10 @@
 """What an :class:`Image` reduces to once the sandbox layer needs it.
 
-An Image in this version carries a base reference plus *runtime metadata* --
-environment variables, a working directory, a shell, an argv -- and nothing
-that mutates a filesystem. All of it lands in
-:class:`~ray.experimental.sandbox.config.SandboxConfig` directly, so resolving
-an Image is a pure rearrangement of values with no build step behind it.
-
-Image building is not implemented in this version; see the "Divergences from
-Modal" section of the package docstring for the members that raise instead.
+An Image carries a base reference, build steps, and *runtime metadata* --
+environment variables, a working directory, a shell, an argv. Resolving it is
+a pure rearrangement of values: the build steps stay *specs* that read no
+file until ``Sandbox.create()`` turns them into a plan for the node (see
+``modal/_image_build.prepare_build_plan``).
 """
 
 from dataclasses import dataclass, field
@@ -39,10 +36,11 @@ class ResolvedImage:
     main process, and files to push after startup.
 
     Attributes:
-        reference: Registry reference or local tar path to run.
-        force_pull: Drop the node's cached copy of ``reference`` and pull it
-            again before starting. Modal spells this ``force_build``; with no
-            build steps to replay, re-pulling the base is what remains of it.
+        reference: Registry reference or local tar path of the base image.
+        force_token: Set when Modal's ``force_build`` was given for the base:
+            each node drops its cached copy of ``reference`` and pulls it
+            again, once per token, and rebuilds the layers on top.
+        build_specs: The Image's build steps, in order, as specs.
         env: Environment variables to inject.
         workdir: Working directory for the main process, or None for the
             image's own WORKDIR.
@@ -56,7 +54,8 @@ class ResolvedImage:
     """
 
     reference: str
-    force_pull: bool = False
+    force_token: Optional[str] = None
+    build_specs: Tuple[Any, ...] = ()
     env: Dict[str, str] = field(default_factory=dict)
     workdir: Optional[str] = None
     shell: Optional[str] = None

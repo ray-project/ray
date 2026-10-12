@@ -1,3 +1,5 @@
+from typing import Optional
+
 from ray.util.annotations import PublicAPI
 
 
@@ -34,3 +36,21 @@ class SandboxNotFoundError(SandboxError):
     """Raised when a specified sandbox ID cannot be found."""
 
     pass
+
+
+@PublicAPI(stability="alpha")
+class SandboxImageBuildError(SandboxCreationError):
+    """Raised when a build step of a sandbox's image fails.
+
+    Args:
+        message: What failed: the command, its exit code, its output's end.
+        image_id: The cache key of the layer that failed to build, if known.
+    """
+
+    def __init__(self, message: str, image_id: Optional[str] = None):
+        super().__init__(message)
+        self.image_id = image_id
+
+    def __reduce__(self):
+        # Keeps image_id across the pickling Ray does to raise this in a caller.
+        return (type(self), (str(self), self.image_id))

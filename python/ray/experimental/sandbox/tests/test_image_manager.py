@@ -840,5 +840,53 @@ def test_invalidate_image_of_an_uncached_image_is_a_no_op(tmp_path):
     assert not os.path.exists(str(tmp_path / "images"))
 
 
+def test_invalidate_with_a_token_happens_once_per_token(tmp_path):
+    """force_build re-pulls once per Image object, not on every create."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "app.tar"
+    _write_versioned_tar(local_tar, b"one", mtime=1_000_000)
+    mgr.pull_image(str(local_tar))
+
+    _write_versioned_tar(local_tar, b"two", mtime=1_000_000)
+    assert mgr.invalidate_image(str(local_tar), token="t1") is True
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"two"
+
+    _write_versioned_tar(local_tar, b"three", mtime=1_000_000)
+    assert mgr.invalidate_image(str(local_tar), token="t1") is False
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"two"
+
+    assert mgr.invalidate_image(str(local_tar), token="t2") is True
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"three"
+
+
+def test_a_token_is_recorded_for_an_image_not_pulled_yet(tmp_path):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    assert mgr.invalidate_image("never-pulled:latest", token="t") is True
+    assert mgr.invalidate_image("never-pulled:latest", token="t") is False
+
+
+def test_a_built_layer_reference_never_reaches_a_registry(tmp_path, monkeypatch):
+    from ray.experimental.sandbox._internal.image_utils import BuiltImageEvictedError
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("a built image reference was looked up remotely")
+
+    monkeypatch.setattr("urllib.request.urlopen", no_network)
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    with pytest.raises(BuiltImageEvictedError, match="no longer cached"):
+        mgr.pull_image("raylayer@" + "0" * 64)
+
+
+def test_a_cache_hit_refreshes_the_entry_for_lru(tmp_path):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "app.tar"
+    _write_versioned_tar(local_tar, b"one", mtime=1_000_000)
+    image_dir = mgr.pull_image(str(local_tar))
+    marker = os.path.join(image_dir, ".extracted")
+    os.utime(marker, (1_500_000, 1_500_000))
+    mgr.pull_image(str(local_tar))
+    assert os.path.getmtime(marker) > 1_500_000
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

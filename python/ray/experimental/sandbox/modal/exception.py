@@ -66,11 +66,11 @@ class AlreadyExistsError(Error):
 
 @PublicAPI(stability="alpha")
 class ImageBuildError(RemoteError):
-    """Raised when a build step fails or the built image cannot be exported.
+    """Raised when a build step of a sandbox's image fails.
 
-    Part of Modal's exception hierarchy. Nothing raises it in this version --
-    image building is not implemented -- but it is exported so that a caller's
-    ``except modal.ImageBuildError`` keeps compiling against this backend.
+    Raised by ``Sandbox.create()`` when the node building the image hits a
+    failing ``run_commands`` command or package install; the message carries
+    the command, its exit code and the end of its output.
 
     Args:
         message: What went wrong.
@@ -81,6 +81,11 @@ class ImageBuildError(RemoteError):
     def __init__(self, message: str, image_id: str):
         super().__init__(message)
         self.image_id = image_id
+
+    def __reduce__(self):
+        # Raised in the sandbox's actor: without this, unpickling it on the
+        # caller's side calls __init__ with the message alone and fails.
+        return (type(self), (str(self), self.image_id))
 
 
 @PublicAPI(stability="alpha")

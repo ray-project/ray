@@ -5,17 +5,25 @@ Modal's own suite asserts on the Dockerfile commands each layer generates::
     layers = get_image_layers(image.object_id, servicer)
     assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
 
-Image building is not implemented in this version, so there are no layers to
-inspect. What remains is the ``ResolvedImage`` -- everything that becomes
-sandbox configuration rather than a build step -- plus the refusals that stand
-in for the builders. Nothing here touches runsc or a Ray cluster.
+The equivalent here is the build plan an Image compiles to: the commands
+each step runs, what it inherits from the image, and how its layer is keyed.
+Plus the ``ResolvedImage`` -- everything that becomes sandbox configuration
+rather than a build step -- and the refusals for what remains unsupported.
+Nothing here touches runsc or a Ray cluster.
 """
 
 import sys
 
 import pytest
 
-from ray.experimental.sandbox.modal.exception import InvalidError
+from ray.experimental.sandbox.image_build import (
+    CopyFromImageStep,
+    CopyStep,
+    RunStep,
+    step_key,
+)
+from ray.experimental.sandbox.modal._image_build import prepare_build_plan
+from ray.experimental.sandbox.modal.exception import InvalidError, NotFoundError
 from ray.experimental.sandbox.modal.image import Image, resolve_image
 
 BASE = "python:3.13-slim"
@@ -119,10 +127,20 @@ def test_shell_accepts_the_canonical_modal_argv(argv):
     assert resolve_image(Image(BASE).shell(argv)).shell == argv[0]
 
 
-@pytest.mark.parametrize("argv", [[], ["/bin/bash", "-lc"], ["/bin/sh", "-c", "x"]])
-def test_an_unmappable_shell_argv_is_refused(argv):
-    with pytest.raises(NotImplementedError, match="single interpreter path"):
-        Image(BASE).shell(argv)
+def test_an_empty_shell_argv_is_refused():
+    with pytest.raises(InvalidError, match="interpreter"):
+        Image(BASE).shell([])
+
+
+@pytest.mark.parametrize(
+    "argv", [["/bin/bash", "-lc"], ["/bin/bash", "-o", "pipefail", "-c"]]
+)
+def test_a_longer_shell_argv_is_the_build_shell(argv):
+    """Like a Dockerfile SHELL, the whole argv prefixes later build commands."""
+    image = Image(BASE).shell(argv).run_commands("echo x")
+    assert resolve_image(image).shell == argv[0]
+    (step,) = prepare_build_plan(resolve_image(image).build_specs).steps
+    assert step.shell == tuple(argv)
 
 
 @pytest.mark.parametrize("bad", ["bash", 5, {"a": 1}, ["ok", 5]])
@@ -209,7 +227,8 @@ def test_metadata_alone_resolves_to_the_base_image():
     assert image.reference == BASE
     resolved = resolve_image(image)
     assert resolved.reference == BASE
-    assert resolved.force_pull is False
+    assert resolved.force_token is None
+    assert resolved.build_specs == ()
 
 
 # -- local files -----------------------------------------------------------
@@ -223,13 +242,15 @@ def test_add_local_file_defaults_to_a_startup_push(tmp_path):
     assert startup_files(image) == [(str(source), "/app/a.txt")]
 
 
-def test_add_local_file_with_copy_is_refused(tmp_path):
-    """copy=True bakes the file into a layer, which needs a build."""
+def test_add_local_file_with_copy_is_a_build_step(tmp_path):
+    """copy=True bakes the file into a layer instead of pushing it later."""
     source = tmp_path / "a.txt"
     source.write_text("hello")
 
-    with pytest.raises(NotImplementedError, match="copy=False"):
-        Image(BASE).add_local_file(source, "/app/a.txt", copy=True)
+    image = Image(BASE).add_local_file(source, "/app/", copy=True)
+    assert startup_files(image) == []
+    (spec,) = resolve_image(image).build_specs
+    assert spec.files == ((str(source), "/app/a.txt"),)
 
 
 def test_a_trailing_slash_appends_the_basename(tmp_path):
@@ -317,12 +338,19 @@ def test_add_local_dir_on_an_empty_tree_changes_nothing(tmp_path):
     assert base.add_local_dir(tmp_path / "empty", "/app") == base
 
 
-def test_add_local_dir_refuses_copy_even_for_an_empty_tree(tmp_path):
-    """The refusal used to live in the loop body, so an empty tree slipped
-    past it and returned an Image that had quietly ignored copy=True."""
+def test_add_local_dir_with_copy_on_an_empty_tree_changes_nothing(tmp_path):
     (tmp_path / "empty").mkdir()
-    with pytest.raises(NotImplementedError, match="copy=True"):
-        Image(BASE).add_local_dir(tmp_path / "empty", "/app", copy=True)
+    base = Image(BASE)
+    assert base.add_local_dir(tmp_path / "empty", "/app", copy=True) == base
+
+
+def test_add_local_dir_with_copy_is_one_build_step(tmp_path):
+    (tmp_path / "src" / "pkg").mkdir(parents=True)
+    (tmp_path / "src" / "a.py").write_text("a")
+    (tmp_path / "src" / "pkg" / "b.py").write_text("b")
+    image = Image(BASE).add_local_dir(tmp_path / "src", "/app", copy=True)
+    (spec,) = resolve_image(image).build_specs
+    assert sorted(remote for _, remote in spec.files) == ["/app/a.py", "/app/pkg/b.py"]
 
 
 @pytest.mark.parametrize("method", ["add_local_file", "add_local_dir"])
@@ -423,7 +451,7 @@ def test_equal_images_compare_and_hash_alike():
         lambda image: image.cmd(["x"]),
         lambda image: image.entrypoint(["y"]),
         lambda image: image.shell(["/bin/sh"]),
-        # force_pull is part of identity too: it changes what create() does.
+        # Forcing is part of identity too: it changes what create() does.
         lambda image: Image.from_registry(image.reference, force_build=True),
     ],
 )
@@ -445,29 +473,15 @@ def test_images_are_usable_as_dict_keys():
         lambda: Image.from_dockerfile("Dockerfile"),
         lambda: Image.from_aws_ecr("x"),
         lambda: Image.from_gcp_artifact_registry("x"),
-        lambda: Image.micromamba(),
         lambda: Image.from_id("im-123"),
         lambda: Image.from_name("x"),
         lambda: Image(BASE).dockerfile_commands("RUN x"),
         lambda: Image(BASE).run_function(print),
         lambda: Image(BASE).pip_install_private_repos("x", git_user="u"),
-        lambda: Image(BASE).uv_pip_install("x"),
-        lambda: Image(BASE).uv_sync(),
-        lambda: Image(BASE).poetry_install_from_file("pyproject.toml"),
-        lambda: Image(BASE).micromamba_install("x"),
         lambda: Image(BASE).build(),
         lambda: Image(BASE).publish("name"),
         lambda: Image(BASE).hydrate(),
         lambda: Image(BASE).logs,
-        # Unimplemented specifically because image building is not: each of
-        # these is a body away from working once the builder returns.
-        lambda: Image.debian_slim(),
-        lambda: Image.debian_slim("3.12"),
-        lambda: Image(BASE).run_commands("echo x"),
-        lambda: Image(BASE).pip_install("six"),
-        lambda: Image(BASE).apt_install("git"),
-        lambda: Image(BASE).pip_install_from_requirements("requirements.txt"),
-        lambda: Image(BASE).pip_install_from_pyproject("pyproject.toml"),
     ],
 )
 def test_the_unsupported_surface_is_refused(call):
@@ -487,6 +501,286 @@ def test_the_unsupported_surface_is_refused(call):
 def test_unsupported_build_parameters_are_refused(call):
     with pytest.raises(NotImplementedError):
         call()
+
+
+# -- build steps -------------------------------------------------------------
+
+
+def plan_steps(image: Image):
+    """The steps the image compiles to; COPY archives stay local bytes."""
+    plan = prepare_build_plan(resolve_image(image).build_specs, put=lambda data: data)
+    return list(plan.steps) if plan else []
+
+
+def run_commands_of(image: Image):
+    return [step.commands for step in plan_steps(image) if isinstance(step, RunStep)]
+
+
+@pytest.mark.parametrize(
+    "call, expected",
+    [
+        # Packages are sorted and shell-quoted, as Modal generates them.
+        (lambda i: i.pip_install("b", "a"), [("python -m pip install a b",)]),
+        (lambda i: i.pip_install(["a b", "c"]), [("python -m pip install 'a b' c",)]),
+        # Modal's own quirk: two spaces before --pre when no flag precedes it.
+        (lambda i: i.pip_install("a", pre=True), [("python -m pip install a  --pre",)]),
+        (
+            lambda i: i.pip_install(
+                "a", index_url="https://x/simple", extra_options="--no-deps"
+            ),
+            [("python -m pip install a --index-url https://x/simple --no-deps",)],
+        ),
+        (
+            lambda i: i.apt_install("git", "curl"),
+            [("apt-get update", "apt-get install -y git curl")],
+        ),
+        (lambda i: i.run_commands("a", ["b", "c"]), [("a", "b", "c")]),
+        (
+            lambda i: i.micromamba_install("x", channels=["conda-forge"]),
+            [("micromamba install x -c conda-forge --yes",)],
+        ),
+        (
+            lambda i: i.uv_pip_install("b", "a", pre=True),
+            [
+                (
+                    "/.uv/uv pip install --python $(command -v python) "
+                    "--compile-bytecode --prerelease allow a b",
+                )
+            ],
+        ),
+    ],
+)
+def test_build_steps_generate_modals_commands(call, expected):
+    assert run_commands_of(call(Image(BASE))) == expected
+
+
+def test_uv_comes_from_its_image():
+    steps = plan_steps(Image(BASE).uv_pip_install("a", uv_version="0.8.0"))
+    assert steps[0] == CopyFromImageStep("ghcr.io/astral-sh/uv:0.8.0", "/uv", "/.uv/uv")
+
+
+def test_debian_slim_is_modals_definition():
+    image = Image.debian_slim("3.12")
+    assert image.reference == "python:3.12.10-slim-bookworm"
+    assert run_commands_of(image) == [
+        (
+            "apt-get update",
+            "apt-get install -y gcc gfortran build-essential",
+            "pip install --upgrade pip wheel uv",
+            "echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
+        )
+    ]
+    assert resolve_image(image).default_cmd == ("sleep", "172800")
+
+
+def test_debian_slim_defaults_to_the_local_python():
+    image = Image.debian_slim()
+    assert image.reference.startswith("python:{}.{}.".format(*sys.version_info))
+
+
+@pytest.mark.parametrize("version", ["2.7", "3.9", "3.13t", "banana"])
+def test_debian_slim_rejects_unsupported_pythons(version):
+    with pytest.raises(InvalidError):
+        Image.debian_slim(version)
+
+
+def test_debian_slim_rejects_a_float_version():
+    with pytest.raises(TypeError, match="string"):
+        Image.debian_slim(3.12)
+
+
+def test_micromamba_runs_steps_through_its_shell():
+    image = Image.micromamba("3.12").micromamba_install("numpy")
+    assert image.reference == "mambaorg/micromamba:2.1.1-debian12-slim"
+    steps = plan_steps(image)
+    assert [s.commands for s in steps] == [
+        ("micromamba install -n base -y python=3.12 pip -c conda-forge",),
+        ("micromamba install numpy --yes",),
+    ]
+    assert all(s.shell == ("/usr/local/bin/_dockerfile_shell.sh",) for s in steps)
+    assert ("MAMBA_DOCKERFILE_ACTIVATE", "1") in steps[0].env
+    assert resolve_image(image).env == {"MAMBA_DOCKERFILE_ACTIVATE": "1"}
+
+
+def test_pip_install_from_requirements_copies_the_file_first(tmp_path):
+    reqs = tmp_path / "requirements.txt"
+    reqs.write_text("six\n")
+    copy, run = plan_steps(
+        Image(BASE).pip_install_from_requirements(reqs, find_links="https://w")
+    )
+    assert isinstance(copy, CopyStep)
+    assert run.commands == (
+        "python -m pip install -r /.requirements.txt -f https://w --find-links https://w",
+    )
+
+
+def test_pyproject_dependencies_are_read_at_build_time(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    image = Image(BASE).pip_install_from_pyproject(pyproject, ["test"])
+    # Defining the image reads nothing: the file does not even exist yet.
+    pyproject.write_text(
+        '[project]\nname = "x"\ndependencies = ["b", "a"]\n'
+        '[project.optional-dependencies]\ntest = ["pytest"]\n'
+    )
+    assert run_commands_of(image) == [("python -m pip install a b pytest",)]
+
+
+def test_a_pyproject_without_dependencies_fails_when_built(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[tool.poetry]\nname = "x"\n')
+    with pytest.raises(ValueError, match="project.dependencies"):
+        plan_steps(Image(BASE).pip_install_from_pyproject(pyproject))
+
+
+def test_uv_sync_copies_the_project_and_puts_its_venv_on_path(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    (tmp_path / "uv.lock").write_text("lock")
+    uv, copy, run = plan_steps(Image(BASE).uv_sync(str(tmp_path), groups=["dev"]))
+    assert uv.dest == "/.uv/uv"
+    assert isinstance(copy, CopyStep)
+    assert run.commands == (
+        "/.uv/uv sync --project=/.uv --no-install-workspace --compile-bytecode "
+        "--group=dev --frozen",
+    )
+    assert run.image_env == (("PATH", "/.uv/.venv/bin:$PATH"),)
+
+
+def test_uv_sync_refuses_a_workspace(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("[tool.uv.workspace]\nmembers = []\n")
+    with pytest.raises(InvalidError, match="workspaces"):
+        plan_steps(Image(BASE).uv_sync(str(tmp_path)))
+
+
+def test_poetry_needs_its_lockfile(tmp_path):
+    pyproject = tmp_path / "pyproject.toml"
+    pyproject.write_text('[tool.poetry]\nname = "x"\n')
+    with pytest.raises(NotFoundError, match="poetry.lock"):
+        plan_steps(Image(BASE).poetry_install_from_file(str(pyproject)))
+    (tmp_path / "poetry.lock").write_text("lock")
+    install, copy, run = plan_steps(
+        Image(BASE).poetry_install_from_file(str(pyproject), with_=["dev"])
+    )
+    assert install.commands == ("python -m pip install poetry",)
+    assert isinstance(copy, CopyStep)
+    assert run.commands == (
+        "cd /tmp/poetry && poetry config virtualenvs.create false && "
+        "poetry install --no-root --with dev --compile",
+    )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda i: i.pip_install(),
+        lambda i: i.apt_install(),
+        lambda i: i.run_commands(),
+        lambda i: i.uv_pip_install(),
+        lambda i: i.micromamba_install(),
+    ],
+)
+def test_a_build_step_with_nothing_to_do_returns_the_image(call):
+    image = Image(BASE)
+    assert call(image) is image
+
+
+@pytest.mark.parametrize("method", ["pip_install", "uv_pip_install"])
+def test_packages_cannot_smuggle_options(method):
+    with pytest.raises(InvalidError, match="extra_options"):
+        getattr(Image(BASE), method)("--index-url=evil")
+
+
+@pytest.mark.parametrize("kwarg", ["secrets", "gpu"])
+def test_build_steps_refuse_modal_only_parameters(kwarg):
+    with pytest.raises(NotImplementedError):
+        Image(BASE).pip_install(
+            "six", **{kwarg: ["x"] if kwarg == "secrets" else "A10G"}
+        )
+
+
+def test_a_build_step_after_copy_false_files_is_refused(tmp_path):
+    source = tmp_path / "a.txt"
+    source.write_text("x")
+    image = Image(BASE).add_local_file(source, "/a.txt")
+    with pytest.raises(InvalidError, match="copy=True"):
+        image.run_commands("cat /a.txt")
+    # copy=True files may be followed by build steps.
+    Image(BASE).add_local_file(source, "/a.txt", copy=True).run_commands("cat /a.txt")
+
+
+def test_build_steps_see_the_image_metadata_set_before_them():
+    image = (
+        Image(BASE)
+        .env({"A": "1"})
+        .workdir("/app")
+        .run_commands("one", env={"SECRET": "s"})
+        .env({"B": "2"})
+        .run_commands("two")
+    )
+    first, second = plan_steps(image)
+    assert first.env == (("A", "1"),) and first.workdir == "/app"
+    assert first.build_env == (("SECRET", "s"),)
+    assert second.env == (("A", "1"), ("B", "2"))
+    assert second.build_env == ()
+    # Build-only variables never reach the sandbox.
+    assert resolve_image(image).env == {"A": "1", "B": "2"}
+
+
+def test_force_build_is_inherited_by_later_steps_only():
+    image = (
+        Image(BASE)
+        .run_commands("a")
+        .run_commands("b", force_build=True)
+        .pip_install("c")
+    )
+    a, b, c = plan_steps(image)
+    assert a.force_token is None
+    assert b.force_token is not None and c.force_token == b.force_token
+
+
+def test_a_forced_base_forces_every_step():
+    image = Image.from_registry(BASE, force_build=True).run_commands("a")
+    resolved = resolve_image(image)
+    (step,) = plan_steps(image)
+    assert resolved.force_token is not None and step.force_token == resolved.force_token
+
+
+def test_force_tokens_are_per_image_object():
+    first = Image(BASE).run_commands("a", force_build=True)
+    second = Image(BASE).run_commands("a", force_build=True)
+    assert plan_steps(first)[0].force_token != plan_steps(second)[0].force_token
+    # ... but forcing is not content: the definitions are equal.
+    assert first == second == Image(BASE).run_commands("a")
+
+
+def test_modal_force_build_forces_every_step(monkeypatch):
+    monkeypatch.setenv("MODAL_FORCE_BUILD", "1")
+    (step,) = plan_steps(Image(BASE).run_commands("a"))
+    assert step.force_token is not None
+
+
+def test_build_steps_are_part_of_identity():
+    assert Image(BASE).run_commands("a") == Image(BASE).run_commands("a")
+    assert Image(BASE).run_commands("a") != Image(BASE).run_commands("b")
+    assert len({Image(BASE).run_commands("a"), Image(BASE).run_commands("a")}) == 1
+
+
+def test_shared_leading_steps_share_layer_keys():
+    """Prefix-aware caching: the first k keys of two chains are equal."""
+
+    def keys(image):
+        key, out = "base", []
+        for step in plan_steps(image):
+            key = step_key(key, 0, step)
+            out.append(key)
+        return out
+
+    common = Image(BASE).apt_install("git").pip_install("six")
+    a = keys(common.run_commands("a"))
+    b = keys(common.run_commands("b"))
+    assert a[:2] == b[:2] and a[2] != b[2]
+    # The parent's force epoch re-keys every descendant.
+    step = plan_steps(common)[1]
+    assert step_key("base", 0, step) != step_key("base", 1, step)
 
 
 if __name__ == "__main__":

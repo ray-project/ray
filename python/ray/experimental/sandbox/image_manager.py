@@ -118,7 +118,7 @@ class BaseImageManager(ABC):
         """
         return None
 
-    def invalidate_image(self, image: str) -> None:
+    def invalidate_image(self, image: str, token: Optional[str] = None) -> bool:
         """Make the next ``pull_image`` of ``image`` fetch it afresh.
 
         A cached tag stays pinned to what was first pulled; this is how a
@@ -128,8 +128,13 @@ class BaseImageManager(ABC):
 
         Args:
             image: Container image reference or tar path.
+            token: Optional force token. A manager that records them
+                invalidates once per token and ignores repeats.
+
+        Returns:
+            False if the call was a repeat of ``token``, else True.
         """
-        return None
+        return True
 
     @abstractmethod
     def get_image_dir(self, image: str) -> str:
@@ -316,7 +321,7 @@ class ImageManager(BaseImageManager):
         """
         _release_image_use(self.get_image_dir(image), instance_id)
 
-    def invalidate_image(self, image: str) -> None:
+    def invalidate_image(self, image: str, token: Optional[str] = None) -> bool:
         """Make the next ``pull_image`` of ``image`` rebuild it.
 
         See :func:`invalidate_cached_image`: sandboxes running on the cached
@@ -324,8 +329,13 @@ class ImageManager(BaseImageManager):
 
         Args:
             image: Container image name or tar path.
+            token: Optional force token: invalidate only the first time it is
+                seen for this image.
+
+        Returns:
+            False if ``token`` was already used for this image, else True.
         """
-        invalidate_cached_image(image, images_dir=self._images_dir)
+        return invalidate_cached_image(image, images_dir=self._images_dir, token=token)
 
     def get_image_dir(self, image: str) -> str:
         """Get the cached local directory path for an image.

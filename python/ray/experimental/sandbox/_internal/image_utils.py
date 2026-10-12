@@ -32,12 +32,23 @@ _USER_AGENT = "ray-sandbox/1.0 (python-urllib)"
 # representation: files keep their real owners and in-sandbox chown works for
 # any uid, all from an unprivileged worker.
 ROOTFS_IMAGE = "rootfs.erofs"
+# Images the node builds are cached under references with this prefix (see
+# ``_internal/image_layers.py``). They exist only in the cache, so the pull
+# path never looks one up in a registry.
+LAYER_REFERENCE_PREFIX = "raylayer@"
+# Next to an entry's lock file: the force token whose re-pull the entry
+# already went through (see ``invalidate_cached_image``).
+_FORCE_TOKEN_SUFFIX = ".force_token"
 # Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
 # extracted-directory cache left by an earlier Ray, say) re-pulls the image
 # once; sandboxes already running on the old cache keep it until they exit.
 _EXTRACT_FORMAT = 3
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
+
+
+class BuiltImageEvictedError(SandboxCreationError):
+    """A built image was evicted between being built and being used."""
 
 
 def _registry_request(
@@ -880,7 +891,18 @@ def pull_and_extract_container_image(
                     or os.path.getmtime(marker_path) >= os.path.getmtime(image)
                 ):
                     _drop_stale_rootfs_tree(target_dir)
+                    # Eviction is least-recently-*used*: a hit refreshes the
+                    # entry. A local tar's staleness was checked just above,
+                    # against the marker as it was before this.
+                    _touch(marker_path)
                     return _finish()
+
+            if image.startswith(LAYER_REFERENCE_PREFIX):
+                raise BuiltImageEvictedError(
+                    f"Built image '{image}' is no longer cached on this node; "
+                    "it was evicted. It is rebuilt by the next create that "
+                    "asks for it."
+                )
 
             # Checked before any download: without it the pull cannot finish.
             require_mkfs_erofs()
@@ -967,7 +989,16 @@ def _verify_digest(expected: str, actual_sha256: str, image: str, what: str) -> 
         )
 
 
-def invalidate_cached_image(image: str, images_dir: str = DEFAULT_IMAGES_DIR) -> None:
+def _touch(path: str) -> None:
+    try:
+        os.utime(path)
+    except OSError:
+        pass
+
+
+def invalidate_cached_image(
+    image: str, images_dir: str = DEFAULT_IMAGES_DIR, token: Optional[str] = None
+) -> bool:
     """Make the next pull of ``image`` rebuild it from the registry.
 
     Only the entry's ``.extracted`` marker goes, under the image's lock. The
@@ -977,21 +1008,50 @@ def invalidate_cached_image(image: str, images_dir: str = DEFAULT_IMAGES_DIR) ->
     since an open file outlives its unlink. Eviction skips an entry with no
     marker, so nothing removes the old image under a running sandbox.
 
+    With a ``token``, this happens once per token: the token is recorded
+    next to the entry, and a later call with the same token is a no-op. That
+    is how ``force_build`` re-pulls once per image definition rather than on
+    every sandbox created from it.
+
     Args:
         image: Container image name or tar path.
         images_dir: Root directory of the image cache.
+        token: Optional force token; see above.
+
+    Returns:
+        False if ``token`` was already used for this image, else True.
     """
     safe_name = sanitize_image_name(image)
     target_dir = os.path.join(images_dir, safe_name)
-    if not os.path.isdir(target_dir):
-        return
+    if token is None and not os.path.isdir(target_dir):
+        return True
+    # A token is recorded even for an image not cached yet: the pull it is
+    # about to get is the forced one, and later sandboxes for the same token
+    # must not pull it yet again.
+    try:
+        os.makedirs(images_dir, mode=0o777, exist_ok=True)
+    except OSError:
+        pass
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
+    token_path = os.path.join(images_dir, f"{safe_name}{_FORCE_TOKEN_SUFFIX}")
     with open(lock_path, "w", encoding="utf-8") as f_lock:
         fcntl.flock(f_lock, fcntl.LOCK_EX)
         try:
-            os.remove(os.path.join(target_dir, ".extracted"))
-        except FileNotFoundError:
-            pass
+            if token is not None:
+                try:
+                    with open(token_path, "r", encoding="utf-8") as f_token:
+                        if f_token.read() == token:
+                            return False
+                except OSError:
+                    pass
+            try:
+                os.remove(os.path.join(target_dir, ".extracted"))
+            except FileNotFoundError:
+                pass
+            if token is not None:
+                with open(token_path, "w", encoding="utf-8") as f_token:
+                    f_token.write(token)
+            return True
         finally:
             fcntl.flock(f_lock, fcntl.LOCK_UN)
 

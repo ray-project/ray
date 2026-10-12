@@ -24,7 +24,12 @@ from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.experimental.sandbox.config import parse_memory_bytes
-from ray.experimental.sandbox.modal.exception import InvalidError, NotFoundError
+from ray.experimental.sandbox.exceptions import SandboxImageBuildError
+from ray.experimental.sandbox.modal.exception import (
+    ImageBuildError,
+    InvalidError,
+    NotFoundError,
+)
 from ray.experimental.sandbox.modal.probe import Probe
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
@@ -577,12 +582,12 @@ class _SandboxActor:
         self,
         create_kwargs: Dict[str, Any],
         timeout: Optional[float],
-        force_pull: bool = False,
+        force_token: Optional[str] = None,
         readiness_probe: Optional["Probe"] = None,
     ):
         self._create_kwargs = create_kwargs
         self._timeout = timeout
-        self._force_pull = force_pull
+        self._force_token = force_token
         self._probe = readiness_probe
         self._runtime: Optional[SandboxRuntime] = None
         self._instance_id: Optional[str] = None
@@ -659,19 +664,21 @@ class _SandboxActor:
         # tuple caps it, and Sandbox.create passes that limit in
         # create_kwargs when there is one.
 
-        # Dropping the cached image forces the create below to pull it again.
-        # It is the only lever a caller has when a mutable tag has moved.
-        if self._force_pull:
-            await asyncio.to_thread(
-                self._runtime.image_manager.invalidate_image,
-                self._create_kwargs["image"],
-            )
+        create_kwargs = dict(self._create_kwargs)
+        # Re-pulls the cached base once per token (Modal's force_build): the
+        # only lever a caller has when a mutable tag has moved.
+        if self._force_token is not None:
+            create_kwargs["image_force_token"] = self._force_token
 
         # Creating the sandbox blocks until runsc reports it running, and the
-        # pull it may trigger is slower still. Neither belongs on the loop.
-        self._instance_id = await asyncio.to_thread(
-            self._runtime.create, **self._create_kwargs
-        )
+        # pull -- or image build -- it may trigger is slower still. None of
+        # that belongs on the loop.
+        try:
+            self._instance_id = await asyncio.to_thread(
+                self._runtime.create, **create_kwargs
+            )
+        except SandboxImageBuildError as err:
+            raise ImageBuildError(str(err), err.image_id or "") from err
 
         # Past this point the container exists, so anything that raises has to
         # reclaim it here. The caller cannot: it has no instance id yet, and
