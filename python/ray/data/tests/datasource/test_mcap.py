@@ -350,6 +350,31 @@ def test_read_mcap_override_num_blocks(
     assert warned == datasource_v2
 
 
+def test_read_mcap_passes_memory_to_the_v2_datasource(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2, monkeypatch
+):
+    """``memory``, or else ``ray_remote_args["memory"]``, reaches the V2 datasource,
+    so its memory warning knows what each read task reserves."""
+    if not datasource_v2:
+        pytest.skip("Only the V2 datasource takes the reservation.")
+    seen = []
+    original_init = mcap_datasource_v2.MCAPDatasourceV2.__init__
+
+    def record_reservation(self, *args, **kwargs):
+        seen.append(kwargs.get("read_task_memory"))
+        original_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        mcap_datasource_v2.MCAPDatasourceV2, "__init__", record_reservation
+    )
+
+    ray.data.read_mcap(simple_mcap_file, memory=2 * 1024**3)
+    ray.data.read_mcap(simple_mcap_file, ray_remote_args={"memory": 1024**3})
+    ray.data.read_mcap(simple_mcap_file)
+
+    assert seen == [2 * 1024**3, 1024**3, None]
+
+
 def test_read_mcap_file_extensions(ray_start_regular_shared, tmp_path):
     """Test file extension filtering."""
     # Create MCAP file

@@ -3549,11 +3549,14 @@ def read_mcap(
             ``DataContext.execution_options.preserve_order``, a file is cut only
             where its order holds, so it comes out in order from start to end.
             Where chunks overlap in time, such as cameras and robot state
-            written to chunks of their own, the overlapping stretch stays in one
-            task, so a file with no clean cut is read by one task. Files can
-            come out in a different order than they were listed. A file without
-            a chunk index is always read by one task, which holds its selected
-            messages in memory to sort them.
+            written to chunks of their own, the overlapping stretch then stays
+            in one task, which holds those chunks in memory together. A file
+            whose chunks all overlap is held whole. A warning names a file whose
+            task would hold more than four read-task budgets, unless ``memory``
+            reserves at least that much for each read task. Files can come out
+            in a different order than they were listed. A file without a chunk
+            index is always read by one task, which holds its selected messages
+            in memory to sort them.
         include_row_id: If ``True``, add a ``row_id`` column with a deterministic
             id per message, built from the file path and the message's position
             in the file. A message gets the same id on every run, however the
@@ -3667,6 +3670,10 @@ def read_mcap(
             file_extensions=file_extensions,
             ignore_missing_paths=ignore_missing_paths,
             shuffle=shuffle,
+            # ``memory`` wins over ``ray_remote_args["memory"]``, as for the tasks.
+            read_task_memory=(
+                memory if memory is not None else (ray_remote_args or {}).get("memory")
+            ),
         )
         return _read_datasource_v2(
             datasource_v2,
