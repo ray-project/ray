@@ -7,7 +7,9 @@ back which chunks every task holds, in the order the tasks leave. The last tests
 list and read real files. None needs a Ray cluster.
 """
 
+import contextlib
 import importlib.util
+import logging
 import os
 from typing import List, Optional, Tuple
 
@@ -32,6 +34,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
+from ray.data.context import DataContext
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
     CHUNKED_FILE_MESSAGES,
@@ -42,6 +45,7 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     summary_of,
     write_mcap,
 )
+from ray.util.debug import reset_log_once
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("mcap") is None,
@@ -109,19 +113,36 @@ def as_tasks(manifests: List[FileManifest]) -> List[Task]:
     ]
 
 
-def cut(files: List[FileManifest], budget=BUDGET, log_time_order=True) -> List[Task]:
+def cut(
+    files: List[FileManifest],
+    budget=BUDGET,
+    log_time_order=True,
+    preserve_order=True,
+    reserved_memory=None,
+) -> List[Task]:
     """Feed ``files`` to a cutter one by one, as a listing task does, and return
-    every task in the order it leaves."""
+    every task in the order it leaves. ``preserve_order`` is the read's setting,
+    and ``reserved_memory`` the memory each read task reserves."""
     packer = OnlineBinPacker(budget, requires_global_input=False)
-    cutter = OrderedFileCutter(packer, budget=budget, log_time_order=log_time_order)
+    cutter = OrderedFileCutter(
+        packer,
+        budget=budget,
+        log_time_order=log_time_order,
+        reserved_memory=reserved_memory,
+    )
+    options = DataContext.get_current().execution_options
+    saved, options.preserve_order = options.preserve_order, preserve_order
     out = []
-    for manifest in files:
-        cutter.add_input(manifest)
+    try:
+        for manifest in files:
+            cutter.add_input(manifest)
+            while cutter.has_partition():
+                out.append(cutter.next_partition())
+        cutter.finalize()
         while cutter.has_partition():
             out.append(cutter.next_partition())
-    cutter.finalize()
-    while cutter.has_partition():
-        out.append(cutter.next_partition())
+    finally:
+        options.preserve_order = saved
     return as_tasks(out)
 
 
@@ -179,9 +200,10 @@ ONE_TOPIC_PER_CHUNK = [
 
 
 def test_overlapping_stretch_stays_in_one_task():
-    """The chunks that overlap the state chunk share one task that passes the
-    budget, since no cut inside that stretch keeps log-time order; the task
-    before it closes early at the last boundary that does."""
+    """In a read that keeps order, the chunks that overlap the state chunk share
+    one task that passes the budget, since no cut inside that stretch keeps
+    log-time order; the task before it closes early at the last boundary that
+    does."""
     tasks = cut([listed_file("f", ONE_TOPIC_PER_CHUNK)])
 
     assert tasks == [
@@ -192,13 +214,143 @@ def test_overlapping_stretch_stays_in_one_task():
 
 
 def test_file_with_no_safe_boundary_is_one_task():
-    """When every boundary overlaps in time, the whole file is one task."""
+    """In a read that keeps order, a file whose every boundary overlaps in time
+    is one task."""
     # Each chunk starts before the previous one ends, like a sliding window.
     spans = [(10 * i, 10 * i + 25) for i in range(6)]
 
     tasks = cut([listed_file("f", spans)])
 
     assert tasks == [[("f", [0, 1, 2, 3, 4, 5])]]
+
+
+# A file whose every chunk spans the whole recording, as when each topic's
+# chunk is flushed at the end:
+#
+#   offset   0     1     ...   10
+#   logs     0-99  0-99  ...   0-99
+#
+# An ordered read's merge holds all 11 chunks before it yields a message:
+# 440 bytes against a 100-byte budget.
+ALL_OVERLAPPING = [(0, 99)] * 11
+
+# A chunk that spans the recording, five chunks that end at 10 and five that
+# start at 10:
+#
+#   logs     0-20   0-10 x 5   10-20 x 5
+#
+# On the tied log time the merge expands the later five before it yields the
+# earlier five's last messages, so it holds all 11 chunks at once.
+TIED_AT_TEN = [(0, 20)] + [(0, 10)] * 5 + [(10, 20)] * 5
+
+
+@pytest.mark.parametrize(
+    "spans, tasks",
+    [
+        # Written in time order: the cut on the tied log time keeps file order.
+        ([(0, 10), (10, 20)], [[0], [1]]),
+        # Written out of time order: chunk 1 comes first in time, but its
+        # message at 10 was written after chunk 0's, so they stay together.
+        ([(10, 20), (0, 10)], [[0, 1]]),
+    ],
+    ids=["written_in_order", "written_out_of_order"],
+)
+def test_a_cut_on_a_tied_log_time_keeps_file_order(spans, tasks):
+    """Equal log times come out in file order. A cut where one chunk ends as the
+    next starts is allowed only when the earlier chunk also lies earlier in the
+    file."""
+    # Two chunks of 60 bytes do not fit one 100-byte task.
+    got = cut([listed_file("f", spans, weight=60)], preserve_order=True)
+
+    assert [chunks for task in got for _, chunks in task] == tasks
+
+
+@contextlib.contextmanager
+def cutter_warnings(caplog):
+    """The cutter's log records while the block runs, with ``log_once`` reset.
+    Ray's loggers do not propagate to the root logger caplog listens on."""
+    cuts_logger = logging.getLogger(OrderedFileCutter.__module__)
+    cuts_logger.addHandler(caplog.handler)
+    reset_log_once()
+    try:
+        yield caplog.records
+    finally:
+        cuts_logger.removeHandler(caplog.handler)
+
+
+@pytest.mark.parametrize("spans", [ALL_OVERLAPPING, TIED_AT_TEN])
+def test_ordered_task_that_holds_many_budgets_warns_once(caplog, spans):
+    """In a read that keeps order, a file with no clean cut is one task whose
+    merge holds every chunk at once. Past four budgets that warns once per
+    process, naming the first such file."""
+    files = [listed_file("first.mcap", spans), listed_file("second.mcap", spans)]
+
+    with cutter_warnings(caplog) as warnings:
+        tasks = cut(files)
+
+    assert tasks == [
+        [("first.mcap", list(range(11)))],
+        [("second.mcap", list(range(11)))],
+    ]
+    assert len(warnings) == 1
+    assert "A read task of first.mcap holds about" in warnings[0].getMessage()
+
+
+@pytest.mark.parametrize(
+    "spans, weight, preserve_order",
+    [
+        # The merge holds at most two chunks at once.
+        (ONE_TOPIC_PER_CHUNK, WEIGHT, True),
+        # A read that does not keep order cuts the file by budget.
+        (ALL_OVERLAPPING, WEIGHT, False),
+        # One chunk of five budgets: no cut could make its task smaller.
+        ([(0, 99)], 5 * BUDGET, True),
+    ],
+)
+def test_no_warning_unless_overlap_holds_many_budgets(
+    caplog, spans, weight, preserve_order
+):
+    """Tasks whose overlapping chunks hold at most four budgets at once log
+    nothing."""
+    with cutter_warnings(caplog) as warnings:
+        cut([listed_file("f", spans, weight)], preserve_order=preserve_order)
+
+    assert warnings == []
+
+
+@pytest.mark.parametrize(
+    "reserved_memory, warns",
+    [
+        (None, True),
+        # Less than the 11 chunks of 40 bytes the merge would hold.
+        (10 * WEIGHT, True),
+        (11 * WEIGHT, False),
+    ],
+)
+def test_memory_that_covers_the_estimate_keeps_the_warning_quiet(
+    caplog, reserved_memory, warns
+):
+    """The warning asks for a memory reservation, so it stays quiet once each
+    read task reserves at least what the merge would hold."""
+    with cutter_warnings(caplog) as warnings:
+        cut([listed_file("f", ALL_OVERLAPPING)], reserved_memory=reserved_memory)
+
+    assert len(warnings) == int(warns)
+
+
+def test_unordered_read_cuts_an_overlapping_file_anywhere():
+    """A read that does not keep its blocks in order gets them in any order
+    anyway, so a file whose chunks overlap in time is cut wherever the next
+    chunk would overflow, still in log-time order of the chunks' starts."""
+    tasks = cut([listed_file("f", ONE_TOPIC_PER_CHUNK)], preserve_order=False)
+
+    # Two chunks per task, taken by first log time: 0, 1 | 5, 2 | 3, 4 | 6, 7.
+    assert tasks == [
+        [("f", [0, 1])],
+        [("f", [2, 5])],
+        [("f", [3, 4])],
+        [("f", [6, 7])],
+    ]
 
 
 def test_file_order_allows_a_cut_at_every_boundary():
@@ -379,12 +531,36 @@ def safe_boundaries(path: str) -> int:
     return safe
 
 
-def test_overlapping_file_is_read_whole_in_log_time_order(tmp_path, monkeypatch):
-    """A file whose chunks all overlap in time is one task even with a budget
-    below one chunk, and it reads in log-time order."""
+def test_read_task_memory_reaches_the_cutter(tmp_path, monkeypatch, caplog):
+    """The datasource hands ``read_mcap(memory=...)`` to the cutter: a file with no
+    clean cut warns without a reservation, and stays quiet with one that covers
+    what its task holds."""
     path = os.path.join(tmp_path, "overlapping.mcap")
     write_overlapping(path)
     monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
+
+    with cutter_warnings(caplog) as warnings:
+        pack(MCAPDatasourceV2([path], read_task_memory=1024**3))
+    warnings_with_reservation = len(warnings)
+    with cutter_warnings(caplog) as warnings:
+        pack(MCAPDatasourceV2([path]))
+
+    assert warnings_with_reservation == 0
+    assert len(warnings) == 1
+
+
+def test_overlapping_file_is_read_whole_in_log_time_order(tmp_path, monkeypatch):
+    """With ``preserve_order``, a file whose chunks all overlap in time is one
+    task even with a budget below one chunk, and it reads in log-time order."""
+    path = os.path.join(tmp_path, "overlapping.mcap")
+    write_overlapping(path)
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", True
+    )
     datasource = MCAPDatasourceV2([path])
 
     tasks = pack(datasource)
