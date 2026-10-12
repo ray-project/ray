@@ -17,8 +17,10 @@ from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.usage import usage_lib
 from ray._common.utils import reset_ray_address
+from ray._private.test_utils import request_with_auth_token
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.serve._private.test_utils import (
+    SERVE_INSTANCE_SIGNAL_ACTOR_NAME,
     TELEMETRY_ROUTE_PREFIX,
     TEST_METRICS_EXPORT_PORT,
     check_ray_started,
@@ -28,6 +30,9 @@ from ray.serve._private.test_utils import (
 from ray.serve.config import HTTPOptions, ProxyLocation, gRPCOptions
 from ray.serve.context import _get_global_client
 from ray.tests.conftest import (  # noqa
+    _isolate_token_auth_state,  # noqa: F401  autouse fixture
+    _restore_token_auth_env,  # noqa: F401
+    _token_auth_env_baseline,  # noqa: F401
     external_redis,
     propagate_logs,
     pytest_runtest_makereport,
@@ -198,7 +203,7 @@ def serve_instance(_shared_serve_instance):
 def serve_instance_with_signal(serve_instance):
     client = serve_instance
 
-    signal = SignalActor.options(name="signal123").remote()
+    signal = SignalActor.options(name=SERVE_INSTANCE_SIGNAL_ACTOR_NAME).remote()
     yield client, signal
 
     # Delete signal actor so there is no conflict between tests
@@ -223,7 +228,10 @@ def ray_start_stop():
     )
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        lambda: request_with_auth_token(
+            "GET", "http://localhost:8265/api/ray/version"
+        ).status_code
+        == 200,
         timeout=15,
     )
     ray.init("auto")
@@ -248,7 +256,10 @@ def ray_start_stop_in_specific_directory(request):
 
     subprocess.check_output(["ray", "start", "--head"])
     wait_for_condition(
-        lambda: httpx.get("http://localhost:8265/api/ray/version").status_code == 200,
+        lambda: request_with_auth_token(
+            "GET", "http://localhost:8265/api/ray/version"
+        ).status_code
+        == 200,
         timeout=15,
     )
     try:

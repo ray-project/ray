@@ -1,5 +1,6 @@
 import os
 from urllib.parse import urlparse
+from urllib.request import url2pathname
 
 from ray._common.runtime_env_uri import Protocol
 
@@ -262,7 +263,7 @@ class ProtocolsProvider:
         open_file = None
 
         if protocol == "file":
-            source_uri = source_uri[len("file://") :]
+            source_uri = url2pathname(source_uri[len("file://") :])
 
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)

@@ -19,7 +19,6 @@
 #include <memory>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
@@ -27,20 +26,21 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/util/compat.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using namespace ::testing;    // NOLINT
 using namespace ray::gcs;     // NOLINT
 using namespace ray::pubsub;  // NOLINT
 using namespace ray;          // NOLINT
 
-class GcsWorkerManagerTest : public Test {
+class GcsWorkerManagerTest : public ::testing::Test {
  public:
   GcsWorkerManagerTest() {
-    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
   }
