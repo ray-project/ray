@@ -21,7 +21,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14), (3, 15)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
