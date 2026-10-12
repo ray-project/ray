@@ -586,6 +586,7 @@ def create_report(
         comm_op_counts=comm_op_counts,
         comm_rank_status=comm_rank_status,
         comm_rank_processes=processes or {},
+        raw_json=""
     )
 
 

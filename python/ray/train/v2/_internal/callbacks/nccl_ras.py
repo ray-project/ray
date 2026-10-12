@@ -29,7 +29,7 @@ import tempfile
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     Any,
@@ -182,19 +182,17 @@ class RASReport:
             majority logic).
         comm_rank_status: Maps each communicator and their ranks with their
             status. A hang requires that the rank to be RUNNING.
-        raw_json: The ``ncclras`` output this report was parsed from
         comm_rank_processes: Maps each communicator and their ranks to the
             ``(host, pid)`` of the process running that rank, used to find the
             Ray Train worker behind a communicator rank.
+        raw_json: The ``ncclras`` output this report was parsed from
     """
 
     timestamp: str
     comm_op_counts: Dict[str, Dict[int, Dict[str, int]]]
     comm_rank_status: Dict[str, Dict[int, str]]
-    raw_json: str = ""
-    comm_rank_processes: Dict[str, Dict[int, Tuple[str, int]]] = field(
-        default_factory=dict
-    )
+    comm_rank_processes: Dict[str, Dict[int, Tuple[str, int]]]
+    raw_json: str
 
     @property
     def comm_op_skews(self) -> Dict[str, Dict[str, int]]:
@@ -363,11 +361,11 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
             }
 
         return RASReport(
-            data["timestamp"],
-            comm_op_counts,
-            comm_rank_status,
-            ras_json,
-            comm_rank_processes,
+            timestamp=data["timestamp"],
+            comm_op_counts=comm_op_counts,
+            comm_rank_status=comm_rank_status,
+            comm_rank_processes=comm_rank_processes,
+            raw_json=ras_json,
         )
     except (KeyError, TypeError, ValueError) as e:
         logger.info(
