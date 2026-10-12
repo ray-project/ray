@@ -344,6 +344,7 @@ class Reconciler:
         Reconciler._gc_terminated_instances(
             instance_manager=instance_manager,
             reconcile_config=autoscaling_config.get_instance_reconcile_config(),
+            ray_nodes=ray_cluster_resource_state.node_states,
         )
 
     #######################################################
@@ -716,6 +717,7 @@ class Reconciler:
     def _gc_terminated_instances(
         instance_manager: InstanceManager,
         reconcile_config: InstanceReconcileConfig,
+        ray_nodes: List[NodeState],
     ) -> None:
         """Delete TERMINATED instance records retained past the GC window.
 
@@ -726,6 +728,12 @@ class Reconciler:
         Records are kept for ``terminated_instance_gc_retention_s`` after they
         enter TERMINATED so a just-terminated instance stays reportable for at
         least one more cycle before being reclaimed.
+
+        A TERMINATED record whose ``node_id`` is still present in the GCS node
+        snapshot is kept regardless of age: its ``node_id`` is what makes
+        ``_handle_extra_cloud_instances_from_ray_nodes`` treat the ray node as
+        managed, so deleting it while GCS still references the node would
+        resurrect it as a spurious ALLOCATED instance.
         """
         retention_s = reconcile_config.terminated_instance_gc_retention_s
         if retention_s < 0:
@@ -733,11 +741,16 @@ class Reconciler:
             return
 
         instances, version = Reconciler._get_im_instances(instance_manager)
+        live_ray_node_ids = {binary_to_hex(n.node_id) for n in ray_nodes}
         now_ns = time.time_ns()
         retention_ns = retention_s * 1_000_000_000
         to_delete: List[str] = []
         for instance in instances:
             if instance.status != IMInstance.TERMINATED:
+                continue
+            # Keep records GCS still references, else they get resurrected as
+            # ALLOCATED by _handle_extra_cloud_instances_from_ray_nodes.
+            if instance.node_id and instance.node_id in live_ray_node_ids:
                 continue
             terminated_times = InstanceUtil.get_status_transition_times_ns(
                 instance, IMInstance.TERMINATED
