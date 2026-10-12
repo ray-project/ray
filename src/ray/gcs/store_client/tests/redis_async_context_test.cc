@@ -246,6 +246,54 @@ TEST_F(RedisAsyncContextTest, TestReconnectsThroughHostName) {
   ExpectReconnectAfterServerDropsConnection("localhost");
 }
 
+// GcsServer connects its KV store client from the main thread while that
+// client's io_context already runs on its own thread, so the async connection
+// can drop before Connect() returns. The reconnect must still happen.
+TEST_F(RedisAsyncContextTest, TestDropDuringConnectStillReconnects) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  // Fail the async connection on the io thread while Connect() is still
+  // running, the way RedisAsyncContextConnectCallback reports a failed TCP
+  // connect, and wait for that before Connect() goes on.
+  ctx->SetAsyncConnectedHookForTesting([&io](RedisAsyncContext &async_context) {
+    std::promise<void> dropped;
+    io.post(
+        [&] {
+          redisAsyncContext *raw = async_context.GetRawRedisAsyncContext();
+          raw->onConnect = nullptr;
+          raw->onDisconnect = nullptr;
+          async_context.ResetRawRedisAsyncContext();
+          redisAsyncFree(raw);
+          async_context.NotifyDisconnected();
+          dropped.set_value();
+        },
+        "test.DropDuringConnect");
+    dropped.get_future().wait();
+  });
+  ASSERT_TRUE(ctx->Connect("127.0.0.1", port, /*username=*/"", /*password=*/"").ok());
+
+  std::promise<bool> done;
+  ctx->RunArgvAsync(
+      {"SET", "drop_during_connect", "1"},
+      [&done](const std::shared_ptr<CallbackReply> &reply) {
+        done.set_value(reply->ReadAsStatus().ok());
+      },
+      kNoTable);
+  auto future = done.get_future();
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+  EXPECT_TRUE(future.get());
+}
+
 // A server that answers -NOAUTH never ran the command: that is what commands
 // queued behind a rejected reconnect AUTH get back. Such replies must not spend
 // the retry budget while the grace period lasts. The budget is six attempts

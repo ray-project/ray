@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <cstddef>
@@ -262,6 +263,12 @@ class RedisContext {
   /// Disconnect from the server.
   void Disconnect();
 
+  /// Called inside Connect() right after the async connection is handed to the
+  /// io_service, before Connect() returns.
+  void SetAsyncConnectedHookForTesting(std::function<void(RedisAsyncContext &)> hook) {
+    async_connected_hook_for_testing_ = std::move(hook);
+  }
+
   /// Run an arbitrary Redis command.
   ///
   /// \param args The vector of command args to pass to Redis.
@@ -286,6 +293,13 @@ class RedisContext {
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
+  /// The body of Connect(). Connect() wraps it to track connect_depth_.
+  Status ConnectImpl(const std::string &address,
+                     int port,
+                     const std::string &username,
+                     const std::string &password,
+                     bool enable_ssl);
+
   /// Called when hiredis reports the async connection was lost. Runs from
   /// inside hiredis' teardown, so it only schedules work.
   void OnAsyncDisconnected();
@@ -390,17 +404,26 @@ class RedisContext {
 
   /// Threading contract for the reconnect state below: it is read and written
   /// on the io_service thread. The exceptions are Connect() and Disconnect()
-  /// (including from ~RedisContext), which callers must run either on that
-  /// thread or once the io_service is no longer running (GcsServer is
-  /// destroyed after its io_context's run() returns; tests destroy the store
-  /// client while ~io_context discards unrun handlers). Either way nothing
-  /// runs concurrently, so these need no lock; the alive_ sentinel, expired
-  /// first thing in ~RedisContext, turns away work queued before that.
+  /// (including from ~RedisContext). Disconnect() must run on that thread or
+  /// once the io_service is no longer running (GcsServer is destroyed after its
+  /// io_context's run() returns; tests destroy the store client while
+  /// ~io_context discards unrun handlers); the alive_ sentinel, expired first
+  /// thing in ~RedisContext, turns away work queued before that. Connect() may
+  /// also run on another thread while the io_service is running (GcsServer
+  /// connects the KV store client from the main thread): the async callbacks
+  /// then see connect_depth_ > 0 and leave the reconnect state alone.
   ///
   /// Set by Disconnect() and cleared by Connect(). While set, a disconnect
   /// callback must not schedule a reconnect: the teardown may be running from
   /// ~RedisContext, where the io_service is already gone.
-  bool disconnect_requested_ = false;
+  std::atomic<bool> disconnect_requested_ = false;
+  /// Connect() calls on the stack (Sentinel and Cluster discovery re-enter it).
+  std::atomic<int> connect_depth_ = 0;
+  /// The async connection dropped while connect_depth_ > 0. The outermost
+  /// Connect() hands the drop to the io_service once it has recorded what a
+  /// reconnect needs.
+  std::atomic<bool> dropped_while_connecting_ = false;
+  std::function<void(RedisAsyncContext &)> async_connected_hook_for_testing_;
   /// Guards against overlapping reconnect attempts.
   bool reconnecting_ = false;
   /// A reconnect attempt is in flight: its DNS resolve or its async connect

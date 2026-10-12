@@ -485,6 +485,7 @@ void RedisContext::Disconnect() {
   // starting a new one: resetting the async context runs hiredis' teardown,
   // which calls back into us, and this may be ~RedisContext.
   disconnect_requested_ = true;
+  dropped_while_connecting_ = false;
   reconnecting_ = false;
   reconnect_pending_ = false;
   auth_pending_ = false;
@@ -1114,6 +1115,27 @@ Status RedisContext::Connect(const std::string &address,
                              const std::string &username,
                              const std::string &password,
                              bool enable_ssl) {
+  ++connect_depth_;
+  Status status = ConnectImpl(address, port, username, password, enable_ssl);
+  // Leave before posting, so the posted handler sees connect_depth_ == 0.
+  if (--connect_depth_ == 0 && dropped_while_connecting_.exchange(false) && status.ok()) {
+    io_service_.post(
+        [this, alive = std::weak_ptr<bool>(alive_)] {
+          if (alive.expired()) {
+            return;
+          }
+          OnAsyncDisconnected();
+        },
+        "RedisContext.DroppedWhileConnecting");
+  }
+  return status;
+}
+
+Status RedisContext::ConnectImpl(const std::string &address,
+                                 int port,
+                                 const std::string &username,
+                                 const std::string &password,
+                                 bool enable_ssl) {
   // Connect to the leader of the Redis cluster:
   //   1. Resolve the ip address from domain name.
   //      It might return multiple ip addresses
@@ -1217,6 +1239,9 @@ Status RedisContext::Connect(const std::string &address,
   redis_async_context_->SetConnectHandler([this] { OnAsyncConnected(); });
   SetConnectionCallbacks(redis_async_context_->GetRawRedisAsyncContext(),
                          redis_async_context_.get());
+  if (async_connected_hook_for_testing_) {
+    std::exchange(async_connected_hook_for_testing_, nullptr)(*redis_async_context_);
+  }
 
   // handle validation and primary connection for different types of redis
   auto is_sentinel = IsRedisSentinel();
@@ -1261,13 +1286,19 @@ Status RedisContext::Connect(const std::string &address,
 }
 
 void RedisContext::OnAsyncDisconnected() {
-  // Whatever connect was outstanding is settled now, one way or another.
-  reconnect_pending_ = false;
   if (disconnect_requested_) {
     // Torn down on purpose. Do not resurrect it, and do not touch io_service_:
     // this can run from ~RedisContext after the io_context is gone.
     return;
   }
+  if (connect_depth_ > 0) {
+    // Connect() is still running, possibly on another thread. It records the
+    // address only at the end, so let it pass the drop back to us then.
+    dropped_while_connecting_ = true;
+    return;
+  }
+  // Whatever connect was outstanding is settled now, one way or another.
+  reconnect_pending_ = false;
   if (address_.empty()) {
     // Never finished a successful Connect(), so there is nothing to restore.
     return;
@@ -1458,6 +1489,10 @@ void RedisContext::ReconnectAuthCallback(redisAsyncContext *async_context,
 }
 
 void RedisContext::OnAsyncConnected() {
+  if (connect_depth_ > 0) {
+    // The initial connect. Connect() itself decides whether it succeeded.
+    return;
+  }
   if (auth_pending_) {
     // TCP is up, but the server has not accepted the credentials yet.
     // ReconnectAuthCallback declares the outcome.
