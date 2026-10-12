@@ -86,6 +86,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
         /*storage_operation_latency_in_ms_histogram=*/
         fake_storage_operation_latency_in_ms_histogram_,
         /*storage_operation_count_counter=*/fake_storage_operation_count_counter_,
+        /*redis_request_payload_bytes_sum=*/fake_redis_request_payload_bytes_sum_,
+        /*redis_response_payload_bytes_sum=*/fake_redis_response_payload_bytes_sum_,
+        /*redis_command_count_counter=*/fake_redis_command_count_counter_,
         /*resource_usage_gauge=*/fake_resource_usage_gauge_,
         fake_scheduler_placement_time_ms_histogram_,
         /*health_check_rpc_latency_ms_histogram=*/
@@ -166,6 +169,9 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   observability::FakeGauge fake_task_events_stored_gauge_;
   observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
   observability::FakeCounter fake_storage_operation_count_counter_;
+  observability::FakeCounter fake_redis_request_payload_bytes_sum_;
+  observability::FakeCounter fake_redis_response_payload_bytes_sum_;
+  observability::FakeCounter fake_redis_command_count_counter_;
   observability::FakeGauge fake_resource_usage_gauge_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   observability::FakeHistogram fake_health_check_rpc_latency_ms_histogram_;

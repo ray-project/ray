@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Troubleshoot multi-node GPU serving on KubeRay: head pod placement on GPU nodes, AWS OFI plugin issues, and NCCL debugging."
+---
+
 (serve-multi-node-gpu-troubleshooting)=
 
 # Troubleshoot multi-node GPU serving on KubeRay
@@ -75,7 +81,7 @@ If you continue to experience issues after following this guide:
 ## Additional resources
 
 - [Ray Multi-Node GPU Guide](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/gpu.html)
-- [vLLM Distributed Serving Documentation](https://docs.vllm.ai/en/latest/serving/distributed_serving.html)
+- [vLLM Distributed Serving Documentation](https://docs.vllm.ai/en/latest/serving/parallelism_scaling/)
 - [NCCL Troubleshooting Guide](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/troubleshooting.html)
 
 ## NCCL debugging script

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "How to contribute to Ray Data: choose an issue, get early feedback, write good tests, verify locally, and open a reviewable pull request."
+---
+
 # Contributing Guide
 
 If you want your changes to be reviewed and merged quickly, following a few key practices makes a big difference. Clear, focused, and well-structured contributions help reviewers understand your intent and ensure your improvements land smoothly.
@@ -42,7 +48,7 @@ Note that the full Ray Data test suite can be heavy to run locally, start with t
 
 Explain **why the change exists and what it achieves**. Clear descriptions reduce back-and-forth and speed up reviews.
 
-Here's an example of a PR with a good description: [[Data] Refactor PhysicalOperator.completed to fix side effects ](https://github.com/ray-project/ray/pull/58915).
+Here's an example of a PR with a good description: [[Data] Refactor PhysicalOperator.completed to fix side effects](https://github.com/ray-project/ray/pull/58915).
 
 ### Keep pull requests small
 

@@ -6,6 +6,7 @@ from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
 
 def main(args):
     def benchmark_fn():
+        join_num_partitions = 200
         from datetime import datetime
 
         # Q15: Top Supplier Query
@@ -66,7 +67,7 @@ def main(args):
             supplier.join(
                 top,
                 join_type="inner",
-                num_partitions=16,
+                num_partitions=join_num_partitions,
                 on=("s_suppkey",),
                 right_on=("l_suppkey",),
             )

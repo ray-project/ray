@@ -120,27 +120,29 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
   return Status::OK();
 }
 
-Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
-                                                void *privdata,
-                                                int argc,
-                                                const char **argv,
-                                                const size_t *argvlen) {
-  int ret_code = 0;
-  {
-    // `redisAsyncCommandArgv` will mutate `redis_async_context_`, use a lock to protect
-    // it.
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!redis_async_context_) {
-      return Status::Disconnected("Redis is disconnected");
-    }
-    ret_code = redisAsyncCommandArgv(
-        redis_async_context_.get(), fn, privdata, argc, argv, argvlen);
+Status RedisAsyncContext::RedisAsyncCommandArgv(
+    redisCallbackFn *fn,
+    void *privdata,
+    int argc,
+    const char **argv,
+    const size_t *argvlen,
+    std::optional<absl::FunctionRef<void()>> on_accepted) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (!redis_async_context_) {
+    return Status::Disconnected("Redis is disconnected");
   }
-
+  const int ret_code = redisAsyncCommandArgv(
+      redis_async_context_.get(), fn, privdata, argc, argv, argvlen);
   if (ret_code == REDIS_ERR) {
     return Status::RedisError(std::string(redis_async_context_->errstr));
   }
   RAY_CHECK(ret_code == REDIS_OK);
+  // hiredis queues the reply callback without invoking it inline. Keep the
+  // HandleIo mutex until bookkeeping state has been captured, so another thread
+  // cannot deliver a reply and free privdata before this notification finishes.
+  if (on_accepted.has_value()) {
+    (*on_accepted)();
+  }
   return Status::OK();
 }
 

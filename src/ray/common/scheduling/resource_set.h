@@ -21,6 +21,7 @@
 #include <unordered_map>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 
@@ -205,12 +206,11 @@ namespace std {
 template <>
 struct hash<ray::ResourceSet> {
   size_t operator()(ray::ResourceSet const &k) const {
-    size_t seed = k.GetResourceMap().size();
-    for (auto &elem : k.GetResourceMap()) {
-      seed ^= std::hash<std::string>()(elem.first);
-      seed ^= std::hash<double>()(elem.second);
-    }
-    return seed;
+    // Hash resources_ directly, the same map operator== compares. GetResourceMap()
+    // would allocate and take a lock per entry, and this is on the scheduling path.
+    // absl's hash is not stable across processes or shared libraries, so do not
+    // persist or transmit the value.
+    return absl::HashOf(k.Resources());
   }
 };
 }  // namespace std

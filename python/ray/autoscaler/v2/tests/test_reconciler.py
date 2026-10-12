@@ -273,6 +273,237 @@ class TestReconciler:
         assert instances["i-2"].status == Instance.ALLOCATION_FAILED
 
     @staticmethod
+    def test_multiple_node_types_share_launch_request_id(setup):
+        """
+        Test that all node types of a launch request are transitioned to
+        ALLOCATION_FAILED when each of them fails, i.e. launch errors of the same
+        launch request don't overwrite each other.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-2",
+                launch_request_id="l1",
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        # Both node types of the same launch request failed.
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            ),
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-2",
+                timestamp_ns=1,
+            ),
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert len(instances) == 2
+        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
+    def test_launch_error_count_fails_only_rejected_instances(setup):
+        """
+        A LaunchNodeError.count should fail only that many REQUESTED instances
+        of the same (request id, type). Remaining instances stay REQUESTED so a
+        partial maxReplicas cap can still bind later pods.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 1)],
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 2)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            )
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert instances["i-2"].status == Instance.REQUESTED
+
+    @staticmethod
+    def test_launch_error_count_allocates_pod_then_fails_leftover(setup):
+        """
+        When a pod is already present, assign it first and fail only the
+        leftover REQUESTED instance from LaunchNodeError.count.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 1)],
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 2)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            )
+        ]
+        cloud_instances = {
+            "c-1": CloudInstance("c-1", "type-1", True, NodeKind.WORKER),
+        }
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        allocated = [
+            inst for inst in instances.values() if inst.status == Instance.ALLOCATED
+        ]
+        failed = [
+            inst
+            for inst in instances.values()
+            if inst.status == Instance.ALLOCATION_FAILED
+        ]
+        assert len(allocated) == 1
+        assert allocated[0].cloud_instance_id == "c-1"
+        assert len(failed) == 1
+
+    @staticmethod
+    def test_duplicate_launch_errors_sum_failure_counts(setup):
+        """
+        Multiple LaunchNodeError events with the same (request id, type)
+        should add their counts. NodeProviderAdapter emits one error per
+        launch batch, so overwriting would leave extra REQUESTED instances.
+        """
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        instances = [
+            create_instance(
+                "i-1",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 1)],
+            ),
+            create_instance(
+                "i-2",
+                status=Instance.REQUESTED,
+                instance_type="type-1",
+                launch_request_id="l1",
+                status_times=[(Instance.REQUESTED, 2)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        launch_errors = [
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=1,
+            ),
+            LaunchNodeError(
+                request_id="l1",
+                count=1,
+                node_type="type-1",
+                timestamp_ns=2,
+            ),
+        ]
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=launch_errors,
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        instances, _ = instance_storage.get_instances()
+        assert instances["i-1"].status == Instance.ALLOCATION_FAILED
+        assert instances["i-2"].status == Instance.ALLOCATION_FAILED
+
+    @staticmethod
     def test_reconcile_terminated_cloud_instances(setup):
 
         instance_manager, instance_storage, subscriber, cloud_resource_monitor = setup

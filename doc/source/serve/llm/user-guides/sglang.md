@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve models with the SGLang engine through Ray Serve LLM's OpenAI-compatible API via the server_cls parameter on LLMConfig."
+---
+
 (sglang-integration)=
 # SGLang integration
 
@@ -25,6 +31,7 @@ Set the following environment variable before running any example:
 
 - **CUDA:** `RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0`
 - **ROCm:** `RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES=0`
+- **Intel GPU:** `RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK=0`
 
 ## Online serving (single node)
 

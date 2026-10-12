@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Replica ranks give each Serve replica a unique rank and world size, with reconfigure hooks and a defined rank assignment lifecycle."
+---
+
 (serve-replica-ranks)=
 
 # Replica ranks

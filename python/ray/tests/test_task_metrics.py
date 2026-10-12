@@ -242,13 +242,18 @@ ray.get(w)
     }
 
     def check_task_state():
-        assert tasks_by_state(info, timeseries) == expected
+        # Flush each poll: PrometheusTimeseries only merges samples and never
+        # drops series that disappear from /metrics. After gauge TTL (#64633),
+        # a mid-transition PENDING=9 observation can outlive the agent's series
+        # (especially with a poll interval >= TTL) and pin the sum at 9 forever.
+        assert tasks_by_state(info, timeseries, flush=True) == expected
 
     wait_for_assertion(
         check_task_state,
         timeout=30,
-        retry_interval_ms=2000,
+        retry_interval_ms=500,
     )
+    timeseries.flush()
     assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_GET"): 1.0,
         ("a", "RUNNING"): 1.0,
@@ -296,13 +301,16 @@ ray.get(w)
     }
 
     def check_task_state():
-        assert tasks_by_state(info, timeseries) == expected
+        # See test_task_nested: flush so TTL-evicted gauge series cannot stick
+        # in PrometheusTimeseries and keep PENDING_NODE_ASSIGNMENT at 9.
+        assert tasks_by_state(info, timeseries, flush=True) == expected
 
     wait_for_assertion(
         check_task_state,
         timeout=30,
-        retry_interval_ms=2000,
+        retry_interval_ms=500,
     )
+    timeseries.flush()
     assert tasks_by_name_and_state(info, timeseries) == {
         ("wrapper", "RUNNING_IN_RAY_WAIT"): 1.0,
         ("a", "RUNNING"): 1.0,

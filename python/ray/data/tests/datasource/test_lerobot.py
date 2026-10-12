@@ -9,6 +9,10 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.datasource.lerobot_datasource import (
+    LeRobotPerDatasetDatasource,
+)
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -72,6 +76,8 @@ def create_lerobot_dataset(
     frames_per_episode: int = 5,
     has_video: bool = True,
     image_camera: bool = False,
+    multidimensional_feature: bool = False,
+    multidimensional_extension: bool = False,
 ) -> str:
     """Create a minimal LeRobot v3 dataset directory structure.
 
@@ -87,6 +93,10 @@ def create_lerobot_dataset(
             "has_video and image_camera are mutually exclusive: a camera is "
             "stored as mp4 video or as in-parquet images, not both. For an "
             "image-camera dataset pass has_video=False, image_camera=True."
+        )
+    if multidimensional_extension and not multidimensional_feature:
+        raise ValueError(
+            "multidimensional_extension requires multidimensional_feature=True."
         )
     os.makedirs(root, exist_ok=True)
     total_frames = num_episodes * frames_per_episode
@@ -124,6 +134,8 @@ def create_lerobot_dataset(
             "dtype": "image",
             "shape": [FRAME_H, FRAME_W, FRAME_C],
         }
+    if multidimensional_feature:
+        features["matrix"] = {"dtype": "float32", "shape": [2, 2]}
 
     meta_dir = os.path.join(root, "meta")
     os.makedirs(meta_dir, exist_ok=True)
@@ -135,6 +147,11 @@ def create_lerobot_dataset(
         "action": {"mean": [0.0, 0.0], "std": [1.0, 1.0]},
         "state": {"mean": [0.0, 0.0], "std": [1.0, 1.0]},
     }
+    if multidimensional_feature:
+        stats["matrix"] = {
+            "mean": [[0.0, 0.0], [0.0, 0.0]],
+            "std": [[1.0, 1.0], [1.0, 1.0]],
+        }
     with open(os.path.join(meta_dir, "stats.json"), "w") as f:
         json.dump(stats, f)
 
@@ -209,6 +226,25 @@ def create_lerobot_dataset(
                 type=pa.struct([("bytes", pa.binary()), ("path", pa.string())]),
             ),
         )
+    if multidimensional_feature:
+        matrix_values = [
+            [[float(i), float(i + 1)], [float(i + 2), float(i + 3)]] for i in indices
+        ]
+        if multidimensional_extension:
+            from datasets import Array2D
+
+            matrix_type = Array2D(shape=(2, 2), dtype="float32")()
+            matrix_storage = pa.array(matrix_values, type=matrix_type.storage_type)
+            matrix_column = pa.ExtensionArray.from_storage(matrix_type, matrix_storage)
+        else:
+            matrix_column = pa.array(
+                matrix_values,
+                type=pa.list_(pa.list_(pa.float32(), 2), 2),
+            )
+        data_table = data_table.append_column(
+            "matrix",
+            matrix_column,
+        )
     pq.write_table(data_table, os.path.join(data_dir, "file-000.parquet"))
 
     # -- videos/ --
@@ -249,6 +285,18 @@ def lerobot_dataset_image(tmp_path):
     return create_lerobot_dataset(
         str(tmp_path / "ds_img"), has_video=False, image_camera=True
     )
+
+
+@pytest.fixture(params=[False, True], ids=["nested-lists", "hf-array2d"])
+def lerobot_dataset_multidimensional(tmp_path, request):
+    """Create a 2-D feature using nested lists or an HF Array2D extension."""
+    root = create_lerobot_dataset(
+        str(tmp_path / "ds_matrix"),
+        has_video=False,
+        multidimensional_feature=True,
+        multidimensional_extension=request.param,
+    )
+    return root, request.param
 
 
 # ---------------------------------------------------------------------------
@@ -986,6 +1034,41 @@ def test_read_lerobot_inconsistent_task_index_raises(
                 pass
 
 
+@pytest.mark.parametrize(
+    "victim",
+    [
+        "data/chunk-000/file-000.parquet",
+        "meta/tasks.parquet",
+        "meta/episodes/chunk-000/episodes-000.parquet",
+    ],
+    ids=["data-shard", "meta-tasks", "meta-episodes"],
+)
+def test_read_lerobot_rejects_pickle_object_columns(
+    ray_start_regular_shared, lerobot_dataset_no_video, tmp_path, victim
+):
+    """A tampered data shard or metadata parquet must not be able to run its
+    embedded pickle, neither in a read task nor on the driver (lerobot parses
+    ``meta/`` itself during ``read_lerobot``)."""
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            return (os.system, (f"touch {marker}",))
+
+    path = os.path.join(lerobot_dataset_no_video, victim)
+    original = pq.read_table(path)
+    tampered = original.append_column(
+        "evil", ArrowPythonObjectArray.from_objects([Exploit()] * original.num_rows)
+    )
+    pq.write_table(tampered, path)
+
+    # The meta cases raise at read_lerobot() time, the shard case at take_all().
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ray.data.read_lerobot(lerobot_dataset_no_video).take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 def _fsspec_fs_with_creds():
     """An fsspec filesystem carrying credential-like storage_options."""
     import fsspec
@@ -1226,6 +1309,61 @@ def test_delta_targets_clamps_to_episode():
     assert pad.tolist() == [[True, False, False], [False, False, True]]
 
 
+@pytest.mark.parametrize(
+    "extension_kind, expected_ndim",
+    [
+        # HF ArrayXD: a Python-defined pa.ExtensionType backed by nested lists.
+        ("hf-array2d", 3),
+        # A canonical (C++-defined) extension type -- a pa.BaseExtensionType but
+        # NOT a pa.ExtensionType -- backed by one flat fixed-size list.
+        ("fixed-shape-tensor", 2),
+    ],
+)
+def test_delta_tensor_type_preserves_extension_dimensions(
+    extension_kind, expected_ndim
+):
+    """The declared window rank follows the extension's *storage* nesting, for
+    Python-defined and canonical extension types alike."""
+    from ray.data._internal.datasource.lerobot_datasource import _delta_tensor_type
+
+    if extension_kind == "hf-array2d":
+        from datasets import Array2D
+
+        extension_type = Array2D(shape=(2, 3), dtype="float32")()
+    else:
+        extension_type = pa.fixed_shape_tensor(pa.float32(), [2, 2])
+
+    tensor_type = _delta_tensor_type(extension_type)
+    assert tensor_type.value_type == pa.float32()
+    assert tensor_type.ndim == expected_ndim
+
+
+def test_nested_list_column_to_numpy_rejects_null_lists():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _nested_list_column_to_numpy,
+    )
+
+    column = pa.array(
+        [[[1.0, 2.0], None]],
+        type=pa.list_(pa.list_(pa.float32())),
+    )
+    with pytest.raises(ValueError, match="cannot contain null lists"):
+        _nested_list_column_to_numpy(column, "matrix")
+
+
+def test_nested_list_column_to_numpy_rejects_ragged_lists():
+    from ray.data._internal.datasource.lerobot_datasource import (
+        _nested_list_column_to_numpy,
+    )
+
+    column = pa.array(
+        [[[1.0, 2.0]], [[3.0, 4.0], [5.0, 6.0]]],
+        type=pa.list_(pa.list_(pa.float32())),
+    )
+    with pytest.raises(ValueError, match="must have one uniform shape"):
+        _nested_list_column_to_numpy(column, "matrix")
+
+
 def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no_video):
     """Tabular windows: ``action`` gathers [t, t+1] and ``state`` gathers
     [t-1, t], each clamped to the anchor's episode with an is_pad mask."""
@@ -1256,6 +1394,47 @@ def test_read_lerobot_delta_tabular(ray_start_regular_shared, lerobot_dataset_no
         np.testing.assert_allclose(state[0], [j_prev * 0.1, j_prev * 0.2], rtol=1e-6)
         np.testing.assert_allclose(state[1], [i * 0.1, i * 0.2], rtol=1e-6)
         assert list(state_pad) == [i - 1 < ep_from, False]
+
+
+def test_read_lerobot_delta_multidimensional_tabular(
+    ray_start_regular_shared, lerobot_dataset_multidimensional
+):
+    """A temporal window preserves every dimension of a tabular feature."""
+    from ray.data.datasource import LeRobotDatasource
+
+    dataset_path, uses_extension = lerobot_dataset_multidimensional
+    parquet_path = os.path.join(dataset_path, "data", "chunk-000", "file-000.parquet")
+    matrix_type = pq.read_schema(parquet_path).field("matrix").type
+    assert isinstance(matrix_type, pa.ExtensionType) is uses_extension
+
+    source = LeRobotDatasource(
+        dataset_path,
+        delta_timestamps={"matrix": [0.0, 0.1]},
+    )
+    tasks = source.get_read_tasks(1)
+    block = pa.concat_tables([b for task in tasks for b in task()])
+    assert tasks[0].schema.equals(block.schema)
+
+    rows = block.to_pylist()
+    for row in rows:
+        i = row["index"]
+        ep_to = (i // 5) * 5 + 5
+        j_next = min(i + 1, ep_to - 1)
+        matrix = np.asarray(row["matrix"])
+        assert matrix.shape == (2, 2, 2)
+        assert matrix.dtype == np.float32
+        np.testing.assert_array_equal(
+            matrix[0],
+            [[i, i + 1], [i + 2, i + 3]],
+        )
+        np.testing.assert_array_equal(
+            matrix[1],
+            [[j_next, j_next + 1], [j_next + 2, j_next + 3]],
+        )
+        assert list(np.asarray(row["matrix_is_pad"])) == [
+            False,
+            i + 1 >= ep_to,
+        ]
 
 
 def test_read_lerobot_delta_video(ray_start_regular_shared, lerobot_dataset):
@@ -1355,6 +1534,296 @@ def test_read_lerobot_delta_invalid_raises(
         ray.data.read_lerobot(
             lerobot_dataset_no_video, delta_timestamps={"action": [0.05]}
         )
+
+    with pytest.raises(ValueError, match="not dataset features") as exc_info:
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video,
+            delta_timestamps={"acton": [0.0, 0.1]},
+        )
+    assert "acton" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# read_granularity="dataset" (LeRobotPerDatasetDatasource)
+# ---------------------------------------------------------------------------
+
+# Scalar columns present regardless of camera kind; compared row-for-row across
+# granularities (decoded camera tensors are checked separately by shape).
+SCALAR_COLUMNS = [
+    "index",
+    "episode_index",
+    "frame_index",
+    "timestamp",
+    "task",
+    "dataset_index",
+]
+
+
+def _make_datasets(
+    tmp_path,
+    n: int,
+    *,
+    num_episodes: int = 1,
+    frames: int = 4,
+    has_video: bool = False,
+    image_camera: bool = False,
+):
+    """Create ``n`` datasets of ``num_episodes`` episodes each under ``tmp_path``."""
+    return [
+        create_lerobot_dataset(
+            str(tmp_path / f"ds{i}"),
+            num_episodes=num_episodes,
+            frames_per_episode=frames,
+            has_video=has_video,
+            image_camera=image_camera,
+        )
+        for i in range(n)
+    ]
+
+
+def _run_read_tasks(datasource, parallelism: int) -> pa.Table:
+    """Execute a datasource's read tasks in-process (no cluster required)."""
+    tables = [
+        block for task in datasource.get_read_tasks(parallelism) for block in task()
+    ]
+    return pa.concat_tables(tables)
+
+
+def _row_key(row):
+    """Stable cross-granularity row key: ``dataset_index`` is the root's position
+    in the input list in every mode, and ``index`` is preserved per dataset."""
+    return (row["dataset_index"], row["index"])
+
+
+def _assert_rows_match(got, expected, *, has_camera: bool):
+    """Assert two row lists (already sorted by :func:`_row_key`) are equal."""
+    assert len(got) == len(expected)
+    for g, e in zip(got, expected):
+        for col in SCALAR_COLUMNS:
+            assert g[col] == e[col], col
+        assert np.array_equal(g["action"], e["action"])
+        assert np.array_equal(g["state"], e["state"])
+        if has_camera:
+            # Camera frames decode to (H, W, C) uint8 tensors in both modes.
+            assert np.array_equal(g["observation.image"], e["observation.image"])
+
+
+@pytest.mark.parametrize(
+    "has_video, image_camera",
+    [(True, False), (False, False), (False, True)],
+    ids=["video", "no_camera", "image"],
+)
+def test_dataset_granularity_matches_episode(
+    ray_start_regular_shared, tmp_path, has_video, image_camera
+):
+    """Reading N single-episode datasets at ``"dataset"`` granularity yields the
+    same rows as the ``"episode"`` granularity."""
+    roots = _make_datasets(tmp_path, 5, has_video=has_video, image_camera=image_camera)
+
+    ds_dataset = ray.data.read_lerobot(roots, read_granularity="dataset")
+    ds_episode = ray.data.read_lerobot(roots, read_granularity="episode")
+
+    assert set(ds_dataset.schema().names) == set(ds_episode.schema().names)
+
+    got = sorted(ds_dataset.take_all(), key=_row_key)
+    expected = sorted(ds_episode.take_all(), key=_row_key)
+
+    assert len(got) == 5 * 4
+    _assert_rows_match(got, expected, has_camera=has_video or image_camera)
+
+
+@pytest.mark.parametrize("has_video", [True, False], ids=["video", "no_camera"])
+def test_multi_episode_datasets_match_episode_granularity(
+    ray_start_regular_shared, tmp_path, has_video
+):
+    """Datasets with several episodes each are valid input too: within a dataset
+    the base partitioning is the file group, so one task covers several row
+    ranges. Output must still match the ``"episode"`` granularity."""
+    roots = _make_datasets(tmp_path, 2, num_episodes=3, frames=2, has_video=has_video)
+
+    got = sorted(
+        ray.data.read_lerobot(roots, read_granularity="dataset").take_all(),
+        key=_row_key,
+    )
+    expected = sorted(
+        ray.data.read_lerobot(roots, read_granularity="episode").take_all(),
+        key=_row_key,
+    )
+
+    assert len(got) == 2 * 3 * 2
+    _assert_rows_match(got, expected, has_camera=has_video)
+
+
+def test_dataset_index_identifies_source_root(ray_start_regular_shared, tmp_path):
+    roots = _make_datasets(tmp_path, 4, frames=3)
+    rows = ray.data.read_lerobot(roots, read_granularity="dataset").take_all()
+    assert len(rows) == 4 * 3
+    # Each source dataset contributes its 3 frames under its own dataset_index.
+    per_root = {}
+    for r in rows:
+        per_root.setdefault(r["dataset_index"], 0)
+        per_root[r["dataset_index"]] += 1
+    assert per_root == {0: 3, 1: 3, 2: 3, 3: 3}
+
+
+def test_bounded_task_count(tmp_path):
+    """The task count is bounded by ``parallelism`` and capped at #datasets --
+    it does NOT explode to one task per dataset."""
+    roots = _make_datasets(tmp_path, 6)
+    ds = LeRobotPerDatasetDatasource(roots)
+
+    assert len(ds.get_read_tasks(parallelism=2)) == 2
+    assert len(ds.get_read_tasks(parallelism=3)) == 3
+    # More parallelism than datasets is capped at the dataset count.
+    assert len(ds.get_read_tasks(parallelism=100)) == 6
+
+    # The 2-task plan spans all 6 datasets (multiple datasets per task).
+    full = _run_read_tasks(ds, parallelism=2)
+    assert set(full.column("dataset_index").to_pylist()) == set(range(6))
+
+
+def test_deferred_resolution(ray_start_regular_shared, tmp_path):
+    """Only the first root is resolved on the driver; a bad later root is not
+    touched until its read task runs -- unlike ``"file"``/``"episode"`` which
+    resolve every root at construction."""
+    good = create_lerobot_dataset(
+        str(tmp_path / "good"), num_episodes=1, has_video=False
+    )
+    bad = str(tmp_path / "nonexistent")
+
+    # Construction succeeds despite the bad second root (it is never resolved).
+    LeRobotPerDatasetDatasource([good, bad])
+
+    # The failure surfaces only when the task reading the bad root executes.
+    with pytest.raises(Exception):
+        ray.data.read_lerobot([good, bad], read_granularity="dataset").materialize()
+
+    # Contrast: "file" granularity resolves all roots up front, so it raises
+    # at construction time (before any execution).
+    with pytest.raises(Exception):
+        ray.data.read_lerobot([good, bad], read_granularity="file")
+
+
+def test_direct_read_task_rows(tmp_path):
+    """Drive the datasource's read tasks directly: rows, schema, dataset_index."""
+    roots = _make_datasets(tmp_path, 4, frames=3)
+    ds = LeRobotPerDatasetDatasource(roots)
+    full = _run_read_tasks(ds, parallelism=2)
+
+    assert full.num_rows == 4 * 3
+    assert set(full.column("dataset_index").to_pylist()) == {0, 1, 2, 3}
+    assert {"index", "action", "state", "task", "stats"} <= set(full.schema.names)
+
+
+def test_datasource_constructor_basics(tmp_path):
+    """Constructor-level behavior: the properties the datasource reports, and
+    that a single path (not a list) is accepted, mirroring read_lerobot."""
+    roots = _make_datasets(tmp_path, 3)
+    ds = LeRobotPerDatasetDatasource(roots)
+    # None keeps autodetected parallelism bounded (see the class docstring).
+    assert ds.estimate_inmemory_data_size() is None
+    assert ds.get_name() == "LeRobot"
+    # Plain local paths (no ``local://`` scheme) support distributed reads.
+    assert ds.supports_distributed_reads is True
+
+    solo = create_lerobot_dataset(
+        str(tmp_path / "solo"), num_episodes=1, frames_per_episode=3, has_video=False
+    )
+    single = LeRobotPerDatasetDatasource(solo)
+    full = _run_read_tasks(single, parallelism=1)
+    assert full.num_rows == 3
+    assert set(full.column("dataset_index").to_pylist()) == {0}
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"read_granularity": "frame"}, "read_granularity must be one of"),
+        (
+            {"read_granularity": "dataset", "override_num_blocks": 4},
+            "greater than the number of datasets",
+        ),
+        (
+            {"read_granularity": "dataset", "episodes": []},
+            "episodes must be a non-empty list",
+        ),
+    ],
+    ids=["unknown_granularity", "override_num_blocks_over_request", "empty_episodes"],
+)
+def test_invalid_arguments_rejected(ray_start_regular_shared, tmp_path, kwargs, match):
+    """Bad arguments fail loudly instead of silently degrading: an unknown
+    granularity; more output blocks than datasets (a dataset is the atomic unit
+    and is never split across tasks, so we don't deliver fewer blocks than
+    requested); and an empty ``episodes`` list, which would otherwise filter
+    every root down to nothing."""
+    roots = _make_datasets(tmp_path, 3)
+    with pytest.raises(ValueError, match=match):
+        ray.data.read_lerobot(roots, **kwargs)
+
+
+def test_override_num_blocks_at_dataset_count_allowed(
+    ray_start_regular_shared, tmp_path
+):
+    """One block per dataset (override == #datasets) is the boundary case and is
+    allowed."""
+    roots = _make_datasets(tmp_path, 3)
+    ray.data.read_lerobot(roots, read_granularity="dataset", override_num_blocks=3)
+
+
+def test_episodes_pushdown(ray_start_regular_shared, tmp_path):
+    """``episodes=`` is a per-root pushdown in dataset mode: only the requested
+    episodes' rows come back, with their original values preserved."""
+    roots = _make_datasets(tmp_path, 2, num_episodes=3, frames=2)
+
+    rows = ray.data.read_lerobot(
+        roots, read_granularity="dataset", episodes=[0, 2]
+    ).take_all()
+
+    # 2 datasets x 2 requested episodes x 2 frames.
+    assert len(rows) == 8
+    assert {r["episode_index"] for r in rows} == {0, 2}
+    assert {r["dataset_index"] for r in rows} == {0, 1}
+
+
+def test_episodes_absent_from_a_root_is_skipped(ray_start_regular_shared, tmp_path):
+    """A root that has none of the requested episodes contributes no rows instead
+    of raising: dataset mode never resolves every root on the driver, so it can't
+    tell "absent from this root" from "absent everywhere" (the other granularities
+    raise here)."""
+    small = create_lerobot_dataset(
+        str(tmp_path / "small"), num_episodes=1, frames_per_episode=2, has_video=False
+    )
+    big = create_lerobot_dataset(
+        str(tmp_path / "big"), num_episodes=3, frames_per_episode=2, has_video=False
+    )
+
+    # Episode 2 exists only in ``big`` (dataset_index 1).
+    rows = ray.data.read_lerobot(
+        [small, big], read_granularity="dataset", episodes=[2]
+    ).take_all()
+
+    assert len(rows) == 2
+    assert {r["dataset_index"] for r in rows} == {1}
+    assert {r["episode_index"] for r in rows} == {2}
+
+
+def test_delta_timestamps_dataset_mode(ray_start_regular_shared, tmp_path):
+    """delta_timestamps works in dataset mode: each
+    windowed feature gains a leading time dimension plus a ``{key}_is_pad`` mask,
+    and the row count is unchanged."""
+    roots = _make_datasets(tmp_path, 3, frames=4)
+    offsets = [0.0, 0.1]  # two frame steps at fps=10
+    ds = ray.data.read_lerobot(
+        roots, read_granularity="dataset", delta_timestamps={"action": offsets}
+    )
+
+    assert "action_is_pad" in set(ds.schema().names)
+
+    rows = ds.take_all()
+    assert len(rows) == 3 * 4  # windows don't change the row count
+    # The windowed feature gains a leading time dim == number of offsets.
+    assert np.asarray(rows[0]["action"]).shape[0] == len(offsets)
+    assert np.asarray(rows[0]["action_is_pad"]).shape[0] == len(offsets)
 
 
 if __name__ == "__main__":

@@ -8,25 +8,19 @@ import asyncio
 import contextlib
 import logging
 import uuid
-import warnings
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 from fastapi.routing import APIRoute
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
-from ray.llm._internal.common.patches.vllm.tokenize_once import (
-    install as _install_tokenize_once,
-    reuse_prompt_token_ids as _reuse_prompt_token_ids,
-)
-from ray.llm._internal.serve.constants import DEFAULT_MAX_ONGOING_REQUESTS
+from ray import serve
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
-    EmbeddingRequest,
-    EmbeddingResponse,
     ErrorResponse,
 )
 from ray.llm._internal.serve.core.ingress.utils import (
@@ -35,27 +29,18 @@ from ray.llm._internal.serve.core.ingress.utils import (
     _peek_at_generator,
     _sanitize_chat_completion_request,
 )
-from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
+from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
-from ray.llm._internal.serve.utils.server_utils import (
-    get_serve_request_id,
-)
 from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
-from ray.serve.llm import LLMConfig
 
 logger = logging.getLogger(__name__)
 
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
-
-# TODO(Kourosh): Deprecate in Ray 2.56, remove in Ray 2.58.
-DEFAULT_PD_PROXY_SERVER_OPTIONS = {
-    "max_ongoing_requests": DEFAULT_MAX_ONGOING_REQUESTS,
-}
 
 _PREWARM_PROMPT = " x"
 _PREWARM_MAX_TOKENS = 1
@@ -183,14 +168,79 @@ class PDOrchestratorMixin:
                 ids = getattr(choices[0], "prompt_token_ids", None)
         return ids
 
+    @staticmethod
+    def _can_reuse_prompt_token_ids(request: RequestType) -> bool:
+        """Allow reuse for single-prompt completions and text-only chats, no echo."""
+        if isinstance(request, CompletionRequest):
+            # Prefill returns ids for the first prompt only, so batched or
+            # embeds prompts would be collapsed. Echo needs the prompt text.
+            prompt = request.prompt
+            return (
+                not request.echo
+                and request.prompt_embeds is None
+                and (
+                    isinstance(prompt, str)
+                    or (
+                        isinstance(prompt, list)
+                        and len(prompt) > 0
+                        and (
+                            len(prompt) == 1
+                            or all(isinstance(token, int) for token in prompt)
+                        )
+                    )
+                )
+            )
+        if not isinstance(request, ChatCompletionRequest):
+            return False
+        if request.echo or request.return_prompt_text:
+            return False
+        for message in request.messages:
+            if not isinstance(message, dict):
+                return False
+            content = message.get("content")
+            if content is None or isinstance(content, str):
+                continue
+            if not isinstance(content, list):
+                return False
+            for part in content:
+                if isinstance(part, str):
+                    continue
+                if not (
+                    isinstance(part, dict)
+                    and part.get("type") == "text"
+                    # vLLM parses UUID-bearing parts by their media fields,
+                    # even when an explicit type is present.
+                    and part.get("uuid") is None
+                ):
+                    return False
+        return True
+
     def _request_prefill_token_ids(self, prefill_request) -> None:
         """Ask prefill to echo its prompt token ids so decode can reuse them.
 
         No-op when disabled or the request lacks the field. Used on sequential handoff
         only. Concurrent decode starts before prefill returns, so it has nothing to
         reuse."""
-        if self._pd_tokenize_once and hasattr(prefill_request, "return_token_ids"):
+        if (
+            self._pd_tokenize_once
+            and self._can_reuse_prompt_token_ids(prefill_request)
+            and hasattr(prefill_request, "return_token_ids")
+        ):
             prefill_request.return_token_ids = True
+
+    def _forward_prefill_token_ids(self, decode_request, prefill_chunk) -> None:
+        """Forward prefill ids through vLLM's native reuse interface."""
+        ids = self._decode_reuse_ids(prefill_chunk)
+        if not ids or not self._can_reuse_prompt_token_ids(decode_request):
+            return
+        if isinstance(decode_request, CompletionRequest):
+            decode_request.prompt = ids
+            return
+        kv_transfer_params = getattr(decode_request, "kv_transfer_params", None)
+        if not isinstance(kv_transfer_params, dict):
+            kv_transfer_params = {}
+            decode_request.kv_transfer_params = kv_transfer_params
+        kv_transfer_params["prompt_token_ids"] = ids
 
     # ---- Orchestrated Request Flow ----
 
@@ -226,6 +276,14 @@ class PDOrchestratorMixin:
         backend = self._get_connector_backend()
 
         prefill_handle = self._prefill_handle
+        multiplexed_model_id = serve.get_multiplexed_model_id()
+        if multiplexed_model_id:
+            # P/D runs the adapter on both engines. The decode request already
+            # has this metadata in its Serve context; explicitly propagate it
+            # to the prefill handle so its LLMServer resolves the same adapter.
+            prefill_handle = prefill_handle.options(
+                multiplexed_model_id=multiplexed_model_id
+            )
         if raw_request_info is not None:
             session_id = session_id_from_headers(raw_request_info.headers)
             if session_id:
@@ -290,12 +348,12 @@ class PDOrchestratorMixin:
                 decode_request = backend.prepare_decode_request(
                     request=request, peer=peer, prefill_response=prefill_chunk
                 )
-                with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
-                    local_gen = await getattr(super(), method)(
-                        decode_request, raw_request_info
-                    )
-                    async for chunk in local_gen:
-                        yield chunk
+                self._forward_prefill_token_ids(decode_request, prefill_chunk)
+                local_gen = await getattr(super(), method)(
+                    decode_request, raw_request_info
+                )
+                async for chunk in local_gen:
+                    yield chunk
                 return
 
         # Default path: no pre-dispatch peer binding; dispatch prefill via the
@@ -333,11 +391,10 @@ class PDOrchestratorMixin:
         decode_request = backend.prepare_decode_request(
             request=request, peer=None, prefill_response=prefill_chunk
         )
-        # Reuse prefill's ids for this decode so the render skips re-tokenizing.
-        with _reuse_prompt_token_ids(self._decode_reuse_ids(prefill_chunk)):
-            local_gen = await getattr(super(), method)(decode_request, raw_request_info)
-            async for chunk in local_gen:
-                yield chunk
+        self._forward_prefill_token_ids(decode_request, prefill_chunk)
+        local_gen = await getattr(super(), method)(decode_request, raw_request_info)
+        async for chunk in local_gen:
+            yield chunk
 
     async def _concurrent_decode(
         self,
@@ -668,11 +725,8 @@ class PDDecodeServer(PDOrchestratorMixin, LLMServer):
             engine_cls=engine_cls,
             model_downloader=model_downloader,
         )
-        # Active only if enabled and the renderer wrap installs. The `and`
-        # short-circuits so install() is not called when disabled.
-        self._pd_tokenize_once = (
-            bool(self._llm_config.experimental_configs.get("pd_tokenize_once"))
-            and _install_tokenize_once()
+        self._pd_tokenize_once = bool(
+            self._llm_config.experimental_configs.get("pd_tokenize_once")
         )
         await self._maybe_prewarm()
 
@@ -719,152 +773,3 @@ class DPPDDecodeServer(PDDecodeServer, DPServer):
     """
 
     pass
-
-
-# ---------------------------------------------------------------------------
-# Deprecated: PDProxyServer
-# TODO(Kourosh): Deprecate, remove in Ray 2.58.
-# ---------------------------------------------------------------------------
-
-
-class PDProxyServer(LLMServerProtocol):
-    """Proxy between P/D LLM servers.
-
-    .. deprecated::
-        ``PDProxyServer`` is deprecated. Use ``PDDecodeServer`` instead.
-        This class will be removed in a future release.
-    """
-
-    async def __init__(
-        self,
-        prefill_server: DeploymentHandle,
-        decode_server: DeploymentHandle,
-    ):
-        warnings.warn(
-            "PDProxyServer is deprecated and will be removed in Ray 2.58. "
-            "Use PDDecodeServer (decode orchestrator) and PDPrefillServer instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self._llm_config = await prefill_server.llm_config.remote()
-        self.prefill_server = prefill_server.options(stream=True)
-        self.decode_server = decode_server.options(stream=True)
-
-    async def start(self) -> None:
-        pass
-
-    async def check_health(self) -> None:
-        pass
-
-    async def reset_prefix_cache(self) -> None:
-        raise NotImplementedError(
-            "reset_prefix_cache is not supported for P/D disaggregation"
-        )
-
-    async def start_profile(self) -> None:
-        raise NotImplementedError(
-            "start_profile is not supported for P/D disaggregation"
-        )
-
-    async def stop_profile(self) -> None:
-        raise NotImplementedError(
-            "stop_profile is not supported for P/D disaggregation"
-        )
-
-    async def llm_config(self) -> Optional[LLMConfig]:
-        return self._llm_config
-
-    def _prepare_prefill_request(self, request: RequestType) -> RequestType:
-        assert (
-            getattr(request, "kv_transfer_params", None) is None
-        ), "kv_transfer_params should be empty before proxy"
-        prefill_request = request.model_copy(deep=True)
-        prefill_request.kv_transfer_params = {
-            "do_remote_decode": True,
-            "do_remote_prefill": False,
-            "remote_engine_id": None,
-            "remote_block_ids": None,
-            "remote_host": None,
-            "remote_port": None,
-        }
-        prefill_request.max_tokens = 1
-        prefill_request.stream = False
-        return prefill_request
-
-    def _prepare_decode_request(
-        self,
-        request: RequestType,
-        prefill_chunk: Union[ChatCompletionResponse, CompletionResponse],
-    ) -> RequestType:
-        decode_request = request.model_copy(deep=True)
-        decode_request.kv_transfer_params = prefill_chunk.kv_transfer_params
-        return decode_request
-
-    def _maybe_add_request_id_to_request(
-        self,
-        request: Union[ChatCompletionRequest, CompletionRequest],
-    ) -> None:
-        request_id = get_serve_request_id()
-        if request_id:
-            request.request_id = request_id
-
-    async def _handle_request(
-        self,
-        request: RequestType,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[
-        Union[str, ChatCompletionResponse, CompletionResponse, ErrorResponse], None
-    ]:
-        self._maybe_add_request_id_to_request(request)
-
-        if isinstance(request, ChatCompletionRequest):
-            method = "chat"
-        elif isinstance(request, CompletionRequest):
-            method = "completions"
-        else:
-            raise ValueError(f"Unsupported request type: {type(request)}")
-
-        prefill_request = self._prepare_prefill_request(request)
-        prefill_gen = getattr(self.prefill_server, method).remote(
-            prefill_request, raw_request_info
-        )
-        prefill_chunk = await prefill_gen.__anext__()
-
-        if isinstance(prefill_chunk, ErrorResponse):
-            logger.error(f"Prefill returned error: {prefill_chunk}")
-            yield prefill_chunk
-            return
-
-        decode_request = self._prepare_decode_request(request, prefill_chunk)
-        decode_gen = getattr(self.decode_server, method).remote(
-            decode_request, raw_request_info
-        )
-        async for chunk in decode_gen:
-            yield chunk
-
-    async def chat(
-        self,
-        request: ChatCompletionRequest,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[Union[str, ChatCompletionResponse, ErrorResponse], None]:
-        return self._handle_request(request, raw_request_info)
-
-    async def completions(
-        self,
-        request: CompletionRequest,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[Union[str, CompletionResponse, ErrorResponse], None]:
-        return self._handle_request(request, raw_request_info)
-
-    async def embeddings(
-        self,
-        request: EmbeddingRequest,
-        raw_request_info: Optional[RawRequestInfo] = None,
-    ) -> AsyncGenerator[EmbeddingResponse, None]:
-        raise NotImplementedError("Embedding is not supported for P/D disaggregation")
-
-    @classmethod
-    def get_deployment_options(
-        cls, prefill_config: "LLMConfig", decode_config: "LLMConfig"
-    ) -> Dict[str, Any]:
-        return DEFAULT_PD_PROXY_SERVER_OPTIONS

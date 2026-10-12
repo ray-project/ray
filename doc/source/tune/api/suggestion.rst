@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Tune search algorithms, including grid and random search, Ax, BayesOpt, BOHB, HEBO, HyperOpt, Nevergrad, and Optuna.
+
 .. _tune-search-alg:
 
 Tune Search Algorithms (tune.search)
@@ -270,7 +273,6 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     Searcher.suggest
     Searcher.save

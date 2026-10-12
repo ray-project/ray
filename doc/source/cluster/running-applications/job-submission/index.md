@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Overview of the Ray Jobs API for running applications on an already-deployed cluster, plus interactive execution."
+---
+
 (jobs-overview)=
 
 # Ray Jobs Overview
@@ -37,8 +43,9 @@ Note that jobs started in these ways are not managed by the Ray Jobs API, so the
 
 quickstart
 sdk
-jobs-package-ref
+../../../core/api/job-submission
 cli
 rest
+api
 ray-client
 ```

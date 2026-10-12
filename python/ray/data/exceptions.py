@@ -3,7 +3,7 @@ from typing import Callable
 
 from ray.data._internal.logging import get_log_directory
 from ray.data.context import DataContext
-from ray.exceptions import UserCodeException
+from ray.exceptions import ObjectLostError, UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
@@ -35,6 +35,37 @@ class SystemException(Exception):
 
 
 @DeveloperAPI
+class ExecutionTimeoutError(Exception):
+    """Represents an Exception raised when a Dataset execution stops making
+    progress for `DataContext.execution_no_progress_timeout_s`.
+    This usually means a UDF is blocked, a task is stuck, or the cluster can
+    no longer schedule work."""
+
+
+@DeveloperAPI
+class LineageReconstructionError(ObjectLostError):
+    """Represents an error that occurred during lineage reconstruction triggered
+    by an ``ObjectLostError``.
+    Subclasses ``ObjectLostError`` so callers catching the original loss still
+    catch it. The message carries both the cause for the object loss and the cause
+    of the lineage reconstruction failure."""
+
+    def __init__(self, lost_error: ObjectLostError, reason: str):
+        super().__init__(
+            lost_error.object_ref_hex, lost_error.owner_address, lost_error.call_site
+        )
+        self.lost_error = lost_error
+        self.reason = reason
+
+    def __str__(self):
+        return (
+            f"{self.lost_error}\n\n"
+            "Ray Data lineage reconstruction was triggered for this object but "
+            f"failed: {self.reason}"
+        )
+
+
+@DeveloperAPI
 def omit_traceback_stdout(fn: Callable) -> Callable:
     """Decorator which runs the function, and if there is an exception raised,
     drops the stack trace before re-raising the exception. The original exception,
@@ -60,6 +91,9 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 raise e
 
             is_user_code_exception = isinstance(e, UserCodeException)
+            is_actionable_exception = is_user_code_exception or isinstance(
+                e, ExecutionTimeoutError
+            )
             if is_user_code_exception:
                 # Exception has occurred in user code.
                 if not log_internal_stack_trace and log_once(
@@ -72,7 +106,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                         f"Data log file at `{get_log_directory()}`, set "
                         "`DataContext.log_internal_stack_trace` to True."
                     )
-            else:
+            elif not is_actionable_exception:
                 # Exception has occurred in internal Ray Data / Ray Core code.
                 logger.error(
                     "Exception occurred in Ray Data or Ray Core internal code. "
@@ -81,9 +115,10 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-            if is_user_code_exception:
-                # The driver-side propagation frames add nothing for a user-code
-                # error — the real failure is the worker traceback in ``str(e)``.
+            if is_actionable_exception:
+                # The driver-side propagation frames add nothing here: for a
+                # user-code error the real failure is the worker traceback in
+                # ``str(e)``, and for a timeout the message is self-contained.
                 # Keep them off stdout always (``hide=True`` filters the console
                 # handler only; the file handler still writes the record). The
                 # flag controls only what reaches the log file.
@@ -97,7 +132,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                 # System exception (likely a Ray bug): surface the full trace on
                 # stdout (and the log file) so the user can report it.
                 logger.exception("Full stack trace:", exc_info=True)
-            if is_user_code_exception:
+            if is_actionable_exception:
                 raise e.with_traceback(None)
             else:
                 raise e.with_traceback(None) from SystemException()

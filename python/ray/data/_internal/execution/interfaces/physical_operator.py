@@ -41,11 +41,12 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
+from ray.exceptions import ObjectLostError
 
 if TYPE_CHECKING:
-
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
-    from ray.data._internal.execution.streaming_executor_state import OpState
+    from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
 
@@ -59,23 +60,6 @@ METADATA_GET_TIMEOUT_S = 1.0
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
-
-
-@dataclass(frozen=True)
-class ObjectStoreUsage:
-    """Per-op object store accounting.
-
-    Attributes:
-        internal: Bytes held by this op's currently-running tasks
-            (outputs not yet yielded to the object store).
-        outputs: Bytes this op has produced that are still live in
-            the object store — its internal output queue, its
-            ``OpState`` external output queue, and the downstream
-            eligible ops' inputs.
-    """
-
-    internal: int
-    outputs: int
 
 
 class OpTask(ABC):
@@ -105,14 +89,14 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-        is_actor_task = not self.get_task_id().actor_id().is_nil()
+        waitable = self.get_waitable()
 
-        ray.cancel(
-            self.get_waitable(),
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
+        try:
+            ray.cancel(waitable, recursive=True, force=force)
+        except ValueError:
+            # Actor tasks can't be force cancelled.
+            # If the task is an actor task, fallback to force=False.
+            ray.cancel(waitable, recursive=True, force=False)
 
     def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
@@ -187,6 +171,8 @@ class DataOpTask(OpTask):
         ] = lambda block_ref, object_size: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        lineage_task_id: Optional[str] = None,
+        reconstruction_plan_id: Optional[str] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -209,6 +195,11 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            lineage_task_id: Logical Ray Data ID of this task, stable across lineage
+                reconstruction attempts.
+            reconstruction_plan_id: The reconstruction plan this attempt serves; ``None`` for a
+                fresh attempt. Carried here because the output and completion
+                callbacks need it after submission.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -224,6 +215,8 @@ class DataOpTask(OpTask):
         self._operator_name = operator_name
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
+        self._lineage_task_id = lineage_task_id
+        self._reconstruction_plan_id: Optional[str] = reconstruction_plan_id
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -365,6 +358,13 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
+                        # Propagate a tracked task's loss so the executor can
+                        # attempt lineage reconstruction, which needs the task
+                        # still live to abort it deliberately. Any other error,
+                        # including an untracked task's loss, drains the task so
+                        # its outputs already in flight still land.
+                        if isinstance(ex, ObjectLostError) and self.is_lineage_tracked:
+                            raise
                         self._task_error = ex
                         self._state = TaskGeneratorState.DRAINED
                         break
@@ -419,6 +419,29 @@ class DataOpTask(OpTask):
                 time.perf_counter() - self._start_output_backpressure_s
             )
             self._start_output_backpressure_s = None
+
+    @property
+    def lineage_task_id(self) -> Optional[str]:
+        """Logical lineage id, stable across reconstruction attempts.
+
+        None if untracked. Branch on ``is_lineage_tracked`` rather than on this.
+        """
+        return self._lineage_task_id
+
+    @property
+    def is_lineage_tracked(self) -> bool:
+        """Whether the operator that owns this task registered this task with the lineage tracker.
+
+        Only then can a lost output be reconstructed from lineage. An operator
+        mints a ``lineage_task_id`` exactly when it registers the task, so this is
+        derived from the id rather than stored separately.
+        """
+        return self._lineage_task_id is not None
+
+    @property
+    def reconstruction_plan_id(self) -> Optional[str]:
+        """The reconstruction plan this attempt serves; ``None`` if fresh."""
+        return self._reconstruction_plan_id
 
     @property
     def has_finished(self) -> bool:
@@ -502,6 +525,30 @@ class DataOpTask(OpTask):
                     task_output_backpressure_s=self._total_output_backpressure_s,
                 ),
             )
+        self._state = TaskGeneratorState.FINISHED
+
+    def mark_aborted(self, exception: Exception) -> None:
+        """Tear down a task whose output was lost, without reading its stream.
+
+        Transitions the task to FINISHED and runs the normal done-callback with
+        ``exception`` set (the same path ``on_data_ready`` takes on a task error)
+        so the owning operator releases every resource the task reserved --
+        running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
+        pending input refs -- and pops it from ``_data_tasks``. Callers must use
+        this instead of dropping the task from ``_data_tasks`` directly, which
+        would leave those separately-tracked reservations leaked for the rest of
+        the run.
+        """
+        if self._state is TaskGeneratorState.FINISHED:
+            # `task_done_callback` already fired (normal completion or an
+            # earlier abort); firing it twice would double-release the task's
+            # resource reservations.
+            return
+        self._task_done_callback(
+            exception,
+            None,  # TaskExecStats
+            None,  # TaskExecDriverStats
+        )
         self._state = TaskGeneratorState.FINISHED
 
 
@@ -604,6 +651,7 @@ class PhysicalOperator(Operator):
         )
         self._started = False
         self._shutdown = False
+        self._lineage_tracker: Optional["LineageTracker"] = None
         self._in_task_submission_backpressure = False
         self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
@@ -921,6 +969,7 @@ class PhysicalOperator(Operator):
         self,
         options: ExecutionOptions,
         block_ref_counter: BlockRefCounter,
+        lineage_tracker: Optional["LineageTracker"] = None,
     ) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -928,8 +977,11 @@ class PhysicalOperator(Operator):
             options: The global options used for the overall execution.
             block_ref_counter: The executor-wide shared counter for tracking
                 object-store memory.
+            lineage_tracker: The executor-wide lineage metadata tracker, which
+                helps trigger lineage reconstruction on object loss.
         """
         self._block_ref_counter = block_ref_counter
+        self._lineage_tracker = lineage_tracker
         self._started = True
 
     def can_add_input(self) -> bool:
@@ -1067,40 +1119,13 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources.zero()
 
-    def estimate_object_store_usage(self, state: "OpState") -> ObjectStoreUsage:
-        """Returns the bytes this operator contributes to the global object
-        store budget. Subclasses may override this when their object store
-        footprint doesn't match the generic model.
+    def estimate_object_store_usage(self) -> int:
+        """Returns this operator's object store memory usage in bytes.
+
+        ShuffleMapOperator overrides this since its outputs are intermediate
+        partitions managed by the reduce stage.
         """
-        # Operator's internal Object Store usage
-        mem_op_internal = self.metrics.obj_store_mem_pending_task_outputs or 0
-
-        # Operator's outputs' Object Store usage
-        op_outputs_bytes = (
-            # Internal output queue
-            self.metrics.obj_store_mem_internal_outqueue
-            +
-            # External output queue
-            state.output_queue_bytes()
-        )
-
-        # TODO fix ineligible ops: this needs to include usage of all of OS
-        #      for ineligible ops
-        #
-        # Outputs of this operator used downstream
-        used_op_outputs_bytes = sum(
-            (
-                downstream_op.metrics.obj_store_mem_internal_inqueue_for_input(
-                    downstream_op.input_dependencies.index(self)
-                )
-                + downstream_op.metrics.obj_store_mem_pending_task_inputs
-            )
-            for downstream_op in self.output_dependencies
-        )
-        return ObjectStoreUsage(
-            internal=int(mem_op_internal),
-            outputs=int(op_outputs_bytes + used_op_outputs_bytes),
-        )
+        return self._block_ref_counter.get_object_store_memory_usage(self.id)
 
     def running_logical_usage(self) -> ExecutionResources:
         """Returns the estimated running CPU, GPU, and memory usage of this operator,

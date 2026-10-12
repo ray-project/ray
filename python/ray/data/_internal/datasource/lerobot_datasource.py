@@ -31,6 +31,7 @@ import pyarrow.parquet as pq
 
 import ray
 from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import (
     _check_import,
     _is_local_scheme,
@@ -128,6 +129,76 @@ class _ReadGranularity(str, enum.Enum):
     EPISODE = "episode"
 
 
+def _is_list_type(data_type: pa.DataType) -> bool:
+    """True for any Arrow list layout: list, large_list, or fixed_size_list."""
+    return (
+        pa.types.is_fixed_size_list(data_type)
+        or pa.types.is_list(data_type)
+        or pa.types.is_large_list(data_type)
+    )
+
+
+def _delta_tensor_type(data_type: pa.DataType) -> pa.ExtensionType:
+    """Build the output tensor type for a windowed tabular Arrow field.
+
+    LeRobot stores vectors as list columns and higher-rank features either as
+    nested lists or Hugging Face ``ArrayXD`` extension types backed by nested
+    lists. A temporal window adds one leading dimension to the stored feature.
+    """
+    from ray.data.extensions import ArrowVariableShapedTensorType
+
+    # BaseExtensionType covers canonical (C++-defined) extension types like
+    # pa.fixed_shape_tensor too, not just Python-defined ones like HF ArrayXD.
+    if isinstance(data_type, pa.BaseExtensionType):
+        data_type = data_type.storage_type
+
+    ndim = 1
+    while _is_list_type(data_type):
+        ndim += 1
+        data_type = data_type.value_type
+
+    return ArrowVariableShapedTensorType(data_type, ndim=ndim)
+
+
+def _nested_list_column_to_numpy(column: pa.Array, name: str) -> np.ndarray:
+    """Materialize a uniformly shaped nested-list column as a typed ndarray.
+
+    Convert an Arrow nested-list column into one typed, rectangular ndarray --
+    ``(n_rows, *feature_shape)``, the layout the delta gather fancy-indexes
+    into windows -- without going through Python objects.
+
+    The leaf dtype survives (``np.array(column.to_pylist())`` widens float32
+    to float64), so the produced block matches the schema
+    ``_delta_tensor_type`` declares from the same nesting.
+
+    Raises a ValueError if the column is null or ragged.
+    """
+    shape = [len(column)]
+    values = column
+    while _is_list_type(values.type):
+        if values.null_count:
+            raise ValueError(
+                f"Windowed LeRobot feature {name!r} cannot contain null lists."
+            )
+        if pa.types.is_fixed_size_list(values.type):
+            length = values.type.list_size
+        else:
+            # Keep the common, uniformly shaped path inside Arrow. Converting
+            # every row's length to Python is prohibitively expensive for the
+            # large action/state columns found in real LeRobot datasets.
+            lengths = pc.unique(pc.list_value_length(values))
+            if len(lengths) != 1:
+                raise ValueError(
+                    f"Windowed LeRobot feature {name!r} must have one uniform "
+                    f"shape, but found list lengths {sorted(lengths.to_pylist())}."
+                )
+            length = lengths[0].as_py()
+        shape.append(length)
+        values = values.flatten()
+
+    return values.to_numpy(zero_copy_only=False).reshape(shape)
+
+
 # ---------------------------------------------------------------------------
 # Driver-side derived-state builders.
 # ---------------------------------------------------------------------------
@@ -173,19 +244,9 @@ def _build_schema(
             # Encoded-byte image struct -> decoded uint8 tensor (4-D if windowed).
             return pa.field(f.name, delta_frame_type if f.name in delta else frame_type)
         if f.name in delta:
-            # Tabular feature gains a leading time axis. A list column (fixed or
-            # variable) stacks to (T, dim) -> ndim 2 over its element type; a
-            # scalar column stacks to (T,) -> ndim 1 over its own type.
-            is_list = (
-                pa.types.is_fixed_size_list(f.type)
-                or pa.types.is_list(f.type)
-                or pa.types.is_large_list(f.type)
-            )
-            value_type = f.type.value_type if is_list else f.type
-            return pa.field(
-                f.name,
-                ArrowVariableShapedTensorType(value_type, ndim=2 if is_list else 1),
-            )
+            # A temporal window adds one leading dimension to the stored
+            # scalar/vector/matrix/... feature.
+            return pa.field(f.name, _delta_tensor_type(f.type))
         return f
 
     # Image columns live in the parquet as encoded-byte structs; swap them for
@@ -404,6 +465,28 @@ def _resolve_filesystem(
     return fs, fs_root, video_root_uri, video_storage_options
 
 
+def _raise_on_pickle_object_meta_parquet(local_meta_dir: str, root_uri: str) -> None:
+    """Reject ``meta/**/*.parquet`` files that store pickled-object columns.
+
+    lerobot reads ``meta/tasks.parquet`` (and ``subtasks.parquet``,
+    ``episodes/**/*.parquet``) itself via pandas and HF datasets, which would
+    unpickle ``ray.data.arrow_pickled_object`` columns on the driver. Only parquet
+    footers are read here; no row data is decoded.
+    """
+    meta_dir = Path(local_meta_dir)
+    for path in sorted(meta_dir.rglob("*.parquet")):
+        # Read the schema outside the ``try`` so a corrupt file's ``ArrowInvalid``
+        # (a ``ValueError`` subclass) isn't relabeled as a pickle rejection.
+        schema = pq.read_schema(path)
+        try:
+            # Unpickling untrusted data can execute arbitrary code. Reject object
+            # columns unless the user has explicitly opted in.
+            raise_on_pickle_object_columns(schema.empty_table())
+        except ValueError as e:
+            rel = path.relative_to(meta_dir).as_posix()
+            raise ValueError(f"{root_uri!r}: meta/{rel}: {e}") from e
+
+
 def _load_lerobot_metadata(
     root: Union[str, Path],
     fs: "fsspec.AbstractFileSystem",
@@ -424,12 +507,20 @@ def _load_lerobot_metadata(
     # target); we pass the root itself so any fallback fails clearly.
     if "://" not in root_uri:
         # Local path: lerobot reads it directly.
+        _raise_on_pickle_object_meta_parquet(os.path.join(root_uri, "meta"), root_uri)
         return LeRobotDatasetMetadata(repo_id=root_uri, root=root_uri)
 
     # Remote URI: copy meta/ locally and let lerobot parse the local copy.
     local_root = tempfile.mkdtemp(prefix="ray_data_lerobot_")
-    fs.get(f"{fs_root}/meta", os.path.join(local_root, "meta"), recursive=True)
-    meta = LeRobotDatasetMetadata(repo_id=root_uri, root=local_root)
+    try:
+        fs.get(f"{fs_root}/meta", os.path.join(local_root, "meta"), recursive=True)
+        _raise_on_pickle_object_meta_parquet(os.path.join(local_root, "meta"), root_uri)
+        meta = LeRobotDatasetMetadata(repo_id=root_uri, root=local_root)
+    except Exception:
+        # The finalizer below is attached to ``meta``, which doesn't exist yet, so
+        # drop the temp copy here instead of leaking it.
+        shutil.rmtree(local_root, ignore_errors=True)
+        raise
     # lerobot may read meta files lazily, and `meta` is exposed via
     # ``source.meta``; drop the temp copy when the object is garbage-collected.
     weakref.finalize(meta, shutil.rmtree, local_root, ignore_errors=True)
@@ -527,6 +618,13 @@ def _build_root(
         zip(meta.tasks["task_index"].astype(int).tolist(), meta.tasks.index.tolist())
     )
     if delta_timestamps:
+        unknown_keys = sorted(set(delta_timestamps) - set(meta.features))
+        if unknown_keys:
+            raise ValueError(
+                f"{root_uri!r}: delta_timestamps keys {unknown_keys} are not "
+                "dataset features."
+            )
+
         # Validate offsets align to the frame grid and convert seconds -> integer
         # frame offsets; both delegated to lerobot so semantics match LeRobotDataset.
         from lerobot.datasets.feature_utils import (
@@ -616,7 +714,7 @@ def _resolve_root(
 def _build_lerobot_read_task(
     segments: List[tuple],
     roots: List[_LeRobotRoot],
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
     episodes: List[pa.Table],
     max_block_bytes: int,
     per_task_row_limit: Optional[int] = None,
@@ -626,10 +724,13 @@ def _build_lerobot_read_task(
 
     Each ``segment`` is a ``(root_index, start, end)`` triple over a contiguous
     row range within one root. ``roots`` (slim per-root constants) is used here
-    to compute BlockMetadata; ``roots_ref`` carries it to workers, where the read
-    function fetches it once. ``episodes`` is the driver-side list of projected
-    episode tables, used here only to cut each segment's slice -- it is NOT
-    shipped; only the per-segment slice travels with the task.
+    to compute BlockMetadata; ``root_refs`` holds one object ref per root, of
+    which the task captures refs for only the roots its segments touch,
+    the read function fetches just those. Roots split
+    across several tasks still share one object. ``episodes`` is the
+    driver-side list of projected episode tables, used here only to cut each
+    segment's slice, it is NOT shipped; only the per-segment slice travels
+    with the task.
     """
     total_rows = 0
     size_bytes = 0
@@ -656,23 +757,27 @@ def _build_lerobot_read_task(
         input_files=all_input_files,
         exec_stats=None,
     )
+    needed_root_indices = sorted({root_idx for root_idx, _, _ in segments})
+    task_root_refs = [root_refs[root_idx] for root_idx in needed_root_indices]
     read_fn = functools.partial(
-        _read_lerobot_task, roots_ref, resolved, max_block_bytes
+        _read_lerobot_task,
+        task_root_refs,
+        needed_root_indices,
+        resolved,
+        max_block_bytes,
     )
     return ReadTask(read_fn, block_metadata, schema, per_task_row_limit)
 
 
 def _read_lerobot_task(
-    roots_ref: "ray.ObjectRef",
+    root_refs: List["ray.ObjectRef"],
+    root_indices: List[int],
     segments_resolved: List[tuple],
     max_block_bytes: int,
 ) -> Iterator[pa.Table]:
-    """Stream decoded rows as Arrow tables, iterating over all segments.
-
-    Runs on a worker: fetches the shared slim per-root state once, then reads
-    each pre-resolved segment.
-    """
-    roots: List[_LeRobotRoot] = ray.get(roots_ref)
+    """Stream decoded rows as Arrow tables, iterating over all segments."""
+    # Get only the roots this task needs.
+    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray.get(root_refs)))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
             roots[root_idx],
@@ -751,7 +856,11 @@ def _read_lerobot_segment(
     pq_tables = []
     for path in parquet_segs:
         with fs.open(path, "rb") as f:
-            pq_tables.append(pq.read_table(f, filters=filters))
+            table = pq.read_table(f, filters=filters)
+        # Unpickling untrusted data can execute arbitrary code. Reject object
+        # columns unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
+        pq_tables.append(table)
     full = pa.concat_tables(pq_tables) if pq_tables else None
     if full is None or full.num_rows == 0:
         return
@@ -886,19 +995,20 @@ def _prepare_delta_segment(
         vk for vk in root.video_keys if vk in delta_steps
     ]
     # Materialize tabular delta columns to numpy once, preserving the stored dtype
-    # so stacked windows match the schema: list columns (fixed or variable) flatten
-    # to (n_rows, dim) via the value array -- which keeps e.g. float32 that
-    # to_pylist would widen to float64 -- and scalar columns stay 1-D.
+    # so stacked windows match the schema: nested-list columns (fixed or variable)
+    # materialize to (n_rows, *shape) via the value array -- which keeps e.g.
+    # float32 that to_pylist would widen to float64 -- and scalar columns stay 1-D.
     tabular_base: Dict[str, np.ndarray] = {}
     for name in delta_tabular_keys:
         col = full.column(name).combine_chunks()
-        if (
-            pa.types.is_fixed_size_list(col.type)
-            or pa.types.is_list(col.type)
-            or pa.types.is_large_list(col.type)
-        ):
-            flat = col.flatten().to_numpy(zero_copy_only=False)
-            tabular_base[name] = flat.reshape(len(col), -1)
+        if isinstance(col.type, pa.BaseExtensionType):
+            # In lerobot, multidimensional columns can be backed by Hugging Face ArrayXD.
+            # Hugging Face ArrayXD is a pa.ExtensionType
+            # Unwrap it so the one validated path below
+            # materializes every encoding
+            col = col.storage
+        if _is_list_type(col.type):
+            tabular_base[name] = _nested_list_column_to_numpy(col, name)
         else:
             tabular_base[name] = col.to_numpy(zero_copy_only=False)
     return _DeltaSegment(
@@ -1764,19 +1874,250 @@ class LeRobotDatasource(Datasource):
 
         task_plan = [self._merge_segments(group) for group in groups]
 
-        roots_ref = ray.put(self.distilled_metas)
+        root_refs = [ray.put(root) for root in self.distilled_metas]
         max_block_bytes = self._max_block_bytes(data_context)
         return [
             _build_lerobot_read_task(
                 segments,
                 self.distilled_metas,
-                roots_ref,
+                root_refs,
                 self._episodes,
                 max_block_bytes,
                 per_task_row_limit,
             )
             for segments in task_plan
         ]
+
+    def get_name(self) -> str:
+        return "LeRobot"
+
+    @property
+    def supports_distributed_reads(self) -> bool:
+        return self._supports_distributed_reads
+
+
+def _read_lerobot_datasets(
+    chunk: List[Tuple[int, str]],
+    episodes: Optional[List[int]],
+    filesystem: Optional["pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"],
+    storage_options: Dict[str, Any],
+    frame_tolerance_s: Optional[float],
+    max_block_bytes: int,
+    delta_timestamps: Optional[Dict[str, List[float]]] = None,
+    delta_tolerance_s: float = 1e-4,
+) -> Iterator[pa.Table]:
+    """Resolve and read this task's chunk of whole datasets on a worker.
+
+    Each element of ``chunk`` is a ``(dataset_index, root)`` pair, where
+    ``dataset_index`` is the root's position in the original ``root`` list --
+    emitted verbatim as the ``dataset_index`` output column so rows can be
+    attributed to their source dataset.
+
+    For each root this resolves the metadata on the worker
+    (:func:`_resolve_root`), coalesces episodes into file-group row ranges (the
+    same base partitioning the ``"file"`` granularity uses within a dataset),
+    and streams decoded Arrow batches by reusing :func:`_read_lerobot_segment`.
+    """
+    for dataset_index, root in chunk:
+        built_root, built_episodes, _meta = _resolve_root(
+            root,
+            filesystem,
+            storage_options,
+            frame_tolerance_s,
+            delta_timestamps=delta_timestamps,
+            delta_tolerance_s=delta_tolerance_s,
+        )
+
+        # ``episodes`` is a per-root read-time pushdown. Unlike the "file" and
+        # "episode" granularities we can't raise on an episode absent from
+        # *every* root (we never resolve every root on the driver), so a root
+        # with no matching episodes simply contributes nothing.
+        if episodes is not None:
+            idx_col = built_episodes.column("episode_index")
+            requested = pa.array(sorted({int(e) for e in episodes}), type=idx_col.type)
+            built_episodes = built_episodes.filter(
+                pc.is_in(idx_col, value_set=requested)
+            )
+            # Now built_episodes contains only the requested episodes.
+            if built_episodes.num_rows == 0:
+                continue
+
+        # Coalesce adjacent episodes sharing a physical file into one range so
+        # each file is opened once.
+        ranges = LeRobotDatasource._slices_by_file_group(
+            built_episodes, built_root.video_keys
+        )
+        for start, end in sorted(ranges):
+            pos0, pos1 = _episodes_for_row_range(built_episodes, start, end)
+            # combine_chunks() so only this slice travels, not a view over the
+            # whole table's buffers.
+            ep_slice = built_episodes.slice(pos0, pos1 - pos0).combine_chunks()
+            parquet_segs, _video_segs = _resolve_paths(built_root, ep_slice)
+            yield from _read_lerobot_segment(
+                built_root,
+                start,
+                end,
+                dataset_index,
+                parquet_segs,
+                ep_slice,
+                max_block_bytes,
+            )
+
+
+@PublicAPI(stability="alpha")
+class LeRobotPerDatasetDatasource(Datasource):
+    """Datasource backing ``ray.data.read_lerobot(..., read_granularity="dataset")``.
+
+    Scales to a very large number of LeRobot datasets by deferring all
+    per-dataset metadata resolution to the read tasks: only the first root is
+    resolved on the driver, purely for a representative output schema. Every
+    root must be homogeneous with the first (same ``video_keys`` /
+    ``image_keys`` / ``fps`` / non-camera features); unlike the ``"file"`` and
+    ``"episode"`` granularities this is *not* pre-checked on the driver -- a
+    divergent dataset surfaces as a schema-inconsistent block at read time.
+    """
+
+    def __init__(
+        self,
+        root: Union[str, Path, List[Union[str, Path]]],
+        *,
+        episodes: Optional[List[int]] = None,
+        filesystem: Optional[
+            "pyarrow.fs.FileSystem | fsspec.AbstractFileSystem"
+        ] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
+        frame_tolerance_s: Optional[float] = None,
+        delta_timestamps: Optional[Dict[str, List[float]]] = None,
+        delta_tolerance_s: float = 1e-4,
+    ):
+        super().__init__()
+
+        _check_import(self, module="fsspec", package="fsspec")
+        _check_import(
+            self, module="lerobot.datasets.dataset_metadata", package="lerobot[dataset]"
+        )
+
+        if frame_tolerance_s is not None and frame_tolerance_s <= 0:
+            raise ValueError(
+                f"frame_tolerance_s must be a positive number of seconds, "
+                f"got {frame_tolerance_s!r}."
+            )
+
+        # An empty list would otherwise filter every root down to no episodes
+        # and silently produce an empty dataset.
+        if episodes is not None and len(episodes) == 0:
+            raise ValueError(
+                "episodes must be a non-empty list of episode_index values, or "
+                "None to read every episode."
+            )
+
+        self._roots: List[str] = [
+            str(r) for r in ([root] if isinstance(root, (str, Path)) else list(root))
+        ]
+        if not self._roots:
+            raise ValueError("root must be a non-empty path/URI or list of paths/URIs.")
+
+        self._episodes = episodes
+        self._filesystem = filesystem
+        self._storage_options: Dict[str, Any] = dict(storage_options or {})
+        self._frame_tolerance_s = frame_tolerance_s
+        self._delta_timestamps = delta_timestamps
+        self._delta_tolerance_s = delta_tolerance_s
+        self._supports_distributed_reads = not _is_local_scheme(self._roots)
+
+        # Resolve ONLY the first root, purely for a representative output schema
+        # (all roots are contractually homogeneous). No per-root bundles, no
+        # O(N) homogeneity check, no ray.put fan-out -- that is the whole point.
+        first_root, _first_episodes, _meta = _resolve_root(
+            self._roots[0],
+            filesystem,
+            self._storage_options,
+            self._frame_tolerance_s,
+            delta_timestamps=self._delta_timestamps,
+            delta_tolerance_s=self._delta_tolerance_s,
+        )
+        self._schema: pa.Schema = first_root.schema
+
+        # Import checks driven by the first root's camera kinds. All roots are
+        # assumed to have the same requirements.
+        if first_root.video_keys:
+            _check_import(self, module="torchcodec", package="torchcodec")
+            _check_import(self, module="av", package="av")
+        if first_root.image_keys:
+            _check_import(self, module="PIL", package="pillow")
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        # Unknown without resolving every root -- and returning the true
+        # (petabyte-scale) size would blow up ``min_safe_parallelism`` in
+        # ``_autodetect_parallelism`` to one task per dataset. ``None`` pins
+        # parallelism to ``max(read_op_min_num_blocks, 2 * avail_cpus)``.
+        return None
+
+    @property
+    def num_datasets(self) -> int:
+        """Number of dataset roots -- the maximum number of read tasks this mode
+        can produce (one per dataset; a dataset is never split across tasks)."""
+        return len(self._roots)
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional[DataContext] = None,
+    ) -> List[ReadTask]:
+        ctx = data_context or DataContext.get_current()
+        max_block_bytes = ctx.target_max_block_size
+
+        # ``parallelism`` here is normally Ray's autodetected floor
+        # (``read_op_min_num_blocks``, ~200), not a user request, so it routinely
+        # exceeds the dataset count -- cap it at one task per dataset. An
+        # *explicit* over-request (``override_num_blocks`` > ``num_datasets``) is
+        # rejected up front in ``read_lerobot`` rather than silently capped here.
+        num_roots = len(self._roots)
+        n_tasks = max(1, min(parallelism, num_roots))
+
+        tasks: List[ReadTask] = []
+        # n_tasks <= num_roots, so base >= 1 and every task gets >= 1 dataset.
+        base, remainder = divmod(num_roots, n_tasks)
+        start = 0
+        for g in range(n_tasks):
+            end = start + base + (1 if g < remainder else 0)
+            # The chunk rides in the closure: Ray Data ``ray.put``s each ReadTask
+            # regardless, so this ships the same bytes as an explicit per-chunk
+            # ``ray.put`` would, without the extra object per task or the
+            # O(n_tasks) synchronous puts at planning time. Crucially each task
+            # still carries only its own roots -- never the whole list, which
+            # would cost every worker hundreds of MB to GBs of heap.
+            chunk = [(i, self._roots[i]) for i in range(start, end)]
+            read_fn = functools.partial(
+                _read_lerobot_datasets,
+                chunk,
+                self._episodes,
+                self._filesystem,
+                self._storage_options,
+                self._frame_tolerance_s,
+                max_block_bytes,
+                self._delta_timestamps,
+                self._delta_tolerance_s,
+            )
+            start = end
+            # num_rows / size_bytes are unknown before the roots are resolved on
+            # the worker; leaving them None is safe for planning.
+            metadata = BlockMetadata(
+                num_rows=None,
+                size_bytes=None,
+                input_files=None,
+                exec_stats=None,
+            )
+            tasks.append(
+                ReadTask(
+                    read_fn,
+                    metadata,
+                    schema=self._schema,
+                    per_task_row_limit=per_task_row_limit,
+                )
+            )
+        return tasks
 
     def get_name(self) -> str:
         return "LeRobot"

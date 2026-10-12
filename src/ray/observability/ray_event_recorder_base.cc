@@ -148,13 +148,15 @@ void RayEventRecorderBase::SendRequest(rpc::events::AddEventsRequest &&request) 
           // add logic for error recovery.
           RAY_LOG(ERROR) << "Failed to record ray event: " << status.ToString();
         }
-        // Signal under mutex to avoid lost wakeup race condition
-        {
-          absl::MutexLock grpc_lock(&grpc_completion_mutex_);
-          grpc_in_progress_ = false;
-          grpc_completion_cv_.Signal();
-        }
+        MarkGrpcDone();
       });
+}
+
+void RayEventRecorderBase::MarkGrpcDone() {
+  // Signal under mutex to avoid lost wakeup race condition
+  absl::MutexLock grpc_lock(&grpc_completion_mutex_);
+  grpc_in_progress_ = false;
+  grpc_completion_cv_.Signal();
 }
 
 }  // namespace observability

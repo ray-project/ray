@@ -1,7 +1,6 @@
 import dataclasses
 import functools
 import logging
-import typing
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,9 +17,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
-    ObjectStoreUsage,
     OpTask,
-    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -31,14 +28,10 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     _shuffle_map_task,
 )
-from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data.block import Block, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-if typing.TYPE_CHECKING:
-    from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +55,7 @@ def extract_partition_id(bundle: RefBundle) -> int:
     raise ValueError("ShuffleMapOp bundle is missing a partition_id sentinel.")
 
 
-class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarMixin):
+class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     """Map phase of a shuffle: partition inputs and group shards by partition.
 
     Each map task splits its input into num_partitions shards.  Shards land in a
@@ -78,16 +71,15 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         block_transformer: Optional transform applied to each non-empty input
             block before partitioning (e.g. map-side partial aggregation).
             May change the block schema.
-        pre_map_merge_threshold: Byte threshold per node at which buffered
-            blocks are merged into a single map task.  Set to 0 to disable.
         map_runtime_env: Optional runtime_env for map tasks; useful to
             isolate map workers from other ops.
         map_cpus: CPU request per map task.
+        peak_memory_multiplier: Multiplier applied to a task's input bytes to
+            derive its memory request.
         name: Display name shown in progress bars and logs.
     """
 
     _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS = 1.0
-    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
 
     def __init__(
         self,
@@ -97,9 +89,9 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         num_partitions: int,
         partition_fn: PartitionFn,
         block_transformer: Optional[BlockTransformer] = None,
-        pre_map_merge_threshold: int = _DEFAULT_PRE_MAP_MERGE_THRESHOLD,
         map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
+        peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
     ):
         super().__init__(
@@ -115,9 +107,12 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
         self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
+        self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
-        self._pre_map_merge_threshold: int = pre_map_merge_threshold
+        # Buffered blocks are coalesced per node into a single map task once
+        # this size is reached; <= 0 disables batching (one task per bundle).
+        self._input_batch_bytes: int = data_context.shuffle_input_batch_bytes
         self._merge_buffer_refs_by_node: Dict[
             str, List[ObjectRef[Block]]
         ] = defaultdict(list)
@@ -144,12 +139,8 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         self._partition_bundles_emitted: bool = False
 
         # -- Stats -----------------------------------------------------------
-        self._total_input_rows: int = 0
         self._total_input_bytes: int = 0
         self._map_blocks_stats: List[BlockStats] = []
-
-        # -- Sub-progress bars -----------------------------------------------
-        self._map_bar: Optional["BaseProgressBar"] = None
 
     @property
     def _input_queues(self) -> List[BaseBundleQueue]:
@@ -162,7 +153,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
 
-        if self._pre_map_merge_threshold > 0:
+        if self._input_batch_bytes > 0:
             preferred_locs = refs.get_preferred_object_locations()
             node_id = (
                 max(preferred_locs, key=lambda n: preferred_locs[n])
@@ -177,10 +168,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
-            if (
-                self._merge_buffer_bytes_by_node[node_id]
-                >= self._pre_map_merge_threshold
-            ):
+            if self._merge_buffer_bytes_by_node[node_id] >= self._input_batch_bytes:
                 self._flush_merge_buffer(node_id)
         else:
             self._submit_shuffle_map_task(
@@ -222,7 +210,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
 
         resources: Dict[str, Any] = {"num_cpus": self._shuffle_map_task_num_cpus}
         if estimated_bytes > 0:
-            resources["memory"] = estimated_bytes * SHUFFLE_PEAK_MEMORY_MULTIPLIER
+            resources["memory"] = int(estimated_bytes * self._peak_memory_multiplier)
 
         ray_options: Dict[str, Any] = {
             **resources,
@@ -240,7 +228,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
-            compression=self.data_context.hash_shuffle_compression,
+            compression=self.data_context.shuffle_compression,
             block_transformer=self._block_transformer,
         )
         metadata_ref = map_refs[0]
@@ -269,15 +257,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             RefBundle(all_blocks_meta, schema=None, owns_blocks=False),
             task_id=task.get_task_id(),
         )
-
-        if self._map_bar is not None:
-            _, _, num_rows = estimate_total_num_of_blocks(
-                cur_task_idx + 1,
-                self.upstream_op_num_outputs(),
-                self._metrics,
-                total_num_tasks=None,
-            )
-            self._map_bar.update(total=num_rows)
 
     def _handle_map_done(
         self,
@@ -313,9 +292,16 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         for bundle in input_bundles:
             bundle.destroy_if_owned()
 
-        self._total_input_rows += input_meta.num_rows or 0
         self._total_input_bytes += input_meta.size_bytes or 0
-        self._map_blocks_stats.append(input_meta.to_stats())
+        block_stats = input_meta.to_stats()
+        if block_stats.exec_stats is not None:
+            block_stats = dataclasses.replace(
+                block_stats,
+                exec_stats=dataclasses.replace(
+                    block_stats.exec_stats, task_idx=task_idx
+                ),
+            )
+        self._map_blocks_stats.append(block_stats)
 
         self._metrics.on_task_finished(
             task_idx,
@@ -323,9 +309,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             task_exec_stats=None,
             task_exec_driver_stats=None,
         )
-
-        if self._map_bar is not None:
-            self._map_bar.update(increment=input_meta.num_rows or 0)
 
         self._maybe_emit_partition_bundles()
 
@@ -397,13 +380,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         return super().has_execution_finished()
 
     def has_completed(self) -> bool:
-        return (
-            not self._shuffle_map_tasks
-            and not self._merge_buffer_refs_by_node
-            and self._partition_bundles_emitted
-            and not self._output_queue.has_next()
-            and super().has_completed()
-        )
+        return self.has_execution_finished()
 
     def _do_shutdown(self, force: bool = False) -> None:
         super()._do_shutdown(force)
@@ -422,7 +399,12 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         return {self._name: self._map_blocks_stats}
 
     def num_output_rows_total(self) -> Optional[int]:
-        return self._total_input_rows if self._total_input_rows > 0 else None
+        # The aggregation combiner (block_transformer) pre-aggregates each map
+        # task's input before partitioning, so the output row count is unknown
+        # until the maps run.
+        if self._block_transformer is not None:
+            return None
+        return self.input_dependencies[0].num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
         return ExecutionResources(
@@ -430,12 +412,14 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
             memory=self._map_resource_usage.memory,
         )
 
-    def estimate_object_store_usage(self, state) -> ObjectStoreUsage:
-        return ObjectStoreUsage(internal=0, outputs=0)
+    def estimate_object_store_usage(self) -> int:
+        # Map outputs are intermediate partitions consumed by the reduce
+        # stage; backpressure is driven by the reduce side instead.
+        return 0
 
     def incremental_resource_usage(self) -> ExecutionResources:
         avg_input = self._metrics.average_bytes_inputs_per_task
-        memory = int(avg_input * SHUFFLE_PEAK_MEMORY_MULTIPLIER) if avg_input else 0
+        memory = int(avg_input * self._peak_memory_multiplier) if avg_input else 0
         return ExecutionResources(
             cpu=self._shuffle_map_task_num_cpus,
             memory=memory,
@@ -453,10 +437,3 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator, SubProgressBarM
         if total_merge_buf:
             parts.append(f"merge_buf: {total_merge_buf}")
         return ", ".join(parts)
-
-    def get_sub_progress_bar_names(self) -> Optional[List[str]]:
-        return ["Map"]
-
-    def set_sub_progress_bar(self, name: str, pg: "BaseProgressBar") -> None:
-        if name == "Map":
-            self._map_bar = pg

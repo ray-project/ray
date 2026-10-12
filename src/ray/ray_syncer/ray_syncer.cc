@@ -55,6 +55,11 @@ RaySyncer::~RaySyncer() {
 
 std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
     const std::string &node_id, MessageType message_type) const {
+  if (!IsValidMessageType(message_type)) {
+    RAY_LOG_EVERY_MS(WARNING, 1000)
+        << "Ignoring GetSyncMessage for invalid message type " << message_type;
+    return nullptr;
+  }
   auto task = std::packaged_task<std::shared_ptr<const RaySyncMessage>()>(
       [this, &node_id, message_type]() -> std::shared_ptr<const RaySyncMessage> {
         auto &view = node_state_->GetClusterView();
@@ -224,7 +229,7 @@ void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) 
       "RaySyncer.BroadcastMessage");
 }
 
-ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
+SyncStreamReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *context) {
   auto reactor = std::make_shared<RayServerBidiReactor>(
       context,
       syncer_.GetIOContext(),

@@ -42,6 +42,9 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data._internal.utils.torch_utils import FinalizeFn
+    from ray.data.checkpoint.data_iterator_checkpointer import (
+        DataIteratorCheckpointer,
+    )
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -101,11 +104,15 @@ class DataIterator(abc.ABC):
         (Dataset isn't materialized))
     """
 
+    # Set by `_enable_checkpointing`. Declared at the class level so that
+    # every subclass has it.
+    _checkpointer: Optional["DataIteratorCheckpointer"] = None
+
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[
-        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
+        Iterator[RefBundle], Optional[DatasetStats], Optional["StreamingExecutor"]
     ]:
         """Returns the iterator to use for `iter_batches`.
 
@@ -113,7 +120,6 @@ class DataIterator(abc.ABC):
             A tuple containing:
             - An iterator over RefBundles.
             - A DatasetStats object used for recording stats during iteration.
-            - A boolean indicating if the blocks can be safely cleared after use.
             - An optional executor (StreamingExecutor) for reporting prefetched bytes.
         """
         ...
@@ -215,12 +221,43 @@ class DataIterator(abc.ABC):
             local_shuffle_seed=local_shuffle_seed,
         )
 
+    @PublicAPI(stability="alpha")
+    def state_dict(self) -> Dict[str, Any]:
+        """Returns the state of the iterator.
+
+        This snapshot is useful upon restoration for resuming the dataset
+        and iterator to the same state.
+
+        Returns:
+            A dictionary containing the state of the iterator.
+
+        Raises:
+            ValueError: If checkpointing is not enabled on this iterator.
+        """
+        if self._checkpointer is None:
+            raise ValueError("Checkpointing is not enabled on this iterator.")
+
+        return self._checkpointer.state_dict()
+
+    def _enable_checkpointing(self, checkpointer: "DataIteratorCheckpointer") -> None:
+        self._checkpointer = checkpointer
+
     def _create_batch_iterator(
         self,
         ref_bundles_iter: Iterator[RefBundle],
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
         **kwargs,
     ) -> BatchIterator:
+        if self._checkpointer is not None:
+            from ray.data.checkpoint.iterator import CheckpointingBatchIterator
+
+            return CheckpointingBatchIterator(
+                ref_bundles_iter,
+                checkpointer=self._checkpointer,
+                prefetch_bytes_callback=prefetch_bytes_callback,
+                **kwargs,
+            )
+
         return BatchIterator(
             ref_bundles_iter,
             prefetch_bytes_callback=prefetch_bytes_callback,
@@ -251,7 +288,6 @@ class DataIterator(abc.ABC):
             (
                 ref_bundles_iterator,
                 stats,
-                blocks_owned_by_consumer,
                 executor,
             ) = self._to_ref_bundle_iterator()
 
@@ -276,7 +312,6 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats=stats,
                 dataset_tags=dataset_tags,
-                clear_block_after_read=blocks_owned_by_consumer,
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -1251,8 +1286,12 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
-        ref_bundles = list(ref_bundles_iter)
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
+
+        ref_bundles = []
+        for ref_bundle in ref_bundles_iter:
+            stats.iter_prefetched_bytes += ref_bundle.size_bytes()
+            ref_bundles.append(ref_bundle)
         context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),

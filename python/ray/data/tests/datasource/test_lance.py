@@ -13,6 +13,8 @@ from ray.data import Schema
 from ray.data._internal.datasource.lance_datasink import (
     _WRITE_LANCE_FRAGMENTS_DESCRIPTION,
     LanceDatasink,
+    _align_block_to_schema,
+    _null_column,
     _write_fragment,
 )
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
@@ -135,6 +137,65 @@ def test_lance_read_with_scanner_fragments(data_path, ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_read_lance_multi_uri_null_fills_missing_columns(
+    data_path, ray_start_regular_shared
+):
+    # Heterogeneous multi-URI read: each block must null-fill the columns
+    # that exist only in the other dataset so it matches the unified schema.
+    setup_data_path = _unwrap_protocol(data_path)
+    p1 = os.path.join(setup_data_path, "part1.lance")
+    p2 = os.path.join(setup_data_path, "part2.lance")
+    lance.write_dataset(pa.table({"a": [1, 2], "b": ["x", "y"]}), p1)
+    lance.write_dataset(pa.table({"a": [3, 4], "c": [True, False]}), p2)
+
+    ds = ray.data.read_lance([p1, p2])
+    assert set(ds.schema().names) == {"a", "b", "c"}
+
+    collected = ds.take_all()
+    assert len(collected) == 4
+    for row in collected:
+        assert set(row.keys()) == {"a", "b", "c"}
+        if row["a"] <= 2:
+            assert row["b"] in ("x", "y")
+            assert row["c"] is None
+        else:
+            assert row["b"] is None
+            assert row["c"] in (True, False)
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_read_lance_block_columns_match_unified_schema_order(
+    data_path, ray_start_regular_shared
+):
+    # Per-dataset scanners return columns in their own order; _fill_missing_columns
+    # must reorder every block to the unified ReadTask schema so positional
+    # consumers (Table.cast, RecordBatchReader.from_batches) see a stable order.
+    from ray.data._internal.datasource.lance_datasource import _fill_missing_columns
+
+    schema = pa.schema([("a", pa.int64()), ("b", pa.string())])
+
+    # Missing column is appended in schema order.
+    out = _fill_missing_columns(pa.table({"a": [1]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # A reversed column order is reordered to the unified schema order.
+    out = _fill_missing_columns(pa.table({"b": ["x"], "a": [1]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # Missing + reversed: appends in schema order, then reorders the block.
+    out = _fill_missing_columns(pa.table({"b": ["x"]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # Already-ordered blocks are left in place (no-op).
+    out = _fill_missing_columns(pa.table({"a": [1], "b": ["x"]}), schema, {})
+    assert out.schema.names == ["a", "b"]
+
+    # Under `columns=` projection the block is returned untouched.
+    out = _fill_missing_columns(pa.table({"b": ["x"]}), schema, {"columns": ["b"]})
+    assert out.schema.names == ["b"]
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
 def test_lance_read_many_files(data_path, ray_start_regular_shared):
     setup_data_path = _unwrap_protocol(data_path)
     path = os.path.join(setup_data_path, "test.lance")
@@ -229,6 +290,95 @@ def test_lance_write_append_errors_if_missing(data_path, ray_start_regular_share
     with pytest.raises(expected_errors):
         ray.data.range(5).write_lance(table_path, mode=SaveMode.APPEND)
     assert not os.path.exists(table_path)
+
+
+def test_align_block_to_schema_reorders_fills_and_validates():
+    """Unit test for the schema-alignment helper used before Lance writes."""
+    schema = pa.schema(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.string()),
+            pa.field("c", pa.float64()),
+        ]
+    )
+
+    # Already aligned: returned unchanged.
+    aligned = pa.table({"a": [1], "b": ["x"], "c": [1.0]})
+    assert _align_block_to_schema(aligned, schema) is aligned
+
+    # Same fields, different order: reordered to the schema's order. This guards
+    # the reorder behavior we preserved from ``reorder_columns_by_schema``.
+    reordered = pa.table({"c": [1.0], "a": [1], "b": ["x"]})
+    out = _align_block_to_schema(reordered, schema)
+    assert out.schema.names == ["a", "b", "c"]
+    assert out["a"].to_pylist() == [1]
+
+    # Missing column: filled with nulls of the target type.
+    subset = pa.table({"a": [1, 2], "b": ["x", "y"]})
+    out = _align_block_to_schema(subset, schema)
+    assert out.schema.names == ["a", "b", "c"]
+    assert out.schema.field("c").type == pa.float64()
+    assert out["c"].null_count == 2
+
+    # Column not in the target schema: clear error instead of a silent drop.
+    with pytest.raises(ValueError, match="not present in the target Lance schema"):
+        _align_block_to_schema(pa.table({"a": [1], "z": [9]}), schema)
+
+
+def test_null_column_supports_extension_and_nested_types():
+    """``_null_column`` builds all-null columns for extension types (e.g. Lance's
+    ``arrow.json``), where ``pa.nulls`` may not construct directly, and for
+    nested types."""
+
+    class _MyExtensionType(pa.ExtensionType):
+        def __init__(self):
+            super().__init__(pa.string(), "test.myext")
+
+        def __arrow_ext_serialize__(self):
+            return b""
+
+        @classmethod
+        def __arrow_ext_deserialize__(cls, storage_type, serialized):
+            return cls()
+
+    ext = _null_column(_MyExtensionType(), 3)
+    assert len(ext) == 3
+    assert ext.null_count == 3
+
+    nested = _null_column(pa.list_(pa.int64()), 2)
+    assert len(nested) == 2
+    assert nested.null_count == 2
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_write_append_fills_missing_columns_with_null(data_path):
+    """Appending a subset of the dataset's columns fills the rest with null
+    instead of failing on the field-set mismatch."""
+    table_path = os.path.join(data_path, "subset_append")
+    schema = pa.schema(
+        [
+            pa.field("a", pa.int64()),
+            pa.field("b", pa.int64()),
+            pa.field("c", pa.int64()),
+        ]
+    )
+
+    ray.data.from_items([{"a": 1, "b": 4, "c": 7}]).write_lance(
+        table_path, schema=schema, mode=SaveMode.CREATE
+    )
+
+    # New rows provide only (a, b); "c" must be written as null, not raise.
+    ray.data.from_items([{"a": 10, "b": 40}, {"a": 11, "b": 41}]).write_lance(
+        table_path, mode=SaveMode.APPEND
+    )
+
+    tbl = lance.dataset(table_path).to_table()
+    assert tbl.num_rows == 3
+    assert tbl.schema.names == ["a", "b", "c"]
+    rows = {row["a"]: row for row in tbl.to_pylist()}
+    assert rows[1]["c"] == 7  # existing row untouched
+    assert rows[10]["b"] == 40 and rows[10]["c"] is None
+    assert rows[11]["b"] == 41 and rows[11]["c"] is None
 
 
 @pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])

@@ -6,7 +6,7 @@ def gen_java_deps():
         artifacts = [
             "com.fasterxml.jackson.core:jackson-databind:2.18.8",
             "com.github.java-json-tools:json-schema-validator:2.2.14",
-            "com.google.code.gson:gson:2.9.1",
+            "com.google.code.gson:gson:2.11.0",
             "com.google.guava:guava:32.0.1-jre",
             "com.google.protobuf:protobuf-java:3.23.4",
             "com.google.protobuf:protobuf-java-util:3.23.4",
@@ -28,7 +28,7 @@ def gen_java_deps():
             "com.lmax:disruptor:3.3.4",
             "net.java.dev.jna:jna:5.8.0",
             "org.apache.httpcomponents.client5:httpclient5:5.0.3",
-            "org.apache.httpcomponents.core5:httpcore5:5.0.2",
+            "org.apache.httpcomponents.core5:httpcore5:5.4.3",
             "org.apache.httpcomponents.client5:httpclient5-fluent:5.0.3",
             maven.artifact(
                 group = "org.testng",

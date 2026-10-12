@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Scale an existing Gradio app with Ray Serve using GradioServer, and parallelize multiple models behind one app."
 ---
 
 # Scale a Gradio App with Ray Serve

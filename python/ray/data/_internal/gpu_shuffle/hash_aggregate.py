@@ -6,7 +6,6 @@ import pickle
 import time
 import types
 import typing
-from collections import defaultdict
 from typing import (
     Any,
     Dict,
@@ -29,7 +28,7 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
     GPUShuffleOperator,
     _derive_num_gpu_ranks,
 )
-from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.table_block import _resolve_aggregated_column_names
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count, Max, Mean, Min, Sum
 from ray.data.block import (
     Block,
@@ -1046,15 +1045,9 @@ class GPUAggregationPlan:
         self._shuffle_key_columns = key_columns
 
         # Resolve duplicate aggregation names the same way TableBlockAccessor does.
-        counts: Dict[str, int] = defaultdict(int)
-        resolved_names: List[str] = []
-        for agg in gpu_aggregates:
-            name = agg.name
-            if counts[name] > 0:
-                name = TableBlockAccessor._munge_conflict(name, counts[name])
-            counts[agg.name] += 1
-            resolved_names.append(name)
-        self._output_names = tuple(resolved_names)
+        self._output_names = tuple(
+            _resolve_aggregated_column_names([agg.name for agg in gpu_aggregates])
+        )
 
         # Generate unique accumulator prefixes for each resolved name
         self._accumulator_prefixes = tuple(

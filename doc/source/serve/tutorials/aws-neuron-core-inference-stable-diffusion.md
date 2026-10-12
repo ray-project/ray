@@ -1,5 +1,8 @@
 ---
 orphan: true
+myst:
+  html_meta:
+    description: "Deploy a precompiled Stable Diffusion XL model on an AWS Inferentia2 instance using Ray Serve and FastAPI."
 ---
 
 # Serve an Inference with Stable Diffusion Model on AWS NeuronCores Using FastAPI
@@ -8,7 +11,7 @@ This example uses a precompiled Stable Diffusion XL model and deploys on an AWS 
 
 :::{note}
   Before starting this example: 
-  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/setup/torch-neuronx.html#setup-torch-neuronx)
+  * Set up [PyTorch Neuron](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/frameworks/torch/torch-setup.html)
   * Install AWS NeuronCore drivers and tools, and torch-neuronx based on the instance-type
 
 :::

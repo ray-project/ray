@@ -1,17 +1,20 @@
 import collections
 import itertools
 import random
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.operators import output_splitter
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
 from ray.tests.conftest import *  # noqa
+from ray.util.debug import reset_log_once
 
 
 @pytest.mark.parametrize("equal", [False, True])
@@ -275,6 +278,48 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
         f"Expected >=85% with locality-aware dispatching. "
         f"Hits: {locality_hits}/{total}"
     )
+
+
+def test_split_operator_warns_when_memory_constrained(ray_start_regular_shared):
+    """Warns once when the blocks training workers need prefetched (the locality
+    buffer plus one bundle per worker) reach half of an operator's share of the
+    object store."""
+    num_splits = 4  # Locality buffer holds up to 2 * 4 = 8 bundles.
+    bundles = make_ref_bundles([[i] for i in range(2)])
+    bundle_bytes = bundles[0].size_bytes()
+    input_op = InputDataBuffer(DataContext.get_current(), bundles)
+    op = OutputSplitter(
+        input_op,
+        num_splits,
+        equal=False,
+        data_context=DataContext.get_current(),
+        locality_hints=[f"node{i}" for i in range(num_splits)],
+    )
+    op._get_locations = lambda bundle: ["elsewhere"]
+    op.start(ExecutionOptions(actor_locality_enabled=True), noop_counter())
+
+    def maybe_warn(share_per_op_bundles: int) -> None:
+        # Required: 8 bundles (locality buffer) + 4 bundles (one per worker).
+        op.maybe_warn_memory_constrained(
+            object_store_memory_share_per_op=share_per_op_bundles * bundle_bytes,
+        )
+
+    reset_log_once("output_splitter_memory_constrained")
+    with patch.object(output_splitter.logger, "warning") as mock_warning:
+        # The bundle size isn't known before the first input.
+        maybe_warn(share_per_op_bundles=1)
+        assert not mock_warning.called
+
+        op.add_input(input_op.get_next(), 0)
+        # 12 bundles required < half of 30.
+        maybe_warn(share_per_op_bundles=30)
+        assert not mock_warning.called
+
+        # 12 bundles required >= half of 20, warned only once.
+        maybe_warn(share_per_op_bundles=20)
+        maybe_warn(share_per_op_bundles=20)
+        assert mock_warning.call_count == 1
+    reset_log_once("output_splitter_memory_constrained")
 
 
 if __name__ == "__main__":
