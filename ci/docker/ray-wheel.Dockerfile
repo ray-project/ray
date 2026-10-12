@@ -80,8 +80,10 @@ if [[ -f /mnt/java/ray_java_pkg.zip ]]; then
 fi
 
 # Build ray wheel
+# "3.15t" is the free-threaded build: cp315-cp315t.
 PY_VERSION="${PYTHON_VERSION//./}"
-PY_BIN="cp${PY_VERSION}-cp${PY_VERSION}"
+PY_BIN="cp${PY_VERSION%t}-cp${PY_VERSION}"
+[[ -d "/opt/python/${PY_BIN}" ]] || sudo manylinux-interpreters ensure "${PY_BIN}"
 SKIP_BAZEL_BUILD=1 RAY_DISABLE_EXTRA_CPP=1 \
 ./ci/build/build-manylinux-wheel.sh "$PY_BIN"
 
