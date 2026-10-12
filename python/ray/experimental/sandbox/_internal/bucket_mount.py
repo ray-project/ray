@@ -25,7 +25,9 @@ backend ends a sandbox with ``shutil.rmtree(root_dir)``, and that walk would
 delete a writable bucket's objects if a mount were still attached beneath it --
 as one is while the sandbox is being created. Mountpoints therefore live under
 :data:`MOUNT_ROOT`, and this module removes only files and empty directories it
-created itself, never recursively.
+created itself, never recursively -- save each mount's cache directory, which
+is never a mountpoint and is removed only when nothing is mounted at or under
+it.
 
 A mount process never sees the node's cloud credentials. Only public buckets
 are supported, so every mount is anonymous (``--no-sign-request``) and runs
@@ -37,12 +39,16 @@ configuration -- network mode, rootless or not, whatever user a command runs
 as -- so nothing below branches on the sandbox's settings. The owner and modes
 are mountpoint's defaults, which is what Modal shows: everything belongs to
 the uid that mounted it, and gVisor presents that uid as the sandbox's root.
-Without ``--allow-other``, only that uid can enter the mount on the host. Nor
-is anything cached (no ``--cache`` or ``--metadata-ttl``): with gVisor
-revalidating a shared bind on every use, a change made to the bucket elsewhere
-reaches the sandbox within about a second, which is why ``reload_volumes()``
-has nothing to do. Mountpoint cannot drop a cache short of a remount, and a
-running container cannot remount.
+Without ``--allow-other``, only that uid can enter the mount on the host. The
+caching is Modal's, as measured on Modal: ``--cache`` keeps object contents on
+the node's disk, in each mount's own directory and capped at
+:data:`_CACHE_MAX_MIB`, and keeps metadata -- that a name does not exist
+included -- for 60 seconds. Listings are always current; a file changed or
+deleted elsewhere can look unchanged for up to a minute, and one created
+elsewhere after its name was looked up can look missing for as long. Nothing
+refreshes it sooner: Mountpoint cannot drop a cache short of a remount, and a
+running container cannot remount -- so ``reload_volumes()`` cannot, just as
+Modal's reloads only Volumes.
 """
 
 import functools
@@ -92,9 +98,37 @@ _DIR_MODE = "0755"
 _FILE_MODE = "0644"
 
 # Mountpoint defaults to 95% of the node's memory, per process, and a node may
-# run many sandboxes. Lowering it caps read-ahead and how many files can be open
+# run many sandboxes. The target caps read-ahead and how many files can be open
 # for writing at once (opening one more fails with ENOMEM), not correctness.
-_MEMORY_TARGET_MIB = 2048
+# mount-s3's minimum, chosen to keep each mount's memory -- and Ray's
+# reservation for it -- small. Measured against a local S3 server, it peaked
+# near 430 MiB, read one large file about half as fast as 1024 or 2048 did, and
+# allowed 47 files open for writing at once.
+_MEMORY_TARGET_MIB = 512
+
+# Each mount's cache of object contents on the node's disk, which mount-s3
+# otherwise lets grow until the disk is 95% full -- where Ray itself starts
+# refusing work. Least recently used data goes first; reads past it stream
+# from the bucket. mount-s3 empties the cache when it exits cleanly, as it does
+# when its container ends; what a killed one leaves is removed with its mount.
+_CACHE_MAX_MIB = 1024
+
+
+def memory_reservation_bytes(mounts: Sequence[BucketMount]) -> int:
+    """The memory to reserve in Ray for a sandbox's bucket mounts.
+
+    Each mount runs its own mount-s3 on the node, outside the sandbox's memory
+    limit, and it may use up to its target. Reserving that keeps Ray from
+    placing more bucket mounts on a node than its memory can hold.
+
+    Args:
+        mounts: The sandbox's bucket mounts.
+
+    Returns:
+        Bytes of Ray ``memory`` to reserve for them.
+    """
+    return len(mounts) * _MEMORY_TARGET_MIB * 1024 * 1024
+
 
 # How long a mount may take to appear, then answer a stat. Fixed rather than
 # derived from the sandbox's creation timeout, so it is the same everywhere.
@@ -161,11 +195,35 @@ def check_prerequisites() -> None:
             "'fusermount3' does not stand in for it. Install the package that "
             "provides it ('fuse' on Debian and Ubuntu)."
         )
+    if os.geteuid() != 0 and _no_new_privs():
+        # Measured: mount-s3 then fails with "Failed to create FUSE session:
+        # Operation not permitted", after the image pull, with no hint why.
+        raise SandboxCreationError(
+            "Mounting a cloud bucket as a non-root user goes through the setuid "
+            f"'{_MOUNT_HELPER}' helper, but this process runs with no_new_privs "
+            "set, which stops that helper from gaining the privilege to mount. "
+            "In Kubernetes this is allowPrivilegeEscalation: false; allow "
+            "privilege escalation for the Ray worker's container on nodes that "
+            "mount buckets."
+        )
     if _host._unmount_binary() is None:
         raise SandboxCreationError(
             "Mounting a cloud bucket requires 'fusermount' or 'fusermount3' on "
             "the node, so the mount can be released when the sandbox ends."
         )
+
+
+def _no_new_privs() -> bool:
+    """Whether this process, and so any mount-s3 it starts, may not gain
+    privileges through a setuid binary."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("NoNewPrivs:"):
+                    return line.split()[1:2] == ["1"]
+    except OSError:
+        pass
+    return False
 
 
 def _mount_s3_version() -> Optional[Tuple[int, ...]]:
@@ -209,7 +267,7 @@ def _endpoint_host(mount: BucketMount) -> str:
 
 
 def build_mount_command(
-    mount: BucketMount, mountpoint: str, home_dir: str
+    mount: BucketMount, mountpoint: str, home_dir: str, cache_dir: str
 ) -> Tuple[List[str], Dict[str, str]]:
     """Build the argv and environment of one mount process.
 
@@ -222,6 +280,7 @@ def build_mount_command(
         mountpoint: Existing empty directory to mount onto.
         home_dir: A private HOME for the process, so it cannot read the
             invoking user's AWS config or credentials files.
+        cache_dir: Existing private directory for the mount's cache.
 
     Returns:
         ``(argv, env)`` for :class:`subprocess.Popen`.
@@ -241,6 +300,10 @@ def build_mount_command(
         # without bound. A failed start and a panic still explain themselves
         # on stderr, which is what failure_reason reads.
         "--no-log",
+        # Modal's caching (measured on Modal): object contents kept locally,
+        # metadata and missing names for 60 seconds, which --cache implies.
+        f"--cache={cache_dir}",
+        f"--max-cache-size={_CACHE_MAX_MIB}",
     ]
     if mount.key_prefix:
         argv.append(f"--prefix={mount.key_prefix}")
@@ -281,6 +344,7 @@ class _Mount:
         self.spec = spec
         self.host_dir = os.path.join(parent_dir, str(index))
         self.home_dir = os.path.join(parent_dir, f"{index}-home")
+        self.cache_dir = os.path.join(parent_dir, f"{index}-cache")
         self.pid_file = os.path.join(parent_dir, f"{index}.pid")
         self.log_file = os.path.join(parent_dir, f"{index}.log")
         self.process: Optional[subprocess.Popen] = None
@@ -305,7 +369,9 @@ class _Mount:
         return " ".join(line.strip() for line in text.splitlines() if line.strip())
 
     def spawn(self) -> None:
-        argv, env = build_mount_command(self.spec, self.host_dir, self.home_dir)
+        argv, env = build_mount_command(
+            self.spec, self.host_dir, self.home_dir, self.cache_dir
+        )
         with open(self.log_file, "wb") as log:
             self.process = subprocess.Popen(
                 argv,
@@ -396,6 +462,7 @@ class BucketMountSet:
                 mount = _Mount(spec, parent, index)
                 os.mkdir(mount.host_dir, 0o700)
                 os.mkdir(mount.home_dir, 0o700)
+                os.mkdir(mount.cache_dir, 0o700)
                 items.append(mount)
         except BaseException as err:
             # Nobody else will: the caller gets no set to stop, and the sweep

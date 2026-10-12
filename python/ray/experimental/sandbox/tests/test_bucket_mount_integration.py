@@ -107,13 +107,16 @@ def _fingerprint(runtime, sid, public_bucket, user):
     out = runtime.exec(
         sid, ["sh", "-c", FINGERPRINT, "sh", prefix], timeout=120, user=user
     )
-    lines = [out.stdout.replace(prefix, "<P>")]
+    lines = [out.stdout]
     lines.append("s3_keys " + " ".join(_keys(public_bucket, prefix)))
     # close() completes the upload: the object is in S3 once exec returns.
     _sh(runtime, sid, f"echo durable > /data/{prefix}/dur.txt", user=user)
     lines.append(
         "durable_after_close %s %r" % _http(public_bucket, "GET", f"{prefix}/dur.txt")
     )
+    # As another user, the script's mkdir of the prefix failed, and the cache
+    # keeps that miss for 60 seconds, as on Modal: what is added under the
+    # prefix from outside reads as missing until then -- the same everywhere.
     _http(public_bucket, "PUT", f"{prefix}/oob.txt", b"oob\n")
     lines.append(
         "oob_put_seen %s" % (_sh(runtime, sid, f"ls /data/{prefix}", user=user),)
@@ -123,7 +126,8 @@ def _fingerprint(runtime, sid, public_bucket, user):
     _http(public_bucket, "PUT", f"{prefix}/same.txt", b"BBBB")
     second = _sh(runtime, sid, f"cat /data/{prefix}/same.txt", user=user)
     lines.append(f"same_size_overwrite {first} {second}")
-    return "\n".join(lines)
+    # Every line, so error messages naming a path compare across cells too.
+    return "\n".join(lines).replace(prefix, "<P>")
 
 
 def test_bucket_behavior_is_config_agnostic(runtime, public_bucket, ensure_slirp4netns):
@@ -173,7 +177,9 @@ def test_bucket_behavior_is_config_agnostic(runtime, public_bucket, ensure_slirp
         "append rc=1 sh: line 0: can't create /data/<P>/f1: Operation not permitted",
         "ro_write rc=1 sh: line 0: can't create /ro/x: Read-only file system",
         "durable_after_close 200 b'durable\\n'",
-        "same_size_overwrite (0, 'AAAA') (0, 'BBBB')",
+        # Read moments after an overwrite elsewhere, the cached contents, as
+        # on Modal: the cache keeps metadata for 60 seconds.
+        "same_size_overwrite (0, 'AAAA') (0, 'AAAA')",
     ):
         assert expected in root, (expected, root)
     other = next(iter(fingerprints["1000"].values()))

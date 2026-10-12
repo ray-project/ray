@@ -144,7 +144,7 @@ Only public cloud buckets can be mounted.
     uploaded into the bucket. A bucket that cannot be mounted fails
     ``Sandbox.create()`` at once with the reason, where Modal fails the next
     call with ``ConflictError``. ``reload_volumes()`` does nothing: there are
-    no Volumes, and a bucket shows changes made elsewhere without a reload.
+    no Volumes, and, as on Modal, it does not refresh a bucket's cache.
 
 ``copy_to_local()`` has no size limit.
     ``read_bytes()`` and ``read_text()`` refuse a file over 5 GiB with

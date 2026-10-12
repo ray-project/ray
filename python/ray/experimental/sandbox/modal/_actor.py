@@ -922,6 +922,9 @@ class _ExecSession:
         # memory it holds: a download's command exits with up to a buffer of
         # output still unread, and evicting it then lost that tail.
         self.client_released = client_released
+        # Set when the client released this session but left its command to
+        # finish (exec_release(kill=False)): the reaper drops it on exit.
+        self.release_on_exit = False
         self.buffers: Dict[int, Optional[_OutputBuffer]] = {}
         self.pump_tasks: List[asyncio.Task] = []
         self.stdin_closed = False
@@ -1645,6 +1648,9 @@ class _SandboxActor:
         if pending:
             await asyncio.wait(pending, timeout=5)
         self._retire(exec_id)
+        if session.release_on_exit:
+            await self.exec_release(exec_id)
+            return
         if exec_id == self._main_exec_id and self._exit_reason is None:
             # The main process exiting *is* the Sandbox's end, as on Modal:
             # the container goes, taking any other running command with it,
@@ -2022,14 +2028,27 @@ class _SandboxActor:
             return
         await self._stop_command(session)
 
-    async def exec_release(self, exec_id: str) -> None:
+    async def exec_release(self, exec_id: str, kill: bool = True) -> None:
         """Drop all state for a finished exec session.
 
         The main process is never released: the sandbox's own exit code is
         read from it for as long as the sandbox exists.
+
+        Args:
+            exec_id: The session to drop.
+            kill: Stop the command if it is still running. False lets it
+                finish and drops the session once it exits instead -- for an
+                upload whose payload has all been sent, which killing would
+                leave half done: in a bucket mount, Mountpoint publishes
+                whatever was written, as a truncated object.
         """
         if exec_id == self._main_exec_id:
             return
+        if not kill:
+            running = self._execs.get(exec_id)
+            if running is not None and running.process.returncode is None:
+                running.release_on_exit = True
+                return
         # Un-retire as well as drop. Leaving the id queued would let released
         # sessions count against _MAX_RETAINED_EXECS, so a probe exec'ing
         # every interval_ms would soon fill it and start evicting the caller's

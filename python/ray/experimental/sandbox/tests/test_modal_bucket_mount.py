@@ -6,6 +6,7 @@ removal in a writable bucket is ``InvalidError``. Needs TEST_SANDBOX=1, runsc,
 /dev/fuse, mount-s3, and a Ray cluster.
 """
 
+import asyncio
 import glob
 import os
 import signal
@@ -154,11 +155,11 @@ def _send(public_bucket, method, key, body=None):
         assert r.status in (200, 204), r.status
 
 
-def _eventually(check, what, timeout=5):
+def _eventually(check, what, timeout=5, interval=0.1):
     deadline = time.monotonic() + timeout
     while not check():
         assert time.monotonic() < deadline, what
-        time.sleep(0.1)
+        time.sleep(interval)
 
 
 def test_an_upload_the_bucket_refuses_is_an_io_error(read_only_public_bucket):
@@ -241,51 +242,169 @@ def test_recursive_remove_in_a_writable_bucket_is_refused(sandbox):
     assert sandbox.filesystem.read_text(f"{name}/f.txt") == "keep"
 
 
-def test_changes_made_elsewhere_show_up_without_a_reload(sandbox, public_bucket):
-    """Another client's changes reach a running sandbox unasked, so
-    ``reload_volumes()`` has nothing to do. mount-s3 runs uncached and gVisor
-    revalidates a shared bind on every use, which leaves only Mountpoint's own
-    window: listings and new objects at once, an overwrite or a deletion
-    within about a second."""
+def test_changes_made_elsewhere_show_up_as_on_modal(sandbox, public_bucket):
+    """Caching as measured on Modal (Mountpoint's ``--cache``): a name never
+    looked up and every listing are current at once, but metadata -- that a
+    name is missing included -- is kept for 60 seconds. An overwrite, a
+    deletion, and a file created after its name was looked up show once that
+    expires; listing their directory refreshes what it lists sooner, but not
+    what it no longer lists. ``reload_volumes()`` cannot hurry any of it, here
+    or on Modal."""
     fs = sandbox.filesystem
     name = f"oob-{uuid.uuid4().hex[:8]}"
-    _send(public_bucket, "PUT", f"{name}/kept.txt", b"old")
-    _send(public_bucket, "PUT", f"{name}/gone.txt", b"x")
-    # Every cache on the way has seen the old state: the listing, the entries,
-    # the contents.
-    assert sorted(f.name for f in fs.list_files(f"/data/{name}")) == [
-        "gone.txt",
-        "kept.txt",
-    ]
-    assert fs.read_text(f"/data/{name}/kept.txt") == "old"
-    fs.stat(f"/data/{name}/gone.txt")
+    listed, unlisted = f"/data/{name}/listed", f"/data/{name}/unlisted"
+    for key, body in (
+        ("listed/kept.txt", b"old"),
+        ("listed/gone.txt", b"x"),
+        ("unlisted/kept.txt", b"old"),
+    ):
+        _send(public_bucket, "PUT", f"{name}/{key}", body)
+    # Warm every cache on the way: the entries, the contents, and a lookup of
+    # a name that does not exist yet.
+    assert fs.read_text(f"{listed}/kept.txt") == "old"
+    assert fs.read_text(f"{unlisted}/kept.txt") == "old"
+    fs.stat(f"{listed}/gone.txt")
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        fs.stat(f"{listed}/late.txt")
 
-    _send(public_bucket, "PUT", f"{name}/kept.txt", b"replaced, and longer")
-    _send(public_bucket, "DELETE", f"{name}/gone.txt")
-    _send(public_bucket, "PUT", f"{name}/new.txt", b"new")
+    for method, key, body in (
+        ("PUT", "listed/kept.txt", b"replaced, and longer"),
+        ("DELETE", "listed/gone.txt", None),
+        ("PUT", "listed/new.txt", b"new"),
+        ("PUT", "listed/late.txt", b"late"),
+        ("PUT", "unlisted/kept.txt", b"replaced, and longer"),
+    ):
+        _send(public_bucket, method, f"{name}/{key}", body)
+    changed = time.monotonic()
 
-    assert sorted(f.name for f in fs.list_files(f"/data/{name}")) == [
-        "kept.txt",
-        "new.txt",
-    ]
-    assert fs.read_text(f"/data/{name}/new.txt") == "new"
-
-    def replaced():
-        try:
-            return fs.read_text(f"/data/{name}/kept.txt") == "replaced, and longer"
-        except SandboxFilesystemError:
-            return False  # A stale size or version, still inside the window.
-
-    def deleted():
-        try:
-            fs.stat(f"/data/{name}/gone.txt")
-        except SandboxFilesystemNotFoundError:
-            return True
-        return False
-
-    _eventually(replaced, "the overwrite never reached the sandbox")
-    _eventually(deleted, "the deletion never reached the sandbox")
+    # A name never looked up is current at once.
+    assert fs.read_text(f"{listed}/new.txt") == "new"
+    # Kept, as on Modal: the old contents, the deleted file, the missing name.
     assert sandbox.reload_volumes() is None
+    assert fs.read_text(f"{listed}/kept.txt") == "old"
+    fs.stat(f"{listed}/gone.txt")
+    with pytest.raises(SandboxFilesystemNotFoundError):
+        fs.stat(f"{listed}/late.txt")
+
+    # A listing is current, and refreshes what it lists. A deleted file it no
+    # longer lists stays cached until it expires.
+    listing = sandbox.exec("ls", "-1", listed).stdout.read().split()
+    assert listing == ["kept.txt", "late.txt", "new.txt"]
+    assert fs.read_text(f"{listed}/kept.txt") == "replaced, and longer"
+    assert fs.read_text(f"{listed}/late.txt") == "late"
+
+    # The rest shows within a minute of being cached, and not much sooner.
+    def current():
+        try:
+            fs.stat(f"{listed}/gone.txt")
+            return False
+        except SandboxFilesystemNotFoundError:
+            pass
+        try:
+            return fs.read_text(f"{unlisted}/kept.txt") == "replaced, and longer"
+        except SandboxFilesystemError:
+            return False
+
+    _eventually(
+        current, "the overwrite never reached the sandbox", timeout=75, interval=1
+    )
+    assert time.monotonic() - changed > 45, "expired well before Modal's 60 s"
+
+
+def _object_size(public_bucket, key):
+    """The object's size from a HEAD, or None if there is none."""
+    endpoint, bucket = public_bucket
+    request = urllib.request.Request(f"{endpoint}/{bucket}/{key}", method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=10) as r:
+            return int(r.headers["Content-Length"])
+    except urllib.error.HTTPError:
+        return None
+
+
+class _AnnouncingActor:
+    """The sandbox's actor handle, setting ``event`` when an upload starts
+    waiting for its command -- by then its whole payload has been sent."""
+
+    def __init__(self, actor, event, loop):
+        self._actor, self._event, self._loop = actor, event, loop
+
+    def __getattr__(self, name):
+        method = getattr(self._actor, name)
+        if name != "exec_wait":
+            return method
+        announcer = self
+
+        class _Announcing:
+            def remote(self, *args, **kwargs):
+                announcer._loop.call_soon_threadsafe(announcer._event.set)
+                return method.remote(*args, **kwargs)
+
+        return _Announcing()
+
+
+@pytest.mark.parametrize(
+    "where,delay",
+    [
+        # Half a second in, the copy into the bucket is uploading: measured
+        # 119 MiB of 192 MiB written by 0.6 s.
+        ("bucket", 0.5),
+        # At once, before the write's own reply can arrive: on an ordinary
+        # path the rename follows the payload in moments.
+        ("ordinary path", 0.0),
+    ],
+)
+def test_a_write_cancelled_once_its_payload_is_sent_still_lands_whole(
+    sandbox, public_bucket, where, delay
+):
+    """As on Modal, a write whose payload has all been sent finishes even if
+    its caller is cancelled. Killing it used to leave a bucket object
+    truncated: Mountpoint publishes what was written when the writer dies,
+    measured as 119 MiB of a 192 MiB payload replacing the old object."""
+    name = f"cancelled-{uuid.uuid4().hex[:8]}.bin"
+    path = f"/data/{name}" if where == "bucket" else f"/tmp/{name}"
+    old, new = b"old contents\n", os.urandom(192 << 20)
+    sandbox.filesystem.write_bytes(old, path)
+    impl = sandbox._impl
+    actor = impl._actor
+
+    async def cancel_once_sent():
+        sent = asyncio.Event()
+        impl._actor = _AnnouncingActor(actor, sent, asyncio.get_running_loop())
+        try:
+            write = asyncio.ensure_future(impl.filesystem.write_bytes(new, path))
+            await sent.wait()
+            await asyncio.sleep(delay)
+            write.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await write
+        finally:
+            impl._actor = actor
+
+    asyncio.run(cancel_once_sent())
+    if where == "bucket":
+        sizes = set()
+
+        def landed():
+            size = _object_size(public_bucket, name)
+            sizes.add(size)
+            return size == len(new)
+
+        _eventually(landed, "the cancelled write never landed", timeout=60)
+        assert sizes <= {len(old), len(new)}, f"a partial object was seen: {sizes}"
+        assert _object(public_bucket, name) == (200, new)
+    else:
+        _eventually(
+            lambda: sandbox.filesystem.stat(path).size == len(new),
+            "the cancelled write never landed",
+            timeout=60,
+        )
+        assert sandbox.filesystem.read_bytes(path) == new
+    # The script cleaned up after itself: nothing staged, nothing hidden.
+    process = sandbox.exec(
+        "sh", "-c", "ls -A /tmp /data | grep -c ray-sandbox-tmp || true"
+    )
+    assert process.stdout.read().strip() == "0"
 
 
 def test_the_rest_of_the_filesystem_is_unaffected(sandbox):

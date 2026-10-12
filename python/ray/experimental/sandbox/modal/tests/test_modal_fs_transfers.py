@@ -80,6 +80,8 @@ class UploadActor:
         self.wait_kwargs: Optional[dict] = None
         self.pending = 0
         self.max_pending = 0
+        # Each exec_release's ``kill``, in order.
+        self.release_kills: List[bool] = []
 
     def __getattr__(self, name):
         impl = getattr(type(self), f"_{name}", None)
@@ -122,8 +124,9 @@ class UploadActor:
         self.wait_kwargs = kwargs
         return self._returncode
 
-    async def _exec_release(self, exec_id):
+    async def _exec_release(self, exec_id, kill=True):
         self._released = True
+        self.release_kills.append(kill)
 
     async def _stream_output(self, exec_id, fd, start_offset=0):
         self._require_live()
@@ -524,13 +527,31 @@ class _CleanupRecordingActor(UploadActor):
 
 
 @pytest.mark.parametrize("fail_in", ["close_stdin", "exec_wait"])
-def test_an_upload_stopped_after_its_last_write_removes_its_temporary_file(fail_in):
-    """Cleanup followed only a failure inside the chunk loop. A cancellation
-    while closing stdin or waiting released -- killed -- the command before
-    its `mv`, and left the hidden partial file beside the destination."""
+def test_an_upload_stopped_after_its_last_write_is_left_to_finish(fail_in):
+    """Cancelled while closing stdin or waiting, the payload has all been
+    sent: the write is released without being killed, as Modal lets it finish.
+    Killing it left a bucket destination truncated -- Mountpoint publishes
+    whatever was written -- and the script cleans up after itself."""
     actor = _CleanupRecordingActor(fail_in=fail_in)
     with pytest.raises(asyncio.CancelledError):
         run(filesystem(actor).write_bytes(b"data", "/dest/file"))
+    assert actor.release_kills == [False]
+    assert actor.collected == [], "no temporary file to remove: it is still in use"
+
+
+def test_an_upload_stopped_mid_payload_is_killed_and_cleaned_up():
+    """Before the payload is complete nothing may land: the command is killed
+    before its stdin closes, and its temporary files are removed."""
+    actor = _CleanupRecordingActor()
+
+    async def chunks():
+        yield b"part"
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        run(filesystem(actor)._upload(chunks(), "/dest/file"))
+    assert not actor.stdin_closed
+    assert actor.release_kills == [True]
     assert actor.collected == [_fs.make_remove_temp_command(actor.command[-1])]
 
 

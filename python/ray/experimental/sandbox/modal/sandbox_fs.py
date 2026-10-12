@@ -5,7 +5,7 @@ import collections
 import logging
 import os
 from pathlib import Path
-from typing import AsyncIterator, Iterator, List, Optional, Union
+from typing import Any, AsyncIterator, Iterator, List, Optional, Union
 
 from ray.experimental.sandbox.modal import _fs_commands as _fs
 from ray.experimental.sandbox.modal._actor import STDERR_FD, STDOUT_FD
@@ -511,6 +511,8 @@ class _SandboxFilesystem:
             client_released=True,
         )
         returncode = None
+        # Whether the whole payload has been handed over; see the `finally`.
+        committed = False
         # Released in `finally`, as copy_to_local does: a read error or a broken
         # pipe part-way through would otherwise strand the session on the actor,
         # holding its output buffers and possibly a live process, for as long as
@@ -536,7 +538,11 @@ class _SandboxFilesystem:
                 # logged an unhandled "Unknown exec session" error.
                 await asyncio.gather(*writes, return_exceptions=True)
                 raise
-            await actor.close_stdin.remote(exec_id, offset)
+            closing = actor.close_stdin.remote(exec_id, offset)
+            # Submitted, so the actor closes stdin whether or not this call is
+            # cancelled from here on: the write is committed.
+            committed = True
+            await closing
             returncode = await actor.exec_wait.remote(exec_id, None, require_live=True)
             if returncode != 0:
                 # Inside the `try`, so the drain happens before the `finally`
@@ -550,16 +556,23 @@ class _SandboxFilesystem:
                     returncode, await self._drain(exec_id, STDERR_FD), remote_path
                 )
         finally:
-            # Releasing a running upload kills it before its stdin can close,
-            # so the destination is never replaced by a partial file.
-            await self._release(actor, exec_id)
-            # The script removes its temporary file on every failure it reports
-            # itself. One that never reported -- aborted, or cancelled while
-            # closing stdin or waiting -- or that was killed (128 + signal) can
-            # have left it behind. Cleaning up only after a failure in the
-            # chunk loop missed the cancellations after it.
-            if returncode is None or returncode >= 128:
-                await self._remove_quietly(actor, *temp_paths)
+            if committed and returncode is None:
+                # Cancelled (or cut off) after the whole payload was sent: the
+                # write is left to finish, as on Modal. Killing it now was
+                # harmless for a rename into place, but a write into a bucket
+                # is uploading by then, and Mountpoint publishes whatever was
+                # written when its writer dies -- a truncated object replacing
+                # the old one. The script removes its own temporary files.
+                await self._release(actor, exec_id, kill=False)
+            else:
+                # Releasing an upload whose payload is incomplete kills it
+                # before its stdin can close, so the destination is untouched.
+                await self._release(actor, exec_id)
+                # The script removes its temporary file on every failure it
+                # reports itself. One aborted mid-payload, or killed by a
+                # signal (128 + signal), can have left it behind.
+                if returncode is None or returncode >= 128:
+                    await self._remove_quietly(actor, *temp_paths)
 
     @staticmethod
     async def _remove_quietly(actor, *paths: str) -> None:
@@ -574,15 +587,24 @@ class _SandboxFilesystem:
             logger.debug("Failed to remove %s", paths, exc_info=True)
 
     @staticmethod
-    async def _release(actor, exec_id: str) -> None:
+    async def _release(actor: Any, exec_id: str, kill: bool = True) -> None:
         """Release an exec session without ever masking the real failure.
 
         This runs from a `finally`, so an exception here replaces whatever sent
         us there -- and the most likely cause, the actor having died mid
         transfer, is exactly when the original error matters most.
+
+        Args:
+            actor: The sandbox actor.
+            exec_id: The session to release.
+            kill: Stop the command if it is still running; False lets it
+                finish (see ``_SandboxActor.exec_release``).
         """
         try:
-            await actor.exec_release.remote(exec_id)
+            if kill:
+                await actor.exec_release.remote(exec_id)
+            else:
+                await actor.exec_release.remote(exec_id, kill=False)
         except Exception:
             logger.debug("Failed to release exec %s", exec_id, exc_info=True)
 

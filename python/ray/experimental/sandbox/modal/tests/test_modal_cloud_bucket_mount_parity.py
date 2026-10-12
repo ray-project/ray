@@ -95,7 +95,9 @@ def intercept(monkeypatch):
 
 def _argv(mount: BucketMount):
     """The mount-s3 command line a BucketMount turns into."""
-    return bucket_mount.build_mount_command(mount, "/mnt/0", "/mnt/0-home")[0]
+    return bucket_mount.build_mount_command(
+        mount, "/mnt/0", "/mnt/0-home", "/mnt/0-cache"
+    )[0]
 
 
 # -- py/test/sandbox_test.py ------------------------------------------------------
@@ -129,7 +131,9 @@ def test_experimental_sandbox_create_cloud_bucket_mount_no_credentials(
     cbm = CloudBucketMount(bucket_name="my-bucket")
     Sandbox.create("echo", "hi", volumes={"/mnt": cbm})
     (mount,) = intercept.bucket_mounts
-    argv, env = bucket_mount.build_mount_command(mount, "/mnt/0", "/mnt/0-home")
+    argv, env = bucket_mount.build_mount_command(
+        mount, "/mnt/0", "/mnt/0-home", "/mnt/0-cache"
+    )
     assert "--no-sign-request" in argv
     assert not {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} & set(env)
     assert "secret" not in intercept.create_kwargs

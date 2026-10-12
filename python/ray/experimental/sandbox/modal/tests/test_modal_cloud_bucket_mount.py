@@ -327,9 +327,61 @@ def test_bucket_mounts_are_used_where_they_really_are(reply, expected):
     assert actor.exec_collect.argv[-2:] == ["/lib64/x", "/ro"]
 
 
+@pytest.mark.parametrize("memory", [None, 512])
+def test_ray_reserves_each_buckets_memory(monkeypatch, memory):
+    """Each bucket's mount-s3 runs beside the sandbox, outside its memory
+    limit, and may use up to its target: Ray reserves that, per mount, on top
+    of the request. The container's own limit is unchanged."""
+    from ray.experimental.sandbox._internal import bucket_mount
+    from ray.experimental.sandbox.modal import sandbox as sandbox_mod
+
+    asked = {}
+
+    class _Method:
+        def __init__(self, value):
+            self._value = value
+
+        def remote(self, *args, **kwargs):
+            async def reply():
+                return self._value
+
+            return reply()
+
+    class _ActorClass:
+        def options(self, **options):
+            asked["options"] = options
+            return self
+
+        def remote(self, create_kwargs, *args):
+            asked["create_kwargs"] = create_kwargs
+            return type(
+                "_Actor",
+                (),
+                {
+                    "start": _Method(
+                        {"instance_id": "ray-sandbox-x", "image_config": {}}
+                    ),
+                    "exec_collect": _Method({"returncode": 1, "stdout": b""}),
+                },
+            )()
+
+    monkeypatch.setattr(sandbox_mod, "_SandboxActor", _ActorClass())
+    monkeypatch.setattr(sandbox_mod, "require_ray_connection", lambda: None)
+    modal.Sandbox.create(
+        image="busybox:latest",
+        memory=memory,
+        volumes={"/a": CloudBucketMount("a"), "/b": CloudBucketMount("b")},
+    )
+    mib = 1024 * 1024
+    assert asked["options"]["memory"] == (memory or 0) * mib + 2 * (
+        bucket_mount._MEMORY_TARGET_MIB * mib
+    )
+    assert "memory" not in asked["create_kwargs"]
+
+
 def test_reload_volumes_is_a_no_op():
-    """Bucket mounts need no reload, and Modal returns None for a Sandbox
-    without Volumes; the timeout check is Modal's."""
+    """As on Modal, it reloads Volumes alone, and there are none: a bucket's
+    cache is left as it is. The timeout check is Modal's."""
     sandbox = modal.Sandbox._from_impl(_Sandbox(None, "ray-sandbox-test", None))
     assert sandbox.reload_volumes() is None
     with pytest.raises(InvalidError, match="must be positive"):

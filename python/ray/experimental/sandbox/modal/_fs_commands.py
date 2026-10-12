@@ -339,8 +339,11 @@ def make_write_file_command(
             A destination inside one cannot land by rename (Mountpoint has
             none), so the payload is staged at :func:`make_stage_path` instead
             and copied over the destination in one sequential write once it
-            has all arrived. An interrupted transfer still leaves the
-            destination as it was, except during that final local copy.
+            has all arrived. That copy is the upload, and Mountpoint publishes
+            whatever was written if the copy is killed, so an interrupted
+            transfer leaves the destination as it was only until the payload
+            has all arrived; past that, the filesystem API lets the write
+            finish rather than killing it (see ``_SandboxFilesystem._upload``).
 
     Returns:
         The argv that runs the write, reading the payload from its stdin.

@@ -9,6 +9,7 @@ from pathlib import PurePath, PurePosixPath
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import ray
+from ray.experimental.sandbox._internal import bucket_mount
 from ray.experimental.sandbox.config import (
     DOCKER_DEFAULT_CAPABILITIES,
     RUNTIME_MANAGED_PATHS,
@@ -712,6 +713,14 @@ class _Sandbox:
             # needing them go through SandboxRuntime directly.
             None,
         )
+        if bucket_mounts:
+            # Each bucket's mount-s3 runs beside the sandbox, outside its
+            # memory limit: reserve what it may use, so Ray does not
+            # overcommit the node. Ray's bookkeeping only; the container's
+            # limit is unchanged.
+            actor_options["memory"] = actor_options.get(
+                "memory", 0
+            ) + bucket_mount.memory_reservation_bytes(bucket_mounts)
         actor = _SandboxActor.options(**actor_options).remote(
             create_kwargs, timeout, resolved.force_pull, readiness_probe
         )
@@ -1231,9 +1240,9 @@ class _Sandbox:
     async def reload_volumes(self, *, timeout: int = 55) -> None:
         """Reload all Volumes mounted in the Sandbox.
 
-        A no-op: only cloud bucket mounts exist here, and those reflect the
-        bucket without reloading, as on Modal, which returns just the same for
-        a Sandbox with no Volumes.
+        A no-op: only cloud bucket mounts exist here. As on Modal, where this
+        reloads Volumes alone, it does not refresh a bucket mount's cache;
+        cached metadata expires after 60 seconds.
 
         Args:
             timeout: Must be positive, as on Modal. Defaults to 55 seconds.

@@ -169,8 +169,12 @@ def _mount_dir(host, exits=True):
     container is deleted, as the real one does -- or, if not ``exits``, never.
     """
     parent = host.mounts / f"{os.getpid()}-{SANDBOX_ID}-x1y2"
-    for name in ("0", "0-home"):
+    for name in ("0", "0-home", "0-cache"):
         (parent / name).mkdir(parents=True)
+    # Blocks the cache holds, which a killed mount-s3 leaves behind.
+    block = parent / "0-cache" / "mountpoint-cache" / "V2" / "ab" / "0"
+    block.parent.mkdir(parents=True)
+    block.write_bytes(b"block")
     (parent / "owner").write_text("{}")
     (parent / "0.log").write_text("")
     code = (

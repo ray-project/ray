@@ -347,7 +347,9 @@ def test_a_command_spawned_while_the_sandbox_ends_is_stopped_and_refused(
     assert spawned[0].returncode is not None, "the spawned command was left running"
 
 
-async def start_in_sandbox(actor, exec_id: str, script: str, tmp_path) -> int:
+async def start_in_sandbox(
+    actor, exec_id: str, script: str, tmp_path, client_released: bool = False
+) -> int:
     """Like start(), with the command leading its own process group."""
     actor._runtime = types.SimpleNamespace(backend=_LocalKillBackend())
     actor._instance_id = "sandbox"
@@ -362,7 +364,7 @@ async def start_in_sandbox(actor, exec_id: str, script: str, tmp_path) -> int:
     )
     pid_file = tmp_path / f"{exec_id}.pid"
     pid_file.write_text(str(process.pid))
-    session = _ExecSession(process, str(pid_file))
+    session = _ExecSession(process, str(pid_file), client_released=client_released)
     for fd, stream in ((STDOUT_FD, process.stdout), (STDERR_FD, process.stderr)):
         buffer = _OutputBuffer()
         session.buffers[fd] = buffer
@@ -398,6 +400,48 @@ def test_releasing_a_running_command_kills_it_and_its_children(tmp_path):
     pgid = run(scenario())
     assert group_is_gone(pgid), "the command's process group outlived its release"
     assert not (tmp_path / "e1.pid").exists()
+
+
+@requires_posix_shell
+def test_a_command_released_without_a_kill_finishes_then_goes(tmp_path):
+    """An upload whose payload has all been sent is released with kill=False:
+    it runs to the end, and its session is dropped once it exits."""
+    marker = tmp_path / "done"
+
+    async def scenario():
+        actor = make_actor()
+        await start_in_sandbox(
+            actor,
+            "e1",
+            f"sleep 0.5; echo done > {marker}",
+            tmp_path,
+            client_released=True,
+        )
+        reaper = actor._execs["e1"].reaper_task
+        await actor.exec_release("e1", kill=False)
+        assert "e1" in actor._execs, "kept while its command runs"
+        assert not actor._stop_tasks, "never stopped"
+        await asyncio.wait_for(asyncio.shield(reaper), 10)
+        return actor
+
+    actor = run(scenario())
+    assert marker.read_text() == "done\n"
+    assert "e1" not in actor._execs
+    assert "e1" not in actor._finished_execs
+    assert "e1" not in actor._retired_execs
+    assert not (tmp_path / "e1.pid").exists()
+
+
+@requires_posix_shell
+def test_a_finished_command_released_without_a_kill_goes_at_once(tmp_path):
+    async def scenario():
+        actor = make_actor()
+        await start_in_sandbox(actor, "e1", "true", tmp_path, client_released=True)
+        await actor._execs["e1"].process.wait()
+        await actor.exec_release("e1", kill=False)
+        return actor
+
+    assert "e1" not in run(scenario())._execs
 
 
 @requires_posix_shell

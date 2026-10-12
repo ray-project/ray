@@ -1,6 +1,7 @@
 from typing import Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
+from ray.experimental.sandbox._internal import bucket_mount
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -98,6 +99,12 @@ def create(
         parsed_mem = parse_memory_bytes(memory)
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
+    if kwargs.get("bucket_mounts"):
+        # Each bucket's mount-s3 runs beside the sandbox, outside its memory
+        # limit: reserve what it may use, so Ray does not overcommit the node.
+        actor_opts["memory"] = actor_opts.get(
+            "memory", 0
+        ) + bucket_mount.memory_reservation_bytes(kwargs["bucket_mounts"])
     if resources:
         actor_opts["resources"] = resources
 

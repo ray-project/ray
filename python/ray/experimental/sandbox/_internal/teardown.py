@@ -207,15 +207,37 @@ def _rmdir(path: str) -> None:
         logger.warning("Could not remove %s: %s", path, err)
 
 
-def _remove_mount_files(parent_dir: str, count: int) -> None:
-    """Remove what :meth:`BucketMountSet.allocate` created, non-recursively.
+def _rmtree_unless_mounted(path: str) -> None:
+    """Remove a directory tree that holds no mount, or leave it and warn.
 
-    A mountpoint that is still mounted -- and its parent with it -- is left in
-    place: removing it is exactly the mistake this module exists to avoid.
+    For trees that never hold a mountpoint -- a sandbox's directory, a mount's
+    cache -- checked all the same, since a walk into a bucket would delete its
+    objects.
+    """
+    root = os.path.abspath(path)
+    if os.path.islink(root):
+        _unlink(root)
+        return
+    if any(p == root or p.startswith(root + os.sep) for p in _mount_points()):
+        logger.warning("Leaving %s in place: something is mounted under it.", root)
+        return
+    shutil.rmtree(root, ignore_errors=True)
+    if os.path.lexists(root):
+        logger.warning("Could not remove %s.", root)
+
+
+def _remove_mount_files(parent_dir: str, count: int) -> None:
+    """Remove what :meth:`BucketMountSet.allocate` created.
+
+    Non-recursively, save each cache directory, whose blocks a killed mount-s3
+    leaves behind (one that exits cleanly empties it). A mountpoint that is
+    still mounted -- and its parent with it -- is left in place: removing it is
+    exactly the mistake this module exists to avoid.
     """
     for index in range(count):
         for name in (f"{index}.pid", f"{index}.log"):
             _unlink(os.path.join(parent_dir, name))
+        _rmtree_unless_mounted(os.path.join(parent_dir, f"{index}-cache"))
         for name in (f"{index}-home", str(index)):
             path = os.path.join(parent_dir, name)
             if is_mounted(path):
@@ -226,7 +248,7 @@ def _remove_mount_files(parent_dir: str, count: int) -> None:
     _rmdir(parent_dir)
 
 
-_MOUNT_ENTRY = re.compile(r"^(\d+)(?:-home|\.pid|\.log)?$")
+_MOUNT_ENTRY = re.compile(r"^(\d+)(?:-home|-cache|\.pid|\.log)?$")
 
 
 def _reclaim(parent: str, grace_s: float = 0) -> None:
@@ -436,13 +458,9 @@ def _kill_run_group(root_dir: str) -> None:
 
 
 def _remove_sandbox_dir(root_dir: str) -> None:
-    root = os.path.abspath(root_dir)
     # Bucket mounts never live here, but an rmtree must not reach into one
     # however it got here.
-    if any(p == root or p.startswith(root + os.sep) for p in _mount_points()):
-        logger.warning("Leaving %s in place: something is mounted under it.", root)
-        return
-    shutil.rmtree(root, ignore_errors=True)
+    _rmtree_unless_mounted(root_dir)
 
 
 def teardown_sandbox(

@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+import types
 
 import pytest
 
@@ -115,7 +116,9 @@ def test_sandbox_config_refuses_readonly_workdir_inside_a_bucket():
 
 
 def _argv(mount, **kwargs):
-    return bucket_mount.build_mount_command(mount, "/mnt/0", "/mnt/0-home", **kwargs)
+    return bucket_mount.build_mount_command(
+        mount, "/mnt/0", "/mnt/0-home", "/mnt/0-cache", **kwargs
+    )
 
 
 def test_mount_command_fixed_flags_and_positionals():
@@ -126,11 +129,18 @@ def test_mount_command_fixed_flags_and_positionals():
         "--no-sign-request",
         "--dir-mode=0755",
         "--file-mode=0644",
-        "--memory-target=2048",
+        "--memory-target=512",
         "--no-log",
+        # Modal's caching, with its defaults: 60 s for metadata and for names
+        # that do not exist, so neither TTL is overridden.
+        "--cache=/mnt/0-cache",
+        "--max-cache-size=1024",
         "--read-only",
     ):
         assert flag in argv
+    assert not any(
+        a.startswith(("--metadata-ttl", "--negative-metadata-ttl")) for a in argv
+    )
     assert argv[-3:] == ["--", "noaa-ghcn-pds", "/mnt/0"]
     # Never anything that widens access or depends on a helper the node may
     # lack.
@@ -138,6 +148,38 @@ def test_mount_command_fixed_flags_and_positionals():
         a.startswith(("--allow-other", "--allow-root", "--auto-unmount")) for a in argv
     )
     assert "--allow-delete" not in argv
+
+
+@pytest.mark.parametrize(
+    "memory,bucket_mounts,reserved",
+    [
+        (None, [], None),
+        (None, [BucketMount("a", "/a"), BucketMount("a", "/b")], 1 << 30),
+        ("1Gi", [BucketMount("a", "/a")], (1 << 30) + (512 << 20)),
+    ],
+)
+def test_create_reserves_each_buckets_memory(
+    monkeypatch, memory, bucket_mounts, reserved
+):
+    """mount-s3 runs beside the sandbox, outside its memory limit, and may use
+    up to its 512 MiB target: Ray reserves that per mount, on top of the
+    request."""
+    import ray.experimental.sandbox as sandbox_pkg
+
+    asked = {}
+
+    class _Sandbox:
+        @staticmethod
+        def options(**options):
+            asked.update(options)
+            return types.SimpleNamespace(remote=lambda **kwargs: None)
+
+    monkeypatch.setattr(sandbox_pkg, "Sandbox", _Sandbox)
+    sandbox_pkg.create("busybox:latest", memory=memory, bucket_mounts=bucket_mounts)
+    assert asked.get("memory") == reserved
+    assert bucket_mount.memory_reservation_bytes(bucket_mounts) == len(
+        bucket_mounts
+    ) * (512 << 20)
 
 
 def test_mount_command_writable_allows_delete_and_overwrite():
@@ -230,6 +272,7 @@ def all_prerequisites(monkeypatch):
     monkeypatch.setattr(bucket_mount.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(bucket_mount, "_mount_s3_version", lambda: (1, 24, 0))
     monkeypatch.setattr(bucket_mount.os, "access", lambda path, mode: True)
+    monkeypatch.setattr(bucket_mount, "_no_new_privs", lambda: False)
     return monkeypatch
 
 
@@ -288,6 +331,40 @@ def test_fusermount3_alone_can_only_unmount(all_prerequisites, euid):
             bucket_mount.check_prerequisites()
 
 
+@pytest.mark.parametrize("euid", [1000, 0])
+def test_no_new_privs_blocks_only_a_non_root_mount(all_prerequisites, euid):
+    """A hardened pod (allowPrivilegeEscalation: false) stops the setuid
+    fusermount a non-root mount needs; root mounts without it."""
+    all_prerequisites.setattr(bucket_mount, "_no_new_privs", lambda: True)
+    all_prerequisites.setattr(bucket_mount.os, "geteuid", lambda: euid)
+    if euid == 0:
+        bucket_mount.check_prerequisites()
+    else:
+        with pytest.raises(SandboxCreationError, match="allowPrivilegeEscalation"):
+            bucket_mount.check_prerequisites()
+
+
+def test_no_new_privs_is_read_from_the_process():
+    flag = subprocess.run(
+        [
+            "setpriv",
+            "--no-new-privs",
+            sys.executable,
+            "-c",
+            "from ray.experimental.sandbox._internal import bucket_mount; "
+            "print(bucket_mount._no_new_privs())",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if flag.returncode != 0 and "setpriv" in flag.stderr:
+        pytest.skip("setpriv is not available")
+    assert flag.stdout.strip() == "True"
+    assert bucket_mount._no_new_privs() is (
+        "NoNewPrivs:\t1" in open("/proc/self/status").read()
+    )
+
+
 def test_mount_s3_version_is_asked_once_per_binary(tmp_path, monkeypatch):
     binary = tmp_path / "mount-s3"
     calls = tmp_path / "calls"
@@ -317,19 +394,24 @@ def test_mount_s3_version_is_asked_once_per_binary(tmp_path, monkeypatch):
 # nothing references the filesystem any more -- neither the node's mountpoint
 # (that marker) nor a container (a <mountpoint>.held marker a test creates) --
 # and exits 0, like the real one. Its argv is recorded beside it. A bucket named "missing" fails like mount-s3 does, one
-# named "hang" never mounts, and one named "late" mounts after 3 seconds.
+# named "hang" never mounts, and one named "late" mounts after 3 seconds. Like
+# the real one, it keeps blocks under <cache>/mountpoint-cache while serving
+# and empties that when it exits cleanly; killed, it leaves them.
 _FAKE_MOUNT_S3 = r"""#!/bin/sh
 for a; do mp=$a; done
 prev=
 for a; do [ "$prev" = "--" ] && bucket=$a; prev=$a; done
+for a; do case "$a" in --cache=*) cache=${a#--cache=};; esac; done
 echo "$@" >> "$(dirname "$0")/mount-s3.calls"
 case "$bucket" in
   missing) printf 'Error: Failed to create S3 client\n\nCaused by:\n    0: The bucket does not exist\n' >&2; exit 1;;
   hang) exec sleep 1000;;
   late) sleep 3;;
 esac
+mkdir -p "$cache/mountpoint-cache/V2/ab" && echo block > "$cache/mountpoint-cache/V2/ab/0"
 touch "$mp.mounted"
 while [ -e "$mp.mounted" ] || [ -e "$mp.held" ]; do sleep 0.02; done
+rm -rf "$cache/mountpoint-cache"
 exit 0
 """
 
@@ -507,6 +589,41 @@ def test_detach_never_raises(fake_mounts, caplog):
     assert "Could not unmount" in caplog.text
     os.unlink(host_dir + ".busy")
     mounts.stop()
+    assert os.listdir(root) == []
+
+
+def test_a_killed_mount_s3s_cache_is_removed(fake_mounts):
+    """A clean exit empties the cache; a killed mount-s3 leaves its blocks,
+    which go with the mount's directory."""
+    root, _ = fake_mounts
+    mounts = bucket_mount.BucketMountSet.allocate("sb-c", [BucketMount("a", "/data")])
+    mounts.start()
+    mount = mounts._mounts[0]
+    assert oct(os.stat(mount.cache_dir).st_mode & 0o777) == "0o700"
+    assert os.listdir(os.path.join(mount.cache_dir, "mountpoint-cache"))
+    os.killpg(mount.process.pid, signal.SIGKILL)
+    mount.process.wait(5)
+    assert os.path.exists(os.path.join(mount.cache_dir, "mountpoint-cache"))
+    mounts.stop()
+    assert os.listdir(root) == []
+
+
+def test_a_cache_with_a_mount_under_it_is_left_in_place(fake_mounts, caplog):
+    """The cache is the one tree removed recursively, so it gets the mount
+    check every recursive removal here does."""
+    root, _ = fake_mounts
+    mounts = bucket_mount.BucketMountSet.allocate("sb-cm", [BucketMount("a", "/data")])
+    mounts.start()
+    inner = os.path.join(mounts._mounts[0].cache_dir, "inner")
+    os.mkdir(inner)
+    open(inner + ".mounted", "w").close()
+    with caplog.at_level(logging.WARNING):
+        mounts.stop()
+    assert os.path.isdir(inner)
+    assert "something is mounted under it" in caplog.text
+    os.unlink(inner + ".mounted")
+    teardown._rmtree_unless_mounted(mounts._mounts[0].cache_dir)
+    teardown._remove_mount_files(mounts._parent_dir, 1)
     assert os.listdir(root) == []
 
 
