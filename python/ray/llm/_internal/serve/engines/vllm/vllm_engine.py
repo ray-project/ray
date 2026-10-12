@@ -68,6 +68,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_kv_event_routing_stats,
     get_prompt_token_routing_stats,
     get_token_channel_endpoints,
+    resolve_kv_event_block_size,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
     install_prompt_token_forwarding,
@@ -474,7 +475,7 @@ class VLLMEngine(LLMEngine):
 
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
-            vllm_engine_config.cache_config.block_size,
+            resolve_kv_event_block_size(vllm_engine_config),
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
         self._routing_stats.update(prompt_token_stats)

@@ -119,6 +119,24 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     return _get_node_routable_endpoint(llm_config, kv_events_config["endpoint"])
 
 
+def resolve_kv_event_block_size(vllm_config: Any) -> int:
+    """Token span of the KV blocks the engine hashes and publishes.
+
+    Under decode context parallelism (DCP), vLLM shards each attention KV
+    block's token positions across the DCP ranks, so its prefix hashes and
+    ``BlockStored`` events cover ``block_size * decode_context_parallel_size``
+    tokens rather than the per-rank ``cache_config.block_size``. The KV router
+    must index at that span: the selection service drops every event whose
+    block size differs from the registered one, which would leave its index
+    empty and silently reduce KV-aware routing to load-only scoring.
+    """
+    block_size = vllm_config.cache_config.block_size
+    dcp_size = (
+        getattr(vllm_config.parallel_config, "decode_context_parallel_size", 1) or 1
+    )
+    return block_size * dcp_size
+
+
 def get_kv_event_routing_stats(
     llm_config: LLMConfig, block_size: int, max_num_batched_tokens: int
 ) -> Dict[str, Any]:
