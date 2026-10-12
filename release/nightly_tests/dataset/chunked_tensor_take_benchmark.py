@@ -3,10 +3,9 @@
 Synthetic float32 payloads represent decoded images and the (2000, 1697) tensor
 shape from issue #64960, plus variable-shaped short, image, wide, and skewed
 rows. Short rows exercise the standard-path size gate. Every iteration generates
-blocks with map_batches and consumes NumPy batches through iter_batches; inputs
-are not materialized or retained between iterations. Local buffer shuffle is
-the default. Use --shuffle-method to compare no shuffle and both window-shuffle
-modes on the same workloads. Model computation and image decoding are excluded.
+blocks with map_batches and consumes them through iter_batches with local shuffle; inputs
+are not materialized or retained between iterations. Model computation and
+image decoding are outside this data-ingestion benchmark.
 
 Set RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE before starting the process to compare
 implementations. Both release entries use the same workload and measurement
@@ -115,12 +114,7 @@ def make_tensors(
     return {"id": row_ids, "tensor": values}
 
 
-def run_pipeline(
-    workload: Workload,
-    *,
-    validate_payload: bool,
-    shuffle_method: str = "local_buffer_shuffle",
-) -> np.ndarray:
+def run_pipeline(workload: Workload, *, validate_payload: bool) -> np.ndarray:
     """Generate and shuffle every row, returning the consumed row order.
 
     Full payload validation is done in an untimed warmup. Every timed iteration
@@ -133,21 +127,11 @@ def run_pipeline(
         batch_format="numpy",
         fn_kwargs={"workload": workload},
     )
-    if shuffle_method in ("window_shuffle_default", "window_shuffle_strict"):
-        dataset = dataset.window_shuffle(
-            workload.shuffle_buffer_rows,
-            strict=shuffle_method == "window_shuffle_strict",
-            seed=42,
-        )
     row_ids = []
     for batch in dataset.iter_batches(
         batch_size=workload.batch_size,
         batch_format="numpy",
-        local_shuffle_buffer_size=(
-            workload.shuffle_buffer_rows
-            if shuffle_method == "local_buffer_shuffle"
-            else None
-        ),
+        local_shuffle_buffer_size=workload.shuffle_buffer_rows,
         local_shuffle_seed=42,
         prefetch_batches=1,
     ):
@@ -170,8 +154,6 @@ def run_pipeline(
         row_ids.append(ids)
     actual = np.concatenate(row_ids)
     np.testing.assert_array_equal(np.sort(actual), np.arange(workload.rows))
-    if validate_payload:
-        print(dataset.stats())
     return actual
 
 
@@ -179,15 +161,12 @@ def measure_pipeline(
     workload: Workload,
     iterations: int,
     expected_order: np.ndarray,
-    shuffle_method: str,
 ) -> Dict[str, Any]:
     """Measure a fixed number of complete pipeline executions after a warmup."""
     durations = []
     for _ in range(iterations):
         start = time.perf_counter()
-        actual_order = run_pipeline(
-            workload, validate_payload=False, shuffle_method=shuffle_method
-        )
+        actual_order = run_pipeline(workload, validate_payload=False)
         duration = time.perf_counter() - start
         durations.append(duration)
         np.testing.assert_array_equal(actual_order, expected_order)
@@ -197,7 +176,6 @@ def measure_pipeline(
     )
     return {
         "fast_path_enabled": os.environ.get("RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE", "1"),
-        "shuffle_method": shuffle_method,
         "shapes": workload.shapes,
         "rows_per_iteration": workload.rows,
         "source_blocks": workload.blocks,
@@ -207,7 +185,6 @@ def measure_pipeline(
         "measured_time_s": sum(durations),
         "iteration_times_s": durations,
         "median_iteration_s": median,
-        "stdev_iteration_s": statistics.stdev(durations) if len(durations) > 1 else 0,
         "rows_per_s": workload.rows / median,
         "payload_gib_per_s": payload_values * 4 / median / 1024**3,
     }
@@ -221,17 +198,6 @@ def main() -> None:
         help="Override each case's fixed iteration count; use the same value for both modes.",
     )
     parser.add_argument("--case", choices=[w.name for w in WORKLOADS])
-    parser.add_argument(
-        "--shuffle-method",
-        choices=(
-            "no_shuffle",
-            "local_buffer_shuffle",
-            "window_shuffle_default",
-            "window_shuffle_strict",
-        ),
-        default="local_buffer_shuffle",
-        help="Compare shuffle placement with the same ingestion workload.",
-    )
     parser.add_argument("--num-cpus", type=int, help="CPU count for local Ray runs.")
     parser.add_argument(
         "--object-store-memory", type=int, help="Object store bytes for local Ray runs."
@@ -248,16 +214,13 @@ def main() -> None:
         for workload in WORKLOADS:
             if args.case is not None and args.case != workload.name:
                 continue
-            expected_order = run_pipeline(
-                workload, validate_payload=True, shuffle_method=args.shuffle_method
-            )
+            expected_order = run_pipeline(workload, validate_payload=True)
             benchmark.run_fn(
                 workload.name,
                 measure_pipeline,
                 workload,
                 args.iterations if args.iterations is not None else workload.iterations,
                 expected_order,
-                args.shuffle_method,
             )
     finally:
         benchmark.write_result()

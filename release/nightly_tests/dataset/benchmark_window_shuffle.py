@@ -1,103 +1,127 @@
-"""Compare complete single-node window-shuffle pipelines.
+"""Compare window_shuffle with the documented map_batches/PyArrow take recipe.
 
-The Parquet source includes reading, shuffling, and streaming consumption. The
-cached source isolates shuffle execution. Input generation and full payload
-validation are untimed. Model computation is excluded.
+Run on a single CPU node with online range_tensor input (4 KiB per row), parallel
+NumPy consumers, and no model computation. Strict mode's baseline constructs the
+same consecutive windows before calling PyArrow take. Each measured execution
+excludes iterator warmup; a separate untimed execution validates every payload.
+Set RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE before starting to measure its effect on
+the same window-shuffle pipelines. The native baselines do not use that flag.
 """
 
 import argparse
-import gc
-from pathlib import Path
+import os
 import statistics
-import tempfile
 import time
-from typing import Callable
 
 import numpy as np
 import pyarrow as pa
-import pyarrow.parquet as pq
 from benchmark import Benchmark
 
 import ray
 from ray.data import TaskPoolStrategy
-from ray.data._internal.arrow_ops.transform_pyarrow import take_table
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
     ENABLE_CHUNKED_TENSOR_TAKE,
 )
-from ray.data.context import DataContext
 
-VARIANTS = (
-    "map_batches_native_take",
-    "strict_windows_native_take",
-    "map_batches_ray_take",
-    "strict_windows_ray_take",
-    "window_shuffle_default",
-    "window_shuffle_strict",
-)
+BASELINES = {
+    "map_batches_native_take": "map_batches_native_take",
+    "window_shuffle_default": "map_batches_native_take",
+    "strict_windows_native_take": "strict_windows_native_take",
+    "window_shuffle_strict": "strict_windows_native_take",
+}
 
 
 def native_shuffle(batch: pa.Table) -> pa.Table:
-    # Match the documented UDF recipe. The process RNG advances between batches,
-    # unlike a fresh task-only seed, which repeats equal-sized permutations.
     return batch.take(np.random.permutation(len(batch)))
 
 
-def ray_shuffle(batch: pa.Table) -> pa.Table:
-    return take_table(batch, np.random.permutation(len(batch)))
-
-
-def make_table(start: int, end: int, tensor_kind: str) -> pa.Table:
-    ids = np.arange(start, end)
-    table = pa.table({"id": ids})
-    if tensor_kind == "scalar":
-        return table.append_column("value", pa.array(ids * 2))
-    if tensor_kind == "variable":
-        data = np.empty(len(ids), dtype=object)
-        for j, row_id in enumerate(ids):
-            data[j] = np.full(
-                (64 if row_id % 2 == 0 else 128, 64), row_id, dtype=np.float32
+@ray.remote(num_cpus=1)
+class Consumer:
+    def consume(self, shard, args, validate_payload):
+        iterator = iter(
+            shard.iter_batches(
+                batch_size=args.batch_size, batch_format="numpy", prefetch_batches=1
             )
+        )
+        row_ids = []
+        for step in range(args.warmup_batches + args.measured_batches):
+            if step == args.warmup_batches:
+                started = time.perf_counter()
+            values = next(iterator)["data"]
+            finished = time.perf_counter()
+            assert values.shape == (args.batch_size, 512)
+            assert values.dtype == np.int64
+            ids = values[:, 0].copy()
+            np.testing.assert_array_equal(values[:, -1], ids)
+            if validate_payload:
+                assert np.all(values == ids[:, None])
+            row_ids.append(ids)
+        assert next(iterator, None) is None
+        return {
+            "started": started,
+            "finished": finished,
+            "ids": np.concatenate(row_ids),
+            "stats": shard.stats(),
+        }
+
+
+def run_pipeline(args, variant, *, validate_payload=False):
+    rows = (
+        args.workers * (args.warmup_batches + args.measured_batches) * args.batch_size
+    )
+    dataset = ray.data.range_tensor(rows, shape=(512,), override_num_blocks=args.blocks)
+    compute = TaskPoolStrategy(size=args.concurrency)
+    if variant in ("window_shuffle_default", "window_shuffle_strict"):
+        dataset = dataset.window_shuffle(
+            args.window,
+            strict=variant == "window_shuffle_strict",
+            seed=42,
+            compute=compute,
+            num_cpus=1,
+        )
     else:
-        data = np.broadcast_to(
-            ids.astype(np.float32)[:, None, None], (len(ids), 64, 64)
-        ).copy()
-    return table.append_column("tensor", ArrowTensorArray.from_numpy(data))
+        strict = variant == "strict_windows_native_take"
+        if strict:
+            dataset = dataset.repartition(
+                target_num_rows_per_block=args.window, strict=True
+            )
+        dataset = dataset.map_batches(
+            native_shuffle,
+            batch_size=None if strict else args.window,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+            compute=compute,
+            num_cpus=1,
+        )
+    consumers = [Consumer.remote() for _ in range(args.workers)]
+    try:
+        shards = dataset.streaming_split(args.workers, equal=True)
+        results = ray.get(
+            [
+                consumer.consume.remote(shard, args, validate_payload)
+                for consumer, shard in zip(consumers, shards)
+            ]
+        )
+        np.testing.assert_array_equal(
+            np.sort(np.concatenate([result["ids"] for result in results])),
+            np.arange(rows),
+        )
+        # All consumers share the node's monotonic clock. Include the entire
+        # measured interval, including any skew between consumer warmups.
+        elapsed = max(r["finished"] for r in results) - min(
+            r["started"] for r in results
+        )
+        return elapsed, [r["stats"] for r in results]
+    finally:
+        for consumer in consumers:
+            ray.kill(consumer)
 
 
-def consume(
-    dataset: ray.data.Dataset,
-    *,
-    validate_payload: bool = False,
-    tensor_kind: str = "fixed",
-) -> list[int]:
-    ids = []
-    for batch in dataset.iter_batches(batch_format="pyarrow", prefetch_batches=0):
-        batch_ids = batch["id"].to_pylist()
-        ids.extend(batch_ids)
-        if validate_payload:
-            if "tensor" in batch.column_names:
-                values = batch["tensor"].combine_chunks().to_numpy(zero_copy_only=False)
-                for row_id, tensor in zip(batch_ids, values):
-                    rows = 128 if tensor_kind == "variable" and row_id % 2 else 64
-                    assert tensor.shape == (rows, 64)
-                    assert tensor.dtype == np.float32
-                    assert np.all(tensor == row_id)
-            else:
-                assert batch["value"].to_pylist() == [
-                    row_id * 2 for row_id in batch_ids
-                ]
-    return ids
-
-
-def measure(build: Callable[[], ray.data.Dataset], args: argparse.Namespace) -> dict:
+def measure(args, variant):
     durations = []
     for _ in range(args.repeats):
-        gc.collect()
-        started = time.perf_counter()
-        ids = consume(build())
-        durations.append(time.perf_counter() - started)
-        np.testing.assert_array_equal(np.sort(ids), np.arange(args.rows))
+        elapsed, stats = run_pipeline(args, variant)
+        durations.append(elapsed)
     median = statistics.median(durations)
     return {
         "parameters": vars(args),
@@ -105,117 +129,80 @@ def measure(build: Callable[[], ray.data.Dataset], args: argparse.Namespace) -> 
         "pyarrow": pa.__version__,
         "numpy": np.__version__,
         "chunked_tensor_take_enabled": ENABLE_CHUNKED_TENSOR_TAKE,
+        "baseline": BASELINES[variant],
         "iteration_times_s": durations,
         "median_iteration_s": median,
         "stdev_iteration_s": statistics.stdev(durations) if len(durations) > 1 else 0,
-        "rows_per_s": args.rows / median,
-        "scope": "single-node pipeline; cached or Parquet input; excludes training",
+        "rows_per_s": args.workers * args.measured_batches * args.batch_size / median,
+        "last_iteration_stats": stats,
+        "scope": "single-node CPU ingestion; online 4-KiB tensors; excludes training",
     }
 
 
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rows", type=int, default=8192)
-    parser.add_argument("--window", type=int, default=2048)
-    parser.add_argument("--block", type=int, default=256)
-    parser.add_argument("--repeats", type=int, default=5)
-    parser.add_argument(
-        "--tensor-kind", choices=("scalar", "fixed", "variable"), default="fixed"
-    )
-    parser.add_argument("--source", choices=("cached", "parquet"), default="parquet")
-    parser.add_argument(
-        "--legacy-reader",
-        action="store_true",
-        help="Include legacy Parquet read/map fusion.",
-    )
-    parser.add_argument("--variant", choices=VARIANTS)
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--batch-size", type=int, default=4096)
+    parser.add_argument("--blocks", type=int, default=160)
+    parser.add_argument("--window", type=int, default=262144)
+    parser.add_argument("--warmup-batches", type=int, default=100)
+    parser.add_argument("--measured-batches", type=int, default=200)
+    parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--variant", choices=BASELINES)
     parser.add_argument("--concurrency", type=int)
     parser.add_argument("--num-cpus", type=int)
     parser.add_argument("--object-store-memory", type=int)
     args = parser.parse_args()
-    if min(args.rows, args.window, args.block, args.repeats) <= 0:
-        parser.error("all sizes and repeats must be positive")
+    if (
+        min(
+            args.workers,
+            args.batch_size,
+            args.blocks,
+            args.window,
+            args.warmup_batches,
+            args.measured_batches,
+            args.repeats,
+        )
+        <= 0
+    ):
+        parser.error("all sizes, batch counts, and repeats must be positive")
     if args.concurrency is not None and args.concurrency <= 0:
         parser.error("--concurrency must be positive")
 
-    ray.init(num_cpus=args.num_cpus, object_store_memory=args.object_store_memory)
+    ray.init(
+        num_cpus=args.num_cpus,
+        object_store_memory=args.object_store_memory,
+        runtime_env={
+            "env_vars": {
+                "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE": os.environ.get(
+                    "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE", "1"
+                )
+            }
+        },
+    )
     benchmark = Benchmark()
     try:
-        ctx = DataContext.get_current()
-        ctx.enable_progress_bars = False
-        ctx.execution_options.preserve_order = True
-        if args.legacy_reader:
-            ctx.use_datasource_v2 = False
-        with tempfile.TemporaryDirectory() as input_dir:
-            tables = []
-            for start in range(0, args.rows, args.block):
-                table = make_table(
-                    start, min(start + args.block, args.rows), args.tensor_kind
-                )
-                if args.source == "cached":
-                    tables.append(table)
-                else:
-                    pq.write_table(table, Path(input_dir) / f"{start:012d}.parquet")
-            if args.source == "cached":
-                source = ray.data.from_arrow(tables).materialize()
-
-            def read() -> ray.data.Dataset:
-                if args.source == "cached":
-                    return source
-                return ray.data.read_parquet(input_dir)
-
-            del tables, table
-            gc.collect()
-            compute = TaskPoolStrategy(size=args.concurrency)
-            map_options = dict(
-                batch_format="pyarrow",
-                zero_copy_batch=True,
-                compute=compute,
-                num_cpus=1,
+        if len([node for node in ray.nodes() if node["Alive"]]) != 1:
+            raise ValueError("This benchmark requires a single-node cluster")
+        if ray.cluster_resources().get("CPU", 0) < args.workers + 1:
+            raise ValueError(
+                "Reserve at least one CPU for Data tasks besides consumers"
             )
-            variants = {
-                "map_batches_native_take": lambda: read().map_batches(
-                    native_shuffle, batch_size=args.window, **map_options
-                ),
-                "strict_windows_native_take": lambda: read()
-                .repartition(target_num_rows_per_block=args.window, strict=True)
-                .map_batches(native_shuffle, batch_size=None, **map_options),
-                "map_batches_ray_take": lambda: read().map_batches(
-                    ray_shuffle, batch_size=args.window, **map_options
-                ),
-                "strict_windows_ray_take": lambda: read()
-                .repartition(target_num_rows_per_block=args.window, strict=True)
-                .map_batches(ray_shuffle, batch_size=None, **map_options),
-                "window_shuffle_default": lambda: read().window_shuffle(
-                    args.window, seed=42, compute=compute, num_cpus=1
-                ),
-                "window_shuffle_strict": lambda: read().window_shuffle(
-                    args.window,
-                    strict=True,
-                    seed=42,
-                    compute=compute,
-                    num_cpus=1,
-                ),
-            }
-            names = (
-                [args.variant]
-                if args.variant
-                else np.random.default_rng(0).permutation(VARIANTS)
-            )
-            for name in names:
-                build = variants[name]
-                warmup = build()
-                ids = consume(
-                    warmup, validate_payload=True, tensor_kind=args.tensor_kind
-                )
-                np.testing.assert_array_equal(np.sort(ids), np.arange(args.rows))
-                benchmark.run_fn(name, measure, build, args)
-                benchmark.result[name]["warmup_stats"] = warmup.stats()
-                benchmark.result[name]["window_contract"] = (
-                    "strict consecutive windows"
-                    if name.startswith("strict_windows")
-                    or name == "window_shuffle_strict"
-                    else "target batch size; task tails may be smaller"
+        ray.data.DataContext.get_current().enable_progress_bars = False
+        names = (
+            [args.variant]
+            if args.variant
+            else np.random.default_rng(0).permutation(list(BASELINES))
+        )
+        for name in names:
+            _, warmup_stats = run_pipeline(args, name, validate_payload=True)
+            benchmark.run_fn(name, measure, args, name)
+            benchmark.result[name]["warmup_stats"] = warmup_stats
+        for result in benchmark.result.values():
+            baseline = benchmark.result.get(result["baseline"])
+            if baseline is not None:
+                result["speedup_vs_native_baseline"] = (
+                    result["rows_per_s"] / baseline["rows_per_s"]
                 )
     finally:
         benchmark.write_result()
