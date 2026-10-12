@@ -161,6 +161,10 @@ func (m *MockGCSClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*pr
 	return nil, errors.New("ListActors not implemented")
 }
 
+func (m *MockGCSClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
+	return nil, errors.New("ListActorsByFilter not implemented")
+}
+
 // JobInfoInterface methods.
 func (m *MockGCSClient) GetJobInfo(ctx context.Context, jobID ids.JobID) (*proto.JobTableData, error) {
 	return nil, errors.New("GetJobInfo not implemented")
@@ -186,6 +190,10 @@ func (m *MockGCSClient) ListWorkers(ctx context.Context) ([]*proto.WorkerTableDa
 // PlacementGroupInterface methods.
 func (m *MockGCSClient) GetPlacementGroup(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
 	return nil, errors.New("GetPlacementGroup not implemented")
+}
+
+func (m *MockGCSClient) GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
+	return nil, errors.New("GetPlacementGroupByName not implemented")
 }
 
 func (m *MockGCSClient) ListPlacementGroups(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {

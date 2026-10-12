@@ -351,7 +351,10 @@ func IsInitialized() bool {
 // $RAY_SESSION_DIR/ray_current_cluster or /tmp/ray/ray_current_cluster.
 //
 // Returns empty string if the file doesn't exist or cannot be read.
-func readRayAddressFromFile() string {
+//
+// It is a package-level variable so tests can inject a fake resolver; the
+// default keeps the original behavior.
+var readRayAddressFromFile = func() string {
 	addr, err := pathutil.ReadRayClusterFile("ray_current_cluster")
 	if err == nil {
 		return strings.TrimSpace(string(addr))

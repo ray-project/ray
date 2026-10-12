@@ -31,6 +31,7 @@ go_library(
         "object_id_generator.go",
         "options.go",
         "parallel_actor.go",
+        "placement_group.go",
         "ray.go",
         "runtime.go",
     ],
@@ -60,6 +61,7 @@ go_test(
         "actor_registration_test.go",
         "api_test.go",
         "call_convert_arg_test.go",
+        "call_test.go",
         "example_test.go",
         "handle_release_test.go",
         "method_extractor_test.go",
@@ -102,5 +104,90 @@ go_test(
     deps = [
         "//go/pkg/options",
         "//go/pkg/runtime/contract",
+    ],
+)
+
+# api.GetActorHandle tests, gated behind the "apigetactorhandle" build tag
+# because storeHandleLocked mutates package-global handle state (currentHandle)
+# that the default api tests assume is unset. Includes task_return_ref_test.go
+# for the shared recordingRuntime/recordingHandle injection helpers.
+go_test(
+    name = "api_get_actor_handle_test",
+    srcs = [
+        "get_actor_handle_test.go",
+        "task_return_ref_test.go",
+    ],
+    embed = [":api"],
+    gotags = ["apigetactorhandle"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)
+
+# api placement group facade tests, gated behind the "apipg" build tag because
+# storeHandleLocked mutates package-global handle state (currentHandle) that
+# the default api tests assume is unset. Includes task_return_ref_test.go for
+# the shared recordingRuntime/recordingHandle injection helpers.
+go_test(
+    name = "placement_group_test",
+    srcs = [
+        "placement_group_test.go",
+        "task_return_ref_test.go",
+    ],
+    embed = [":api"],
+    gotags = ["apipg"],
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "//go/proto",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)
+
+# Regression tests for the untyped actor convenience API (Ray.Actor /
+# api.Instance().Actor with T = interface{}). They run the real local-mode
+# runtime, so they are gated behind the "apiuntyped" build tag because InitLocal
+# and setHandle mutate package-global handle state that the default api tests
+# assume is unset.
+go_test(
+    name = "api_untyped_actor_test",
+    srcs = ["actor_untyped_test.go"],
+    embed = [":api"],
+    gotags = ["apiuntyped"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/local",
+        "//go/pkg/runtime/submitter",
+    ],
+)
+
+# api.RuntimeContext delegation/mapping tests, gated behind the "apirtcontext"
+# build tag because storeHandleLocked mutates package-global handle state
+# (currentHandle) that the default api tests assume is unset. Includes
+# task_return_ref_test.go for the shared recordingRuntime helper.
+go_test(
+    name = "api_runtime_context_test",
+    srcs = [
+        "runtime_context_test.go",
+        "task_return_ref_test.go",
+    ],
+    embed = [":api"],
+    gotags = ["apirtcontext"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
     ],
 )

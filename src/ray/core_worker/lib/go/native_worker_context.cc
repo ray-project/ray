@@ -140,30 +140,29 @@ extern "C" CByteArray *CNativeWorkerContext_GetRpcAddress() {
       });
 }
 
-extern "C" const char *CNativeWorkerContext_GetSerializedRuntimeEnv() {
-  // Use thread-local storage to cache the result
-  static thread_local std::string cached_runtime_env;
-
-  try {
-    cached_runtime_env = GetContextOps().GetSerializedRuntimeEnv();
-    return cached_runtime_env.c_str();
-  } catch (const std::exception &e) {
-    RAY_LOG(ERROR) << "CNativeWorkerContext_GetSerializedRuntimeEnv failed: " << e.what();
-    return nullptr;
-  }
+extern "C" CByteArray *CNativeWorkerContext_GetSerializedRuntimeEnv() {
+  return CgoErrorHandler::Execute(
+      "CNativeWorkerContext_GetSerializedRuntimeEnv", []() -> CByteArray * {
+        // Return an owned copy instead of a pointer into a thread-local
+        // std::string: the Go caller reads the buffer after the cgo call
+        // returns (by which time this goroutine may be on a different OS
+        // thread, and a concurrent call on the original thread could have
+        // overwritten the same thread-local slot). Copying on the C side
+        // makes the buffer safe to read and free from any thread.
+        std::string runtime_env = GetContextOps().GetSerializedRuntimeEnv();
+        return CgoTypeConverter::StringToCByteArray(runtime_env);
+      });
 }
 
-extern "C" const char *CNativeWorkerContext_GetNamespace() {
-  // Use thread-local storage to cache the result
-  static thread_local std::string cached_namespace;
-
-  try {
-    cached_namespace = GetContextOps().GetNamespace();
-    return cached_namespace.c_str();
-  } catch (const std::exception &e) {
-    RAY_LOG(ERROR) << "CNativeWorkerContext_GetNamespace failed: " << e.what();
-    return nullptr;
-  }
+extern "C" CByteArray *CNativeWorkerContext_GetNamespace() {
+  return CgoErrorHandler::Execute("CNativeWorkerContext_GetNamespace",
+                                  []() -> CByteArray * {
+                                    // Return an owned copy (see GetSerializedRuntimeEnv
+                                    // for why the value must not be a pointer into a
+                                    // thread-local std::string).
+                                    std::string ns = GetContextOps().GetNamespace();
+                                    return CgoTypeConverter::StringToCByteArray(ns);
+                                  });
 }
 
 extern "C" bool CNativeWorkerContext_HasLastError() {

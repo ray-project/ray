@@ -16,9 +16,11 @@ package api
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/proto"
 )
 
@@ -55,6 +57,29 @@ type GCSClient interface {
 	// IsClosed reports whether the client has been closed.
 	// This method is used by the cache to check if a cached client is still usable.
 	IsClosed() bool
+
+	// GetPlacementGroupInfo fetches placement group information by ID.
+	GetPlacementGroupInfo(ctx context.Context, id ids.PlacementGroupID) (*proto.PlacementGroupTableData, error)
+
+	// GetPlacementGroupInfoByName fetches placement group information by name
+	// within the given namespace. An empty namespace falls back to the current
+	// namespace (callers) or "default" (the underlying GCS implementation).
+	GetPlacementGroupInfoByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error)
+
+	// GetAllPlacementGroupInfo lists all placement groups.
+	GetAllPlacementGroupInfo(ctx context.Context) ([]*proto.PlacementGroupTableData, error)
+
+	// GetInternalKV fetches a value from the GCS internal KV store by namespace
+	// and key.
+	GetInternalKV(ctx context.Context, ns, key string) ([]byte, error)
+
+	// GetAllNodeInfo fetches information for all nodes in the cluster, keyed by
+	// node id.
+	GetAllNodeInfo(ctx context.Context) (map[ids.NodeID]*proto.GcsNodeInfo, error)
+
+	// GetAllActorInfo fetches information for all actors in the cluster,
+	// optionally filtered by job id and actor state.
+	GetAllActorInfo(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error)
 }
 
 // globalGCSClientFactory is the registered GCS client factory.
@@ -103,6 +128,34 @@ type gcsClientFactoryNotRegisteredError struct{}
 
 func (e *gcsClientFactoryNotRegisteredError) Error() string {
 	return "GCS client factory not registered - go_runtime.so must call RegisterGCSClientFactory() during initialization"
+}
+
+// ErrGCSClientNotConnected is returned when the GCS address cannot be resolved
+// from the Ray cluster file (for example, when no cluster is running).
+var ErrGCSClientNotConnected = errors.New("GCS client not connected - Ray cluster address could not be resolved")
+
+// DefaultInternalKVNamespace is the GCS internal KV namespace used by
+// GetInternalKV when the caller does not provide one.
+// It mirrors Ray's KV_NAMESPACE_SESSION.
+const DefaultInternalKVNamespace = "session"
+
+// GetGCSClient returns the GCS client built from the registered factory.
+// It returns ErrGCSClientFactoryNotRegistered when no factory is registered
+// (for example, in local mode) and ErrGCSClientNotConnected when the GCS
+// address cannot be resolved.
+//
+// The client is obtained through getOrCreateCachedClient so repeated calls
+// reuse the same connection instead of leaking a new one each time.
+func GetGCSClient() (GCSClient, error) {
+	factory := getGCSClientFactory()
+	if factory == nil {
+		return nil, ErrGCSClientFactoryNotRegistered
+	}
+	addr := readRayAddressFromFile()
+	if addr == "" {
+		return nil, ErrGCSClientNotConnected
+	}
+	return getOrCreateCachedClient(addr, gcs.ClientOptions{Address: addr, TimeoutMs: 10000})
 }
 
 // ============================================================================

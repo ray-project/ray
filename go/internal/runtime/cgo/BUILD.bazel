@@ -19,6 +19,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "cgo",
     srcs = [
+        "actor_handle_registry.go",  # Actor handle registry for GetActorHandle
         # Utils layer - Shared utilities
         "converters.go",  # CGO helper functions
         # Boundary layer - CGO boundary handling
@@ -56,6 +57,7 @@ go_library(
 go_test(
     name = "cgo_test",
     srcs = [
+        "actor_handle_registry_test.go",
         "converters_test.go",
         "coreworker_test.go",
         "native_allocator_test.go",

@@ -103,6 +103,7 @@ go_test(
         "//go/proto",
         "@com_github_spf13_cobra//:cobra",
         "@com_github_stretchr_testify//assert",
+        "@org_golang_google_protobuf//proto",
     ],
 )
 

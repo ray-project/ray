@@ -74,8 +74,11 @@ func (s *Serializer) Decode(data []byte, target interface{}) error {
 // instead (see below); the result is still correct, only slightly less optimal
 // than a single fresh allocation.
 func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
-	// Determine metadata type based on object type
-	metadata := s.determineMetadata(obj)
+	// A nil interface carries no type: reflect.TypeOf(nil) is a nil Type and
+	// the recursive kind switch would dereference it. Treat nil as a Go-only
+	// (non-cross-language) value, matching the internal runtime.
+	crossLang := obj != nil && isCrossLanguageTypeRecursive(reflect.TypeOf(obj))
+	metadata := s.determineMetadata(crossLang)
 
 	// Get contained object IDs from context
 	containedIDs := s.contextManager.getAndClearContainedObjectIDs()
@@ -138,8 +141,8 @@ func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
 // determineMetadata determines the metadata type for the given object.
 // Returns MetadataTypeCrossLanguage for cross-language types (e.g., actors, futures),
 // or MetadataTypeGo for Go-specific types.
-func (s *Serializer) determineMetadata(obj interface{}) []byte {
-	if isCrossLanguageTypeRecursive(reflect.TypeOf(obj)) {
+func (s *Serializer) determineMetadata(crossLang bool) []byte {
+	if crossLang {
 		return []byte(object.MetadataTypeCrossLanguage)
 	}
 	return []byte(object.MetadataTypeGo)

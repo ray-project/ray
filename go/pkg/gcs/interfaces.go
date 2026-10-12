@@ -57,6 +57,9 @@ type ActorInfoInterface interface {
 	GetActorInfo(ctx context.Context, actorID ids.ActorID) (*proto.ActorTableData, error)
 	// ListActors lists all actors, optionally filtered by job ID.
 	ListActors(ctx context.Context, jobID *ids.JobID) ([]*proto.ActorTableData, error)
+	// ListActorsByFilter lists actors optionally filtered by job and state.
+	// A nil actorStateName means no state filter.
+	ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *ActorStateName) ([]*proto.ActorTableData, error)
 }
 
 // JobInfoInterface provides job information access.
@@ -75,6 +78,10 @@ type WorkerInfoInterface interface {
 // PlacementGroupInterface provides placement group information access.
 type PlacementGroupInterface interface {
 	GetPlacementGroup(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error)
+	// GetPlacementGroupByName gets placement group info by name and namespace.
+	// An empty namespace is normalized to the "default" namespace by the
+	// underlying implementation (matching GlobalStateAccessor semantics).
+	GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error)
 	ListPlacementGroups(ctx context.Context) ([]*proto.PlacementGroupTableData, error)
 }
 

@@ -95,3 +95,28 @@ func TestReadRayClusterFile(t *testing.T) {
 		t.Error("ReadRayClusterFile() expected error for non-existent file, got nil")
 	}
 }
+
+func TestReadRayClusterFileFromTempDirRoot(t *testing.T) {
+	// Regression test for the third resolution tier: `ray start` writes
+	// ray_current_cluster to the Ray temp dir root, so the cluster address must
+	// resolve even when RAY_SESSION_DIR is unset and no session_latest symlink
+	// exists. The two-tier version returned an error here.
+	rayTempDir := t.TempDir()
+	t.Setenv("RAY_TEMP_DIR", rayTempDir)
+	t.Setenv("RAY_SESSION_DIR", "")
+
+	// No session_latest symlink exists in the fresh temp dir; write the cluster
+	// address file at the temp dir root.
+	tempContent := "127.0.0.1:6379"
+	if err := os.WriteFile(filepath.Join(rayTempDir, "ray_current_cluster"), []byte(tempContent), 0644); err != nil {
+		t.Fatalf("Failed to write ray_current_cluster: %v", err)
+	}
+
+	content, err := ReadRayClusterFile("ray_current_cluster")
+	if err != nil {
+		t.Fatalf("ReadRayClusterFile() from temp dir root error = %v", err)
+	}
+	if string(content) != tempContent {
+		t.Errorf("ReadRayClusterFile() content = %q, want %q", string(content), tempContent)
+	}
+}

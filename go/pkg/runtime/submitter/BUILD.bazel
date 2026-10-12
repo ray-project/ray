@@ -27,6 +27,7 @@ go_library(
         "//go/pkg/ids",
         "//go/pkg/log",
         "//go/pkg/runtime/function",
+        "//go/proto",
     ],
 )
 

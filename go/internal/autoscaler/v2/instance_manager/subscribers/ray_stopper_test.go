@@ -106,7 +106,7 @@ func (f *fakeGcsClientForRayStopper) GetActorInfo(ctx context.Context, actorID i
 func (f *fakeGcsClientForRayStopper) ListActors(ctx context.Context, jobID *ids.JobID) ([]*proto.ActorTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
-func (f *fakeGcsClientForRayStopper) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *string) ([]*proto.ActorTableData, error) {
+func (f *fakeGcsClientForRayStopper) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 func (f *fakeGcsClientForRayStopper) GetJobInfo(ctx context.Context, jobID ids.JobID) (*proto.JobTableData, error) {
@@ -125,6 +125,9 @@ func (f *fakeGcsClientForRayStopper) ListWorkers(ctx context.Context) ([]*proto.
 	return nil, gcs.ErrNotImplemented
 }
 func (f *fakeGcsClientForRayStopper) GetPlacementGroup(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
+	return nil, gcs.ErrNotImplemented
+}
+func (f *fakeGcsClientForRayStopper) GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 func (f *fakeGcsClientForRayStopper) ListPlacementGroups(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {

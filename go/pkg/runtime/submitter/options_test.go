@@ -161,3 +161,73 @@ func TestTaskOptions_WithGPUsAndResources(t *testing.T) {
 		assert.Equal(t, float64(1.0), opts.Resources["GPU"])
 	})
 }
+
+func TestActorCreationOptions_ValidateMaxPendingCalls(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   int
+		wantErr bool
+	}{
+		{"unlimited (-1)", -1, false},
+		{"positive value", 10, false},
+		{"zero value (unset)", 0, false},
+		{"less than -1", -2, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := &ActorCreationOptions{MaxPendingCalls: tt.value}
+			err := opts.ValidateMaxPendingCalls()
+			if tt.wantErr && err == nil {
+				t.Fatalf("ValidateMaxPendingCalls() = nil, want error for %d", tt.value)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("ValidateMaxPendingCalls() = %v, want nil for %d", err, tt.value)
+			}
+		})
+	}
+}
+
+func TestActorCreationOptionsNewFields(t *testing.T) {
+	opts := &ActorCreationOptions{
+		Lifetime:        ActorLifetimeDetached,
+		IsAsync:         true,
+		MaxPendingCalls: 10,
+	}
+	if opts.Lifetime != ActorLifetimeDetached {
+		t.Errorf("Lifetime = %v, want Detached", opts.Lifetime)
+	}
+	if !opts.IsAsync {
+		t.Errorf("IsAsync = false, want true")
+	}
+	if opts.MaxPendingCalls != 10 {
+		t.Errorf("MaxPendingCalls = %d, want 10", opts.MaxPendingCalls)
+	}
+}
+
+func TestPlacementGroupCreationOptionsValidate(t *testing.T) {
+	cases := []struct {
+		name string
+		opts PlacementGroupCreationOptions
+		want bool
+	}{
+		{"empty options", PlacementGroupCreationOptions{}, false},
+		{"anonymous placement group", PlacementGroupCreationOptions{
+			Bundles: []map[string]float64{{"CPU": 1}}, Strategy: 0,
+		}, true},
+		{"no bundles", PlacementGroupCreationOptions{Name: "pg-1"}, false},
+		{"invalid strategy", PlacementGroupCreationOptions{
+			Name: "pg-1", Bundles: []map[string]float64{{"CPU": 1}}, Strategy: 99,
+		}, false},
+		{"valid", PlacementGroupCreationOptions{
+			Name: "pg-1", Bundles: []map[string]float64{{"CPU": 1}}, Strategy: 0,
+		}, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := c.opts.Validate() == nil
+			if got != c.want {
+				t.Fatalf("Validate() ok=%v, want %v", got, c.want)
+			}
+		})
+	}
+}

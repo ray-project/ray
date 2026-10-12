@@ -22,6 +22,31 @@ import (
 	"github.com/ray-project/ray/go/proto"
 )
 
+// ActorStateName is the typed actor state name accepted by the GCS
+// getAll_actor_info filter. Its values are the string keys of the C++
+// actor_state_map in src/ray/gcs_rpc_client/accessors/actor_info_accessor.cc,
+// which in turn mirror the proto ActorTableData_ActorState enum values.
+// Typing the parameter (instead of a bare *string) gives callers compile-time
+// safety, matching Java's io.ray.api.runtimecontext.ActorState enum.
+type ActorStateName string
+
+// ActorStateName constants are the actor state name strings accepted by the
+// GCS getAll_actor_info filter. They must stay consistent with the keys of the
+// C++ actor_state_map in
+// src/ray/gcs_rpc_client/accessors/actor_info_accessor.cc.
+const (
+	// ActorStateNameDependenciesUnready matches the C++ "DEPENDENCIES_UNREADY" key.
+	ActorStateNameDependenciesUnready ActorStateName = "DEPENDENCIES_UNREADY"
+	// ActorStateNamePendingCreation matches the C++ "PENDING_CREATION" key.
+	ActorStateNamePendingCreation ActorStateName = "PENDING_CREATION"
+	// ActorStateNameAlive matches the C++ "ALIVE" key.
+	ActorStateNameAlive ActorStateName = "ALIVE"
+	// ActorStateNameDead matches the C++ "DEAD" key.
+	ActorStateNameDead ActorStateName = "DEAD"
+	// ActorStateNameRestarting matches the C++ "RESTARTING" key.
+	ActorStateNameRestarting ActorStateName = "RESTARTING"
+)
+
 // Global singleton GlobalStateAccessor.
 var (
 	stateAccessorInstance GlobalStateAccessor
@@ -63,7 +88,7 @@ type GlobalStateAccessor interface {
 	// --- Actor ---
 	// GetAllActorInfo returns all actor info. jobID filters by job ID
 	// (nil means no filter); actorStateName filters by state (nil means no filter).
-	GetAllActorInfo(jobID *ids.JobID, actorStateName *string) ([]*proto.ActorTableData, error)
+	GetAllActorInfo(jobID *ids.JobID, actorStateName *ActorStateName) ([]*proto.ActorTableData, error)
 	GetActorInfo(actorID ids.ActorID) (*proto.ActorTableData, error)
 
 	// --- Worker ---

@@ -23,6 +23,7 @@ import (
 	"context"
 
 	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/proto"
 )
@@ -60,6 +61,37 @@ func (a *gcsClientAdapter) IsClosed() bool {
 		return checker.IsClosed()
 	}
 	return false
+}
+
+// GetPlacementGroupInfo implements api.GCSClient.GetPlacementGroupInfo.
+func (a *gcsClientAdapter) GetPlacementGroupInfo(ctx context.Context, id ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
+	return a.client.GetPlacementGroup(ctx, id)
+}
+
+// GetPlacementGroupInfoByName implements api.GCSClient.GetPlacementGroupInfoByName.
+func (a *gcsClientAdapter) GetPlacementGroupInfoByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
+	return a.client.GetPlacementGroupByName(ctx, name, namespace)
+}
+
+// GetAllPlacementGroupInfo implements api.GCSClient.GetAllPlacementGroupInfo.
+func (a *gcsClientAdapter) GetAllPlacementGroupInfo(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {
+	return a.client.ListPlacementGroups(ctx)
+}
+
+// GetInternalKV implements api.GCSClient.GetInternalKV.
+func (a *gcsClientAdapter) GetInternalKV(ctx context.Context, ns, key string) ([]byte, error) {
+	return a.client.Get(ctx, ns, key)
+}
+
+// GetAllNodeInfo implements api.GCSClient.GetAllNodeInfo.
+// A nil node list queries all nodes in the cluster.
+func (a *gcsClientAdapter) GetAllNodeInfo(ctx context.Context) (map[ids.NodeID]*proto.GcsNodeInfo, error) {
+	return a.client.GetAll(ctx, nil)
+}
+
+// GetAllActorInfo implements api.GCSClient.GetAllActorInfo.
+func (a *gcsClientAdapter) GetAllActorInfo(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
+	return a.client.ListActorsByFilter(ctx, jobID, actorStateName)
 }
 
 type gcsClientFactory struct{}

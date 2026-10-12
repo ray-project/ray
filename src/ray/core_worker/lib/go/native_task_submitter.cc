@@ -213,6 +213,13 @@ extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
           actor_options.namespace_ = options->namespace_ ? options->namespace_ : "";
           actor_options.serialized_runtime_env_info =
               options->runtime_env ? options->runtime_env : "";
+          actor_options.is_detached = options->is_detached == 1;
+          actor_options.is_asyncio = options->is_asyncio == 1;
+          actor_options.max_pending_calls = options->max_pending_calls;
+          // Map concurrency groups from the flat C arrays via the pure
+          // data-transformation helper (extracted so it can be unit-tested).
+          ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(options,
+                                                                      &actor_options);
         }
 
         // Create actor using business logic layer

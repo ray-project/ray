@@ -18,12 +18,18 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/util/logging.h"
 
 namespace {
+
+// A GoFunctionDescriptor is always 4 elements: [module, package, actorType,
+// method]. Both convertActorCreationOptionsToC (Go side) and
+// MapConcurrencyGroupsFromC (here) must agree on this fixed layout.
+constexpr int kGoFunctionDescriptorElementCount = 4;
 
 // Helper function to convert hex string to binary
 // NOTE: This is intentionally a local implementation rather than reusing
@@ -213,6 +219,45 @@ std::string TaskSubmitterOperations::HexToBinary(const std::string &hex_str) {
   return HexStringToBinary(hex_str);
 }
 
+void TaskSubmitterOperations::MapConcurrencyGroupsFromC(
+    const CActorCreationOptions *options, ActorCreateOptions *out) {
+  if (options == nullptr || out == nullptr) {
+    return;
+  }
+  // Map concurrency groups from the flat C arrays. Each group's function
+  // descriptors are 4-element GoFunctionDescriptor string arrays (module,
+  // package, actorType, method).
+  if (options->cg_count > 0) {
+    for (int i = 0; i < options->cg_count; i++) {
+      ConcurrencyGroupDescriptor cg;
+      cg.name = options->cg_names[i] ? options->cg_names[i] : "";
+      // Clamp non-positive max_concurrency to 1 (matching the max_concurrency
+      // normalization convention) so a negative value from Go never wraps into
+      // a huge uint32_t.
+      cg.max_concurrency = options->cg_max_concurrency[i] > 0
+                               ? static_cast<uint32_t>(options->cg_max_concurrency[i])
+                               : 1;
+      const int fd_count = options->cg_fd_counts[i];
+      if (options->cg_fds[i] != nullptr && fd_count > 0) {
+        for (int j = 0; j < fd_count; j++) {
+          // cg_fds[i][j] points to a 4-element (module, package, actorType,
+          // method) GoFunctionDescriptor string array; the C struct type
+          // (const char *) cannot express that it aliases a const char *[4],
+          // so reinterpret the stored pointer as the const char * const * it
+          // actually is (the layout is fixed by convertActorCreationOptionsToC,
+          // which allocates exactly 4 C strings per method descriptor).
+          const char *const *fd =
+              reinterpret_cast<const char *const *>(options->cg_fds[i][j]);
+          for (int k = 0; k < kGoFunctionDescriptorElementCount; k++) {
+            cg.function_descriptors.emplace_back(fd[k] ? fd[k] : "");
+          }
+        }
+      }
+      out->concurrency_groups.push_back(std::move(cg));
+    }
+  }
+}
+
 ray::core::RayFunction TaskSubmitterOperations::BuildRayFunction(
     ray::Language language, const std::vector<std::string> &descriptor) const {
   ray::FunctionDescriptor func_descriptor =
@@ -278,28 +323,57 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
   // and values >= 1 allow that many concurrent method calls. A zero value (from
   // a zero-value options struct) resolves to the serialized default instead of
   // unlimited, so an actor never silently becomes reentrant.
+  //
+  // The Go submitter (convertActorCreationOptionsToC) is the authoritative
+  // normalization layer: it maps 0 -> 1 and any negative value -> -1 before
+  // this point, so the only values reaching this C++ code are >= 1 or -1.
   const int max_concurrency = options.max_concurrency == 0 ? 1 : options.max_concurrency;
 
-  return ray::core::ActorCreationOptions(options.max_restarts,
-                                         options.max_task_retries,
-                                         max_concurrency,
-                                         resources,
-                                         resources,
-                                         {},  // dynamic_worker_options
-                                         std::nullopt,
-                                         options.name,
-                                         namespace_copy,
-                                         false,  // is_asyncio
-                                         scheduling_strategy,
-                                         options.serialized_runtime_env_info,
-                                         {},     // concurrency_groups
-                                         false,  // allow_out_of_order_execution
-                                         -1,     // max_pending_calls
-                                         false,  // enable_tensor_transport
-                                         false,  // enable_task_events
-                                         {},     // labels
-                                         {},     // label_selector
-                                         {});    // fallback_strategy
+  // Build concurrency groups declared by the Go API. Each group's function
+  // descriptors are 4-element Go descriptors (module, package, actorType,
+  // method) built via BuildGo so they match the actor's methods registered in
+  // ConcurrencyGroupManager.
+  std::vector<ray::ConcurrencyGroup> concurrency_groups;
+  concurrency_groups.reserve(options.concurrency_groups.size());
+  for (const auto &cg : options.concurrency_groups) {
+    std::vector<ray::FunctionDescriptor> fds;
+    fds.reserve(cg.function_descriptors.size() / 4);
+    for (size_t i = 0; i + 3 < cg.function_descriptors.size(); i += 4) {
+      fds.push_back(ray::FunctionDescriptorBuilder::BuildGo(
+          cg.function_descriptors[i],        // module_name
+          cg.function_descriptors[i + 1],    // package_path
+          cg.function_descriptors[i + 2],    // function_name (actorType)
+          cg.function_descriptors[i + 3]));  // method_name
+    }
+    concurrency_groups.emplace_back(cg.name, cg.max_concurrency, std::move(fds));
+  }
+
+  return ray::core::ActorCreationOptions(
+      options.max_restarts,
+      options.max_task_retries,
+      max_concurrency,
+      resources,
+      resources,
+      {},  // dynamic_worker_options
+      // Always pass the explicit value: when the actor is NON_DETACHED,
+      // std::nullopt would fall back to the job's default_actor_lifetime (which
+      // may be DETACHED), incorrectly creating an explicit non-detached actor as
+      // detached. Passing the real bool covers the job default, matching Java.
+      std::optional<bool>(options.is_detached),  // is_detached
+      options.name,
+      namespace_copy,
+      options.is_asyncio,  // is_asyncio
+      scheduling_strategy,
+      options.serialized_runtime_env_info,
+      std::move(concurrency_groups),  // concurrency_groups
+      options.is_asyncio,             // allow_out_of_order_execution; align with Java:
+                           // ActorCreationOptions.allowOutOfOrderExecution = isAsync
+      options.max_pending_calls,  // max_pending_calls
+      false,                      // enable_tensor_transport
+      false,                      // enable_task_events
+      {},                         // labels
+      {},                         // label_selector
+      {});                        // fallback_strategy
 }
 
 ray::rpc::SchedulingStrategy TaskSubmitterOperations::BuildSchedulingStrategy(

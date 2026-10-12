@@ -232,16 +232,7 @@ func setHandle(h contract.RuntimeHandle) {
 	if initialized.Load() {
 		panic("Ray runtime already initialized. Multiple calls to InitWithOptions are not allowed.")
 	}
-	currentHandle.Store(h)
-	initialized.Store(true)
-	// Start the background release worker before any ObjectRef finalizer can run.
-	initReleaseWorker()
-	// A re-init after Shutdown must reset shutdownComplete: the previous
-	// clearHandle set it true, and without a reset every new ObjectRef finalizer
-	// would observe it true and skip RemoveLocalReference, leaking local
-	// references in the C++ object store (plasma). Mirrors the internal
-	// storeHandleLocked behaviour.
-	shutdownComplete.Store(false)
+	storeHandleLocked(h)
 }
 
 // SetRuntimeHandleForWorker sets the runtime handle for worker processes that
@@ -264,6 +255,12 @@ func SetRuntimeHandleForWorker(h contract.RuntimeHandle) {
 	if initialized.Load() || h == nil {
 		return
 	}
+	storeHandleLocked(h)
+}
+
+// storeHandleLocked stores the handle and marks the runtime initialized.
+// The caller must hold initMu.
+func storeHandleLocked(h contract.RuntimeHandle) {
 	currentHandle.Store(h)
 	initialized.Store(true)
 	// Start the release worker and create its queue BEFORE resetting
@@ -271,10 +268,11 @@ func SetRuntimeHandleForWorker(h contract.RuntimeHandle) {
 	// (shutdownComplete=false) must always find a non-nil releaseQueue to
 	// enqueue into, otherwise its release request is silently dropped.
 	initReleaseWorker()
-	// A re-init after Shutdown must reset shutdownComplete: the previous
-	// clearHandle set it true, and without a reset every new ObjectRef finalizer
+	// A re-init after Shutdown must reset shutdownComplete: the previous Shutdown
+	// set it true (clearHandle), and without a reset every new ObjectRef finalizer
 	// would observe it true and skip RemoveLocalReference, leaking local
-	// references in the C++ object store (plasma).
+	// references in the C++ object store (plasma). This mirrors the resettable
+	// `initialized` flag introduced when Ray.initOnce was removed.
 	shutdownComplete.Store(false)
 }
 

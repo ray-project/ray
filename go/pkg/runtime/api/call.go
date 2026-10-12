@@ -171,6 +171,25 @@ func (c *TaskCaller[T]) WithName(name string) *TaskCaller[T] {
 	return c
 }
 
+// WithPlacementGroup binds the task to the given placement group bundle.
+//
+// Parameters:
+//   - group: The placement group to bind to.
+//   - bundleIndex: The index of the bundle to use.
+//
+// Returns:
+//   - *TaskCaller[T]: The same task caller for chaining.
+func (c *TaskCaller[T]) WithPlacementGroup(group *PlacementGroup, bundleIndex int) *TaskCaller[T] {
+	if group == nil {
+		return c
+	}
+	c.options.PlacementGroup = &submitter.PlacementGroupOptions{
+		ID:          group.ID(),
+		BundleIndex: bundleIndex,
+	}
+	return c
+}
+
 // Call submits the task with the provided arguments.
 //
 // Parameters:
@@ -221,19 +240,16 @@ func releaseInternalByRefArgRefs(args []function.FunctionArg) {
 //
 // Type parameter T is the concrete creator type; builder methods return T so
 // chained calls keep their concrete type.
-//
-// Note: three builder methods of the shared actor options builder --
-// WithPlacementGroup, WithLifetime and WithAsync -- are intentionally not
-// ported here. They depend on the api.PlacementGroup type and the
-// submitter.ActorLifetime / ActorCreationOptions.Lifetime / IsAsync fields,
-// which this tree does not have yet; they are deferred to the placement-group
-// and actor-lifetime alignment work rather than dropped.
 type actorOptions[T any] struct {
 	// options are the actor creation options.
 	options *submitter.ActorCreationOptions
 	// self points to the owning creator so builder methods can return the
 	// concrete creator type for chaining.
 	self T
+	// err is a deferred error from a builder call that requested an option the
+	// backends cannot honor. It is surfaced by Create so an unsupported option
+	// fails loudly instead of silently becoming a no-op.
+	err error
 }
 
 // newActorOptions creates actor options with a default empty ActorCreationOptions
@@ -268,6 +284,33 @@ func (o *actorOptions[T]) WithName(name string) T {
 //   - T: The same actor creator for chaining.
 func (o *actorOptions[T]) WithNamespace(namespace string) T {
 	o.options.Namespace = namespace
+	return o.self
+}
+
+// WithPlacementGroup binds the actor to the given placement group bundle.
+//
+// Actor-level placement-group binding is not supported by any backend in this
+// tree: the native path's C++ ActorCreationOptions has no placement-group
+// fields (task_submitter_ops.cc), and local mode does not schedule against
+// bundles. Instead of silently ignoring the request, the creator records an
+// error that Create surfaces so the caller learns the option was not applied.
+// Note: the internal tree has the same gap (its actor creation path does not
+// consume PlacementGroup either); this loud failure is an OSS-side correction.
+//
+// Parameters:
+//   - group: The placement group to bind to.
+//   - bundleIndex: The index of the bundle to use.
+//
+// Returns:
+//   - T: The same actor creator for chaining; Create will fail if the binding
+//     is unsupported.
+func (o *actorOptions[T]) WithPlacementGroup(group *PlacementGroup, bundleIndex int) T {
+	if group == nil {
+		return o.self
+	}
+	if o.err == nil {
+		o.err = errors.NewRuntimeError("create_actor", "actor placement-group binding is not supported on this path")
+	}
 	return o.self
 }
 
@@ -316,6 +359,30 @@ func (o *actorOptions[T]) WithMaxTaskRetries(maxTaskRetries int) T {
 //   - T: The same actor creator for chaining.
 func (o *actorOptions[T]) WithRuntimeEnv(runtimeEnv string) T {
 	o.options.RuntimeEnv = runtimeEnv
+	return o.self
+}
+
+// WithLifetime sets the actor lifetime (detached or non-detached).
+//
+// Parameters:
+//   - lifetime: The actor lifetime.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithLifetime(lifetime submitter.ActorLifetime) T {
+	o.options.Lifetime = lifetime
+	return o.self
+}
+
+// WithAsync sets whether the actor uses async direct call mode.
+//
+// Parameters:
+//   - async: Whether to use async direct call mode.
+//
+// Returns:
+//   - T: The same actor creator for chaining.
+func (o *actorOptions[T]) WithAsync(async bool) T {
+	o.options.IsAsync = async
 	return o.self
 }
 
@@ -383,13 +450,32 @@ type ActorCreator[T any] struct {
 // This is the entry point for the actor creator builder.
 //
 // Parameters:
-//   - actorClass: The actor class to create.
+//   - actorClass: The actor class to create. This can be either:
+//   - a constructor factory function (e.g. `func() *MyActor` or
+//     `func(x int) *MyActor`), which is registered as the actor's "<init>"
+//     constructor so the worker can build instances; or
+//   - a pointer/instance of the actor type (e.g. `(*MyActor)(nil)`), in which
+//     case a zero-value constructor is registered automatically on the typed
+//     path. Actors with constructor arguments should use the factory-function
+//     form (or register the constructor explicitly via api.RegisterActorClass).
+//     Note that the untyped convenience form (Ray.Actor, where T is interface{})
+//     never auto-registers: it preserves OSS's original behavior and relies on
+//     an explicit api.RegisterActorClass call.
 //
 // Returns:
 //   - *ActorCreator[T]: An actor creator builder.
 func Actor[T any](actorClass interface{}) *ActorCreator[T] {
-	// Extract function descriptor from the actor class
-	funcDesc := extractActorFunctionDescriptor(actorClass)
+	// The untyped convenience path (Ray.Actor / api.Instance().Actor, where T is
+	// interface{}) keeps OSS's original behavior: it derives the "<init>"
+	// descriptor from the actorClass argument and registers no constructor (the
+	// constructor is expected to be registered explicitly via api.RegisterActorClass,
+	// exactly as the OSS examples do). The typed path (api.Actor[*T], INT-aligned)
+	// registers the constructor and derives the descriptor from the type parameter
+	// T, which is the type-parameter form Java's Ray.actor(Class) maps to.
+	funcDesc := actorDescriptorFor[T](actorClass)
+	if !isInterfaceType[T]() {
+		registerActorConstructor[T](actorClass)
+	}
 
 	creator := &ActorCreator[T]{
 		functionDescriptor: funcDesc,
@@ -397,6 +483,35 @@ func Actor[T any](actorClass interface{}) *ActorCreator[T] {
 	}
 	creator.actorOptions = newActorOptions[*ActorCreator[T]](creator)
 	return creator
+}
+
+// isInterfaceType reports whether the type parameter T is an interface type
+// (e.g. interface{}). It is used to distinguish the untyped convenience entry
+// point (Ray.Actor / api.Actor[interface{}]) from the typed INT-aligned form
+// (api.Actor[*MyActor]). The zero value of T has no type identity, so T is
+// inspected through a pointer to it: (*interface{}) is a pointer whose element
+// kind is Interface, whereas (*MyActor) is a pointer whose element kind is the
+// concrete kind.
+func isInterfaceType[T any]() bool {
+	t := reflect.TypeOf((*T)(nil))
+	return t != nil && t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface
+}
+
+// actorDescriptorFor builds the "<init>" descriptor for an actor creation.
+//
+// When T is a concrete actor type (the INT-aligned typed form) the descriptor
+// is derived from the type parameter so it always matches the constructor that
+// registerActorConstructor[T] registered under the same type. When T is an
+// interface (the OSS untyped convenience path, e.g. Ray.Actor / api.Instance().
+// Actor(&MyActor{})), the descriptor must instead come from the actorClass
+// argument: deriving it from interface{} would degrade the module/package/type
+// names to "unknown", so the worker could never resolve the constructor. This
+// preserves OSS's original behavior for the untyped entry point.
+func actorDescriptorFor[T any](actorClass interface{}) *function.GoFunctionDescriptor {
+	if isInterfaceType[T]() {
+		return extractActorFunctionDescriptor(actorClass)
+	}
+	return extractActorTypeDescriptor[T]()
 }
 
 // WithMaxConcurrency sets the maximum number of concurrent calls for the actor.
@@ -420,6 +535,10 @@ func (c *ActorCreator[T]) WithMaxConcurrency(maxConcurrency int) *ActorCreator[T
 //   - *ActorHandleImpl[T]: A handle to the created actor.
 //   - error: Any error encountered during actor creation.
 func (c *ActorCreator[T]) Create(args ...interface{}) (*ActorHandleImpl[T], error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
 	functionArgs := convertArgs(args...)
 
 	actorID, err := createActorWithSubmitter("create_actor", functionArgs, func(s submitter.TaskSubmitter) (ids.ActorID, error) {
@@ -583,6 +702,25 @@ func (c *PythonTaskCaller[T]) WithRuntimeEnv(runtimeEnv string) *PythonTaskCalle
 //   - *PythonTaskCaller[T]: The same task caller for chaining.
 func (c *PythonTaskCaller[T]) WithName(name string) *PythonTaskCaller[T] {
 	c.options.Name = name
+	return c
+}
+
+// WithPlacementGroup binds the Python task to the given placement group bundle.
+//
+// Parameters:
+//   - group: The placement group to bind to.
+//   - bundleIndex: The index of the bundle to use.
+//
+// Returns:
+//   - *PythonTaskCaller[T]: The same task caller for chaining.
+func (c *PythonTaskCaller[T]) WithPlacementGroup(group *PlacementGroup, bundleIndex int) *PythonTaskCaller[T] {
+	if group == nil {
+		return c
+	}
+	c.options.PlacementGroup = &submitter.PlacementGroupOptions{
+		ID:          group.ID(),
+		BundleIndex: bundleIndex,
+	}
 	return c
 }
 
@@ -982,6 +1120,10 @@ func extractActorTypeDescriptor[T any]() *function.GoFunctionDescriptor {
 }
 
 // extractActorFunctionDescriptor extracts a FunctionDescriptor from an actor class.
+// It is used by the untyped convenience entry point (Ray.Actor / api.Actor[interface{}],
+// where the descriptor must be derived from the actorClass argument rather than from
+// the type parameter T=interface{}). This preserves OSS's original behavior for that
+// entry point.
 func extractActorFunctionDescriptor(actorClass interface{}) *function.GoFunctionDescriptor {
 	actorType := reflect.TypeOf(actorClass)
 	if actorType == nil {
@@ -1012,7 +1154,7 @@ func extractActorFunctionDescriptor(actorClass interface{}) *function.GoFunction
 	}
 
 	// "<init>" is the reserved method name for actor constructors.
-	return function.NewGoActorMethodDescriptorOrUnknown(moduleName, pkgPath, typeName, "<init>")
+	return function.NewGoActorMethodDescriptorOrUnknown(moduleName, pkgPath, typeName, function.ConstructorName)
 }
 
 // convertArgToFunctionArg converts an interface{} argument to a FunctionArg.

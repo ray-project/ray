@@ -214,8 +214,15 @@ func (r *Ray) Remote(fn interface{}) *TaskCaller[interface{}] {
 // Actor creates an actor creator.
 // Consistent with Java's Ray.actor(actorClass)
 //
+// This is the OSS-only untyped convenience form: T is interface{}, so the
+// actor "<init>" descriptor is derived from the actorClass argument (the typed
+// api.Actor[*T]((*T)(nil)) form is the INT-aligned equivalent and derives the
+// descriptor from T). Like Java's Ray.actor(Class), the actor class's
+// constructor is expected to be registered explicitly via api.RegisterActorClass.
+//
 // Parameters:
-//   - actorClass: the actor class to create
+//   - actorClass: the actor class to create (a pointer/instance of the actor
+//     type, or a constructor factory function)
 //
 // Returns:
 //   - *ActorCreator[interface{}]: an actor creator builder

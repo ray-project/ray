@@ -86,6 +86,50 @@ func GetActorWithNamespace[T any](name string, namespace string) (*ActorHandleIm
 	return NewActorHandleImpl[T](actorID), nil
 }
 
+// GetActorHandle retrieves an actor handle by its actor ID.
+// Consistent with Java's RayRuntime.getActorHandle(ActorId).
+//
+// Parameters:
+//   - actorID: the actor ID of the actor to retrieve
+//
+// Returns:
+//   - *ActorHandleImpl[T]: a handle to the actor
+//   - error: any error encountered during retrieval
+func GetActorHandle[T any](actorID ids.ActorID) (*ActorHandleImpl[T], error) {
+	rt, err := internal()
+	if err != nil {
+		return nil, errors.ErrRuntimeNotInitialized
+	}
+
+	submitter := rt.GetTaskSubmitter()
+	if submitter == nil {
+		return nil, errors.NewRuntimeError("get_actor_handle", submitterNotAvailable)
+	}
+
+	if actorID.IsNil() {
+		return nil, errors.NewRayInvalidArgumentException("actor ID cannot be nil")
+	}
+
+	actorHandle, err := submitter.GetActorHandle(actorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get actor handle for actor %s: %w", actorID.Hex(), err)
+	}
+	if actorHandle == nil {
+		return nil, fmt.Errorf("actor handle not found for actor %s", actorID.Hex())
+	}
+
+	// Preserve the actor's real language (PYTHON/JAVA/CPP/GO) when the submitter
+	// returns a NativeActorHandle; fall back to a LanguageGo handle otherwise,
+	// matching GetActorWithNamespace's behavior.
+	if native, ok := actorHandle.(*object.NativeActorHandle); ok {
+		return &ActorHandleImpl[T]{
+			NativeActorHandle: native,
+			methodExtractor:   NewMethodExtractor(),
+		}, nil
+	}
+	return NewActorHandleImpl[T](actorHandle.ID()), nil
+}
+
 // ExitActor exits the current actor.
 // This function should only be called from within an actor.
 // It works by throwing a special exception that signals the task executor to stop.

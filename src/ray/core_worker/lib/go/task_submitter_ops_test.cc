@@ -30,6 +30,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/lib/go/core_worker_provider.h"
+#include "ray/core_worker/lib/go/native_task_submitter.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 
@@ -552,6 +553,244 @@ TEST_F(TaskSubmitterOpsTest, HexToBinaryInvalidCharacters) {
 //   // Verify
 //   EXPECT_FALSE(result.IsNil());
 // }
+
+// ============================================================================
+// BuildActorOptions Tests
+// ============================================================================
+
+TEST(TaskSubmitterOperationsBuildActorOptionsTest, ConcurrencyGroups) {
+  ray::go::ActorCreateOptions options;
+  options.max_concurrency = 4;
+  options.is_detached = false;
+  ray::go::ConcurrencyGroupDescriptor cg;
+  cg.name = "cg1";
+  cg.max_concurrency = 2;
+  cg.function_descriptors = {"mod", "pkg", "actorType", "Add"};
+  options.concurrency_groups = {cg};
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_EQ(built.concurrency_groups.size(), 1u);
+  ASSERT_EQ(built.concurrency_groups[0].name_, "cg1");
+  ASSERT_EQ(built.concurrency_groups[0].max_concurrency_, 2u);
+  ASSERT_EQ(built.concurrency_groups[0].function_descriptors_.size(), 1u);
+  const auto *fd = dynamic_cast<const ray::GoFunctionDescriptor *>(
+      built.concurrency_groups[0].function_descriptors_[0].get());
+  ASSERT_NE(fd, nullptr);
+  ASSERT_EQ(fd->ModuleName(), "mod");
+  ASSERT_EQ(fd->PackagePath(), "pkg");
+  ASSERT_EQ(fd->FunctionName(), "actorType");
+  ASSERT_EQ(fd->MethodName(), "Add");
+}
+
+// ============================================================================
+// MapConcurrencyGroupsFromC Tests
+//
+// These test the pure data transformation that converts the flat C concurrency
+// group arrays in CActorCreationOptions into ActorCreateOptions.concurrency_groups.
+// ============================================================================
+
+namespace {
+
+// A helper that models how the Go runtime lays out a single method's 4-element
+// GoFunctionDescriptor string array in memory: a pointer to the first element
+// of a const char*[4] (module, package, actorType, method), aliased as
+// const char* in the flat C array and later reinterpreted to const char* const*.
+struct GoFD {
+  const char *data[4];
+  const char *as_ptr;  // reinterpret_cast<const char*>(data)
+};
+
+GoFD MakeGoFD(const char *module,
+              const char *package,
+              const char *actor_type,
+              const char *method) {
+  GoFD fd = {{module, package, actor_type, method}, nullptr};
+  fd.as_ptr = reinterpret_cast<const char *>(fd.data);
+  return fd;
+}
+
+}  // namespace
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, SingleValidGroup) {
+  // One group with one 4-element descriptor fully populated.
+  const char *group_name = "cg1";
+  int max_concurrency = 4;
+  GoFD fd = MakeGoFD("mod", "pkg", "actorType", "Add");
+  const char **group_fds = &fd.as_ptr;  // cg_fds[i]: array of descriptor pointers
+  int fd_counts = 1;
+
+  CActorCreationOptions options = {};
+  options.cg_count = 1;
+  options.cg_names = &group_name;
+  options.cg_max_concurrency = &max_concurrency;
+  options.cg_fds = &group_fds;
+  options.cg_fd_counts = &fd_counts;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+
+  ASSERT_EQ(out.concurrency_groups.size(), 1u);
+  EXPECT_EQ(out.concurrency_groups[0].name, "cg1");
+  EXPECT_EQ(out.concurrency_groups[0].max_concurrency, 4u);
+  ASSERT_EQ(out.concurrency_groups[0].function_descriptors.size(), 4u);
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[0], "mod");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[1], "pkg");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[2], "actorType");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[3], "Add");
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, EmptyMethodGroup) {
+  // A group with cg_fds[i] = nullptr and fd_count = 0 produces one group with
+  // an empty function_descriptors vector.
+  const char *group_name = "cg_empty";
+  int max_concurrency = 2;
+  const char **group_fds = nullptr;  // no descriptors
+  int fd_counts = 0;
+
+  CActorCreationOptions options = {};
+  options.cg_count = 1;
+  options.cg_names = &group_name;
+  options.cg_max_concurrency = &max_concurrency;
+  options.cg_fds = &group_fds;
+  options.cg_fd_counts = &fd_counts;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+
+  ASSERT_EQ(out.concurrency_groups.size(), 1u);
+  EXPECT_EQ(out.concurrency_groups[0].name, "cg_empty");
+  EXPECT_EQ(out.concurrency_groups[0].max_concurrency, 2u);
+  EXPECT_TRUE(out.concurrency_groups[0].function_descriptors.empty());
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, PartialNullFdElement) {
+  // The second element (package) of the descriptor is null; it maps to an
+  // empty string.
+  const char *group_name = "cg1";
+  int max_concurrency = 3;
+  GoFD fd = MakeGoFD("mod", nullptr, "actorType", "Add");
+  const char **group_fds = &fd.as_ptr;
+  int fd_counts = 1;
+
+  CActorCreationOptions options = {};
+  options.cg_count = 1;
+  options.cg_names = &group_name;
+  options.cg_max_concurrency = &max_concurrency;
+  options.cg_fds = &group_fds;
+  options.cg_fd_counts = &fd_counts;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+
+  ASSERT_EQ(out.concurrency_groups.size(), 1u);
+  ASSERT_EQ(out.concurrency_groups[0].function_descriptors.size(), 4u);
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[0], "mod");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[1], "");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[2], "actorType");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[3], "Add");
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, NegativeMaxConcurrencyClamped) {
+  // A negative max_concurrency from Go must be clamped to 1 (uint32), not
+  // wrapped into a huge value.
+  const char *group_name = "cg1";
+  int max_concurrency = -5;
+  GoFD fd = MakeGoFD("mod", "pkg", "actorType", "Add");
+  const char **group_fds = &fd.as_ptr;
+  int fd_counts = 1;
+
+  CActorCreationOptions options = {};
+  options.cg_count = 1;
+  options.cg_names = &group_name;
+  options.cg_max_concurrency = &max_concurrency;
+  options.cg_fds = &group_fds;
+  options.cg_fd_counts = &fd_counts;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+
+  ASSERT_EQ(out.concurrency_groups.size(), 1u);
+  EXPECT_EQ(out.concurrency_groups[0].max_concurrency, 1u);
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, ZeroMaxConcurrencyClamped) {
+  // Zero max_concurrency is also clamped to 1.
+  const char *group_name = "cg1";
+  int max_concurrency = 0;
+  GoFD fd = MakeGoFD("mod", "pkg", "actorType", "Add");
+  const char **group_fds = &fd.as_ptr;
+  int fd_counts = 1;
+
+  CActorCreationOptions options = {};
+  options.cg_count = 1;
+  options.cg_names = &group_name;
+  options.cg_max_concurrency = &max_concurrency;
+  options.cg_fds = &group_fds;
+  options.cg_fd_counts = &fd_counts;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+
+  ASSERT_EQ(out.concurrency_groups.size(), 1u);
+  EXPECT_EQ(out.concurrency_groups[0].max_concurrency, 1u);
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, MultipleMixedGroups) {
+  // Two groups: the first fully populated with two descriptors, the second an
+  // empty-method group. Also exercises the null-name branch.
+  const char *names[2] = {"cg_a", nullptr};
+  int max_conc[2] = {2, 8};
+  int fd_counts[2] = {2, 0};
+
+  GoFD fd1 = MakeGoFD("modA", "pkgA", "actorTypeA", "Add");
+  GoFD fd2 = MakeGoFD("modA", "pkgA", "actorTypeA", "Sub");
+  const char *group0_fds[2] = {fd1.as_ptr, fd2.as_ptr};
+  const char **groups[2] = {group0_fds, nullptr};
+
+  CActorCreationOptions options = {};
+  options.cg_count = 2;
+  options.cg_names = names;
+  options.cg_max_concurrency = max_conc;
+  options.cg_fds = groups;
+  options.cg_fd_counts = fd_counts;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+
+  ASSERT_EQ(out.concurrency_groups.size(), 2u);
+
+  // Group 0: two descriptors, 8 elements total.
+  EXPECT_EQ(out.concurrency_groups[0].name, "cg_a");
+  EXPECT_EQ(out.concurrency_groups[0].max_concurrency, 2u);
+  ASSERT_EQ(out.concurrency_groups[0].function_descriptors.size(), 8u);
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[0], "modA");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[3], "Add");
+  EXPECT_EQ(out.concurrency_groups[0].function_descriptors[7], "Sub");
+
+  // Group 1: null name -> empty string, empty descriptors.
+  EXPECT_EQ(out.concurrency_groups[1].name, "");
+  EXPECT_EQ(out.concurrency_groups[1].max_concurrency, 8u);
+  EXPECT_TRUE(out.concurrency_groups[1].function_descriptors.empty());
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, NullOptionsNoOp) {
+  // Null options is a no-op and must not crash.
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(nullptr, &out);
+  EXPECT_TRUE(out.concurrency_groups.empty());
+}
+
+TEST(TaskSubmitterOperationsMapConcurrencyGroupsTest, ZeroCountNoGroups) {
+  // cg_count == 0 produces no groups.
+  CActorCreationOptions options = {};
+  options.cg_count = 0;
+
+  ray::go::ActorCreateOptions out;
+  ray::go::TaskSubmitterOperations::MapConcurrencyGroupsFromC(&options, &out);
+  EXPECT_TRUE(out.concurrency_groups.empty());
+}
 
 }  // namespace go
 }  // namespace ray

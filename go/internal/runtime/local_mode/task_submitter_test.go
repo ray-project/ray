@@ -15,9 +15,11 @@
 package local_mode
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ray-project/ray/go/internal/runtime/actor"
 	"github.com/ray-project/ray/go/internal/runtime/localstore"
@@ -712,4 +714,59 @@ func TestLocalModeTaskSubmitterGetActorHandle(t *testing.T) {
 		_, err = ts.GetActorHandle(actorID)
 		assert.Error(t, err)
 	})
+}
+
+// newTestSubmitter constructs a LocalModeTaskSubmitter with fresh supporting
+// components, mirroring the setup used by the other submitter tests.
+func newTestSubmitter() *LocalModeTaskSubmitter {
+	objectStore := localstore.NewLocalModeObjectStore()
+	workerContext := NewLocalModeWorkerContext()
+	functionMgr := function.NewFunctionManager(nil)
+	actorMgr := NewActorConcurrencyGroupManager()
+	taskExecutor := NewLocalModeTaskExecutor(functionMgr, actorMgr, objectStore)
+	return NewLocalModeTaskSubmitter(objectStore, workerContext, taskExecutor, functionMgr, actorMgr)
+}
+
+// TestLocalModePlacementGroupLifecycle verifies that the local-mode submitter
+// simulates a placement group lifecycle with an in-process map: creation
+// always returns a non-nil id, waiting on it succeeds immediately, removal
+// deletes it, and waiting on an unknown group fails.
+func TestLocalModePlacementGroupLifecycle(t *testing.T) {
+	ts := newTestSubmitter()
+	defer ts.Shutdown()
+	ctx := context.Background()
+
+	id, err := ts.CreatePlacementGroup(ctx, &submitter.PlacementGroupCreationOptions{
+		Name:    "pg-1",
+		Bundles: []map[string]float64{{"CPU": 1}},
+	})
+	require.NoError(t, err)
+	assert.False(t, id.IsNil(), "expected non-nil placement group id")
+
+	require.NoError(t, ts.WaitPlacementGroupReady(ctx, id, time.Second))
+	require.NoError(t, ts.RemovePlacementGroup(ctx, id))
+
+	// Removing an unknown group is a no-op success in local mode.
+	require.NoError(t, ts.RemovePlacementGroup(ctx, ids.OfPlacementGroupID(ids.NewJobID())))
+
+	// Waiting on an unknown group must fail.
+	require.Error(t, ts.WaitPlacementGroupReady(ctx, ids.OfPlacementGroupID(ids.NewJobID()), time.Second))
+}
+
+// TestLocalModePlacementGroupValidation verifies that invalid creation options
+// are rejected before any in-process state is recorded.
+func TestLocalModePlacementGroupValidation(t *testing.T) {
+	ts := newTestSubmitter()
+	defer ts.Shutdown()
+	ctx := context.Background()
+
+	_, err := ts.CreatePlacementGroup(ctx, &submitter.PlacementGroupCreationOptions{})
+	require.Error(t, err)
+
+	_, err = ts.CreatePlacementGroup(ctx, &submitter.PlacementGroupCreationOptions{
+		Name:     "pg-2",
+		Bundles:  []map[string]float64{{"CPU": 1}},
+		Strategy: 99,
+	})
+	require.Error(t, err)
 }

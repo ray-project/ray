@@ -47,6 +47,13 @@
 #include "ray/core_worker/lib/go/core_worker_provider.h"
 #include "ray/core_worker/lib/go/task_argument.h"
 
+// CActorCreationOptions is defined as a typedef of an anonymous struct in
+// native_task_submitter.h, so it cannot be forward-declared as
+// `struct CActorCreationOptions`. That header only includes cgo_wrapper.h (it
+// does not include task_submitter_ops.h), so including it here introduces no
+// include cycle.
+#include "ray/core_worker/lib/go/native_task_submitter.h"
+
 namespace ray {
 namespace go {
 
@@ -65,6 +72,17 @@ struct TaskSubmitOptions {
 };
 
 /**
+ * @brief A single concurrency group as declared by the Go API: name, max
+ * concurrency and a list of 4-element GoFunctionDescriptor strings
+ * (module, package, actorType, method).
+ */
+struct ConcurrencyGroupDescriptor {
+  std::string name;
+  uint32_t max_concurrency = 1;
+  std::vector<std::string> function_descriptors;
+};
+
+/**
  * @brief Actor creation options (simplified version of CActorCreationOptions)
  */
 struct ActorCreateOptions {
@@ -77,6 +95,10 @@ struct ActorCreateOptions {
   std::string name;
   std::string namespace_;
   std::string serialized_runtime_env_info;
+  bool is_detached = false;        // whether detached (lifetime=DETACHED)
+  bool is_asyncio = false;         // whether async direct call
+  int32_t max_pending_calls = -1;  // max pending calls (-1 unlimited)
+  std::vector<ConcurrencyGroupDescriptor> concurrency_groups;
 };
 
 /**
@@ -194,6 +216,19 @@ class TaskSubmitterOperations {
   static void EnsureDefaultCPU(std::unordered_map<std::string, double> &resources);
 
   /**
+   * @brief Convert the flat C concurrency-group arrays in CActorCreationOptions
+   * into ActorCreateOptions.concurrency_groups.
+   *
+   * Pure data transformation (no CoreWorker access), so it can be unit-tested
+   * directly.
+   *
+   * @param options CGO actor creation options (may be null for no-op)
+   * @param out     Actor options whose concurrency_groups will be filled
+   */
+  static void MapConcurrencyGroupsFromC(const CActorCreationOptions *options,
+                                        ActorCreateOptions *out);
+
+  /**
    * @brief Convert hex string to binary
    *
    * @param hex_str Hex string (e.g., "ff00aa")
@@ -201,6 +236,16 @@ class TaskSubmitterOperations {
    * @throws std::invalid_argument on invalid hex
    */
   static std::string HexToBinary(const std::string &hex_str);
+
+  /**
+   * @brief Build ActorCreationOptions from options
+   *
+   * Pure data transformation (no CoreWorker access), exposed publicly so the
+   * concurrency-group mapping (MapConcurrencyGroupsFromC -> BuildActorOptions)
+   * can be unit-tested directly.
+   */
+  ray::core::ActorCreationOptions BuildActorOptions(
+      const ActorCreateOptions &options) const;
 
  private:
   TaskSubmitterOperations() = default;
@@ -226,12 +271,6 @@ class TaskSubmitterOperations {
    * @brief Build TaskOptions from options
    */
   ray::core::TaskOptions BuildTaskOptions(const TaskSubmitOptions &options) const;
-
-  /**
-   * @brief Build ActorCreationOptions from options
-   */
-  ray::core::ActorCreationOptions BuildActorOptions(
-      const ActorCreateOptions &options) const;
 
   /**
    * @brief Build SchedulingStrategy from placement group info

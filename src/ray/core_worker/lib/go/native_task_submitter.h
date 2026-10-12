@@ -49,6 +49,21 @@ typedef struct {
   const char *name;         // Actor name (optional)
   const char *namespace_;   // Namespace for actor (optional)
   const char *runtime_env;  // Serialized runtime environment
+  int is_detached;          // Whether the actor is detached (lifetime)
+  int is_asyncio;           // Whether to use async direct call mode
+  int max_pending_calls;    // Maximum pending calls (-1 = unlimited)
+  // Concurrency groups (flat arrays). cg_count=0 means no groups.
+  const char **cg_names;    // [cg_count] group names
+  int *cg_max_concurrency;  // [cg_count] max calls per group
+  // cg_fds[i][j] is a pointer to the j-th method's 4-element GoFunctionDescriptor
+  // string array ([module, package, actorType, method]). The C type below
+  // (const char ***) degrades each element to const char *, but the memory it
+  // points to is always a const char *[4]; MapConcurrencyGroupsFromC reinterprets
+  // it as const char * const * to read the 4 elements (layout fixed by the Go
+  // side's convertActorCreationOptionsToC).
+  const char ***cg_fds;  // [cg_count][fd_count] 4-element Go FD string arrays
+  int *cg_fd_counts;     // [cg_count] number of descriptors per group
+  int cg_count;          // number of groups
 } CActorCreationOptions;
 
 // ============================================================================

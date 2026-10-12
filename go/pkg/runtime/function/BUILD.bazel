@@ -44,6 +44,7 @@ go_test(
         "args_test.go",
         "descriptor_test.go",
         "manager_test.go",
+        "wrapper_test.go",
     ],
     embed = [":function"],
     importpath = "github.com/ray-project/ray/go/pkg/runtime/function",

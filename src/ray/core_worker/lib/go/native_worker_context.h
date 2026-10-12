@@ -82,11 +82,11 @@ CByteArray *CNativeWorkerContext_GetRpcAddress();
 // environment.
 //
 // Returns:
-//   C string containing serialized runtime environment, or NULL on error.
-//   The returned string is statically allocated and should NOT be freed by caller.
-//   Use CNativeWorkerContext_HasLastError() to distinguish between empty string and
-//   error.
-const char *CNativeWorkerContext_GetSerializedRuntimeEnv();
+//   CByteArray* containing the serialized runtime environment bytes, or NULL on
+//   error or when the value is empty.
+//   Caller is responsible for freeing the returned CByteArray and its data via
+//   CNativeCommon_FreeCByteArray.
+CByteArray *CNativeWorkerContext_GetSerializedRuntimeEnv();
 
 // CNativeWorkerContext_HasLastError returns true if the last operation failed.
 //
@@ -98,9 +98,11 @@ bool CNativeWorkerContext_HasLastError();
 // CNativeWorkerContext_GetNamespace returns the current namespace.
 //
 // Returns:
-//   C string containing namespace, or NULL on failure.
-//   The returned string is statically allocated and should NOT be freed by caller.
-const char *CNativeWorkerContext_GetNamespace();
+//   CByteArray* containing the namespace bytes, or NULL on failure or when the
+//   namespace is empty.
+//   Caller is responsible for freeing the returned CByteArray and its data via
+//   CNativeCommon_FreeCByteArray.
+CByteArray *CNativeWorkerContext_GetNamespace();
 
 // CNativeWorkerContext_GetCurrentNodeID returns the current node ID.
 //

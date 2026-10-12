@@ -27,33 +27,34 @@ import (
 
 // MockGCSClient is a mock GCS client used for testing.
 type MockGCSClient struct {
-	GetFunc                   func(ctx context.Context, ns, key string) ([]byte, error)
-	MultiGetFunc              func(ctx context.Context, ns string, keys []string) (map[string][]byte, error)
-	PutFunc                   func(ctx context.Context, ns, key string, value []byte, overwrite bool) (bool, error)
-	DelFunc                   func(ctx context.Context, ns, key string, delByPrefix bool) (int, error)
-	KeysFunc                  func(ctx context.Context, ns, prefix string) ([]string, error)
-	ExistsFunc                func(ctx context.Context, ns, key string) (bool, error)
-	CheckAliveFunc            func(ctx context.Context, nodeIDs []ids.NodeID) ([]bool, error)
-	GetAllFunc                func(ctx context.Context, nodeIDs []ids.NodeID) (map[ids.NodeID]*proto.GcsNodeInfo, error)
-	DrainNodesFunc            func(ctx context.Context, nodeIDs []ids.NodeID) ([]ids.NodeID, error)
-	DrainNodeFunc             func(ctx context.Context, nodeID ids.NodeID, reason proto.DrainNodeReason, reasonMessage string, deadlineTimestampMs int64) (bool, string, error)
-	GetAvailableResourcesFunc func(ctx context.Context, nodeID ids.NodeID) (*proto.AvailableResources, error)
-	GetTotalResourcesFunc     func(ctx context.Context, nodeID ids.NodeID) (*proto.TotalResources, error)
-	GetActorInfoFunc          func(ctx context.Context, actorID ids.ActorID) (*proto.ActorTableData, error)
-	ListActorsFunc            func(ctx context.Context, jobID *ids.JobID) ([]*proto.ActorTableData, error)
-	ListActorsByFilterFunc    func(ctx context.Context, jobID *ids.JobID, actorStateName *string) ([]*proto.ActorTableData, error)
-	GetJobInfoFunc            func(ctx context.Context, jobID ids.JobID) (*proto.JobTableData, error)
-	ListJobsFunc              func(ctx context.Context) ([]*proto.JobTableData, error)
-	GetWorkerInfoFunc         func(ctx context.Context, workerID ids.WorkerID) (*proto.WorkerTableData, error)
-	ListWorkersFunc           func(ctx context.Context) ([]*proto.WorkerTableData, error)
-	GetPlacementGroupFunc     func(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error)
-	ListPlacementGroupsFunc   func(ctx context.Context) ([]*proto.PlacementGroupTableData, error)
-	PublishErrorsFunc         func(ctx context.Context) (<-chan gcs.ErrorData, error)
-	PublishLogsFunc           func(ctx context.Context) (<-chan gcs.LogData, error)
-	GetAutoscalerStatusFunc   func(ctx context.Context) (*proto.GetClusterStatusReply, error)
-	AddressFunc               func() string
-	ClusterIDFunc             func() ids.ClusterID
-	CloseFunc                 func() error
+	GetFunc                     func(ctx context.Context, ns, key string) ([]byte, error)
+	MultiGetFunc                func(ctx context.Context, ns string, keys []string) (map[string][]byte, error)
+	PutFunc                     func(ctx context.Context, ns, key string, value []byte, overwrite bool) (bool, error)
+	DelFunc                     func(ctx context.Context, ns, key string, delByPrefix bool) (int, error)
+	KeysFunc                    func(ctx context.Context, ns, prefix string) ([]string, error)
+	ExistsFunc                  func(ctx context.Context, ns, key string) (bool, error)
+	CheckAliveFunc              func(ctx context.Context, nodeIDs []ids.NodeID) ([]bool, error)
+	GetAllFunc                  func(ctx context.Context, nodeIDs []ids.NodeID) (map[ids.NodeID]*proto.GcsNodeInfo, error)
+	DrainNodesFunc              func(ctx context.Context, nodeIDs []ids.NodeID) ([]ids.NodeID, error)
+	DrainNodeFunc               func(ctx context.Context, nodeID ids.NodeID, reason proto.DrainNodeReason, reasonMessage string, deadlineTimestampMs int64) (bool, string, error)
+	GetAvailableResourcesFunc   func(ctx context.Context, nodeID ids.NodeID) (*proto.AvailableResources, error)
+	GetTotalResourcesFunc       func(ctx context.Context, nodeID ids.NodeID) (*proto.TotalResources, error)
+	GetActorInfoFunc            func(ctx context.Context, actorID ids.ActorID) (*proto.ActorTableData, error)
+	ListActorsFunc              func(ctx context.Context, jobID *ids.JobID) ([]*proto.ActorTableData, error)
+	ListActorsByFilterFunc      func(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error)
+	GetJobInfoFunc              func(ctx context.Context, jobID ids.JobID) (*proto.JobTableData, error)
+	ListJobsFunc                func(ctx context.Context) ([]*proto.JobTableData, error)
+	GetWorkerInfoFunc           func(ctx context.Context, workerID ids.WorkerID) (*proto.WorkerTableData, error)
+	ListWorkersFunc             func(ctx context.Context) ([]*proto.WorkerTableData, error)
+	GetPlacementGroupFunc       func(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error)
+	GetPlacementGroupByNameFunc func(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error)
+	ListPlacementGroupsFunc     func(ctx context.Context) ([]*proto.PlacementGroupTableData, error)
+	PublishErrorsFunc           func(ctx context.Context) (<-chan gcs.ErrorData, error)
+	PublishLogsFunc             func(ctx context.Context) (<-chan gcs.LogData, error)
+	GetAutoscalerStatusFunc     func(ctx context.Context) (*proto.GetClusterStatusReply, error)
+	AddressFunc                 func() string
+	ClusterIDFunc               func() ids.ClusterID
+	CloseFunc                   func() error
 }
 
 // Ensure MockGCSClient implements the gcs.Client interface.
@@ -188,7 +189,7 @@ func (m *MockGCSClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*pr
 	return nil, errors.New("ListActors not implemented")
 }
 
-func (m *MockGCSClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *string) ([]*proto.ActorTableData, error) {
+func (m *MockGCSClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
 	if m.ListActorsByFilterFunc != nil {
 		return m.ListActorsByFilterFunc(ctx, jobID, actorStateName)
 	}
@@ -232,6 +233,13 @@ func (m *MockGCSClient) GetPlacementGroup(ctx context.Context, pgID ids.Placemen
 		return m.GetPlacementGroupFunc(ctx, pgID)
 	}
 	return nil, errors.New("GetPlacementGroup not implemented")
+}
+
+func (m *MockGCSClient) GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
+	if m.GetPlacementGroupByNameFunc != nil {
+		return m.GetPlacementGroupByNameFunc(ctx, name, namespace)
+	}
+	return nil, errors.New("GetPlacementGroupByName not implemented")
 }
 
 func (m *MockGCSClient) ListPlacementGroups(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {

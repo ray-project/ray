@@ -46,9 +46,21 @@ func WrapGoFunction(fn interface{}) Function {
 
 		out := funcValue.Call(in)
 
+		// Honor the trailing-error convention (see ExtractErrorReturn), the same
+		// way WrapActorConstructor and the actor method path do: a signature
+		// whose last return value implements error conveys outcome, not data.
+		// Serializing that value instead would emit a spurious extra return
+		// object -- the driver derives numReturns from NonErrorReturnCount, so
+		// the object count would not match -- and would dereference a nil
+		// reflect.Type (and crash) when the error is nil.
+		callErr, rest := ExtractErrorReturn(out)
+		if callErr != nil {
+			return nil, callErr
+		}
+
 		ser := object.GetSerializer()
-		results := make([]SerializedObject, len(out))
-		for i, val := range out {
+		results := make([]SerializedObject, 0, len(rest))
+		for i, val := range rest {
 			nativeObj, err := ser.Serialize(val.Interface())
 			if err != nil {
 				return nil, fmt.Errorf("failed to serialize return value %d: %w", i, err)
@@ -56,7 +68,7 @@ func WrapGoFunction(fn interface{}) Function {
 			// SerializedObjectFromNative deep-copies a pooled payload and
 			// returns the pooled buffer, so the task spec never aliases a
 			// recycled pool buffer.
-			results[i] = SerializedObjectFromNative(nativeObj)
+			results = append(results, SerializedObjectFromNative(nativeObj))
 		}
 
 		return results, nil

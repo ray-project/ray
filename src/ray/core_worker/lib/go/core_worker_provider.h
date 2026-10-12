@@ -17,12 +17,179 @@
 
 #include <memory>
 #include <stdexcept>
+#include <string>
+#include <vector>
 
 #include "ray/core_worker/core_worker.h"
 #include "ray/core_worker/core_worker_process.h"
 
 namespace ray {
 namespace go {
+
+// ============================================================================
+// CoreWorker Operations Interface - Mockable surface for the Go submitter
+// ============================================================================
+
+/**
+ * @brief The subset of CoreWorker operations used by TaskSubmitterOperations.
+ *
+ * CoreWorker itself cannot be mocked: its constructor requires ~25 injected
+ * dependencies and the methods TaskSubmitterOperations calls are non-virtual
+ * member functions (so weak-symbol overriding and mock subclasses both fail).
+ * This interface is the injectable seam: TaskSubmitterOperations depends on
+ * ICoreWorkerOps instead of concrete CoreWorker, the production path adapts the
+ * real CoreWorker (CoreWorkerAdapter), and unit tests inject a GoogleMock fake.
+ *
+ * Method signatures mirror the corresponding CoreWorker members exactly, so
+ * CoreWorkerAdapter is a pure pass-through and tests exercise the real argument
+ * assembly in TaskSubmitterOperations (BuildRayFunction / ConvertTaskArgs /
+ * BuildTaskOptions / BuildActorOptions / BuildSchedulingStrategy) against a
+ * controllable double.
+ */
+class ICoreWorkerOps {
+ public:
+  virtual ~ICoreWorkerOps() = default;
+
+  virtual std::vector<ray::rpc::ObjectReference> SubmitTask(
+      const ray::core::RayFunction &function,
+      const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+      const ray::core::TaskOptions &task_options,
+      int max_retries,
+      bool retry_exceptions,
+      const ray::rpc::SchedulingStrategy &scheduling_strategy,
+      const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist,
+      const std::string &call_site,
+      const ray::TaskID current_task_id) = 0;
+
+  virtual ray::Status CreateActor(
+      const ray::core::RayFunction &function,
+      const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+      const ray::core::ActorCreationOptions &actor_creation_options,
+      const std::string &extension_data,
+      const std::string &call_site,
+      ray::ActorID *actor_id) = 0;
+
+  virtual ray::Status SubmitActorTask(
+      const ray::ActorID &actor_id,
+      const ray::core::RayFunction &function,
+      const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+      const ray::core::TaskOptions &task_options,
+      int max_retries,
+      bool retry_exceptions,
+      const std::string &serialized_retry_exception_allowlist,
+      const std::string &call_site,
+      std::vector<ray::rpc::ObjectReference> &task_returns,
+      const ray::TaskID current_task_id = ray::TaskID::Nil()) = 0;
+
+  virtual ray::Status KillActor(const ray::ActorID &actor_id,
+                                bool force_kill,
+                                bool no_restart) = 0;
+
+  virtual ray::Status CreatePlacementGroup(
+      const ray::core::PlacementGroupCreationOptions &options,
+      PlacementGroupID *placement_group_id) = 0;
+
+  virtual ray::Status RemovePlacementGroup(
+      const PlacementGroupID &placement_group_id) = 0;
+
+  virtual ray::Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                              int64_t timeout_seconds) = 0;
+};
+
+/**
+ * @brief Production adapter that forwards ICoreWorkerOps calls to the real
+ * CoreWorkerProcess singleton.
+ *
+ * The singleton is resolved lazily on every call (matching the previous
+ * behavior where DefaultCoreWorkerProvider returned
+ * CoreWorkerProcess::GetCoreWorker() directly), so the adapter holds no
+ * long-lived reference and stays valid across worker restarts.
+ */
+class CoreWorkerAdapter : public ICoreWorkerOps {
+ public:
+  std::vector<ray::rpc::ObjectReference> SubmitTask(
+      const ray::core::RayFunction &function,
+      const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+      const ray::core::TaskOptions &task_options,
+      int max_retries,
+      bool retry_exceptions,
+      const ray::rpc::SchedulingStrategy &scheduling_strategy,
+      const std::string &debugger_breakpoint,
+      const std::string &serialized_retry_exception_allowlist,
+      const std::string &call_site,
+      const ray::TaskID current_task_id) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().SubmitTask(
+        function,
+        args,
+        task_options,
+        max_retries,
+        retry_exceptions,
+        scheduling_strategy,
+        debugger_breakpoint,
+        serialized_retry_exception_allowlist,
+        call_site,
+        current_task_id);
+  }
+
+  ray::Status CreateActor(const ray::core::RayFunction &function,
+                          const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+                          const ray::core::ActorCreationOptions &actor_creation_options,
+                          const std::string &extension_data,
+                          const std::string &call_site,
+                          ray::ActorID *actor_id) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().CreateActor(
+        function, args, actor_creation_options, extension_data, call_site, actor_id);
+  }
+
+  ray::Status SubmitActorTask(const ray::ActorID &actor_id,
+                              const ray::core::RayFunction &function,
+                              const std::vector<std::unique_ptr<ray::TaskArg>> &args,
+                              const ray::core::TaskOptions &task_options,
+                              int max_retries,
+                              bool retry_exceptions,
+                              const std::string &serialized_retry_exception_allowlist,
+                              const std::string &call_site,
+                              std::vector<ray::rpc::ObjectReference> &task_returns,
+                              const ray::TaskID current_task_id) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+        actor_id,
+        function,
+        args,
+        task_options,
+        max_retries,
+        retry_exceptions,
+        serialized_retry_exception_allowlist,
+        call_site,
+        task_returns,
+        current_task_id);
+  }
+
+  ray::Status KillActor(const ray::ActorID &actor_id,
+                        bool force_kill,
+                        bool no_restart) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().KillActor(
+        actor_id, force_kill, no_restart);
+  }
+
+  ray::Status CreatePlacementGroup(
+      const ray::core::PlacementGroupCreationOptions &options,
+      PlacementGroupID *placement_group_id) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().CreatePlacementGroup(
+        options, placement_group_id);
+  }
+
+  ray::Status RemovePlacementGroup(const PlacementGroupID &placement_group_id) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().RemovePlacementGroup(
+        placement_group_id);
+  }
+
+  ray::Status WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
+                                      int64_t timeout_seconds) override {
+    return ray::core::CoreWorkerProcess::GetCoreWorker().WaitPlacementGroupReady(
+        placement_group_id, timeout_seconds);
+  }
+};
 
 // ============================================================================
 // CoreWorker Provider Interface - Supports dependency injection and testing

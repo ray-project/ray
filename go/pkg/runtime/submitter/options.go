@@ -15,10 +15,12 @@
 package submitter
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/proto"
 )
 
 // TaskOptions contains options for task submission.
@@ -58,6 +60,21 @@ type TaskOptions struct {
 	ConcurrencyGroupName string
 }
 
+// ActorLifetime represents the lifetime of an actor.
+// Consistent with Java's io.ray.api.options.ActorLifetime.
+// Defined locally (rather than in contract) to avoid a circular dependency:
+// contract imports submitter, so submitter cannot import contract.
+type ActorLifetime int
+
+const (
+	// ActorLifetimeNonDetached means the actor will be terminated when the
+	// driver that created it exits. This is the default.
+	ActorLifetimeNonDetached ActorLifetime = iota
+	// ActorLifetimeDetached means the actor keeps running even after the
+	// driver that created it exits.
+	ActorLifetimeDetached
+)
+
 // ActorCreationOptions contains options for actor creation.
 // Corresponds to Java's io.ray.api.options.ActorCreationOptions.
 type ActorCreationOptions struct {
@@ -94,6 +111,14 @@ type ActorCreationOptions struct {
 
 	// RuntimeEnv is the runtime environment for this actor.
 	RuntimeEnv string
+
+	// Lifetime is the actor lifetime (detached or non-detached).
+	// Consistent with Java's ActorCreationOptions.setLifetime.
+	Lifetime ActorLifetime
+
+	// IsAsync indicates whether the actor uses async direct call mode.
+	// Consistent with Java's ActorCreationOptions.setIsAsync.
+	IsAsync bool
 
 	// MaxPendingCalls is the maximum number of pending calls for the actor.
 	// -1 means unlimited. Consistent with Java's ActorCreationOptions.setMaxPendingCalls.
@@ -218,4 +243,39 @@ func WithResources(resources map[string]float64) func(*TaskOptions) {
 	return func(opts *TaskOptions) {
 		opts.Resources = resources
 	}
+}
+
+// PlacementGroupCreationOptions holds the parameters used to create a
+// placement group from Go.
+type PlacementGroupCreationOptions struct {
+	// Name is the optional unique name of the placement group.
+	Name string
+
+	// Bundles is the list of resource bundles that make up the placement group.
+	// Each bundle is a map of resource name to quantity.
+	Bundles []map[string]float64
+
+	// Strategy is the placement strategy: 0=PACK, 1=SPREAD, 2=STRICT_PACK,
+	// 3=STRICT_SPREAD. Consistent with rpc.PlacementStrategy.
+	Strategy int32
+}
+
+// Validate checks that required fields are set and strategy is valid.
+//
+// The name is optional: anonymous placement groups are legal (consistent with
+// the Python and Java APIs, which treat the name as optional). Only the bundle
+// list and the strategy are required.
+func (o PlacementGroupCreationOptions) Validate() error {
+	if len(o.Bundles) == 0 {
+		return errors.New("at least one bundle is required")
+	}
+	switch o.Strategy {
+	case int32(proto.PlacementStrategy_PACK),
+		int32(proto.PlacementStrategy_SPREAD),
+		int32(proto.PlacementStrategy_STRICT_PACK),
+		int32(proto.PlacementStrategy_STRICT_SPREAD):
+	default:
+		return fmt.Errorf("invalid placement strategy %d", o.Strategy)
+	}
+	return nil
 }

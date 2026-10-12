@@ -15,10 +15,12 @@
 package local_mode
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ray-project/ray/go/internal/runtime/base"
 	"github.com/ray-project/ray/go/internal/runtime/localstore"
@@ -64,6 +66,12 @@ type LocalModeTaskSubmitter struct {
 
 	// namedActors stores named actors
 	namedActors sync.Map // map[string]*namedActorInfo
+
+	// placementGroups simulates placement group creation in-process. Each
+	// created group is stored under its id and considered ready immediately.
+	// Reads and writes are serialized through placementGroupMu.
+	placementGroups  map[ids.PlacementGroupID]*submitter.PlacementGroupCreationOptions
+	placementGroupMu sync.Mutex
 }
 
 // namedActorInfo holds information about a named actor
@@ -102,6 +110,7 @@ func NewLocalModeTaskSubmitter(
 		taskExecutor:             taskExecutor,
 		functionMgr:              functionMgr,
 		actorConcurrencyGroupMgr: actorConcurrencyGroupMgr,
+		placementGroups:          make(map[ids.PlacementGroupID]*submitter.PlacementGroupCreationOptions),
 	}
 }
 
@@ -631,6 +640,67 @@ func (s *LocalModeTaskSubmitter) onObjectPut(oid ids.ObjectID) {
 func (s *LocalModeTaskSubmitter) Shutdown() {
 	s.actorConcurrencyGroupMgr.Shutdown()
 }
+
+// CreatePlacementGroup simulates creating a placement group by storing the
+// options in an in-process map and returning its generated id. The group is
+// considered ready immediately.
+func (s *LocalModeTaskSubmitter) CreatePlacementGroup(ctx context.Context, opts *submitter.PlacementGroupCreationOptions) (ids.PlacementGroupID, error) {
+	if err := opts.Validate(); err != nil {
+		return ids.NilPlacementGroupID(), err
+	}
+	id := ids.OfPlacementGroupID(ids.NewJobID())
+	s.placementGroupMu.Lock()
+	defer s.placementGroupMu.Unlock()
+	s.placementGroups[id] = opts
+	return id, nil
+}
+
+// RemovePlacementGroup removes a placement group from the in-process map.
+// Removing an unknown group is a no-op success, matching local-mode semantics.
+func (s *LocalModeTaskSubmitter) RemovePlacementGroup(ctx context.Context, id ids.PlacementGroupID) error {
+	s.placementGroupMu.Lock()
+	defer s.placementGroupMu.Unlock()
+	delete(s.placementGroups, id)
+	return nil
+}
+
+// WaitPlacementGroupReady blocks until the placement group is ready. In local
+// mode a created group is ready immediately, so this only fails when the group
+// does not exist.
+func (s *LocalModeTaskSubmitter) WaitPlacementGroupReady(ctx context.Context, id ids.PlacementGroupID, timeout time.Duration) error {
+	s.placementGroupMu.Lock()
+	defer s.placementGroupMu.Unlock()
+	if _, ok := s.placementGroups[id]; ok {
+		return nil
+	}
+	return fmt.Errorf("placement group %s not ready within %v: %w", id, timeout, submitter.ErrPlacementGroupNotReady)
+}
+
+// GetPlacementGroupLocal implements api.PlacementGroupLocalStore: it returns
+// the placement group stored under id, or (nil, false) when it does not exist.
+func (s *LocalModeTaskSubmitter) GetPlacementGroupLocal(ctx context.Context, id ids.PlacementGroupID) (*submitter.PlacementGroupCreationOptions, bool) {
+	s.placementGroupMu.Lock()
+	defer s.placementGroupMu.Unlock()
+	opts, ok := s.placementGroups[id]
+	return opts, ok
+}
+
+// ListPlacementGroupsLocal implements api.PlacementGroupLocalStore: it returns
+// all locally stored placement groups keyed by id.
+func (s *LocalModeTaskSubmitter) ListPlacementGroupsLocal(ctx context.Context) map[ids.PlacementGroupID]*submitter.PlacementGroupCreationOptions {
+	s.placementGroupMu.Lock()
+	defer s.placementGroupMu.Unlock()
+	out := make(map[ids.PlacementGroupID]*submitter.PlacementGroupCreationOptions, len(s.placementGroups))
+	for id, opts := range s.placementGroups {
+		out[id] = opts
+	}
+	return out
+}
+
+// Compile-time check that LocalModeTaskSubmitter implements the api facade's
+// in-process placement group store, so local-mode placement group reads
+// (Get/GetByName/GetAll) resolve without a GCS client.
+var _ api.PlacementGroupLocalStore = (*LocalModeTaskSubmitter)(nil)
 
 // Compile-time check to ensure LocalModeTaskSubmitter implements TaskSubmitter
 var _ submitter.TaskSubmitter = (*LocalModeTaskSubmitter)(nil)

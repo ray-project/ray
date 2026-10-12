@@ -273,7 +273,7 @@ func (m *mockGCSClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*pr
 	return nil, gcs.ErrNotImplemented
 }
 
-func (m *mockGCSClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *string) ([]*proto.ActorTableData, error) {
+func (m *mockGCSClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 
@@ -301,6 +301,10 @@ func (m *mockGCSClient) ListWorkers(ctx context.Context) ([]*proto.WorkerTableDa
 
 // PlacementGroupInterface methods.
 func (m *mockGCSClient) GetPlacementGroup(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
+	return nil, gcs.ErrNotImplemented
+}
+
+func (m *mockGCSClient) GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 

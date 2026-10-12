@@ -19,13 +19,16 @@ package api
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
+	"github.com/ray-project/ray/go/pkg/runtime/submitter"
 )
 
 var registeredLogger = log.WithName("function_registry")
@@ -253,6 +256,20 @@ type ActorHandle interface {
 	ID() ids.ActorID
 }
 
+// killHandle kills the actor through KillActor, allowing restart per its
+// max_restarts setting. Shared by every ActorHandle implementation's Kill
+// method.
+func killHandle(handle ActorHandle) error {
+	return KillActor(handle, false)
+}
+
+// killHandleNoRestart kills the actor through KillActor with noRestart=true,
+// so it never comes back. Shared by every ActorHandle implementation's
+// KillWithNoRestart method.
+func killHandleNoRestart(handle ActorHandle) error {
+	return KillActor(handle, true)
+}
+
 // ============================================================================
 // Runtime Context
 // ============================================================================
@@ -274,6 +291,18 @@ type RuntimeContext struct {
 	nodeID ids.NodeID
 	// localMode indicates whether running in local mode.
 	localMode bool
+}
+
+// runtimeOrNil returns the current contract.Runtime via the internal() thin
+// layer, or nil when the runtime is not initialized. RuntimeContext delegation
+// methods use it to route every runtime access through the single internal()
+// entry point; callers return their safe zero value when it is nil.
+func runtimeOrNil() contract.Runtime {
+	rt, err := internal()
+	if err != nil {
+		return nil
+	}
+	return rt
 }
 
 // JobID returns the current job ID.
@@ -317,10 +346,11 @@ func (r *RuntimeContext) IsLocalMode() bool {
 // Returns:
 //   - bool: true if the actor was restarted, false otherwise
 func (r *RuntimeContext) WasCurrentActorRestarted() bool {
-	// This requires support from the underlying runtime
-	// For now, return false as a placeholder
-	// TODO: Implement when runtime supports actor restart detection
-	return false
+	rt := runtimeOrNil()
+	if rt == nil {
+		return false
+	}
+	return rt.WasCurrentActorRestarted()
 }
 
 // GetAllNodeInfo returns information about all nodes in the cluster.
@@ -329,10 +359,16 @@ func (r *RuntimeContext) WasCurrentActorRestarted() bool {
 // Returns:
 //   - []NodeInfo: list of node information
 func (r *RuntimeContext) GetAllNodeInfo() []NodeInfo {
-	// This requires support from the underlying runtime
-	// For now, return empty slice as a placeholder
-	// TODO: Implement when runtime supports node info retrieval
-	return []NodeInfo{}
+	rt := runtimeOrNil()
+	if rt == nil {
+		return []NodeInfo{}
+	}
+	infos := rt.GetAllNodeInfo()
+	result := make([]NodeInfo, 0, len(infos))
+	for _, n := range infos {
+		result = append(result, convertToNodeInfo(n))
+	}
+	return result
 }
 
 // GetAllActorInfo returns information about all actors in the cluster.
@@ -341,10 +377,16 @@ func (r *RuntimeContext) GetAllNodeInfo() []NodeInfo {
 // Returns:
 //   - []ActorInfo: list of actor information
 func (r *RuntimeContext) GetAllActorInfo() []ActorInfo {
-	// This requires support from the underlying runtime
-	// For now, return empty slice as a placeholder
-	// TODO: Implement when runtime supports actor info retrieval
-	return []ActorInfo{}
+	rt := runtimeOrNil()
+	if rt == nil {
+		return []ActorInfo{}
+	}
+	infos := rt.GetAllActorInfo()
+	result := make([]ActorInfo, 0, len(infos))
+	for _, a := range infos {
+		result = append(result, convertToActorInfo(a))
+	}
+	return result
 }
 
 // GetCurrentActorHandle returns the handle of the current actor.
@@ -353,13 +395,38 @@ func (r *RuntimeContext) GetAllActorInfo() []ActorInfo {
 // Returns:
 //   - ActorHandle: the current actor handle, or nil if not in an actor
 func (r *RuntimeContext) GetCurrentActorHandle() ActorHandle {
-	// This requires support from the underlying runtime
-	// For now, return nil as a placeholder
-	if r.actorID.IsNil() {
+	rt := runtimeOrNil()
+	if rt == nil {
 		return nil
 	}
-	// TODO: Implement when runtime supports actor handle retrieval
-	return &actorHandleWrapper{actorID: r.actorID}
+	handle := rt.GetCurrentActorHandle()
+	if handle == nil {
+		return nil
+	}
+	return &actorHandleAdapter{handle: handle}
+}
+
+// actorHandleAdapter adapts a submitter.ActorHandle into an api.ActorHandle so that
+// the public RuntimeContext.GetCurrentActorHandle keeps returning the api-level
+// handle (with Kill/KillWithNoRestart) instead of leaking the internal
+// submitter type.
+type actorHandleAdapter struct {
+	handle submitter.ActorHandle
+}
+
+// ID returns the actor ID.
+func (k *actorHandleAdapter) ID() ids.ActorID {
+	return k.handle.ID()
+}
+
+// Kill kills the actor, allowing restart according to its max_restarts.
+func (k *actorHandleAdapter) Kill() error {
+	return killHandle(k)
+}
+
+// KillWithNoRestart kills the actor without allowing restart.
+func (k *actorHandleAdapter) KillWithNoRestart() error {
+	return killHandleNoRestart(k)
 }
 
 // GetGpuIds returns the GPU IDs available to the current worker.
@@ -368,10 +435,21 @@ func (r *RuntimeContext) GetCurrentActorHandle() ActorHandle {
 // Returns:
 //   - []int64: list of GPU IDs
 func (r *RuntimeContext) GetGpuIds() []int64 {
-	// This requires support from the underlying runtime
-	// For now, return empty slice as a placeholder
-	// TODO: Implement when runtime supports GPU ID retrieval
-	return []int64{}
+	rt := runtimeOrNil()
+	if rt == nil {
+		return []int64{}
+	}
+	ids := rt.GetGpuIds()
+	result := make([]int64, 0, len(ids))
+	for _, s := range ids {
+		v, err := strconv.ParseInt(s, 10, 64)
+		if err != nil {
+			log.Log.Info("skipping non-numeric GPU device ID", "gpuID", s)
+			continue
+		}
+		result = append(result, v)
+	}
+	return result
 }
 
 // NewRuntimeContext creates a new RuntimeContext instance.
@@ -411,6 +489,25 @@ type ActorInfo struct {
 	Name        string
 }
 
+// convertContractActorState maps contract.ActorState to api.ActorState.
+// Unrecognized or boundary states (e.g. contract.ActorStateDraining) that have
+// no api.ActorState counterpart converge to ActorStateDead via the default
+// branch.
+func convertContractActorState(s contract.ActorState) ActorState {
+	switch s {
+	case contract.ActorStatePending:
+		return ActorStatePendingCreation
+	case contract.ActorStateAlive:
+		return ActorStateAlive
+	case contract.ActorStateRestarting:
+		return ActorStateRestarting
+	case contract.ActorStateDead:
+		return ActorStateDead
+	default:
+		return ActorStateDead
+	}
+}
+
 // ActorState represents actor state.
 // Consistent with Java's io.ray.api.runtimecontext.ActorState
 type ActorState int
@@ -431,13 +528,33 @@ type Address struct {
 	Port   int
 }
 
-// actorHandleWrapper is a simple wrapper for ActorHandle.
-type actorHandleWrapper struct {
-	actorID ids.ActorID
+// convertToNodeInfo maps a contract.NodeInfo to api.NodeInfo.
+// NodeHostname is left empty because contract.NodeInfo does not provide that
+// data.
+func convertToNodeInfo(n contract.NodeInfo) NodeInfo {
+	return NodeInfo{
+		NodeID:                n.NodeID,
+		NodeAddress:           n.NodeManagerAddress,
+		NodeManagerPort:       n.NodeManagerPort,
+		ObjectStoreSocketName: n.ObjectStoreSocketName,
+		RayletSocketName:      n.RayletSocketName,
+		IsAlive:               n.State == contract.NodeStateAlive,
+		Resources:             n.Resources,
+		Labels:                nil,
+	}
 }
 
-func (w *actorHandleWrapper) ID() ids.ActorID {
-	return w.actorID
+// convertToActorInfo maps a contract.ActorInfo to api.ActorInfo.
+func convertToActorInfo(a contract.ActorInfo) ActorInfo {
+	return ActorInfo{
+		ActorID:     a.ActorID,
+		State:       convertContractActorState(a.State),
+		NumRestarts: int64(a.NumRestarts),
+		Address: Address{
+			IP: a.Address,
+		},
+		Name: a.Name,
+	}
 }
 
 // String returns the string representation of ActorInfo.

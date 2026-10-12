@@ -127,25 +127,32 @@ func (c *NativeWorkerContext) GetRpcAddress() []byte {
 }
 
 // GetSerializedRuntimeEnv returns the serialized runtime environment.
+//
+// The C++ side returns an owned CByteArray (see native_worker_context.cc), so
+// the buffer is read here and released with CNativeCommon_FreeCByteArray. The
+// value is copied out as a Go string before the C memory is freed.
 func (c *NativeWorkerContext) GetSerializedRuntimeEnv() string {
-	cStr := C.CNativeWorkerContext_GetSerializedRuntimeEnv()
-	if cStr == nil {
+	cData := C.CNativeWorkerContext_GetSerializedRuntimeEnv()
+	if cData == nil {
 		return ""
 	}
-	defer C.free(unsafe.Pointer(cStr))
+	defer C.CNativeCommon_FreeCByteArray(cData)
 
-	return C.GoString(cStr)
+	return string(C.GoBytes(unsafe.Pointer(cData.data), C.int(cData.size)))
 }
 
 // GetNamespace returns the current namespace.
+//
+// The C++ side returns an owned CByteArray (see native_worker_context.cc), so
+// the buffer is read here and released with CNativeCommon_FreeCByteArray.
 func (c *NativeWorkerContext) GetNamespace() string {
-	cStr := C.CNativeWorkerContext_GetNamespace()
-	if cStr == nil {
+	cData := C.CNativeWorkerContext_GetNamespace()
+	if cData == nil {
 		return ""
 	}
-	defer C.free(unsafe.Pointer(cStr))
+	defer C.CNativeCommon_FreeCByteArray(cData)
 
-	return C.GoString(cStr)
+	return string(C.GoBytes(unsafe.Pointer(cData.data), C.int(cData.size)))
 }
 
 // GetCurrentNodeID returns the ID of the current node.

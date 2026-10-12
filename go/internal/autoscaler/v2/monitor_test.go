@@ -107,7 +107,7 @@ func (m *mockGcsClient) GetActorInfo(ctx context.Context, actorID ids.ActorID) (
 func (m *mockGcsClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*proto.ActorTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
-func (m *mockGcsClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *string) ([]*proto.ActorTableData, error) {
+func (m *mockGcsClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 func (m *mockGcsClient) GetJobInfo(ctx context.Context, jobID ids.JobID) (*proto.JobTableData, error) {
@@ -128,6 +128,9 @@ func (m *mockGcsClient) ListWorkers(ctx context.Context) ([]*proto.WorkerTableDa
 	return nil, gcs.ErrNotImplemented
 }
 func (m *mockGcsClient) GetPlacementGroup(ctx context.Context, pgID ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
+	return nil, gcs.ErrNotImplemented
+}
+func (m *mockGcsClient) GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
 	return nil, gcs.ErrNotImplemented
 }
 func (m *mockGcsClient) ListPlacementGroups(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {

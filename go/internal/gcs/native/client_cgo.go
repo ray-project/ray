@@ -28,6 +28,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -615,8 +616,14 @@ func (c *cgoClient) GetActorInfo(ctx context.Context, actorID ids.ActorID) (*pro
 	return &result, nil
 }
 
-// ListActors lists all actors.
+// ListActors lists all actors, optionally filtered by job ID.
 func (c *cgoClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*proto.ActorTableData, error) {
+	return c.ListActorsByFilter(ctx, jobID, nil)
+}
+
+// ListActorsByFilter lists actors filtered by job and state.
+// A nil or empty actorStateName means no state filtering is applied.
+func (c *cgoClient) ListActorsByFilter(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
 	if c.closed.Load() {
 		return nil, fmt.Errorf("client is closed")
 	}
@@ -624,6 +631,12 @@ func (c *cgoClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*proto.
 	if jobID != nil {
 		cJobID = C.CString(jobID.Hex())
 		defer C.free(unsafe.Pointer(cJobID))
+	}
+
+	var cState *C.char
+	if actorStateName != nil && *actorStateName != "" {
+		cState = C.CString(string(*actorStateName))
+		defer C.free(unsafe.Pointer(cState))
 	}
 
 	var cErr *C.char
@@ -634,7 +647,7 @@ func (c *cgoClient) ListActors(ctx context.Context, jobID *ids.JobID) ([]*proto.
 	ok := C.ray_gcs_client_actors_get_all_actor_info(
 		c.getPtr(),
 		cJobID,
-		nil, // actor_state filter not used
+		cState,
 		&cSerialized,
 		&cSizes,
 		&cCount,
@@ -1056,4 +1069,75 @@ func (c *cgoClient) ListPlacementGroups(ctx context.Context) ([]*proto.Placement
 	}
 
 	return result, nil
+}
+
+// getPlacementGroupByNameC invokes the C bridge to look up a placement group by
+// name and namespace, then validates and deserializes the result. The caller
+// owns cName/cNamespace (passed as already-converted C strings; nil namespace
+// makes the C bridge fall back to the "default" namespace). It returns
+// (nil, nil) when no group matches.
+func getPlacementGroupByNameC(cc *cgoClient, cName, cNamespace *C.char) (*proto.PlacementGroupTableData, error) {
+	var cSerialized *C.char
+	var cSize C.int
+	var cErr *C.char
+
+	ok := C.ray_gcs_client_placement_groups_get_by_name(
+		cc.getPtr(),
+		cName,
+		cNamespace,
+		&cSerialized,
+		&cSize,
+		&cErr,
+	)
+	if cErr != nil {
+		defer C.free(unsafe.Pointer(cErr))
+		return nil, fmt.Errorf("get placement group by name failed: %s", C.GoString(cErr))
+	}
+	if ok == 0 || cSerialized == nil || cSize == 0 {
+		return nil, nil
+	}
+
+	if err := validateProtoMessageSize(cSize); err != nil {
+		C.free(unsafe.Pointer(cSerialized))
+		return nil, err
+	}
+
+	defer C.free(unsafe.Pointer(cSerialized))
+	serialized := C.GoBytes(unsafe.Pointer(cSerialized), cSize)
+
+	var result proto.PlacementGroupTableData
+	if err := protolib.Unmarshal(serialized, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal placement group info failed: %w", err)
+	}
+	return &result, nil
+}
+
+// GetPlacementGroupByName gets placement group info by name and namespace.
+//
+// An empty namespace is passed as an empty string (not NULL) so the C bridge
+// receives "" instead of falling back to its own "default" normalization. The
+// api facade already resolved an empty namespace to the current namespace; a
+// genuinely empty result here must stay empty at the boundary so the caller's
+// namespace decision is not overridden by the C++ side (which maps a NULL
+// namespace to "default", creating an asymmetry with how creation stores the
+// literal namespace).
+func (c *cgoClient) GetPlacementGroupByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, fmt.Errorf("placement group name is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if c.closed.Load() {
+		return nil, fmt.Errorf("client is closed")
+	}
+	cName := C.CString(name)
+	defer C.free(unsafe.Pointer(cName))
+
+	// Always pass a non-nil namespace so the C++ "default" fallback never
+	// silently rewrites an explicit empty namespace.
+	cNamespace := C.CString(namespace)
+	defer C.free(unsafe.Pointer(cNamespace))
+
+	return getPlacementGroupByNameC(c, cName, cNamespace)
 }

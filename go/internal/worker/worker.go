@@ -197,6 +197,37 @@ func (a *gcsClientAdapter) IsClosed() bool {
 	return false
 }
 
+// GetPlacementGroupInfo implements api.GCSClient.GetPlacementGroupInfo.
+func (a *gcsClientAdapter) GetPlacementGroupInfo(ctx context.Context, id ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
+	return a.client.GetPlacementGroup(ctx, id)
+}
+
+// GetPlacementGroupInfoByName implements api.GCSClient.GetPlacementGroupInfoByName.
+func (a *gcsClientAdapter) GetPlacementGroupInfoByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
+	return a.client.GetPlacementGroupByName(ctx, name, namespace)
+}
+
+// GetAllPlacementGroupInfo implements api.GCSClient.GetAllPlacementGroupInfo.
+func (a *gcsClientAdapter) GetAllPlacementGroupInfo(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {
+	return a.client.ListPlacementGroups(ctx)
+}
+
+// GetInternalKV implements api.GCSClient.GetInternalKV.
+func (a *gcsClientAdapter) GetInternalKV(ctx context.Context, ns, key string) ([]byte, error) {
+	return a.client.Get(ctx, ns, key)
+}
+
+// GetAllNodeInfo implements api.GCSClient.GetAllNodeInfo.
+// A nil node list queries all nodes in the cluster.
+func (a *gcsClientAdapter) GetAllNodeInfo(ctx context.Context) (map[ids.NodeID]*proto.GcsNodeInfo, error) {
+	return a.client.GetAll(ctx, nil)
+}
+
+// GetAllActorInfo implements api.GCSClient.GetAllActorInfo.
+func (a *gcsClientAdapter) GetAllActorInfo(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
+	return a.client.ListActorsByFilter(ctx, jobID, actorStateName)
+}
+
 type gcsClientFactory struct{}
 
 // CreateClient implements api.GCSClientFactory.CreateClient().
@@ -515,6 +546,14 @@ func (w *Worker) Run() error {
 	if w.handle == nil {
 		return rayerrors.NewInitializationError("runtime", "base.Initialize returned nil handle")
 	}
+
+	// Attach the runtime handle to the public api package. Worker processes
+	// initialize via the internal base.Initialize path (not api.InitWithOptions),
+	// which would otherwise leave api's runtime handle unset. Handle-dependent API
+	// functions (e.g. api.GetRuntimeContext called from a task or actor method,
+	// including code loaded from Go plugins that share this package's state) rely
+	// on it.
+	api.SetRuntimeHandleForWorker(w.handle)
 
 	logger.Info("Ray runtime initialized successfully", "handle", w.handle)
 
