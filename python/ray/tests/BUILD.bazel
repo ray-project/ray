@@ -729,6 +729,24 @@ py_test_module_list(
     ],
 )
 
+# Skipped unless RAY_TEST_FREE_THREADED_PYTHON points to a free-threaded interpreter
+# with a cp315t Ray build.
+py_test_module_list(
+    size = "medium",
+    files = [
+        "test_free_threaded_py_executable.py",
+    ],
+    tags = [
+        "exclusive",
+        "medium_size_python_tests_shard_0",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
 py_test_module_list(
     size = "medium",
     files = [
