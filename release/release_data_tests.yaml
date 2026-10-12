@@ -799,6 +799,22 @@
           runtime_env:
             RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE: "0"
 
+- name: "window_shuffle_{{tensor_kind}}"
+  python: "3.10"
+  frequency: manual
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: fixed_size_1_cpu_compute.yaml
+  matrix:
+    setup:
+      tensor_kind: [scalar, fixed, variable]
+  run:
+    timeout: 1200
+    script: >
+      python benchmark_window_shuffle.py --source=parquet
+      --rows=32768 --block=257 --window=4096 --repeats=10
+      --tensor-kind={{tensor_kind}}
+
 - name: "iter_batches_{{format}}"
   python: "3.10"
   cluster:
