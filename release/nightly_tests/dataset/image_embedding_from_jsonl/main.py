@@ -286,13 +286,6 @@ def main(args: argparse.Namespace, profiling: Profiling):
 
     benchmark.write_result()
 
-    # Copy result.json to shared storage for telemetry upload.
-    import shutil
-
-    result_path = os.environ.get("TEST_OUTPUT_JSON", "./result.json")
-    if os.path.exists(result_path):
-        shutil.copy2(result_path, SHARED_OUTDIR)
-
 
 def start_chaos():
     assert ray.is_initialized()

@@ -570,7 +570,9 @@ def deployment(
     Args:
         _func_or_class: The class or function to be decorated.
         name: Name uniquely identifying this deployment within the application.
-            If not provided, the name of the class or function is used.
+            If not provided, the name of the class or function is used. The name
+            must not contain the `#` character, which Serve reserves as the
+            replica ID delimiter; passing one raises a ValueError.
         version: Removed. Specifying this argument raises a ValueError.
         num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.

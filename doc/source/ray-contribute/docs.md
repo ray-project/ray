@@ -156,7 +156,7 @@ This structure is reflected in the [Ray documentation source code](https://githu
 
 Each type of documentation listed above has its own purpose, but ultimately our documentation comes down to _two types_ of documents:
 
-- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
+- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in the browser like `.md` or `.rst` files, but have the added benefit that users can run the code themselves.
 
 ## Fixing typos and improving explanations
@@ -189,7 +189,7 @@ The API reference is generated from your source code: autodoc imports the module
 
 **Heavy dependencies are mocked, so keep your imports safe.** The docs build installs only a light dependency set, not Ray's full runtime. Heavy or optional libraries such as `torch`, `tensorflow`, and `pandas` are replaced by mock objects, listed in `autodoc_mock_imports` in `doc/source/conf.py`, so autodoc can import your module without importing those libraries. If your module imports a heavy dependency at import time and that library isn't mocked, the API-ref build fails. Note that Sphinx's autodoc sets `typing.TYPE_CHECKING` to `True` during the build to resolve type annotations, so imports guarded by `if TYPE_CHECKING:` will still be executed and can cause failures if not mocked. A mock can also stand in for an object incorrectly and abort the whole module import, which surfaces as a confusing, unrelated error. To avoid both, import heavy dependencies lazily inside the function or method that needs them rather than at module top level. If you add a public API that puts a new heavy dependency in a signature, add that library to `autodoc_mock_imports`.
 
-**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build.
+**Type annotations link to external docs through intersphinx.** When a public signature is annotated with a type from an external library, such as `numpy.ndarray` or `torch.Tensor`, the build turns it into a link to that library's own documentation using the `intersphinx_mapping` in `doc/source/conf.py`. The link resolves only if the library is in that mapping. If you add a public API whose signature references a new external library and you want its types linked, add the library to `intersphinx_mapping` (and, per the point above, usually to `autodoc_mock_imports` too). Annotations that don't resolve render as plain text; they don't fail the build. That holds for third-party types, which resolve as `py:class` and fall under a blanket `nitpick_ignore_regex` entry. It does not hold for `None` and `typing.*` annotations, which Sphinx emits as `py:obj`. Since there is no blanket ignore rule for `py:obj`, they build cleanly only because the `python` intersphinx target resolves them.
 
 ## Adding code to an `.rST` or `.md` file
 
@@ -360,7 +360,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Install the Vale VS Code extension by following these [installation instructions](https://marketplace.visualstudio.com/items?itemName=ChrisChinchilla.vale-vscode).
 
@@ -382,7 +382,7 @@ Vale catches typos and grammatical errors. It also enforces stylistic rules such
     pip install vale
     ```
 
-    For more information on installation, see the [Vale documentation](https://vale.sh/docs/vale-cli/installation/).
+    For more information on installation, see the [Vale documentation](https://vale.sh/docs/install).
 
 2. Run Vale in your terminal.
 
@@ -418,7 +418,7 @@ To add custom terminology, complete the following steps:
 2. If it doesn't already exist, create a text file named `accept.txt`. For example, `.vale/styles/Vocab/Data/accept.txt`.
 3. Add your term to `accept.txt`. Vale accepts Regex.
 
-For more information, see [Vocabularies](https://vale.sh/docs/topics/vocab/) in the Vale documentation.
+For more information, see [Vocabularies](https://vale.sh/docs/keys/vocab) in the Vale documentation.
 
 ### How to handle false Google.WordList errors
 
@@ -440,6 +440,20 @@ If you run into a problem building the docs, following these steps can help isol
 3. **Match the Read the Docs Python version.** The docs build system doesn't keep the same dependency and Python version requirements as Ray. Read the Docs builds with the Python version pinned in `.readthedocs.yaml` (currently 3.11), so use that same version locally; building with a different version can surface or hide warnings that then behave differently on Read the Docs.
 4. **Enable breakpoints in Sphinx.** Add `-P` to the `SPHINXOPTS` in `doc/Makefile` to tell `sphinx` to stop when it encounters a breakpoint, and remove `-j auto` to disable parallel builds. Now you can put breakpoints in the modules you're trying to import, or in `sphinx` code itself, which can help isolate stubborn build issues.
 5. **[Incremental build] Side navigation bar doesn't reflect new pages.** If you're adding new pages, they should always show up in the side navigation bar on index pages. However, incremental builds with `make local` skip rebuilding many other pages, so Sphinx doesn't update the side navigation bar on those pages. To build docs with a correct side navigation bar on all pages, consider using `make develop`.
+
+(backport-docs-to-release)=
+
+## Getting a docs change onto the released version
+
+`docs.ray.io/en/latest` is built from the newest `releases/X.Y.Z` branch, not from `master`. A docs change merged to `master` appears on `docs.ray.io/en/master` right away, but only reaches the default `/latest` site once it's cherry-picked onto the current release branch.
+
+If a merged docs change should be live on the released version — for example, documentation for a feature that has already shipped — open a cherry-pick pull request against the `releases/X.Y.Z` branch:
+
+- Base the PR on `releases/X.Y.Z` and title it `[cherry-pick][X.Y.Z][docs] ...` to match the branch's convention.
+- Apply the commits with `git cherry-pick -x --signoff` to preserve provenance and the required DCO sign-off.
+- Before you start, check that the change isn't already backported under a different commit (`git log --oneline <remote>/releases/X.Y.Z --grep "#<PR>)"`) and that no cherry-pick PR is already open against the branch.
+
+If you use Claude Code, the `/backport-docs` skill walks through this end to end, including the build-safety checks. See {ref}`agent-development`.
 
 ## Where to go from here?
 

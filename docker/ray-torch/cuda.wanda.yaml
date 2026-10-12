@@ -5,6 +5,7 @@ srcs:
   - python/deplocks/ray-torch/ray-torch-cu128_base_py$PYTHON_VERSION.lock
 build_args:
   - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base-extra
+  - PYTHON_VERSION
   - IMAGE_TYPE
 tags:
   - cr.ray.io/rayproject/ray-torch-py$PYTHON_VERSION-cu$CUDA_VERSION-base

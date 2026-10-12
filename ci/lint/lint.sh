@@ -32,6 +32,7 @@ pre_commit() {
     shellcheck
     docstyle
     check-import-order
+    data-tests-location
     check-cpp-files-inclusion
     end-of-file-fixer
     check-json
@@ -56,15 +57,6 @@ pre_commit_pydoclint() {
 code_format() {
   pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
   FORMAT_SH_PRINT_DIFF=1 ./ci/lint/format.sh --all-scripts
-}
-
-semgrep_lint() {
-  pip install -c python/requirements_compiled.txt semgrep pre-commit
-  pre-commit run semgrep --all-files --show-diff-on-failure
-}
-
-banned_words() {
-  ./ci/lint/check-banned-words.sh
 }
 
 # Use system python to avoid conflicts with uv python in forge image
@@ -140,12 +132,28 @@ api_policy_check() {
   PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_discrepancy.py /ray "$@"
 }
 
+api_param_coverage() {
+  # Static, diff-scoped check: fail a PR that adds a new @PublicAPI callable, or
+  # a new parameter on an existing one, without a docstring Args: entry.
+  # Pre-existing gaps are grandfathered. Parses source only, so no Ray build or
+  # install is needed. Non-blocking by default; pass --blocking to gate.
+  echo "--- Check new-parameter documentation coverage"
+  local base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:-master}"
+  git fetch --depth=500 origin "${base_branch}" >/dev/null 2>&1 || true
+  PYTHONPATH="$(pwd)${PYTHONPATH:+:$PYTHONPATH}" python ci/ray_ci/doc/cmd_check_api_param_coverage.py \
+    "$(pwd)" --base-ref "origin/${base_branch}" "$@"
+}
+
 documentation_style() {
   ./ci/lint/check-documentation-style.sh
 }
 
 doc_no_new_rst() {
   python doc/test_no_new_rst.py
+}
+
+ray_repo_links() {
+  python ci/lint/check_ray_repo_links.py
 }
 
 "$@"

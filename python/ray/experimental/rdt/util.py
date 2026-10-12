@@ -226,6 +226,10 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
 
     If called on a tensor that is already registered with NIXL, we still prevent the tensor's memory from being deregistered.
 
+    The registration covers the tensor's whole underlying storage and is not resized afterwards. If a registered storage is freed without
+    calling :func:`ray.experimental.deregister_nixl_memory` and a larger storage is later allocated at the same address, a ``ValueError``
+    is raised. Resizing a pre-registered buffer is also not free, so allocate it at its full intended size up front.
+
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.
 
@@ -298,13 +302,13 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     performance by avoiding repeated memory registration/deregistration. The pool is
     registered once with NIXL and individual tensors are copied into it on ``ray.put``.
 
-    Within a single ``ray.put`` call, tensors sharing the same underlying storage
-    (including views) are automatically deduplicated — only one copy of each unique
-    storage is allocated. Across multiple ``ray.put`` calls, if the same storage
-    appears again, the existing pool slot is reused without re-copying the data.
-    As a result, data can be potentially stale once you ``ray.put`` the storage
-    tensor — subsequent mutations to that storage may not be reflected in outstanding refs.
-    Clone the tensor before ``ray.put`` if snapshot semantics are required.
+    Only the tensors passed to ``ray.put`` are copied (by their own byte size),
+    not their full underlying storage. Contiguous tensors from a single
+    ``ray.put`` are packed into as few pool blocks as the free list allows.
+    Pool blocks are freed when the ``ObjectRef`` goes out of scope.
+
+    Each tensor is placed on a multiple of its own element size, so tensors
+    sharing a dtype pack with no padding between them.
 
     If the pool has insufficient space for an allocation,
     :class:`NixlOutOfMemoryError` is raised.

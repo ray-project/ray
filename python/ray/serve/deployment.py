@@ -1,4 +1,3 @@
-import warnings
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -140,10 +139,10 @@ class Deployment:
         if not isinstance(name, str):
             raise TypeError("name must be a string.")
 
-        # name does not contain #
+        # '#' is the replica ID delimiter, so it cannot appear in a name.
         if "#" in name:
-            warnings.warn(
-                f"Deployment names should not contain the '#' character, this will raise an error starting in Ray 2.46.0. "
+            raise ValueError(
+                f"Deployment names must not contain the '#' character. "
                 f"Current name: {name}."
             )
 

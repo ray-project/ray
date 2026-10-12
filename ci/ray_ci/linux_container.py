@@ -47,6 +47,11 @@ class LinuxContainer(Container):
         self, build_type: Optional[str] = None, mask: Optional[str] = None
     ) -> List[str]:
         cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
+        # The step's own index, forwarded into the build: docker builds inherit
+        # nothing from the step environment, and the mirror-hosted index
+        # (ci/pypi_proxy_profile.sh) is one HTTPS URL reachable from inside builds.
+        # Unset outside CI, and then the Dockerfile falls back to PyPI.
+        image_index_url = os.environ.get("RAYCI_IMAGE_PIP_INDEX_URL", "")
 
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
@@ -63,6 +68,8 @@ class LinuxContainer(Container):
             f"BUILD_TYPE={build_type or ''}",
             "--build-arg",
             f"BUILDKITE_CACHE_READONLY={cache_readonly}",
+            "--build-arg",
+            f"RAYCI_IMAGE_PIP_INDEX_URL={image_index_url}",
         ]
 
         if not build_type or build_type in (

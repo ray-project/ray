@@ -274,9 +274,15 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(1)
     ds = ds.filter(lambda x: x["id"] > 1)
     ds = ds.materialize()
-    assert (
-        str(ds)
-        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+    # The filter drops every row, but the block keeps the input schema.
+    assert str(ds) == (
+        "shape: (0, 1)\n"
+        "╭───────╮\n"
+        "│ id    │\n"
+        "│ ---   │\n"
+        "│ int64 │\n"
+        "╰───────╯\n"
+        "(Showing 0 of 0 rows)"
     )
 
     # Test map on empty dataset.
@@ -363,8 +369,7 @@ def test_schema_repr(ray_start_regular_shared):
 
 
 def _check_none_computed(ds):
-    # In streaming executor, ds.take() will not invoke partial execution
-    # in LazyBlocklist.
+    # ds.take() should not leave the Dataset with computed output.
     assert not ds._has_computed_output()
 
 

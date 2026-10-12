@@ -36,6 +36,9 @@ struct GcsServerMetrics {
   ray::observability::MetricInterface &event_recorder_dropped_events_counter;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram;
   ray::observability::MetricInterface &storage_operation_count_counter;
+  ray::observability::MetricInterface &redis_request_payload_bytes_sum;
+  ray::observability::MetricInterface &redis_response_payload_bytes_sum;
+  ray::observability::MetricInterface &redis_command_count_counter;
   ray::observability::MetricInterface &resource_usage_gauge;
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram;
   ray::observability::MetricInterface &health_check_rpc_latency_ms_histogram;
@@ -165,6 +168,59 @@ inline ray::stats::Count GetGcsStorageOperationCountCounterMetric() {
       /*description=*/"Number of operations invoked on Gcs storage",
       /*unit=*/"",
       /*tag_keys=*/{"Operation"},
+  };
+}
+
+// The payload definitions below are normative: they are what the metric means,
+// and tests assert exact deltas against them. "Payload" is always the
+// application data carried by RESP values, and never the RESP framing
+// ("*N\r\n", "$len\r\n", type prefixes, trailing CRLF), TLS records or TCP/IP
+// headers.
+// GCS values are not compressed anywhere between GcsTable::Put and the socket,
+// so compressed bytes do not arise. To reconcile with Redis' own
+// total_net_input_bytes, add framing: 3 + digits(nargs) per command plus
+// 5 + digits(len) per argument.
+
+inline ray::stats::Sum GetGcsRedisRequestPayloadBytesSumMetric() {
+  return ray::stats::Sum{
+      /*name=*/"gcs_redis_request_payload_bytes",
+      /*description=*/
+      "Bytes of Redis command arguments accepted for sending by the GCS Redis "
+      "client: the sum of the byte lengths of the RESP arguments, including the "
+      "command verb, the Redis key, hash field names and values. Excludes RESP "
+      "framing, TLS and TCP/IP overhead; GCS values are not compressed. Recorded "
+      "on the first successful submission of each logical command; retries are "
+      "not counted again.",
+      /*unit=*/"bytes",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Sum GetGcsRedisResponsePayloadBytesSumMetric() {
+  return ray::stats::Sum{
+      /*name=*/"gcs_redis_response_payload_bytes",
+      /*description=*/
+      "Bytes of Redis replies received by the GCS: the sum of the byte lengths "
+      "of every bulk string and status string in the reply, including the field "
+      "names returned by HSCAN. Integers count as their decimal text; nil replies "
+      "contribute zero. Excludes RESP framing, TLS and TCP/IP overhead. A reply "
+      "that comes back as an error is retried instead of delivered, and "
+      "contributes nothing at all -- error bytes are never counted here.",
+      /*unit=*/"bytes",
+      /*tag_keys=*/{"Command", "TableName"},
+  };
+}
+
+inline ray::stats::Count GetGcsRedisCommandCountCounterMetric() {
+  return ray::stats::Count{
+      /*name=*/"gcs_redis_command_count",
+      /*description=*/
+      "Number of logical Redis commands accepted for sending by the GCS Redis "
+      "client, broken down by command and table. Batched operations count once "
+      "per chunk and a table scan counts once per HSCAN command. Retries are not "
+      "counted again, so this is not a count of network round trips.",
+      /*unit=*/"",
+      /*tag_keys=*/{"Command", "TableName"},
   };
 }
 

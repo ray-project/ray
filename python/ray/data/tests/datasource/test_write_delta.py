@@ -4,7 +4,8 @@ Covers only what this prototype actually supports: ``SaveMode.APPEND`` and
 ``SaveMode.OVERWRITE`` (no ``ERROR``/``IGNORE``, no dynamic partition
 overwrite), Hive-style partitioning, ``storage_options`` passthrough to the
 driver-side commit calls, and ``schema_mode``-governed schema evolution on
-APPEND (adding new columns only -- never changing an existing column's type).
+APPEND (adding new top-level or nested fields only -- never changing an
+existing field's type).
 
 Master's existing ``test_delta.py`` covers ``ray.data.read_delta`` and is not
 modified here.
@@ -41,31 +42,6 @@ pytestmark = [
     ),
 ]
 
-# Whether ``read_delta`` gives partition columns back with their declared types.
-#
-# A Delta reader takes a partitioned column's value from metadata rather than
-# from the Parquet file (the writer omits it there), so restoring the declared
-# type is the reader's job. ``read_delta`` delegates that to PyArrow -- see the
-# comment on ``partition_columns=[]`` in ``ParquetDatasource.from_pyarrow_dataset``
-# -- and on pyarrow<19 it doesn't happen: values come back as the raw Hive path
-# strings instead, so ``2024`` reads as ``"2024"`` and a null partition as the
-# literal ``"__HIVE_DEFAULT_PARTITION__"``.
-#
-# That's a gap in the *read* path, which this file doesn't own; the writes
-# themselves are fine on every version. Rather than weaken the assertions
-# everywhere, the round-trip *value* checks below skip on old pyarrow while the
-# on-disk layout checks keep running. 19 is the lowest version observed to
-# round-trip correctly (17 fails, 19 and 20 pass); 18 is simply untested.
-_PARTITION_VALUES_ROUND_TRIP = _pa_version is not None and _pa_version >= parse_version(
-    "19.0.0"
-)
-_NO_TYPED_PARTITION_VALUES = (
-    "read_delta returns partition values as untyped Hive path strings on pyarrow<19"
-)
-_skip_without_typed_partition_values = pytest.mark.skipif(
-    not _PARTITION_VALUES_ROUND_TRIP, reason=_NO_TYPED_PARTITION_VALUES
-)
-
 
 @pytest.fixture
 def temp_delta_path(tmp_path):
@@ -79,6 +55,18 @@ def _write_append(rows: List[Dict[str, Any]], path: str, **kwargs) -> None:
 
 def _read_all(path: str) -> List[Dict[str, Any]]:
     return ray.data.read_delta(path).take_all()
+
+
+def _read_committed_parquet_rows(path: str) -> List[Dict[str, Any]]:
+    """Read committed files with their physical schemas, without schema casts."""
+    import pyarrow.parquet as pq
+    from deltalake import DeltaTable
+
+    return [
+        row
+        for uri in DeltaTable(path).file_uris()
+        for row in pq.ParquetFile(uri).read().to_pylist()
+    ]
 
 
 def _log_exists(path: str) -> bool:
@@ -197,13 +185,10 @@ def test_single_column_partition(temp_delta_path):
     ray.data.from_items(rows).write_delta(temp_delta_path, partition_by=["year"])
     assert set(os.listdir(temp_delta_path)) >= {"year=2024", "year=2025"}
 
-    if not _PARTITION_VALUES_ROUND_TRIP:
-        pytest.skip(_NO_TYPED_PARTITION_VALUES)
     out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
     assert out == rows
 
 
-@_skip_without_typed_partition_values
 def test_multi_column_partition(temp_delta_path):
     rows = [
         {"year": 2024, "month": 1, "id": 1},
@@ -226,8 +211,6 @@ def test_null_partition_value_round_trips_as_none(temp_delta_path):
     ray.data.from_items(rows).write_delta(temp_delta_path, partition_by=["year"])
     assert "year=__HIVE_DEFAULT_PARTITION__" in os.listdir(temp_delta_path)
 
-    if not _PARTITION_VALUES_ROUND_TRIP:
-        pytest.skip(_NO_TYPED_PARTITION_VALUES)
     out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
     assert out == rows
 
@@ -270,8 +253,6 @@ def test_append_without_partition_by_inherits_existing_partitioning(temp_delta_p
 
     assert "year=2025" in os.listdir(temp_delta_path)
 
-    if not _PARTITION_VALUES_ROUND_TRIP:
-        pytest.skip(_NO_TYPED_PARTITION_VALUES)
     out = sorted(_read_all(temp_delta_path), key=lambda r: r["id"])
     assert out == [{"year": 2024, "id": 1}, {"year": 2025, "id": 2}]
 
@@ -330,12 +311,9 @@ def test_partition_by_mismatch_rejected(
 
     # Only the baseline tables that are themselves partitioned depend on
     # partition values surviving the read; the unpartitioned case is unaffected.
-    if create_partition_by and not _PARTITION_VALUES_ROUND_TRIP:
-        pytest.skip(_NO_TYPED_PARTITION_VALUES)
     assert _read_all(temp_delta_path) == first
 
 
-@_skip_without_typed_partition_values
 def test_partition_by_matching_existing_is_allowed(temp_delta_path):
     """Passing exactly the table's own partition columns is fine."""
     ray.data.from_items([{"year": 2024, "id": 1}]).write_delta(
@@ -368,8 +346,6 @@ def test_overwrite_without_partition_by_inherits_existing_partitioning(
 
     assert "year=2025" in os.listdir(temp_delta_path)
 
-    if not _PARTITION_VALUES_ROUND_TRIP:
-        pytest.skip(_NO_TYPED_PARTITION_VALUES)
     assert _read_all(temp_delta_path) == [{"year": 2025, "id": 2}]
 
 
@@ -886,8 +862,9 @@ def test_storage_options_passed_to_create_write_transaction(
 
 # ----------------------------------------------------------------------
 # Schema reconciliation on APPEND: schema_mode="merge" (default) evolves
-# the table's schema to add new columns; schema_mode="error" rejects them.
-# A type-incompatible existing column always raises, regardless of mode.
+# the table's schema to add new top-level or nested fields; schema_mode="error"
+# rejects them. A type-incompatible existing field always raises, regardless
+# of mode.
 # ----------------------------------------------------------------------
 
 
@@ -915,6 +892,239 @@ def test_append_multiple_new_columns_evolves_schema(temp_delta_path):
         {"id": 1, "a": None, "b": None},
         {"id": 2, "a": "x", "b": 5},
     ]
+
+
+def test_append_nested_fields_evolves_schema(temp_delta_path):
+    """New fields inside structs, lists of structs, and maps are preserved.
+
+    Regression test: schema unification accepted these additions, but the
+    evolution planner only added new top-level columns. The write therefore
+    committed successfully while Delta kept the old nested schema and silently
+    dropped the new field values on every read.
+    """
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    base_payload_value_type = pa.struct([pa.field("x", pa.int64(), nullable=False)])
+    base_payload_type = pa.struct(
+        [pa.field("inner", base_payload_value_type, nullable=False)]
+    )
+    base_event_type = pa.struct([pa.field("code", pa.int64(), nullable=False)])
+    base_attribute_type = pa.map_(pa.string(), base_payload_type)
+    base_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("payload", base_payload_type, nullable=False),
+            pa.field("events", pa.list_(base_event_type), nullable=False),
+            pa.field("attributes", base_attribute_type, nullable=False),
+        ]
+    )
+    base = pa.Table.from_arrays(
+        [
+            pa.array([1], type=pa.int64()),
+            pa.array([{"inner": {"x": 10}}], type=base_payload_type),
+            pa.array([[{"code": 100}]], type=pa.list_(base_event_type)),
+            pa.array([[("a", {"inner": {"x": 1000}})]], type=base_attribute_type),
+        ],
+        schema=base_schema,
+    )
+    ray.data.from_arrow(base).write_delta(temp_delta_path)
+
+    incoming_payload_value_type = pa.struct(
+        [
+            pa.field("x", pa.int64(), nullable=False),
+            pa.field("y", pa.string(), nullable=False),
+        ]
+    )
+    incoming_payload_type = pa.struct(
+        [pa.field("inner", incoming_payload_value_type, nullable=False)]
+    )
+    incoming_event_type = pa.struct(
+        [
+            pa.field("code", pa.int64(), nullable=False),
+            pa.field("label", pa.string(), nullable=False),
+        ]
+    )
+    incoming_attribute_type = pa.map_(pa.string(), incoming_payload_type)
+    incoming_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("payload", incoming_payload_type, nullable=False),
+            pa.field("events", pa.list_(incoming_event_type), nullable=False),
+            pa.field("attributes", incoming_attribute_type, nullable=False),
+        ]
+    )
+    incoming = pa.Table.from_arrays(
+        [
+            pa.array([2], type=pa.int64()),
+            pa.array(
+                [{"inner": {"x": 20, "y": "kept"}}],
+                type=incoming_payload_type,
+            ),
+            pa.array(
+                [[{"code": 200, "label": "kept"}]],
+                type=pa.list_(incoming_event_type),
+            ),
+            pa.array(
+                [[("b", {"inner": {"x": 2000, "y": "kept"}})]],
+                type=incoming_attribute_type,
+            ),
+        ],
+        schema=incoming_schema,
+    )
+    ray.data.from_arrow(incoming).write_delta(temp_delta_path)
+
+    table_schema = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow())
+    payload_y = table_schema.field("payload").type.field("inner").type.field("y")
+    event_label = table_schema.field("events").type.value_type.field("label")
+    attribute_y = (
+        table_schema.field("attributes").type.item_type.field("inner").type.field("y")
+    )
+    assert payload_y.nullable
+    assert event_label.nullable
+    assert attribute_y.nullable
+
+    assert (
+        sorted(_read_committed_parquet_rows(temp_delta_path), key=lambda row: row["id"])
+        == base.to_pylist() + incoming.to_pylist()
+    )
+
+    # Arrow < 19 cannot fill missing struct fields when reading old files.
+    # The schema and committed data are checked above on every version.
+    # https://github.com/apache/arrow/issues/44555
+    assert _pa_version is not None
+    if _pa_version < parse_version("19.0.0"):
+        return
+
+    out = sorted(_read_all(temp_delta_path), key=lambda row: row["id"])
+    assert out == [
+        {
+            "id": 1,
+            "payload": {"inner": {"x": 10, "y": None}},
+            "events": [{"code": 100, "label": None}],
+            "attributes": [("a", {"inner": {"x": 1000, "y": None}})],
+        },
+        {
+            "id": 2,
+            "payload": {"inner": {"x": 20, "y": "kept"}},
+            "events": [{"code": 200, "label": "kept"}],
+            "attributes": [("b", {"inner": {"x": 2000, "y": "kept"}})],
+        },
+    ]
+
+
+@pytest.mark.parametrize("side", ["key", "value", "both"])
+@pytest.mark.parametrize("schema_mode", ["merge", "error"])
+def test_append_map_nested_fields(temp_delta_path, side, schema_mode):
+    import pyarrow as pa
+    from deltalake import DeltaTable
+
+    base_type = pa.struct([pa.field("x", pa.int64(), nullable=False)])
+    extended_type = pa.struct(
+        [
+            pa.field("x", pa.int64(), nullable=False),
+            pa.field("y", pa.string(), nullable=False),
+        ]
+    )
+    key_added = side in ("key", "both")
+    value_added = side in ("value", "both")
+    base_map = pa.map_(base_type, base_type)
+    # Value-only evolution must not relax the existing key's child nullability.
+    incoming_map = pa.map_(
+        extended_type if key_added else pa.struct([pa.field("x", pa.int64())]),
+        extended_type if value_added else base_type,
+    )
+    base = pa.table({"m": pa.array([[({"x": 1}, {"x": 10})]], type=base_map)})
+    key = {"x": 2, **({"y": "key"} if key_added else {})}
+    value = {"x": 20, **({"y": "value"} if value_added else {})}
+    incoming = pa.table({"m": pa.array([[(key, value)]], type=incoming_map)})
+    ray.data.from_arrow(base).write_delta(temp_delta_path)
+    before = DeltaTable(temp_delta_path)
+    version = before.version()
+    schema = pa.schema(before.schema().to_arrow())
+
+    if schema_mode == "error":
+        path = r"m\{key\}\.y" if key_added else r"m\{value\}\.y"
+        with pytest.raises(ValueError, match=path):
+            ray.data.from_arrow(incoming).write_delta(
+                temp_delta_path, schema_mode=schema_mode
+            )
+        after = DeltaTable(temp_delta_path)
+        assert after.version() == version
+        assert pa.schema(after.schema().to_arrow()) == schema
+        assert _read_all(temp_delta_path) == base.to_pylist()
+        return
+
+    ray.data.from_arrow(incoming).write_delta(temp_delta_path, schema_mode=schema_mode)
+    evolved = pa.schema(DeltaTable(temp_delta_path).schema().to_arrow()).field("m").type
+    assert not evolved.key_type.field("x").nullable
+    assert not evolved.item_type.field("x").nullable
+    if key_added:
+        assert evolved.key_type.field("y").nullable
+    if value_added:
+        assert evolved.item_type.field("y").nullable
+
+    assert (
+        sorted(
+            _read_committed_parquet_rows(temp_delta_path),
+            key=lambda row: row["m"][0][0]["x"],
+        )
+        == base.to_pylist() + incoming.to_pylist()
+    )
+
+    # Reading evolved structs needs Arrow >= 19 (GH-44555). The value-only
+    # case also casts a nullable key child to non-nullable, needing Arrow >= 20
+    # (https://github.com/apache/arrow/issues/33592).
+    min_read_version = "20.0.0" if side == "value" else "19.0.0"
+    assert _pa_version is not None
+    if _pa_version < parse_version(min_read_version):
+        return
+
+    old_key = {"x": 1, **({"y": None} if key_added else {})}
+    old_value = {"x": 10, **({"y": None} if value_added else {})}
+    out = sorted(_read_all(temp_delta_path), key=lambda row: row["m"][0][0]["x"])
+    assert out == [{"m": [(old_key, old_value)]}, {"m": [(key, value)]}]
+
+
+def test_map_value_evolution_preserves_key_field():
+    import pyarrow as pa
+
+    from ray.data._internal.datasource.delta_datasink import _nested_schema_additions
+
+    existing_key = pa.field(
+        "key",
+        pa.struct([pa.field("x", pa.int64(), nullable=False)]),
+        nullable=False,
+        metadata={b"description": b"existing key"},
+    )
+    incoming_key = pa.field(
+        "key", pa.struct([pa.field("x", pa.int64())]), nullable=False
+    )
+    existing = pa.field(
+        "m", pa.map_(existing_key, pa.struct([("a", pa.int64())]), keys_sorted=True)
+    )
+    incoming = pa.field(
+        "m",
+        pa.map_(incoming_key, pa.struct([("a", pa.int64()), ("b", pa.string())])),
+    )
+    patch, paths = _nested_schema_additions(existing, incoming)
+    assert paths == ["m{value}.b"]
+    assert patch is not None
+    assert patch.type.key_field.equals(existing_key, check_metadata=True)
+    assert patch.type.keys_sorted
+
+
+def test_append_nested_field_rejected_with_schema_mode_error(temp_delta_path):
+    _write_append([{"id": 1, "payload": {"x": 10}}], temp_delta_path)
+
+    with pytest.raises(ValueError, match=r"payload\.y.*not present"):
+        _write_append(
+            [{"id": 2, "payload": {"x": 20, "y": "rejected"}}],
+            temp_delta_path,
+            schema_mode="error",
+        )
+
+    assert _read_all(temp_delta_path) == [{"id": 1, "payload": {"x": 10}}]
 
 
 def test_append_multiple_new_columns_preserves_incoming_column_order(temp_delta_path):

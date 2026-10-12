@@ -80,6 +80,7 @@ class OpenTelemetryMetricRecorder:
         self._counter_observations_by_name = defaultdict(dict)
         self._sum_observations_by_name = defaultdict(dict)
         self._histogram_bucket_midpoints = defaultdict(list)
+        self._histogram_bucket_mismatch_warned = set()
         self._gauge_metric_ttl_s = self._resolve_gauge_ttl_seconds(
             gauge_metric_ttl_seconds
         )
@@ -401,6 +402,15 @@ class OpenTelemetryMetricRecorder:
         observations using bucket midpoints. It acquires the lock once and performs
         all record() calls for ALL data points, minimizing lock contention.
 
+        A metric name is registered once per node, but several processes may emit it
+        with different bucket bounds (e.g. two vLLM engines configured with different
+        max_model_len). Data points whose bucket count disagrees with the registered
+        bounds cannot be reconstructed, so they are skipped rather than raising, which
+        would otherwise abort ingestion for the rest of the reporting component's
+        metrics. Exact pass-through of bucket_counts/sum, which would let such
+        emitters through, is tracked in
+        https://github.com/ray-project/ray/issues/64852.
+
         Note: The histogram sum value will be an approximation since we use bucket midpoints instead of actual values.
         """
         with self._lock:
@@ -419,9 +429,15 @@ class OpenTelemetryMetricRecorder:
             for dp in data_points:
                 tags = dp["tags"]
                 bucket_counts = dp["bucket_counts"]
-                assert len(bucket_counts) == len(
-                    bucket_midpoints
-                ), "Number of bucket counts and midpoints must match"
+                if len(bucket_counts) != len(bucket_midpoints):
+                    if name not in self._histogram_bucket_mismatch_warned:
+                        self._histogram_bucket_mismatch_warned.add(name)
+                        logger.warning(
+                            f"Metric {name} was reported with {len(bucket_counts)} "
+                            f"buckets but {len(bucket_midpoints)} were expected; "
+                            "skipping the data point."
+                        )
+                    continue
 
                 filtered_tags = {
                     k: v for k, v in tags.items() if k not in high_cardinality_labels

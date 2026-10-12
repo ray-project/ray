@@ -43,7 +43,7 @@ The dashboard includes visualizations for:
 
 ## Engine metrics
 
-All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics.html) for a complete list. The Serve LLM Grafana dashboard also visualizes these metrics.
+All engine metrics, including vLLM, are available through the Ray metrics export endpoint and are queryable with Prometheus. See [vLLM metrics](https://docs.vllm.ai/en/stable/usage/metrics/) for a complete list. The Serve LLM Grafana dashboard also visualizes these metrics.
 
 Key engine metrics include:
 
@@ -126,6 +126,6 @@ To opt out from usage data collection, see {ref}`Ray usage stats <ref-usage-stat
 ## See also
 
 - {ref}`collect-metrics` - Ray metrics collection guide
-- [vLLM metrics documentation](https://docs.vllm.ai/en/stable/usage/metrics.html)
+- [vLLM metrics documentation](https://docs.vllm.ai/en/stable/usage/metrics/)
 - {doc}`Troubleshooting <../troubleshooting>` - Common issues and solutions
 

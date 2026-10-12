@@ -1,5 +1,3 @@
---index-url https://pypi.org/simple
-
 aioboto3==14.3.0 \
     --hash=sha256:1d18f88bb56835c607b62bb6cb907754d717bedde3ddfff6935727cb48a80135 \
     --hash=sha256:aec5de94e9edc1ffbdd58eead38a37f00ddac59a519db749a910c20b7b81bca7

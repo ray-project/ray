@@ -401,7 +401,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
-      RayConfig::instance().lineage_pinning_enabled());
+      worker_context->ShouldPinObjectLineage());
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(
@@ -561,6 +561,10 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
               set_direct_transport_metadata(object_id, direct_transport_metadata);
             },
             "CoreWorker.SetDirectTransportMetadata");
+      },
+      /*free_stale_unconsumed_generator_objects_async=*/
+      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
+        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
       },
       /*clock=*/clock_);
 

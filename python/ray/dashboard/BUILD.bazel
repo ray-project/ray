@@ -42,6 +42,7 @@ py_test_run_all_subdirectory(
         "tests/test_state_head.py",
         "modules/serve/tests/**/*.py",
         "modules/job/tests/test_job_manager.py",
+        "modules/tests/test_metrics_integration.py",
     ],
     extra_srcs = [],
     tags = [
@@ -163,7 +164,7 @@ py_test(
     srcs = ["modules/tests/test_metrics_integration.py"],
     tags = [
         "exclusive",
-        "team:clusters",
+        "team:core",
     ],
     deps = [":conftest"],
 )

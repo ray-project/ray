@@ -472,6 +472,54 @@ def test_disconnect_during_large_schedule(call_ray_start_shared):
         assert result == (1024, 1024, 6)
 
 
+def test_disconnect_before_large_put_response(call_ray_start_shared):
+    """
+    Disconnect after the server has received every chunk of a large put,
+    but before the client gets the response. The client replays all of the
+    chunks on reconnect, and later chunked puts must still succeed.
+    """
+    dropped = False
+
+    def drop_first_put_response(resp):
+        nonlocal dropped
+        if resp.WhichOneof("type") == "put" and not dropped:
+            dropped = True
+            raise RuntimeError
+
+    with start_middleman_server(on_data_response=drop_first_put_response):
+        first = ray.put(np.random.random((1024, 1024, 6)))
+        assert dropped
+        second = ray.put(np.random.random((1024, 1024, 6)))
+        assert ray.get(first).shape == (1024, 1024, 6)
+        assert ray.get(second).shape == (1024, 1024, 6)
+
+
+def test_disconnect_before_large_schedule_response(call_ray_start_shared):
+    """
+    Same as test_disconnect_before_large_put_response, but for remote calls
+    with a large argument. Two calls are in flight at once, so the replay of
+    the first can arrive while the second is partially received.
+    """
+    dropped = False
+
+    def drop_first_task_response(resp):
+        nonlocal dropped
+        if resp.WhichOneof("type") == "task_ticket" and not dropped:
+            dropped = True
+            raise RuntimeError
+
+    @ray.remote
+    def f(a):
+        return a.shape
+
+    with start_middleman_server(on_data_response=drop_first_task_response):
+        a = np.random.random((1024, 1024, 6))
+        refs = [f.remote(a), f.remote(a)]
+        assert ray.get(refs) == [(1024, 1024, 6)] * 2
+        assert dropped
+        assert ray.get(f.remote(a)) == (1024, 1024, 6)
+
+
 def test_valid_actor_state(call_ray_start_shared):
     """
     Repeatedly inject errors in the middle of mutating actor calls. Check

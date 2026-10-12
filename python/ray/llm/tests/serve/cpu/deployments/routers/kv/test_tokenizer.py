@@ -1,3 +1,5 @@
+import copy
+import json
 import sys
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
@@ -5,12 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 from starlette.datastructures import Headers
+from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
+from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
-from ray.llm._internal.serve.core.configs.openai_api_models import (
-    ChatCompletionRequest,
-    TokenizeCompletionRequest,
-)
 from ray.llm._internal.serve.core.ingress.builder import (
     LLMServingArgs,
     build_openai_app,
@@ -19,18 +19,127 @@ from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
-from ray.llm._internal.serve.routing_policies.kv_aware.tokenizer import (
+from ray.llm._internal.serve.routing_policies.kv_aware.vllm.tokenizer import (
     TokenizeError,
     build_tokenize_request,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.llm.request_router import KVAwareRouter
 
+_BASH_INPUT_SCHEMA = {
+    "type": "object",
+    "properties": {"command": {"type": "string"}},
+    "required": ["command"],
+}
+
+# Anthropic request with an inline system message and a tool turn.
+CLAUDE_CODE_BODY = {
+    "model": "m",
+    "max_tokens": 64,
+    "system": "You are Claude Code.",
+    "messages": [
+        {"role": "user", "content": [{"type": "text", "text": "List the files."}]},
+        {"role": "system", "content": "Plan mode is off."},
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "Listing them."},
+                {
+                    "type": "tool_use",
+                    "id": "toolu_01",
+                    "name": "Bash",
+                    "input": {"command": "ls"},
+                },
+            ],
+        },
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_01",
+                    "content": "a.py\nb.py",
+                }
+            ],
+        },
+    ],
+    "tools": [
+        {
+            "name": "Bash",
+            "description": "Run a shell command.",
+            "input_schema": _BASH_INPUT_SCHEMA,
+        }
+    ],
+}
+
 
 class TestBuildTokenizeRequest:
+    def test_converts_anthropic_messages_body(self):
+        """Convert Claude Code's system prompt and tools using vLLM's converter."""
+        request = build_tokenize_request(CLAUDE_CODE_BODY, request_path="/v1/messages")
+        assert request is not None
+        # Merge the inline system message, matching the engine's conversion.
+        assert [m["role"] for m in request.messages] == [
+            "system",
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert request.messages[0] == {
+            "role": "system",
+            "content": "You are Claude Code.Plan mode is off.",
+        }
+        assert request.messages[2]["tool_calls"][0]["function"] == {
+            "name": "Bash",
+            "arguments": json.dumps({"command": "ls"}),
+        }
+        assert request.messages[3] == {
+            "role": "tool",
+            "tool_call_id": "toolu_01",
+            "content": "a.py\nb.py",
+        }
+        assert request.tools[0].function.name == "Bash"
+        assert request.tools[0].function.parameters == _BASH_INPUT_SCHEMA
+        assert request.tool_choice == "auto"
+
+    @pytest.mark.parametrize(
+        "request_path", [None, "/app/v1/messages/count_tokens", "/tokenize", "/unknown"]
+    )
+    def test_missing_or_non_generation_path_returns_none(self, request_path):
+        # A generation-shaped body must not override the actual endpoint.
+        assert (
+            build_tokenize_request(CLAUDE_CODE_BODY, request_path=request_path) is None
+        )
+
+    @pytest.mark.parametrize("stream", [True, False])
+    @pytest.mark.parametrize(
+        "params",
+        [
+            {"logprobs": True, "top_logprobs": -2},
+            {"logprobs": False, "top_logprobs": 5},
+        ],
+    )
+    def test_invalid_chat_sampling_params(self, stream, params):
+        # vLLM's validators raise VLLMValidationError, which is not a
+        # pydantic ValidationError. Let the engine report the bad request
+        # instead of failing the HAProxy router consultation with a 500.
+        assert (
+            build_tokenize_request(
+                {
+                    "model": "m",
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "stream": stream,
+                    **params,
+                },
+                request_path="/v1/chat/completions",
+            )
+            is None
+        )
+
     @pytest.mark.parametrize(
         "payload",
         [
@@ -42,26 +151,41 @@ class TestBuildTokenizeRequest:
     def test_untokenizable_payload_returns_none(self, payload):
         """A parsed payload with no single-string prompt yields None, so the
         caller falls back to token-less routing."""
-        assert build_tokenize_request(payload) is None
+        assert build_tokenize_request(payload, request_path="/v1/completions") is None
 
     @pytest.mark.parametrize(
-        "payload, expected_request_type",
+        "request_path, payload, expected_request_type",
         [
             (
+                "/v1/chat/completions",
                 {"model": "m", "messages": [{"role": "user", "content": "hi"}]},
                 ChatCompletionRequest,
             ),
-            ({"model": "m", "prompt": "hello"}, TokenizeCompletionRequest),
+            (
+                "/v1/completions",
+                {
+                    "model": "m",
+                    "prompt": "hello",
+                    "messages": [{"role": "user", "content": "ignored"}],
+                },
+                CompletionRequest,
+            ),
         ],
     )
-    def test_builds_chat_and_completion_requests(self, payload, expected_request_type):
-        """A chat or completion payload builds the right Tokenize* request."""
-        assert isinstance(build_tokenize_request(payload), expected_request_type)
+    def test_builds_chat_and_completion_requests(
+        self, request_path, payload, expected_request_type
+    ):
+        """Use the generation endpoint's native request model."""
+        assert isinstance(
+            build_tokenize_request(payload, request_path=request_path),
+            expected_request_type,
+        )
 
     @pytest.mark.parametrize(
-        "payload, expected",
+        "request_path, payload, expected",
         [
             (  # chat: template-rendering fields + request-provided prompt flags
+                "/v1/chat/completions",
                 {
                     "model": "m",
                     "messages": [{"role": "user", "content": "hi"}],
@@ -87,6 +211,7 @@ class TestBuildTokenizeRequest:
                 },
             ),
             (  # completion: add_special_tokens comes from the request
+                "/v1/completions",
                 {
                     "model": "m",
                     "prompt": "hi",
@@ -97,13 +222,11 @@ class TestBuildTokenizeRequest:
             ),
         ],
     )
-    def test_forwards_prompt_fields_only(self, payload, expected):
-        """Prompt-rendering fields come from the request (not hardcoded) and
-        sampling params are dropped, so routing ids match prefill."""
-        request = build_tokenize_request(payload)
+    def test_preserves_prompt_fields(self, request_path, payload, expected):
+        """Prompt-rendering fields use the engine's schema and defaults."""
+        request = build_tokenize_request(payload, request_path=request_path)
         for attr, value in expected.items():
             assert getattr(request, attr) == value
-        assert "temperature" not in (request.model_extra or {})
 
 
 class TestRoute:
@@ -150,7 +273,9 @@ class TestRoute:
 
         request = MagicMock()
         request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hi"}')
-        request.headers = Headers({})
+        request.headers = Headers(
+            {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
+        )
         response = await router.route(request)
 
         router._push_prompt_tokens.assert_called_once()
@@ -159,6 +284,65 @@ class TestRoute:
                 KV_TOKEN_KEY_HEADER: pushed_token_key
             }
         else:
+            assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "media, should_stage",
+        [
+            (None, True),
+            ("image", False),
+            ("tool_result_image", False),
+            ("unknown_block", False),
+            ("malformed_text", False),
+        ],
+    )
+    async def test_anthropic_token_staging(self, media, should_stage):
+        # Images can also appear inside tool results; tokens alone cannot
+        # replace media preprocessing at the engine.
+        router = LLMRouter.__new__(LLMRouter)
+        router._handle = MagicMock()
+        router._tokenizer = MagicMock()
+        router._tokenizer.tokenize = AsyncMock(return_value=[5, 6, 7])
+        router._pick_replica = AsyncMock(
+            return_value=("h", 1, "rid", "tcp://127.0.0.1:7557")
+        )
+        router._push_prompt_tokens = MagicMock(return_value="key")
+
+        payload = copy.deepcopy(CLAUDE_CODE_BODY)
+        image = {
+            "type": "image",
+            "source": {"type": "url", "url": "https://example.com/image.png"},
+        }
+        if media == "image":
+            payload["messages"][0]["content"].append(image)
+        elif media == "tool_result_image":
+            payload["messages"][-1]["content"][0]["content"] = [
+                {"type": "text", "text": "a.py"},
+                image,
+            ]
+        elif media == "unknown_block":
+            payload["messages"][0]["content"].append({"type": "unknown"})
+        elif media == "malformed_text":
+            payload["messages"][0]["content"][0]["text"] = image
+        request = MagicMock()
+        request.body = AsyncMock(return_value=json.dumps(payload).encode())
+        request.headers = Headers(
+            {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/messages"}
+        )
+        response = await router.route(request)
+
+        router._tokenizer.tokenize.assert_awaited_once_with(
+            payload, request_path="/v1/messages"
+        )
+        assert router._pick_replica.call_args.kwargs["request_token_ids"] == [5, 6, 7]
+        if should_stage:
+            router._push_prompt_tokens.assert_called_once()
+            assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
+                KV_TOKEN_KEY_HEADER: "key"
+            }
+        else:
+            router._push_prompt_tokens.assert_not_called()
             assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
 
     @pytest.mark.asyncio
@@ -264,7 +448,12 @@ class TestPreRoutingTokenization:
         )
         runtime_env = _router_ray_actor_options(app)["runtime_env"]
         llm_config = _router_init_kwargs(app)["llm_config"]
-        assert runtime_env == {"env_vars": llm_config.runtime_env["env_vars"]}
+        for name, value in llm_config.runtime_env["env_vars"].items():
+            assert runtime_env["env_vars"][name] == value
+        assert (
+            runtime_env["env_vars"]["RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD"] == "0"
+        )
+        assert runtime_env["env_vars"]["RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP"] == "0"
 
 
 if __name__ == "__main__":

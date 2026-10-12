@@ -12,37 +12,48 @@ google-cloud-core
 google-cloud-bigquery-storage
 google-api-core
 webdataset
-raydp==1.7.0b20250423.dev0
+raydp==1.7.0b20250423.dev0; python_version < '3.14'
 pylance
 delta-sharing
 deltalake==1.5.0
+databricks-sdk
+# Mints the Azurite SAS that test_catalog_azure.py's emulator backend vends in
+# place of a Unity Catalog user-delegation SAS. Only the test needs it -- the
+# Azure read paths themselves go through pyarrow's and deltalake's own bundled
+# Azure clients, not this one.
+azure-storage-blob
 pytest-mock
 decord
 snowflake-connector-python>=3.15.0
-pyiceberg[sql-sqlite]==0.11.0
+pyiceberg[sql-sqlite]==0.11.0; python_version < '3.14'
+pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14'
 clickhouse-connect
 confluent-kafka
 pybase64
 hudi==0.4.0
-datasketches
-testcontainers[kafka]
+mcap
+datasketches; python_version < '3.14'
+# `azurite` powers the Azure emulator in test_catalog_azure.py, the same way
+# `kafka` powers test_kafka.py's broker.
+testcontainers[kafka,azurite]
 obstore
 pyarrow
 torch
-tensorflow
+tensorflow; python_version < '3.14'
 jax
 jaxlib
 tensorflow-datasets
 tensorflow-metadata>=1.17.0
-tf-keras
-torchvision==0.24.0
+tf-keras; python_version < '3.14'
+torchvision==0.25.0
 confluent-kafka
-zarr<3 ; python_version >= '3.11'  # zarr 2.18.4+ requires py3.11+ (v2 API)
+zarr<3 ; python_version >= '3.11' and python_version < '3.14'  # zarr 2.18.4+ requires py3.11+ (v2 API)
 zarr>=2.18,<2.18.4 ; python_version < '3.11'  # 2.18.3: last v2 line supporting py3.10
+# No zarr 2.x installs on py3.14: all need numcodecs<0.16, which has no cp314 wheels.
 # numcodecs is zarr's codec dep; 0.14+ dropped py3.10. Pin per-Python with exact
 # versions so the markers survive pip-compile -- the compiled-constraint pin must
 # stay gated to py3.11+, otherwise the py3.10 data locks can't resolve zarr.
-numcodecs==0.15.1 ; python_version >= '3.11'
+numcodecs==0.15.1 ; python_version >= '3.11' and python_version < '3.14'
 numcodecs==0.13.1 ; python_version < '3.11'
 
 # lerobot v3 datasource (ray.data.read_lerobot). lerobot >=0.5 requires
@@ -53,10 +64,10 @@ numcodecs==0.13.1 ; python_version < '3.11'
 # time, which our pinned av (18.x) does not expose, so 0.6.0 fails to import
 # against Ray's av. The 0.5.x line (what the datasource is built and tested
 # against) decodes via torchcodec and imports cleanly.
-lerobot>=0.5.0,<0.6; python_version >= "3.12"
-# torchcodec 0.10.0 is built for torch 2.10 (its libtorchcodec fails to load
-# against our pinned torch 2.9.0 with a c10 ABI symbol error); cap to the 0.9.x
-# line, which lerobot 0.5.1 allows (torchcodec>=0.3,<0.11) and which loads on
-# torch 2.9.
-torchcodec<0.10; python_version >= "3.12"
+lerobot>=0.5.0,<0.6; python_version >= "3.12" and python_version < "3.14"  # every lerobot caps numpy<2.3; no cp314 numpy below 2.3
+# torchcodec's libtorchcodec is ABI-bound to a torch minor and declares no torch
+# requirement in its metadata, so the line has to be pinned by hand: 0.10.x is
+# built for torch 2.10 (0.9.x fails to load against it with a c10 ABI symbol
+# error, and 0.11.x targets torch 2.11). lerobot 0.5.1 allows torchcodec>=0.3,<0.11.
+torchcodec>=0.10,<0.11; python_version >= "3.12"
 av; python_version >= "3.12"

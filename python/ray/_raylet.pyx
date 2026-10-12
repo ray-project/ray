@@ -214,12 +214,10 @@ from ray.exceptions import (
     RayTaskError,
     ObjectStoreFullError,
     OutOfDiskError,
-    GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
-    ObjectRefStreamEndOfStreamError,
     RayChannelError,
     RayChannelTimeoutError,
 )
@@ -3767,14 +3765,6 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
-    def free_objects(self, object_refs, c_bool local_only):
-        cdef:
-            c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
-
-        with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().
-                         Delete(free_ids, local_only))
-
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:
             unordered_map[CLineageReconstructionTask, uint64_t] tasks
@@ -5171,12 +5161,38 @@ cdef class CoreWorker:
         # callback object being garbage collected before it's called by the core worker.
         # This means we *must* guarantee that the ref is manually decremented to avoid
         # a leak.
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+            void *callback_ptr
         cpython.Py_INCREF(user_callback)
-        CCoreWorkerProcess.GetCoreWorker().GetAsync(
-            object_ref.native(),
-            async_callback,
-            <void*>user_callback
-        )
+        callback_ptr = <void*>user_callback
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().GetAsync(
+                c_object_id,
+                async_callback,
+                callback_ptr
+            )
+
+    def set_wait_async_callback(self, ObjectRef object_ref, user_callback: Callable):
+        # Like set_get_async_callback, but does not pull or deserialize. Returns
+        # a handle for cancel_wait_async, or 0 if user_callback already ran.
+        cdef:
+            CObjectID c_object_id = object_ref.native()
+            void *callback_ptr
+            uint64_t handle
+        cpython.Py_INCREF(user_callback)
+        callback_ptr = <void*>user_callback
+        with nogil:
+            handle = CCoreWorkerProcess.GetCoreWorker().WaitAsync(
+                c_object_id,
+                wait_async_callback_impl,
+                callback_ptr
+            )
+        return handle
+
+    def cancel_wait_async(self, uint64_t handle):
+        with nogil:
+            CCoreWorkerProcess.GetCoreWorker().CancelWaitAsync(handle)
 
     def push_error(self, JobID job_id, error_type, error_message,
                    double timestamp):
@@ -5193,6 +5209,13 @@ cdef class CoreWorker:
             self.job_config = common_pb2.JobConfig()
             self.job_config.ParseFromString(c_job_config.SerializeAsString())
         return self.job_config
+
+    def get_disable_job_level_lineage_reconstruction(self):
+        """
+        Return whether the current job has Ray Core lineage reconstruction
+        disabled.
+        """
+        return self.get_job_config().disable_job_level_lineage_reconstruction
 
     def get_local_memory_store_bytes_used(self):
         cdef:
@@ -5440,6 +5463,32 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
+        cpython.Py_DECREF(user_callback)
+
+
+# C++-to-Python wrapper for CoreWorker::WaitAsync. Invoked from C++ on
+# io_service_ for completions (same thread as async_callback / GetAsync)
+# and on the caller for cancel/shutdown/unknown-owner. Takes the GIL.
+# user_callback_ptr is a Py_INCREF'd callable callback(exc).
+# status: OK, ObjectUnknownOwner, or Invalid (cancel / shutdown).
+cdef void wait_async_callback_impl(CRayStatus status,
+                                   void *user_callback_ptr) with gil:
+    user_callback = <object>user_callback_ptr
+    try:
+        exc = None
+        if not status.ok():
+            # Do not call check_status (unsafe across this C++ boundary).
+            # Dropping the ObjectRef does not complete the wait.
+            # Unknown owner is ValueError. Cancel/shutdown are RaySystemError.
+            message = status.message().decode("utf-8", "replace")
+            if status.IsObjectUnknownOwner():
+                exc = ValueError(message)
+            else:
+                exc = RaySystemError(message)
+        user_callback(exc)
+    except BaseException:
+        logger.exception("failed to run set_wait_async_callback (user func)")
+    finally:
         cpython.Py_DECREF(user_callback)
 
 

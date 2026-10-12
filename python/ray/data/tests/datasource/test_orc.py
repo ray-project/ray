@@ -1,16 +1,74 @@
 import os
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pyarrow import orc
 
 import ray
-from ray.exceptions import UserCodeException
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource.orc_datasink import ORCDatasink
+from ray.data._internal.datasource.orc_datasource import ORCDatasource
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+from ray.data._internal.util import rows_same
+from ray.data.block import BlockAccessor
 
 
 def _write_orc(path, table):
     with pa.OSFile(path, "wb") as sink:
         orc.write_table(table, sink)
+
+
+def _list_visible_files(directory):
+    return sorted(
+        filename for filename in os.listdir(directory) if not filename.startswith(".")
+    )
+
+
+def _read_orc_dir(directory):
+    return pa.concat_tables(
+        orc.read_table(os.path.join(directory, filename))
+        for filename in _list_visible_files(directory)
+    )
+
+
+def test_read_orc_skips_empty_stripes(monkeypatch):
+    record_batches = [
+        pa.record_batch([pa.array([], type=pa.int64())], names=["id"]),
+        pa.record_batch([pa.array([1], type=pa.int64())], names=["id"]),
+    ]
+
+    class FakeORCFile:
+        nstripes = len(record_batches)
+
+        def read_stripe(self, stripe_index):
+            return record_batches[stripe_index]
+
+    monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
+
+    datasource = ORCDatasource.__new__(ORCDatasource)
+    tables = list(datasource._read_stream(None, "unused"))
+
+    assert tables == [pa.table({"id": [1]})]
+
+
+def test_read_orc_rejects_pickle_object_columns(monkeypatch):
+    storage = pa.array([b"payload"], type=pa.large_binary())
+    extension_array = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
+    record_batch = pa.record_batch([extension_array], names=["col"])
+
+    class FakeORCFile:
+        nstripes = 1
+
+        def read_stripe(self, stripe_index):
+            assert stripe_index == 0
+            return record_batch
+
+    monkeypatch.setattr(orc, "ORCFile", lambda _: FakeORCFile())
+
+    datasource = ORCDatasource.__new__(ORCDatasource)
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(datasource._read_stream(None, "unused"))
 
 
 def test_read_orc_basic(ray_start_regular_shared, tmp_path):
@@ -163,167 +221,139 @@ def test_read_orc_empty_file(ray_start_regular_shared, tmp_path):
     assert ds.take_all() == []
 
 
-# ---------------------------------------------------------------------------
-# Projection pushdown tests
-# ---------------------------------------------------------------------------
+def test_orc_write(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0, 1, 2], "name": ["a", "b", "c"]})
+    ds = ray.data.from_blocks([input_df])
+
+    ds.write_orc(tmp_path)
+
+    output_df = _read_orc_dir(tmp_path).to_pandas()
+    assert rows_same(input_df, output_df)
 
 
-def test_read_orc_projection_pushdown_physical(ray_start_regular_shared, tmp_path):
-    """Pure-project projection: select_columns(["value","id"]) on a file
-    with schema [id,name,value] must return only the requested columns in
-    the requested order, and the pure Project must be removed from the
-    optimized plan."""
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "Plan-string assertion is V1-specific (ReadORC vs V2 ListFiles-ReadFiles chain)."
+@pytest.mark.parametrize("override_num_blocks", [None, 2])
+def test_orc_roundtrip(ray_start_regular_shared, tmp_path, override_num_blocks):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+
+    ds = ray.data.from_pandas([df], override_num_blocks=override_num_blocks)
+    ds.write_orc(tmp_path)
+
+    ds2 = ray.data.read_orc(str(tmp_path))
+    ds2df = ds2.to_pandas()
+    assert rows_same(ds2df, df)
+    for entry in ds2._execute().blocks:
+        assert (
+            # pyrefly: ignore[no-matching-overload]
+            BlockAccessor.for_block(ray.get(entry.ref)).size_bytes()
+            == entry.metadata.size_bytes
         )
-    path = os.path.join(tmp_path, "proj.orc")
-    table = pa.table(
-        {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [10.0, 20.0, 30.0]}
+
+
+def test_orc_write_rejects_stream_compression(tmp_path):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Pass the compression parameter straight to write_orc "
+            "instead of via open_stream_args"
+        ),
+    ):
+        ORCDatasink(str(tmp_path), open_stream_args={"compression": "gzip"})
+
+
+def test_orc_write_rejects_zero_user_columns(tmp_path):
+    block = BlockAccessor.for_block(
+        pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(3)})
     )
-    _write_orc(path, table)
+    datasink = ORCDatasink(str(tmp_path))
 
-    ds = ray.data.read_orc(path, override_num_blocks=1).select_columns(["value", "id"])
-
-    assert ds.schema().names == ["value", "id"]
-    rows = ds.take_all()
-    assert [dict(r) for r in rows] == [
-        {"value": 10.0, "id": 1},
-        {"value": 20.0, "id": 2},
-        {"value": 30.0, "id": 3},
-    ]
-
-    from ray.data._internal.util import explain_plan
-
-    assert "Project" not in explain_plan(ds._logical_plan).strip().splitlines()
+    with pa.OSFile(os.path.join(tmp_path, "data.orc"), "wb") as file:
+        with pytest.raises(ValueError, match="at least one column"):
+            datasink.write_block_to_file(block, file)
 
 
-def test_read_orc_projection_pushdown_multi_stripe(ray_start_regular_shared, tmp_path):
-    """Multi-stripe file projected to select only one column still preserves
-    all rows, and reads below the stripe count."""
-    path = os.path.join(tmp_path, "multi.orc")
-    table = pa.table({"id": list(range(10000)), "x": [1] * 10000, "y": [2.0] * 10000})
-    with pa.OSFile(path, "wb") as sink:
-        orc.write_table(table, sink, stripe_size=64 * 1024)
-
-    ds = ray.data.read_orc(path).select_columns(["x"])
-    assert ds.count() == 10000
-    assert ds.schema().names == ["x"]
-
-
-def test_read_orc_projection_pushdown_empty(ray_start_regular_shared, tmp_path):
-    """select_columns([]) must preserve row counts across multiple stripes.
-
-    The row-preserving ``__bsp_stub`` placeholder is filtered from
-    ``schema()``/``columns()`` (see ``_is_user_visible_column``), but it's a
-    real physical column on each block, so ``take_all()`` returns one row
-    per input row (as it does for the identical Parquet case), not `[]`.
-    """
-    path = os.path.join(tmp_path, "empty.orc")
-    table = pa.table(
-        {"id": list(range(5000)), "extra": [1] * 5000, "other": ["x"] * 5000}
+def test_orc_write_strips_internal_columns(tmp_path):
+    block = BlockAccessor.for_block(
+        pa.table(
+            {
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(3),
+                "id": [1, 2, 3],
+            }
+        )
     )
-    with pa.OSFile(path, "wb") as sink:
-        orc.write_table(table, sink, stripe_size=64 * 1024)
+    output_path = os.path.join(tmp_path, "data.orc")
+    datasink = ORCDatasink(str(tmp_path))
 
-    ds = ray.data.read_orc(path).select_columns([])
-    assert ds.count() == 5000
-    assert ds.schema().names == []
-    assert len(ds.take_all()) == 5000
+    with pa.OSFile(output_path, "wb") as file:
+        datasink.write_block_to_file(block, file)
 
-
-def test_read_orc_projection_pushdown_partitioned(ray_start_regular_shared, tmp_path):
-    """Pure partition-only projection selects only partition columns,
-    not physical data."""
-    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
-
-    os.makedirs(os.path.join(tmp_path, "year=2024"))
-    _write_orc(
-        os.path.join(tmp_path, "year=2024", "data.orc"),
-        pa.table({"data": [0, 1]}),
-    )
-
-    ds = ray.data.read_orc(
-        str(tmp_path), partitioning=Partitioning(PartitionStyle.HIVE)
-    ).select_columns(["year"])
-
-    assert ds.count() == 2
-    assert ds.schema().names == ["year"]
-    rows = ds.take_all()
-    assert all(isinstance(r["year"], str) and r["year"] == "2024" for r in rows)
+    output = orc.read_table(output_path)
+    assert output.schema.names == ["id"]
+    assert output.column("id").to_pylist() == [1, 2, 3]
 
 
-def test_read_orc_projection_pushdown_mixed(ray_start_regular_shared, tmp_path):
-    """select_columns(["year","data"]) returns the requested order even when
-    data is from the file and year is from the partition."""
-    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+def test_orc_write_compression(ray_start_regular_shared, tmp_path):
+    input_df = pd.DataFrame({"id": [0, 1, 2]})
+    ds = ray.data.from_blocks([input_df])
 
-    os.makedirs(os.path.join(tmp_path, "year=2024"))
-    _write_orc(
-        os.path.join(tmp_path, "year=2024", "data.orc"),
-        pa.table({"data": [0, 1]}),
+    ds.write_orc(tmp_path, compression="zstd")
+
+    filenames = _list_visible_files(tmp_path)
+    assert len(filenames) == 1
+    output_file = os.path.join(tmp_path, filenames[0])
+    assert orc.ORCFile(output_file).compression == "ZSTD"
+    output_df = orc.read_table(output_file).to_pandas()
+    assert rows_same(input_df, output_df)
+
+
+def test_orc_write_args_fn_overrides_args(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(3)
+
+    ds.write_orc(
+        tmp_path,
+        arrow_orc_args_fn=lambda: {"compression": "zstd"},
+        compression="uncompressed",
     )
 
-    ds = ray.data.read_orc(
-        str(tmp_path), partitioning=Partitioning(PartitionStyle.HIVE)
-    ).select_columns(["year", "data"])
-
-    assert ds.schema().names == ["year", "data"]
-    rows = ds.take_all()
-    assert [dict(r) for r in rows] == [
-        {"year": "2024", "data": 0},
-        {"year": "2024", "data": 1},
-    ]
+    filenames = _list_visible_files(tmp_path)
+    assert filenames
+    assert all(
+        orc.ORCFile(os.path.join(tmp_path, filename)).compression == "ZSTD"
+        for filename in filenames
+    )
 
 
-def test_read_orc_projection_pushdown_missing_column(
-    ray_start_regular_shared, tmp_path
+def test_orc_write_empty(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"id": pd.Series([], dtype="int64")})
+    ds = ray.data.from_pandas(df)
+
+    ds.write_orc(tmp_path)
+
+    assert _list_visible_files(tmp_path) == []
+
+
+@pytest.mark.parametrize("min_rows_per_file", [5, 10, 50])
+def test_orc_write_min_rows_per_file(
+    tmp_path, ray_start_regular_shared, min_rows_per_file
 ):
-    """select_columns on a name that isn't a physical column, a declared
-    partition key, or ``path`` must raise -- not silently drop the column
-    the way a pure Project's pushdown could otherwise let it."""
-    path = os.path.join(tmp_path, "data.orc")
-    _write_orc(path, pa.table({"id": [0, 1, 2], "name": ["a", "b", "c"]}))
-
-    ds = ray.data.read_orc(path).select_columns(["id", "typo_col"])
-    # pyrefly: ignore[no-matching-overload]
-    with pytest.raises((UserCodeException, KeyError)):
-        ds.materialize()
-
-
-def test_read_orc_projection_pushdown_missing_column_hive_no_field_names(
-    ray_start_regular_shared, tmp_path
-):
-    """A typo alongside a real Hive partition key must still raise, even
-    when ``Partitioning.field_names`` is left unset (the common HIVE usage
-    pattern -- see ``test_read_orc_projection_pushdown_partitioned``). Names
-    are validated against the partition keys actually parsed from this
-    file's path, not against a declared (and here, absent) field list."""
-    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
-
-    os.makedirs(os.path.join(tmp_path, "year=2024"))
-    _write_orc(
-        os.path.join(tmp_path, "year=2024", "data.orc"),
-        pa.table({"data": [0, 1]}),
+    ray.data.range(100, override_num_blocks=20).write_orc(
+        tmp_path, min_rows_per_file=min_rows_per_file
     )
 
-    ds = ray.data.read_orc(
-        str(tmp_path), partitioning=Partitioning(PartitionStyle.HIVE)
-    ).select_columns(["year", "typo_col"])
-    # pyrefly: ignore[no-matching-overload]
-    with pytest.raises((UserCodeException, KeyError)):
-        ds.materialize()
+    filenames = _list_visible_files(tmp_path)
+    assert len(filenames) == 100 // min_rows_per_file
+    for filename in filenames:
+        num_rows_written = orc.read_table(os.path.join(tmp_path, filename)).num_rows
+        assert num_rows_written == min_rows_per_file
 
 
-def test_read_orc_projection_pushdown_include_paths(ray_start_regular_shared, tmp_path):
-    """select_columns(["path"]) with include_paths=True returns only the
-    synthetic path column, not the file data."""
-    path = os.path.join(tmp_path, "data.orc")
-    _write_orc(path, pa.table({"id": [0, 1, 2]}))
-    ds = ray.data.read_orc(path, include_paths=True).select_columns(["path"])
-    assert ds.schema().names == ["path"]
-    rows = ds.take_all()
-    assert all("path" in r and r["path"].endswith("data.orc") for r in rows)
+@pytest.mark.parametrize("min_rows_per_file", [0, -1])
+def test_orc_write_rejects_non_positive_min_rows_per_file(
+    ray_start_regular_shared, tmp_path, min_rows_per_file
+):
+    with pytest.raises(
+        ValueError, match="min_rows_per_file must be a positive integer"
+    ):
+        ray.data.range(1).write_orc(tmp_path, min_rows_per_file=min_rows_per_file)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, T
 if TYPE_CHECKING:
     import pyarrow.fs
 
+    from ray.data.checkpoint import CheckpointConfig
+
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
@@ -20,16 +22,11 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 from ray.data._internal.execution.operators.join import (
     JoinOperator,
     _make_join_reduce_fn,
+    _with_polars_thread_cap,
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
-    ShuffleMapOp,
-)
-from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
-    ShuffleReduceOp,
-)
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
@@ -64,7 +61,10 @@ from ray.data._internal.planner.checkpoint import (
     plan_read_op_with_checkpoint_filter,
     plan_write_op_with_checkpoint_writer,
 )
-from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.planner.plan_all_to_all_op import (
+    _select_shuffle_v2_op_classes,
+    plan_all_to_all_op,
+)
 from ray.data._internal.planner.plan_download_op import plan_download_op
 from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
 from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
@@ -142,6 +142,9 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
+_DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
+
+
 def _plan_join_shuffle_v2(
     logical_op: Join,
     physical_children: List[PhysicalOperator],
@@ -152,21 +155,29 @@ def _plan_join_shuffle_v2(
     num_partitions = logical_op.num_partitions
     join_type = JoinType(logical_op.join_type)
 
-    left_map = ShuffleMapOp(
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+
+    left_map = map_cls(
         physical_children[0],
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-        name=f"JoinShuffleMapLeft(keys={tuple(left_keys)}, parts={num_partitions})",
+        name=(
+            f"{prefix}JoinShuffleMapLeft(keys={tuple(left_keys)}, "
+            f"parts={num_partitions})"
+        ),
     )
-    right_map = ShuffleMapOp(
+    right_map = map_cls(
         physical_children[1],
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
         map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
-        name=f"JoinShuffleMapRight(keys={tuple(right_keys)}, parts={num_partitions})",
+        name=(
+            f"{prefix}JoinShuffleMapRight(keys={tuple(right_keys)}, "
+            f"parts={num_partitions})"
+        ),
     )
 
     reduce_fn = _make_join_reduce_fn(
@@ -178,14 +189,22 @@ def _plan_join_shuffle_v2(
         left_schema=logical_op.input_dependencies[0].infer_schema(),
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
-    return ShuffleReduceOp(
+    reduce_kwargs = {}
+    if data_context.use_disk_based_hash_shuffle:
+        reduce_kwargs[
+            "peak_memory_multiplier"
+        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+    return reduce_cls(
         [left_map, right_map],
         data_context,
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
-        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
-        name=f"JoinShuffleReduce(num_partitions={num_partitions})",
+        reduce_ray_remote_args=_with_polars_thread_cap(
+            logical_op.aggregator_ray_remote_args
+        ),
+        name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
+        **reduce_kwargs,
     )
 
 
@@ -195,7 +214,7 @@ def plan_join_op(
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
-    if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE_V2:
+    if data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         return _plan_join_shuffle_v2(logical_op, physical_children, data_context)
     return JoinOperator(
         data_context=data_context,
@@ -283,11 +302,35 @@ class Planner:
 
             callbacks.append(checkpoint_callback)
 
-            # Dynamically set the plan functions for checkpointing because they
-            # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                data_file_dir, data_file_fs
-            )
+            if not checkpoint_config._should_restore:
+                # Skip loading checkpoint data and filtering rows,
+                # but still enable the checkpoint writer.
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer,
+                }
+            elif checkpoint_config.has_generated_id_column:
+                # Restoring from generated row IDs isn't wired up yet, and they
+                # can't go through the numpy-based ID filter that the
+                # ``id_column`` path plans. Until then, only write checkpoints:
+                # a rerun redoes every row. Clean up a crashed run's pending
+                # checkpoints first, which the ``id_column`` path does while
+                # loading its checkpoint.
+                if data_file_dir is not None:
+                    self._clean_pending_checkpoints(
+                        checkpoint_config,
+                        logical_plan.context,
+                        data_file_dir,
+                        data_file_fs,
+                    )
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer
+                }
+            else:
+                # Dynamically set the plan functions for checkpointing because they
+                # need to a reference to the checkpoint ref.
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                    data_file_dir, data_file_fs
+                )
 
         elif checkpoint_config is not None:
             assert not self._check_supports_checkpointing(logical_plan)
@@ -386,6 +429,20 @@ class Planner:
             if isinstance(datasink, _FileDatasink):
                 return datasink.unresolved_path, datasink.filesystem
         return None, None
+
+    @staticmethod
+    def _clean_pending_checkpoints(
+        checkpoint_config: "CheckpointConfig",
+        data_context: DataContext,
+        data_file_dir: str,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
+    ) -> None:
+        """Delete pending checkpoints and their partially written data files."""
+        # Lazy import: ``checkpoint_filter`` imports ``ray.data.context``.
+        from ray.data.checkpoint.checkpoint_filter import IdColumnCheckpointManager
+
+        manager = IdColumnCheckpointManager(checkpoint_config, data_context)
+        manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
 
     def _get_plan_fns_for_checkpointing(
         self,

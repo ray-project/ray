@@ -16,14 +16,19 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
-from ray._common.utils import get_or_create_event_loop
+from ray._common.utils import binary_to_hex, get_or_create_event_loop
 from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
-from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
+import ray._private.ray_constants as ray_constants
+from ray.core.generated.gcs_service_pb2 import (
+    GetAllResourceUsageReply,
+    GetDrainingNodesReply,
+)
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
+    CGetDrainingNodesReply,
     ConnectOnSingletonIoContext,
     MultiItemPyCallback,
     OptionalItemPyCallback,
@@ -278,6 +283,23 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeInfo methods
     #############################################################
+    def is_gcs_leader_local(self) -> bool:
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            return True
+        return self.inner.get().Nodes().IsGcsLeader()
+
+    def is_gcs_leader(self) -> bool:
+        if not ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION:
+            return True
+        try:
+            self.check_alive([], timeout=2)
+        except (RpcError, GetTimeoutError):
+            # The GCS may be unreachable or slow to respond (e.g. during a
+            # failover). Fall back to the last cached leadership status instead
+            # of failing. Other, unexpected errors are allowed to propagate.
+            pass
+        return self.inner.get().Nodes().IsGcsLeader()
+
     def check_alive(
         self, node_ids: List[NodeID], timeout: Optional[int | float] = None
     ) -> List[bool]:
@@ -433,6 +455,29 @@ cdef class InnerGcsClient:
     #############################################################
     # NodeResources methods
     #############################################################
+    def get_draining_nodes(
+        self, timeout: Optional[int | float] = None
+    ) -> Dict[str, int]:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef CGetDrainingNodesReply c_reply
+        cdef c_string serialized_reply
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get()
+                .NodeResources()
+                .GetDrainingNodes(timeout_ms, c_reply)
+            )
+            serialized_reply = c_reply.SerializeAsString()
+
+        reply = GetDrainingNodesReply()
+        reply.ParseFromString(serialized_reply)
+        return {
+            binary_to_hex(
+                draining_node.node_id
+            ): draining_node.draining_deadline_timestamp_ms
+            for draining_node in reply.draining_nodes
+        }
+
     def get_all_resource_usage(
         self, timeout: Optional[int | float] = None
     ) -> GetAllResourceUsageReply:

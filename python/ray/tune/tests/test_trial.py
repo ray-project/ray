@@ -118,6 +118,48 @@ def test_trial_logdir_length():
     assert len(trial.storage.trial_dir_name) < 200
 
 
+def test_generate_dirname_strips_reserved_characters(tmp_path):
+    """Test that `Trial._generate_dirname` strips characters that are illegal
+    in Windows directory names (and unsafe for rsync on any platform), e.g.
+    an env id like "ale_py:ALE/Pong-v5" (see #49477)."""
+    trial = Trial(
+        trainable_name="PPO",
+        stub=True,
+        config={"env": "ale_py:ALE/Pong-v5"},
+        storage=mock_storage_context(storage_path=str(tmp_path)),
+    )
+    dirname = trial._generate_dirname()
+
+    illegal_chars = set('/()<>:"\\|?*')
+    assert not (
+        illegal_chars & set(dirname)
+    ), f"generated dirname {dirname!r} still contains a reserved character"
+
+    # The directory must actually be creatable -- this is what fails on
+    # Windows with a raw ":" in the name (NotADirectoryError / WinError 267).
+    (tmp_path / dirname).mkdir()
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("simple_name", "simple_name"),
+        ('a<b>c:d"e/f\\g|h?i*j(k)l', "a_b_c_d_e_f_g_h_i_j_k_l"),
+    ],
+)
+def test_generate_dirname_custom_dirname_is_sanitized(tmp_path, raw, expected):
+    """`custom_dirname` goes through the same sanitization as the generated
+    name, so a user-supplied trial name with reserved characters is still
+    safe to use as a directory name."""
+    trial = Trial(
+        trainable_name="PPO",
+        stub=True,
+        storage=mock_storage_context(storage_path=str(tmp_path)),
+    )
+    trial.custom_dirname = raw
+    assert trial._generate_dirname() == expected
+
+
 def test_should_stop(caplog, propagate_logs):  # noqa
     """Test whether `Trial.should_stop()` works as expected given a result dict."""
     trial = Trial(

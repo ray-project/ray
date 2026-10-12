@@ -288,8 +288,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// A callback to call when an object has been freed.
   std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
 
-  /// Hashmap from local objects that we are waiting to free to metadata about
-  /// the object including their owner address.
+  /// Metadata for primary copies this raylet owns (owner address, freed flag,
+  /// size).
   /// All objects in this hashmap should also be in exactly one of the
   /// following maps:
   /// - pinned_objects_: objects pinned in shared memory
