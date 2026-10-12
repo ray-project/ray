@@ -14,8 +14,10 @@ from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Deque,
+    Dict,
     Iterable,
     Iterator,
     List,
@@ -104,6 +106,11 @@ def chunk_unit_id(path: str, chunk_start_offset: int) -> str:
     return f"{path}#c={chunk_start_offset}"
 
 
+def topic_unit_id(path: str, topic: str) -> str:
+    """Stable ``ReadUnit.id`` of one topic of a file, at topic granularity."""
+    return f"{path}#t={topic}"
+
+
 def message_row_id(path: str, chunk_start_offset: int, index_in_chunk: int) -> str:
     """Deterministic id of one message: its chunk and its position in the chunk.
 
@@ -161,3 +168,25 @@ def chunk_run(
         size_bytes=max(chunk_index.uncompressed_size, 1),
         fully_matched=False,
     )
+
+
+def topic_run_metadata(
+    chunk_indexes: "List[ChunkIndex]",
+    topic: str,
+    num_rows: int,
+) -> Dict[str, Any]:
+    """The listing row for one topic of a file, at topic granularity.
+
+    A :class:`FileChunk` row with the ``topic`` added, so the reader knows
+    which topic to read. At this granularity listing rows reach the reader
+    unchanged, so the extra key survives.
+    """
+    run = FileChunk(
+        unit_ids=tuple(c.chunk_start_offset for c in chunk_indexes),
+        num_rows=num_rows,
+        size_bytes=max(sum(c.uncompressed_size for c in chunk_indexes), 1),
+        fully_matched=False,
+    )
+    metadata = run.to_metadata()
+    metadata["topic"] = topic
+    return metadata

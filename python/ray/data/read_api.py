@@ -71,6 +71,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import WindowSpec
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -3254,6 +3255,9 @@ def read_mcap(
     include_metadata: bool = True,
     log_time_order: bool = True,
     include_row_id: bool = False,
+    read_granularity: Literal["message", "window", "topic", "file"] = "message",
+    window: Optional[WindowSpec] = None,
+    video_topics: Optional[Union[List[str], Set[str]]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3321,6 +3325,16 @@ def read_mcap(
         ...     include_paths=True # doctest: +SKIP
         ... ) # doctest: +SKIP
 
+        Read ten-second windows of two camera topics, each row a decodable clip.
+
+        >>> from ray.data.datasource import WindowSpec  # doctest: +SKIP
+        >>> ds = ray.data.read_mcap( # doctest: +SKIP
+        ...     "s3://bucket/recordings/", # doctest: +SKIP
+        ...     topics={"/cam_front/compressed", "/cam_wrist/compressed"}, # doctest: +SKIP
+        ...     read_granularity="window", # doctest: +SKIP
+        ...     window=WindowSpec(length_s=10), # doctest: +SKIP
+        ... ) # doctest: +SKIP
+
         Read with topic filtering and metadata inclusion.
 
         >>> ds = ray.data.read_mcap( # doctest: +SKIP
@@ -3356,6 +3370,40 @@ def read_mcap(
             Turned on automatically when the current checkpoint config's
             ``id_column`` is ``row_id``. Requires the V2 datasource
             (``DataContext.use_datasource_v2``).
+        read_granularity: What one row is. ``"message"`` (the default) is one message
+            per row. ``"window"`` packs the selected messages of one time window of one
+            file into a row, ``"topic"`` those of one topic of one file, and ``"file"``
+            those of one whole file. These coarser rows hold the messages as parallel
+            list columns (``channel_id``, ``log_time``, ``publish_time``, ``sequence``,
+            ``data``, and ``topic`` except in topic rows), where entry *i* of each is
+            the same message, in log-time order. Payloads stay encoded, and a
+            ``channels`` column describes each channel in the row, so a row can be
+            decoded on its own. With ``include_row_id``, ``row_id`` identifies the whole
+            row, so a checkpointed read can resume on it. A topic row of a video topic
+            (see ``video_topics``) starts at a keyframe: if a ``time_range`` cuts the
+            stream mid-GOP, the frames from the keyframe before the range are
+            prepended and counted by ``num_lead_in``. A topic or file row over 1 GiB
+            of payload fails the read
+            (``RAY_DATA_MCAP_MAX_ROW_BYTES``). Requires the V2 datasource.
+        window: Required with ``read_granularity="window"``: a
+            :class:`~ray.data.datasource.WindowSpec` giving the window length, stride
+            and anchor. Window rows also carry ``window_start``, ``window_end``
+            (nanoseconds, end exclusive), ``num_messages`` and ``num_lead_in``.
+            ``num_lead_in`` counts the leading entries from before the window, or before
+            ``time_range`` if it starts later: the frames a video topic needs to decode,
+            back to the previous keyframe and at most 10 s
+            (``RAY_DATA_MCAP_MAX_LEAD_IN_S``). A topic is video if its schema name is a
+            known video schema or ``video_topics`` lists it. Its codec comes from the
+            message's ``format`` field or from its bytes (JPEG, PNG, H.264, H.265, VP9
+            and AV1 are recognised). A video topic whose codec is not recognised
+            carries that whole span.
+        video_topics: Topics that carry compressed video or images under a schema
+            name ``read_mcap`` does not know. Topics with a known video schema need
+            no entry: Foxglove's ``CompressedVideo`` and ``CompressedImage`` in their
+            ROS 1, ROS 2 and protobuf names, and ROS's ``sensor_msgs``
+            ``CompressedImage``. Video topics get a lead-in in window and topic rows.
+            A listed topic's codec is read from its payloads. With ``topics``, every
+            entry must be one of them. Requires the V2 datasource.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
@@ -3437,6 +3485,9 @@ def read_mcap(
             log_time_order=log_time_order,
             include_row_id=include_row_id,
             include_paths=include_paths,
+            read_granularity=read_granularity,
+            window=window,
+            video_topics=video_topics,
             filesystem=filesystem,
             partitioning=partitioning,
             partition_filter=partition_filter,
@@ -3461,11 +3512,17 @@ def read_mcap(
             partition_filter=partition_filter,
         )
 
-    if not log_time_order or include_row_id:
+    if (
+        not log_time_order
+        or include_row_id
+        or read_granularity != "message"
+        or window
+        or video_topics
+    ):
         raise NotImplementedError(
-            "`log_time_order=False` and `include_row_id` on `read_mcap` require "
-            "the V2 datasource. Enable it with "
-            "`ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "`log_time_order=False`, `include_row_id`, `read_granularity`, `window` "
+            "and `video_topics` on `read_mcap` require the V2 datasource. Enable it "
+            "with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
             "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
         )
 
