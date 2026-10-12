@@ -140,6 +140,13 @@ func (nr *NativeRuntime) Start() error {
 
 	nr.handle = handle
 
+	// Install the cgo metric backend as the default backend. This must happen
+	// after cgoboundary.Initialize() so the C++ core worker (and its stats
+	// module) is ready; metric registration/recording before this point would
+	// fail with "metric backend not registered". Local mode never reaches this
+	// path and therefore intentionally keeps the backend unregistered.
+	cgointerfaces.RegisterDefaultBackend()
+
 	// Register the serializer's buffer pool with the object package.
 	// This is done explicitly in Start() rather than in init() to:
 	// 1. Follow dependency inversion principle (composition root pattern)
@@ -796,12 +803,13 @@ func convertToBaseOptions(apiOpts *options.InitializeOptions) (base.InitializeOp
 			JobConfig: []byte(apiOpts.Job.JobConfig),
 		},
 		Runtime: base.RuntimeOptions{
-			StoreSocket:    apiOpts.Runtime.StoreSocket,
-			RayletSocket:   apiOpts.Runtime.RayletSocket,
-			LogDir:         apiOpts.Runtime.LogDir,
-			StartupToken:   int(apiOpts.Runtime.StartupToken),
-			RuntimeEnvHash: int(apiOpts.Runtime.RuntimeEnvHash),
-			WorkerIDHex:    apiOpts.Runtime.WorkerIDHex,
+			StoreSocket:      apiOpts.Runtime.StoreSocket,
+			RayletSocket:     apiOpts.Runtime.RayletSocket,
+			LogDir:           apiOpts.Runtime.LogDir,
+			StartupToken:     int(apiOpts.Runtime.StartupToken),
+			RuntimeEnvHash:   int(apiOpts.Runtime.RuntimeEnvHash),
+			MetricsAgentPort: base.NormalizeMetricsAgentPort(apiOpts.Runtime.MetricsAgentPort),
+			WorkerIDHex:      apiOpts.Runtime.WorkerIDHex,
 		},
 	}, nil
 }

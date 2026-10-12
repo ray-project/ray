@@ -290,3 +290,28 @@ func TestValidateInitializeOptions(t *testing.T) {
 		})
 	}
 }
+
+// TestNormalizeMetricsAgentPort verifies that the zero value (unset) maps to -1
+// (C++ semantics for "metrics export disabled") while an explicit port is
+// preserved. This is the guard that keeps the Go dashboard head (driver mode,
+// which has no metrics agent port source) on the disabled path instead of trying
+// to connect to port 0.
+func TestNormalizeMetricsAgentPort(t *testing.T) {
+	tests := []struct {
+		name     string
+		port     int32
+		expected int
+	}{
+		{name: "UnsetMapsToDisabled", port: 0, expected: -1},
+		{name: "ExplicitPortPreserved", port: 43215, expected: 43215},
+		{name: "NegativePreserved", port: -1, expected: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := NormalizeMetricsAgentPort(tt.port); got != tt.expected {
+				t.Errorf("NormalizeMetricsAgentPort(%d) = %d, expected %d", tt.port, got, tt.expected)
+			}
+		})
+	}
+}

@@ -260,6 +260,7 @@ func newTestCmd() *cobra.Command {
 	cmd.Flags().Int(NodeManagerPort, 6379, "")
 	cmd.Flags().Int(StartupToken, -1, "")
 	cmd.Flags().Int(RuntimeEnvHashFlag, -1, "")
+	cmd.Flags().Int(MetricsAgentPort, -1, "")
 	cmd.Flags().String(WorkerIDFlag, "", "")
 	return cmd
 }
@@ -303,6 +304,7 @@ func TestNewRayConfig_ValidWorker(t *testing.T) {
 	cmd.Flags().Set(StartupToken, "12345")
 	cmd.Flags().Set(RuntimeEnvHashFlag, "100")
 	cmd.Flags().Set(NodeManagerPort, "6379")
+	cmd.Flags().Set(MetricsAgentPort, "43215")
 
 	config, err := NewRayConfig(cmd, false, true)
 	if err != nil {
@@ -319,6 +321,9 @@ func TestNewRayConfig_ValidWorker(t *testing.T) {
 	}
 	if config.StartupToken != 12345 {
 		t.Errorf("StartupToken = %d, want %d", config.StartupToken, 12345)
+	}
+	if config.MetricsAgentPort != 43215 {
+		t.Errorf("MetricsAgentPort = %d, want %d", config.MetricsAgentPort, 43215)
 	}
 }
 

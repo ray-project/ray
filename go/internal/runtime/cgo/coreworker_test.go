@@ -194,6 +194,61 @@ func TestInitialize_EmptyJobID(t *testing.T) {
 	}
 }
 
+// TestToCNativeRuntimeInitializeOptions_MetricsAgentPort verifies the metrics
+// agent port from RuntimeOptions is mapped into the C struct that C++
+// CNativeRuntime_Initialize consumes. Without this, the Go worker's
+// metrics_agent_port stays at its default (0 -> -1 via normalizeMetricsAgentPort)
+// and the metrics exporter agent connection fails (core_worker_process.cc
+// "Failed to establish connection to the metrics exporter agent").
+func TestToCNativeRuntimeInitializeOptions_MetricsAgentPort(t *testing.T) {
+	opts := base.InitializeOptions{
+		Job: base.JobOptions{},
+		Network: base.NetworkOptions{
+			NodeIPAddress: "127.0.0.1",
+			GcsAddress:    "127.0.0.1:6379",
+		},
+		Runtime: base.RuntimeOptions{
+			MetricsAgentPort: 43215,
+		},
+	}
+
+	// Verify the Go-level conversion maps the port into the C struct.
+	cOpts, free := toCNativeRuntimeInitializeOptions(opts)
+	defer free()
+
+	if cOpts == nil {
+		t.Fatal("toCNativeRuntimeInitializeOptions() should not return nil for valid options")
+	}
+	if got := int(cOpts.metrics_agent_port); got != 43215 {
+		t.Errorf("Expected metrics_agent_port=43215 in C struct, got %d", got)
+	}
+}
+
+// TestToCNativeRuntimeInitializeOptions_MetricsAgentPortDefault verifies the
+// zero value (unset) is mapped as-is (0). The 0 -> -1 normalization happens in
+// base.InitializeOptionsFromAPI, so an unset port must remain 0 across the CGO
+// boundary for the default path to represent "disabled" after normalization.
+func TestToCNativeRuntimeInitializeOptions_MetricsAgentPortDefault(t *testing.T) {
+	opts := base.InitializeOptions{
+		Job: base.JobOptions{},
+		Network: base.NetworkOptions{
+			NodeIPAddress: "127.0.0.1",
+			GcsAddress:    "127.0.0.1:6379",
+		},
+		Runtime: base.RuntimeOptions{},
+	}
+
+	cOpts, free := toCNativeRuntimeInitializeOptions(opts)
+	defer free()
+
+	if cOpts == nil {
+		t.Fatal("toCNativeRuntimeInitializeOptions() should not return nil for valid options")
+	}
+	if got := int(cOpts.metrics_agent_port); got != 0 {
+		t.Errorf("Expected metrics_agent_port=0 when unset (normalized to -1 at the base layer), got %d", got)
+	}
+}
+
 // TestHandle_InterfaceVerification tests that Handle is properly defined.
 func TestHandle_InterfaceVerification(t *testing.T) {
 	// Verify Handle struct is properly defined.

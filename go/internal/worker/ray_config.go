@@ -53,6 +53,9 @@ const (
 	SessionDir = "session-dir"
 	LogsDir    = "logs-dir"
 
+	// Metrics flags
+	MetricsAgentPort = "metrics-agent-port"
+
 	// Node configuration flags
 	NodeIpAddress = "node-ip-address"
 	HeadArgs      = "head-args"
@@ -168,6 +171,9 @@ type RayConfig struct {
 	// StartupToken is used for worker authentication.
 	StartupToken int
 
+	// MetricsAgentPort is the metrics agent port (-1 disables metrics export).
+	MetricsAgentPort int
+
 	// WorkerIDHex is the worker ID (hex) assigned by the raylet. Empty for
 	// driver processes; required for worker processes so the worker registers
 	// back with the raylet under the ID the raylet assigned.
@@ -271,6 +277,7 @@ func initRayConfig(localMode bool, isWorker bool) *RayConfig {
 		LogsDir:              "",
 		NodeIPAddress:        "",
 		StartupToken:         -1,
+		MetricsAgentPort:     -1,
 		HeadArgs:             nil,
 		RuntimeEnv:           "",
 		RuntimeEnvHash:       0,
@@ -407,6 +414,13 @@ func parseNodeConfig(cmd *cobra.Command, config *RayConfig) error {
 		return fmt.Errorf("failed to get flag '%s': %v", StartupToken, err)
 	}
 	config.StartupToken = startupToken
+
+	// Parse the metrics agent port (-1 disables metrics export).
+	metricsAgentPort, err := cmd.Flags().GetInt(MetricsAgentPort)
+	if err != nil {
+		return fmt.Errorf("failed to get flag '%s': %v", MetricsAgentPort, err)
+	}
+	config.MetricsAgentPort = metricsAgentPort
 
 	config.WorkerIDHex, _ = cmd.Flags().GetString(WorkerIDFlag)
 

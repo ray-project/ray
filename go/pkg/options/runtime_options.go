@@ -89,12 +89,13 @@ func FromInt32(v int32) WorkerType {
 
 // RuntimeOptions contains runtime-related configuration options.
 type RuntimeOptions struct {
-	StoreSocket    string // Object store socket path
-	RayletSocket   string // Raylet socket path
-	LogDir         string // Log directory
-	StartupToken   int32  // Worker startup token
-	RuntimeEnvHash int32  // Runtime environment hash
-	WorkerIDHex    string // Worker ID (hex) assigned by the raylet; empty for drivers
+	StoreSocket      string // Object store socket path
+	RayletSocket     string // Raylet socket path
+	LogDir           string // Log directory
+	StartupToken     int32  // Worker startup token
+	RuntimeEnvHash   int32  // Runtime environment hash
+	WorkerIDHex      string // Worker ID (hex) assigned by the raylet; empty for drivers
+	MetricsAgentPort int32  // Metrics agent port, -1 disables metrics export
 }
 
 // NetworkOptions contains network-related configuration options.

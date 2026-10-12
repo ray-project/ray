@@ -24,6 +24,7 @@ go_library(
         "converters.go",  # CGO helper functions
         # Boundary layer - CGO boundary handling
         "coreworker.go",  # CoreWorker lifecycle management
+        "metric_backend.go",  # CgoMetricBackend metric bindings
         # Memory layer - Memory management
         "native_allocator.go",  # Go-side object allocation callback
         # Interfaces layer - Interface implementations
@@ -46,6 +47,7 @@ go_library(
         "//go/pkg/ids",
         "//go/pkg/log",
         "//go/pkg/runtime/function",
+        "//go/pkg/runtime/metric",
         "//go/pkg/runtime/object",
         "//go/pkg/runtime/submitter",
     ],
@@ -60,6 +62,7 @@ go_test(
         "actor_handle_registry_test.go",
         "converters_test.go",
         "coreworker_test.go",
+        "metric_backend_test.go",
         "native_allocator_test.go",
         "native_context_test.go",
         "native_executor_test.go",

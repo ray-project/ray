@@ -67,7 +67,9 @@ typedef struct {
   const char *worker_id_hex;  // Worker ID as hex string (worker mode; empty for driver)
   int startup_token;          // Startup token for this worker
   int runtime_env_hash;       // Hash of the runtime environment
-  bool enable_logging;        // Initialize logging if true
+  int metrics_agent_port;  // Port where the metrics agent is bound (-1 disables metrics
+                           // export)
+  bool enable_logging;     // Initialize logging if true
 } CNativeRuntimeInitializeOptions;
 
 /**

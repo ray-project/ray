@@ -112,6 +112,9 @@ func init() {
 	WorkerCmd.Flags().String(worker.SessionDir, "", "The path of this session (--session-dir).")
 	WorkerCmd.Flags().String(worker.LogsDir, "", "Logs dir for workers (--logs-dir).")
 
+	// Metrics flags
+	WorkerCmd.Flags().Int(worker.MetricsAgentPort, -1, "The port where the metrics agent is bound. -1 disables metrics export (--metrics-agent-port).")
+
 	// Node configuration flags
 	WorkerCmd.Flags().String(worker.NodeIpAddress, "", "The ip address for this node (--node-ip-address).")
 	WorkerCmd.Flags().String(worker.HeadArgs, "", "The command line args to be appended as parameters of the `ray start` command (--head-args).")
@@ -185,12 +188,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 			JobConfig: jobConfigStr, // Use base64-encoded protobuf JobConfig
 		},
 		options.RuntimeOptions{
-			StoreSocket:    config.PlasmaStoreName,
-			RayletSocket:   config.RayletName,
-			LogDir:         config.LogsDir,
-			StartupToken:   int32(config.StartupToken),
-			RuntimeEnvHash: int32(config.RuntimeEnvHash),
-			WorkerIDHex:    config.WorkerIDHex,
+			StoreSocket:      config.PlasmaStoreName,
+			RayletSocket:     config.RayletName,
+			LogDir:           config.LogsDir,
+			StartupToken:     int32(config.StartupToken),
+			RuntimeEnvHash:   int32(config.RuntimeEnvHash),
+			WorkerIDHex:      config.WorkerIDHex,
+			MetricsAgentPort: int32(config.MetricsAgentPort),
 		},
 		worker.WithCodeSearchPath(config.CodeSearchPath),
 	)

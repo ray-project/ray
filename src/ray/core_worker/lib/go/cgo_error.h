@@ -18,8 +18,8 @@
 #include <cstring>
 
 // Sets *error to a strdup'd copy of msg when error is non-null. Shared by the
-// cgo boundary translation units (metric_ops.cc, placement_group_ops.cc, ...)
-// so a caller that passes NULL never gets a spurious dereference.
+// cgo boundary translation units so a caller that passes NULL never gets a
+// spurious dereference. The caller owns the returned string and frees it.
 // inline keeps internal linkage per translation unit, so multiple extern "C"
 // boundaries can use it without a link-time collision.
 inline void SetBoundaryError(char **error, const char *msg) {

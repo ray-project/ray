@@ -1880,6 +1880,7 @@ def start_raylet(
             node_ip_address,
             cluster_id,
             log_dir,
+            metrics_agent_port=metrics_agent_port,
         )
 
     # Create the command that the Raylet will use to start workers.
@@ -2320,6 +2321,7 @@ def build_go_worker_command(
     node_ip_address: str,
     cluster_id: str,
     log_dir: str,
+    metrics_agent_port: Optional[int] = None,
 ):
     """This method assembles the command used to start a Go worker.
 
@@ -2333,6 +2335,8 @@ def build_go_worker_command(
         node_ip_address: The IP address for this node.
         cluster_id: The cluster ID of the Ray cluster.
         log_dir: The path of the log directory.
+        metrics_agent_port: The port of the metrics agent. If not None, it is
+            passed to the Go worker via --metrics-agent-port.
 
     Returns:
         The command string for starting Go worker.
@@ -2358,6 +2362,14 @@ def build_go_worker_command(
     # Add placeholder for dynamic options (e.g., --code-search-path)
     # This matches the behavior of Python's start_worker_command
     command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
+
+    # 0 is the "unresolved" placeholder the launcher passes for a dynamic-port
+    # cluster (the real port is only known after the node registers with GCS);
+    # forwarding it would only make the worker translate 0 back to "disabled".
+    # Skip it the same way an unset port is skipped, matching the Python
+    # worker, which omits the flag entirely when no agent port is configured.
+    if metrics_agent_port:
+        command.append(f"--metrics-agent-port={metrics_agent_port}")
 
     return command
 

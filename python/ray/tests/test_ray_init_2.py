@@ -548,5 +548,71 @@ def test_can_create_task_in_multiple_sessions(shutdown_only):
     assert ray.get(run_task_in_task.remote()) == "the task"
 
 
+def test_build_go_worker_command_metrics_agent_port():
+    """Verify build_go_worker_command forwards the metrics agent port to the Go
+    worker via --metrics-agent-port, the same way the Python and C++ workers
+    receive it. Without the flag the Go worker cannot reach the node's metrics
+    exporter agent and reports a connection failure at startup.
+    """
+    retry_dir = tempfile.mkdtemp()
+    try:
+        with unittest.mock.patch(
+            "ray._private.services.ray_constants.ENABLE_GO_SETUP_WORKER", False
+        ):
+            command = ray._private.services.build_go_worker_command(
+                gcs_address="127.0.0.1:6379",
+                plasma_store_name="/tmp/store",
+                raylet_name="/tmp/raylet",
+                redis_username="",
+                redis_password="",
+                session_dir=retry_dir,
+                node_ip_address="127.0.0.1",
+                cluster_id="01000000",
+                log_dir=retry_dir,
+                metrics_agent_port=43215,
+            )
+        assert "--metrics-agent-port=43215" in command, command
+
+        # Unset port must not add the flag (default -1 keeps the Go worker on
+        # the disabled path, matching the C++ fix's `is not None` guard).
+        with unittest.mock.patch(
+            "ray._private.services.ray_constants.ENABLE_GO_SETUP_WORKER", False
+        ):
+            command = ray._private.services.build_go_worker_command(
+                gcs_address="127.0.0.1:6379",
+                plasma_store_name="/tmp/store",
+                raylet_name="/tmp/raylet",
+                redis_username="",
+                redis_password="",
+                session_dir=retry_dir,
+                node_ip_address="127.0.0.1",
+                cluster_id="01000000",
+                log_dir=retry_dir,
+            )
+        assert "--metrics-agent-port=" not in command, command
+
+        # A dynamic-port cluster passes 0 as the unresolved placeholder. It must
+        # be dropped, not forwarded: the Go worker would otherwise receive
+        # --metrics-agent-port=0 and translate it to the disabled path.
+        with unittest.mock.patch(
+            "ray._private.services.ray_constants.ENABLE_GO_SETUP_WORKER", False
+        ):
+            command = ray._private.services.build_go_worker_command(
+                gcs_address="127.0.0.1:6379",
+                plasma_store_name="/tmp/store",
+                raylet_name="/tmp/raylet",
+                redis_username="",
+                redis_password="",
+                session_dir=retry_dir,
+                node_ip_address="127.0.0.1",
+                cluster_id="01000000",
+                log_dir=retry_dir,
+                metrics_agent_port=0,
+            )
+        assert "--metrics-agent-port=" not in command, command
+    finally:
+        shutil.rmtree(retry_dir, ignore_errors=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

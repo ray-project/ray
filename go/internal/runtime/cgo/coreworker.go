@@ -126,6 +126,7 @@ func toCNativeRuntimeInitializeOptions(opts base.InitializeOptions) (*C.CNativeR
 		worker_id_hex:         cWorkerID,
 		startup_token:         C.int(opts.Runtime.StartupToken),
 		runtime_env_hash:      C.int(opts.Runtime.RuntimeEnvHash),
+		metrics_agent_port:    C.int(opts.Runtime.MetricsAgentPort),
 		enable_logging:        C.bool(true),
 	}
 

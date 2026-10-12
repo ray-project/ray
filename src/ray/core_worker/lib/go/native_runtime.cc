@@ -83,6 +83,7 @@ extern "C" CNativeRuntime *CNativeRuntime_Initialize(
 
         options.startup_token = opts->startup_token;
         options.runtime_env_hash = opts->runtime_env_hash;
+        options.metrics_agent_port = opts->metrics_agent_port;
         options.enable_logging = opts->enable_logging;
 
         // Note: Logging has been initialized, so we can use RAY_LOG for structured

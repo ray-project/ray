@@ -78,13 +78,14 @@ func (j JobOptions) toAPI() options.JobOptions {
 
 // RuntimeOptions contains runtime-related configuration options (internal use).
 type RuntimeOptions struct {
-	StoreSocket    string // Object store socket path
-	RayletSocket   string // Raylet socket path
-	LogDir         string // Log directory
-	StartupToken   int    // Worker startup token
-	RuntimeEnvHash int    // Runtime environment hash
-	WorkerIDHex    string // Worker ID (hex) assigned by the raylet; empty for drivers
-	EnableLogging  bool   // Initialize C++ logging if true (default: true)
+	StoreSocket      string // Object store socket path
+	RayletSocket     string // Raylet socket path
+	LogDir           string // Log directory
+	StartupToken     int    // Worker startup token
+	RuntimeEnvHash   int    // Runtime environment hash
+	WorkerIDHex      string // Worker ID (hex) assigned by the raylet; empty for drivers
+	MetricsAgentPort int    // Metrics agent port, -1 disables metrics export
+	EnableLogging    bool   // Initialize C++ logging if true (default: true)
 }
 
 // InitializeOptions represents initialization options (for internal use, strongly typed).
@@ -120,13 +121,14 @@ func InitializeOptionsFromAPI(opts options.InitializeOptions) (InitializeOptions
 			GcsAddress:      opts.Network.GcsAddress,
 		},
 		Runtime: RuntimeOptions{
-			StoreSocket:    opts.Runtime.StoreSocket,
-			RayletSocket:   opts.Runtime.RayletSocket,
-			LogDir:         opts.Runtime.LogDir,
-			StartupToken:   int(opts.Runtime.StartupToken),
-			RuntimeEnvHash: int(opts.Runtime.RuntimeEnvHash),
-			WorkerIDHex:    opts.Runtime.WorkerIDHex,
-			EnableLogging:  true, // Default to true to enable C++ logging
+			StoreSocket:      opts.Runtime.StoreSocket,
+			RayletSocket:     opts.Runtime.RayletSocket,
+			LogDir:           opts.Runtime.LogDir,
+			StartupToken:     int(opts.Runtime.StartupToken),
+			RuntimeEnvHash:   int(opts.Runtime.RuntimeEnvHash),
+			WorkerIDHex:      opts.Runtime.WorkerIDHex,
+			MetricsAgentPort: NormalizeMetricsAgentPort(opts.Runtime.MetricsAgentPort),
+			EnableLogging:    true, // Default to true to enable C++ logging
 		},
 	}
 
@@ -146,6 +148,18 @@ func InitializeOptionsFromAPI(opts options.InitializeOptions) (InitializeOptions
 	}
 
 	return result, nil
+}
+
+// NormalizeMetricsAgentPort converts the zero value (Go struct default) to -1,
+// which is the C++ semantics for "metrics export disabled". A real metrics agent
+// port is never 0, so 0 unambiguously means "not set". This keeps driver-mode
+// processes (e.g. the dashboard head, which has no metrics agent port source)
+// on the disabled path instead of trying to connect to port 0.
+func NormalizeMetricsAgentPort(port int32) int {
+	if port == 0 {
+		return -1
+	}
+	return int(port)
 }
 
 // validateInitializeOptions validates the initialization options.
@@ -210,12 +224,13 @@ func (o InitializeOptions) ToAPIOptions() options.InitializeOptions {
 		},
 		Job: o.Job.toAPI(),
 		Runtime: options.RuntimeOptions{
-			StoreSocket:    o.Runtime.StoreSocket,
-			RayletSocket:   o.Runtime.RayletSocket,
-			LogDir:         o.Runtime.LogDir,
-			StartupToken:   int32(o.Runtime.StartupToken),
-			RuntimeEnvHash: int32(o.Runtime.RuntimeEnvHash),
-			WorkerIDHex:    o.Runtime.WorkerIDHex,
+			StoreSocket:      o.Runtime.StoreSocket,
+			RayletSocket:     o.Runtime.RayletSocket,
+			LogDir:           o.Runtime.LogDir,
+			StartupToken:     int32(o.Runtime.StartupToken),
+			RuntimeEnvHash:   int32(o.Runtime.RuntimeEnvHash),
+			WorkerIDHex:      o.Runtime.WorkerIDHex,
+			MetricsAgentPort: int32(o.Runtime.MetricsAgentPort),
 		},
 	}
 }
