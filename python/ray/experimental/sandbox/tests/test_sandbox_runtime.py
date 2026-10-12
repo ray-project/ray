@@ -56,6 +56,7 @@ def test_create_forwards_config_fields_to_backend():
     runtime.create(
         image="fake:latest",
         cpu=2.0,
+        cpu_isolation="exclusive",
         memory="1Gi",
         env={"A": "1"},
         workdir="/app",
@@ -69,6 +70,7 @@ def test_create_forwards_config_fields_to_backend():
     (config,) = runtime._backend.configs
     assert config.image == "fake:latest"
     assert config.cpu == 2.0
+    assert config.cpu_isolation == "exclusive"
     assert config.env == {"A": "1"}
     assert config.workdir == "/app"
     assert config.network == "host"

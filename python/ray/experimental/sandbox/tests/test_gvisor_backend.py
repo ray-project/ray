@@ -23,12 +23,18 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
+    # Positive limits need a delegated cgroup v2 subtree. On a provisioned
+    # node, file operations and execs also run through the cgroup launcher.
+    limits = (
+        {"cpu": 1.0, "memory": "512Mi"}
+        if os.environ.get("RAY_SANDBOX_CGROUP_PATH")
+        else {}
+    )
     config = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
-        cpu=1.0,
-        memory="512Mi",
+        **limits,
     )
 
     sandbox_id = backend.create_sandbox(config)

@@ -60,6 +60,9 @@ class FakeSandboxRuntime:
         self.deleted: List[str] = []
         self.pull_error: Optional[Exception] = None
         self.create_error: Optional[Exception] = None
+        self.resource_error: Optional[Exception] = None
+        self.resource_checks: List[Dict[str, Any]] = []
+        self.termination_reason: Optional[str] = None
         self.exec_error: Optional[Exception] = None
         self.exec_results: List[FakeExecResult] = []
         # When set, pull_image blocks until the event fires, holding the
@@ -79,6 +82,14 @@ class FakeSandboxRuntime:
         if self.pull_error is not None:
             raise self.pull_error
         return f"/tmp/fake-images/{image}"
+
+    def check_resources(self, **kwargs) -> None:
+        self.resource_checks.append(kwargs)
+        if self.resource_error is not None:
+            raise self.resource_error
+
+    def get_termination_reason(self, instance_id):
+        return self.termination_reason
 
     def create(self, image: str, **kwargs: Any) -> str:
         self.create_calls.append({"image": image, **kwargs})

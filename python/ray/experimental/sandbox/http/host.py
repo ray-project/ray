@@ -84,6 +84,7 @@ class SandboxSpec(_SandboxSpecBase, total=False):
     readonly: bool
     capabilities: Optional[List[str]]
     cpu_limit: Optional[float]
+    cpu_isolation: str
     memory_limit_mb: Optional[int]
     image_pull_timeout_seconds: float
     start_timeout_seconds: float
@@ -224,6 +225,16 @@ class SandboxHost:
 
                 factory = SandboxRuntime
             self._runtime = factory()
+            await asyncio.to_thread(
+                self._runtime.check_resources,
+                cpu=float(self._spec.get("cpu_limit") or 0),
+                memory=(
+                    f"{self._spec['memory_limit_mb']}Mi"
+                    if self._spec.get("memory_limit_mb") is not None
+                    else 0
+                ),
+                cpu_isolation=self._spec.get("cpu_isolation", "shared"),
+            )
 
             self._set_status("pulling")
             await asyncio.to_thread(
@@ -264,6 +275,7 @@ class SandboxHost:
                     # may use idle CPU on its node (a request only sizes the
                     # hosting actor's reservation).
                     cpu=float(cpu_limit) if cpu_limit is not None else 0.0,
+                    cpu_isolation=self._spec.get("cpu_isolation", "shared"),
                     memory=f"{memory_limit_mb}Mi" if memory_limit_mb is not None else 0,
                     env=dict(self._spec.get("env") or {}),
                     workdir=self._spec.get("workdir"),
@@ -444,6 +456,13 @@ class SandboxHost:
 
     async def describe(self, wait_seconds: float = 0.0) -> Dict[str, Any]:
         """Report sandbox state, optionally long-polling while it boots."""
+        if self._status == "running" and not self._terminating:
+            reason = await asyncio.to_thread(
+                self._runtime.get_termination_reason, self._instance_id
+            )
+            if reason is not None:
+                self._error = reason
+                self._set_status("error")
         if wait_seconds > 0 and self._status in _BOOTING_STATUSES:
             event = self._status_changed
             try:

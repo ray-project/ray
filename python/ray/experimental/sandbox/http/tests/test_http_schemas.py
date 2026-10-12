@@ -47,6 +47,7 @@ EXPECTED_MODEL_FIELDS = {
     "ResourceSpec": {
         "cpu_request",
         "cpu_limit",
+        "cpu_isolation",
         "memory_request_mb",
         "memory_limit_mb",
         "custom",

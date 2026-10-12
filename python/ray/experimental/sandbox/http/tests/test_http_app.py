@@ -158,6 +158,38 @@ def test_create_defaults_request_to_limit(fake_resolver: FakeResolver) -> None:
     assert options["memory"] == 512 * 1024 * 1024
 
 
+def test_exclusive_creation_reserves_physical_core_capacity(fake_resolver):
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(
+            client,
+            resources={
+                "cpu_limit": 2,
+                "cpu_isolation": "exclusive",
+                "custom": {"gvisor": 1},
+            },
+        )
+        _wait_running(client, info["sandbox_id"])
+    assert fake_resolver.create_options[0]["resources"] == {
+        "gvisor": 1,
+        "sandbox_exclusive_cores": 2,
+    }
+    assert fake_resolver.runtimes[0].create_calls[0]["cpu_isolation"] == "exclusive"
+
+
+@pytest.mark.parametrize("cpu", [None, 0.25])
+def test_exclusive_creation_rejects_missing_or_fractional_limit(fake_resolver, cpu):
+    with _client(fake_resolver) as client:
+        response = client.post(
+            f"{BASE}/sandboxes",
+            json={
+                "image": "busybox",
+                "resources": {"cpu_limit": cpu, "cpu_isolation": "exclusive"},
+            },
+        )
+    assert response.status_code == 422
+    assert not fake_resolver.create_options
+
+
 def test_create_default_actor_cpus_without_resources(
     fake_resolver: FakeResolver,
 ) -> None:
