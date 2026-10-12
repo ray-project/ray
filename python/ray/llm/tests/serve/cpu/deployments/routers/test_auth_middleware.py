@@ -231,12 +231,13 @@ class TestApplyIngressApiKeyToDirectStreaming:
             engine_kwargs=engine_kwargs or {},
         )
 
-    def _apply(self, config, api_key):
+    def _apply(self, config, api_key, server_cls=None):
         from ray.llm._internal.serve.core.ingress.builder import (
             _apply_ingress_api_key,
         )
+        from ray.llm._internal.serve.core.server.llm_server import LLMServer
 
-        return _apply_ingress_api_key(config, api_key)
+        return _apply_ingress_api_key(config, api_key, server_cls or LLMServer)
 
     def test_noop_without_key(self):
         config = self._config()
@@ -262,6 +263,30 @@ class TestApplyIngressApiKeyToDirectStreaming:
         config = self._config(engine_kwargs={"max_model_len": 8})
         self._apply(config, API_KEY)
         assert "api_key" not in config.engine_kwargs
+
+    def test_vllm_subclass_server_is_allowed(self):
+        # DPServer subclasses LLMServer -> vLLM backend -> injection applies.
+        from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import (
+            DPServer,
+        )
+
+        out = self._apply(self._config(), API_KEY, server_cls=DPServer)
+        assert out.engine_kwargs["api_key"] == [API_KEY]
+
+    def test_non_vllm_server_fails_closed(self):
+        # SGLangServer is not an LLMServer subclass: enforcing api_key here is
+        # not supported, so it must raise rather than silently leave it open.
+        from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
+
+        with pytest.raises(ValueError, match="direct-streaming"):
+            self._apply(self._config(), API_KEY, server_cls=SGLangServer)
+
+    def test_non_vllm_server_without_key_is_noop(self):
+        # No key configured -> no enforcement attempted -> no raise.
+        from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
+
+        config = self._config()
+        assert self._apply(config, None, server_cls=SGLangServer) is config
 
 
 if __name__ == "__main__":

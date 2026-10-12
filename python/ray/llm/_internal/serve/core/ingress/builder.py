@@ -14,7 +14,7 @@ from ray.llm._internal.serve.constants import (
     RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     get_llm_serve_runtime_env,
 )
-from ray.llm._internal.serve.core.configs.llm_config import LLMConfig, LLMEngine
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
@@ -51,33 +51,57 @@ def _get_direct_streaming_serve_options(
     return override_serve_options
 
 
-def _apply_ingress_api_key(llm_config: LLMConfig, api_key: Optional[str]) -> LLMConfig:
+def _apply_ingress_api_key(
+    llm_config: LLMConfig, api_key: Optional[str], server_cls: Type
+) -> LLMConfig:
     """Propagate an explicit ingress ``api_key`` to a direct-streaming replica.
 
-    In direct-streaming mode the ingress app is vLLM's own FastAPI app, built
-    inside the replica from the engine args, and it enforces auth from vLLM's
-    ``FrontendArgs.api_key``. Routing the configured key through
+    In direct-streaming mode the ingress app is the engine's own FastAPI app,
+    built inside the replica. For the vLLM engine that app enforces auth from
+    ``FrontendArgs.api_key``, so routing the configured key through
     ``engine_kwargs["api_key"]`` (which the vLLM engine maps onto
     ``FrontendArgs.api_key``) makes the explicit ``api_key`` config enforce auth
-    on the direct-streaming paths too, so authentication does not depend on
-    which builder/mode is used.
+    on the direct-streaming paths too.
 
     ``engine_kwargs`` is used rather than ``runtime_env`` env vars on purpose:
     ``LLMServer.get_deployment_options`` shallow-merges ``runtime_env``, so
     injecting an ``env_vars`` dict would clobber env vars inherited from the job
-    and deployment. Only applied for the vLLM engine, whose ``FrontendArgs``
-    defines ``api_key`` (a ``list[str]``, hence the single-element list).
+    and deployment. vLLM's ``FrontendArgs.api_key`` is a ``list[str]``, hence
+    the single-element list.
+
+    The backend is selected by ``server_cls`` (not ``llm_config.llm_engine``,
+    which is always ``"vLLM"``): ``LLMServer`` and its subclasses (``DPServer``,
+    the P/D servers) run the vLLM engine, whereas e.g. ``SGLangServer`` is a
+    standalone non-vLLM backend. We only know how to enforce the key for the
+    vLLM backend here; for any other backend we **fail closed** -- raising
+    rather than silently leaving the endpoint open or injecting an arg the
+    engine would misinterpret. Such engines can still enforce ``api_key`` via
+    the (engine-agnostic) OpenAiIngress by not enabling direct streaming.
 
     Args:
         llm_config: The model configuration to augment.
         api_key: The explicit bearer key, or ``None``/empty to leave unchanged.
+        server_cls: The resolved server class backing the direct-streaming
+            ingress.
 
     Returns:
-        The original config when no key is given or the engine is not vLLM, else
-        a copy whose ``engine_kwargs`` carries ``api_key``.
+        The original config when no key is given, else a copy whose
+        ``engine_kwargs`` carries ``api_key``.
+
+    Raises:
+        ValueError: If ``api_key`` is set but ``server_cls`` is not a vLLM
+            (``LLMServer``) backend, since enforcement cannot be guaranteed.
     """
-    if not api_key or llm_config.llm_engine != LLMEngine.vLLM:
+    if not api_key:
         return llm_config
+    if not (isinstance(server_cls, type) and issubclass(server_cls, LLMServer)):
+        raise ValueError(
+            "api_key authentication in direct-streaming mode "
+            "(RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING) is only supported for the "
+            f"vLLM backend, but server_cls={server_cls!r} is not an LLMServer "
+            "subclass. Disable direct streaming to enforce api_key via the "
+            "engine-agnostic OpenAiIngress, or remove api_key."
+        )
     engine_kwargs = dict(llm_config.engine_kwargs)
     engine_kwargs["api_key"] = [api_key]
     return llm_config.model_copy(update={"engine_kwargs": engine_kwargs})
@@ -116,8 +140,8 @@ def _build_direct_streaming_llm_deployment(
     Returns:
         The bound ingress ``Application``.
     """
-    llm_config = _apply_ingress_api_key(llm_config, api_key)
     server_cls = deployment_cls or llm_config.server_cls or LLMServer
+    llm_config = _apply_ingress_api_key(llm_config, api_key, server_cls)
     return build_llm_deployment(
         llm_config,
         name_prefix=name_prefix,
