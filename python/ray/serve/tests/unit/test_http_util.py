@@ -1,10 +1,14 @@
 import asyncio
+import json
 import pickle
 import sys
+from contextlib import asynccontextmanager
 from typing import Generator, Tuple
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from fastapi import FastAPI, Request, WebSocket
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -12,6 +16,7 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve import HTTPOptions
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
     ASGIReceiveProxy,
     MessageQueue,
     configure_http_middlewares,
@@ -23,6 +28,92 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scope_type", ["http", "websocket"])
+@pytest.mark.parametrize("include_state", [False, True])
+async def test_asgi_lifespan_state(scope_type, include_state):
+    shared_resource = {"calls": 0}
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield {"resource": shared_resource}
+
+    app = FastAPI(lifespan=lifespan)
+
+    def use_state(connection):
+        resource = connection.state.resource
+        assert resource is shared_resource
+        resource["calls"] += 1
+        result = {
+            "calls": resource["calls"],
+            "existing": getattr(connection.state, "existing", None),
+            "isolated": not hasattr(connection.state, "request_only"),
+        }
+        connection.state.request_only = True
+        connection.state.resource = None
+        return result
+
+    @app.get("/")
+    async def http_endpoint(request: Request):
+        return use_state(request)
+
+    @app.websocket("/")
+    async def websocket_endpoint(websocket: WebSocket):
+        await websocket.accept()
+        await websocket.send_json(use_state(websocket))
+        await websocket.close()
+
+    class TestWrapper(ASGIAppReplicaWrapper):
+        def __del__(self):
+            # Shutdown is awaited explicitly; Python GC cannot await __del__.
+            pass
+
+    wrapper = TestWrapper(app)
+    await wrapper._run_asgi_lifespan_startup()
+    try:
+        for count in (1, 2):
+            existing_state = {"existing": "preserved", "resource": "proxy"}
+            if scope_type == "http":
+
+                async def transport_app(scope, receive, send):
+                    if include_state:
+                        scope["state"] = existing_state
+                    await wrapper(scope, receive, send)
+
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app=transport_app),
+                    base_url="http://test",
+                ) as client:
+                    response = await client.get("/")
+                    assert response.status_code == 200
+                    result = response.json()
+            else:
+                send = AsyncMock()
+                scope = {
+                    "type": "websocket",
+                    "path": "/",
+                    "headers": [],
+                    "query_string": b"",
+                }
+                if include_state:
+                    scope["state"] = existing_state
+                await wrapper(
+                    scope,
+                    AsyncMock(return_value={"type": "websocket.connect"}),
+                    send,
+                )
+                result = json.loads(send.call_args_list[1].args[0]["text"])
+
+            assert result == {
+                "calls": count,
+                "existing": "preserved" if include_state else None,
+                "isolated": True,
+            }
+            assert existing_state == {"existing": "preserved", "resource": "proxy"}
+    finally:
+        await ASGIAppReplicaWrapper.__del__(wrapper)
 
 
 @pytest.mark.asyncio
