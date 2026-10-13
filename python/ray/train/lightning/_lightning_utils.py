@@ -281,6 +281,13 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         validation=False,
     ) -> None:
         super().__init__()
+        if not isinstance(checkpoint_frequency, int) or isinstance(
+            checkpoint_frequency, bool
+        ):
+            raise TypeError(
+                "`checkpoint_frequency` must be an integer, got "
+                f"{type(checkpoint_frequency).__name__}."
+            )
         if checkpoint_frequency < 1:
             raise ValueError(
                 "`checkpoint_frequency` must be a positive integer, got "

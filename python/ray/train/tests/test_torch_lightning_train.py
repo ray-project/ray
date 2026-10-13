@@ -241,6 +241,12 @@ def test_report_callback_invalid_checkpoint_frequency():
     """`checkpoint_frequency` must be a positive integer."""
     with pytest.raises(ValueError):
         RayTrainReportCallback(checkpoint_frequency=0)
+    with pytest.raises(TypeError):
+        RayTrainReportCallback(checkpoint_frequency=1.5)
+    with pytest.raises(TypeError):
+        RayTrainReportCallback(checkpoint_frequency="2")
+    with pytest.raises(TypeError):
+        RayTrainReportCallback(checkpoint_frequency=True)
 
 
 @pytest.mark.parametrize("stage", [1, 2, 3])
