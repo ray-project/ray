@@ -2342,12 +2342,16 @@ class Replica:
     def backpressure_config(self):
         return self._deployment_config.backpressure_config
 
-    def _decide_direct_ingress_backpressure(self) -> RetryAfterDecision:
+    def _decide_direct_ingress_backpressure(
+        self, request_metadata: RequestMetadata
+    ) -> RetryAfterDecision:
         """Pick the Retry-After value for a rejected direct-ingress request
         and log the rejection."""
         num_queued_requests = self._num_queued_requests
         decision = self._drain_rate_tracker.decide(
-            self.backpressure_config, observed_queue_depth=num_queued_requests
+            self.backpressure_config,
+            observed_queue_depth=num_queued_requests,
+            request_id=request_metadata.request_id,
         )
         message = BackPressureError(
             num_queued_requests=num_queued_requests,
@@ -2782,7 +2786,7 @@ class Replica:
         if not self._can_accept_request(request_metadata):
             # gRPC has no Retry-After; the decision is still logged so every
             # rejection produces one record.
-            self._decide_direct_ingress_backpressure()
+            self._decide_direct_ingress_backpressure(request_metadata)
             status = ResponseStatus(
                 code=grpc.StatusCode.RESOURCE_EXHAUSTED,
                 message="Request dropped due to backpressure",
@@ -3288,7 +3292,7 @@ class Replica:
         if not self._can_accept_request(request_metadata):
             # NOTE(abrar): its possible that we drop more requests than actual max_queued_requests
             # because between incrementing and decrementing the queued requests, we yield to the event loop.
-            decision = self._decide_direct_ingress_backpressure()
+            decision = self._decide_direct_ingress_backpressure(request_metadata)
             for msg in convert_object_to_asgi_messages(
                 "Request dropped due to backpressure",
                 status_code=self.backpressure_config.status_code,

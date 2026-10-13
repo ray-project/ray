@@ -3655,17 +3655,23 @@ class TestRouterDrainCounter:
 
     async def _reject(self, router: AsyncioRouter):
         """Trigger one rejection; return the error and the logged decision."""
+        request_meta = RequestMetadata(
+            request_id="rejected-request-id",
+            internal_request_id="rejected-internal-request-id",
+        )
         with patch(
             "ray.serve._private.router.log_backpressure_rejection"
         ) as log, patch(
             "ray.serve._private.backpressure.random.random", return_value=0.5
         ):
             with pytest.raises(BackPressureError) as exc_info:
-                await router.assign_request(dummy_request_metadata())
+                await router.assign_request(request_meta)
 
         log.assert_called_once()
         message, decision = log.call_args.args
         assert message == exc_info.value.message
+        # The record names the rejected request, not the logging context's.
+        assert decision.request_id == request_meta.request_id
         # The header value is exactly the logged post-jitter value.
         assert exc_info.value.retry_after_s == decision.post_jitter_s
         return exc_info.value, decision
@@ -3757,6 +3763,43 @@ class TestRouterDrainCounter:
         assert decision.drain_counter == 2
         assert error.retry_after_s == 2
 
+    async def test_warm_zero_drain_rate_computes_max(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """Queued work that never drains is a real observation: the computed
+        value is the 60s cap, not the static fallback."""
+        router, _ = setup_router
+        router.update_deployment_config(
+            DeploymentConfig(
+                max_queued_requests=1,
+                backpressure_config=BackpressureConfig(
+                    retry_after_policy="queue_drain_rate", retry_after_s=5
+                ),
+            )
+        )
+        metrics_manager = router._metrics_manager
+        clock = _FakeClock()
+        estimator = DrainRateEstimator(alpha=0.3, warmup_samples=3, clock=clock)
+        tracker = metrics_manager._drain_rate_tracker
+        tracker._estimator = estimator
+
+        metrics_manager.inc_num_queued_requests()
+        tracker._sample()
+        for _ in range(3):
+            clock.now_s += 1
+            tracker._sample()
+        assert estimator.warm
+        assert estimator.rate == 0
+
+        error, decision = await self._reject(router)
+        assert decision.fallback_rung == "computed"
+        assert decision.estimator_warm
+        assert decision.estimator_num_samples == 3
+        assert decision.drain_rate == 0
+        assert decision.pre_jitter_s == 60
+        # rand=0.5 means no jitter.
+        assert error.retry_after_s == 60
+
     async def test_ground_truth_reached_after_depth_assignments(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
@@ -3798,10 +3841,14 @@ class TestRouterDrainCounter:
             )
         )
         router._metrics_manager.inc_num_queued_requests()
+        request_meta = RequestMetadata(
+            request_id="json-rejected-request-id",
+            internal_request_id="json-rejected-internal-request-id",
+        )
 
         with capture_serve_log_records() as records:
             with pytest.raises(BackPressureError) as exc_info:
-                await router.assign_request(dummy_request_metadata())
+                await router.assign_request(request_meta)
 
         [record] = [r for r in records if r.getMessage() == exc_info.value.message]
         formatted = json.loads(JSONFormatter().format(record))
@@ -3811,6 +3858,8 @@ class TestRouterDrainCounter:
         assert formatted["backpressure_observed_queue_depth"] == 1
         assert formatted["backpressure_drain_rate"] is None
         assert formatted["backpressure_estimator_warm"] is False
+        assert formatted["backpressure_estimator_num_samples"] == 0
+        assert formatted["backpressure_request_id"] == "json-rejected-request-id"
         assert formatted["backpressure_retry_after_pre_jitter_s"] == 5
         assert (
             formatted["backpressure_retry_after_post_jitter_s"]

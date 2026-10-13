@@ -269,7 +269,9 @@ class RouterMetricsManager:
             # above the cap when replica-rejected requests re-enter the queue.
             num_queued_requests = self.num_queued_requests
             decision = self._drain_rate_tracker.decide(
-                backpressure_config, observed_queue_depth=num_queued_requests
+                backpressure_config,
+                observed_queue_depth=num_queued_requests,
+                request_id=request_meta.request_id,
             )
             e = BackPressureError(
                 num_queued_requests=num_queued_requests,

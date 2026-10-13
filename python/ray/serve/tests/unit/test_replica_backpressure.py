@@ -39,6 +39,7 @@ def _make_fake_replica(max_ongoing_requests: int):
         "_decide_direct_ingress_backpressure",
         "_get_backpressure_drain_counter_for_testing",
         "_direct_ingress_asgi",
+        "_prepare_direct_ingress_grpc_request",
     ):
         setattr(fake, name, getattr(Replica, name).__get__(fake, Replica))
     return fake
@@ -183,13 +184,13 @@ def _make_rejecting_replica(
     return fake
 
 
-async def _send_direct_ingress_http_request(fake):
+async def _send_direct_ingress_http_request(fake, headers=()):
     scope = {
         "type": "http",
         "method": "GET",
         "path": "/",
         "root_path": "",
-        "headers": [],
+        "headers": list(headers),
         "client": ("127.0.0.1", 12345),
     }
     messages = []
@@ -301,7 +302,12 @@ class TestDirectIngressRejection:
         async def send(msg):
             messages.append(msg)
 
-        scope = {"type": "http", "method": "GET", "path": "/", "headers": []}
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [(b"x-request-id", b"json-request-id")],
+        }
         try:
             with patch(
                 "ray.serve._private.backpressure.random.random", return_value=0.5
@@ -317,11 +323,88 @@ class TestDirectIngressRejection:
         assert formatted["backpressure_retry_after_fallback_rung"] == "static"
         assert formatted["backpressure_observed_queue_depth"] == 2
         assert formatted["backpressure_estimator_warm"] is False
+        assert formatted["backpressure_estimator_num_samples"] == 0
+        assert formatted["backpressure_request_id"] == "json-request-id"
         assert formatted["backpressure_drain_rate"] is None
         assert formatted["backpressure_retry_after_pre_jitter_s"] == 10
         assert formatted["backpressure_retry_after_post_jitter_s"] == 10
         assert formatted["backpressure_drain_counter"] == 0
         assert dict(messages[0]["headers"])[b"retry-after"] == b"10"
+
+    @pytest.mark.asyncio
+    async def test_warm_zero_drain_rate_computes_max(self):
+        """Queued work that never drains is a real observation: the computed
+        value is the 60s cap, not the static fallback."""
+        fake = _make_rejecting_replica(
+            BackpressureConfig(retry_after_policy="queue_drain_rate", retry_after_s=5),
+            num_queued_requests=2,
+        )
+        now_s = [0.0]
+        estimator = DrainRateEstimator(
+            alpha=0.3, warmup_samples=3, clock=lambda: now_s[0]
+        )
+        fake._drain_rate_tracker = DrainRateTracker(
+            has_pending_work=lambda: fake._num_queued_requests > 0,
+            estimator=estimator,
+        )
+        fake._drain_rate_tracker._sample()
+        for _ in range(3):
+            now_s[0] += 1
+            fake._drain_rate_tracker._sample()
+        assert estimator.warm
+        assert estimator.rate == 0
+
+        _, retry_after, _, decision = await _send_direct_ingress_http_request(fake)
+        assert decision.fallback_rung == "computed"
+        assert decision.estimator_num_samples == 3
+        assert decision.pre_jitter_s == 60
+        # rand=0.0 is the low end of the jitter window: ceil(60 * 0.8).
+        assert decision.post_jitter_s == 48
+        assert retry_after == b"48"
+
+
+class TestDirectIngressRejectionRequestId:
+    """Each rejection record names the rejected request explicitly, since the
+    request context isn't installed yet when direct ingress rejects."""
+
+    @pytest.mark.asyncio
+    async def test_http_incoming_request_id(self):
+        fake = _make_rejecting_replica(BackpressureConfig(), num_queued_requests=2)
+        _, _, _, decision = await _send_direct_ingress_http_request(
+            fake, headers=[(b"x-request-id", b"incoming-request-id")]
+        )
+        assert decision.request_id == "incoming-request-id"
+
+    @pytest.mark.asyncio
+    async def test_http_generated_request_id(self):
+        fake = _make_rejecting_replica(BackpressureConfig(), num_queued_requests=2)
+        with patch(
+            "ray.serve._private.replica.generate_request_id",
+            return_value="generated-request-id",
+        ):
+            _, _, _, decision = await _send_direct_ingress_http_request(fake)
+        assert decision.request_id == "generated-request-id"
+
+    def test_grpc_request_id(self):
+        fake = _make_rejecting_replica(BackpressureConfig(), num_queued_requests=2)
+        context = MagicMock()
+        context.invocation_metadata.return_value = [("request_id", "grpc-request-id")]
+        context.peer.return_value = "ipv4:127.0.0.1:12345"
+
+        with patch("ray.serve._private.replica.log_backpressure_rejection") as log:
+            prepared = fake._prepare_direct_ingress_grpc_request(
+                "/ray.serve.UserDefinedService/Method1",
+                context,
+                request_input=MagicMock(),
+                is_streaming=False,
+            )
+
+        assert prepared is None
+        log.assert_called_once()
+        message, decision = log.call_args.args
+        assert message.startswith("Request dropped due to backpressure")
+        assert decision.request_id == "grpc-request-id"
+        assert decision.observed_queue_depth == 2
 
 
 if __name__ == "__main__":

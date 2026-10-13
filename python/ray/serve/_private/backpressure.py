@@ -98,6 +98,11 @@ class DrainRateEstimator:
         return self._rate
 
     @property
+    def num_samples(self) -> int:
+        """Number of counted (non-idle) sample intervals since the last reset."""
+        return self._num_samples
+
+    @property
     def warm(self) -> bool:
         return self._num_samples >= self._warmup_samples
 
@@ -152,11 +157,15 @@ class DrainRateEstimator:
         """Seconds to drain `queue_depth` requests at the current rate.
 
         Returns None when no usable estimate exists (not warm yet, or the rate
-        is zero or invalid); callers then fall back to the static value.
+        is missing, negative or not finite); callers then fall back to the
+        static value. A warm rate of 0 is a real observation (work was pending
+        but nothing drained), so it returns `math.inf` and callers clamp it.
         """
         rate = self._rate
-        if not self.warm or rate is None or not math.isfinite(rate) or rate <= 0:
+        if not self.warm or rate is None or not math.isfinite(rate) or rate < 0:
             return None
+        if rate == 0:
+            return math.inf
         return queue_depth / rate
 
 
@@ -227,12 +236,17 @@ class DrainRateTracker:
         self._estimator.sample(has_pending_work=self._has_pending_work())
 
     def decide(
-        self, backpressure_config: "BackpressureConfig", observed_queue_depth: int
+        self,
+        backpressure_config: "BackpressureConfig",
+        observed_queue_depth: int,
+        *,
+        request_id: str,
     ) -> "RetryAfterDecision":
         return compute_retry_after_decision(
             backpressure_config=backpressure_config,
             observed_queue_depth=observed_queue_depth,
             estimator=self._estimator,
+            request_id=request_id,
         )
 
     async def shutdown(self) -> None:
@@ -250,22 +264,26 @@ class RetryAfterDecision:
     acceptance scoring uses.
     """
 
+    request_id: str
     policy: str
     fallback_rung: str
     observed_queue_depth: int
     drain_counter: int
     drain_rate: Optional[float]
     estimator_warm: bool
+    estimator_num_samples: int
     pre_jitter_s: Optional[float]
     post_jitter_s: Optional[int]
 
     def to_log_fields(self) -> Dict[str, Any]:
         return {
+            "backpressure_request_id": self.request_id,
             "backpressure_retry_after_policy": self.policy,
             "backpressure_retry_after_fallback_rung": self.fallback_rung,
             "backpressure_observed_queue_depth": self.observed_queue_depth,
             "backpressure_drain_rate": self.drain_rate,
             "backpressure_estimator_warm": self.estimator_warm,
+            "backpressure_estimator_num_samples": self.estimator_num_samples,
             "backpressure_retry_after_pre_jitter_s": self.pre_jitter_s,
             "backpressure_retry_after_post_jitter_s": self.post_jitter_s,
             "backpressure_drain_counter": self.drain_counter,
@@ -292,6 +310,7 @@ def compute_retry_after_decision(
     backpressure_config: "BackpressureConfig",
     observed_queue_depth: int,
     estimator: DrainRateEstimator,
+    request_id: str,
     jitter_fraction: float = RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION,
     rand: Optional[Callable[[], float]] = None,
 ) -> RetryAfterDecision:
@@ -311,6 +330,7 @@ def compute_retry_after_decision(
     drain_counter = estimator.drain_counter
     drain_rate = estimator.rate
     warm = estimator.warm
+    num_samples = estimator.num_samples
 
     pre_jitter_s: Optional[float] = None
     if policy == RETRY_AFTER_POLICY_QUEUE_DRAIN_RATE:
@@ -352,12 +372,14 @@ def compute_retry_after_decision(
             )
 
     return RetryAfterDecision(
+        request_id=request_id,
         policy=policy,
         fallback_rung=fallback_rung,
         observed_queue_depth=observed_queue_depth,
         drain_counter=drain_counter,
         drain_rate=drain_rate,
         estimator_warm=warm,
+        estimator_num_samples=num_samples,
         pre_jitter_s=pre_jitter_s,
         post_jitter_s=post_jitter_s,
     )

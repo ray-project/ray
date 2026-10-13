@@ -20,7 +20,7 @@ from ray.serve.exceptions import BackPressureError
 JITTERED_RETRY_AFTER_7 = {"6", "7", "8", "9"}
 
 # (deployment options, expected rejection status, expected Retry-After values).
-BACKPRESSURE_RESPONSE_CASES = [
+STATIC_BACKPRESSURE_RESPONSE_CASES = [
     pytest.param({}, 503, None, id="default_503"),
     pytest.param(
         {"backpressure_config": {"status_code": 429, "retry_after_s": 7}},
@@ -28,9 +28,21 @@ BACKPRESSURE_RESPONSE_CASES = [
         JITTERED_RETRY_AFTER_7,
         id="429_with_retry_after",
     ),
-    # The requests in these tests never complete before the rejection, so the
-    # drain rate is unknown and the computed policy falls back to the static
-    # value.
+]
+
+# Runtime env for the process that rejects in the cold-fallback cases. The
+# blocked requests in these tests keep work pending, so after a few sampling
+# intervals the estimator would warm up at a drain rate of 0 and compute 60s.
+# Setting the warmup threshold out of reach keeps it cold however slow the test
+# runs. Must be set on the process whose router (or replica) does the rejecting.
+COLD_ESTIMATOR_RUNTIME_ENV = {
+    "env_vars": {"RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES": str(10**9)}
+}
+
+# The rejecting router must run in a deployment that can take
+# `COLD_ESTIMATOR_RUNTIME_ENV`, so these only apply to composition tests (the
+# proxy's router runs in the proxy actor).
+COLD_FALLBACK_RESPONSE_CASES = [
     pytest.param(
         {
             "backpressure_config": {
@@ -50,6 +62,10 @@ BACKPRESSURE_RESPONSE_CASES = [
         id="queue_drain_rate_cold_no_fallback",
     ),
 ]
+
+BACKPRESSURE_RESPONSE_CASES = (
+    STATIC_BACKPRESSURE_RESPONSE_CASES + COLD_FALLBACK_RESPONSE_CASES
+)
 
 
 def check_rejection_response(response, expected_status: int, expected_retry_after):
@@ -166,7 +182,7 @@ def test_handle_backpressure_computed_retry_after(serve_instance):
 
 @pytest.mark.parametrize(
     "backpressure_options,expected_status,expected_retry_after",
-    BACKPRESSURE_RESPONSE_CASES,
+    STATIC_BACKPRESSURE_RESPONSE_CASES,
 )
 def test_http_backpressure(
     serve_instance, request, backpressure_options, expected_status, expected_retry_after
@@ -183,9 +199,8 @@ def test_http_backpressure(
             await signal_actor.wait.remote()
             return msg
 
-    # The proxy keeps one router per deployment ID across tests, and its drain
-    # rate estimate along with it. A distinct name per case gives each case a
-    # fresh router, so the `queue_drain_rate` cases start with a cold estimator.
+    # The proxy keeps one router per deployment ID across tests; a distinct name
+    # per case gives each case a fresh router.
     serve.run(
         Deployment.options(
             name=f"Deployment_{request.node.callspec.id}", **backpressure_options
@@ -290,7 +305,8 @@ def test_model_composition_backpressure(
             await signal_actor.wait.remote()
             return "ok"
 
-    @serve.deployment
+    # Parent's router for Child does the rejecting.
+    @serve.deployment(ray_actor_options={"runtime_env": COLD_ESTIMATOR_RUNTIME_ENV})
     class Parent:
         def __init__(self, child):
             self.child = child
@@ -365,7 +381,8 @@ def test_model_composition_backpressure_with_fastapi(
             await signal_actor.wait.remote()
             return "ok"
 
-    @serve.deployment
+    # Parent's router for Child does the rejecting.
+    @serve.deployment(ray_actor_options={"runtime_env": COLD_ESTIMATOR_RUNTIME_ENV})
     @serve.ingress(app)
     class Parent:
         def __init__(self, child):

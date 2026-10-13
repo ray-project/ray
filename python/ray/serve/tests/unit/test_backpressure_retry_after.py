@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import sys
 from typing import List
 
@@ -131,10 +132,13 @@ class TestDrainRateEstimator:
         observe_interval(estimator, 10)
         assert estimator.rate == pytest.approx(10.0)
 
+        assert estimator.num_samples == 1
+
         # Nothing drained and nothing pending: no rate decay, no warmup credit.
         for _ in range(5):
             observe_interval(estimator, 0, has_pending_work=False)
         assert estimator.rate == pytest.approx(10.0)
+        assert estimator.num_samples == 1
         assert not estimator.warm
 
         # An idle gap doesn't stretch the next interval: the baseline moved.
@@ -154,10 +158,12 @@ class TestDrainRateEstimator:
         estimator = make_estimator(alpha=0.3, warmup_samples=2)
         estimator.sample(has_pending_work=True)
         observe_interval(estimator, 10)
+        assert estimator.num_samples == 1
         assert not estimator.warm
 
         observe_interval(estimator, 0, has_pending_work=True)
         assert estimator.rate == pytest.approx(7.0)
+        assert estimator.num_samples == 2
         assert estimator.warm
 
     def test_non_positive_elapsed_time_is_ignored(self):
@@ -176,18 +182,23 @@ class TestDrainRateEstimator:
         observe_interval(estimator, 5)
         assert estimator.estimate_s(10) == pytest.approx(2.0)
 
-    def test_estimate_unavailable_for_invalid_rate(self):
+    def test_warm_zero_rate_estimate_is_infinite(self):
+        """Pending work that never drained is a real slow-drain observation."""
         estimator = make_estimator()
-        assert estimator.estimate_s(10) is None
-
-        # Warm, but every interval drained nothing.
         estimator.sample(has_pending_work=True)
         observe_interval(estimator, 0, has_pending_work=True)
         assert estimator.warm
         assert estimator.rate == 0
+        assert estimator.estimate_s(10) == math.inf
+
+    def test_estimate_unavailable_for_invalid_rate(self):
+        estimator = make_estimator()
         assert estimator.estimate_s(10) is None
 
-        for invalid_rate in (float("nan"), float("inf"), -1.0):
+        estimator.sample(has_pending_work=True)
+        observe_interval(estimator, 0, has_pending_work=True)
+        assert estimator.warm
+        for invalid_rate in (float("nan"), float("inf"), float("-inf"), -1.0):
             estimator._rate = invalid_rate
             assert estimator.estimate_s(10) is None
 
@@ -229,6 +240,7 @@ class TestGroundTruthInstrumentation:
             backpressure_config=BackpressureConfig(retry_after_s=5),
             observed_queue_depth=10,
             estimator=estimator,
+            request_id="req-1",
             rand=CountingRand(0.5),
         )
         c0, d = decision.drain_counter, decision.observed_queue_depth
@@ -277,6 +289,7 @@ class TestComputeRetryAfterDecision:
             ),
             observed_queue_depth=depth,
             estimator=estimator or make_estimator(),
+            request_id="test-request-id",
             jitter_fraction=jitter_fraction,
             rand=rand,
         )
@@ -381,14 +394,35 @@ class TestComputeRetryAfterDecision:
         assert decision.post_jitter_s is None
         assert rand.num_calls == 0
 
-    def test_computed_zero_rate_falls_back(self):
-        estimator = warm_estimator(rate=0)
+    @pytest.mark.parametrize("rand_value,expected_post", [(0.0, 48), (0.999999, 60)])
+    def test_computed_warm_zero_rate_clamps_to_max(
+        self, rand_value: float, expected_post: int
+    ):
+        """A warm zero rate is computed (clamped to 60s), not the fallback."""
+        decision, _ = self.decide(
+            policy="queue_drain_rate",
+            retry_after_s=5,
+            estimator=warm_estimator(rate=0),
+            rand_value=rand_value,
+        )
+        assert decision.policy == "queue_drain_rate"
+        assert decision.estimator_warm
+        assert decision.drain_rate == 0.0
+        assert decision.fallback_rung == FALLBACK_RUNG_COMPUTED
+        assert decision.pre_jitter_s == COMPUTED_RETRY_AFTER_MAX_S
+        assert decision.post_jitter_s == expected_post
+        assert 1 <= decision.post_jitter_s <= COMPUTED_RETRY_AFTER_MAX_S
+
+    @pytest.mark.parametrize("invalid_rate", [float("nan"), -1.0])
+    def test_computed_invalid_rate_falls_back(self, invalid_rate: float):
+        estimator = warm_estimator(rate=5)
+        estimator._rate = invalid_rate
         decision, _ = self.decide(
             policy="queue_drain_rate", retry_after_s=5, estimator=estimator
         )
         assert decision.estimator_warm
-        assert decision.drain_rate == 0.0
         assert decision.fallback_rung == FALLBACK_RUNG_STATIC_FALLBACK
+        assert decision.post_jitter_s == 5
 
     def test_estimator_failure_falls_back(self):
         estimator = warm_estimator(rate=5)
@@ -409,16 +443,29 @@ class TestComputeRetryAfterDecision:
         decision, _ = self.decide(
             policy="queue_drain_rate", depth=11, estimator=estimator, rand_value=0.5
         )
+        assert decision.estimator_num_samples == estimator.num_samples == 1
         assert decision.to_log_fields() == {
+            "backpressure_request_id": "test-request-id",
             "backpressure_retry_after_policy": "queue_drain_rate",
             "backpressure_retry_after_fallback_rung": "computed",
             "backpressure_observed_queue_depth": 11,
             "backpressure_drain_rate": 4.0,
             "backpressure_estimator_warm": True,
+            "backpressure_estimator_num_samples": 1,
             "backpressure_retry_after_pre_jitter_s": 2.75,
             "backpressure_retry_after_post_jitter_s": 3,
             "backpressure_drain_counter": 42,
         }
+
+    def test_snapshot_is_not_affected_by_later_samples(self):
+        estimator = warm_estimator(rate=4)
+        decision, _ = self.decide(policy="queue_drain_rate", estimator=estimator)
+        observe_interval(estimator, 8)
+        drain(estimator, 3)
+        assert estimator.num_samples == 2
+        assert decision.estimator_num_samples == 1
+        assert decision.drain_rate == 4.0
+        assert decision.drain_counter == 4
 
     def test_uses_module_random_by_default(self, monkeypatch):
         rand = CountingRand(0.0)
@@ -427,6 +474,7 @@ class TestComputeRetryAfterDecision:
             backpressure_config=BackpressureConfig(retry_after_s=10),
             observed_queue_depth=1,
             estimator=make_estimator(),
+            request_id="req-1",
             jitter_fraction=0.2,
         )
         assert decision.post_jitter_s == 8
@@ -583,12 +631,14 @@ def json_serve_logs(tmp_path):
 
 def test_rejection_record_survives_json_logging(json_serve_logs):
     decision = RetryAfterDecision(
+        request_id="a550c60b-bc73-42ba-beb9-6ae989f37811",
         policy="queue_drain_rate",
         fallback_rung="computed",
         observed_queue_depth=9,
         drain_counter=1234,
         drain_rate=4.5,
         estimator_warm=True,
+        estimator_num_samples=7,
         pre_jitter_s=2.0,
         post_jitter_s=3,
     )
@@ -604,6 +654,8 @@ def test_rejection_record_survives_json_logging(json_serve_logs):
     assert record["levelname"] == "WARNING"
     for key, value in decision.to_log_fields().items():
         assert record[key] == value
+    assert record["backpressure_request_id"] == "a550c60b-bc73-42ba-beb9-6ae989f37811"
+    assert record["backpressure_estimator_num_samples"] == 7
 
 
 if __name__ == "__main__":
