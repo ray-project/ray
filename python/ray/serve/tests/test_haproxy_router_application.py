@@ -23,6 +23,7 @@ from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -144,6 +145,7 @@ class TestRouterApplicationConfig:
                 'use-server model-a-a1 if { var(txn.router_server) -m str "model-a-a1" }'
                 in config
             )
+            assert "force-persist if { var(txn.router_server) -m found }" in config
             # The router is never a dispatch target.
             assert "use_backend http-router if { var(txn.router_backend)" not in config
             # Router-selected backends win over path routing.
@@ -280,8 +282,10 @@ def _fake_replica(port: int, name: str) -> uvicorn.Server:
     async def health():
         return "ok"
 
-    @app.api_route("/{path:path}", methods=["GET", "POST"])
-    async def handle(path: str, request: Request):
+    @app.api_route("/{path:path}", methods=["GET", "HEAD", "POST"])
+    async def handle(path: str, request: Request, response: Response):
+        response.headers["x-replica"] = name
+        response.headers["x-method"] = request.method
         return {
             "replica": name,
             "method": request.method,
@@ -311,7 +315,7 @@ class FakeRouter:
         async def health():
             return "ok"
 
-        @app.api_route("/{path:path}", methods=["GET", "POST"])
+        @app.api_route("/{path:path}", methods=["POST"])
         async def route(path: str, request: Request):
             self.calls.append(
                 {
@@ -447,6 +451,7 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
     assert json.loads(call["body"])["model"] == "model-b"
     assert call["headers"]["x-request-id"] == "req-b1"
     assert call["headers"]["content-type"] == "application/json"
+    assert call["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER] == "POST"
 
 
 @pytest.mark.asyncio
@@ -462,8 +467,30 @@ async def test_get_dispatches_to_selected_application(router_cluster):
     assert served["method"] == "GET"
     assert served["path"] == "/v1/control/v1/models"
     assert served["query"] == "limit=2"
-    assert router.calls[-1]["method"] == "GET"
+    assert router.calls[-1]["method"] == "POST"
     assert router.calls[-1]["path"] == "/v1/models"
+    assert (
+        router.calls[-1]["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
+        == "GET"
+    )
+
+
+@pytest.mark.asyncio
+async def test_head_uses_post_for_decision_and_head_for_replica(router_cluster):
+    url, router, _ = router_cluster
+    router.decide("control", "c1")
+
+    resp = requests.head(f"{url}/v1/models", timeout=10)
+
+    assert resp.status_code == 200
+    assert resp.headers["x-replica"] == "c1"
+    assert resp.headers["x-method"] == "HEAD"
+    assert resp.content == b""
+    assert router.calls[-1]["method"] == "POST"
+    assert (
+        router.calls[-1]["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
+        == "HEAD"
+    )
 
 
 @pytest.mark.asyncio

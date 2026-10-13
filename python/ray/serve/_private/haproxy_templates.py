@@ -319,6 +319,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     {%- if has_router_applications and backend.servers and not backend.is_router_application %}
     # Pin to the replica a router application selected.
+    force-persist if { var(txn.router_server) -m found }
     {%- for server in backend.servers %}
     use-server {{ server.name }} if { var(txn.router_server) -m str "{{ server.name }}" }
     {%- endfor %}
