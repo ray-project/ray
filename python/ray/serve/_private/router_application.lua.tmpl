@@ -1,14 +1,6 @@
--- Asks a router application's ingress for {application, replica_id} and pins
--- the held request to that replica; non-2xx router responses go to the client.
--- Filled in by _write_router_application_lua in haproxy.py.
+-- Routes a held request using an application and replica decision.
 
-local DECISION_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
-local ORIGINAL_METHOD_HEADER = "${ORIGINAL_METHOD_HEADER}"
-local REQUEST_ID_HEADER = "x-request-id"
-local REQUEST_PATH_HEADER = "${REQUEST_PATH_HEADER}"
--- Lowercase RAY_SERVE_SESSION_ID_HEADER_KEY; empty disables forwarding.
-local SESSION_HEADER = "${SESSION_HEADER}"
 
 -- router backend -> { app, p = route prefix, pool = replicas or fallback proxy }
 local ROUTERS = ${ROUTERS}
@@ -16,157 +8,7 @@ local ROUTERS = ${ROUTERS}
 -- app name -> { b = backend, p = route prefix, d = ingress deployment, r = { replica_id = server } }
 local APPS = ${APPS}
 
--- Per-thread round-robin cursor (lua-load-per-thread).
 local _rr_cursor = {}
-
-local function first_header(hdrs, name)
-    local entry = hdrs and hdrs[name]
-    if entry then
-        return entry[0]
-    end
-    return nil
-end
-
--- Also probes the `-`/`_` variant, like ingress_request_router.lua.
-local function session_id_from(hdrs)
-    if SESSION_HEADER == "" or not hdrs then
-        return nil
-    end
-    local entry = hdrs[SESSION_HEADER]
-    if not entry then
-        local alt = SESSION_HEADER:gsub("-", "_")
-        if alt == SESSION_HEADER then
-            alt = SESSION_HEADER:gsub("_", "-")
-        end
-        entry = hdrs[alt]
-    end
-    if entry then
-        return entry[0]
-    end
-    return nil
-end
-
-local function header_line(name, value)
-    if value and value ~= "" then
-        return name .. ": " .. value .. "\r\n"
-    end
-    return ""
-end
-
--- Returns the response, or nil and a reason; only connect failures are retried.
-local function call_router(server, request)
-    local sock = core.tcp()
-    sock:settimeout(DECISION_REQUEST_TIMEOUT_S)
-    if not sock:connect(server.host, server.port) then
-        return nil, "router_unreachable"
-    end
-    -- Connection: close so receive("*a") ends on EOF.
-    local req = "POST /internal/route HTTP/1.0\r\n"
-        .. "Host: " .. server.host_header .. "\r\n"
-        .. "Connection: close\r\n"
-        .. "Content-Length: " .. #request.body .. "\r\n"
-        .. request.headers
-        .. "\r\n"
-        .. request.body
-    if not sock:send(req) then
-        sock:close()
-        return nil, "router_unreachable"
-    end
-    local response = sock:receive("*a")
-    sock:close()
-    if not response or response == "" then
-        return nil, "router_timeout"
-    end
-    return response
-end
-
-local function parse_response(response)
-    local status = tonumber(response:match("^HTTP/[%d%.]+ (%d%d%d)"))
-    local head_end, body_start = response:find("\r\n\r\n", 1, true)
-    if not status or not head_end then
-        return nil
-    end
-    return status, response:sub(1, head_end - 1), response:sub(body_start + 1)
-end
-
-local function response_header(head, name)
-    local escaped = name:gsub("%-", "%%-")
-    return head:match("\r\n" .. escaped .. ":%s*([^\r\n]*)")
-        or head:lower():match("\r\n" .. escaped:lower() .. ":%s*([^\r\n]*)")
-end
-
-local JSON_ESCAPES = {
-    ['"'] = '"',
-    ["\\"] = "\\",
-    ["/"] = "/",
-    b = string.char(8),
-    f = string.char(12),
-    n = "\n",
-    r = "\r",
-    t = "\t",
-}
-
-local function json_string_at(json_body, start)
-    if json_body:sub(start, start) ~= '"' then
-        return nil
-    end
-    local parts = {}
-    local i = start + 1
-    while i <= #json_body do
-        local byte = json_body:byte(i)
-        if byte == 34 then
-            return table.concat(parts)
-        elseif byte == 92 then
-            local escape = json_body:sub(i + 1, i + 1)
-            local decoded = JSON_ESCAPES[escape]
-            if decoded then
-                parts[#parts + 1] = decoded
-                i = i + 2
-            elseif escape == "u" then
-                local hex = json_body:sub(i + 2, i + 5)
-                if not hex:match("^%x%x%x%x$$") then
-                    return nil
-                end
-                local codepoint = tonumber(hex, 16)
-                i = i + 6
-                if codepoint >= 0xD800 and codepoint <= 0xDBFF then
-                    if json_body:sub(i, i + 1) ~= "\\u" then
-                        return nil
-                    end
-                    local low_hex = json_body:sub(i + 2, i + 5)
-                    if not low_hex:match("^%x%x%x%x$$") then
-                        return nil
-                    end
-                    local low = tonumber(low_hex, 16)
-                    if low < 0xDC00 or low > 0xDFFF then
-                        return nil
-                    end
-                    codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + low - 0xDC00
-                    i = i + 6
-                elseif codepoint >= 0xDC00 and codepoint <= 0xDFFF then
-                    return nil
-                end
-                parts[#parts + 1] = utf8.char(codepoint)
-            else
-                return nil
-            end
-        elseif byte < 32 then
-            return nil
-        else
-            parts[#parts + 1] = string.char(byte)
-            i = i + 1
-        end
-    end
-    return nil
-end
-
-local function json_string_field(json_body, name)
-    local start = json_body:match('"' .. name .. '"%s*:%s*()')
-    if not start then
-        return nil
-    end
-    return json_string_at(json_body, start)
-end
 
 local RESPONSE_HEADER_BLOCKLIST = {
     [DIRECT_RESPONSE_HEADER] = true,
@@ -245,15 +87,11 @@ local function route(txn, router)
         .. header_line(SESSION_HEADER, session_id_from(hdrs))
         .. header_line(ORIGINAL_METHOD_HEADER, txn.sf:method())
         .. header_line(REQUEST_PATH_HEADER, txn.sf:path())
-    local cl = tonumber(txn.sf:hdr("content-length"))
-    if cl and #body < cl then
-        -- Over tune.bufsize: the router sees a prefix.
-        headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. cl .. "\r\n"
+    local truncated = truncated_full_length(txn, body)
+    if truncated then
+        headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. truncated .. "\r\n"
     end
-    local request = {
-        headers = headers,
-        body = body,
-    }
+    local request = {headers = headers, body = body}
 
     local pool = router.pool
     local n = #pool
@@ -289,7 +127,6 @@ local function route(txn, router)
     if not app_name or not replica_id then
         return fail(txn, "malformed_decision")
     end
-    -- Attribute metrics and any 503 below to the selected application.
     txn:set_var("txn.serve_app", app_name)
     local target = APPS[app_name]
     if not target then
@@ -309,7 +146,6 @@ local function route(txn, router)
     txn:set_var("txn.router_backend", target.b)
 end
 
--- The frontend 503s any router request left without txn.router_backend.
 core.register_action("route_via_router_application", {"http-req"}, function(txn)
     local router_app = txn:get_var("txn.router_app")
     local router = router_app and ROUTERS[router_app]
