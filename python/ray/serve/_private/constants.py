@@ -454,6 +454,12 @@ SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 # the client instead of interpreting as an application/replica decision.
 SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
 
+# Original client method forwarded to a router application's internal decision
+# request. The decision transport itself always uses POST so it can carry a body.
+SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
+)
+
 # Original client path forwarded by HAProxy to /internal/route. It identifies
 # the API when different endpoints accept the same request body.
 SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
