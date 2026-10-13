@@ -431,7 +431,7 @@ class MARWILConfig(AlgorithmConfig):
             )
 
     def _validate_beta(self) -> None:
-        if self.beta < 0.0 or self.beta > 1.0:
+        if self.beta is None or self.beta < 0.0 or self.beta > 1.0:
             self._value_error("`beta` must be within 0.0 and 1.0!")
 
     @property

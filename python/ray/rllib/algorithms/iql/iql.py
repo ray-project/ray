@@ -207,7 +207,7 @@ class IQLConfig(MARWILConfig):
 
     @override(MARWILConfig)
     def _validate_beta(self) -> None:
-        if self.beta <= 0.0:
+        if self.beta is None or self.beta <= 0.0:
             self._value_error(
                 "For meaningful results, `beta` (temperature) parameter must be >> 0.0!"
             )
