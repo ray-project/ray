@@ -6,6 +6,8 @@ import textwrap
 import types
 from typing import List
 
+from ray._private.runtime_env.redaction import redact_uris_in_text
+
 
 class SubprocessCalledProcessError(subprocess.CalledProcessError):
     """The subprocess.CalledProcessError with stripped stdout."""
@@ -29,7 +31,7 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
             if self.cmd_index is None
             else [f"Run cmd[{self.cmd_index}] failed with the following details."]
         )
-        str_list.append(super().__str__())
+        str_list.append(redact_uris_in_text(super().__str__()))
         out = {
             "stdout": self.stdout,
             "stderr": self.stderr,
@@ -73,7 +75,7 @@ async def check_output_cmd(
     """
 
     cmd_index = next(cmd_index_gen)
-    logger.info("Run cmd[%s] %s", cmd_index, repr(cmd))
+    logger.info("Run cmd[%s] %s", cmd_index, redact_uris_in_text(repr(cmd)))
 
     proc = None
     try:
