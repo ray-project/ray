@@ -125,6 +125,19 @@ void create_and_mmap_buffer(int64_t size, void **pointer, HANDLE *handle) {
       (DWORD)(static_cast<uint64_t>(size) >> (CHAR_BIT * sizeof(DWORD))),
       (DWORD)(static_cast<uint64_t>(size)),
       NULL);
+  if (*handle == nullptr) {
+    DWORD err = GetLastError();
+    MEMORYSTATUSEX mem;
+    mem.dwLength = sizeof(mem);
+    GlobalMemoryStatusEx(&mem);
+    RAY_LOG(ERROR) << "CreateFileMapping(" << size
+                   << " bytes) failed, GetLastError()=" << err
+                   << " commit_limit=" << mem.ullTotalPageFile
+                   << " commit_avail=" << mem.ullAvailPageFile
+                   << " phys_total=" << mem.ullTotalPhys
+                   << " phys_avail=" << mem.ullAvailPhys << " load=" << mem.dwMemoryLoad
+                   << "%";
+  }
   RAY_CHECK(*handle != nullptr)
       << "CreateFileMapping() failed. GetLastError() = " << GetLastError();
   *pointer = MapViewOfFile(*handle, FILE_MAP_ALL_ACCESS, 0, 0, static_cast<size_t>(size));
