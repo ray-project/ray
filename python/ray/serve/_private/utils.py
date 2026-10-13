@@ -317,12 +317,38 @@ def _register_thread_lock_serializer(serialization_context):
         )
 
 
+def _register_pydantic_mock_serializer(serialization_context):
+    """Rebuild pydantic's deferred-build placeholder through its constructor on load.
+
+    Its __getattr__ reads a slot that is still unset mid-unpickle, so unpickling recursed.
+    """
+    try:
+        from pydantic._internal._mock_val_ser import MockValSer
+    except ImportError:
+        return
+    serialization_context._register_cloudpickle_serializer(
+        MockValSer,
+        custom_serializer=lambda mock: {
+            "error_message": mock._error_message,
+            "code": mock._code,
+            "val_or_ser": (
+                "validator"
+                if mock._val_or_ser.__name__ == "SchemaValidator"
+                else "serializer"
+            ),
+            "attempt_rebuild": mock._attempt_rebuild,
+        },
+        custom_deserializer=lambda kwargs: MockValSer(**kwargs),
+    )
+
+
 def ensure_serialization_context():
     """Ensure the serialization addons on registered, even when Ray has not
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
     _register_thread_lock_serializer(ctx)
+    _register_pydantic_mock_serializer(ctx)
 
 
 def msgpack_serialize(obj):
