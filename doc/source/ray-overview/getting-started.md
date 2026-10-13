@@ -238,7 +238,7 @@ To accelerate the training job using GPU, make sure you have GPU configured, the
     </a>
 </div>
 
-```{button-ref}  ../train/train
+```{button-ref}  ../train/index
 :color: primary
 :outline:
 :expand:

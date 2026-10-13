@@ -198,3 +198,11 @@ GDRCopy
 [Tt]emporality
 [Mm]isconfiguration
 [Mm]icrobenchmarks?
+Trainium
+Backblaze
+Filestore
+[Pp]reemptions?
+[Bb]ottleneck(s|ed|ing)?
+[Ii]terables?
+[Ss]erializable
+[Cc]olocated
