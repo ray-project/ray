@@ -41,12 +41,12 @@
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 ! doc_example
 
-# RLlib's package_ref/ pages are API reference pages that also carry doctests
+# RLlib's api/ pages are API reference pages that also carry doctests
 # with per-file targets in doc/BUILD.bazel. Emit doc_api for the API checks and
 # doc_example for the "docs-example-test" opt-in. Files, not a directory, so the
 # doc_api directory sync check is unaffected.
-doc/source/rllib/package_ref/callback.rst
-doc/source/rllib/package_ref/utils.rst
+doc/source/rllib/api/callback.rst
+doc/source/rllib/api/utils.rst
 @ doc_api doc_example
 ;
 

@@ -711,6 +711,8 @@ doctest_each(
     data = ["//python/ray/rllib:cartpole-v1_large"],
     files = [
         "source/rllib/algorithm-config.md",
+        "source/rllib/api/callback.rst",
+        "source/rllib/api/utils.rst",
         "source/rllib/callback.md",
         "source/rllib/checkpoints.md",
         "source/rllib/env.md",
@@ -724,8 +726,6 @@ doctest_each(
         "source/rllib/multi-agent-envs.md",
         "source/rllib/new-api-stack-migration-guide.md",
         "source/rllib/offline.md",
-        "source/rllib/package_ref/callback.rst",
-        "source/rllib/package_ref/utils.rst",
         "source/rllib/rl-modules.md",
         "source/rllib/scaling-guide.md",
         "source/rllib/single-agent-episode.md",
