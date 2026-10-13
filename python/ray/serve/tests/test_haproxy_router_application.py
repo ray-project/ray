@@ -557,6 +557,29 @@ async def test_returns_marked_success_response_directly(router_cluster):
 
 
 @pytest.mark.asyncio
+async def test_preserves_router_response_headers(router_cluster):
+    url, router, _ = router_cluster
+    router.response = (307, "")
+    router.response_headers = {
+        SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1",
+        "Access-Control-Allow-Origin": "https://example.com",
+        "Connection": "x-router-hop",
+        "Location": "/v1/redirected",
+        "Set-Cookie": "session=abc; HttpOnly",
+        "X-Router-Hop": "secret",
+    }
+
+    resp = requests.get(f"{url}/v1/models", allow_redirects=False, timeout=10)
+
+    assert resp.status_code == 307
+    assert resp.headers["access-control-allow-origin"] == "https://example.com"
+    assert resp.headers["location"] == "/v1/redirected"
+    assert resp.headers["set-cookie"] == "session=abc; HttpOnly"
+    assert SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER not in resp.headers
+    assert "x-router-hop" not in resp.headers
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "status, decision, reason",
     [
