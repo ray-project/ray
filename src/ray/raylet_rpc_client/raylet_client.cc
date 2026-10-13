@@ -423,8 +423,10 @@ void RayletClient::GlobalGC(const rpc::ClientCallback<rpc::GlobalGCReply> &callb
 }
 
 void RayletClient::GetResourceLoad(
+    int64_t last_seen_version,
     const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) {
   rpc::GetResourceLoadRequest request;
+  request.set_last_seen_version(last_seen_version);
   INVOKE_RPC_CALL(NodeManagerService,
                   GetResourceLoad,
                   request,
