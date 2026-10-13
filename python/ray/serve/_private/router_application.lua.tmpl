@@ -6,6 +6,7 @@ local DECISION_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
 local ORIGINAL_METHOD_HEADER = "${ORIGINAL_METHOD_HEADER}"
 local REQUEST_ID_HEADER = "x-request-id"
+local REQUEST_PATH_HEADER = "${REQUEST_PATH_HEADER}"
 -- Lowercase RAY_SERVE_SESSION_ID_HEADER_KEY; empty disables forwarding.
 local SESSION_HEADER = "${SESSION_HEADER}"
 
@@ -60,7 +61,7 @@ local function call_router(server, request)
         return nil, "router_unreachable"
     end
     -- Connection: close so receive("*a") ends on EOF.
-    local req = "POST " .. request.pathq .. " HTTP/1.0\r\n"
+    local req = "POST /internal/route HTTP/1.0\r\n"
         .. "Host: " .. server.host_header .. "\r\n"
         .. "Connection: close\r\n"
         .. "Content-Length: " .. #request.body .. "\r\n"
@@ -243,13 +244,13 @@ local function route(txn, router)
         .. header_line(REQUEST_ID_HEADER, first_header(hdrs, REQUEST_ID_HEADER))
         .. header_line(SESSION_HEADER, session_id_from(hdrs))
         .. header_line(ORIGINAL_METHOD_HEADER, txn.sf:method())
+        .. header_line(REQUEST_PATH_HEADER, txn.sf:path())
     local cl = tonumber(txn.sf:hdr("content-length"))
     if cl and #body < cl then
         -- Over tune.bufsize: the router sees a prefix.
         headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. cl .. "\r\n"
     end
     local request = {
-        pathq = txn.sf:pathq(),
         headers = headers,
         body = body,
     }
