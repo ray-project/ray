@@ -1,8 +1,9 @@
 """OpenAI router application for multi-application direct streaming.
 
 Each model is served by an independently deployed Serve application. The
-router answers HAProxy with the replica that should receive inference requests
-and directly serves lightweight global control-plane responses.
+router receives HAProxy's internal POST decision requests, answers with the
+replica that should receive inference requests, and directly serves lightweight
+global control-plane responses.
 """
 
 import asyncio
@@ -136,7 +137,7 @@ class RouterApplication:
     async def check_health(self):
         pass
 
-    @router_app.get("/v1/models")
+    @router_app.post("/v1/models")
     async def models(self):
         return _response(
             {
@@ -147,7 +148,7 @@ class RouterApplication:
             }
         )
 
-    @router_app.get("/v1/models/{model:path}")
+    @router_app.post("/v1/models/{model:path}")
     async def model_data(self, model: str):
         # Like the OpenAI ingress, accept `--` for `/`.
         model = model.replace("--", "/")
