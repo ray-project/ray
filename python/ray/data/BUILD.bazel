@@ -1642,6 +1642,20 @@ py_test(
 )
 
 py_test(
+    name = "test_lineage_reconstruction",
+    size = "medium",
+    srcs = ["tests/test_lineage_reconstruction.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_block_ref_counter",
     size = "small",
     srcs = ["tests/test_block_ref_counter.py"],

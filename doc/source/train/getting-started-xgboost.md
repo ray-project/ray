@@ -35,9 +35,9 @@ trainer = XGBoostTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the Python code that executes on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-1. {class}`~ray.train.xgboost.XGBoostTrainer` launches the distributed training job.
+- `train_func` is the Python code that executes on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+- {class}`~ray.train.xgboost.XGBoostTrainer` launches the distributed training job.
 
 Compare an XGBoost training script with and without Ray Train.
 
