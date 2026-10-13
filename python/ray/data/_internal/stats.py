@@ -1155,13 +1155,23 @@ class _StatsManager:
         op_metrics: List[OpRuntimeMetrics],
         operator_tags: List[str],
         state: Dict[str, Any],
+        phase_metrics: Optional[List[OpRuntimeMetrics]] = None,
+        phase_tags: Optional[List[str]] = None,
     ):
+        # Phase metrics are exported as additional tagged series, but excluded
+        # from the per-node sum: phase events are also forwarded into their
+        # operator's metrics, so summing both would double-count every node.
         per_node_metrics = _StatsManager._aggregate_per_node_metrics(op_metrics)
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
+        tags = list(operator_tags)
+        if phase_metrics:
+            assert phase_tags is not None and len(phase_tags) == len(phase_metrics)
+            op_metrics_dicts.extend(metric.as_dict() for metric in phase_metrics)
+            tags.extend(phase_tags)
         args = (
             dataset_tag,
             op_metrics_dicts,
-            operator_tags,
+            tags,
             state,
             per_node_metrics,
         )
