@@ -284,7 +284,7 @@ def get_grpc_ports(route_prefix=None, first_only=True):
 
 
 def _expected_grpc_ports(*offsets: int) -> Set[int]:
-    """gRPC ports at `offsets` from the configured range start, which BUILD pins."""
+    """gRPC ports at `offsets` from the start of the configured range."""
     return {RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT + offset for offset in offsets}
 
 
