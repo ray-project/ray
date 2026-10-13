@@ -192,6 +192,29 @@ class TestConfigureKvEvents:
         )
         assert resolve_kv_event_block_size(vllm_config) == expected
 
+    @pytest.mark.parametrize(
+        "effective_block_size,expected",
+        [
+            # The engine's resolved size wins over the derived one.
+            (512, 512),
+            (128, 128),
+            # Unreported (None) falls back to block_size * dcp.
+            (None, 512),
+        ],
+    )
+    def test_kv_event_block_size_prefers_engine_resolved_size(
+        self, effective_block_size, expected
+    ):
+        """vLLM syncs its resolved full-attention block size (DCP included)
+        back to the frontend config; use it when the engine reports one."""
+        vllm_config = SimpleNamespace(
+            cache_config=SimpleNamespace(
+                block_size=64, effective_attention_block_size=effective_block_size
+            ),
+            parallel_config=SimpleNamespace(decode_context_parallel_size=8),
+        )
+        assert resolve_kv_event_block_size(vllm_config) == expected
+
     def test_routing_stats_empty_without_kv_events(self):
         """Nothing to advertise when KV-cache events are not enabled."""
         llm_config = make_kv_aware_llm_config()

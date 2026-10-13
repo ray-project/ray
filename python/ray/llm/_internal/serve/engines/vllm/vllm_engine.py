@@ -473,9 +473,11 @@ class VLLMEngine(LLMEngine):
                     self._prompt_token_zmq_advertised_endpoint
                 )
 
+        # Read the engine client's config: the engine core syncs its resolved
+        # KV block sizes back to it after initialization.
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
-            resolve_kv_event_block_size(vllm_engine_config),
+            resolve_kv_event_block_size(self._engine_client.vllm_config),
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
         self._routing_stats.update(prompt_token_stats)

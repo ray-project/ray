@@ -129,12 +129,22 @@ def resolve_kv_event_block_size(vllm_config: Any) -> int:
     must index at that span: the selection service drops every event whose
     block size differs from the registered one, which would leave its index
     empty and silently reduce KV-aware routing to load-only scoring.
+
+    Prefer the size the engine reports in
+    ``cache_config.effective_attention_block_size``: the engine core reads it
+    from its full-attention KV cache managers (DCP included) and syncs it back
+    to the frontend config once initialized. Fall back to the DCP-scaled
+    per-rank size when the engine doesn't report one (older vLLM, or no common
+    full-attention block size).
     """
-    block_size = vllm_config.cache_config.block_size
+    cache_config = vllm_config.cache_config
+    effective_block_size = getattr(cache_config, "effective_attention_block_size", None)
+    if effective_block_size:
+        return effective_block_size
     dcp_size = (
         getattr(vllm_config.parallel_config, "decode_context_parallel_size", 1) or 1
     )
-    return block_size * dcp_size
+    return cache_config.block_size * dcp_size
 
 
 def get_kv_event_routing_stats(
