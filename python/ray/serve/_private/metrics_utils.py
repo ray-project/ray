@@ -118,6 +118,17 @@ class MetricsPusher:
         if name not in self._async_tasks or self._async_tasks[name].done():
             self._async_tasks[name] = asyncio.create_task(self.metrics_task(name))
 
+    def cancel_task(self, name: str) -> None:
+        """Cancel one task now instead of waiting for it to see the stop event.
+
+        The loop checks the stop event only between runs, so a task blocked inside
+        its function would otherwise hold graceful_shutdown for its full timeout.
+        """
+        self._tasks.pop(name, None)
+        task = self._async_tasks.pop(name, None)
+        if task is not None:
+            task.cancel()
+
     def stop_tasks(self):
         self.stop_event.set()
         self._tasks.clear()

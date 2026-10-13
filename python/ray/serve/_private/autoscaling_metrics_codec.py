@@ -14,7 +14,7 @@ import json
 import logging
 import struct
 import zlib
-from typing import Any, Dict, List, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 
 import numpy as np
 
@@ -144,6 +144,12 @@ def _encode_handle(rep: HandleMetricReport) -> bytes:
         "metric_names": metric_names,
         "replica_keys": replica_keys,
         "arrays": descriptors,
+        # Health the sending replica asked this report to carry. Scalars in the
+        # header, so the array packing is untouched.
+        "health_replica_id": rep.health_replica_id,
+        "healthy": rep.healthy,
+        "health_checked_at": rep.health_checked_at,
+        "health_consecutive_failures": rep.health_consecutive_failures,
     }
     return _frame(header, blob)
 
@@ -223,6 +229,10 @@ class FlatHandleReport(TypedDict):
     replica_keys: List[str]
     q_ts: np.ndarray
     q_val: np.ndarray
+    health_replica_id: Optional[str]
+    healthy: Optional[bool]
+    health_checked_at: Optional[float]
+    health_consecutive_failures: Optional[int]
 
 
 def decode_handle_flat(payload: bytes) -> FlatHandleReport:
@@ -246,4 +256,9 @@ def decode_handle_flat(payload: bytes) -> FlatHandleReport:
         "replica_keys": h["replica_keys"],
         "q_ts": np.ascontiguousarray(view["q_ts"], dtype=np.float64),
         "q_val": np.ascontiguousarray(view["q_val"], dtype=np.float64),
+        # .get keeps frames written before these keys existed decodable.
+        "health_replica_id": h.get("health_replica_id"),
+        "healthy": h.get("healthy"),
+        "health_checked_at": h.get("health_checked_at"),
+        "health_consecutive_failures": h.get("health_consecutive_failures"),
     }

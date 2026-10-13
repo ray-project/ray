@@ -1035,5 +1035,66 @@ def test_empty_running_rows_keep_the_whole_frame_fast_path(monkeypatch):
     assert st._handle_store.columnar["h0"].running_keys == [live.to_full_id_str()]
 
 
+class TestCarriedHealthInFrame:
+    """Health rides the frame header, so carriage survives the columnar encoding."""
+
+    def _report(self, **health):
+        return HandleMetricReport(
+            deployment_id=DeploymentID(name="d", app_name="a"),
+            handle_id="h1",
+            actor_id="actor1",
+            handle_source=DeploymentHandleSource.REPLICA,
+            queued_requests=[TimeStampedValue(1.0, 2.0)],
+            metrics={RUNNING_REQUESTS_KEY: {"r1": [TimeStampedValue(1.0, 3.0)]}},
+            timestamp=1.0,
+            **health,
+        )
+
+    def test_health_survives_the_round_trip(self):
+        rep = self._report(
+            health_replica_id="r1",
+            healthy=False,
+            health_checked_at=123.0,
+            health_consecutive_failures=2,
+        )
+        d = codec.decode_handle_flat(codec.encode(rep))
+        assert d["health_replica_id"] == "r1"
+        assert d["healthy"] is False
+        assert d["health_checked_at"] == 123.0
+        assert d["health_consecutive_failures"] == 2
+
+    def test_a_report_carrying_nothing_decodes_to_none(self):
+        d = codec.decode_handle_flat(codec.encode(self._report()))
+        assert d["health_replica_id"] is None
+        assert d["healthy"] is None
+
+    def test_a_frame_written_without_the_keys_still_decodes(self):
+        """Mixed fleet: a sender from before these keys existed must not break ingest."""
+        import json
+        import struct
+        import zlib
+
+        raw = codec.encode(self._report(health_replica_id="r1", healthy=True))
+        body = zlib.decompress(raw[len(codec._MAGIC) :])
+        hlen = struct.unpack("<I", body[:4])[0]
+        header = json.loads(body[4 : 4 + hlen])
+        for k in (
+            "health_replica_id",
+            "healthy",
+            "health_checked_at",
+            "health_consecutive_failures",
+        ):
+            header.pop(k)
+        hb = json.dumps(header).encode()
+        hb += b" " * ((4 - len(hb)) % 8)
+        older = codec._MAGIC + zlib.compress(
+            struct.pack("<I", len(hb)) + hb + body[4 + hlen :], level=1
+        )
+        d = codec.decode_handle_flat(older)
+        assert d["health_replica_id"] is None
+        assert d["healthy"] is None
+        assert d["handle_id"] == "h1"  # the rest of the frame is unaffected
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
