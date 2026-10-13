@@ -5,6 +5,8 @@ from collections import defaultdict, namedtuple
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
+    Dict,
     List,
     Optional,
     Type,
@@ -124,14 +126,14 @@ class SyncSampler(SamplerInput):
         sample_collector_class: Optional[Type[SampleCollector]] = None,
         render: bool = False,
         # Obsolete.
-        policies=None,
-        policy_mapping_fn=None,
-        preprocessors=None,
-        obs_filters=None,
-        tf_sess=None,
-        horizon=DEPRECATED_VALUE,
-        soft_horizon=DEPRECATED_VALUE,
-        no_done_at_end=DEPRECATED_VALUE,
+        policies: Optional[Dict[str, Any]] = None,
+        policy_mapping_fn: Optional[Callable] = None,
+        preprocessors: Optional[Dict[str, Any]] = None,
+        obs_filters: Optional[Dict[str, Any]] = None,
+        tf_sess: Optional[Any] = None,
+        horizon: Any = DEPRECATED_VALUE,
+        soft_horizon: Any = DEPRECATED_VALUE,
+        no_done_at_end: Any = DEPRECATED_VALUE,
     ):
         """Initializes a SyncSampler instance.
 
@@ -165,6 +167,16 @@ class SyncSampler(SamplerInput):
                 use to collect, store, and retrieve environment-, model-,
                 and sampler data.
             render: Whether to try to render the environment after each step.
+            policies: Deprecated. The policies are taken from `worker` instead.
+            policy_mapping_fn: Deprecated. Taken from `worker` instead.
+            preprocessors: Deprecated. Taken from `worker` instead.
+            obs_filters: Deprecated. Taken from `worker` instead.
+            tf_sess: Deprecated. Taken from the individual policies instead.
+            horizon: Deprecated. Use the environment's own time limit instead.
+            soft_horizon: Deprecated. Use the environment's own time limit
+                instead.
+            no_done_at_end: Deprecated. Use the environment's own time limit
+                instead.
         """
         # All of the following arguments are deprecated. They will instead be
         # provided via the passed in `worker` arg, e.g. `worker.policy_map`.

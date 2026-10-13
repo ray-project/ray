@@ -40,7 +40,7 @@ class SegmentTree:
                 The operation for combining elements (eg. sum, max).
                 Must be a mathematical group together with the set of
                 possible values for array elements.
-            neutral_element (Optional[obj]): The neutral element for
+            neutral_element: The neutral element for
                 `operation`. Use None for automatically finding a value:
                 max: float("-inf"), min: float("inf"), sum: 0.0.
         """
@@ -71,7 +71,7 @@ class SegmentTree:
 
         Args:
             start: Start index to apply reduction to.
-            end (Optional[int]): End index to apply reduction to (excluded).
+            end: End index to apply reduction to (excluded).
 
         Returns:
             any: The result of reducing self.operation over the specified

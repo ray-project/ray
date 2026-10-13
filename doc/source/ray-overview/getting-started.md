@@ -238,7 +238,7 @@ To accelerate the training job using GPU, make sure you have GPU configured, the
     </a>
 </div>
 
-```{button-ref}  ../train/train
+```{button-ref}  ../train/index
 :color: primary
 :outline:
 :expand:
@@ -448,7 +448,7 @@ public class RayDemo {
 In the above code block we defined some Ray Tasks. While these are great for stateless operations, sometimes you
 must maintain the state of your application. You can do that with Ray Actors.
 
-```{button-ref}  ../ray-core/walkthrough
+```{button-ref}  ../core/index
 :color: primary
 :outline:
 :expand:
@@ -560,7 +560,7 @@ public class RayDemo {
 }
 ```
 
-```{button-ref}  ../ray-core/walkthrough
+```{button-ref}  ../core/index
 :color: primary
 :outline:
 :expand:
@@ -599,11 +599,11 @@ Take this simple example that waits for individual nodes to join the cluster.
 ````{dropdown} example.py
 :animate: fade-in-slide-down
 
-```{literalinclude} ../../yarn/example.py
+```{literalinclude} /cluster/doc_code/yarn/example.py
 :language: python
 ```
 ````
-You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
+You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/source/cluster/doc_code/yarn/example.py).
 Store it locally in a file called `example.py`.
 
 To execute this script in the cloud, download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),

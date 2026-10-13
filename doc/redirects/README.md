@@ -24,12 +24,13 @@ mirrors the live configuration exactly.
    [Moving or renaming pages](#moving-or-renaming-pages).
 2. Validate locally: `rtd-redirects validate doc/redirects/current.yaml`.
    No Read the Docs credentials needed.
-3. Open a PR. After it merges, CI applies the change to the live project
-   automatically. A postmerge Buildkite step runs
-   `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`
-   on each postmerge run of master, and the change goes live on the next run
-   after the merge, which can be a few hours later. No manual apply step is
-   needed.
+3. Open a PR. After it merges, CI applies the change to the live project automatically, so you don't need to apply it manually. The change goes live on a later scheduled run, not at merge. See [When merged redirects go live](#when-merged-redirects-go-live).
+
+## When merged redirects go live
+
+The `doc: apply redirects` Buildkite step runs `rtd-redirects apply --project anyscale-ray --file doc/redirects/current.yaml --strict`. It runs only on the postmerge builds that the scheduled release-automation pipeline triggers, not on every merge to master. A merged change goes live on the first of those runs after the merge, usually within a few hours on a weekday and longer over a weekend. If that run fails or skips the step, the change waits for the next one.
+
+To check whether a merged change is live, run `rtd-redirects plan` as described in [Auditing drift](#auditing-drift). It needs a Read the Docs API token.
 
 ## How redirects apply across versions
 
@@ -80,6 +81,14 @@ note. It counts these notes and lists them only with `--show-info`. Chain notes
 from a move are expected. A chain is a warning only when the second rule sets
 `force: true`, because that chain happens on every version. Neither blocks CI,
 which fails only on error-level findings.
+
+## Renaming, moving, or removing APIs
+
+Generated API reference pages follow the same rules as hand-written pages. Sphinx autosummary generates one page per documented object, named after the object's fully qualified name and placed under the `:toctree:` directory of the API page that lists it, such as `/data/api/doc/ray.data.Dataset.map.html`. Renaming or moving an API changes that path, and so does moving the API page that lists it. Add a redirect for each generated page whose path changes, in the same PR.
+
+When you remove the reference page of a deprecated or end-of-life API that has a clear successor, redirect the old page to the successor's reference page.
+
+Rules with the default `force: false` fire only on a 404, so they never replace a reference page that still exists. Docs versions that still document the old API, such as older releases, keep serving its page. The redirect takes effect only on versions where the page is gone.
 
 ## Auditing drift
 

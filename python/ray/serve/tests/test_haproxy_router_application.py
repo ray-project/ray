@@ -341,15 +341,16 @@ class FakeRouter:
 
 
 @contextlib.asynccontextmanager
-async def _router_cluster(router_prefix: str = "/"):
+async def _router_cluster(router_prefix: str = "/", extra_app: Optional[str] = None):
     """HAProxy with a router at `router_prefix` and model-a, model-b, control."""
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
-        ports = {k: find_free_port() for k in ("r1", "a1", "b1", "b2", "c1")}
+        replica_names = ["a1", "b1", "b2", "c1"]
+        if extra_app:
+            replica_names.append("extra")
+        ports = {k: find_free_port() for k in ["r1", *replica_names]}
         router = FakeRouter(ports["r1"])
-        replicas = {
-            name: _fake_replica(ports[name], name) for name in ("a1", "b1", "b2", "c1")
-        }
+        replicas = {name: _fake_replica(ports[name], name) for name in replica_names}
         backends = [
             _backend(
                 "router",
@@ -368,6 +369,24 @@ async def _router_cluster(router_prefix: str = "/"):
             ),
             _backend("control", "/v1/control", [_server("control", "c1", ports["c1"])]),
         ]
+        if extra_app:
+            backends.append(
+                BackendConfig(
+                    name="http-extra",
+                    path_prefix="/v1/extra",
+                    app_name=extra_app,
+                    ingress_deployment_name="Ingress",
+                    http_health_check_path="/-/healthz",
+                    servers=[
+                        ServerConfig(
+                            name="extra",
+                            host="127.0.0.1",
+                            port=ports["extra"],
+                            replica_id=_replica_id(extra_app, "extra"),
+                        )
+                    ],
+                )
+            )
         api = HAProxyApi(
             cfg=_haproxy_config(temp_dir, haproxy_port),
             backend_configs={b.name: b for b in backends},
@@ -445,6 +464,18 @@ async def test_get_dispatches_to_selected_application(router_cluster):
     assert served["query"] == "limit=2"
     assert router.calls[-1]["method"] == "GET"
     assert router.calls[-1]["path"] == "/v1/models"
+
+
+@pytest.mark.asyncio
+async def test_dispatches_escaped_decision_values():
+    app = 'mod\u00e8le "a"\\\U0001f680'
+    async with _router_cluster(extra_app=app) as (url, router, _):
+        router.decide(app, "extra")
+
+        resp = _chat(url, {})
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["replica"] == "extra"
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,8 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
+from typing import Any, Dict
+
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.utils.debugging import (
@@ -20,6 +22,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     REPLAY_BUFFER_RESULTS,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.torch_utils import inverse_symlog
 
 torch, _ = try_import_torch()
@@ -134,13 +137,13 @@ def report_dreamed_trajectory(
 
 def report_predicted_vs_sampled_obs(
     *,
-    metrics,
-    sample,
-    batch_size_B,
-    batch_length_T,
+    metrics: MetricsLogger,
+    sample: Dict[str, Any],
+    batch_size_B: int,
+    batch_length_T: int,
     symlog_obs: bool = True,
     do_report: bool = True,
-):
+) -> None:
     """Summarizes sampled data (from the replay buffer) vs world-model predictions.
 
     World model predictions are based on the posterior states (z computed from actual
@@ -160,6 +163,8 @@ def report_predicted_vs_sampled_obs(
             from the buffer.
         batch_length_T: The batch length (T). This is the length of an individual
             trajectory sampled from the buffer.
+        symlog_obs: Whether to inverse-symlog the predicted observations or not. Set
+            this to True for environments, in which we should symlog the observations.
         do_report: Whether to actually log the report (default). If this is set to
             False, this function serves as a clean-up on the given metrics, making sure
             they do NOT contain anymore any (spacious) data relevant for producing
@@ -198,14 +203,14 @@ def report_predicted_vs_sampled_obs(
 
 def report_dreamed_eval_trajectory_vs_samples(
     *,
-    metrics,
-    sample,
-    burn_in_T,
-    dreamed_T,
-    dreamer_model,
+    metrics: MetricsLogger,
+    sample: Dict[str, Any],
+    burn_in_T: int,
+    dreamed_T: int,
+    dreamer_model: Any,
     symlog_obs: bool = True,
     do_report: bool = True,
-    framework="torch",
+    framework: str = "torch",
 ) -> None:
     """Logs dreamed observations, rewards, continues and compares them vs sampled data.
 
@@ -227,6 +232,8 @@ def report_dreamed_eval_trajectory_vs_samples(
             False, this function serves as a clean-up on the given metrics, making sure
             they do NOT contain anymore any (spacious) data relevant for producing
             the report/videos.
+        framework: The DL framework to use for reconstructing the dreamed
+            observations from the dreamed h- and (prior) z-states.
     """
     dream_data = metrics.peek(
         (LEARNER_RESULTS, DEFAULT_MODULE_ID, "dream_data"),
@@ -308,12 +315,12 @@ def report_sampling_and_replay_buffer(*, metrics, replay_buffer):
 
 def _report_obs(
     *,
-    metrics,
-    computed_float_obs_B_T_dims,
-    sampled_obs_B_T_dims,
-    metrics_key,
-    symlog_obs,
-):
+    metrics: MetricsLogger,
+    computed_float_obs_B_T_dims: np.ndarray,
+    sampled_obs_B_T_dims: np.ndarray,
+    metrics_key: str,
+    symlog_obs: bool,
+) -> None:
     """Summarizes computed- vs sampled observations: MSE and (if applicable) images.
 
     Args:
