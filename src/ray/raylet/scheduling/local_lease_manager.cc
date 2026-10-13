@@ -394,8 +394,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         // confident we're ready to dispatch the task after all checks have
         // passed.
         sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
-        sched_cls_info.granted_leases.insert(lease_id);
-        if (cpu_per_lease > 0) {
+        auto [_, inserted] = sched_cls_info.granted_leases.insert(lease_id);
+        if (inserted && cpu_per_lease > 0) {
           total_cpu_granted_leases++;
         }
         // The local node has the available resources to grant the lease, so we should
@@ -429,11 +429,7 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     // In cases like dead owners, we may not add any tasks
     // to `granted_leases` so we can remove the map entry
     // for that scheduling_class to prevent memory leaks.
-    // Capture the count before potential erasure since the reference becomes
-    // invalid after erase. This is used to keep total_cpu_granted_leases accurate
-    // if the infeasible path cancels these granted leases.
-    size_t granted_count_for_class = sched_cls_info.granted_leases.size();
-    if (granted_count_for_class == 0) {
+    if (sched_cls_info.granted_leases.size() == 0) {
       info_by_sched_cls_.erase(scheduling_class);
     }
     if (is_infeasible) {
@@ -442,13 +438,16 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       RAY_LOG(ERROR) << "A lease got granted to a node even though it was infeasible. "
                         "Please report an issue on GitHub.\nLease: "
                      << front_lease.DebugString();
-      // Update aggregates for each remaining item being cancelled.
       if (cpu_per_lease > 0) {
-        total_cpu_granted_leases -= granted_count_for_class;
         total_cpu_requests -= leases_to_grant_queue.size() * cpu_per_lease;
       }
       auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
       while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
+        // Only decrement for granted leases actually being cancelled.
+        if (cpu_per_lease > 0 && (*leases_to_grant_queue_iter)->GetState() ==
+                                     internal::WorkStatus::WAITING_FOR_WORKER) {
+          total_cpu_granted_leases--;
+        }
         CancelLeaseToGrantWithoutReply(*leases_to_grant_queue_iter);
         ReplyCancelled(*leases_to_grant_queue_iter,
                        rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
