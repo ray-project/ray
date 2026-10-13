@@ -1,12 +1,10 @@
 import abc
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from ray.util.annotations import PublicAPI
 
 NodeIdStr = str
-# A world rank, a node ID, or another key a ControllerProbe chose.
-ResultKey = Union[int, NodeIdStr]
 
 
 @PublicAPI(stability="alpha")
@@ -76,7 +74,7 @@ class ControllerProbe(Probe):
     """A probe that runs in the controller process."""
 
     @abc.abstractmethod
-    def poll(self) -> Dict[ResultKey, ProbeResult]:
+    def poll(self) -> Dict[Any, ProbeResult]:
         """Take one reading of each node, worker or other item the probe
         observes.
 

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Mapping
+from typing import Any, Mapping
 
-from ray.train.health.probe import ProbeResult, ResultKey
+from ray.train.health.probe import ProbeResult
 from ray.util.annotations import PublicAPI
 
 
@@ -17,6 +17,4 @@ class HealthState:
             from ``Probe.probe_name()``.
     """
 
-    probe_results: Mapping[str, Mapping[ResultKey, ProbeResult]] = field(
-        default_factory=dict
-    )
+    probe_results: Mapping[str, Mapping[Any, ProbeResult]] = field(default_factory=dict)
