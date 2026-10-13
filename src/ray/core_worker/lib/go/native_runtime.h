@@ -144,6 +144,18 @@ void *GoGetObjectData(void *handle);
  */
 size_t GoGetObjectSize(void *handle);
 
+// Query the current worker's resource IDs from CoreWorker::GetResourceIDs().
+// On success returns 1 and writes:
+//   serialized_out - array of serialized rpc::ResourceMapEntry byte buffers
+//   sizes_out     - parallel array of byte lengths
+//   count_out     - number of entries
+// Go must free each serialized element and the outer arrays via C.free.
+// On failure returns 0 and writes error_out with the error message.
+int CNativeRuntime_GetResourceIds(char ***serialized_out,
+                                  int **sizes_out,
+                                  int *count_out,
+                                  char **error_out);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

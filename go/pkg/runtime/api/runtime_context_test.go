@@ -30,11 +30,13 @@ import (
 
 type mockRTContextRuntime struct {
 	recordingRuntime
-	restarted bool
-	nodes     []contract.NodeInfo
-	actors    []contract.ActorInfo
-	actorHdl  submitter.ActorHandle
-	gpuIDs    []string
+	restarted   bool
+	nodes       []contract.NodeInfo
+	actors      []contract.ActorInfo
+	actorHdl    submitter.ActorHandle
+	gpuIDs      []string
+	filterState contract.ActorState
+	filterJobID ids.JobID
 }
 
 // rtContextTestHandle is a minimal submitter.ActorHandle for testing
@@ -50,6 +52,11 @@ func (m mockRTContextRuntime) GetAllNodeInfo() []contract.NodeInfo {
 	return m.nodes
 }
 func (m mockRTContextRuntime) GetAllActorInfo() []contract.ActorInfo {
+	return m.actors
+}
+func (m *mockRTContextRuntime) GetAllActorInfoByFilter(jobID ids.JobID, state contract.ActorState) []contract.ActorInfo {
+	m.filterState = state
+	m.filterJobID = jobID
 	return m.actors
 }
 func (m mockRTContextRuntime) GetCurrentActorHandle() submitter.ActorHandle { return m.actorHdl }
@@ -117,11 +124,54 @@ func TestRuntimeContextGetAllActorInfoMapping(t *testing.T) {
 	}
 }
 
+func TestRuntimeContextGetAllActorInfoByFilterDefault(t *testing.T) {
+	m := &mockRTContextRuntime{actors: []contract.ActorInfo{{ActorID: ids.NilActorID(), Name: "a", State: contract.ActorStateAlive}}}
+	ctx := newRuntimeContextWithMock(m)
+	defer clearHandle()
+	got := ctx.GetAllActorInfoByFilter(ids.NilJobID(), ActorStateAny)
+	if len(got) != 1 || got[0].Name != "a" || got[0].State != ActorStateAlive {
+		t.Fatalf("GetAllActorInfoByFilter = %+v, want mapped actor", got)
+	}
+	if m.filterState != contract.ActorStateAny {
+		t.Fatalf("filterState = %v, want ActorStateAny", m.filterState)
+	}
+}
+
+func TestRuntimeContextGetAllActorInfoByFilterStateMapping(t *testing.T) {
+	m := &mockRTContextRuntime{actors: []contract.ActorInfo{{ActorID: ids.NilActorID(), Name: "a", State: contract.ActorStateAlive}}}
+	ctx := newRuntimeContextWithMock(m)
+	defer clearHandle()
+	_ = ctx.GetAllActorInfoByFilter(ids.NilJobID(), ActorStateAlive)
+	if m.filterState != contract.ActorStateAlive {
+		t.Fatalf("filterState = %v, want ActorStateAlive", m.filterState)
+	}
+}
+
+func TestRuntimeContextGetAllActorInfoByFilterZeroJobIDNormalized(t *testing.T) {
+	m := &mockRTContextRuntime{actors: []contract.ActorInfo{{ActorID: ids.NilActorID(), Name: "a", State: contract.ActorStateAlive}}}
+	ctx := newRuntimeContextWithMock(m)
+	defer clearHandle()
+	// A Go zero-value JobID{} (not the NilJobID() sentinel) must be normalized
+	// to NilJobID() so that it is not treated as a real job filter.
+	_ = ctx.GetAllActorInfoByFilter(ids.JobID{}, ActorStateAlive)
+	if !m.filterJobID.IsNil() {
+		t.Fatalf("filterJobID = %v, want NilJobID() (zero value not normalized)", m.filterJobID)
+	}
+}
+
 func TestRuntimeContextGetAllActorInfoNilRuntime(t *testing.T) {
 	ctx := newRuntimeContextNoRuntime()
 	defer clearHandle()
 	if got := ctx.GetAllActorInfo(); len(got) != 0 {
 		t.Fatalf("GetAllActorInfo with nil runtime = %v, want empty", got)
+	}
+}
+
+func TestRuntimeContextGetAllActorInfoByFilterNilRuntime(t *testing.T) {
+	ctx := newRuntimeContextNoRuntime()
+	defer clearHandle()
+	if got := ctx.GetAllActorInfoByFilter(ids.NilJobID(), ActorStateAny); len(got) != 0 {
+		t.Fatalf("GetAllActorInfoByFilter with nil runtime = %v, want empty", got)
 	}
 }
 

@@ -55,6 +55,11 @@ const (
 	ActorStateRestarting
 	// ActorStateDraining represents an actor that is draining.
 	ActorStateDraining
+	// ActorStateAny is a sentinel value indicating that no actor state
+	// filter should be applied. It is used by GetAllActorInfoByFilter.
+	// It is intentionally a negative value to avoid colliding with the
+	// non-negative ActorState enumeration values (Pending=0, Alive=1, ...).
+	ActorStateAny ActorState = ActorState(-1)
 )
 
 // NodeInfo represents information about a node in the cluster.
@@ -85,8 +90,18 @@ type ActorInfo struct {
 	NumRestarts    int
 	State          ActorState
 	Address        string
+	AddressPort    int
 	IsDetached     bool
 	StartTime      int64
 	EndTime        int64
 	Resources      map[string]float64
+}
+
+// ResourceValue represents a resource ID and its capacity.
+// Consistent with Java io.ray.api.runtimecontext.ResourceValue.
+type ResourceValue struct {
+	// ResourceID is the index of the resource (e.g., CPU #3, GPU #0).
+	ResourceID int64
+	// Capacity is the quantity of the resource assigned (e.g., 0.5 CPU).
+	Capacity float64
 }

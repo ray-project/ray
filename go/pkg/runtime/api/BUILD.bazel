@@ -33,7 +33,9 @@ go_library(
         "parallel_actor.go",
         "placement_group.go",
         "ray.go",
+        "resource_ids.go",
         "runtime.go",
+        "runtime_env.go",
     ],
     importpath = "github.com/ray-project/ray/go/pkg/runtime/api",
     visibility = ["//visibility:public"],
@@ -50,6 +52,7 @@ go_library(
         "//go/pkg/runtime/plugin",
         "//go/pkg/runtime/submitter",
         "//go/proto",
+        "@org_golang_google_protobuf//encoding/protojson",
         "@org_golang_google_protobuf//proto",
     ],
 )
@@ -58,15 +61,19 @@ go_library(
 go_test(
     name = "api_test",
     srcs = [
+        "actor_get_python_test.go",
         "actor_registration_test.go",
         "api_test.go",
         "call_convert_arg_test.go",
         "call_test.go",
+        "cpp_call_test.go",
         "example_test.go",
+        "gcs_client_test.go",
         "handle_release_test.go",
         "method_extractor_test.go",
         "object_id_generator_test.go",
         "object_ref_test.go",
+        "options_test.go",
         "parallel_actor_test.go",
         "python_call_test.go",
         "task_return_ref_test.go",
@@ -74,11 +81,13 @@ go_test(
     embed = [":api"],
     deps = [
         "//go/pkg/errors",
+        "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/runtime/contract",
         "//go/pkg/runtime/function",
         "//go/pkg/runtime/object",
         "//go/pkg/runtime/submitter",
+        "//go/proto",
         "@com_github_stretchr_testify//assert",
         "@com_github_vmihailenco_msgpack_v5//:msgpack",
     ],
@@ -93,6 +102,57 @@ go_test(
     gotags = ["apiinternal"],
 )
 
+# worker handle-attach tests, gated behind the "apihandle" build tag because
+# storeHandleLocked mutates package-global handle state.
+go_test(
+    name = "api_handle_test",
+    srcs = ["handle_test.go"],
+    embed = [":api"],
+    gotags = ["apihandle"],
+    deps = [
+        "//go/pkg/errors",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+    ],
+)
+
+# Re-init lifecycle tests, gated behind the "apireinit" build tag because
+# setHandle mutates package-global handle state (currentHandle) that the default
+# api tests assume is unset.
+go_test(
+    name = "api_reinit_test",
+    srcs = ["handle_reinit_test.go"],
+    embed = [":api"],
+    gotags = ["apireinit"],
+    deps = [
+        "//go/pkg/runtime/contract",
+    ],
+)
+
+# ActorHandle.Kill / KillWithNoRestart instance-method tests, gated behind the
+# "apikill" build tag because storeHandleLocked mutates package-global handle
+# state (currentHandle) that the default api tests assume is unset. It uses its
+# own tag (rather than sharing "apiinternal") because it stores a distinct fake
+# handle type into the shared atomic.Value currentHandle, which would panic
+# ("store of inconsistently typed value") if run in the same test binary as
+# internal_test.go.
+go_test(
+    name = "api_actor_kill_test",
+    srcs = ["actor_kill_test.go"],
+    embed = [":api"],
+    gotags = ["apikill"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+    ],
+)
+
 # Local-mode init tests gated behind the "apilocalinit" build tag because
 # RegisterInitializer and setHandle mutate package-global state that the
 # default api tests assume is unset.
@@ -104,6 +164,29 @@ go_test(
     deps = [
         "//go/pkg/options",
         "//go/pkg/runtime/contract",
+    ],
+)
+
+# api.Free tests, gated behind the "apifree" build tag because storeHandleLocked
+# mutates package-global handle state (currentHandle) that the default api
+# tests assume is unset. Includes task_return_ref_test.go for the shared
+# recordingRuntime/recordingHandle injection helpers.
+go_test(
+    name = "api_free_test",
+    srcs = [
+        "free_test.go",
+        "task_return_ref_test.go",
+    ],
+    embed = [":api"],
+    gotags = ["apifree"],
+    deps = [
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
     ],
 )
 
@@ -125,6 +208,24 @@ go_test(
         "//go/pkg/runtime/function",
         "//go/pkg/runtime/object",
         "//go/pkg/runtime/submitter",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)
+
+# api.RuntimeEnv value-object tests, gated behind the "apiruntimeenv" build tag
+# because storeHandleLocked mutates package-global handle state (currentHandle)
+# that the default api tests assume is unset. Includes task_return_ref_test.go
+# for the shared recordingRuntime helper.
+go_test(
+    name = "api_runtime_env_test",
+    srcs = [
+        "runtime_env_test.go",
+        "task_return_ref_test.go",
+    ],
+    embed = [":api"],
+    gotags = ["apiruntimeenv"],
+    deps = [
+        "//go/pkg/errors",
         "@com_github_vmihailenco_msgpack_v5//:msgpack",
     ],
 )
@@ -167,6 +268,30 @@ go_test(
         "//go/pkg/ids",
         "//go/pkg/runtime/local",
         "//go/pkg/runtime/submitter",
+    ],
+)
+
+# api.GetAvailableResourceIds / GetGpuIds tests, gated behind the
+# "apiresourceids" build tag because storeHandleLocked mutates package-global
+# handle state (currentHandle) that the default api tests assume is unset.
+# Includes task_return_ref_test.go for the shared recordingRuntime helper.
+go_test(
+    name = "api_resource_ids_test",
+    srcs = [
+        "resource_ids_test.go",
+        "task_return_ref_test.go",
+    ],
+    embed = [":api"],
+    gotags = ["apiresourceids"],
+    deps = [
+        "//go/pkg/errors",
+        "//go/pkg/ids",
+        "//go/pkg/runtime/contract",
+        "//go/pkg/runtime/function",
+        "//go/pkg/runtime/object",
+        "//go/pkg/runtime/submitter",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
     ],
 )
 

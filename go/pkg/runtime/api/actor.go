@@ -195,9 +195,11 @@ func GetPythonActorWithNamespace(name, namespace, moduleName, className string) 
 	// names are taken from the caller because the GCS lookup only yields the
 	// actor ID (see Create in PythonActorCreator for the same construction).
 	return &PythonActorHandle{
-		nativeHandle: object.NewNativeActorHandle(actorHandle.ID(), object.LanguagePython),
-		moduleName:   moduleName,
-		className:    className,
+		baseActorHandle: baseActorHandle{
+			nativeHandle: object.NewNativeActorHandle(actorHandle.ID(), object.LanguagePython),
+		},
+		moduleName: moduleName,
+		className:  className,
 	}, nil
 }
 

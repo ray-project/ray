@@ -25,6 +25,7 @@
 
 #include "absl/strings/escaping.h"
 #include "ray/core_worker/lib/go/cgo_wrapper.h"
+#include "ray/core_worker/lib/go/gcs_client_utils.h"
 #include "ray/core_worker/lib/go/go_heap_buffer.h"
 #include "ray/core_worker/lib/go/runtime_ops.h"
 #include "ray/util/logging.h"
@@ -117,5 +118,39 @@ extern "C" void CNativeRuntime_RunTaskExecutionLoop() {
     ray::go::RuntimeOperations::GetInstance().RunTaskExecutionLoop();
     _Exit(0);
   });
+}
+
+extern "C" int CNativeRuntime_GetResourceIds(char ***serialized_out,
+                                             int **sizes_out,
+                                             int *count_out,
+                                             char **error_out) {
+  try {
+    if (serialized_out == nullptr || sizes_out == nullptr || count_out == nullptr) {
+      set_error(error_out, "CNativeRuntime_GetResourceIds: null output param");
+      return 0;
+    }
+    std::vector<std::string> serialized =
+        ray::go::RuntimeOperations::GetInstance().GetResourceIds();
+
+    if (serialized.empty()) {
+      *serialized_out = nullptr;
+      *sizes_out = nullptr;
+      *count_out = 0;
+      return 1;
+    }
+
+    bool ok = allocate_serialized_array(serialized, serialized_out, sizes_out, count_out);
+    if (!ok) {
+      set_error(error_out, "CNativeRuntime_GetResourceIds: allocation failed");
+      return 0;
+    }
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  } catch (...) {
+    set_error(error_out, "CNativeRuntime_GetResourceIds: unknown exception");
+    return 0;
+  }
 }
 }  // namespace ray::go

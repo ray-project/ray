@@ -204,6 +204,20 @@ func (lr *LocalModeRuntime) GetAllActorInfo() []contract.ActorInfo {
 	return []contract.ActorInfo{}
 }
 
+// GetAllActorInfoByFilter returns actor information filtered by job ID and
+// actor state. In local mode, returns empty slice (no cluster-wide actor
+// tracking).
+func (lr *LocalModeRuntime) GetAllActorInfoByFilter(jobID ids.JobID, state contract.ActorState) []contract.ActorInfo {
+	return []contract.ActorInfo{}
+}
+
+// GetResourceIds returns the resource name -> resource ID/capacity mapping.
+// In local mode there is no C++ CoreWorker, so returns an empty map.
+// Consistent with Java LocalMode semantics.
+func (lr *LocalModeRuntime) GetResourceIds() map[string][]contract.ResourceValue {
+	return map[string][]contract.ResourceValue{}
+}
+
 // GetGpuIds returns the IDs of GPUs allocated to the current worker.
 // In local mode, returns empty slice (no GPU allocation).
 func (lr *LocalModeRuntime) GetGpuIds() []string {
@@ -230,6 +244,16 @@ func (lr *LocalModeRuntime) GetTaskSubmitter() submitter.TaskSubmitter {
 // This method is intended for internal use during worker initialization.
 func (lr *LocalModeRuntime) GetFunctionManager() function.Manager {
 	return lr.functionMgr
+}
+
+// CreateRuntimeEnv creates an empty runtime env.
+func (lr *LocalModeRuntime) CreateRuntimeEnv() contract.RuntimeEnv {
+	return contract.RuntimeEnv{}
+}
+
+// DeserializeRuntimeEnv deserializes a serialized runtime env JSON string.
+func (lr *LocalModeRuntime) DeserializeRuntimeEnv(serializedRuntimeEnv string) (contract.RuntimeEnv, error) {
+	return contract.UnmarshalRuntimeEnv(serializedRuntimeEnv)
 }
 
 // Compile-time check to ensure LocalModeRuntime implements Runtime

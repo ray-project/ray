@@ -54,6 +54,16 @@ type recordingObjectStore struct {
 	mu      sync.Mutex
 	added   map[string]int
 	removed map[string]int
+
+	deleteCalls []deleteCall
+	// deleteErr, when non-nil, is returned by Delete to simulate a store failure.
+	deleteErr error
+}
+
+// deleteCall records a single ObjectStore.Delete invocation.
+type deleteCall struct {
+	objectIDs []ids.ObjectID
+	localOnly bool
 }
 
 func newRecordingObjectStore() *recordingObjectStore {
@@ -73,6 +83,20 @@ func (s *recordingObjectStore) removedCount(id ids.ObjectID) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.removed[id.Hex()]
+}
+
+// deleteCallCount returns the number of Delete invocations recorded.
+func (s *recordingObjectStore) deleteCallCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.deleteCalls)
+}
+
+// lastDeleteCall returns the most recent recorded Delete invocation.
+func (s *recordingObjectStore) lastDeleteCall() deleteCall {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.deleteCalls[len(s.deleteCalls)-1]
 }
 
 func (s *recordingObjectStore) PutRaw(obj *object.NativeRayObject) (*ids.ObjectID, error) {
@@ -97,7 +121,16 @@ func (s *recordingObjectStore) WaitWithOptions(opts object.WaitOptions) ([]bool,
 	return nil, nil
 }
 func (s *recordingObjectStore) Delete(objectIDs []*ids.ObjectID, localOnly bool) error {
-	return nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idsCopy := make([]ids.ObjectID, 0, len(objectIDs))
+	for _, oid := range objectIDs {
+		if oid != nil {
+			idsCopy = append(idsCopy, *oid)
+		}
+	}
+	s.deleteCalls = append(s.deleteCalls, deleteCall{objectIDs: idsCopy, localOnly: localOnly})
+	return s.deleteErr
 }
 func (s *recordingObjectStore) AddLocalReference(objectID *ids.ObjectID) error {
 	s.mu.Lock()
@@ -152,11 +185,24 @@ func (r recordingRuntime) IsLocalMode() bool                            { return
 func (r recordingRuntime) WasCurrentActorRestarted() bool               { return false }
 func (r recordingRuntime) GetAllNodeInfo() []contract.NodeInfo          { return nil }
 func (r recordingRuntime) GetAllActorInfo() []contract.ActorInfo        { return nil }
-func (r recordingRuntime) GetGpuIds() []string                          { return nil }
+func (r recordingRuntime) GetAllActorInfoByFilter(jobID ids.JobID, state contract.ActorState) []contract.ActorInfo {
+	return nil
+}
+func (r recordingRuntime) GetGpuIds() []string { return nil }
+func (r recordingRuntime) GetResourceIds() map[string][]contract.ResourceValue {
+	return map[string][]contract.ResourceValue{
+		"GPU": {{ResourceID: 0, Capacity: 1.0}},
+		"CPU": {{ResourceID: 3, Capacity: 1.0}},
+	}
+}
 func (r recordingRuntime) GetCurrentActorHandle() submitter.ActorHandle { return nil }
 func (r recordingRuntime) GetObjectStore() object.ObjectStore           { return r.store }
 func (r recordingRuntime) GetTaskSubmitter() submitter.TaskSubmitter    { return nil }
 func (r recordingRuntime) GetFunctionManager() function.Manager         { return nil }
+func (r recordingRuntime) CreateRuntimeEnv() contract.RuntimeEnv { return contract.RuntimeEnv{} }
+func (r recordingRuntime) DeserializeRuntimeEnv(serializedRuntimeEnv string) (contract.RuntimeEnv, error) {
+	return contract.UnmarshalRuntimeEnv(serializedRuntimeEnv)
+}
 
 // recordingHandle is a contract.RuntimeHandle exposing the recording runtime.
 type recordingHandle struct {
@@ -172,11 +218,7 @@ func (h recordingHandle) Runtime() contract.Runtime { return h.rt }
 func newRecordingHandle() (*recordingObjectStore, recordingHandle) {
 	store := newRecordingObjectStore()
 	handle := recordingHandle{rt: recordingRuntime{store: store}}
-	setHandle(handle)
-	// setHandle does not clear the shutdown flag left set by a previous
-	// clearHandle; the release path under test is only reachable while shutdown
-	// is pending.
-	shutdownComplete.Store(false)
+	storeHandleLocked(handle)
 	return store, handle
 }
 

@@ -29,8 +29,11 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"unsafe"
 
 	"github.com/ray-project/ray/go/internal/runtime/base"
+	"github.com/ray-project/ray/go/proto"
+	protolib "google.golang.org/protobuf/proto"
 )
 
 // Handle represents the C++ NativeRuntime handle.
@@ -244,4 +247,75 @@ func (h *Handle) IsInitialized() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.ptr != nil
+}
+
+// GetResourceIds returns the resource name -> resource ID/capacity mapping
+// for the current worker from C++ CoreWorker::GetResourceIDs().
+//
+// Memory: C++ allocates serialized_out/sizes_out; Go copies each entry via
+// proto.Unmarshal then frees each element and the outer arrays with C.free.
+// Consistent with the gcs_client_nodes_get_all pattern in nodes_cgo.go.
+func (h *Handle) GetResourceIds() ([]*proto.ResourceMapEntry, error) {
+	// Hold the shared lock across the CGO call so a concurrent Shutdown (which
+	// takes the write lock before CNativeRuntime_Shutdown) cannot tear down the
+	// C++ core worker between our nil check and the call. Unlike the task
+	// execution loop — which must release the lock so Shutdown can proceed —
+	// this is a short query, and serializing it against shutdown is correct.
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.ptr == nil {
+		return nil, fmt.Errorf("NativeRuntime not initialized: call Initialize() first")
+	}
+
+	var cErr *C.char
+	var cSerialized **C.char
+	var cSizes *C.int
+	var cCount C.int
+
+	ok := C.CNativeRuntime_GetResourceIds(&cSerialized, &cSizes, &cCount, &cErr)
+	// Register the outer-array frees immediately after the CGO call so every
+	// return path (including the early "no resources" and error paths) is
+	// covered by the release logic. C.free(nil) is a safe no-op, so when C++
+	// leaves these pointers null there is nothing to release.
+	defer C.free(unsafe.Pointer(cSerialized))
+	defer C.free(unsafe.Pointer(cSizes))
+	if cErr != nil {
+		defer C.free(unsafe.Pointer(cErr))
+		return nil, fmt.Errorf("get resource ids failed: %s", C.GoString(cErr))
+	}
+	// ok == 0 with no error_out is unexpected per the C++ contract (a failure
+	// always sets error_out, handled above); treat it as an empty mapping
+	// defensively. A success with no resources leaves cSerialized nil /
+	// cCount 0, which is the normal empty-resource case.
+	if ok == 0 || cSerialized == nil || cCount == 0 {
+		return []*proto.ResourceMapEntry{}, nil
+	}
+
+	serializedArray := (*[1 << 30]*C.char)(unsafe.Pointer(cSerialized))
+	sizesArray := (*[1 << 30]C.int)(unsafe.Pointer(cSizes))
+	result := make([]*proto.ResourceMapEntry, 0, int(cCount))
+	for i := 0; i < int(cCount); i++ {
+		size := int(sizesArray[i])
+		if size == 0 {
+			// Release the element's C memory even when its serialized length
+			// is zero, keeping the per-element release contract consistent
+			// with the normal path below.
+			C.free(unsafe.Pointer(serializedArray[i]))
+			continue
+		}
+		serialized := C.GoBytes(unsafe.Pointer(serializedArray[i]), C.int(size))
+		C.free(unsafe.Pointer(serializedArray[i]))
+
+		var entry proto.ResourceMapEntry
+		if err := protolib.Unmarshal(serialized, &entry); err != nil {
+			// Free remaining elements that have not been released yet.
+			// Current element i was already freed above via C.free.
+			for j := i + 1; j < int(cCount); j++ {
+				C.free(unsafe.Pointer(serializedArray[j]))
+			}
+			return nil, fmt.Errorf("unmarshal resource map entry failed: %w", err)
+		}
+		result = append(result, &entry)
+	}
+	return result, nil
 }

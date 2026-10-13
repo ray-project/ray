@@ -25,6 +25,7 @@
 #include "ray/core_worker/lib/go/cgo_wrapper.h"
 #include "ray/core_worker/lib/go/core_worker_provider.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_rpc_client/raylet_client_interface.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray::go {
@@ -85,6 +86,16 @@ class RuntimeOperations {
 
   // Release an object reference
   void ReleaseObjectRef(const ray::ObjectID &object_id);
+
+  // GetResourceIds returns the current worker's resource name -> resource
+  // ID/capacity mapping, serialized as rpc::ResourceMapEntry byte strings.
+  std::vector<std::string> GetResourceIds();
+
+  // Serialize a ResourceMappingType into a vector of serialized
+  // rpc::ResourceMapEntry strings. Pure function, unit-testable without a
+  // live CoreWorker.
+  static std::vector<std::string> SerializeResourceMapping(
+      const ResourceMappingType &mapping);
 
  private:
   RuntimeOperations() = default;

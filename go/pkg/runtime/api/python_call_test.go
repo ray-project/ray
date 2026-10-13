@@ -121,15 +121,30 @@ func TestRemotePythonActor_InvalidModuleName(t *testing.T) {
 	}
 }
 
+func TestRemotePythonActor_WithPlacementGroupFailsLoudly(t *testing.T) {
+	// Actor-level placement-group binding is unsupported on the current
+	// backends, so the builder must fail loudly at Create instead of silently
+	// dropping the binding. The error is recorded by WithPlacementGroup and
+	// surfaced by Create before the submitter is consulted.
+	pg := &PlacementGroup{id: ids.OfPlacementGroupID(ids.NewJobID())}
+	_, err := RemotePythonActor("calculator", "Calculator").WithPlacementGroup(pg, 0).Create()
+	if err == nil {
+		t.Fatal("expected error for actor placement-group binding, got nil")
+	}
+	assertRuntimeErrorState(t, err, "create_actor", "actor placement-group binding is not supported on this path")
+}
+
 func TestPythonActorHandle_ActorTask(t *testing.T) {
 	actorID, err := ids.ActorIDFromHex("0102030405060708090a0b0c0d0e0f10")
 	if err != nil {
 		t.Fatalf("failed to build actor ID: %v", err)
 	}
 	handle := &PythonActorHandle{
-		nativeHandle: &object.NativeActorHandle{
-			ActorID:  actorID,
-			Language: object.LanguagePython,
+		baseActorHandle: baseActorHandle{
+			nativeHandle: &object.NativeActorHandle{
+				ActorID:  actorID,
+				Language: object.LanguagePython,
+			},
 		},
 		moduleName: "calculator",
 		className:  "Calculator",

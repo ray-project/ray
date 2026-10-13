@@ -306,8 +306,10 @@ func convertActorInfo(protoActor *proto.ActorTableData) contract.ActorInfo {
 
 	// Extract address from Address struct
 	var address string
+	var addressPort int
 	if protoActor.Address != nil {
 		address = protoActor.Address.IpAddress
+		addressPort = int(protoActor.Address.Port)
 	}
 
 	return contract.ActorInfo{
@@ -323,6 +325,7 @@ func convertActorInfo(protoActor *proto.ActorTableData) contract.ActorInfo {
 		NumRestarts:    int(protoActor.NumRestarts),
 		State:          convertActorState(protoActor.State),
 		Address:        address,
+		AddressPort:    addressPort,
 		IsDetached:     protoActor.IsDetached,
 		StartTime:      int64(protoActor.StartTime),
 		EndTime:        int64(protoActor.EndTime),

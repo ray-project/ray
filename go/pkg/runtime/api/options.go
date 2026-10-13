@@ -33,9 +33,6 @@ const (
 	ResourceObjectStoreMemory = "object_store_memory"
 )
 
-// PlacementGroupPlaceholder is a placeholder for the placement group type.
-type PlacementGroupPlaceholder struct{}
-
 // ConcurrencyGroup represents a concurrency group for an actor.
 // Concurrency groups allow fine-grained control over actor method concurrency.
 // Each group can have its own maximum concurrent calls limit.
@@ -79,8 +76,8 @@ type CallOptions struct {
 	// Resources is the resource requirements
 	Resources map[string]float64
 
-	// PlacementGroup is the placement group (placeholder)
-	PlacementGroup *PlacementGroupPlaceholder
+	// PlacementGroup is the placement group this task is bound to.
+	PlacementGroup *PlacementGroup
 
 	// PlacementGroupBundleIndex is the bundle index
 	PlacementGroupBundleIndex int
@@ -143,8 +140,12 @@ func (b *CallOptionsBuilder) WithResources(resources map[string]float64) *CallOp
 	return b
 }
 
-// WithPlacementGroup sets the placement group.
-func (b *CallOptionsBuilder) WithPlacementGroup(group *PlacementGroupPlaceholder, bundleIndex int) *CallOptionsBuilder {
+// WithPlacementGroup sets the placement group and bundle index. A nil group is
+// a no-op.
+func (b *CallOptionsBuilder) WithPlacementGroup(group *PlacementGroup, bundleIndex int) *CallOptionsBuilder {
+	if group == nil {
+		return b
+	}
 	b.options.PlacementGroup = group
 	b.options.PlacementGroupBundleIndex = bundleIndex
 	return b
@@ -167,14 +168,31 @@ func (b *CallOptionsBuilder) Build() *CallOptions {
 	return &b.options
 }
 
+// WithPlacementGroup binds this task to the given placement group bundle.
+func (o *CallOptions) WithPlacementGroup(pg *PlacementGroup, bundleIndex int) *CallOptions {
+	if pg == nil {
+		return o
+	}
+	o.PlacementGroup = pg
+	o.PlacementGroupBundleIndex = bundleIndex
+	return o
+}
+
 // ConvertToTaskOptions converts CallOptions to submitter.TaskOptions.
 func (c *CallOptions) ConvertToTaskOptions() *submitter.TaskOptions {
-	return &submitter.TaskOptions{
+	taskOptions := &submitter.TaskOptions{
 		Name:                 c.Name,
 		Resources:            c.Resources,
 		RuntimeEnv:           c.RuntimeEnv,
 		ConcurrencyGroupName: c.ConcurrencyGroupName,
 	}
+	if c.PlacementGroup != nil {
+		taskOptions.PlacementGroup = &submitter.PlacementGroupOptions{
+			ID:          c.PlacementGroup.ID(),
+			BundleIndex: c.PlacementGroupBundleIndex,
+		}
+	}
+	return taskOptions
 }
 
 // Validate validates the CallOptions.
@@ -222,7 +240,8 @@ type ActorCreationOptions struct {
 	// MaxPendingCalls is the maximum pending calls (-1 means unlimited)
 	MaxPendingCalls int
 
-	PlacementGroup *PlacementGroupPlaceholder
+	// PlacementGroup is the placement group this actor is bound to.
+	PlacementGroup *PlacementGroup
 
 	// PlacementGroupBundleIndex is the bundle index
 	PlacementGroupBundleIndex int
@@ -238,6 +257,10 @@ type ActorCreationOptions struct {
 
 	// IsAsync indicates whether this is an async actor
 	IsAsync bool
+
+	// Lifetime is the actor lifetime (detached or non-detached).
+	// Consistent with Java's ActorCreationOptions.setLifetime.
+	Lifetime submitter.ActorLifetime
 }
 
 // ActorCreationOptionsBuilder is the builder for ActorCreationOptions.
@@ -316,8 +339,12 @@ func (b *ActorCreationOptionsBuilder) WithMaxPendingCalls(maxPendingCalls int) *
 	return b
 }
 
-// WithPlacementGroup sets the placement group.
-func (b *ActorCreationOptionsBuilder) WithPlacementGroup(group *PlacementGroupPlaceholder, bundleIndex int) *ActorCreationOptionsBuilder {
+// WithPlacementGroup sets the placement group and bundle index. A nil group is
+// a no-op.
+func (b *ActorCreationOptionsBuilder) WithPlacementGroup(group *PlacementGroup, bundleIndex int) *ActorCreationOptionsBuilder {
+	if group == nil {
+		return b
+	}
 	b.options.PlacementGroup = group
 	b.options.PlacementGroupBundleIndex = bundleIndex
 	return b
@@ -358,9 +385,25 @@ func (b *ActorCreationOptionsBuilder) WithAsync(async bool) *ActorCreationOption
 	return b
 }
 
+// WithLifetime sets the actor lifetime (detached or non-detached).
+func (b *ActorCreationOptionsBuilder) WithLifetime(lifetime submitter.ActorLifetime) *ActorCreationOptionsBuilder {
+	b.options.Lifetime = lifetime
+	return b
+}
+
 // Build builds the ActorCreationOptions.
 func (b *ActorCreationOptionsBuilder) Build() *ActorCreationOptions {
 	return &b.options
+}
+
+// WithPlacementGroup binds this actor to the given placement group bundle.
+func (o *ActorCreationOptions) WithPlacementGroup(pg *PlacementGroup, bundleIndex int) *ActorCreationOptions {
+	if pg == nil {
+		return o
+	}
+	o.PlacementGroup = pg
+	o.PlacementGroupBundleIndex = bundleIndex
+	return o
 }
 
 // ConvertToActorCreationOptions converts to submitter.ActorCreationOptions.
@@ -378,15 +421,26 @@ func (a *ActorCreationOptions) ConvertToActorCreationOptions() *submitter.ActorC
 		}
 	}
 
-	return &submitter.ActorCreationOptions{
+	actorOptions := &submitter.ActorCreationOptions{
 		Name:              a.Name,
 		Namespace:         a.Namespace,
 		Resources:         a.Resources,
 		MaxRestarts:       a.MaxRestarts,
 		MaxTaskRetries:    a.MaxTaskRetries,
+		MaxConcurrency:    a.MaxConcurrency,
+		Lifetime:          a.Lifetime,
+		IsAsync:           a.IsAsync,
+		MaxPendingCalls:   a.MaxPendingCalls,
 		RuntimeEnv:        a.RuntimeEnv,
 		ConcurrencyGroups: submitterGroups,
 	}
+	if a.PlacementGroup != nil {
+		actorOptions.PlacementGroup = &submitter.PlacementGroupOptions{
+			ID:          a.PlacementGroup.ID(),
+			BundleIndex: a.PlacementGroupBundleIndex,
+		}
+	}
+	return actorOptions
 }
 
 // Validate validates the ActorCreationOptions.

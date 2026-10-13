@@ -231,6 +231,205 @@ func releaseInternalByRefArgRefs(args []function.FunctionArg) {
 }
 
 // ============================================================================
+// Shared Task Options Builder
+// ============================================================================
+
+// cppCallerLanguage is the caller language tag stamped on C++ function
+// descriptors for cross-language Go -> C++ calls. It must match what the C++
+// worker expects (task_executor.cc checks !Caller().empty()).
+const cppCallerLanguage = "GO"
+
+// taskOptions encapsulates the task option state shared by the C++ task caller
+// types (CppTaskCaller and CppActorTaskCaller) so that the builder methods are
+// implemented once instead of being duplicated across the caller types.
+//
+// Type parameter T is the concrete caller type; builder methods return T so
+// chained calls keep their concrete type.
+type taskOptions[T any] struct {
+	// options are the task options.
+	options *submitter.TaskOptions
+	// numReturns is the number of return values.
+	numReturns int
+	// self points to the owning caller so builder methods can return the
+	// concrete caller type for chaining.
+	self T
+}
+
+// newTaskOptions creates task options with a default empty TaskOptions and a
+// pointer back to the owning caller.
+func newTaskOptions[T any](self T, numReturns int) taskOptions[T] {
+	return taskOptions[T]{
+		options:    &submitter.TaskOptions{},
+		numReturns: numReturns,
+		self:       self,
+	}
+}
+
+// WithResources sets the resource requirements for the task.
+//
+// Parameters:
+//   - resources: A map of resource name to quantity (e.g., {"CPU": 1.0, "GPU": 0.5}).
+//
+// Returns:
+//   - T: The same caller for chaining.
+func (o *taskOptions[T]) WithResources(resources map[string]float64) T {
+	o.options.Resources = resources
+	return o.self
+}
+
+// WithNumReturns sets the number of return values for the task.
+//
+// Parameters:
+//   - numReturns: The number of return values.
+//
+// Returns:
+//   - T: The same caller for chaining.
+func (o *taskOptions[T]) WithNumReturns(numReturns int) T {
+	o.numReturns = numReturns
+	return o.self
+}
+
+// WithMaxRetries sets the maximum number of retries for the task.
+//
+// Parameters:
+//   - maxRetries: The maximum number of retries.
+//
+// Returns:
+//   - T: The same caller for chaining.
+func (o *taskOptions[T]) WithMaxRetries(maxRetries int) T {
+	o.options.RetryPolicy = &submitter.RetryPolicy{
+		MaxRetries: maxRetries,
+	}
+	return o.self
+}
+
+// WithRuntimeEnv sets the runtime environment for the task.
+//
+// Parameters:
+//   - runtimeEnv: The runtime environment JSON string.
+//
+// Returns:
+//   - T: The same caller for chaining.
+func (o *taskOptions[T]) WithRuntimeEnv(runtimeEnv string) T {
+	o.options.RuntimeEnv = runtimeEnv
+	return o.self
+}
+
+// WithName sets the name for the task.
+//
+// Parameters:
+//   - name: The task name (used for monitoring and debugging).
+//
+// Returns:
+//   - T: The same caller for chaining.
+func (o *taskOptions[T]) WithName(name string) T {
+	o.options.Name = name
+	return o.self
+}
+
+// WithPlacementGroup binds the task to the given placement group bundle.
+//
+// Parameters:
+//   - group: The placement group to bind to.
+//   - bundleIndex: The index of the bundle to use.
+//
+// Returns:
+//   - T: The same caller for chaining.
+func (o *taskOptions[T]) WithPlacementGroup(group *PlacementGroup, bundleIndex int) T {
+	if group == nil {
+		return o.self
+	}
+	o.options.PlacementGroup = &submitter.PlacementGroupOptions{
+		ID:          group.ID(),
+		BundleIndex: bundleIndex,
+	}
+	return o.self
+}
+
+// ============================================================================
+// C++ Task Caller Builder (cross-language)
+// ============================================================================
+
+// CppTaskCaller provides a builder for configuring and submitting C++ tasks.
+// This is the cross-language counterpart to TaskCaller, allowing Go code to
+// invoke C++ functions on a C++ worker. It mirrors PythonTaskCaller but does
+// NOT insert the Python dummy-type marker before arguments (C++ workers decode
+// each argument independently).
+//
+// Type parameter T is the return type of the task.
+type CppTaskCaller[T any] struct {
+	// functionDescriptor describes the C++ function to call.
+	functionDescriptor *function.CppFunctionDescriptor
+	// taskOptions are the shared task options and builder state.
+	taskOptions[*CppTaskCaller[T]]
+	// err is a deferred error from descriptor validation.
+	err error
+}
+
+// RemoteCpp sets a C++ function to be called remotely.
+// This is the cross-language entry point for calling C++ functions.
+//
+// Parameters:
+//   - functionName: The C++ function name (e.g. "add").
+//   - className: The actor class name. Empty for normal functions; set for
+//     actor factory / member functions that need a class context.
+//
+// The caller field is fixed to "GO" so the C++ worker treats the call as
+// cross-language (task_executor.cc:151 checks !Caller().empty()).
+//
+// Returns:
+//   - *CppTaskCaller[T]: A task caller builder.
+func RemoteCpp[T any](functionName, className string) *CppTaskCaller[T] {
+	desc, err := function.NewCppFunctionDescriptor(functionName, cppCallerLanguage, className)
+	caller := &CppTaskCaller[T]{
+		functionDescriptor: desc,
+		err:                err,
+	}
+	caller.taskOptions = newTaskOptions[*CppTaskCaller[T]](caller, 1)
+	return caller
+}
+
+// RemoteCppVoid sets a C++ function with no return value to be called.
+//
+// Parameters:
+//   - functionName: The C++ function name.
+//   - className: The actor class name; empty for normal functions.
+//
+// Returns:
+//   - *CppTaskCaller[struct{}]: A task caller builder for void functions.
+func RemoteCppVoid(functionName, className string) *CppTaskCaller[struct{}] {
+	desc, err := function.NewCppFunctionDescriptor(functionName, cppCallerLanguage, className)
+	caller := &CppTaskCaller[struct{}]{
+		functionDescriptor: desc,
+		err:                err,
+	}
+	caller.taskOptions = newTaskOptions[*CppTaskCaller[struct{}]](caller, 0)
+	return caller
+}
+
+// Call submits the C++ task with the provided arguments.
+//
+// Parameters:
+//   - args: The function arguments (can be values or ObjectRefs).
+//
+// Returns:
+//   - *ObjectRef[T]: A reference to the task result.
+//   - error: Any error encountered during submission.
+func (c *CppTaskCaller[T]) Call(args ...interface{}) (*ObjectRef[T], error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
+	// C++ args use convertArgs (no Python dummy markers); cross-language types
+	// serialize to XLANG metadata + 9-byte header, which the C++ worker strips
+	// via its cross_lang branch (task_executor.cc:180-183).
+	functionArgs := convertArgs(args...)
+	return submitTaskRef[T]("submit_task", functionArgs, func(s submitter.TaskSubmitter) ([]ids.ObjectID, error) {
+		return s.SubmitTask(c.functionDescriptor, functionArgs, c.numReturns, c.options)
+	})
+}
+
+// ============================================================================
 // Actor Options Builder
 // ============================================================================
 
@@ -289,13 +488,11 @@ func (o *actorOptions[T]) WithNamespace(namespace string) T {
 
 // WithPlacementGroup binds the actor to the given placement group bundle.
 //
-// Actor-level placement-group binding is not supported by any backend in this
-// tree: the native path's C++ ActorCreationOptions has no placement-group
-// fields (task_submitter_ops.cc), and local mode does not schedule against
-// bundles. Instead of silently ignoring the request, the creator records an
-// error that Create surfaces so the caller learns the option was not applied.
-// Note: the internal tree has the same gap (its actor creation path does not
-// consume PlacementGroup either); this loud failure is an OSS-side correction.
+// Actor-level placement-group binding is not supported by the current backends:
+// the native path's C++ ActorCreationOptions has no placement-group fields
+// (task_submitter_ops.cc), and local mode does not schedule against bundles.
+// Instead of silently ignoring the request, the creator records an error that
+// Create surfaces so the caller learns the option was not applied.
 //
 // Parameters:
 //   - group: The placement group to bind to.
@@ -466,12 +663,12 @@ type ActorCreator[T any] struct {
 //   - *ActorCreator[T]: An actor creator builder.
 func Actor[T any](actorClass interface{}) *ActorCreator[T] {
 	// The untyped convenience path (Ray.Actor / api.Instance().Actor, where T is
-	// interface{}) keeps OSS's original behavior: it derives the "<init>"
+	// interface{}) keeps the untyped behavior: it derives the "<init>"
 	// descriptor from the actorClass argument and registers no constructor (the
 	// constructor is expected to be registered explicitly via api.RegisterActorClass,
-	// exactly as the OSS examples do). The typed path (api.Actor[*T], INT-aligned)
-	// registers the constructor and derives the descriptor from the type parameter
-	// T, which is the type-parameter form Java's Ray.actor(Class) maps to.
+	// exactly as the examples do). The typed path (api.Actor[*T]) registers the
+	// constructor and derives the descriptor from the type parameter T, which is
+	// the type-parameter form Java's Ray.actor(Class) maps to.
 	funcDesc := actorDescriptorFor[T](actorClass)
 	if !isInterfaceType[T]() {
 		registerActorConstructor[T](actorClass)
@@ -487,7 +684,7 @@ func Actor[T any](actorClass interface{}) *ActorCreator[T] {
 
 // isInterfaceType reports whether the type parameter T is an interface type
 // (e.g. interface{}). It is used to distinguish the untyped convenience entry
-// point (Ray.Actor / api.Actor[interface{}]) from the typed INT-aligned form
+// point (Ray.Actor / api.Actor[interface{}]) from the typed form
 // (api.Actor[*MyActor]). The zero value of T has no type identity, so T is
 // inspected through a pointer to it: (*interface{}) is a pointer whose element
 // kind is Interface, whereas (*MyActor) is a pointer whose element kind is the
@@ -499,7 +696,7 @@ func isInterfaceType[T any]() bool {
 
 // actorDescriptorFor builds the "<init>" descriptor for an actor creation.
 //
-// When T is a concrete actor type (the INT-aligned typed form) the descriptor
+// When T is a concrete actor type (the typed form) the descriptor
 // is derived from the type parameter so it always matches the constructor that
 // registerActorConstructor[T] registered under the same type. When T is an
 // interface (the OSS untyped convenience path, e.g. Ray.Actor / api.Instance().
@@ -803,6 +1000,30 @@ func (c *PythonActorCreator) WithNamespace(namespace string) *PythonActorCreator
 	return c
 }
 
+// WithPlacementGroup binds the Python actor to the given placement group bundle.
+//
+// Actor-level placement-group binding is not supported by the current backends,
+// so the creator records an error that Create surfaces rather than silently
+// dropping the binding. It mirrors actorOptions.WithPlacementGroup so the Go,
+// C++ and Python creators all fail loudly on an unsupported actor binding.
+//
+// Parameters:
+//   - group: The placement group to bind to.
+//   - bundleIndex: The index of the bundle to use.
+//
+// Returns:
+//   - *PythonActorCreator: The same actor creator for chaining; Create will
+//     fail if the binding is unsupported.
+func (c *PythonActorCreator) WithPlacementGroup(group *PlacementGroup, bundleIndex int) *PythonActorCreator {
+	if group == nil {
+		return c
+	}
+	if c.err == nil {
+		c.err = errors.NewRuntimeError("create_actor", "actor placement-group binding is not supported on this path")
+	}
+	return c
+}
+
 // WithResources sets the resource requirements for the Python actor.
 //
 // Parameters:
@@ -886,27 +1107,46 @@ func (c *PythonActorCreator) Create(args ...interface{}) (*PythonActorHandle, er
 	}
 
 	return &PythonActorHandle{
-		nativeHandle: object.NewNativeActorHandle(actorID, object.LanguagePython),
-		moduleName:   c.functionDescriptor.ModuleName,
-		className:    c.functionDescriptor.ClassName,
+		baseActorHandle: baseActorHandle{
+			nativeHandle: object.NewNativeActorHandle(actorID, object.LanguagePython),
+		},
+		moduleName: c.functionDescriptor.ModuleName,
+		className:  c.functionDescriptor.ClassName,
 	}, nil
+}
+
+// baseActorHandle holds the cross-language actor state shared by
+// CppActorHandle and PythonActorHandle and implements the ActorHandle
+// lifecycle methods, which are identical for both handle types.
+type baseActorHandle struct {
+	// nativeHandle is the underlying cross-language actor handle.
+	nativeHandle *object.NativeActorHandle
+}
+
+// ID returns the actor ID.
+func (h *baseActorHandle) ID() ids.ActorID {
+	return h.nativeHandle.ActorID
+}
+
+// Kill kills the actor, allowing restart.
+func (h *baseActorHandle) Kill() error {
+	return killHandle(h)
+}
+
+// KillWithNoRestart kills the actor without restart.
+func (h *baseActorHandle) KillWithNoRestart() error {
+	return killHandleNoRestart(h)
 }
 
 // PythonActorHandle represents a handle to a Python actor.
 // Method calls are dispatched by method name (Go cannot reflect over Python
 // methods, so the method name is passed as a string).
 type PythonActorHandle struct {
-	// nativeHandle is the underlying cross-language actor handle.
-	nativeHandle *object.NativeActorHandle
+	baseActorHandle
 	// moduleName is the Python module path of the actor class.
 	moduleName string
 	// className is the Python actor class name.
 	className string
-}
-
-// ID returns the actor ID.
-func (h *PythonActorHandle) ID() ids.ActorID {
-	return h.nativeHandle.ActorID
 }
 
 // ActorTask creates a task caller for a Python actor method with an explicit
@@ -1019,6 +1259,184 @@ func (c *PythonActorTaskCaller[T]) WithConcurrencyGroup(groupName string) *Pytho
 //   - *PythonActorTaskCaller[T]: The same caller for chaining
 func (c *PythonActorTaskCaller[T]) WithNumReturns(numReturns int) *PythonActorTaskCaller[T] {
 	c.numReturns = numReturns
+	return c
+}
+
+// ============================================================================
+// C++ Actor Creator / Handle (cross-language)
+// ============================================================================
+
+// CppActorCreator provides a builder for creating C++ actors.
+// This is the cross-language counterpart to ActorCreator, allowing Go code to
+// instantiate a C++ actor class on a C++ worker.
+//
+// Concurrency group caveat: CppActorCreator inherits
+// WithConcurrencyGroups/WithDefaultConcurrencyGroup from the shared actor
+// options builder, and the declared groups are registered on the C++ worker
+// (by name + max concurrency). However, unlike Go actors, the group's Methods
+// are registered with Go descriptors that never match a C++ task's method
+// descriptor, so C++ actor tasks must be routed explicitly by name via
+// CppActorTaskCaller.WithConcurrencyGroup; a C++ method call without an
+// explicit group name runs on the actor's default executor.
+type CppActorCreator struct {
+	// functionDescriptor describes the actor creation function.
+	functionDescriptor *function.CppFunctionDescriptor
+	// actorOptions are the shared actor creation options and builder state.
+	actorOptions[*CppActorCreator]
+	// err is a deferred error from descriptor validation.
+	err error
+}
+
+// RemoteCppActor sets a C++ actor class to be created remotely.
+// This is the cross-language entry point for creating C++ actors.
+//
+// Parameters:
+//   - createFunctionName: The C++ function name that creates the actor.
+//   - className: The C++ actor class name.
+//
+// Returns:
+//   - *CppActorCreator: An actor creator builder.
+func RemoteCppActor(createFunctionName, className string) *CppActorCreator {
+	desc, err := function.NewCppFunctionDescriptor(createFunctionName, cppCallerLanguage, className)
+	creator := &CppActorCreator{
+		functionDescriptor: desc,
+		err:                err,
+	}
+	creator.actorOptions = newActorOptions[*CppActorCreator](creator)
+	return creator
+}
+
+// Create creates the C++ actor with the provided constructor arguments.
+//
+// Parameters:
+//   - args: The constructor arguments (can be values or ObjectRefs).
+//
+// Returns:
+//   - *CppActorHandle: A handle to the created actor.
+//   - error: Any error encountered during actor creation.
+func (c *CppActorCreator) Create(args ...interface{}) (*CppActorHandle, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	// Surface the deferred error recorded by the embedded actorOptions builders
+	// (c.actorOptions.err), e.g. an unsupported actor-level placement-group
+	// binding, so it fails loudly instead of being dropped. c.err above is the
+	// CppActorCreator's own descriptor-validation error, which shadows the
+	// embedded field of the same name.
+	if c.actorOptions.err != nil {
+		return nil, c.actorOptions.err
+	}
+
+	functionArgs := convertArgs(args...)
+
+	actorID, err := createActorWithSubmitter("create_actor", functionArgs, func(s submitter.TaskSubmitter) (ids.ActorID, error) {
+		return s.CreateActor(c.functionDescriptor, functionArgs, c.options)
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &CppActorHandle{
+		baseActorHandle: baseActorHandle{
+			nativeHandle: object.NewNativeActorHandle(actorID, object.LanguageCpp),
+		},
+		className: c.functionDescriptor.ClassName,
+	}, nil
+}
+
+// CppActorHandle represents a handle to a C++ actor.
+// Method calls are dispatched by method name (Go cannot reflect over C++
+// methods, so the method name is passed as a string).
+type CppActorHandle struct {
+	baseActorHandle
+	// className is the C++ actor class name.
+	className string
+}
+
+// CppActorTask creates a task caller for a C++ actor method with an explicit
+// return type. It is named CppActorTask (not ActorTask) because Go does not
+// support function overloading and api.ActorTask is already bound to
+// *PythonActorHandle (call.go:1145).
+//
+// Parameters:
+//   - handle: The C++ actor handle.
+//   - methodName: The name of the C++ actor method (e.g. "add").
+//   - args: Optional method arguments.
+//
+// Returns:
+//   - *CppActorTaskCaller[T]: A task caller builder for the actor method.
+//
+// Example:
+//
+//	ref, err := api.CppActorTask[int](handle, "add", 5).Remote()
+func CppActorTask[T any](handle *CppActorHandle, methodName string, args ...interface{}) *CppActorTaskCaller[T] {
+	// A nil handle is reachable when actor creation failed and its error was
+	// ignored; like the other task constructors, report it through the caller's
+	// deferred error instead of panicking on the dereference.
+	if handle == nil {
+		caller := &CppActorTaskCaller[T]{
+			err: fmt.Errorf("cpp actor handle is nil; actor creation likely failed"),
+		}
+		caller.taskOptions = newTaskOptions[*CppActorTaskCaller[T]](caller, 1)
+		return caller
+	}
+	desc, err := function.NewCppFunctionDescriptor(methodName, cppCallerLanguage, handle.className)
+
+	caller := &CppActorTaskCaller[T]{
+		actorID:          handle.nativeHandle.ActorID,
+		methodDescriptor: desc,
+		args:             convertArgs(args...),
+		err:              err,
+	}
+	caller.taskOptions = newTaskOptions[*CppActorTaskCaller[T]](caller, 1)
+	return caller
+}
+
+// CppActorTaskCaller is a task caller specifically for C++ actor method calls.
+// Type parameter T is the return type of the actor method.
+type CppActorTaskCaller[T any] struct {
+	actorID          ids.ActorID
+	methodDescriptor *function.CppFunctionDescriptor
+	args             []function.FunctionArg
+	taskOptions[*CppActorTaskCaller[T]]
+	err error
+}
+
+// Remote submits the C++ actor method call and returns an ObjectRef.
+//
+// Returns:
+//   - *ObjectRef[T]: A reference to the task result.
+//   - error: Any error encountered during submission.
+func (c *CppActorTaskCaller[T]) Remote() (*ObjectRef[T], error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+
+	return submitTaskRef[T]("submit_actor_task", c.args, func(s submitter.TaskSubmitter) ([]ids.ObjectID, error) {
+		return s.SubmitActorTask(c.actorID, c.methodDescriptor, c.args, c.numReturns, c.options)
+	})
+}
+
+// WithConcurrencyGroup sets the concurrency group for the C++ actor method
+// call.
+//
+// C++ actor concurrency groups must be routed by name: the C++ worker resolves
+// a task without an explicit group name by matching the method descriptor
+// (CppFunctionDescriptor), which never matches the Go descriptor a group is
+// registered with (CppActorCreator.WithConcurrencyGroups registers its Methods
+// as Go descriptors), so such calls silently fall back to the default executor.
+// Callers that declared a group on a C++ actor must therefore always pass the
+// group name here so the call is routed to the group executor by name
+// (ConcurrencyGroupManager::GetExecutor).
+//
+// Parameters:
+//   - groupName: The concurrency group name declared via
+//     CppActorCreator.WithConcurrencyGroups.
+//
+// Returns:
+//   - *CppActorTaskCaller[T]: The same caller for chaining
+func (c *CppActorTaskCaller[T]) WithConcurrencyGroup(groupName string) *CppActorTaskCaller[T] {
+	c.options.ConcurrencyGroupName = groupName
 	return c
 }
 
@@ -1350,6 +1768,16 @@ func NewActorHandleImpl[T any](actorID ids.ActorID) *ActorHandleImpl[T] {
 // This method delegates to the embedded NativeActorHandle.
 func (a *ActorHandleImpl[T]) ID() ids.ActorID {
 	return a.NativeActorHandle.ActorID
+}
+
+// Kill kills the actor, allowing restart (equivalent to Java kill()).
+func (a *ActorHandleImpl[T]) Kill() error {
+	return killHandle(a)
+}
+
+// KillWithNoRestart kills the actor without restart.
+func (a *ActorHandleImpl[T]) KillWithNoRestart() error {
+	return killHandleNoRestart(a)
 }
 
 // Task creates a task caller for an actor method.

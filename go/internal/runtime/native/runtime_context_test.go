@@ -138,8 +138,16 @@ func (m *mockRuntime) GetAllActorInfo() []base.ActorInfo {
 	return []base.ActorInfo{}
 }
 
+func (m *mockRuntime) GetAllActorInfoByFilter(jobID ids.JobID, state contract.ActorState) []base.ActorInfo {
+	return nil
+}
+
 func (m *mockRuntime) GetGpuIds() []string {
 	return []string{}
+}
+
+func (m *mockRuntime) GetResourceIds() map[string][]contract.ResourceValue {
+	return map[string][]contract.ResourceValue{}
 }
 
 func (m *mockRuntime) GetCurrentActorHandle() submitter.ActorHandle {
@@ -157,6 +165,14 @@ func (m *mockRuntime) GetTaskSubmitter() submitter.TaskSubmitter {
 
 func (m *mockRuntime) GetFunctionManager() function.Manager {
 	return nil
+}
+
+func (m *mockRuntime) CreateRuntimeEnv() contract.RuntimeEnv {
+	return contract.RuntimeEnv{}
+}
+
+func (m *mockRuntime) DeserializeRuntimeEnv(serializedRuntimeEnv string) (contract.RuntimeEnv, error) {
+	return contract.UnmarshalRuntimeEnv(serializedRuntimeEnv)
 }
 
 // TestRuntimeContext_GetCurrentJobID tests the GetCurrentJobID delegation.

@@ -332,4 +332,29 @@ void RuntimeOperations::ShutdownCoreWorker() {
   RAY_LOG(INFO) << "ShutdownCoreWorker completed";
 }
 
+std::vector<std::string> RuntimeOperations::GetResourceIds() {
+  ResourceMappingType mapping;
+  if (ray::core::CoreWorkerProcess::IsInitialized()) {
+    mapping = ray::core::CoreWorkerProcess::GetCoreWorker().GetResourceIDs();
+  }
+  return SerializeResourceMapping(mapping);
+}
+
+std::vector<std::string> RuntimeOperations::SerializeResourceMapping(
+    const ResourceMappingType &mapping) {
+  std::vector<std::string> serialized;
+  serialized.reserve(mapping.size());
+  for (const auto &[name, ids] : mapping) {
+    ray::rpc::ResourceMapEntry entry;
+    entry.set_name(name);
+    for (const auto &[index, quantity] : ids) {
+      auto *rid = entry.add_resource_ids();
+      rid->set_index(index);
+      rid->set_quantity(quantity);
+    }
+    serialized.push_back(entry.SerializeAsString());
+  }
+  return serialized;
+}
+
 }  // namespace ray::go

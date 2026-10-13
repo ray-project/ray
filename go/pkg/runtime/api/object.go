@@ -349,9 +349,67 @@ func WaitWithFetchLocal[T any](refs []*ObjectRef[T], numReturns int, timeoutMs i
 	return Wait(refs, numReturns, timeoutMs, true)
 }
 
+// Free frees a list of objects from the object store.
+// Consistent with Java's RayRuntime.free(List<ObjectRef<?>>, boolean localOnly).
+//
+// Parameters:
+//   - refs: the object references to free (nil elements are skipped)
+//   - localOnly: whether to free only local objects (true) or all nodes (false)
+//
+// Returns:
+//   - error: any error encountered during the free operation
+func Free[T any](refs []*ObjectRef[T], localOnly bool) error {
+	// Freeing an empty set is a no-op; do not touch the runtime at all.
+	// Extract object IDs first (skipping nil refs, same nil handling as Wait)
+	// so an empty list returns nil even when the runtime is not initialized,
+	// matching the design (AC4: empty refs return nil).
+	objectIDs := refObjectIDs(refs)
+	if len(objectIDs) == 0 {
+		return nil
+	}
+
+	objectStore, err := getObjectStore()
+	if err != nil {
+		return err
+	}
+
+	if err := objectStore.Delete(objectIDs, localOnly); err != nil {
+		return fmt.Errorf("failed to free objects: %w", err)
+	}
+	return nil
+}
+
 // ============================================================================
 // Helper Functions for ObjectRef Lifecycle Management
 // ============================================================================
+
+// getObjectStore returns the current runtime's object store, or an error when
+// the runtime is not initialized or no object store is available. Shared by
+// Put/Wait/Free to avoid repeating the same initialization boilerplate.
+func getObjectStore() (object.ObjectStore, error) {
+	rt, err := internal()
+	if err != nil {
+		return nil, err
+	}
+	objectStore := rt.GetObjectStore()
+	if objectStore == nil {
+		return nil, fmt.Errorf("object store not available")
+	}
+	return objectStore, nil
+}
+
+// refObjectIDs extracts the ObjectIDs of the non-nil references, skipping nil
+// elements (the same nil handling shared by Wait and Free).
+func refObjectIDs[T any](refs []*ObjectRef[T]) []*ids.ObjectID {
+	objectIDs := make([]*ids.ObjectID, 0, len(refs))
+	for _, ref := range refs {
+		if ref != nil {
+			oid := ref.ObjectID()
+			objectIDs = append(objectIDs, &oid)
+		}
+	}
+	return objectIDs
+}
 
 // setupObjectRefFinalizer sets up a finalizer for an ObjectRef to automatically
 // release local references when GC runs.

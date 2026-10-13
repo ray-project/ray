@@ -17,6 +17,8 @@
 package contract
 
 import (
+	"encoding/json"
+
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
@@ -64,8 +66,17 @@ type Runtime interface {
 	GetAllNodeInfo() []NodeInfo
 	// GetAllActorInfo returns information about all actors in the cluster.
 	GetAllActorInfo() []ActorInfo
+	// GetAllActorInfoByFilter returns actor information filtered by job ID
+	// and actor state. Consistent with Java's
+	// RuntimeContext.getAllActorInfo(JobId, ActorState).
+	// A zero jobID (ids.NilJobID()) means no job filter; an ActorStateAny
+	// state means no state filter.
+	GetAllActorInfoByFilter(jobID ids.JobID, state ActorState) []ActorInfo
 	// GetGpuIds returns the IDs of GPUs allocated to the current worker.
 	GetGpuIds() []string
+	// GetResourceIds returns the resource name -> resource ID/capacity mapping
+	// for the current worker. Consistent with C++ CoreWorker::GetResourceIDs().
+	GetResourceIds() map[string][]ResourceValue
 	// GetCurrentActorHandle returns the handle of the current actor.
 	GetCurrentActorHandle() submitter.ActorHandle
 
@@ -82,6 +93,36 @@ type Runtime interface {
 	// GetFunctionManager returns the function manager for registering user functions.
 	// This method is intended for internal use during worker initialization.
 	GetFunctionManager() function.Manager
+
+	// CreateRuntimeEnv creates an empty runtime env.
+	// Corresponds to Java: AbstractRayRuntime.createRuntimeEnv()
+	CreateRuntimeEnv() RuntimeEnv
+	// DeserializeRuntimeEnv deserializes a serialized runtime env JSON string.
+	// Corresponds to Java: AbstractRayRuntime.deserializeRuntimeEnv()
+	DeserializeRuntimeEnv(serializedRuntimeEnv string) (RuntimeEnv, error)
+}
+
+// RuntimeEnv is a serialized runtime environment represented as a JSON object
+// (map of field name -> value). It is the contract-layer carrier between the
+// api layer and internal runtimes; it is a pure data type with no native
+// dependency. The special "config" key holds the runtime env configuration
+// (aligned with Java RuntimeEnvImpl and internal/runtime_env's
+// extractConfigField, which reads FieldConfig = "config").
+type RuntimeEnv map[string]interface{}
+
+// UnmarshalRuntimeEnv deserializes a serialized runtime env JSON string into a
+// RuntimeEnv. It is the single shared implementation behind the
+// contract.Runtime.DeserializeRuntimeEnv methods of the native and local-mode
+// runtimes (and their test doubles), so parsing semantics cannot drift between
+// implementations. A "null" input yields a nil RuntimeEnv; callers that
+// require a non-nil map should normalize it (as api.NewRuntimeEnvFromJSON
+// does).
+func UnmarshalRuntimeEnv(serializedRuntimeEnv string) (RuntimeEnv, error) {
+	var m map[string]interface{}
+	if err := json.Unmarshal([]byte(serializedRuntimeEnv), &m); err != nil {
+		return nil, err
+	}
+	return RuntimeEnv(m), nil
 }
 
 // WorkerContext defines the interface for accessing worker context information.

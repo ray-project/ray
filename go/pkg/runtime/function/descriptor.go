@@ -302,6 +302,84 @@ func (f *GoFunctionDescriptor) String() string {
 	return fmt.Sprintf("%s.%s", f.ModuleName, f.FunctionName)
 }
 
+// CppFunctionDescriptor implements FunctionDescriptor for C++ functions.
+//
+// This struct identifies a C++ function or actor method. It matches Java's
+// io.ray.runtime.functionmanager.CppFunctionDescriptor (createFunctionName,
+// caller, className) and the C++ FunctionDescriptorBuilder::BuildCpp layout.
+//
+// Format (3 elements): [functionName, caller, className].
+//   - caller is non-empty for cross-language calls; Go sets it to "GO" (Java uses
+//     "JAVA"). The C++ worker detects cross-language via !Caller().empty().
+//   - className is empty for normal functions; for actor methods it is the actor
+//     class name, and for actor creation it is the actor class to instantiate.
+type CppFunctionDescriptor struct {
+	// CreateFunctionName is the function (or actor factory / method) name.
+	CreateFunctionName string
+	// Caller is the calling language ("GO" for Go -> C++).
+	Caller string
+	// ClassName is the actor class name; empty for normal functions.
+	ClassName string
+}
+
+// NewCppFunctionDescriptor creates a new CppFunctionDescriptor.
+//
+// Parameters:
+//   - functionName: The C++ function (or actor factory / method) name. Required.
+//   - caller: The calling language (e.g. "GO"). An empty caller identifies a
+//     native C++ function descriptor (parsed from the 3-element list form);
+//     Go-side call sites pass the cppCallerLanguage constant so their calls
+//     are treated as cross-language by the C++ worker.
+//   - className: The actor class name. Empty for normal functions.
+func NewCppFunctionDescriptor(functionName, caller, className string) (*CppFunctionDescriptor, error) {
+	if functionName == "" {
+		return nil, fmt.Errorf("function name is required")
+	}
+	if !isValidCppFunctionName(functionName) {
+		return nil, fmt.Errorf("invalid function name %q: must be a valid C++ identifier (may be namespace/class qualified, e.g. \"ns::Class::method\", or a template instantiation) and contain no whitespace", functionName)
+	}
+
+	return &CppFunctionDescriptor{
+		CreateFunctionName: functionName,
+		Caller:             caller,
+		ClassName:          className,
+	}, nil
+}
+
+// NewCppFunctionDescriptorOrUnknown creates a CppFunctionDescriptor that never
+// fails, substituting "unknown" for invalid required fields.
+func NewCppFunctionDescriptorOrUnknown(functionName, caller, className string) *CppFunctionDescriptor {
+	validFunctionName := functionName
+	if !isValidCppFunctionName(functionName) {
+		validFunctionName = "unknown"
+	}
+	return &CppFunctionDescriptor{
+		CreateFunctionName: validFunctionName,
+		Caller:             caller,
+		ClassName:          className,
+	}
+}
+
+// ToList returns a list of strings that uniquely identifies the function.
+// Format: [functionName, caller, className] (3 elements, matching Java
+// CppFunctionDescriptor.toList() and C++ runtime_callbacks.cc).
+func (f *CppFunctionDescriptor) ToList() []string {
+	return []string{f.CreateFunctionName, f.Caller, f.ClassName}
+}
+
+// GetLanguage returns the language of the function (LanguageCpp).
+func (f *CppFunctionDescriptor) GetLanguage() Language {
+	return LanguageCpp
+}
+
+// Hash returns a hash code for the function descriptor, used for Go-internal
+// task scheduling and caching. It does not need to match the C++ side's hash
+// (which is FunctionName()^ClassName()); it only needs to be consistent within
+// the Go runtime, matching the shared hashStrings scheme.
+func (f *CppFunctionDescriptor) Hash() int {
+	return hashStrings(f.CreateFunctionName, f.Caller, f.ClassName)
+}
+
 // PythonFunctionDescriptor implements FunctionDescriptor for Python functions.
 //
 // This struct contains all information needed to identify and load a Python
@@ -470,6 +548,27 @@ func isValidMethodName(name string) bool {
 	return isValidFunctionName(name)
 }
 
+// isValidCppFunctionName validates a C++ function (or actor factory/method)
+// name used in a cross-language descriptor.
+//
+// C++ identifiers are more permissive than Go's: they may be namespace/class
+// qualified ("ns::Class::method"), template instantiations ("foo<int>"), or
+// operator names ("operator+"), so only an empty name or one containing
+// whitespace/control characters is rejected. This is intentionally looser than
+// isValidFunctionName so qualified C++ symbols are accepted.
+func isValidCppFunctionName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v' || c < 0x20 {
+			return false
+		}
+	}
+	return true
+}
+
 // FunctionDescriptorFromList creates a FunctionDescriptor from a string list.
 // This is used when receiving function descriptors from C++ side.
 //
@@ -531,6 +630,7 @@ func FunctionDescriptorFromList(list []string) (FunctionDescriptor, error) {
 // Supported languages and their list formats:
 //   - Go (LanguageGo): [moduleName, packagePath, functionName, methodName]
 //   - Python (LanguagePython): [moduleName, className, functionName, functionHash]
+//   - C++ (LanguageCpp): [functionName, caller, className]
 //
 // Parameters:
 //   - language: The language of the function (from the task spec).
@@ -540,15 +640,13 @@ func FunctionDescriptorFromList(list []string) (FunctionDescriptor, error) {
 //   - FunctionDescriptor: The created function descriptor.
 //   - error: An error if the list is malformed or the language is unsupported.
 func FunctionDescriptorFromListWithLanguage(language Language, list []string) (FunctionDescriptor, error) {
-	if len(list) != 4 {
-		return nil, fmt.Errorf("function descriptor must have exactly 4 elements, got %d: %v", len(list), list)
-	}
-
 	switch language {
 	case LanguageGo:
 		return FunctionDescriptorFromList(list)
 	case LanguagePython:
 		return pythonFunctionDescriptorFromList(list)
+	case LanguageCpp:
+		return cppFunctionDescriptorFromList(list)
 	default:
 		return nil, fmt.Errorf("unsupported function descriptor language %d, got: %v", language, list)
 	}
@@ -557,6 +655,9 @@ func FunctionDescriptorFromListWithLanguage(language Language, list []string) (F
 // pythonFunctionDescriptorFromList builds a Python function descriptor from
 // [moduleName, className, functionName, functionHash].
 func pythonFunctionDescriptorFromList(list []string) (FunctionDescriptor, error) {
+	if len(list) != 4 {
+		return nil, fmt.Errorf("Python function descriptor must have exactly 4 elements, got %d: %v", len(list), list)
+	}
 	moduleName := list[0]
 	className := list[1]
 	functionName := list[2]
@@ -567,4 +668,15 @@ func pythonFunctionDescriptorFromList(list []string) (FunctionDescriptor, error)
 		return nil, err
 	}
 	return desc, nil
+}
+
+// cppFunctionDescriptorFromList builds a CppFunctionDescriptor from a 3-element
+// list formatted as [functionName, caller, className]. The list length check is
+// local to this branch because the C++ descriptor uses 3 elements, unlike the
+// Go/Python descriptors which use 4.
+func cppFunctionDescriptorFromList(list []string) (FunctionDescriptor, error) {
+	if len(list) != 3 {
+		return nil, fmt.Errorf("C++ function descriptor must have exactly 3 elements, got %d: %v", len(list), list)
+	}
+	return NewCppFunctionDescriptor(list[0], list[1], list[2])
 }

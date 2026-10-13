@@ -600,26 +600,129 @@ func (nr *NativeRuntime) GetAllNodeInfo() []base.NodeInfo {
 // Returns:
 //   - []ActorInfo: Slice of ActorInfo for all actors, or empty slice on error
 func (nr *NativeRuntime) GetAllActorInfo() []base.ActorInfo {
+	// GetAllActorInfo is the unfiltered form of GetAllActorInfoByFilter: a nil
+	// job ID (NilJobID()) and ActorStateAny apply no job/state filter, so it
+	// delegates to keep the GCS query and conversion logic in one place.
+	return nr.GetAllActorInfoByFilter(ids.NilJobID(), contract.ActorStateAny)
+}
+
+// GetAllActorInfoByFilter returns actor information filtered by job ID and
+// actor state. Consistent with Java RuntimeContext.getAllActorInfo(JobId,
+// ActorState). A zero jobID means no job filter; ActorStateAny means no state
+// filter.
+func (nr *NativeRuntime) GetAllActorInfoByFilter(jobID ids.JobID, state contract.ActorState) []contract.ActorInfo {
 	// Get GCS client
 	gcsClient, err := nr.GetGcsClient()
 	if err != nil || gcsClient == nil {
-		return []base.ActorInfo{}
+		logger.Error(err, "Failed to get GCS client when querying actors by filter")
+		return []contract.ActorInfo{}
 	}
 
-	// Get all actors from GCS
+	// The GCS actor_state_map and the proto ActorTableData_ActorState enum have
+	// no DRAINING state, so a DRAINING filter can never match any actor. Short
+	// circuit to an empty result instead of falling back to "no filter", which
+	// would silently return all actors (see actorStateToGCSName).
+	if state == contract.ActorStateDraining {
+		return []contract.ActorInfo{}
+	}
+
+	// Build jobID pointer: nil means "all jobs".
+	var jobIDPtr *ids.JobID
+	if !jobID.IsNil() {
+		j := jobID
+		jobIDPtr = &j
+	}
+
+	// Build state filter: nil means "no state filter". The filter is pushed
+	// down to the GCS (ListActorsByFilter) rather than pulling all actors and
+	// filtering in memory, consistent with Java RuntimeContext.getAllActorInfo.
+	var stateName *gcs.ActorStateName
+	if state != contract.ActorStateAny {
+		s, err := actorStateToGCSName(state)
+		if err != nil {
+			// An unmappable state must not silently degrade to "no filter"
+			// (which would return all actors); report it and return empty.
+			logger.Error(err, "Unsupported actor state for GCS state filter")
+			return []contract.ActorInfo{}
+		}
+		stateName = &s
+	}
+
 	ctx := context.Background()
-	actors, err := gcsClient.ListActors(ctx, nil)
+	actors, err := gcsClient.ListActorsByFilter(ctx, jobIDPtr, stateName)
 	if err != nil {
-		logger.Error(err, "Failed to get all actors from GCS")
-		return []base.ActorInfo{}
+		logger.Error(err, "Failed to get actors from GCS by filter")
+		return []contract.ActorInfo{}
 	}
 
-	// Convert protobuf to ActorInfo slice
-	result := make([]base.ActorInfo, 0, len(actors))
+	// Convert protobuf to ActorInfo slice.
+	result := make([]contract.ActorInfo, 0, len(actors))
 	for _, protoActor := range actors {
 		result = append(result, convertActorInfo(protoActor))
 	}
 
+	return result
+}
+
+// actorStateToGCSName maps a contract.ActorState to the actor state name used
+// by the GCS getAll_actor_info filter. It returns an error for states that
+// cannot be represented in the GCS filter, so callers must not fall back to a
+// "no filter" query (which would silently return all actors) for them.
+//
+// ActorStateDraining is not mapped: the GCS C++ actor_state_map
+// (actor_info_accessor.cc) has no "DRAINING" key, so passing it would silently
+// insert a default value (0 = DEPENDENCIES_UNREADY) and return the wrong actors.
+// The proto ActorTableData_ActorState enum also has no DRAINING value, so it
+// cannot be represented downstream. GetAllActorInfoByFilter short circuits a
+// DRAINING request to an empty result before reaching this function.
+func actorStateToGCSName(state contract.ActorState) (gcs.ActorStateName, error) {
+	switch state {
+	case contract.ActorStatePending:
+		return gcs.ActorStateNamePendingCreation, nil
+	case contract.ActorStateAlive:
+		return gcs.ActorStateNameAlive, nil
+	case contract.ActorStateDead:
+		return gcs.ActorStateNameDead, nil
+	case contract.ActorStateRestarting:
+		return gcs.ActorStateNameRestarting, nil
+	case contract.ActorStateDraining:
+		return "", fmt.Errorf("actor state %v (DRAINING) has no GCS filter representation", state)
+	default:
+		return "", fmt.Errorf("unknown actor state %v", state)
+	}
+}
+
+// GetResourceIds returns the resource name -> resource ID/capacity mapping
+// for the current worker. The data source is C++ CoreWorker::GetResourceIDs()
+// via the cgo bridge. Consistent with Java RayRuntime.getAvailableResourceIds().
+func (nr *NativeRuntime) GetResourceIds() map[string][]contract.ResourceValue {
+	nr.mu.RLock()
+	handle := nr.handle
+	nr.mu.RUnlock()
+	if handle == nil {
+		return map[string][]contract.ResourceValue{}
+	}
+	entries, err := handle.GetResourceIds()
+	if err != nil {
+		// GetResourceIds has no error return in the contract.Runtime interface,
+		// so a CGO failure degrades to an empty map (logged above). Callers of
+		// GetResourceIds cannot distinguish a real backend failure from the
+		// legitimate "no resources" case, which is acceptable for this
+		// low-frequency diagnostic API.
+		logger.Error(err, "GetResourceIds failed")
+		return map[string][]contract.ResourceValue{}
+	}
+	result := make(map[string][]contract.ResourceValue, len(entries))
+	for _, e := range entries {
+		values := make([]contract.ResourceValue, 0, len(e.ResourceIds))
+		for _, rid := range e.ResourceIds {
+			values = append(values, contract.ResourceValue{
+				ResourceID: rid.Index,
+				Capacity:   rid.Quantity,
+			})
+		}
+		result[e.Name] = values
+	}
 	return result
 }
 
@@ -702,6 +805,16 @@ func (nr *NativeRuntime) GetCurrentActorHandle() submitter.ActorHandle {
 		ActorID:  actorID,
 		Language: object.LanguageGo,
 	}
+}
+
+// CreateRuntimeEnv creates an empty runtime env.
+func (nr *NativeRuntime) CreateRuntimeEnv() contract.RuntimeEnv {
+	return contract.RuntimeEnv{}
+}
+
+// DeserializeRuntimeEnv deserializes a serialized runtime env JSON string.
+func (nr *NativeRuntime) DeserializeRuntimeEnv(serializedRuntimeEnv string) (contract.RuntimeEnv, error) {
+	return contract.UnmarshalRuntimeEnv(serializedRuntimeEnv)
 }
 
 // NativeHandleImpl implements contract.RuntimeHandle interface for native runtime.
