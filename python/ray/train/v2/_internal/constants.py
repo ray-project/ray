@@ -163,6 +163,10 @@ DEFAULT_NCCL_RAS_MIN_POLL_INTERVAL_S: float = 15.0
 # How long a communicator must make no progress before the detector acts.
 NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR = "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S"
 DEFAULT_NCCL_RAS_CONFIRM_DURATION_S: float = 10 * 60
+# How often (seconds) to check whether PyTorch's NCCL watchdog timed out. Must
+# stay well under the ~60s torch waits between the timeout and the teardown.
+NCCL_TIMEOUT_PROBE_INTERVAL_S_ENV_VAR = "RAY_TRAIN_NCCL_TIMEOUT_PROBE_INTERVAL_S"
+DEFAULT_NCCL_TIMEOUT_PROBE_INTERVAL_S: float = 2.0
 
 # Action to take on a confirmed hang
 NCCL_RAS_ACTION_ENV_VAR = "RAY_TRAIN_NCCL_RAS_ACTION"
