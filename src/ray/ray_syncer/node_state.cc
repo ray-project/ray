@@ -14,7 +14,11 @@
 
 #include "ray/ray_syncer/node_state.h"
 
+#include <array>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "ray/common/id.h"
 #include "ray/ray_syncer/ray_syncer.h"
@@ -61,43 +65,55 @@ bool NodeState::RemoveNode(const std::string &node_id) {
   return cluster_view_.erase(node_id) != 0;
 }
 
-bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
-  const int message_type = static_cast<int>(message->message_type());
-  if (!IsValidMessageType(message_type)) {
-    RAY_LOG_EVERY_MS(WARNING, 1000)
-        << "Dropping sync message with invalid message type " << message_type;
-    return false;
-  }
-  if (message->node_id().size() != NodeID::Size()) {
-    RAY_LOG_EVERY_MS(WARNING, 1000) << "Dropping sync message with invalid node_id size "
-                                    << message->node_id().size();
-    return false;
-  }
+std::vector<std::shared_ptr<const RaySyncMessage>> NodeState::ConsumeSyncMessages(
+    std::vector<std::shared_ptr<const RaySyncMessage>> messages) {
+  std::vector<std::shared_ptr<const RaySyncMessage>> accepted;
+  accepted.reserve(messages.size());
+  std::array<std::vector<std::shared_ptr<const RaySyncMessage>>, kComponentArraySize>
+      per_receiver;
+  for (auto &message : messages) {
+    const int message_type = static_cast<int>(message->message_type());
+    if (!IsValidMessageType(message_type)) {
+      RAY_LOG_EVERY_MS(WARNING, 1000)
+          << "Dropping sync message with invalid message type " << message_type;
+      continue;
+    }
+    if (message->node_id().size() != NodeID::Size()) {
+      RAY_LOG_EVERY_MS(WARNING, 1000)
+          << "Dropping sync message with invalid node_id size "
+          << message->node_id().size();
+      continue;
+    }
 
-  std::shared_ptr<const RaySyncMessage> &current =
-      cluster_view_[message->node_id()][message_type];
+    std::shared_ptr<const RaySyncMessage> &current =
+        cluster_view_[message->node_id()][message_type];
 
-  RAY_LOG(DEBUG) << "ConsumeSyncMessage: local_version="
-                 << (current ? current->version() : -1)
-                 << " message_version=" << message->version()
-                 << ", message_from=" << NodeID::FromBinary(message->node_id());
+    RAY_LOG(DEBUG) << "ConsumeSyncMessages: local_version="
+                   << (current ? current->version() : -1)
+                   << " message_version=" << message->version()
+                   << ", message_from=" << NodeID::FromBinary(message->node_id());
 
-  // Check whether newer version of this message has been received.
-  if (current && current->version() >= message->version()) {
-    RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
-                  << current->version()
-                  << ", dropped message version: " << message->version();
-    return false;
+    // Check whether newer version of this message has been received.
+    if (current && current->version() >= message->version()) {
+      RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
+                    << current->version()
+                    << ", dropped message version: " << message->version();
+      continue;
+    }
+
+    current = message;
+    if (receivers_[message_type] != nullptr) {
+      per_receiver[message_type].push_back(message);
+    }
+    accepted.push_back(std::move(message));
   }
-
-  current = message;
-  ReceiverInterface *receiver = receivers_[message_type];
-  if (receiver != nullptr) {
-    RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
-        << "Consume message from node";
-    receiver->ConsumeSyncMessage(message);
+  for (size_t message_type = 0; message_type < kComponentArraySize; ++message_type) {
+    if (!per_receiver[message_type].empty()) {
+      receivers_[message_type]->ConsumeSyncMessages(
+          static_cast<MessageType>(message_type), std::move(per_receiver[message_type]));
+    }
   }
-  return true;
+  return accepted;
 }
 
 }  // namespace ray::syncer
