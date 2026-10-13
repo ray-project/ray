@@ -60,8 +60,7 @@ class Diagnose(HealthDecision):
     evaluators decide on the readings.
 
     Attributes:
-        checks: The checks to run. Their probes must be wrapped in
-            ``OnDemandProbe``.
+        checks: The checks to run.
     """
 
     checks: List["HealthCheck"]

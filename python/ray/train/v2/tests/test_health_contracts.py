@@ -12,8 +12,7 @@ from ray.train.health import (
     HealthState,
     NodeProbe,
     Noop,
-    OnDemandProbe,
-    PeriodicProbe,
+    PeriodicHealthCheck,
     ProbeResult,
     Reattempt,
     WorkerProbe,
@@ -59,25 +58,6 @@ def test_a_probe_must_implement_poll():
         NoPoll()
 
 
-def test_wrappers_hold_the_probe_and_how_it_is_polled():
-    probe = HostTemp()
-    assert PeriodicProbe(probe).poll_interval_s == 10.0
-    assert PeriodicProbe(probe, poll_interval_s=2).probe is probe
-    assert OnDemandProbe(probe).probe is probe
-
-
-@pytest.mark.parametrize("wrapper", [PeriodicProbe, OnDemandProbe])
-def test_a_wrapper_needs_a_probe_instance(wrapper):
-    with pytest.raises(TypeError):
-        wrapper(HostTemp)
-
-
-@pytest.mark.parametrize("poll_interval_s", [0, -1.0])
-def test_poll_interval_s_must_be_positive(poll_interval_s):
-    with pytest.raises(ValueError):
-        PeriodicProbe(HostTemp(), poll_interval_s=poll_interval_s)
-
-
 def test_health_decision_is_abstract():
     with pytest.raises(TypeError):
         HealthDecision(reason="x")
@@ -87,7 +67,7 @@ def test_decisions_are_constructed_as_subclasses():
     assert Noop().reason == ""
     assert Reattempt(reason="hang").reason == "hang"
     assert Evict(target_nodes=["n1"]).target_nodes == ["n1"]
-    check = HealthCheck(probe_creator=lambda: [OnDemandProbe(Loss())])
+    check = HealthCheck(probe_creator=lambda: [Loss()])
     assert Diagnose(checks=[check]).checks == [check]
 
 
@@ -107,18 +87,34 @@ def test_an_evaluator_returns_one_decision():
     assert Healthy().evaluate(HealthState()) == Noop()
 
 
-def test_a_check_defaults_to_no_probes_and_no_evaluators():
-    check = HealthCheck()
+@pytest.mark.parametrize(
+    "check", [HealthCheck(), PeriodicHealthCheck(poll_interval_s=1)], ids=repr
+)
+def test_a_check_defaults_to_no_probes_and_no_evaluators(check):
     assert check.probe_creator() == []
     assert check.evaluator_creator() == []
 
 
+def test_a_periodic_check_needs_its_poll_interval_s_by_keyword():
+    with pytest.raises(TypeError):
+        PeriodicHealthCheck(probe_creator=lambda: [HostTemp()])
+    with pytest.raises(TypeError):
+        PeriodicHealthCheck(lambda: [HostTemp()], lambda: [], 5)
+
+
+@pytest.mark.parametrize("poll_interval_s", [0, -1.0])
+def test_poll_interval_s_must_be_positive(poll_interval_s):
+    with pytest.raises(ValueError):
+        PeriodicHealthCheck(poll_interval_s=poll_interval_s)
+
+
 def test_health_config_holds_its_checks():
-    inflight = HealthCheck(
-        probe_creator=lambda: [PeriodicProbe(HostTemp(), poll_interval_s=5)],
+    inflight = PeriodicHealthCheck(
+        probe_creator=lambda: [HostTemp()],
         evaluator_creator=lambda: [Healthy()],
+        poll_interval_s=5,
     )
-    preflight = HealthCheck(probe_creator=lambda: [OnDemandProbe(HostTemp())])
+    preflight = HealthCheck(probe_creator=lambda: [HostTemp()])
     config = HealthConfig(inflight_checks=[inflight], preflight_checks=[preflight])
     assert config.inflight_checks == [inflight]
     assert config.preflight_checks == [preflight]

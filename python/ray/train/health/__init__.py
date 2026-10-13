@@ -1,4 +1,4 @@
-from ray.train.health.check import HealthCheck, HealthConfig
+from ray.train.health.check import HealthCheck, HealthConfig, PeriodicHealthCheck
 from ray.train.health.decision import (
     Diagnose,
     Evict,
@@ -9,8 +9,6 @@ from ray.train.health.decision import (
 from ray.train.health.evaluator import Evaluator
 from ray.train.health.probe import (
     NodeProbe,
-    OnDemandProbe,
-    PeriodicProbe,
     Probe,
     ProbeResult,
     WorkerProbe,
@@ -27,8 +25,7 @@ __all__ = [
     "HealthState",
     "NodeProbe",
     "Noop",
-    "OnDemandProbe",
-    "PeriodicProbe",
+    "PeriodicHealthCheck",
     "Probe",
     "ProbeResult",
     "Reattempt",
