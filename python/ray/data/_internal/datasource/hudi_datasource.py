@@ -139,8 +139,10 @@ class HudiDatasource(Datasource):
                 base_file_path = file_slice.base_file_relative_path()
                 log_file_paths = file_slice.log_files_relative_paths()
                 file_slice_paths.append((base_file_path, log_file_paths))
+                # hudi-rs returns an empty base file path for log-only slices.
                 for relative_path in [base_file_path, *log_file_paths]:
-                    input_files.append(os.path.join(self._table_uri, relative_path))
+                    if relative_path:
+                        input_files.append(os.path.join(self._table_uri, relative_path))
                 size_bytes += file_slice.total_size_bytes()
 
             if self._query_type == HudiQueryType.SNAPSHOT:
