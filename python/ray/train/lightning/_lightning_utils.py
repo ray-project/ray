@@ -256,6 +256,11 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     You can also provide the following arguments to the callback:
 
+    - checkpoint_frequency: Only report a checkpoint every ``checkpoint_frequency``
+        training epochs (e.g. ``2`` checkpoints on every other epoch). Defaults to
+        ``1``, which checkpoints on every epoch. Metrics are still reported on every
+        epoch regardless of this setting; only the checkpoint is skipped on
+        non-matching epochs.
     - checkpoint_upload_mode: The manner in which to upload the checkpoint.
         See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>` for more details.
     - validation: Whether to asynchronously validate the checkpoint.
@@ -270,11 +275,18 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def __init__(
         self,
+        checkpoint_frequency: int = 1,
         # v2-only arguments
         checkpoint_upload_mode=None,
         validation=False,
     ) -> None:
         super().__init__()
+        if checkpoint_frequency < 1:
+            raise ValueError(
+                "`checkpoint_frequency` must be a positive integer, got "
+                f"{checkpoint_frequency}."
+            )
+        self.checkpoint_frequency = checkpoint_frequency
         self.checkpoint_upload_mode = checkpoint_upload_mode
         self.validation = validation
 
@@ -306,10 +318,6 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
-        # Creates a checkpoint dir with fixed name
-        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
-        os.makedirs(tmpdir, exist_ok=True)
-
         # Fetch metrics
         metrics = trainer.callback_metrics
         metrics = {k: v.item() for k, v in metrics.items()}
@@ -318,15 +326,27 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["epoch"] = trainer.current_epoch
         metrics["step"] = trainer.global_step
 
-        # Save checkpoint to local
-        ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
-        # TODO: with CheckpointUploadMode.ASYNC, this does cpu -> disk synchronously
-        # and disk -> remote asynchronously. We can add a new CheckpointIO class to do
-        # cpu -> remote asynchronously and a checkpoint_upload_fn to wait for it.
-        trainer.save_checkpoint(ckpt_path, weights_only=False)
+        # Only checkpoint every `checkpoint_frequency` epochs. Metrics are still
+        # reported every epoch; only the (comparatively expensive) checkpoint
+        # save/upload is skipped on non-matching epochs.
+        should_checkpoint = (trainer.current_epoch + 1) % self.checkpoint_frequency == 0
+
+        checkpoint = None
+        tmpdir = None
+        if should_checkpoint:
+            # Creates a checkpoint dir with fixed name
+            tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
+            os.makedirs(tmpdir, exist_ok=True)
+
+            # Save checkpoint to local
+            ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
+            # TODO: with CheckpointUploadMode.ASYNC, this does cpu -> disk synchronously
+            # and disk -> remote asynchronously. We can add a new CheckpointIO class to do
+            # cpu -> remote asynchronously and a checkpoint_upload_fn to wait for it.
+            trainer.save_checkpoint(ckpt_path, weights_only=False)
+            checkpoint = Checkpoint.from_directory(tmpdir)
 
         # Report to train session
-        checkpoint = Checkpoint.from_directory(tmpdir)
         if is_v2_enabled():
             ray.train.report(
                 metrics=metrics,
@@ -339,6 +359,9 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         # Add a barrier to ensure all workers finished reporting here
         trainer.strategy.barrier()
+
+        if not should_checkpoint:
+            return
 
         # With CheckpointUploadMode.ASYNC, the upload may still be in progress
         # after report() returns. Let ray.train.report delete_local_checkpoint_after_upload
