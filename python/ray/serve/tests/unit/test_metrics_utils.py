@@ -1430,6 +1430,7 @@ class TestSelfHealthPush:
         m._pending_health_push_ref = None
         m._pending_health_push_started_at = 0.0
         m._pending_health_push_healthy = True
+        m._self_health_paused = False
         m._metrics_push_lock = threading.Lock()
         m._controller_handle = Mock()
         m._metrics_pusher = MetricsPusher()
@@ -1526,7 +1527,7 @@ class TestSelfHealthPush:
         # The check keeps running past the threshold rather than latching...
         assert len(evals) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 2
 
-        # ...so a pass clears the count. A failure counted while UPDATING would
+        # ...so a pass clears the count. One counted during a controller restart would
         # otherwise replace a replica that had already recovered.
         async def good():
             return None
@@ -1537,6 +1538,47 @@ class TestSelfHealthPush:
         assert (
             m._controller_handle.record_replica_health.remote.call_args.args[2] is True
         )
+
+    @pytest.mark.asyncio
+    async def test_a_paused_check_neither_runs_nor_reports_until_resumed(self):
+        """The controller does not health-check an UPDATING replica, so a failure seen
+        during a reconfigure would be applied once it is RUNNING again."""
+        m = self._manager()
+        evals = []
+
+        async def bad():
+            evals.append(1)
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        m.pause_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == []
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        m.resume_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == [1]
+        assert m._consecutive_failures == 1
+
+    @pytest.mark.asyncio
+    async def test_a_check_running_when_a_reconfigure_starts_is_dropped(self):
+        m = self._manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fails_once_released():
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = fails_once_released
+        check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        m.pause_self_health()
+        release.set()
+        await check
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        assert m._consecutive_failures == 0
 
     @pytest.mark.asyncio
     async def test_unhealthy_bypasses_an_in_flight_heartbeat(self, monkeypatch):
@@ -1719,6 +1761,60 @@ class TestReplicaHealthVerdict:
             await r.check_health()
         assert r._healthy is True
         assert r._health_checked_at is None
+
+
+class TestReconfigurePausesSelfHealth:
+    """reconfigure() holds the self-check for as long as it runs."""
+
+    def _replica(self):
+        from unittest.mock import AsyncMock, Mock
+
+        import ray.serve._private.replica as replica_mod
+        from ray.serve._private.config import DeploymentConfig
+        from ray.serve._private.version import DeploymentVersion
+
+        r = replica_mod.Replica.__new__(replica_mod.Replica)
+        r._deployment_config = DeploymentConfig()
+        r._rank = None
+        r._version = DeploymentVersion("1", DeploymentConfig(), {})
+        r._metrics_manager = Mock()
+        r._user_callable_initialized = False
+        r._user_callable_wrapper = Mock()
+        r._user_callable_wrapper.set_sync_method_threadpool_limit = AsyncMock()
+        r._set_internal_replica_context = Mock()
+        return r
+
+    @pytest.mark.asyncio
+    async def test_self_health_is_paused_while_the_user_reconfigure_runs(self):
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        seen = []
+
+        async def user_reconfigure(*args, **kwargs):
+            manager = r._metrics_manager
+            seen.append(
+                (manager.pause_self_health.called, manager.resume_self_health.called)
+            )
+
+        r._user_callable_wrapper.call_reconfigure = user_reconfigure
+        await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
+        assert seen == [(True, False)]
+        r._metrics_manager.resume_self_health.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_reconfigure_still_resumes_self_health(self):
+        from unittest.mock import AsyncMock
+
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        r._user_callable_wrapper.call_reconfigure = AsyncMock(
+            side_effect=ValueError("intended to fail")
+        )
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
+        r._metrics_manager.resume_self_health.assert_called_once()
 
 
 class TestBoundedPushGuard:
