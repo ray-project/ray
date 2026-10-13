@@ -78,20 +78,21 @@ steps:
       - windows
     job_env: WINDOWS
     instance_type: windows
-    # TEMPORARY (revert before merging): run only test_multi_node, 10x, to
-    # capture raylet logs for the startup-timeout flake. Do not merge.
-    parallelism: 1
+    # TEMPORARY (revert before merging): full suite with --runs-per-test 3, so
+    # both containers per agent still contend while sampling 3x, to capture
+    # raylet logs for the startup-timeout flake. Do not merge.
+    parallelism: 5
     commands:
       - bash ci/ray_ci/windows/install_tools.sh
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests:test_multi_node core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-name windowsbuild
         --operating-system windows
         --except-tags no_windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
-        --runs-per-test 10
-        --parallelism-per-worker 2
+        --runs-per-test 3
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 2
     depends_on:
       - windowsbuild
       - block-windows-tests
