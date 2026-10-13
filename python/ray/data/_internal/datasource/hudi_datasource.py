@@ -50,8 +50,7 @@ class HudiDatasource(Datasource):
     ) -> List["ReadTask"]:
         import numpy as np
         import pyarrow
-        from hudi import HudiQueryType as HudiRsQueryType
-        from hudi import HudiReadOptions
+        from hudi import HudiQueryType as HudiRsQueryType, HudiReadOptions
 
         table_uri = self._table_uri
         storage_options = self._storage_options
