@@ -99,7 +99,8 @@ class RaySyncer {
   ///
   /// \param io_context The io context for this component.
   /// \param node_id The id of current node.
-  /// \param on_messages_received See MessagesReceivedCallback in common.h.
+  /// \param on_messages_received Called once per batch of messages received from a
+  ///     remote node, before they are applied.
   /// \param max_batch_size The max number of messages to be sent in a batch.
   /// \param max_batch_delay_ms The max delay in milliseconds to wait before sending a
   /// batch.

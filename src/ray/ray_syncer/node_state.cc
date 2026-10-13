@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/ray_syncer.h"
 
@@ -88,16 +89,19 @@ std::vector<std::shared_ptr<const RaySyncMessage>> NodeState::ConsumeSyncMessage
     std::shared_ptr<const RaySyncMessage> &current =
         cluster_view_[message->node_id()][message_type];
 
-    RAY_LOG(DEBUG) << "ConsumeSyncMessages: local_version="
-                   << (current ? current->version() : -1)
-                   << " message_version=" << message->version()
-                   << ", message_from=" << NodeID::FromBinary(message->node_id());
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "ConsumeSyncMessages: local_version=%d message_version=%d, message_from=%s",
+        current ? current->version() : -1,
+        message->version(),
+        NodeID::FromBinary(message->node_id()).Hex());
 
     // Check whether newer version of this message has been received.
     if (current && current->version() >= message->version()) {
-      RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
-                    << current->version()
-                    << ", dropped message version: " << message->version();
+      RAY_LOG(INFO) << absl::StrFormat(
+          "Dropping sync message with stale version. latest version: %d, dropped "
+          "message version: %d",
+          current->version(),
+          message->version());
       continue;
     }
 

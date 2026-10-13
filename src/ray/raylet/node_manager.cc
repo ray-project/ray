@@ -3079,7 +3079,8 @@ void NodeManager::ConsumeSyncMessages(
       syncer::ResourceViewSyncMessage resource_view_sync_message;
       resource_view_sync_message.ParseFromString(message->sync_message());
       // Set node labels when node added.
-      auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
+      absl::flat_hash_map<std::string, std::string> node_labels =
+          MapFromProtobuf(resource_view_sync_message.labels());
       cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
           scheduling::NodeID(node_id.Binary()), std::move(node_labels));
       ResourceRequest resources;

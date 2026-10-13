@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
@@ -151,8 +152,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       absl::MutexLock lock(&received_mutex_);
       buffer.swap(received_buffer_);
     }
-    RAY_LOG(DEBUG) << "Processing " << buffer.size() << " buffered messages from "
-                   << NodeID::FromBinary(remote_node_id_);
+    RAY_LOG(DEBUG) << absl::StrFormat("Processing %d buffered messages from %s",
+                                      buffer.size(),
+                                      NodeID::FromBinary(remote_node_id_).Hex());
     if (on_messages_received_) {
       on_messages_received_(NodeID::FromBinary(remote_node_id_));
     }
@@ -161,6 +163,11 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     for (auto &[key, message] : buffer) {
       const int message_type = static_cast<int>(message.message_type());
       auto &node_versions = GetNodeComponentVersions(message.node_id());
+      RAY_LOG(DEBUG) << absl::StrFormat(
+          "Receive update: message_type=%d, message_version=%d, local_message_version=%d",
+          message_type,
+          message.version(),
+          node_versions[message_type]);
       if (node_versions[message_type] < message.version()) {
         node_versions[message_type] = message.version();
         accepted.push_back(std::make_shared<RaySyncMessage>(std::move(message)));
@@ -244,12 +251,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   void OnReadDone(bool ok) override {
-    // NOTE: According to the grpc callback streaming api best practices 3.)
-    // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
-    // The client must read all incoming data i.e. until OnReadDone(ok = false)
-    // happens for OnDone to be called. Hence even if disconnected_ is true, we
-    // still need to allow OnReadDone to repeatedly execute until StartReadData has
-    // consumed all the data for OnDone to be called.
     if (!ok) {
       io_context_.dispatch(
           [this]() {
@@ -272,7 +273,6 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     bool buffer_was_empty = false;
     {
       absl::MutexLock lock(&received_mutex_);
-      // A non-empty buffer already has a processing task queued.
       buffer_was_empty = received_buffer_.empty();
       for (auto &message : *receiving_message_batch_.mutable_messages()) {
         // Skip unknown types instead of disconnecting; a newer peer may send them.
@@ -298,7 +298,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         }
       }
     }
+    // NOTE: According to the grpc callback streaming api best practices 3.)
+    // https://grpc.io/docs/languages/cpp/best_practices/#callback-streaming-api
+    // The client must read all incoming data i.e. until OnReadDone(ok = false)
+    // happens for OnDone to be called. Hence even if disconnected_ is true, we
+    // still need to allow OnReadDone to repeatedly execute until StartReadData has
+    // consumed all the data for OnDone to be called.
     StartPull();
+    // If the buffer is empty before this round, it means no sync message processing
+    // task is queued and this read must post one. If not, a task is already queued and
+    // will pick up all messages in the buffer later.
     if (buffer_was_empty) {
       io_context_.dispatch([this]() { ProcessBufferedSyncMessages(); },
                            "RaySyncer.ProcessBufferedSyncMessages");
