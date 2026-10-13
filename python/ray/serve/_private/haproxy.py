@@ -131,14 +131,17 @@ def _haproxy_fmt_literal(value: Any) -> str:
     return '"' + s + '"'
 
 
-def _load_lua_template(file_name: str) -> string.Template:
-    path = Path(__file__).parent / file_name
-    try:
-        return string.Template(path.read_text())
-    except FileNotFoundError as e:
-        raise FileNotFoundError(
-            f"{path.name} is missing. Ray Serve installation is incomplete."
-        ) from e
+def _load_lua_template(*file_names: str) -> string.Template:
+    contents = []
+    for file_name in file_names:
+        path = Path(__file__).parent / file_name
+        try:
+            contents.append(path.read_text())
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"{path.name} is missing. Ray Serve installation is incomplete."
+            ) from e
+    return string.Template("\n".join(contents))
 
 
 def _routers_and_targets_by_backend(
@@ -1337,13 +1340,16 @@ class HAProxyApi(ProxyApi):
             metrics_post = ""
             metrics_set_truncated = ""
 
-        content = _load_lua_template("ingress_request_router.lua.tmpl").substitute(
+        content = _load_lua_template(
+            "request_router_common.lua.tmpl", "ingress_request_router.lua.tmpl"
+        ).substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
             # HAProxy's req_get_headers() returns lowercase header keys,
             # so lowercase here for the Lua lookup. Empty string disables
             # forwarding entirely.
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
             REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
@@ -1369,7 +1375,9 @@ class HAProxyApi(ProxyApi):
         if routers_lua is None:
             return None
 
-        content = _load_lua_template("router_application.lua.tmpl").substitute(
+        content = _load_lua_template(
+            "request_router_common.lua.tmpl", "router_application.lua.tmpl"
+        ).substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             DIRECT_RESPONSE_HEADER=SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
             ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
