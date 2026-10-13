@@ -374,6 +374,29 @@ workerGroupSpecs:
             memory: "1G"
 ```
 
+#### Scale worker groups from zero
+
+The Ray autoscaler reads custom resource capacities from each worker group's `rayStartParams.resources` in the RayCluster configuration. It can use these capacities to scale a group from zero Pods without waiting for a running worker to report its resources.
+
+For example, a worker group with `resources: '"{\"Custom1\": 1}"'` in `rayStartParams` can scale up to satisfy a pending task or actor with `resources={"Custom1": 1}`.
+
+For a specific accelerator type, use the custom resource name `accelerator_type:<type>`. Configure your GPU worker group as follows, replacing `A10G` with the accelerator type required by your workload:
+
+```yaml
+workerGroupSpecs:
+- groupName: gpu-group
+  replicas: 0
+  minReplicas: 0
+  maxReplicas: 5
+  rayStartParams:
+    resources: '"{\"accelerator_type:A10G\": 1}"'
+  # Retain your existing Pod template.
+```
+
+A pending task or actor with `@ray.remote(num_gpus=1, accelerator_type="A10G")` can trigger scale-up of this group. The resource name must include the `accelerator_type:` prefix.
+
+For GPU resource limits and Pod scheduling configuration, see {ref}`Using GPUs <kuberay-gpu>`.
+
 ### 5. Autoscaler environment configuration
 
 You can configure the Ray autoscaler using environment variables specified in the `env` or `envFrom` fields under the `autoscalerOptions` section of your RayCluster custom resource. These variables provide fine-grained control over how the autoscaler behaves internally.
