@@ -2322,11 +2322,11 @@ class Dataset:
         :ref:`blocks <dataset_concept>`.
 
         This method can be useful to tune the performance of your pipeline. To learn
-        more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
+        more, see :ref:`Advanced: Performance tips and tuning <data_performance_tips>`.
 
         If you're writing data to files, you can also use this method to change the
         number of output files. To learn more, see
-        :ref:`Changing the number of output files <changing-number-output-files>`.
+        :ref:`Change the number of output files <changing-number-output-files>`.
 
         .. note::
 
@@ -2469,8 +2469,8 @@ class Dataset:
         .. tip::
 
             This method can be slow. For better performance, try
-            :ref:`Iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
-            Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
+            :ref:`iterating over batches with shuffling <iterating-over-batches-with-shuffling>`.
+            Also, see :ref:`Optimize shuffles <optimizing_shuffles>`.
 
         Examples:
             >>> import ray
@@ -3915,7 +3915,7 @@ class Dataset:
             A list with unique elements in the given column.
         """  # noqa: E501
         ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
-        return self._aggregate_result(ret)
+        return self._aggregate_result(ret) or []
 
     @AllToAllAPI
     @ConsumptionAPI
@@ -7763,7 +7763,49 @@ class Dataset:
         # `PandasBlockBuilder` creates a dataframe with internal extension types like
         # 'TensorDtype'. We use the `to_pandas` method to convert these extension
         # types to regular types.
-        return BlockAccessor.for_block(block).to_pandas()
+        df = BlockAccessor.for_block(block).to_pandas()
+
+        # An empty dataset yields no batches above, so the builder produces a
+        # DataFrame with no columns. Restore the columns and dtypes from the
+        # dataset schema so the result still matches the dataset's structure
+        # (issue #59946).
+        if df.shape[1] == 0:
+            import pyarrow as pa
+
+            schema = self.schema(fetch_if_missing=True)
+            if schema is not None and schema.names:
+                base_schema = schema.base_schema
+                if isinstance(base_schema, pa.Schema):
+                    # Route the empty Arrow table through the same
+                    # `BlockAccessor.to_pandas()` path used for non-empty blocks
+                    # so the two agree on column types (types_mapper, tensor
+                    # casting, etc.).
+                    df = BlockAccessor.for_block(base_schema.empty_table()).to_pandas()
+                else:
+                    import pandas
+
+                    # Pandas-backed schema: preserve per-column dtypes.
+                    types = base_schema.types
+                    assert len(types) == len(schema.names), (types, schema.names)
+                    try:
+                        empty_block = pandas.DataFrame(
+                            {
+                                name: pandas.Series([], dtype=dtype)
+                                for name, dtype in zip(schema.names, types)
+                            }
+                        )
+                    except (TypeError, ValueError):
+                        # A dtype that can't back an empty Series (e.g. an
+                        # exotic extension type): keep the columns at least.
+                        df = pandas.DataFrame(columns=list(schema.names))
+                    else:
+                        # Route through the same `BlockAccessor.to_pandas()`
+                        # conversion used for non-empty blocks so internal
+                        # extension dtypes (e.g. TensorDtype) are converted
+                        # identically.
+                        df = BlockAccessor.for_block(empty_block).to_pandas()
+
+        return df
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
@@ -8124,31 +8166,6 @@ class Dataset:
         iter_ref_bundles, _, _ = self._execute_to_iterator(capture_executor=False)
         self._synchronize_progress_bar()
         return iter_ref_bundles
-
-    @Deprecated
-    @ConsumptionAPI(pattern="Examples:")
-    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
-        """Get a list of references to the underlying blocks of this dataset.
-
-        This function can be used for zero-copy access to the data. It blocks
-        until the underlying blocks are computed.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(1)
-            >>> ds.get_internal_block_refs()
-            [ObjectRef(...)]
-
-        Returns:
-            A list of references to this dataset's blocks.
-        """
-        logger.warning(
-            "`Dataset.get_internal_block_refs()` is deprecated. Use "
-            "`Dataset.iter_internal_ref_bundles()` instead.",
-        )
-        block_refs = self._execute().block_refs
-        self._synchronize_progress_bar()
-        return block_refs
 
     @DeveloperAPI
     def has_serializable_lineage(self) -> bool:

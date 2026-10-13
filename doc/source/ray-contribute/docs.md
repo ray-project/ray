@@ -156,7 +156,7 @@ This structure is reflected in the [Ray documentation source code](https://githu
 
 Each type of documentation listed above has its own purpose, but ultimately our documentation comes down to _two types_ of documents:
 
-- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.rst) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
+- Markup documents, written in MyST or rST. If you don't have a lot of (executable) code to contribute or use more complex features such as [tabbed content blocks](https://docs.ray.io/en/latest/ray-core/walkthrough.html#starting-ray), this is the right choice. Most of the documents in Ray Tune are written in this way, for instance the [key concepts](https://github.com/ray-project/ray/blob/master/doc/source/tune/key-concepts.md) or [API documentation](https://github.com/ray-project/ray/blob/master/doc/source/tune/api/api.rst).
 - Notebooks, written in `.ipynb` format. All Tune examples are written as notebooks. These notebooks render in the browser like `.md` or `.rst` files, but have the added benefit that users can run the code themselves.
 
 ## Fixing typos and improving explanations

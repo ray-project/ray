@@ -99,13 +99,13 @@ Call `repartition` before `map_batches` to ensure that the input blocks contain 
 
 ```python
 # Note: If you only use map_batches(batch_size=BATCH_SIZE), you are not guaranteed to get the desired number of rows as an input.
-dataset = dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
+train_dataset = train_dataset.repartition(target_num_rows_per_block=BATCH_SIZE).map_batches(collate_fn, batch_size=BATCH_SIZE)
 ```
 
 Call `repartition` after `map_batches` to ensure that the output blocks contain the desired number of rows. This avoids reformatting or rebatching the data on the training worker process.
 
 ```python
-dataset = dataset.map_batches(collate_fn, batch_size=BATCH_SIZE).repartition(target_num_rows_per_block=BATCH_SIZE)
+train_dataset = train_dataset.map_batches(collate_fn, batch_size=BATCH_SIZE).repartition(target_num_rows_per_block=BATCH_SIZE)
 
 def train_func():
     for batch in ray.train.get_dataset_shard("train").iter_torch_batches(

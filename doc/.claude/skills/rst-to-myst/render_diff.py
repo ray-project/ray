@@ -19,7 +19,7 @@ Usage:
     python3 render_diff.py <preview_base_url> <page.html> [<page.html> ...]
 
     python3 render_diff.py https://anyscale-ray--12345.com.readthedocs.build/en/12345/ \\
-        index.html ray-core/key-concepts.html
+        index.html core/key-concepts.html
 
 Exit status is the number of pages with an unexplained diff. Read the diffs
 rather than trusting the count: byte-identical is not always the right bar, and
@@ -162,7 +162,7 @@ def compare(page: str, preview_base: str, keep_benign: bool, context: int) -> bo
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("preview_base", help="RtD PR preview base URL")
-    parser.add_argument("pages", nargs="+", help="page paths, e.g. ray-core/index.html")
+    parser.add_argument("pages", nargs="+", help="page paths, e.g. core/index.html")
     parser.add_argument(
         "--keep-benign",
         action="store_true",
