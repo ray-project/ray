@@ -1,4 +1,3 @@
-import math
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -88,16 +87,17 @@ def test_slice_partition(num_rows, num_partitions):
     table = pa.concat_tables([table.slice(0, 5), table.slice(5)])
     partition_fn = _make_slice_partition_fn(num_partitions)
     partitions = partition_fn(table)
-    slice_size = max(1, math.ceil(num_rows / num_partitions))
-    expected_partitions = set()
-    for partition_id in range(num_partitions):
-        if partition_id * slice_size >= num_rows:
-            break
-        expected_partitions.add(partition_id)
-    assert set(partitions) == expected_partitions
+    num_slices = min(num_rows, num_partitions)
+    assert set(partitions) == set(range(num_slices))
+    slice_size, remainder = divmod(num_rows, num_slices) if num_slices else (0, 0)
+    slice_ranges = []
+    row_start = 0
+    for partition_id in range(num_slices):
+        current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+        slice_ranges.append((row_start, row_start + current_slice_size))
+        row_start += current_slice_size
     for partition_id, shard in partitions.items():
-        row_start = partition_id * slice_size
-        row_end = min((partition_id + 1) * slice_size, num_rows)
+        row_start, row_end = slice_ranges[partition_id]
         assert shard.schema == table.schema
         assert shard["id"].to_pylist() == list(range(row_start, row_end))
         assert shard["null"].null_count == shard.num_rows
@@ -139,12 +139,15 @@ def test_slice_repartition(
         list(range(num_rows)) + list(range(100, 100 + num_rows))
     )
     # Each input block's contiguous slices are assigned in partition order.
-    slice_size = max(1, math.ceil(num_rows / num_partitions))
+    num_slices = min(num_rows, num_partitions)
+    slice_size, remainder = divmod(num_rows, num_slices) if num_slices else (0, 0)
     expected_shards = []
-    for partition_id in range(num_partitions):
-        row_start = partition_id * slice_size
-        row_end = min((partition_id + 1) * slice_size, num_rows)
-        expected_shards.append(list(range(row_start, row_end)))
+    row_start = 0
+    for partition_id in range(num_slices):
+        current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+        expected_shards.append(list(range(row_start, row_start + current_slice_size)))
+        row_start += current_slice_size
+    expected_shards.extend([[] for _ in range(num_partitions - num_slices)])
     expected_shards.sort()
     for start in (0, 100):
         shards = [

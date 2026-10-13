@@ -1,4 +1,3 @@
-import math
 from typing import Dict, Iterable, List
 
 import pyarrow as pa
@@ -28,7 +27,7 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
 
 
 def _make_slice_partition_fn(num_partitions: int) -> PartitionFn:
-    """Return a partitioner that assigns ceil-sized contiguous slices in order."""
+    """Return a partitioner that assigns balanced contiguous slices in order."""
 
     def _partition(block: pa.Table) -> Dict[int, pa.Table]:
         partitions: Dict[int, pa.Table] = {}
@@ -36,13 +35,13 @@ def _make_slice_partition_fn(num_partitions: int) -> PartitionFn:
         if num_rows == 0:
             return partitions
 
-        slice_size = max(1, math.ceil(num_rows / num_partitions))
-        for partition_id in range(num_partitions):
-            row_start = partition_id * slice_size
-            if row_start >= num_rows:
-                break
-            row_end = min((partition_id + 1) * slice_size, num_rows)
-            partitions[partition_id] = block.slice(row_start, row_end - row_start)
+        num_slices = min(num_partitions, num_rows)
+        slice_size, remainder = divmod(num_rows, num_slices)
+        row_start = 0
+        for partition_id in range(num_slices):
+            current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+            partitions[partition_id] = block.slice(row_start, current_slice_size)
+            row_start += current_slice_size
         return partitions
 
     return _partition
