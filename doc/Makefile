@@ -5,10 +5,10 @@
 
 # Number of parallel Sphinx workers, passed straight to sphinx-build -j.
 # "auto" is one worker per CPU, which is what Sphinx does by default and what
-# every caller except Read the Docs still gets. Each worker holds its own copy
-# of the build environment, so write-phase memory scales with this number.
-# Override it to a smaller value on a builder with a hard memory ceiling; see
-# the html job in .readthedocs.yaml for the one caller that does.
+# every caller uses, Read the Docs included. Each worker holds its own copy of
+# the build environment, so write-phase memory scales with this number.
+# Override it to a smaller value on a builder with a hard memory ceiling; the
+# html job in .readthedocs.yaml explains when Read the Docs would need that.
 SPHINX_JOBS ?= auto
 
 # Allow linkcheck to run without treating warnings as errors; -W will
@@ -82,14 +82,10 @@ clean:
 	rm -rf ./source/__pycache__/
 	rm -rf ./source/_ext/__pycache__/
 	rm -rf ./source/*/api/doc/*
-	rm -rf ./source/ray-core/compiled-graph/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running-applications/doc/*
-	rm -rf ./source/cluster/running-applications/job-submission/doc/*
 	rm -rf ./source/ray-observability/api/state/doc*
-	rm -rf ./source/rllib/package_ref/doc*
-	rm -rf ./source/ray-more-libs/doc/*
-	rm -rf ./source/ray-observability/reference/doc/*
+	rm -rf ./source/rllib/api/doc* ./source/rllib/api/env/doc*
 	rm -f ./source/data/examples.rst
 	rm -f ./source/serve/examples.rst
 	rm -f ./source/train/examples.rst

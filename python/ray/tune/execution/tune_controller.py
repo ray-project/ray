@@ -1384,6 +1384,8 @@ class TuneController:
         self._set_trial_status(trial, Trial.ERROR if exception else Trial.TERMINATED)
         trial.set_location(_Location())
 
+        self._mark_trial_to_checkpoint(trial)
+
         if trial not in self._trial_to_actor:
             logger.debug(f"Will not STOP trial actor as it is not live: {trial}")
             return
@@ -1391,8 +1393,6 @@ class TuneController:
         tracked_actor = self._trial_to_actor[trial]
 
         self._actor_manager.clear_actor_task_futures(tracked_actor=tracked_actor)
-
-        self._mark_trial_to_checkpoint(trial)
 
         if not exception and self._maybe_cache_trial_actor(trial):
             # Trial runner has been cached

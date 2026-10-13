@@ -66,9 +66,9 @@ The steps are path-scoped, so editing one library's docs runs only that library'
 
 | Path you change | Step that runs | Tag |
 | --- | --- | --- |
-| `doc/source/ray-core/`, `doc/source/ray-observability/` | `core: docs example tests` | `core_doc` |
+| `doc/source/core/`, `doc/source/ray-observability/` | `core: docs example tests` | `core_doc` |
 | `doc/source/data/`, `doc/source/ray-more-libs/` | `data: docs example tests`, `data: dask docs example tests` | `data_doc` |
-| `doc/source/train/`, `doc/source/tune/`, `doc/source/ray-air/` | `ml: docs example tests` | `ml_doc` |
+| `doc/source/train/`, `doc/source/tune/` | `ml: docs example tests` | `ml_doc` |
 | `doc/source/rllib/` | `rllib: docs example tests` | `rllib_doc` |
 | `doc/source/serve/` | `serve: docs example tests` | `serve_doc` |
 

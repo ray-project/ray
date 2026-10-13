@@ -12,24 +12,24 @@ import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
+from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    derive_list_files_pushdown,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.listing.file_pruners import (
-    PartitionPredicatePruner,
-)
-from ray.data._internal.datasource_v2.logical_optimizers import (
-    SupportsFilterPushdown,
-    derive_list_files_pushdown,
-)
-from ray.data._internal.datasource_v2.readers.base_reader import Reader
-from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsFilterPushdown
+from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.logical.operators import Filter, ListFiles, ReadFiles
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col

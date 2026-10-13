@@ -64,6 +64,17 @@ class _AbstractKBinsDiscretizer(SerializablePreprocessorBase):
                 "in it."
             )
 
+    def _validate_bins_are_positive(self):
+        # `bins=0` is translated to a single-edge array before reaching
+        # `pd.cut`, which then silently returns an all-null column. Only
+        # integers are checked here; `_fit` rejects other types by name.
+        counts = self.bins.values() if isinstance(self.bins, dict) else [self.bins]
+        for count in counts:
+            if isinstance(count, int) and count <= 0:
+                raise ValueError(
+                    f"bins must be a positive integer, but got {count} instead."
+                )
+
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
@@ -393,6 +404,7 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
         super().__init__()
         self._columns = columns
         self._bins = bins
+        self._validate_bins_are_positive()
         self._right = right
         self._include_lowest = include_lowest
         self._duplicates = duplicates

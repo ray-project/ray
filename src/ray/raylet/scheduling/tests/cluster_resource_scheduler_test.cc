@@ -21,7 +21,6 @@
 #include <memory>
 #include <unordered_map>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/ray_config.h"
@@ -29,9 +28,9 @@
 #include "ray/common/test_utils.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 // clang-format on
 using namespace std;  // NOLINT
 
@@ -107,14 +106,12 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
     // The legacy scheduling policy is easier to reason about for testing purposes. See
     // `scheduling_policy_test.cc` for comprehensive testing of the hybrid scheduling
     // policy.
-    gcs_client_ = std::make_unique<gcs::MockGcsClient>();
+    gcs_client_ = std::make_unique<gcs::FakeGcsClient>();
     is_node_available_fn_ = [this](scheduling::NodeID node_id) {
-      return gcs_client_->Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
+      return !gcs_client_->Nodes().IsNodeDead(NodeID::FromBinary(node_id.Binary()));
     };
     node_name = NodeID::FromRandom().Binary();
     node_info.set_node_id(node_name);
-    ON_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
-        .WillByDefault(::testing::Return(true));
   }
 
   void Shutdown() {}
@@ -134,7 +131,7 @@ class ClusterResourceSchedulerTest : public ::testing::Test {
               scheduling::ResourceID(OBJECT_STORE_MEM).Binary());
     ASSERT_EQ(ray::kMemory_ResourceLabel, scheduling::ResourceID(MEM).Binary());
   }
-  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  std::unique_ptr<gcs::FakeGcsClient> gcs_client_;
   std::function<bool(scheduling::NodeID)> is_node_available_fn_;
   std::string node_name;
   rpc::GcsNodeAddressAndLiveness node_info;
@@ -1165,9 +1162,7 @@ TEST_F(ClusterResourceSchedulerTest, DeadNodeTest) {
                                                       std::string(),
                                                       &violations,
                                                       &is_infeasible));
-  EXPECT_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(node_id))
-      .WillOnce(::testing::Return(false))
-      .WillOnce(::testing::Return(false));
+  gcs_client_->fake_node_accessor->AddDeadNode(node_id);
   ASSERT_TRUE(resource_scheduler
                   .GetBestSchedulableNode(resource,
                                           LabelSelector(),

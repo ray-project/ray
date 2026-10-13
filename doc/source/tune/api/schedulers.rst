@@ -353,7 +353,6 @@ TrialScheduler Interface
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     TrialScheduler.choose_trial_to_run
     TrialScheduler.on_trial_result
