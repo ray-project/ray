@@ -1680,6 +1680,7 @@ class TestReplicaHealthVerdict:
         r._health_check_lock = asyncio.Lock()
         r._user_callable_wrapper = Mock()
         r._user_callable_wrapper.call_user_health_check.return_value = None
+        r._metrics_manager = SimpleNamespace(self_health_paused=False)
         return r
 
     @pytest.mark.asyncio
@@ -1761,6 +1762,40 @@ class TestReplicaHealthVerdict:
             await r.check_health()
         assert r._healthy is True
         assert r._health_checked_at is None
+
+    @pytest.mark.asyncio
+    async def test_a_check_that_ends_while_paused_leaves_the_cached_verdict(self):
+        """A reconfigure began part way through, so the verdict may describe it, and
+        probes and /-/healthz would still read it once the replica is RUNNING."""
+        r = self._replica()
+        r._healthy = True
+        r._health_checked_at = 1.0
+        r._metrics_manager.self_health_paused = True
+
+        async def bad():
+            raise RuntimeError("intended to fail")
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: bad()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r._run_user_health_check()
+        assert r._healthy is True
+        assert r._health_checked_at == 1.0
+        assert r._last_self_health_error is None
+
+    @pytest.mark.asyncio
+    async def test_without_push_health_a_pause_does_not_hold_the_verdict(self):
+        """The pause belongs to the self-check; with it off, probes cache as before."""
+        r = self._replica(active=False)
+        r._healthy = True
+        r._metrics_manager.self_health_paused = True
+
+        async def bad():
+            raise RuntimeError("intended to fail")
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: bad()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r._run_user_health_check()
+        assert r._healthy is False
 
 
 class TestReconfigurePausesSelfHealth:
