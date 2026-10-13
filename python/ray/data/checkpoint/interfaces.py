@@ -1,6 +1,7 @@
 import inspect
 import os
 import warnings
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Optional, Tuple, Type
 
@@ -86,6 +87,12 @@ class CheckpointConfig:
             If the latter, the path must be a network-mounted file system (e.g.
             `/mnt/cluster_storage/`) that is accessible to the entire cluster.
             If not set, defaults to `RAY_DATA_CHECKPOINT_PATH_BUCKET/ray_data_checkpoint`.
+        generated_id_column: Name of a row ID column that Ray Data generates for
+            each row from where the row lives in its Parquet file (file, row
+            group, position). Use it instead of ``id_column`` when the input
+            has no unique ID column. Only Parquet reads on the V2 datasource
+            path are supported. Exactly one of ``id_column`` and
+            ``generated_id_column`` must be set.
         delete_checkpoint_on_success: If true, automatically delete checkpoint
             data when the dataset execution succeeds. Only supported for
             batch-based backend currently.
@@ -128,6 +135,7 @@ class CheckpointConfig:
         id_column: Optional[str] = None,
         checkpoint_path: Optional[str] = None,
         *,
+        generated_id_column: Optional[str] = None,
         delete_checkpoint_on_success: bool = True,
         override_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         override_backend: Optional[CheckpointBackend] = None,
@@ -136,7 +144,24 @@ class CheckpointConfig:
         checkpoint_filter_cls: Optional[Type["CheckpointFilter"]] = None,
         checkpoint_manager_cls: Optional[Type["CheckpointManager"]] = None,
     ):
-        self.id_column: Optional[str] = id_column
+        if id_column is not None and generated_id_column is not None:
+            raise InvalidCheckpointingConfig(
+                "Cannot specify both `id_column` and `generated_id_column`. Use "
+                "`id_column` when the dataset has a unique ID column, or "
+                "`generated_id_column` to have Ray Data generate row IDs."
+            )
+        if id_column is None and generated_id_column is None:
+            raise InvalidCheckpointingConfig(
+                "Either `id_column` or `generated_id_column` must be provided. Use "
+                "`id_column` when the dataset has a unique ID column, or "
+                "`generated_id_column` to have Ray Data generate row IDs."
+            )
+        self.generated_id_column: Optional[str] = generated_id_column
+        # Checkpoint writing and loading key off ``id_column``, so a generated
+        # ID column is checkpointed under its own name.
+        self.id_column: Optional[str] = (
+            id_column if id_column is not None else generated_id_column
+        )
 
         if not isinstance(self.id_column, str) or len(self.id_column) == 0:
             raise InvalidCheckpointingConfig(
@@ -184,6 +209,19 @@ class CheckpointConfig:
         self.checkpoint_actor_pool_max_size = self.CHECKPOINT_ACTOR_POOL_MAX_SIZE
         self.checkpoint_actor_memory_bytes = self.CHECKPOINT_ACTOR_MEMORY_BYTES
 
+        # Internal flags used by training ingest mid-epoch resumption.
+        # If False, skip loading checkpoint data and filtering rows during
+        # planning, but still plan the checkpoint writer.
+        # This is set to False after the first successful execution, so that
+        # subsequent executions of the same dataset (e.g., later epochs)
+        # read all rows.
+        self._should_restore: bool = True
+
+    @property
+    def has_generated_id_column(self) -> bool:
+        """Whether Ray Data generates the row ID column for this config."""
+        return self.generated_id_column is not None
+
     def _get_default_checkpoint_path(self) -> str:
         artifact_storage = os.environ.get(self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR)
         if artifact_storage is None:
@@ -226,6 +264,66 @@ class CheckpointConfig:
             raise InvalidCheckpointingConfig(
                 f"Invalid checkpoint path: {checkpoint_path}. "
             ) from e
+
+
+# TODO: We can pull out a common CheckpointConfig base class.
+# Then, the batch inference specific logic from above can be moved
+# to a BatchInferenceCheckpointConfig subclass.
+# The checkpoint "restore" logic is common to both batch inference
+# and training ingest, but the checkpoint "write" configuration differs.
+# NOTE: This is exposed publicly as `ray.train.DatasetCheckpointConfig`,
+# and documented in the Ray Train API reference.
+@PublicAPI(stability="alpha")
+@dataclass
+class DatasetCheckpointConfig:
+    """Configuration for training ingest checkpointing.
+
+    Args:
+        id_column: Name of the ID column in the input dataset.
+            ID values must be unique across all rows in the dataset and must persist
+            during all operators.
+        generate_id_column: Whether to generate the `id_column` for each row.
+            Use this when you don't have a pre-existing `id_column` in the input
+            dataset. Not supported yet.
+        checkpoint_path: Path to store the checkpoint data. It can be a path to a cloud
+            object storage (e.g. `s3://bucket/path`) or a file system path.
+            If the latter, the path must be a network-mounted file system (e.g.
+            `/mnt/cluster_storage/`) that is accessible to the entire cluster.
+            If not set, defaults to
+            `{RunConfig.storage_path}/{RunConfig.name}/ray_data_checkpoints/{dataset_name}`
+            configured on the `ray.train` trainer. Each dataset must use a
+            different `checkpoint_path`.
+        override_filesystem: Override the :class:`pyarrow.fs.FileSystem` object used to
+            read/write checkpoint data. Use this when you want to use custom credentials.
+            If unset, this defaults to the filesystem configured in the `ray.train.RunConfig`
+            when `checkpoint_path` is also unset. Otherwise, the filesystem is
+            inferred from `checkpoint_path`.
+        delete_checkpoints_after_epoch: If True, automatically delete checkpoint
+            data after each epoch completion. This allows for fault tolerance from
+            the latest checkpoint. If you intend to resume from a checkpoint prior
+            to the latest epoch, set this to False. Defaults to True.
+    """
+
+    id_column: str
+    generate_id_column: bool = False
+    checkpoint_path: Optional[str] = None
+    override_filesystem: Optional["pyarrow.fs.FileSystem"] = None
+    delete_checkpoints_after_epoch: bool = True
+
+    def __post_init__(self):
+        if not isinstance(self.id_column, str) or len(self.id_column) == 0:
+            raise InvalidCheckpointingConfig(
+                "Checkpoint ID column must be a non-empty string, "
+                f"but got {self.id_column}"
+            )
+
+        # TODO: Support auto-generated row IDs once `CheckpointConfig`
+        # supports `generated_id_column`.
+        if self.generate_id_column:
+            raise NotImplementedError(
+                "`generate_id_column=True` is not supported yet. "
+                "Use a pre-existing `id_column` with unique values per row instead."
+            )
 
 
 @DeveloperAPI

@@ -272,6 +272,9 @@ class CheckpointManager(abc.ABC):
             committed_checkpoint_paths,
             filesystem=self.filesystem,
             partition_filter=self.checkpoint_path_partition_filter,
+            # Checkpoint files already hold the saved IDs; don't stamp a
+            # generated ID column onto them as if they were input data.
+            _add_generated_id_column=False,
         )
         checkpoint_ds.set_name("checkpoint_dataset")
 

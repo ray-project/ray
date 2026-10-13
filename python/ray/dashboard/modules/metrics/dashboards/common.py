@@ -14,6 +14,16 @@ class GridPos:
     h: int
 
 
+# Inside a Kubernetes pod, the reporter agent returns placeholder disk values
+# (total=1, used=0) unless RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE=1 is set.
+# See reporter_agent._get_disk_usage.
+K8S_DISK_USAGE_NOTE = (
+    "NOTE: On Kubernetes without KubeRay, Ray reports placeholder disk values (0 used out of 1 byte) by default. "
+    "To report real values, set RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE=1 in the Ray container's environment (KubeRay sets it automatically). "
+    "With it set, each pod reports the disk of the whole Kubernetes node it runs on, not its own usage: "
+    "pods on the same node show the same values, and a pod's usage can come from other pods on that node."
+)
+
 GRAPH_TARGET_TEMPLATE = {
     "exemplar": True,
     "expr": "0",

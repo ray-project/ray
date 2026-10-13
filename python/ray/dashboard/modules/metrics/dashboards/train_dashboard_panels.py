@@ -1,4 +1,5 @@
 from ray.dashboard.modules.metrics.dashboards.common import (
+    K8S_DISK_USAGE_NOTE,
     DashboardConfig,
     GrafanaAnnotation,
     Panel,
@@ -176,7 +177,9 @@ GPU_MEMORY_UTILIZATION_PANEL = Panel(
 DISK_UTILIZATION_PANEL = Panel(
     id=9,
     title="Disk Space Usage",
-    description="Disk space usage across all workers.",
+    description="Disk space usage across all workers.\n\n"
+    "NOTE: When Ray is deployed within a container, this shows the disk usage from the host machine.\n\n"
+    + K8S_DISK_USAGE_NOTE,
     unit="bytes",
     targets=[
         Target(

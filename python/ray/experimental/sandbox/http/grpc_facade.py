@@ -20,8 +20,10 @@ loopback addresses unless ``--allow-unauthenticated`` is passed: sandboxes
 with network access can reach any address their node can, so a tokenless
 facade on a network address would also serve the code running inside them.
 
-Requires ``grpclib`` and ``ray[default]``, not the Serve extra. Run with
-``python -m ray.experimental.sandbox.http.grpc_facade``.
+``RaySandboxFacade`` is a standard ``grpc`` servicer of both services, so
+it runs on the facade's own ``grpc.aio`` server (``python -m
+ray.experimental.sandbox.http.grpc_facade``, which needs only
+``ray[default]``) or as a Ray Serve gRPC deployment (``grpc_app``).
 """
 
 import argparse
@@ -30,17 +32,34 @@ import base64
 import functools
 import hashlib
 import hmac
+import inspect
 import ipaddress
 import itertools
 import json
 import logging
 import os
+import re
 import shlex
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, NoReturn, Optional
 
+import grpc
+from grpc import StatusCode
+
+from ray.experimental.sandbox.http._proto import (
+    sandbox_control_pb2 as api_pb2,
+    sandbox_exec_pb2 as sr_pb2,
+)
+from ray.experimental.sandbox.http._proto.sandbox_control_pb2_grpc import (
+    ModalClientServicer,
+    add_ModalClientServicer_to_server,
+)
+from ray.experimental.sandbox.http._proto.sandbox_exec_pb2_grpc import (
+    TaskCommandRouterServicer,
+    add_TaskCommandRouterServicer_to_server,
+)
 from ray.experimental.sandbox.http.host import HostSettings, SandboxSpec
 from ray.experimental.sandbox.http.resolver import (
     SANDBOX_ID_PREFIX,
@@ -50,28 +69,7 @@ from ray.experimental.sandbox.http.resolver import (
     _is_unschedulable,
 )
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
-from ray.util.annotations import DeveloperAPI
-
-try:
-    from grpclib import GRPCError, Status
-    from grpclib.server import Server
-
-    from ray.experimental.sandbox.http._proto.sandbox_control_grpc import (
-        ModalClientBase,
-    )
-    from ray.experimental.sandbox.http._proto.sandbox_exec_grpc import (
-        TaskCommandRouterBase,
-    )
-except ImportError as exc:  # pragma: no cover - exercised only without grpclib
-    raise ImportError(
-        "The Ray Sandbox gRPC facade requires the `grpclib` package: "
-        "pip install grpclib"
-    ) from exc
-
-from ray.experimental.sandbox.http._proto import (
-    sandbox_control_pb2 as api_pb2,
-    sandbox_exec_pb2 as sr_pb2,
-)
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +105,23 @@ _MAX_EXEC_RECORDS = 50_000
 _EXEC_EVICTION_SCAN = 64
 # Command-router credential handed out when no token is configured.
 _ROUTER_JWT_WITHOUT_TOKEN = "ray-sandbox-facade"
+# A host a client may name as the one it dialed: a DNS name or an IPv4
+# address, so that it forms a URL by itself.
+_DIALED_HOST = re.compile(r"[A-Za-z0-9.-]{1,253}")
+
+
+class _RpcError(Exception):
+    """Ends the RPC being served with a gRPC status; see ``_rpc``."""
+
+    def __init__(self, code: StatusCode, message: str) -> None:
+        # Both in args, so the error survives pickling: Ray Serve sends a
+        # failed call's exception from its replica to its proxy.
+        super().__init__(code, message)
+        self.code = code
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
 
 
 def _new_sandbox_id(key: Optional[str] = None) -> str:
@@ -126,30 +141,13 @@ def _encode_id(prefix: str, payload: Any) -> str:
 
 def _decode_id(prefix: str, value: str) -> Any:
     if not value.startswith(prefix):
-        raise GRPCError(Status.INVALID_ARGUMENT, f"malformed id: {value!r}")
+        raise _RpcError(StatusCode.INVALID_ARGUMENT, f"malformed id: {value!r}")
     data = value[len(prefix) :]
     data += "=" * (-len(data) % 4)
     try:
         return json.loads(base64.urlsafe_b64decode(data))
     except (ValueError, TypeError):
-        raise GRPCError(Status.INVALID_ARGUMENT, f"malformed id: {value!r}")
-
-
-def _fill_unimplemented(cls: type) -> type:
-    """Give every unimplemented RPC of a grpclib service base a clear error."""
-
-    for name in sorted(getattr(cls, "__abstractmethods__", ())):
-
-        async def _unimplemented(self, stream: Any, _name: str = name) -> None:
-            await stream.recv_message()
-            raise GRPCError(
-                Status.UNIMPLEMENTED,
-                f"{_name} is not supported by the Ray Sandbox gRPC facade",
-            )
-
-        setattr(cls, name, _unimplemented)
-    cls.__abstractmethods__ = frozenset()
-    return cls
+        raise _RpcError(StatusCode.INVALID_ARGUMENT, f"malformed id: {value!r}")
 
 
 def _image_ref_from_dockerfile(image: Any) -> str:
@@ -167,26 +165,26 @@ def _image_ref_from_dockerfile(image: Any) -> str:
         keyword = parts[0].upper()
         if keyword == "FROM":
             if len(parts) < 2:
-                raise GRPCError(
-                    Status.INVALID_ARGUMENT, "FROM needs an image reference"
+                raise _RpcError(
+                    StatusCode.INVALID_ARGUMENT, "FROM needs an image reference"
                 )
             if ref is not None:
-                raise GRPCError(
-                    Status.INVALID_ARGUMENT,
+                raise _RpcError(
+                    StatusCode.INVALID_ARGUMENT,
                     "multi-stage image builds are not supported by the "
                     "Ray Sandbox gRPC facade",
                 )
             ref = parts[1].strip()
         elif keyword not in ("ENTRYPOINT", "CMD", "ENV", "WORKDIR", "LABEL"):
-            raise GRPCError(
-                Status.INVALID_ARGUMENT,
+            raise _RpcError(
+                StatusCode.INVALID_ARGUMENT,
                 f"image build step {stripped!r} is not supported: the "
                 "Ray Sandbox gRPC facade only runs prebuilt registry images "
                 "(a single FROM line)",
             )
     if ref is None:
-        raise GRPCError(
-            Status.INVALID_ARGUMENT, "image definition contains no FROM line"
+        raise _RpcError(
+            StatusCode.INVALID_ARGUMENT, "image definition contains no FROM line"
         )
     return ref
 
@@ -256,13 +254,14 @@ class _FacadeState:
         self,
         resolver: Any,
         settings: SandboxAPISettings,
-        advertise_url: str,
+        advertise_url: Optional[str],
         token: Optional[str] = None,
     ) -> None:
         self.resolver = resolver
         self.settings = settings
+        # None: derive each client's router URL; see _router_url_for.
         self.advertise_url = advertise_url
-        # Required on every RPC when set; see _TokenGate.
+        # Required on every RPC when set; see _rpc.
         self.token = token
         self.execs: Dict[str, _ExecRecord] = {}
 
@@ -275,7 +274,7 @@ class _FacadeState:
     async def require_handle(self, sandbox_id: str) -> Any:
         handle = await self.lookup(sandbox_id)
         if handle is None:
-            raise GRPCError(Status.NOT_FOUND, f"sandbox {sandbox_id!r} not found")
+            raise _RpcError(StatusCode.NOT_FOUND, f"sandbox {sandbox_id!r} not found")
         return handle
 
     async def kill(self, sandbox_id: str, handle: Any) -> None:
@@ -285,7 +284,7 @@ class _FacadeState:
     def require_exec(self, exec_id: str) -> _ExecRecord:
         record = self.execs.get(exec_id)
         if record is None:
-            raise GRPCError(Status.NOT_FOUND, f"exec {exec_id!r} not found")
+            raise _RpcError(StatusCode.NOT_FOUND, f"exec {exec_id!r} not found")
         return record
 
     def add_exec(self, exec_id: str, record: _ExecRecord) -> None:
@@ -312,19 +311,21 @@ class _FacadeState:
             over_cap -= 1
 
 
-def _actor_error(exc: Exception) -> Optional[GRPCError]:
+def _actor_error(exc: Exception) -> Optional[_RpcError]:
     """The gRPC status a failed SandboxHost call maps to, or None to re-raise.
 
     Unreachable actors map to UNAVAILABLE, which the client SDK retries; a
     dead actor maps to NOT_FOUND, the SDK's "task shut down" signal.
     """
     if _is_actor_unavailable(exc):
-        return GRPCError(Status.UNAVAILABLE, "sandbox actor is temporarily unavailable")
+        return _RpcError(
+            StatusCode.UNAVAILABLE, "sandbox actor is temporarily unavailable"
+        )
     if _is_actor_gone(exc):
-        return GRPCError(Status.NOT_FOUND, "sandbox is gone; its actor has died")
+        return _RpcError(StatusCode.NOT_FOUND, "sandbox is gone; its actor has died")
     if _is_unschedulable(exc):
-        return GRPCError(
-            Status.FAILED_PRECONDITION,
+        return _RpcError(
+            StatusCode.FAILED_PRECONDITION,
             f"sandbox cannot be scheduled: {str(exc)[:300]}",
         )
     return None
@@ -346,8 +347,8 @@ async def _bounded(
     try:
         return await asyncio.wait_for(awaitable, timeout=extra_wait + grace)
     except asyncio.TimeoutError:
-        raise GRPCError(
-            Status.UNAVAILABLE,
+        raise _RpcError(
+            StatusCode.UNAVAILABLE,
             "sandbox actor is not reachable; the cluster may still be scaling",
         )
     except Exception as exc:
@@ -377,8 +378,8 @@ async def _is_alive(handle: Any) -> bool:
     """False only when the actor has died; an unscheduled actor counts as alive."""
     try:
         await _bounded(handle.describe.remote())
-    except GRPCError as exc:
-        return exc.status != Status.NOT_FOUND
+    except _RpcError as exc:
+        return exc.code != StatusCode.NOT_FOUND
     return True
 
 
@@ -392,7 +393,7 @@ async def _await_sandbox_exec(record: _ExecRecord) -> Dict[str, Any]:
             extra_wait=_LONG_POLL_SECONDS,
         )
         if info.get("error_code"):
-            raise GRPCError(Status.NOT_FOUND, info.get("message", "exec lost"))
+            raise _RpcError(StatusCode.NOT_FOUND, info.get("message", "exec lost"))
         if info["status"] != "running":
             record.mark_finished()
             return info
@@ -422,6 +423,26 @@ def _terminated() -> Any:
     return api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
 
 
+def _router_url_for(metadata: Any) -> str:
+    """The command-router URL for a client of a facade with none configured.
+
+    The client SDK names the host it dialed in ``x-modal-host`` on every
+    control-plane call (gRPC servers don't see the ``:authority`` it also
+    sends). Behind a TLS endpoint on the default port, such as an ingress in
+    front of Ray Serve, ``https://`` plus that host reaches this same server.
+    A client can only point its own router calls elsewhere with it.
+    """
+    host = metadata.get("x-modal-host") if metadata is not None else None
+    if not isinstance(host, str) or not _DIALED_HOST.fullmatch(host):
+        raise _RpcError(
+            StatusCode.FAILED_PRECONDITION,
+            "the facade has no command-router URL for this client: configure "
+            "the facade's advertise_url, or use a client that sends the host "
+            "it dialed (x-modal-host)",
+        )
+    return f"https://{host}"
+
+
 def _carries_token(metadata: Any, token: str) -> bool:
     """True when a call's metadata presents ``token``.
 
@@ -443,135 +464,146 @@ def _carries_token(metadata: Any, token: str) -> bool:
     return secret_ok or bearer_ok
 
 
-def _require_token(func: Any, path: str, token: str) -> Any:
-    """Wrap an RPC handler so that it rejects calls without ``token``."""
-
-    @functools.wraps(func)
-    async def checked(stream: Any) -> None:
-        # Before the handler reads the request, so a rejected call never
-        # reaches a sandbox or the cluster.
-        if not _carries_token(getattr(stream, "metadata", None), token):
-            # No header values in the log: a client set up for another
-            # server may present real credentials of its own.
-            logger.debug("Rejected an unauthenticated call to %s", path)
-            raise GRPCError(Status.UNAUTHENTICATED, "invalid or missing API token")
-        await func(stream)
-
-    return checked
+def _metadata(grpc_context: Any) -> Dict[str, Any]:
+    """A call's metadata, with the first value of each key."""
+    metadata: Dict[str, Any] = {}
+    for key, value in grpc_context.invocation_metadata() or ():
+        metadata.setdefault(key, value)
+    return metadata
 
 
-class _TokenGate:
-    """Requires the configured token on every RPC of a servicer.
+def _authenticate(token: Optional[str], grpc_context: Any, rpc: str) -> None:
+    """Reject a call that does not present ``token``, when there is one."""
+    if token is not None and not _carries_token(_metadata(grpc_context), token):
+        # No header values in the log: a client set up for another server
+        # may present real credentials of its own.
+        logger.debug("Rejected an unauthenticated call to %s", rpc)
+        raise _RpcError(StatusCode.UNAUTHENTICATED, "invalid or missing API token")
 
-    The check wraps the handler table that ``grpclib.server.Server``
-    dispatches through rather than hooking one server, so every server
-    built from these servicers enforces it, including on RPCs added later.
-    Without a configured token the table is returned unchanged.
+
+async def _abort(grpc_context: Any, error: _RpcError) -> NoReturn:
+    """End the call being served with ``error``'s status."""
+    abort = getattr(grpc_context, "abort", None)
+    if abort is not None:
+        # grpc.aio: abort() raises, ending the call with this status.
+        await abort(error.code, error.message)
+    # Ray Serve's context has no abort(): a call that raises ends with the
+    # status set on the context.
+    grpc_context.set_code(error.code)
+    grpc_context.set_details(error.message)
+    raise error
+
+
+def _rpc(handler: Callable) -> Callable:
+    """Serve a servicer method as an RPC, on ``grpc.aio`` or Ray Serve.
+
+    Both call the method named after the RPC with the request (an async
+    iterator of requests for a client-streaming RPC) and the call's context,
+    which Ray Serve passes only to a parameter named ``grpc_context``. The
+    call must present the facade's token, when it has one, before the
+    handler runs, so a rejected call never reaches a sandbox or the cluster.
+    An ``_RpcError`` from the handler ends the call with its status.
     """
+    if inspect.isasyncgenfunction(handler):
+
+        @functools.wraps(handler)
+        async def streaming(
+            self: Any, request: Any, grpc_context: Any
+        ) -> AsyncIterator[Any]:
+            try:
+                _authenticate(self._state.token, grpc_context, handler.__name__)
+                async for reply in handler(self, request, grpc_context):
+                    yield reply
+            except _RpcError as error:
+                await _abort(grpc_context, error)
+
+        return streaming
+
+    @functools.wraps(handler)
+    async def unary(self: Any, request: Any, grpc_context: Any) -> Any:
+        try:
+            _authenticate(self._state.token, grpc_context, handler.__name__)
+            return await handler(self, request, grpc_context)
+        except _RpcError as error:
+            await _abort(grpc_context, error)
+
+    return unary
+
+
+class _ControlServicer(ModalClientServicer):
+    """Control-plane RPCs: apps, images, secrets, sandbox lifecycle."""
 
     _state: _FacadeState
 
-    def __mapping__(self) -> Dict[str, Any]:
-        mapping = super().__mapping__()
-        token = self._state.token
-        if token is None:
-            return mapping
-        return {
-            path: handler._replace(func=_require_token(handler.func, path, token))
-            for path, handler in mapping.items()
-        }
+    @_rpc
+    async def ClientHello(self, request: Any, grpc_context: Any) -> Any:
+        return api_pb2.ClientHelloResponse()
 
-
-@_fill_unimplemented
-@DeveloperAPI
-class RaySandboxControlServicer(_TokenGate, ModalClientBase):
-    """Control-plane RPCs: apps, images, secrets, sandbox lifecycle."""
-
-    def __init__(self, state: _FacadeState) -> None:
-        self._state = state
-
-    async def ClientHello(self, stream: Any) -> None:
-        await stream.recv_message()
-        await stream.send_message(api_pb2.ClientHelloResponse())
-
-    async def AppGetOrCreate(self, stream: Any) -> None:
-        request = await stream.recv_message()
-        await stream.send_message(
-            api_pb2.AppGetOrCreateResponse(
-                app_id=_encode_id("ap-", request.app_name or "default")
-            )
+    @_rpc
+    async def AppGetOrCreate(self, request: Any, grpc_context: Any) -> Any:
+        return api_pb2.AppGetOrCreateResponse(
+            app_id=_encode_id("ap-", request.app_name or "default")
         )
 
-    async def EnvironmentGetOrCreate(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def EnvironmentGetOrCreate(self, request: Any, grpc_context: Any) -> Any:
         name = request.deployment_name or "main"
-        await stream.send_message(
-            api_pb2.EnvironmentGetOrCreateResponse(
-                environment_id=_encode_id("en-", name),
-                metadata=api_pb2.EnvironmentMetadata(
-                    name=name,
-                    # From 2025.06 the SDK mounts its own dependencies at
-                    # runtime, so a registry image reduces to a bare FROM.
-                    settings=api_pb2.EnvironmentSettings(
-                        image_builder_version="2025.06"
-                    ),
-                ),
-            )
+        return api_pb2.EnvironmentGetOrCreateResponse(
+            environment_id=_encode_id("en-", name),
+            metadata=api_pb2.EnvironmentMetadata(
+                name=name,
+                # From 2025.06 the SDK mounts its own dependencies at
+                # runtime, so a registry image reduces to a bare FROM.
+                settings=api_pb2.EnvironmentSettings(image_builder_version="2025.06"),
+            ),
         )
 
-    async def SecretGetOrCreate(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def SecretGetOrCreate(self, request: Any, grpc_context: Any) -> Any:
         anonymous_types = (
             api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP,
             api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
         )
         if request.object_creation_type not in anonymous_types:
-            raise GRPCError(
-                Status.UNIMPLEMENTED,
+            raise _RpcError(
+                StatusCode.UNIMPLEMENTED,
                 "only anonymous or ephemeral secrets (an inline dict) are "
                 "supported by the Ray Sandbox gRPC facade",
             )
-        await stream.send_message(
-            api_pb2.SecretGetOrCreateResponse(
-                secret_id=_encode_id("st-", dict(request.env_dict))
-            )
+        return api_pb2.SecretGetOrCreateResponse(
+            secret_id=_encode_id("st-", dict(request.env_dict))
         )
 
-    async def ImageGetOrCreate(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def ImageGetOrCreate(self, request: Any, grpc_context: Any) -> Any:
         ref = _image_ref_from_dockerfile(request.image)
-        await stream.send_message(
-            api_pb2.ImageGetOrCreateResponse(
-                image_id=_encode_id("im-", ref),
-                metadata=api_pb2.ImageMetadata(
-                    image_builder_version=request.builder_version
-                ),
-            )
+        return api_pb2.ImageGetOrCreateResponse(
+            image_id=_encode_id("im-", ref),
+            metadata=api_pb2.ImageMetadata(
+                image_builder_version=request.builder_version
+            ),
         )
 
-    async def ImageJoinStreaming(self, stream: Any) -> None:
+    @_rpc
+    async def ImageJoinStreaming(
+        self, request: Any, grpc_context: Any
+    ) -> AsyncIterator[Any]:
         # Images are pulled at sandbox boot, so the "build" is already done.
-        await stream.recv_message()
-        await stream.send_message(
-            api_pb2.ImageJoinStreamingResponse(
-                result=api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-                )
+        yield api_pb2.ImageJoinStreamingResponse(
+            result=api_pb2.GenericResult(
+                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
             )
         )
 
-    async def SandboxCreate(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def SandboxCreate(self, request: Any, grpc_context: Any) -> Any:
         sandbox_id = await self._create_sandbox(request)
-        await stream.send_message(
-            api_pb2.SandboxCreateResponse(
-                sandbox_id=sandbox_id,
-                metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
-            )
+        return api_pb2.SandboxCreateResponse(
+            sandbox_id=sandbox_id,
+            metadata=api_pb2.SandboxHandleMetadata(app_id=request.app_id),
         )
 
-    async def SandboxCreateV2(self, stream: Any) -> None:
-        await self.SandboxCreate(stream)
+    SandboxCreateV2 = SandboxCreate
 
     async def _create_sandbox(self, request: Any) -> str:
         state = self._state
@@ -599,8 +631,8 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
             # Refused, not widened: a sandbox created with open egress in
             # place of the allowlist the client asked for would run with
             # fewer restrictions than the client believes it has.
-            raise GRPCError(
-                Status.INVALID_ARGUMENT,
+            raise _RpcError(
+                StatusCode.INVALID_ARGUMENT,
                 "network allowlists (cidr_allowlist) are not supported by the "
                 "Ray Sandbox gRPC facade; use block_network=True for no "
                 "network, or omit both for open egress",
@@ -665,37 +697,35 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
         )
         return sandbox_id
 
-    async def SandboxGetTaskId(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def SandboxGetTaskId(self, request: Any, grpc_context: Any) -> Any:
         handle = await self._state.require_handle(request.sandbox_id)
         try:
             info = await _bounded(
                 handle.describe.remote(wait_seconds=1.0), extra_wait=1.0
             )
-        except GRPCError as exc:
-            if exc.status != Status.UNAVAILABLE:
+        except _RpcError as exc:
+            if exc.code != StatusCode.UNAVAILABLE:
                 raise
             # An unscheduled actor looks like a booting one to the client:
             # an empty task id keeps the SDK polling.
-            await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=""))
-            return
+            return api_pb2.SandboxGetTaskIdResponse(task_id="")
         status = info["status"]
         if status in ("error", "terminated"):
-            raise GRPCError(
-                Status.FAILED_PRECONDITION,
+            raise _RpcError(
+                StatusCode.FAILED_PRECONDITION,
                 f"sandbox {request.sandbox_id} is {status}: "
                 f"{info.get('error') or 'no longer running'}",
             )
         # The sandbox id doubles as the task id once running; an empty task
         # id while pulling or starting makes the SDK poll.
         task_id = request.sandbox_id if status == "running" else ""
-        await stream.send_message(api_pb2.SandboxGetTaskIdResponse(task_id=task_id))
+        return api_pb2.SandboxGetTaskIdResponse(task_id=task_id)
 
-    async def SandboxGetTaskIdV2(self, stream: Any) -> None:
-        await self.SandboxGetTaskId(stream)
+    SandboxGetTaskIdV2 = SandboxGetTaskId
 
-    async def SandboxWait(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def SandboxWait(self, request: Any, grpc_context: Any) -> Any:
         handle = await self._state.lookup(request.sandbox_id)
         loop = asyncio.get_running_loop()
         # timeout=0 is the SDK's non-blocking poll(); wait() loops with 10s.
@@ -716,8 +746,8 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
                     extra_wait=describe_wait,
                     grace=_POLL_GRACE_SECONDS if polling else None,
                 )
-            except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND:
+            except _RpcError as exc:
+                if exc.code == StatusCode.NOT_FOUND:
                     result = _terminated()
                     break
                 info = None  # Unreachable actor: still pending.
@@ -736,10 +766,10 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
         response = api_pb2.SandboxWaitResponse()
         if result is not None:
             response.result.CopyFrom(result)
-        await stream.send_message(response)
+        return response
 
-    async def SandboxTerminate(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def SandboxTerminate(self, request: Any, grpc_context: Any) -> Any:
         state = self._state
         handle = await state.lookup(request.sandbox_id)
         if handle is not None:
@@ -747,16 +777,15 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
                 await _bounded(
                     handle.terminate.remote(), extra_wait=_TERMINATE_WAIT_SECONDS
                 )
-            except GRPCError as exc:
-                if exc.status == Status.UNAVAILABLE:
+            except _RpcError as exc:
+                if exc.code == StatusCode.UNAVAILABLE:
                     # Still being scheduled, or mid-way through a slow
                     # teardown (a container that was starting is waited for
                     # and deleted first): the queued terminate() finishes the
                     # job and the host exits on its own, as in the REST
                     # DELETE. Killing it now could orphan the container.
                     logger.info("Sandbox %s is terminating", request.sandbox_id)
-                    await stream.send_message(api_pb2.SandboxTerminateResponse())
-                    return
+                    return api_pb2.SandboxTerminateResponse()
                 logger.debug("terminate(%s): %s", request.sandbox_id, exc)
             except Exception as exc:
                 logger.debug("terminate(%s): %s", request.sandbox_id, exc)
@@ -764,42 +793,37 @@ class RaySandboxControlServicer(_TokenGate, ModalClientBase):
             # releases its cluster reservation (as in the REST DELETE).
             await state.kill(request.sandbox_id, handle)
             logger.info("Terminated sandbox %s", request.sandbox_id)
-        await stream.send_message(api_pb2.SandboxTerminateResponse())
+        return api_pb2.SandboxTerminateResponse()
 
-    async def SandboxTerminateV2(self, stream: Any) -> None:
-        await self.SandboxTerminate(stream)
+    SandboxTerminateV2 = SandboxTerminate
 
-    async def TaskGetCommandRouterAccess(self, stream: Any) -> None:
-        await stream.recv_message()
-        await stream.send_message(
-            api_pb2.TaskGetCommandRouterAccessResponse(
-                url=self._state.advertise_url,
-                # The SDK presents this as "Bearer <jwt>" on every
-                # command-router call, so with a token configured it is the
-                # token itself, which this caller has just presented; that
-                # holds only while the facade has one shared credential.
-                # Not a parseable JWT (the docs ask for an opaque token), so
-                # the SDK applies no client-side expiry and only refreshes on
-                # UNAUTHENTICATED.
-                jwt=self._state.token or _ROUTER_JWT_WITHOUT_TOKEN,
-            )
+    @_rpc
+    async def TaskGetCommandRouterAccess(self, request: Any, grpc_context: Any) -> Any:
+        url = self._state.advertise_url or _router_url_for(_metadata(grpc_context))
+        return api_pb2.TaskGetCommandRouterAccessResponse(
+            url=url,
+            # The SDK presents this as "Bearer <jwt>" on every
+            # command-router call, so with a token configured it is the
+            # token itself, which this caller has just presented; that
+            # holds only while the facade has one shared credential.
+            # Not a parseable JWT (the docs ask for an opaque token), so
+            # the SDK applies no client-side expiry and only refreshes on
+            # UNAUTHENTICATED.
+            jwt=self._state.token or _ROUTER_JWT_WITHOUT_TOKEN,
         )
 
 
-@_fill_unimplemented
-@DeveloperAPI
-class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
+class _RouterServicer(TaskCommandRouterServicer):
     """Exec-plane RPCs: start, stdio, stdin, poll, and wait.
 
     The client SDK reaches this service at the URL handed out by
     ``TaskGetCommandRouterAccess``, which here is the same server.
     """
 
-    def __init__(self, state: _FacadeState) -> None:
-        self._state = state
+    _state: _FacadeState
 
-    async def TaskExecStart(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def TaskExecStart(self, request: Any, grpc_context: Any) -> Any:
         state = self._state
         handle = await state.require_handle(request.task_id)
         # No await between this check and add_exec: a concurrent retry of
@@ -827,7 +851,7 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
                 request.task_id,
             )
         await self._await_start(request.exec_id, record)
-        await stream.send_message(sr_pb2.TaskExecStartResponse())
+        return sr_pb2.TaskExecStartResponse()
 
     async def _await_start(self, exec_id: str, record: _ExecRecord) -> None:
         """Wait for a start to reach the sandbox, within the scheduling grace.
@@ -842,8 +866,8 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
                 asyncio.shield(record.start_task), timeout=_SCHEDULING_GRACE_SECONDS
             )
         except asyncio.TimeoutError:
-            raise GRPCError(
-                Status.UNAVAILABLE,
+            raise _RpcError(
+                StatusCode.UNAVAILABLE,
                 "sandbox actor is not reachable; the cluster may still be scaling",
             )
         except Exception:
@@ -874,8 +898,8 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
             )
         )
         if started.get("error_code"):
-            raise GRPCError(
-                Status.FAILED_PRECONDITION,
+            raise _RpcError(
+                StatusCode.FAILED_PRECONDITION,
                 started.get("message", "sandbox is not running"),
             )
         record.sandbox_exec_id = started["exec_id"]
@@ -888,13 +912,14 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
         except ValueError:
             op = {}
         if not isinstance(op, dict) or len(op) != 1:
-            raise GRPCError(
-                Status.INVALID_ARGUMENT, f"unrecognized fs-tools command: {command[1:]}"
+            raise _RpcError(
+                StatusCode.INVALID_ARGUMENT,
+                f"unrecognized fs-tools command: {command[1:]}",
             )
         ((name, payload),) = op.items()
         if not isinstance(payload, dict):
-            raise GRPCError(
-                Status.INVALID_ARGUMENT,
+            raise _RpcError(
+                StatusCode.INVALID_ARGUMENT,
                 f"unrecognized fs-tools payload for {name}: {payload!r}",
             )
         path = payload.get("path", "")
@@ -936,15 +961,15 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
                 record.handle.start_exec.remote(["/bin/sh", "-c", probe])
             )
             if started.get("error_code"):
-                raise GRPCError(
-                    Status.FAILED_PRECONDITION,
+                raise _RpcError(
+                    StatusCode.FAILED_PRECONDITION,
                     started.get("message", "sandbox is not running"),
                 )
             record.sandbox_exec_id = started["exec_id"]
             record.kind = "sandbox"
         else:
-            raise GRPCError(
-                Status.UNIMPLEMENTED,
+            raise _RpcError(
+                StatusCode.UNIMPLEMENTED,
                 f"fs-tools operation {name!r} is not supported by the "
                 "Ray Sandbox gRPC facade",
             )
@@ -977,13 +1002,15 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
                     )
                     return
             record.finish(0)
-        except GRPCError as exc:
+        except _RpcError as exc:
             record.finish(1, stderr=_fs_error("Other", f"write failed: {exc.message}"))
         except Exception as exc:
             record.finish(1, stderr=_fs_error("Other", f"write failed: {exc}"))
 
-    async def TaskExecStdioRead(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def TaskExecStdioRead(
+        self, request: Any, grpc_context: Any
+    ) -> AsyncIterator[Any]:
         record = self._state.require_exec(request.exec_id)
         await record.wait_started()
         want_stdout = (
@@ -997,14 +1024,12 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
             data = record.stdout if want_stdout else record.stderr
         data = data[request.offset :]
         for start in range(0, len(data), _STDIO_CHUNK_BYTES):
-            await stream.send_message(
-                sr_pb2.TaskExecStdioReadResponse(
-                    data=data[start : start + _STDIO_CHUNK_BYTES]
-                )
+            yield sr_pb2.TaskExecStdioReadResponse(
+                data=data[start : start + _STDIO_CHUNK_BYTES]
             )
 
-    async def TaskExecStdinWrite(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def TaskExecStdinWrite(self, request: Any, grpc_context: Any) -> Any:
         record = self._state.require_exec(request.exec_id)
         await record.wait_started()
         self._buffer_stdin(record, request.data, request.offset)
@@ -1012,19 +1037,22 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
             record.stdin_closed = True
             if record.fs_write:
                 await self._finish_write(record)
-        await stream.send_message(sr_pb2.TaskExecStdinWriteResponse())
+        return sr_pb2.TaskExecStdinWriteResponse()
 
-    async def TaskExecStdinWriteStream(self, stream: Any) -> None:
-        request = await stream.recv_message()
-        if request.WhichOneof("payload") != "start":
-            raise GRPCError(
-                Status.INVALID_ARGUMENT, "first stdin stream message must be start"
+    @_rpc
+    async def TaskExecStdinWriteStream(
+        self, requests: AsyncIterator[Any], grpc_context: Any
+    ) -> Any:
+        request = await anext(requests, None)
+        if request is None or request.WhichOneof("payload") != "start":
+            raise _RpcError(
+                StatusCode.INVALID_ARGUMENT, "first stdin stream message must be start"
             )
         record = self._state.require_exec(request.start.exec_id)
         await record.wait_started()
         if request.start.offset != record.stdin_bytes:
-            raise GRPCError(Status.FAILED_PRECONDITION, "stdin offset mismatch")
-        while (request := await stream.recv_message()) is not None:
+            raise _RpcError(StatusCode.FAILED_PRECONDITION, "stdin offset mismatch")
+        async for request in requests:
             which = request.WhichOneof("payload")
             if which == "end":
                 if not record.stdin_closed:
@@ -1033,22 +1061,23 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
                         await self._finish_write(record)
                 break
             if which != "data":
-                raise GRPCError(
-                    Status.INVALID_ARGUMENT, "stdin stream message must contain data"
+                raise _RpcError(
+                    StatusCode.INVALID_ARGUMENT,
+                    "stdin stream message must contain data",
                 )
             self._buffer_stdin(record, request.data, record.stdin_bytes)
-        await stream.send_message(sr_pb2.TaskExecStdinWriteStreamResponse())
+        return sr_pb2.TaskExecStdinWriteStreamResponse()
 
     def _buffer_stdin(self, record: _ExecRecord, data: bytes, offset: int) -> None:
         if record.kind == "sandbox":
             # Commands run in the sandbox through SandboxHost have no stdin.
-            raise GRPCError(
-                Status.UNIMPLEMENTED,
+            raise _RpcError(
+                StatusCode.UNIMPLEMENTED,
                 "exec stdin is not supported by the Ray Sandbox gRPC facade",
             )
         if data:
             if offset != record.stdin_bytes:
-                raise GRPCError(Status.FAILED_PRECONDITION, "stdin offset mismatch")
+                raise _RpcError(StatusCode.FAILED_PRECONDITION, "stdin offset mismatch")
             # WriteFile content is buffered until EOF, so cap it like a REST
             # upload rather than let one exec grow the facade without bound.
             limit = self._state.settings.max_file_bytes
@@ -1060,45 +1089,42 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
                         "Other", f"file exceeds the {limit}-byte max_file_bytes"
                     ),
                 )
-                raise GRPCError(
-                    Status.RESOURCE_EXHAUSTED,
+                raise _RpcError(
+                    StatusCode.RESOURCE_EXHAUSTED,
                     f"file writes are capped at {limit} bytes (max_file_bytes)",
                 )
             record.stdin_chunks.append(data)
             record.stdin_bytes += len(data)
 
-    async def TaskExecStdinStatus(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def TaskExecStdinStatus(self, request: Any, grpc_context: Any) -> Any:
         record = self._state.require_exec(request.exec_id)
         await record.wait_started()
-        await stream.send_message(
-            sr_pb2.TaskExecStdinStatusResponse(
-                num_bytes_written=record.stdin_bytes, closed=record.stdin_closed
-            )
+        return sr_pb2.TaskExecStdinStatusResponse(
+            num_bytes_written=record.stdin_bytes, closed=record.stdin_closed
         )
 
-    async def TaskExecPoll(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def TaskExecPoll(self, request: Any, grpc_context: Any) -> Any:
         record = self._state.require_exec(request.exec_id)
         response = sr_pb2.TaskExecPollResponse()
         if record.start_task is not None and not record.start_task.done():
             # Still on its way to the sandbox: running, no exit code yet.
-            await stream.send_message(response)
-            return
+            return response
         await record.wait_started()
         if record.kind == "sandbox":
             info = await _bounded(record.handle.get_exec.remote(record.sandbox_exec_id))
             if info.get("error_code"):
-                raise GRPCError(Status.NOT_FOUND, info.get("message", "exec lost"))
+                raise _RpcError(StatusCode.NOT_FOUND, info.get("message", "exec lost"))
             if info["status"] != "running":
                 record.mark_finished()
                 response.code = _exec_exit_code(info)
         elif record.finished.is_set():
             response.code = record.exit_code
-        await stream.send_message(response)
+        return response
 
-    async def TaskExecWait(self, stream: Any) -> None:
-        request = await stream.recv_message()
+    @_rpc
+    async def TaskExecWait(self, request: Any, grpc_context: Any) -> Any:
         record = self._state.require_exec(request.exec_id)
         await record.wait_started()
         if record.kind == "sandbox":
@@ -1107,55 +1133,88 @@ class RaySandboxRouterServicer(_TokenGate, TaskCommandRouterBase):
         else:
             await record.finished.wait()
             code = record.exit_code
-        await stream.send_message(sr_pb2.TaskExecWaitResponse(code=code))
+        return sr_pb2.TaskExecWaitResponse(code=code)
 
-    async def TaskSetNetworkAccess(self, stream: Any) -> None:
-        await stream.recv_message()
+    @_rpc
+    async def TaskSetNetworkAccess(self, request: Any, grpc_context: Any) -> Any:
         # Refused, not acknowledged: a client that believes it changed the
         # sandbox's network policy must not keep running under the old one.
-        raise GRPCError(
-            Status.UNIMPLEMENTED,
+        raise _RpcError(
+            StatusCode.UNIMPLEMENTED,
             "TaskSetNetworkAccess is not supported by the Ray Sandbox gRPC "
             "facade: network policy is fixed when the sandbox is created",
         )
 
 
 @DeveloperAPI
-def build_servicers(
-    settings: Optional[SandboxAPISettings] = None,
-    *,
-    handle_resolver: Optional[Any] = None,
-    advertise_url: str,
-) -> List[Any]:
-    """Build the two grpclib servicers sharing one facade state.
+class RaySandboxFacade(_ControlServicer, _RouterServicer):
+    """The facade's gRPC servicer: both services, sharing one state.
 
-    When the environment variable named by ``settings.token_env_var`` is
-    set, every RPC dispatched through the servicers' handler tables (what
-    ``grpclib.server.Server`` uses) must present that token. Calling a
-    handler method directly bypasses the check.
+    Serve it with ``serve`` (``grpc.aio``) or deploy it with Ray Serve
+    (``grpc_app``); ``add_servicers_to_server`` registers its services with
+    either server. When the environment variable named by
+    ``settings.token_env_var`` is set, every RPC must present that token.
 
     Args:
         settings: Server settings; defaults are production-safe.
         handle_resolver: Test seam, same surface as in ``create_app``.
         advertise_url: Command-router URL handed to clients; must route
-            back to this same server.
-
-    Returns:
-        The control-plane and command-router servicers, ready for
-        ``grpclib.server.Server``.
+            back to this same server. When None, each client gets
+            ``https://`` plus the host it dialed, which suits a facade
+            behind a TLS endpoint on the default port.
     """
-    settings = settings or SandboxAPISettings()
-    resolver = handle_resolver or RayActorHandleResolver(settings)
-    token = os.environ.get(settings.token_env_var) or None
-    state = _FacadeState(resolver, settings, advertise_url, token)
-    return [RaySandboxControlServicer(state), RaySandboxRouterServicer(state)]
+
+    def __init__(
+        self,
+        settings: Optional[SandboxAPISettings] = None,
+        *,
+        handle_resolver: Optional[Any] = None,
+        advertise_url: Optional[str] = None,
+    ) -> None:
+        settings = settings or SandboxAPISettings()
+        resolver = handle_resolver or RayActorHandleResolver(settings)
+        token = os.environ.get(settings.token_env_var) or None
+        self._state = _FacadeState(resolver, settings, advertise_url, token)
 
 
-async def serve(host: str, port: int, servicers: List[Any]) -> None:
-    server = Server(servicers)
-    await server.start(host, port)
-    logger.info("Ray Sandbox gRPC facade listening on %s:%d", host, port)
-    await server.wait_closed()
+@PublicAPI(stability="alpha")
+def add_servicers_to_server(servicer: Any, server: Any) -> None:
+    """Register the facade's gRPC services with a server.
+
+    Registers the client SDK's control-plane and command-router services
+    under their wire names. To deploy the facade with Ray Serve, list this
+    function in ``grpc_options.grpc_servicer_functions`` (see ``grpc_app``).
+
+    Args:
+        servicer: The object whose methods handle the RPCs, such as a
+            ``RaySandboxFacade``. Ray Serve passes a placeholder and routes
+            each call to its application's ingress.
+        server: The ``grpc`` server to register the services with.
+    """
+    add_ModalClientServicer_to_server(servicer, server)
+    add_TaskCommandRouterServicer_to_server(servicer, server)
+
+
+_SERVER_OPTIONS = [
+    # The client SDK can send a file write as one message, past gRPC's 4 MiB
+    # default; the facade caps files itself (max_file_bytes).
+    ("grpc.max_receive_message_length", -1),
+    ("grpc.max_send_message_length", -1),
+    # Fail to start, rather than share the port, when another process
+    # listens on it.
+    ("grpc.so_reuseport", 0),
+]
+
+
+async def serve(host: str, port: int, facade: RaySandboxFacade) -> None:
+    """Serve ``facade`` on ``host:port`` until the server stops."""
+    server = grpc.aio.server(options=_SERVER_OPTIONS)
+    add_servicers_to_server(facade, server)
+    address = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
+    server.add_insecure_port(address)
+    await server.start()
+    logger.info("Ray Sandbox gRPC facade listening on %s", address)
+    await server.wait_for_termination()
 
 
 def _is_loopback(host: str) -> bool:
@@ -1211,8 +1270,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     import ray
 
     ray.init(address=os.environ.get("RAY_ADDRESS", "auto"), ignore_reinit_error=True)
-    servicers = build_servicers(settings, advertise_url=advertise)
-    asyncio.run(serve(args.host, args.port, servicers))
+    facade = RaySandboxFacade(settings, advertise_url=advertise)
+    asyncio.run(serve(args.host, args.port, facade))
 
 
 if __name__ == "__main__":

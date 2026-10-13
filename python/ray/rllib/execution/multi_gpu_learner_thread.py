@@ -1,6 +1,7 @@
 import logging
 import queue
 import threading
+from typing import Optional
 
 from ray._common.deprecation import deprecation_warning
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -50,7 +51,7 @@ class MultiGPULearnerThread(LearnerThread):
         self,
         local_worker: RolloutWorker,
         num_gpus: int = 1,
-        lr=None,  # deprecated.
+        lr: Optional[float] = None,  # deprecated.
         train_batch_size: int = 500,
         num_multi_gpu_tower_stacks: int = 1,
         num_sgd_iter: int = 1,
@@ -59,7 +60,7 @@ class MultiGPULearnerThread(LearnerThread):
         num_data_load_threads: int = 16,
         _fake_gpus: bool = False,
         # Deprecated arg, use
-        minibatch_buffer_size=None,
+        minibatch_buffer_size: Optional[int] = None,
     ):
         """Initializes a MultiGPULearnerThread instance.
 
@@ -68,6 +69,7 @@ class MultiGPULearnerThread(LearnerThread):
                 policies this thread will call `load_batch_into_buffer` and
                 `learn_on_loaded_batch` on.
             num_gpus: Number of GPUs to use for data-parallel SGD.
+            lr: Deprecated arg, not used anymore.
             train_batch_size: Size of batches (minibatches if
                 `num_sgd_iter` > 1) to learn on.
             num_multi_gpu_tower_stacks: Number of buffers to parallelly
@@ -78,8 +80,14 @@ class MultiGPULearnerThread(LearnerThread):
                 (minibatch if `num_sgd_iter` > 1).
             learner_queue_size: Max size of queue of inbound
                 train batches to this thread.
+            learner_queue_timeout: Seconds to wait for inbound train batches
+                before logging a warning about a starving learner queue.
             num_data_load_threads: Number of threads to use to load
                 data into GPU memory in parallel.
+            _fake_gpus: Whether GPUs should be simulated on the CPU (for
+                debugging purposes only).
+            minibatch_buffer_size: Deprecated arg, not used anymore (raises an
+                error if specified).
         """
         # Deprecated: No need to specify as we don't need the actual
         # minibatch-buffer anyways.

@@ -6,11 +6,11 @@ myst:
 
 (train-hf-accelerate)=
 
-# Get Started with Distributed Training using Hugging Face Accelerate
+# Get started with distributed training using Hugging Face Accelerate
 
-The {class}`~ray.train.torch.TorchTrainer` can help you easily launch your [Accelerate](https://huggingface.co/docs/accelerate)  training across a distributed Ray cluster.
+Use the {class}`~ray.train.torch.TorchTrainer` to launch your [Accelerate](https://huggingface.co/docs/accelerate) training across a distributed Ray cluster.
 
-You only need to run your existing training code with a TorchTrainer. You can expect the final code to look like this:
+You only need to run your existing training code with a `TorchTrainer`. The final code looks similar to the following:
 
 ```{testcode}
 :skipif: True
@@ -57,18 +57,18 @@ trainer.fit()
 ```
 
 :::{tip}
-Model and data preparation for distributed training is completely handled by the [Accelerator](https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator) object and its [Accelerator.prepare()](https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator.prepare)  method.
+The [`Accelerator`](https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator) object and its [`Accelerator.prepare()`](https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator.prepare) method handle all model and data preparation for distributed training.
 
-Unlike with native PyTorch, **don't** call any additional Ray Train utilities like {meth}`~ray.train.torch.prepare_model` or {meth}`~ray.train.torch.prepare_data_loader` in your training function.
+Unlike with native PyTorch, don't call any additional Ray Train utilities, such as {meth}`~ray.train.torch.prepare_model` or {meth}`~ray.train.torch.prepare_data_loader`, in your training function.
 :::
 
 ## Configure Accelerate
 
-In Ray Train, you can set configurations through the [accelerate.Accelerator](https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator) object in your training function. Below are starter examples for configuring Accelerate.
+In Ray Train, set Accelerate configurations through the [`accelerate.Accelerator`](https://huggingface.co/docs/accelerate/main/en/package_reference/accelerator#accelerate.Accelerator) object in your training function. The following tabs show starter configurations.
 
 ::::{tab-set}
 :::{tab-item} DeepSpeed
-For example, to run DeepSpeed with Accelerate, create a [DeepSpeedPlugin](https://huggingface.co/docs/accelerate/main/en/package_reference/deepspeed) from a dictionary:
+To run DeepSpeed with Accelerate, create a [`DeepSpeedPlugin`](https://huggingface.co/docs/accelerate/main/en/package_reference/deepspeed) from a dictionary:
 
 ```{testcode}
 :skipif: True
@@ -129,7 +129,7 @@ trainer.fit()
 
 :::{tab-item} FSDP
 :sync: FSDP
-For PyTorch FSDP, create a [FullyShardedDataParallelPlugin](https://huggingface.co/docs/accelerate/main/en/package_reference/fsdp) and pass it to the Accelerator.
+For PyTorch Fully Sharded Data Parallel (FSDP), create a [`FullyShardedDataParallelPlugin`](https://huggingface.co/docs/accelerate/main/en/package_reference/fsdp) and pass it to the `Accelerator`.
 
 ```{testcode}
 :skipif: True
@@ -172,14 +172,13 @@ trainer.fit()
 :::
 ::::
 
-Note that Accelerate also provides a CLI tool, `"accelerate config"`, to generate a configuration and launch your training job with `"accelerate launch"`. However, it's not necessary here because Ray's `TorchTrainer` already sets up the Torch distributed environment and launches the training function on all workers.
+Accelerate also provides the `accelerate config` CLI command to generate a configuration and the `accelerate launch` command to launch your training job. You don't need either with Ray Train, because `TorchTrainer` already sets up the Torch distributed environment and launches the training function on all workers.
 
-
-Next, see these end-to-end examples below for more details:
+For details, see the following end-to-end examples:
 
 :::::{tab-set}
 ::::{tab-item} Example with Ray Data
-:::{dropdown} Show Code
+:::{dropdown} Show code
 ```{literalinclude} /../../python/ray/train/examples/accelerate/accelerate_torch_trainer.py
 :language: python
 :start-after: __accelerate_torch_basic_example_start__
@@ -189,7 +188,7 @@ Next, see these end-to-end examples below for more details:
 ::::
 
 ::::{tab-item} Example with PyTorch DataLoader
-:::{dropdown} Show Code
+:::{dropdown} Show code
 ```{literalinclude} /../../python/ray/train/examples/accelerate/accelerate_torch_trainer_no_raydata.py
 :language: python
 :start-after: __accelerate_torch_basic_example_no_raydata_start__
@@ -200,21 +199,20 @@ Next, see these end-to-end examples below for more details:
 :::::
 
 :::{seealso}
-If you're looking for more advanced use cases, check out this Llama-2 fine-tuning example:
+For more advanced use cases, see the following Llama-2 fine-tuning example:
 
-- [Fine-tuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train.](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
+- [Fine-tuning Llama-2 series models with DeepSpeed, Accelerate, and Ray Train](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
 :::
 
-You may also find these user guides helpful:
+The following user guides might also help:
 
 - {ref}`train_scaling_config`
-- {ref}`Configuration and Persistent Storage <persistent-storage-guide>`
-- {ref}`Saving and Loading Checkpoints <train-checkpointing>`
+- {ref}`persistent-storage-guide`
+- {ref}`train-checkpointing`
 - {ref}`How to use Ray Data with Ray Train <data-ingest-torch>`
 
+## `AccelerateTrainer` migration guide
 
-## AccelerateTrainer Migration Guide
+Before Ray 2.7, Ray Train's `AccelerateTrainer` API was the recommended way to run Accelerate code. `AccelerateTrainer` is a subclass of {class}`TorchTrainer <ray.train.torch.TorchTrainer>` that takes a configuration file generated by `accelerate config` and applies it to all workers. Otherwise, `AccelerateTrainer` behaves identically to `TorchTrainer`.
 
-Before Ray 2.7, Ray Train's `AccelerateTrainer` API was the recommended way to run Accelerate code. As a subclass of {class}`TorchTrainer <ray.train.torch.TorchTrainer>`, the AccelerateTrainer takes in a configuration file generated by `accelerate config` and applies it to all workers. Aside from that, the functionality of `AccelerateTrainer` is identical to `TorchTrainer`.
-
-However, this caused confusion around whether this was the *only* way to run Accelerate code. Because you can express the full Accelerate functionality with the `Accelerator` and `TorchTrainer` combination, the plan is to deprecate the `AccelerateTrainer` in Ray 2.8, and it's recommend to run your  Accelerate code directly with `TorchTrainer`.
+However, this API caused confusion about whether it was the *only* way to run Accelerate code. Because you can use all Accelerate features with the combination of `Accelerator` and `TorchTrainer`, the plan is to deprecate `AccelerateTrainer` in Ray 2.8. Run your Accelerate code directly with `TorchTrainer`.

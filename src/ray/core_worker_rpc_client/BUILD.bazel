@@ -5,7 +5,12 @@ ray_cc_library(
     hdrs = [
         "core_worker_client_interface.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/core_worker/task_execution/tests:__pkg__",
+        "//src/ray/gcs/actor:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/protobuf:pubsub_cc_proto",
@@ -21,6 +26,11 @@ ray_cc_library(
     ],
     hdrs = [
         "core_worker_client.h",
+    ],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet:__pkg__",
     ],
     deps = [
         ":core_worker_client_interface",
@@ -41,6 +51,7 @@ ray_cc_library(
     hdrs = [
         "core_worker_client_pool.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":core_worker_client_interface",
         "//src/ray/common:id",

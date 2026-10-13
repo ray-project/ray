@@ -48,8 +48,8 @@ class VectorEnv:
         observation_space: Optional[gym.Space] = None,
         restart_failed_sub_environments: bool = False,
         # Deprecated. These seem to have never been used.
-        env_config=None,
-        policy_config=None,
+        env_config: Optional[dict] = None,
+        policy_config: Optional[dict] = None,
     ) -> "_VectorizedGymEnv":
         """Translates any given gym.Env(s) into a VectorizedEnv object.
 
@@ -69,6 +69,8 @@ class VectorEnv:
                 Sampler will try to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
                 the RolloutWorker crashing.
+            env_config: Deprecated and ignored.
+            policy_config: Deprecated and ignored.
 
         Returns:
             The resulting _VectorizedGymEnv object (subclass of VectorEnv).
@@ -88,8 +90,8 @@ class VectorEnv:
         """Resets all sub-environments.
 
         Args:
-            seed: The list of seeds to be passed to the sub-environments' when resetting
-                them. If None, will not reset any existing PRNGs. If you pass
+            seeds: The list of seeds to be passed to the sub-environments' when
+                resetting them. If None, will not reset any existing PRNGs. If you pass
                 integers, the PRNGs will be reset even if they already exists.
             options: The list of options dicts to be passed to the sub-environments'
                 when resetting them.
@@ -203,6 +205,10 @@ class VectorEnv:
             remote_env_batch_wait_ms: The wait time (in ms) to poll remote
                 sub-environments for, if applicable. Only used if
                 `remote_envs` is True.
+            restart_failed_sub_environments: If True and any sub-environment (within
+                a vectorized env) throws any error during env stepping, the
+                Sampler will try to restart the faulty sub-environment. This is done
+                without disturbing the other (still intact) sub-environments.
 
         Returns:
             The resulting BaseEnv object.
@@ -233,8 +239,8 @@ class _VectorizedGymEnv(VectorEnv):
         action_space: Optional[gym.Space] = None,
         restart_failed_sub_environments: bool = False,
         # Deprecated. These seem to have never been used.
-        env_config=None,
-        policy_config=None,
+        env_config: Optional[dict] = None,
+        policy_config: Optional[dict] = None,
     ):
         """Initializes a _VectorizedGymEnv object.
 
@@ -245,14 +251,16 @@ class _VectorizedGymEnv(VectorEnv):
             existing_envs: Optional list of already instantiated sub
                 environments.
             num_envs: Total number of sub environments in this VectorEnv.
-            action_space: The action space. If None, use existing_envs[0]'s
-                action space.
             observation_space: The observation space. If None, use
                 existing_envs[0]'s observation space.
+            action_space: The action space. If None, use existing_envs[0]'s
+                action space.
             restart_failed_sub_environments: If True and any sub-environment (within
                 a vectorized env) throws any error during env stepping, we will try to
                 restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environments.
+            env_config: Deprecated and ignored.
+            policy_config: Deprecated and ignored.
         """
         self.envs = existing_envs
         self.make_env = make_env

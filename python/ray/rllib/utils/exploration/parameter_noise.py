@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Optional, Union
 
 import numpy as np
-from gymnasium.spaces import Box, Discrete
+from gymnasium.spaces import Box, Discrete, Space
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
@@ -42,7 +42,7 @@ class ParameterNoise(Exploration):
 
     def __init__(
         self,
-        action_space,
+        action_space: Space,
         *,
         framework: str,
         policy_config: dict,
@@ -55,11 +55,16 @@ class ParameterNoise(Exploration):
         """Initializes a ParameterNoise Exploration object.
 
         Args:
+            action_space: The gym action space used by the environment.
+            framework: One of None, "tf", "torch".
+            policy_config: The Policy's config dict.
+            model: The Policy's model.
             initial_stddev: The initial stddev to use for the noise.
             random_timesteps: The number of timesteps to act completely
                 randomly (see [1]).
             sub_exploration: Optional sub-exploration config.
                 None for auto-detection/setup.
+            **kwargs: Forwarded to the parent `Exploration` constructor.
         """
         assert framework is not None
         super().__init__(
@@ -342,16 +347,14 @@ class ParameterNoise(Exploration):
 
         self.weights_are_currently_noisy = True
 
-    def _add_stored_noise(self, *, tf_sess=None):
+    def _add_stored_noise(self, *, tf_sess: Optional["tf.Session"] = None):
         """Adds the stored `self.noise` to the model's parameters.
 
         Note: No new sampling of noise here.
 
         Args:
-            tf_sess (Optional[tf.Session]): The tf-session to use to add the
-                stored noise to the (currently noise-free) weights.
-            override: If True, undo any currently applied noise first,
-                then add the currently stored noise.
+            tf_sess: The tf-session to use to add the stored noise to the
+                (currently noise-free) weights.
         """
         # Make sure we only add noise to currently noise-free weights.
         assert self.weights_are_currently_noisy is False
@@ -385,13 +388,13 @@ class ParameterNoise(Exploration):
         with tf1.control_dependencies([ret]):
             return tf.no_op()
 
-    def _remove_noise(self, *, tf_sess=None):
+    def _remove_noise(self, *, tf_sess: Optional["tf.Session"] = None):
         """
         Removes the current action noise from the model parameters.
 
         Args:
-            tf_sess (Optional[tf.Session]): The tf-session to use to remove
-                the noise from the (currently noisy) weights.
+            tf_sess: The tf-session to use to remove the noise from the
+                (currently noisy) weights.
         """
         # Make sure we only remove noise iff currently noisy.
         assert self.weights_are_currently_noisy is True

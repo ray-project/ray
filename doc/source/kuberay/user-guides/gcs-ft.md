@@ -356,6 +356,52 @@ Note that Redis does this eviction and it doesn't guarantee that
 Ray won't use the deleted keys.
 ```
 
+### 5. Tune TCP keepalive for the Redis connection
+
+The GCS enables TCP keepalive on its connections to external Redis to detect
+unresponsive idle connections. Probes can also preserve idle flows through
+network devices that count TCP keepalive as activity. Set these environment
+variables on the head Pod to tune it:
+
+* `RAY_redis_tcp_keepalive_interval_seconds`: 30 by default. How long a
+  connection may sit idle before a keepalive probe, and the gap between probes.
+  Keep it **below the shortest idle timeout on the network path** to Redis
+  (cloud load balancers commonly use 60-350 seconds). An interval above that
+  timeout can't preserve the flow; whether probes prevent removal also depends
+  on the device's policy. Set it to `0` to
+  disable keepalive entirely and restore the previous socket behavior. Valid
+  values are `0` through `32767`.
+
+* `RAY_redis_tcp_keepalive_probes`: 3 by default. How many unanswered probes
+  declare an idle, unresponsive connection dead. On Linux, when all settings
+  succeed, detection takes about `interval * (1 + probes)` — roughly 2 minutes
+  with the defaults. This isn't a timeout for commands with data awaiting
+  acknowledgment; TCP retransmission behavior also matters. Valid values are
+  `1` through `127` when TCP keepalive is enabled.
+
+```{note}
+Linux, including musl-based builds, applies idle time, probe interval, and probe
+count when the TCP socket options are available. On macOS only idle time is
+applied. Windows applies idle time and probe interval, with an OS-controlled
+probe count. Other platforms use OS timing defaults.
+
+Invalid configuration and failure to enable keepalive fail the connection
+attempt without retries. On POSIX, failure to tune a timing option instead logs
+a warning and continues with keepalive enabled. Successful options remain
+applied; rejected options retain their previous values. In that case, the
+requested detection window may not apply. Windows uses a combined enable/tune
+operation and any failure still fails the connection attempt.
+```
+
+```{warning}
+In Ray versions without in-place Redis reconnect support, a connection declared
+dead causes the pending Redis operation to exhaust its retry budget and the GCS
+process to exit. Lowering `RAY_redis_tcp_keepalive_probes` or the interval shortens the
+window before that happens, so a transient network stall that the connection
+would otherwise have survived can terminate the GCS instead. Keep the detection
+window comfortably longer than any stall you expect to recover from.
+```
+
 ## Next steps
 
 * See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide-gcs>` for more information.

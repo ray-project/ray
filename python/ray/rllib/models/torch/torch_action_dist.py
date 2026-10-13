@@ -1,6 +1,6 @@
 import functools
 from math import log
-from typing import Optional
+from typing import Any, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -302,6 +302,9 @@ class TorchSquashedGaussian(TorchDistributionWrapper):
         """Parameterizes the distribution via `inputs`.
 
         Args:
+            inputs: The concatenated mean and log std values from which to
+                compute samples.
+            model: Reference to the model producing the inputs.
             low: The lowest possible sampling value
                 (excluding this value).
             high: The highest possible sampling value
@@ -482,21 +485,29 @@ class TorchDeterministic(TorchDistributionWrapper):
 class TorchMultiActionDistribution(TorchDistributionWrapper):
     """Action distribution that operates on multiple, possibly nested actions."""
 
-    def __init__(self, inputs, model, *, child_distributions, input_lens, action_space):
+    def __init__(
+        self,
+        inputs: TensorType,
+        model: TorchModelV2,
+        *,
+        child_distributions: Any,
+        input_lens: Any,
+        action_space: Union[gym.spaces.Dict, gym.spaces.Tuple]
+    ):
         """Initializes a TorchMultiActionDistribution object.
 
         Args:
-            inputs (torch.Tensor): A single tensor of shape [BATCH, size].
-            model (TorchModelV2): The TorchModelV2 object used to produce
+            inputs: A single tensor of shape [BATCH, size].
+            model: The TorchModelV2 object used to produce
                 inputs for this distribution.
-            child_distributions (any[torch.Tensor]): Any struct
+            child_distributions: Any struct
                 that contains the child distribution classes to use to
                 instantiate the child distributions from `inputs`. This could
                 be an already flattened list or a struct according to
                 `action_space`.
-            input_lens (any[int]): A flat list or a nested struct of input
+            input_lens: A flat list or a nested struct of input
                 split lengths used to split `inputs`.
-            action_space (Union[gym.spaces.Dict,gym.spaces.Tuple]): The complex
+            action_space: The complex
                 and possibly nested action space.
         """
         if not isinstance(inputs, torch.Tensor):
