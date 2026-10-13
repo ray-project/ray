@@ -20,6 +20,7 @@ from ray.serve._private.common import DeploymentID, ReplicaID, ReplicaState
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.test_utils import (
@@ -65,9 +66,18 @@ FAIL_ON_FLAG_IMPORT_PATH = "ray.serve.tests.test_config_files.fail_on_flag.build
 SURGE_DEPLOYMENT = {"name": "FailOnFlag", "num_replicas": 3, "max_surge_percent": 34}
 
 
+def _wait_for_app_build(deployment: str, app_name: str) -> None:
+    """Wait for the app build to register the deployment."""
+    wait_for_condition(
+        lambda: deployment in serve.status().applications[app_name].deployments,
+        timeout=60,
+    )
+
+
 def _deployment_details(
     client, deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
 ):
+    _wait_for_app_build(deployment, app_name)
     details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
@@ -84,6 +94,7 @@ def _running_replica_pids(
 def _replica_states(
     deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
 ) -> Dict[str, int]:
+    _wait_for_app_build(deployment, app_name)
     return serve.status().applications[app_name].deployments[deployment].replica_states
 
 
@@ -2294,6 +2305,15 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
             for r in replicas.get([ReplicaState.RUNNING])
         }
 
+    def applied_user_config(pid: int):
+        """Read the config applied by reconfigure() on the given replica."""
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+        for _ in range(60):
+            seen_pid, user_config = handle.applied_config.remote().result(timeout_s=30)
+            if seen_pid == pid:
+                return user_config
+        raise AssertionError(f"no response from replica {pid}")
+
     try:
         client.deploy_apps(_rolling_update_config(v1))
         wait_for_condition(check_running, timeout=60)
@@ -2318,10 +2338,14 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
                 set(_running_replica_pids(client)) - set(initial_pids)
             ).pop()
             assert running_max_ongoing_requests()[replaced_pid] == 7
+            assert applied_user_config(replaced_pid) is None
 
             # The change reconfigures nothing until the old replicas are gone.
+            user_config = {"flag": "lightweight"}
             client.deploy_apps(
-                _rolling_update_config({**v2, "max_ongoing_requests": 3})
+                _rolling_update_config(
+                    {**v2, "max_ongoing_requests": 3, "user_config": user_config}
+                )
             )
             wait_for_condition(lambda: _config_options(client) == (3, 3))
             deadline = time.monotonic() + 5
@@ -2330,6 +2354,7 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
                 assert check_stalled()
                 assert _deployment_details(client).status == "UPDATING"
                 assert running_max_ongoing_requests()[replaced_pid] == 7
+                assert applied_user_config(replaced_pid) is None
                 return time.monotonic() >= deadline
 
             wait_for_condition(check_still_stalled, raise_exceptions=True, timeout=20)
@@ -2338,10 +2363,12 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
             reserved = None
             wait_for_condition(check_running, timeout=90)
 
+        # Verify reconfiguration preserves the first replacement's PID.
         configured = running_max_ongoing_requests()
         assert len(configured) == 3 and set(configured.values()) == {3}, configured
         assert replaced_pid in configured
         assert not set(configured) & set(initial_pids)
+        assert applied_user_config(replaced_pid) == user_config
     finally:
         if reserved is not None:
             ray.util.remove_placement_group(reserved)
@@ -2539,6 +2566,118 @@ def test_autoscaling_after_a_failed_surge_rollout(serve_instance_with_signal):
         ray.get(signal.send.remote())
         for response in requests:
             response.cancel()
+
+
+def test_surge_rolling_update_with_deployment_actors(serve_instance_with_signal):
+    """Use separate actors per version and preserve them after a failed update."""
+    client, signal = serve_instance_with_signal
+    actor_prefix = (
+        f"{SERVE_DEPLOYMENT_ACTOR_PREFIX}{SERVE_DEFAULT_APP_NAME}::FailOnFlag::"
+    )
+
+    def live_deployment_actor_ids() -> set:
+        return {
+            a["actor_id"]
+            for a in list_actors(filters=[("state", "=", "ALIVE")])
+            if (a["name"] or "").startswith(actor_prefix)
+        }
+
+    def counter_actors(start: int) -> List[dict]:
+        return [
+            {
+                "name": "counter",
+                "actor_class": "ray.serve.tests.test_deployment_actors:SharedCounter",
+                "init_kwargs": {"start": start},
+            }
+        ]
+
+    def counters_by_pid() -> Dict[int, int]:
+        """Read each responding replica's deployment-actor counter."""
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+        responses = [handle.counter.remote() for _ in range(12)]
+        return dict(r.result(timeout_s=30) for r in responses)
+
+    v1 = {**SURGE_DEPLOYMENT, "deployment_actors": counter_actors(1)}
+    client.deploy_apps(_rolling_update_config(v1))
+    wait_for_condition(check_running, timeout=60)
+    initial_pids = _running_replica_pids(client)
+    assert len(live_deployment_actor_ids()) == 1
+    counters = counters_by_pid()
+    assert set(counters) <= set(initial_pids) and set(counters.values()) == {1}
+
+    with _background_traffic():
+        v2 = _env_override(
+            {**v1, "deployment_actors": counter_actors(2)},
+            BLOCK_INIT_ON_SIGNAL="1",
+            MARKER="v2",
+        )
+        client.deploy_apps(_rolling_update_config(v2))
+        wait_for_condition(
+            _check_surged,
+            client=client,
+            states={"RUNNING": 3, "STARTING": 2},
+            old_pids=initial_pids,
+        )
+        # Keep both versions' actors alive during the rollout.
+        assert len(live_deployment_actor_ids()) == 2
+        assert set(counters_by_pid().values()) == {1}
+
+        ray.get(signal.send.remote())
+
+        def check_replaced():
+            running = _running_replica_pids(client)
+            assert len(running) >= 3, _replica_states()
+            return (
+                _app_running()
+                and len(running) == 3
+                and not set(running) & set(initial_pids)
+            )
+
+        wait_for_condition(check_replaced, raise_exceptions=True, timeout=60)
+        replaced_pids = _running_replica_pids(client)
+        wait_for_condition(lambda: len(live_deployment_actor_ids()) == 1, timeout=30)
+        replaced_actor_ids = live_deployment_actor_ids()
+        counters = counters_by_pid()
+        assert set(counters) <= set(replaced_pids) and set(counters.values()) == {2}
+
+        # Failed actor startup must preserve the serving replicas.
+        failing = {
+            **v2,
+            "deployment_actors": [
+                {
+                    "name": "counter",
+                    "actor_class": (
+                        "ray.serve.tests.test_deployment_actors"
+                        ":FailingDeploymentActor"
+                    ),
+                    "init_kwargs": {"should_fail": True},
+                }
+            ],
+        }
+        client.deploy_apps(_rolling_update_config(failing))
+
+        def check_actor_failure_keeps_replicas():
+            assert _running_replica_pids(client) == replaced_pids
+            assert _replica_states() == {"RUNNING": 3}, _replica_states()
+            details = _deployment_details(client)
+            return (
+                details.status == "DEPLOY_FAILED"
+                and details.status_trigger == "DEPLOYMENT_ACTOR_FAILED"
+            )
+
+        wait_for_condition(
+            check_actor_failure_keeps_replicas, raise_exceptions=True, timeout=60
+        )
+        _assert_rollout_stays_stopped(client, replaced_pids)
+        assert live_deployment_actor_ids() == replaced_actor_ids
+        assert set(counters_by_pid().values()) == {2}
+
+        # Rolling back reuses the replicas and their actor.
+        client.deploy_apps(_rolling_update_config(v2))
+        wait_for_condition(check_running, timeout=60)
+        assert _running_replica_pids(client) == replaced_pids
+        assert live_deployment_actor_ids() == replaced_actor_ids
+        assert set(counters_by_pid().values()) == {2}
 
 
 if __name__ == "__main__":

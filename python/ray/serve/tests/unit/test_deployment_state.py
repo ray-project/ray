@@ -12557,6 +12557,107 @@ class TestMaxSurge:
         _assert_rollout_frozen(dsm, ds, v1, num_old=2)
         check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 1, v2)])
 
+    def _deploy_running_with_actors(self, dsm, version: str, **config_opts):
+        info, v = deployment_info(
+            num_replicas=4,
+            version=version,
+            max_surge_percent=50,
+            deployment_actors=_deployment_actors_config(),
+            **config_opts,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, version).set_ready()
+        dsm.update()
+        for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        return ds, info, v
+
+    def test_surge_waits_for_the_new_version_actors(
+        self, mock_deployment_state_manager
+    ):
+        """Wait for new actors and retain old actors until their replicas stop."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds, _, v1 = self._deploy_running_with_actors(dsm, version="1")
+        actors_v1 = _get_deployment_actor_wrapper(ds, "1")
+
+        info_2, v2 = deployment_info(
+            num_replicas=4,
+            version="2",
+            max_surge_percent=50,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        # Nothing starts or stops until the new actors are ready.
+        for _ in range(3):
+            dsm.update()
+            check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v1)])
+        actors_v2 = _get_deployment_actor_wrapper(ds, "2")
+        assert not actors_v1.killed
+        actors_v2.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=6,
+            by_state=[(ReplicaState.RUNNING, 4, v1), (ReplicaState.STARTING, 2, v2)],
+        )
+
+        for _ in range(20):
+            for replica in ds._replicas.get(states=[ReplicaState.STARTING]):
+                replica._actor.set_ready()
+            self._tick(dsm, ds, target=4)
+            if any(r.version == v1 for r in ds._replicas.get()):
+                assert not actors_v1.killed
+            if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
+                break
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert actors_v1.killed and not actors_v2.killed
+
+    def test_failed_new_version_actors_keep_the_old_version(
+        self, mock_deployment_state_manager
+    ):
+        """Keep old replicas and actors when new actors fail, including on rollback."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        ds, info_1, v1 = self._deploy_running_with_actors(
+            dsm, version="1", max_constructor_retry_count=3
+        )
+        actors_v1 = _get_deployment_actor_wrapper(ds, "1")
+
+        info_2, _ = deployment_info(
+            num_replicas=4,
+            version="2",
+            max_surge_percent=50,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        for _ in range(ds._deployment_actor_failed_to_start_threshold):
+            dsm.update()
+            _get_deployment_actor_wrapper(ds, "2").set_failed_to_start("boom")
+            dsm.update()
+        assert ds.deployment_actor_terminally_failed()
+        dsm.update()
+        assert (
+            ds.curr_status_info.status_trigger
+            == DeploymentStatusTrigger.DEPLOYMENT_ACTOR_FAILED
+        )
+        _assert_rollout_frozen(dsm, ds, v1, num_old=4)
+        assert not actors_v1.killed
+
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+        dsm.update()
+        check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v1)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert not actors_v1.killed
+
     def test_unplaceable_replacements_wait(self, mock_deployment_state_manager):
         create_dsm, _, _, _ = mock_deployment_state_manager
         dsm: DeploymentStateManager = create_dsm()

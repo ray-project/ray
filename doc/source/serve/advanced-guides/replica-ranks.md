@@ -12,7 +12,7 @@ myst:
 This API is experimental and may change between Ray minor versions.
 :::
 
-Replica ranks provide a unique identifier for **each replica within a deployment**. Each replica receives a **`ReplicaRank` object** containing rank information and **a world size (the total number of replicas)**. The rank object includes a global rank (an integer from 0 to N-1), a node rank, and a local rank on the node.
+Replica ranks provide a unique identifier for **each replica within a deployment**. Each replica receives a **`ReplicaRank` object** containing rank information and **a world size (the total number of replicas)**. The rank object includes a global rank (normally an integer from 0 to N-1), a node rank, and a local rank on the node.
 
 ## Access replica ranks
 
@@ -38,7 +38,7 @@ The [`ReplicaContext`](../api/doc/ray.serve.context.ReplicaContext.rst) provides
 - `world_size`: The target number of replicas for the deployment.
 
 The `ReplicaRank` object contains three fields:
-- `rank`: The global rank (an integer from 0 to N-1) representing this replica's unique identifier across all nodes.
+- `rank`: The global rank (normally an integer from 0 to N-1) representing this replica's unique identifier across all nodes.
 - `node_rank`: The rank of the node this replica runs on (an integer from 0 to M-1 where M is the number of nodes).
 - `local_rank`: The rank of this replica on its node (an integer from 0 to K-1 where K is the number of replicas on this node).
 
@@ -109,6 +109,14 @@ This design choice prevents rank reassignment from interfering with ongoing depl
 :::
 
 :::{note}
+**Surge rolling updates can assign ranks at or above `world_size`**
+
+With `max_surge_percent > 0`, replacement replicas start while old replicas still hold their ranks. A replacement can initialize with a rank at or above `world_size`. For a single-replica deployment, the replacement starts with rank 1 and `world_size` 1.
+
+Don't use rank to index a structure of size `world_size` during a surge rollout, including in `__init__` or `reconfigure`. After the rollout reaches `HEALTHY`, the controller restores ranks to 0 through N-1. To receive rank changes through `reconfigure`, follow the requirements above.
+:::
+
+:::{note}
 **Ranks don't influence scheduling or eviction decisions**
 
 Replica ranks are independent of scheduling and eviction decisions. The deployment scheduler doesn't consider ranks when placing replicas on nodes, so there's no guarantee that replicas with contiguous ranks (such as rank 0 and rank 1) will be on the same node. Similarly, during downscaling, the autoscaler's eviction decisions don't take replica ranks into account—any replica can be chosen for removal regardless of its rank.
@@ -118,7 +126,7 @@ If you need rank-aware scheduling or eviction (for example, to colocate replicas
 
 Ray Serve manages replica ranks automatically throughout the deployment lifecycle. The system maintains these invariants:
 
-1. Ranks are contiguous integers from 0 to N-1.
+1. Ranks converge to contiguous integers from 0 to N-1 after the deployment reaches `HEALTHY`. During a surge rollout, ranks can be at or above `world_size`.
 2. Each running replica has exactly one rank.
 3. No two replicas share the same rank.
 
