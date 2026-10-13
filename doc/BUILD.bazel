@@ -561,7 +561,7 @@ py_test(
     srcs = ["test_myst_doc.py"],
     args = [
         "--path",
-        "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb",
+        "doc/source/train/examples/pytorch/pytorch-resnet-finetune.ipynb",
     ],
     data = ["//doc/source/train/examples/pytorch:train_pytorch_examples"],
     main = "test_myst_doc.py",

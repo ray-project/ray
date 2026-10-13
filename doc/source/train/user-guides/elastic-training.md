@@ -8,16 +8,16 @@ myst:
 
 # Elastic training
 
-Ray Train supports elastic training, enabling jobs to seamlessly adapt to changes in resource availability. This behavior ensures continuous execution despite hardware failures or node preemptions, avoiding idle or wasted time. As more nodes become available, the cluster dynamically scales up to speed up training with more worker processes.
+Ray Train supports elastic training, where a job adapts to changes in resource availability. Training keeps running through hardware failures and node preemptions instead of sitting idle. As more nodes become available, the cluster scales up to speed up training with more worker processes.
 
-To enable elastic training, use {attr}`~ray.train.ScalingConfig.num_workers` to specify `(min_workers, max_workers)` as a tuple instead of a fixed worker group size. You should also set {attr}`~ray.train.FailureConfig.max_failures` so that training can recover from worker failures instead of exiting immediately.
+To enable elastic training, set {attr}`~ray.train.ScalingConfig.num_workers` to a `(min_workers, max_workers)` tuple instead of a fixed worker group size. Also set {attr}`~ray.train.FailureConfig.max_failures` so that training can recover from worker failures instead of exiting immediately.
 
 The following examples show how to configure elastic training with GPUs and TPUs:
 
 ::::{tab-set}
 :::{tab-item} GPU
 :sync: GPU
-The following example configures elastic training with a range of 1-8 GPU workers:
+The following example configures elastic training with one to eight GPU workers:
 
 ```python
 from ray.train import FailureConfig, RunConfig, ScalingConfig
@@ -46,7 +46,7 @@ trainer.fit()
 
 :::{tab-item} TPU
 :sync: TPU
-The following example configures elastic training with a range of 1-2 `v6e` TPU slices. Each `num_workers` value maps to the total number of TPU VM hosts across all slices. In this example, we use a `4x4` TPU topology, one slice has 4 hosts, so we set both `min_workers` and `max_workers` to multiples of 4.
+The following example configures elastic training with one or two `v6e` TPU slices. Each `num_workers` value maps to the total number of TPU VM hosts across all slices. This example uses a `4x4` TPU topology, where one slice has four hosts, so both `min_workers` and `max_workers` are multiples of four.
 
 ```python
 from ray.train import FailureConfig, RunConfig, ScalingConfig
@@ -76,17 +76,23 @@ trainer.fit()
 :::
 ::::
 
-For TPU elastic training, set `min_workers` and `max_workers` to multiples of the number of hosts in one TPU slice. Ray Train resizes TPU jobs by complete slices so that workers are placed on intact TPU topologies. For more details, see {ref}`train_scaling_config`.
+For TPU elastic training, set `min_workers` and `max_workers` to multiples of the number of hosts in one TPU slice. Ray Train resizes TPU jobs by complete slices so that workers are placed on intact TPU topologies. For details, see {ref}`train_scaling_config`.
 
-## How it works
+## How does elastic training work?
 
-### Starting with available workers
+Ray Train adjusts the worker group when training starts, when a failure happens, and when more nodes become available.
 
-Ray Train always requests `max_workers` number of workers. If it can't get all of them, it starts when `min_workers` is available so training can begin without waiting for the full set of resources.
+(starting-with-available-workers)=
 
-### When failures happen
+### How does training start?
 
-If any failures happen (for example, a worker crashes or a node is preempted), Ray Train restarts with fewer workers. It then attempts again to bring the worker group back up to `max_workers`. Without a retry limit, the run would exit on the first such failure. To allow the run to retry when worker failures occur, configure {attr}`~ray.train.RunConfig.failure_config` with {attr}`~ray.train.FailureConfig.max_failures`:
+Ray Train always requests `max_workers` workers. If it can't get all of them, it starts once `min_workers` workers are available, so training begins without waiting for the full set of resources.
+
+(when-failures-happen)=
+
+### What happens when a failure occurs?
+
+When a failure happens, such as a worker crash or a node preemption, Ray Train restarts with fewer workers. It then tries again to bring the worker group back up to `max_workers`. Without a retry limit, the run exits on the first such failure. To retry the run when worker failures occur, configure {attr}`~ray.train.RunConfig.failure_config` with {attr}`~ray.train.FailureConfig.max_failures`:
 
 ```{code-block} python
 :emphasize-lines: 4
@@ -103,9 +109,11 @@ trainer = TorchTrainer(
 )
 ```
 
-### When more nodes become available
+(when-more-nodes-become-available)=
 
-If the cluster gets more nodes eventually, Ray Train can resize the worker group and restart with the new workers added, so training can use the extra capacity. By default, the controller considers resizing every 60 seconds while the worker group is healthy. To change how often resize decisions are made, set {attr}`~ray.train.ScalingConfig.elastic_resize_monitor_interval_s` in your scaling config:
+### What happens when more nodes become available?
+
+If the cluster later gains more nodes, Ray Train can resize the worker group and restart with the new workers added, so training uses the extra capacity. By default, the controller considers resizing every 60 seconds while the worker group is healthy. To change how often the controller makes resize decisions, set {attr}`~ray.train.ScalingConfig.elastic_resize_monitor_interval_s` in your scaling configuration:
 
 ```python
 # Consider resizing the worker group every 30 seconds (default is 60)
@@ -118,11 +126,11 @@ scaling_config = ScalingConfig(
 
 ## Configure cluster autoscaling
 
-For elastic training to scale up when more resources become available, the cluster autoscaler must be configured to match your elastic training settings. Specifically, the cluster should be able to provision up to `max_workers` nodes and scale down to `min_workers` nodes.
+For elastic training to scale up when more resources become available, configure the cluster autoscaler to match your elastic training settings. The cluster needs to be able to provision up to `max_workers` nodes and scale down to `min_workers` nodes.
 
 :::::{tab-set}
 ::::{tab-item} KubeRay
-Set the `minReplicas` and `maxReplicas` fields on your worker group to match the elastic training range. The following example configures a worker group that can scale between 1 and 8 nodes:
+Set the `minReplicas` and `maxReplicas` fields on your worker group to match the elastic training range. The following example configures a worker group that can scale between one and eight nodes:
 
 ```{code-block} yaml
 :emphasize-lines: 3,4
@@ -140,12 +148,12 @@ workerGroupSpecs:
 ```
 
 :::{note}
-If the Kubernetes cluster itself doesn't have enough physical nodes, you also need to configure a Kubernetes-level autoscaler (such as the Cluster Autoscaler or Karpenter) so that new Kubernetes nodes are provisioned for the Ray worker pods. See {ref}`kuberay-autoscaling-config` for more details.
+If the Kubernetes cluster doesn't have enough physical nodes, also configure a Kubernetes-level autoscaler, such as the Cluster Autoscaler or Karpenter, to provision new Kubernetes nodes for the Ray worker Pods. For details, see {ref}`kuberay-autoscaling-config`.
 :::
 ::::
 
 :::{tab-item} VMs
-Set the `min_workers` and `max_workers` fields in your cluster config to match the elastic training range:
+Set the `min_workers` and `max_workers` fields in your cluster configuration to match the elastic training range:
 
 ```{code-block} yaml
 :emphasize-lines: 5,6
@@ -158,6 +166,6 @@ available_node_types:
     max_workers: 8
 ```
 
-See {ref}`vms-autoscaling` for more details.
+For details, see {ref}`vms-autoscaling`.
 :::
 :::::

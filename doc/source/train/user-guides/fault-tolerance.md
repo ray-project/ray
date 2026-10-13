@@ -6,36 +6,36 @@ myst:
 
 (train-fault-tolerance)=
 
-# Handling Failures and Node Preemption
+# Handle failures and node preemption
 
 :::{important}
-This user guide shows how to configure fault tolerance for the revamped Ray Train V2 available starting from Ray 2.43 by enabling the environment variable `RAY_TRAIN_V2_ENABLED=1`. **This user guide assumes that the environment variable has been enabled.**
+This guide covers fault tolerance for Ray Train V2, which is available starting in Ray 2.43 when you set the environment variable `RAY_TRAIN_V2_ENABLED=1`. This guide assumes that you've set this environment variable.
 
-Please see {ref}`here <train-fault-tolerance-deprecation-info>` for information about the deprecation and migration.
+For information about the deprecation and migration, see {ref}`Fault tolerance API deprecations <train-fault-tolerance-deprecation-info>`.
 :::
 
 
 Ray Train provides fault tolerance at three levels:
 
-1. **Worker process fault tolerance** handles errors that happen to one or more Train worker processes while they are executing the user defined training function.
-2. **Worker node fault tolerance** handles node failures that may occur during training.
-3. **Job driver fault tolerance** handles the case where Ray Train driver process crashes, and training needs to be kicked off again, possibly from a new cluster.
+- **Worker process fault tolerance**: Handles errors in one or more workers while they run the training function.
+- **Worker node fault tolerance**: Handles node failures during training.
+- **Job driver fault tolerance**: Handles a crash of the Ray Train driver process, after which training needs to start again, possibly on a new cluster.
 
-This user guide covers how to configure and use these fault tolerance mechanisms. It also covers how to {ref}`save a just-in-time checkpoint <train-preemption-fault-tolerance>` before a node is preempted, so that a restart loses as little progress as possible.
+This guide shows how to configure and use these fault tolerance mechanisms. It also shows how to {ref}`save a just-in-time checkpoint <train-preemption-fault-tolerance>` before a node is preempted, so that a restart loses as little progress as possible.
 
 (train-worker-fault-tolerance)=
 
-## Worker Process and Node Fault Tolerance
+## Worker process and node fault tolerance
 
-**Worker process failures** are errors that occur within the user defined training function of a training worker, such as GPU out-of-memory (OOM) errors, cloud storage access errors, or other runtime errors.
+*Worker process failures* are errors that occur within the training function of a worker, such as GPU out-of-memory (OOM) errors, cloud storage access errors, or other runtime errors.
 
-**Node failures** are errors that bring down the entire node, including node preemption, OOM, network partitions, or other hardware failures. This section covers worker node failures. Recovery from head node failures is discussed in the {ref}`next section <train-job-driver-fault-tolerance>`.
+*Node failures* are errors that bring down the entire node, including node preemption, OOM, network partitions, or other hardware failures. This section covers worker node failures. {ref}`Job driver fault tolerance <train-job-driver-fault-tolerance>` covers recovery from head node failures.
 
-Ray Train can be configured to automatically recover from worker process and worker node failures. When a failure is detected, all the workers are shut down, new nodes are added if necessary, and a new set of workers is started. The restarted training worker processes can resume training by loading the latest checkpoint.
+You can configure Ray Train to recover automatically from worker process and worker node failures. When Ray Train detects a failure, it shuts down all the workers. New nodes join the cluster if necessary, and Ray Train starts a new set of workers. The restarted workers can resume training by loading the latest checkpoint.
 
-In order to retain progress upon recovery, your training function should implement logic for both {ref}`saving <train-dl-saving-checkpoints>` *and* {ref}`loading checkpoints <train-dl-loading-checkpoints>`. Otherwise, the training will just start from scratch.
+To retain progress after recovery, implement logic in your training function for both {ref}`saving <train-dl-saving-checkpoints>` *and* {ref}`loading checkpoints <train-dl-loading-checkpoints>`. Otherwise, training starts from scratch.
 
-Each recovery from a worker process or node failure is considered a retry. The number of retries is configurable through the `max_failures` attribute of the {class}`~ray.train.FailureConfig` argument set in the {class}`~ray.train.RunConfig` passed to the `Trainer`. By default, worker fault tolerance is disabled with `max_failures=0`.
+Each recovery from a worker process or node failure counts as a retry. To configure the number of retries, set the `max_failures` attribute of the {class}`~ray.train.FailureConfig` in the {class}`~ray.train.RunConfig` that you pass to the trainer. The default, `max_failures=0`, disables worker fault tolerance.
 
 ```{literalinclude} ../doc_code/fault_tolerance.py
 :language: python
@@ -43,7 +43,7 @@ Each recovery from a worker process or node failure is considered a retry. The n
 :end-before: __failure_config_end__
 ```
 
-Altogether, this is what an example Torch training script with worker fault tolerance looks like:
+The following example shows a complete PyTorch training script with worker fault tolerance:
 
 ```{literalinclude} ../doc_code/fault_tolerance.py
 :language: python
@@ -52,17 +52,19 @@ Altogether, this is what an example Torch training script with worker fault tole
 ```
 
 
-### Which checkpoint will be restored?
+(which-checkpoint-will-be-restored)=
 
-Ray Train will populate {func}`ray.train.get_checkpoint() <ray.train.get_checkpoint>` with the latest available {ref}`checkpoint reported to Ray Train <train-checkpointing>`. The {class}`~ray.train.Checkpoint` object returned by this method has the {meth}`~ray.train.Checkpoint.as_directory` and {meth}`~ray.train.Checkpoint.to_directory` methods to download the checkpoint from the {class}`RunConfig(storage_path) <ray.train.RunConfig>` to local disk.
+### Which checkpoint is restored?
+
+Ray Train populates {func}`ray.train.get_checkpoint() <ray.train.get_checkpoint>` with the latest available {ref}`checkpoint reported to Ray Train <train-checkpointing>`. The {class}`~ray.train.Checkpoint` object that this method returns has the {meth}`~ray.train.Checkpoint.as_directory` and {meth}`~ray.train.Checkpoint.to_directory` methods, which download the checkpoint from the {class}`RunConfig(storage_path) <ray.train.RunConfig>` to local disk.
 
 :::{note}
-{meth}`~ray.train.Checkpoint.as_directory` and {meth}`~ray.train.Checkpoint.to_directory` will only download the checkpoint once per node even if there are multiple workers on the node. The workers share the same checkpoint directory on local disk.
+{meth}`~ray.train.Checkpoint.as_directory` and {meth}`~ray.train.Checkpoint.to_directory` download the checkpoint only once per node, even if the node runs multiple workers. The workers share the same checkpoint directory on local disk.
 :::
 
-### Illustrated Example
+### Illustrated example
 
-Consider the following example of a cluster containing a CPU head node and 2 GPU worker nodes. There are 4 GPU training workers running on the 2 worker nodes. The {ref}`storage path has been configured <persistent-storage-guide>` to use cloud storage, which is where checkpoints are saved.
+Consider a cluster with a CPU head node and two GPU worker nodes. Four GPU training workers run on the two worker nodes. You've configured the {ref}`storage path <persistent-storage-guide>` to use cloud storage, which is where checkpoints are saved.
 
 ```{figure} ../images/fault_tolerance/worker_failure_start.png
 :align: left
@@ -73,15 +75,15 @@ Training has been running for some time, and the latest checkpoint has been save
 ```{figure} ../images/fault_tolerance/worker_node_failure.png
 :align: left
 
-One of the worker GPU nodes fails due to a hardware fault. Ray Train detects this failure and shuts down all the workers.
-Since the number of failures detected so far is less than the configured `max_failures`, Ray Train will attempt to restart training,
-rather than exiting and raising an error.
+One of the GPU worker nodes fails because of a hardware fault. Ray Train detects this failure and shuts down all the workers.
+Because the number of failures detected so far is less than the configured `max_failures`, Ray Train attempts to restart training
+rather than exit and raise an error.
 ```
 
 ```{figure} ../images/fault_tolerance/worker_node_replacement.png
 :align: left
 
-Ray Train has requested a new worker node to join the cluster and is waiting for it to come up.
+Ray Train requests a new worker node to join the cluster and waits for it to come up.
 ```
 
 ```{figure} ../images/fault_tolerance/worker_group_recovery.png
@@ -137,7 +139,7 @@ To test your just-in-time checkpointing on any cluster, drain a worker node manu
 
 Ray Train handles a preemption in four steps:
 
-1. Ray Train polls Ray Core every few seconds for draining nodes and ignores nodes that don't host train workers. On a TPU slice, a drain on any host marks every worker in the slice as preempted, because the cloud provider preempts the whole slice at once.
+1. Ray Train polls Ray Core every few seconds for draining nodes and ignores nodes that don't host training workers. On a TPU slice, a drain on any host marks every worker in the slice as preempted, because the cloud provider preempts the whole slice at once.
 1. Every worker, including workers on healthy nodes, receives the same {class}`~ray.train.PreemptionInfo` from {func}`~ray.train.get_preemption_info`. It lists the preempted node IDs, the affected world ranks in `preempted_ranks`, and the drain deadline in `deadline_ms`, which is a UNIX timestamp in milliseconds.
 1. Ray Train keeps every worker running so that your code can save a checkpoint. It waits until all workers exit or the drain deadline passes. If the drain has no deadline, Ray Train waits 120 seconds after it detects the preemption.
 1. Ray Train shuts down the worker group and restarts the run from the latest reported checkpoint on replacement nodes.
@@ -197,30 +199,30 @@ Only set `relax_collectives_on_preemption=True` if the surviving workers can wri
 (train-job-driver-fault-tolerance)=
 
 
-## Job Driver Fault Tolerance
+## Job driver fault tolerance
 
-Job driver fault tolerance is to handle cases where the Ray Train driver process is interrupted. The Ray Train driver process is the process that calls `trainer.fit()` and is usually located on the head node of the cluster.
+Job driver fault tolerance handles cases where the Ray Train driver process is interrupted. The Ray Train driver process is the process that calls `trainer.fit()`, and it usually runs on the head node of the cluster.
 
-The driver process may be interrupted due to one of the following reasons:
+Any of the following events can interrupt the driver process:
 
-- The run is manually interrupted by a user (e.g., Ctrl+C).
-- The node where the driver process is running (head node) crashes (e.g., out of memory, out of disk).
-- The entire cluster goes down (e.g., network error affecting all nodes).
+- You interrupt the run manually, for example with Ctrl+C.
+- The head node, which runs the driver process, crashes. For example, it runs out of memory or out of disk.
+- The entire cluster goes down, for example because of a network error that affects all nodes.
 
-In these cases, the Ray Train driver (which calls `trainer.fit()`) needs to be launched again. The relaunched Ray Train driver needs to find a minimal amount of run state in order to pick up where the previous run left off. This state includes the latest reported checkpoints, which are located at the {ref}`storage path <persistent-storage-guide>`. Ray Train fetches the latest checkpoint information from storage and passes it to the newly launched worker processes to resume training.
+In these cases, the Ray Train driver needs to be launched again. To pick up where the previous run left off, the relaunched driver needs to find a minimal amount of run state. This state includes the latest reported checkpoints, which are located at the {ref}`storage path <persistent-storage-guide>`. Ray Train fetches the latest checkpoint information from storage and passes it to the newly launched worker processes to resume training.
 
-To find this run state, Ray Train relies on passing in the **same** {class}`RunConfig(storage_path, name) <ray.train.RunConfig>` pair as the previous run. If the `storage_path` or `name` do not match, Ray Train will not be able to find the previous run state and will start a new run from scratch.
+To find this run state, Ray Train relies on you passing the same {class}`RunConfig(storage_path, name) <ray.train.RunConfig>` pair as the previous run. If the `storage_path` or `name` doesn't match, Ray Train can't find the previous run state and starts a new run from scratch.
 
 :::{warning}
-If `name` is reused unintentionally, Ray Train will fetch the previous run state, even if the user is trying to start a new run. Therefore, always pass a unique run name when launching a new run. In other words, `name` should be a unique identifier for a training job.
+If you reuse a `name` unintentionally, Ray Train fetches the previous run state, even if you're trying to start a new run. Always pass a unique run name when you launch a new run, so that `name` uniquely identifies a training job.
 :::
 
 :::{note}
-Job driver crashes and interrupts do not count toward the `max_failures` limit of {ref}`worker fault tolerance <train-worker-fault-tolerance>`.
+Job driver crashes and interrupts don't count toward the `max_failures` limit of {ref}`worker fault tolerance <train-worker-fault-tolerance>`.
 :::
 
 
-Here's an example training script that highlights best practices for job driver fault tolerance:
+The following example training script shows best practices for job driver fault tolerance:
 
 ```{literalinclude} ../doc_code/fault_tolerance.py
 :language: python
@@ -229,87 +231,86 @@ Here's an example training script that highlights best practices for job driver 
 ```
 
 
-Then, the entrypoint script can be launched with the following command:
+Launch the entrypoint script with the following command:
 
 ```bash
 python entrypoint.py --storage_path s3://my_bucket/ --run_name unique_run_id=da823d5
 ```
 
 
-If the job is interrupted, the same command can be used to resume training. This example shows a `da823d5` id, which is determined by the one launching the job. The id can often be used for other purposes such as setting the `wandb` or `mlflow` run id.
+If the job is interrupted, run the same command to resume training. This example uses `da823d5` as the run ID, which you choose when you launch the job. You can often reuse this ID for other purposes, such as the `wandb` or `mlflow` run ID.
 
 
-### Illustrated Example
+### Illustrated example
 
-Consider the following example of a cluster containing a CPU head node and 2 GPU worker nodes. There are 4 GPU training workers running on the 2 worker nodes. The storage path has been configured to use cloud storage, which is where checkpoints are saved.
+Consider a cluster with a CPU head node and two GPU worker nodes. Four GPU training workers run on the two worker nodes. You've configured the storage path to use cloud storage, which is where checkpoints are saved.
 
 
 ```{figure} ../images/fault_tolerance/cluster_failure_start.png
 :align: left
 
-Training has been running for some time, and the latest checkpoints and run state has been saved to storage.
+Training has been running for some time, and the latest checkpoints and run state have been saved to storage.
 ```
 
 
 ```{figure} ../images/fault_tolerance/head_node_failure.png
 :align: left
 
-The head node crashes for some reason (e.g., an out-of-memory error), and the Ray Train driver process is interrupted.
+The head node crashes, for example because of an out-of-memory error, which interrupts the Ray Train driver process.
 ```
 
 ```{figure} ../images/fault_tolerance/cluster_failure.png
 :align: left
 
-The entire cluster goes down due to the head node failure.
+The head node failure brings down the entire cluster.
 ```
 
 ```{figure} ../images/fault_tolerance/cluster_recovery.png
 :align: left
 
-A manual cluster restart or some job submission system brings up a new Ray cluster.
+A manual cluster restart or a job submission system brings up a new Ray cluster.
 The Ray Train driver process runs on a new head node.
-Ray Train fetches the run state information from storage at `{storage_path}/{name}` (e.g., `s3://my_bucket/my_run_name`)
+Ray Train fetches the run state information from storage at `{storage_path}/{name}`, such as `s3://my_bucket/my_run_name`,
 and passes the latest checkpoint to the newly launched worker processes to resume training.
 ```
 
 
 (train-fault-tolerance-deprecation-info)=
 
-## Fault Tolerance API Deprecations
+## Fault tolerance API deprecations
 
-### `<Framework>Trainer.restore` API Deprecation
+### `<Framework>Trainer.restore` API deprecation
 
 The `<Framework>Trainer.restore` and `<Framework>Trainer.can_restore` APIs are deprecated as of Ray 2.43 and will be removed in a future release.
 
 #### Motivation
 
-This API change provides several benefits:
+The old API saved user code to pickled files, which could cause deserialization issues that left runs unrecoverable.
 
-1. **Avoid saving user code to pickled files**: The old API saved user code to pickled files, which could lead to issues with deserialization, leading to unrecoverable runs.
-2. **Improved configuration experience**: While some configurations were loaded from the pickled files, certain arguments were required to be re-specified, and another subset of arguments could even be optionally re-specified. This confused users about the set of configurations that are actually being used in the restored run.
+It also made configuration confusing. The old API loaded some configurations from the pickled files, required you to re-specify certain arguments, and accepted optional re-specification of another subset of arguments. As a result, it was unclear which configuration the restored run used.
 
-#### Migration Steps
+#### Migration steps
 
-To migrate from the old `<Framework>Trainer.restore` API to the new pattern:
+To migrate from the old `<Framework>Trainer.restore` API to the new pattern, do the following:
 
 1. Enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
-2. Replace `<Framework>Trainer.restore` with the regular `<Framework>Trainer` constructor, making sure to pass in the same `storage_path` and `name` as the previous run.
+1. Replace `<Framework>Trainer.restore` with the regular `<Framework>Trainer` constructor, and pass the same `storage_path` and `name` as the previous run.
 
-### `<Framework>Trainer(restore_from_checkpoint)` API Deprecation
+### `<Framework>Trainer(restore_from_checkpoint)` API deprecation
 
 The `<Framework>Trainer(restore_from_checkpoint)` API is deprecated as of Ray 2.43 and will be removed in a future release.
 
 #### Motivation
 
-This API was a common source of confusion that provided minimal value. It was only used to set the initial value of `ray.train.get_checkpoint()` but did not load any other run state.
+This API was a common source of confusion and provided little value. It only set the initial value of `ray.train.get_checkpoint()` and didn't load any other run state.
 
-#### Migration Steps
+#### Migration steps
 
-Simply pass in the initial checkpoint through the `train_loop_config` argument. See the migration guide linked below for a code example.
+Pass the initial checkpoint through the `train_loop_config` argument instead. For a code example, see the Train V2 migration guide in the following section.
 
 
-### Additional Resources
+### Additional resources
 
-* [Train V2 Migration Guide](https://github.com/ray-project/ray/issues/49454): Full migration guide for Train V2
-* [Train V2 REP](https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md): Technical details about the API change
-* {ref}`train-fault-tolerance-deprecated-api`: Documentation for the old API
+- [Train V2 migration guide](https://github.com/ray-project/ray/issues/49454): Full migration guide for Train V2
+- [Train V2 Ray Enhancement Proposal (REP)](https://github.com/ray-project/enhancements/blob/main/reps/2024-10-18-train-tune-api-revamp/2024-10-18-train-tune-api-revamp.md): Technical details about the API change
+- {ref}`train-fault-tolerance-deprecated-api`: Documentation for the old API

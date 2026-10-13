@@ -6,19 +6,19 @@ myst:
 
 (train-docs)=
 
-# Ray Train: Scalable Model Training
+# Ray Train: Scalable model training
 
 ```{toctree}
 :hidden:
 
 Overview <overview>
-PyTorch Guide <getting-started-pytorch>
-PyTorch Lightning Guide <getting-started-pytorch-lightning>
-Hugging Face Transformers Guide <getting-started-transformers>
-XGBoost Guide <getting-started-xgboost>
-JAX Guide <getting-started-jax>
+PyTorch guide <getting-started-pytorch>
+PyTorch Lightning guide <getting-started-pytorch-lightning>
+Hugging Face Transformers guide <getting-started-transformers>
+XGBoost guide <getting-started-xgboost>
+JAX guide <getting-started-jax>
 more-frameworks
-User Guides <user-guides>
+User guides <user-guides/index>
 Tutorials </_collections/train/tutorials/README>
 Examples <examples>
 Benchmarks <benchmarks>
@@ -34,16 +34,16 @@ Benchmarks <benchmarks>
 
 Ray Train is a scalable machine learning library for distributed training and fine-tuning.
 
-Ray Train allows you to scale model training code from a single machine to a cluster of machines in the cloud, and abstracts away the complexities of distributed computing. Whether you have large models or large datasets, Ray Train is the simplest solution for distributed training.
+Use Ray Train to scale model training code from a single machine to a cluster of machines in the cloud, whether you have large models or large datasets. Ray Train abstracts away the complexities of distributed computing.
 
-Ray Train provides support for many frameworks:
+Ray Train supports many frameworks, including the following:
 
 ```{list-table}
 :widths: 1 1
 :header-rows: 1
 
-* - PyTorch Ecosystem
-  - More Frameworks
+* - PyTorch ecosystem
+  - More frameworks
 * - PyTorch
   - TensorFlow
 * - PyTorch Lightning
@@ -58,7 +58,7 @@ Ray Train provides support for many frameworks:
 
 ## Install Ray Train
 
-To install Ray Train, run:
+To install Ray Train, run the following command:
 
 ```console
 $ pip install -U "ray[train]"
@@ -92,7 +92,7 @@ Learn the basics
 **PyTorch**
 ^^^
 
-Get started on distributed model training with Ray Train and PyTorch.
+Get started with distributed model training using Ray Train and PyTorch.
 
 +++
 ```{button-ref} train-pytorch
@@ -108,7 +108,7 @@ Try Ray Train with PyTorch
 **PyTorch Lightning**
 ^^^
 
-Get started on distributed model training with Ray Train and Lightning.
+Get started with distributed model training using Ray Train and Lightning.
 
 +++
 ```{button-ref} train-pytorch-lightning
@@ -124,7 +124,7 @@ Try Ray Train with Lightning
 **Hugging Face Transformers**
 ^^^
 
-Get started on distributed model training with Ray Train and Transformers.
+Get started with distributed model training using Ray Train and Transformers.
 
 +++
 ```{button-ref} train-pytorch-transformers
@@ -140,7 +140,7 @@ Try Ray Train with Transformers
 **JAX**
 ^^^
 
-Get started on distributed model training with Ray Train and JAX.
+Get started with distributed model training using Ray Train and JAX.
 
 +++
 ```{button-ref} train-jax
@@ -160,10 +160,10 @@ Try Ray Train with JAX
 :class-container: container pb-6
 
 :::{grid-item-card}
-**More Frameworks**
+**More frameworks**
 ^^^
 
-Don't see your framework? See these guides.
+Don't see your framework? See the guides for more frameworks.
 
 +++
 ```{button-ref} train-more-frameworks
@@ -176,7 +176,7 @@ Try Ray Train with other frameworks
 :::
 
 :::{grid-item-card}
-**User Guides**
+**User guides**
 ^^^
 
 Get how-to instructions for common training tasks with Ray Train.
@@ -195,7 +195,7 @@ Read how-to guides
 **Tutorials**
 ^^^
 
-Hands-on tutorials covering ML workload patterns from vision to recommendation systems.
+Work through hands-on tutorials that cover ML workload patterns, from vision to recommendation systems.
 
 +++
 ```{button-ref} /_collections/train/tutorials/README
@@ -229,7 +229,7 @@ Learn through examples
 **API**
 ^^^
 
-Consult the API Reference for full descriptions of the Ray Train API.
+See the API reference for full descriptions of the Ray Train API.
 
 +++
 ```{button-ref} train-api
@@ -237,7 +237,7 @@ Consult the API Reference for full descriptions of the Ray Train API.
 :outline:
 :expand:
 
-Read the API Reference
+Read the API reference
 ```
 :::
 ::::

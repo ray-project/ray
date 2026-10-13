@@ -11,7 +11,7 @@ myst:
 ```{toctree}
 :hidden:
 
-../ray-air/getting-started
+ml-infrastructure
 ```
 
 This page indexes common Ray use cases for scaling ML. It contains highlighted references to blogs, examples, and tutorials also located elsewhere in the Ray documentation.
@@ -120,8 +120,8 @@ Learn more about the Train library with the following talks and user guides.
 
 - [[Talk] Ray Train, PyTorch, TorchX, and distributed deep learning](https://www.youtube.com/watch?v=e-A93QftCfc)
 - [[Blog] Elastic Distributed Training with XGBoost on Ray](https://www.uber.com/blog/elastic-xgboost-ray/)
-- {doc}`[Guide] Getting Started with Ray Train </train/train>`
-- {doc}`[Example] Fine-tune a 🤗 Transformers model </train/examples/transformers/huggingface_text_classification>`
+- {doc}`[Guide] Getting Started with Ray Train </train/index>`
+- {doc}`[Example] Fine-tune a 🤗 Transformers model </train/examples/transformers/huggingface-text-classification>`
 - {doc}`[Gallery] Ray Train Examples Gallery </train/examples>`
 - [[Gallery] More Train Use Cases on the Blog](https://www.anyscale.com/blog?tag=ray_train)
 
@@ -161,8 +161,8 @@ Read more about building ML platforms with Ray in {ref}`this section <ray-for-ml
 
 The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
-- {doc}`[Example] Text classification with Ray </train/examples/transformers/huggingface_text_classification>`
-- {doc}`[Example] Object detection with Ray </train/examples/pytorch/torch_detection>`
+- {doc}`[Example] Text classification with Ray </train/examples/transformers/huggingface-text-classification>`
+- {doc}`[Example] Object detection with Ray </train/examples/pytorch/torch-detection>`
 - {doc}`[Example] Machine learning on tabular data </_collections/ray-overview/examples/e2e-xgboost/README>`
 
 ## Large Scale Workload Orchestration

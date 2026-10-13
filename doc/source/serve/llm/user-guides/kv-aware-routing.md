@@ -181,6 +181,8 @@ The router scores requests using token IDs, so each request is tokenized at the 
 
 - **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
 
+You can use `KVAwareRouter` with Anthropic Messages (`/v1/messages`) clients such as Claude Code. Use the same routing configuration as for OpenAI requests.
+
 
 ### Scaling the ingress tier
 
