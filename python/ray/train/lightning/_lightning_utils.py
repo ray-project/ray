@@ -359,7 +359,9 @@ class RayTrainReportCallback(pl.callbacks.Callback):
                 metrics=metrics,
                 checkpoint=checkpoint,
                 checkpoint_upload_mode=self.checkpoint_upload_mode,
-                validation=self.validation,
+                # `validation` requires a checkpoint to be provided, so only pass
+                # it through on epochs where one is actually being reported.
+                validation=self.validation if should_checkpoint else False,
             )
         else:
             ray.train.report(metrics=metrics, checkpoint=checkpoint)
