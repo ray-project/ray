@@ -52,6 +52,8 @@ ray_cc_library(
         ":authentication_mode",
         ":authentication_token",
         ":k8s_constants",
+        "//src/ray/common:ray_config",
+        "//src/ray/util:env",
         "//src/ray/util:logging",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
