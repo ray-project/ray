@@ -23,7 +23,10 @@ def auth_env(monkeypatch, tmp_path):
     reset_auth_token_state()
 
 
-def _container_command(context: Optional[RuntimeEnvContext] = None) -> str:
+def _container_command(
+    context: Optional[RuntimeEnvContext] = None,
+    runtime_env_dir: Optional[str] = None,
+) -> str:
     context = context or RuntimeEnvContext()
     _modify_context_impl(
         "fake-image",
@@ -32,6 +35,7 @@ def _container_command(context: Optional[RuntimeEnvContext] = None) -> str:
         context,
         logging.getLogger(__name__),
         "/tmp/ray",
+        runtime_env_dir,
     )
     return context.py_executable
 
@@ -87,6 +91,34 @@ def test_no_mount_when_auth_disabled(auth_env, tmp_path):
 
     assert ":ro" not in command
     assert "RAY_AUTH_TOKEN_PATH" not in command
+
+
+def test_mounts_session_dir_and_masks_runtime_resources(auth_env):
+    command = _container_command(
+        runtime_env_dir="/tmp/ray/session_1/runtime_resources"
+    ).split()
+
+    assert "/tmp/ray:/tmp/ray" not in command
+    assert command[2:6] == [
+        "-v",
+        "/tmp/ray/session_1:/tmp/ray/session_1",
+        "--tmpfs",
+        "/tmp/ray/session_1/runtime_resources:notmpcopyup",
+    ]
+
+
+def test_mounts_inherited_pythonpath_resources_read_only(auth_env):
+    runtime_env_dir = "/tmp/ray/session_1/runtime_resources"
+    working_dir = f"{runtime_env_dir}/working_dir_files/abc"
+    context = RuntimeEnvContext(
+        env_vars={"PYTHONPATH": f"{working_dir}:/opt/lib:{runtime_env_dir}"}
+    )
+
+    command = _container_command(context, runtime_env_dir)
+
+    assert f"-v {working_dir}:{working_dir}:ro" in command
+    assert "/opt/lib:/opt/lib" not in command
+    assert f"{runtime_env_dir}:{runtime_env_dir}" not in command
 
 
 def test_log_redacts_env_var_values(auth_env, caplog):
