@@ -9,7 +9,7 @@ myst:
 # Hyperparameter tuning with Ray Tune
 
 :::{important}
-This guide shows how to integrate Ray Train and Ray Tune to tune hyperparameters for distributed training runs with Ray Train V2. Ray Train V2 is available starting in Ray 2.43 when you set the environment variable `RAY_TRAIN_V2_ENABLED=1`. This guide assumes that you've set this environment variable.
+This guide shows how to integrate Ray Train and Ray Tune to tune hyperparameters for distributed training runs with Ray Train V2. Ray Train V2 is the default starting in Ray 2.51. In Ray 2.43 through 2.50, enable it by setting the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 
 For information about the deprecation and migration, see {ref}`train-tune-deprecation`.
 :::
@@ -185,7 +185,7 @@ This API change decouples the responsibilities of Ray Train and Ray Tune, and it
 
 To migrate from the `Tuner(trainer)` API to the function-based pattern, do the following:
 
-1. Enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
+1. If you use Ray 2.50 or earlier, enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 1. Replace `Tuner(trainer)` with a function-based approach that launches Ray Train inside a Tune trial.
 1. Move your training logic into a driver function that Tune calls with different hyperparameters.
 
