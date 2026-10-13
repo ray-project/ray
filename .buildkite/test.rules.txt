@@ -80,13 +80,29 @@ doc/source/ray-more-libs/api/
 # are the only prose that the "docs-example-test" opt-in can test file by
 # file. Emit doc_example for them, ahead of the prose skip rule below. Only the
 # label-gated opt-in step listens for that tag, so without the label this runs
-# nothing. Data's prose is matched by directory. Other libraries list only the
-# pages with a per-file target, because until rayci drops label-gated steps
-# before dependency marking, every match also builds the opt-in step's images.
-# Keep this list in sync with the `doctest_each` file lists;
-# doc/test_prose_doctest_targets.py checks it.
-doc/source/data/*.md
-doc/source/data/*.rst
+# nothing. The rule lists only the pages with a per-file CPU target, because
+# until rayci drops label-gated steps before dependency marking, every match
+# also builds the opt-in step's images. Keep this list in sync with the
+# `doctest_each` file lists; doc/test_prose_doctest_targets.py checks it.
+doc/source/data/aggregating-data.md
+doc/source/data/execution-configurations.md
+doc/source/data/index.md
+doc/source/data/inspecting-data.md
+doc/source/data/internals.md
+doc/source/data/iterating-over-data.md
+doc/source/data/joining-data.md
+doc/source/data/key-concepts.md
+doc/source/data/loading-data.md
+doc/source/data/mixing-data.md
+doc/source/data/monitoring-your-workload.md
+doc/source/data/performance-tips.md
+doc/source/data/quickstart.md
+doc/source/data/saving-data.md
+doc/source/data/shuffling-data.md
+doc/source/data/working-with-images.md
+doc/source/data/working-with-pytorch.md
+doc/source/data/working-with-tensors.md
+doc/source/data/working-with-text.md
 doc/source/core/actors/async-api.md
 doc/source/core/actors/concurrency-group-api.md
 doc/source/core/actors/index.md
@@ -128,6 +144,14 @@ doc/source/train/getting-started-lightgbm.md
 doc/source/train/getting-started-xgboost.md
 doc/source/train/overview.md
 doc/source/train/user-guides/persistent-storage.md
+doc/source/cluster/configure-manage-dashboard.md
+doc/source/ray-observability/getting-started.md
+doc/source/ray-observability/key-concepts.md
+doc/source/ray-observability/user-guides/debug-apps/debug-failures.md
+doc/source/ray-observability/user-guides/debug-apps/general-debugging.md
+doc/source/ray-observability/user-guides/debug-apps/optimize-performance.md
+doc/source/ray-overview/getting-started.md
+doc/source/ray-references/glossary.md
 @ doc_example
 ;
 

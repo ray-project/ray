@@ -10,9 +10,9 @@ steps:
       PYTHON: "3.10"
     tags: cibase
 
-  # Runs //doc:doctest, the catch-all doctest target for documentation prose that
-  # no library owns (tagged team:none). The five per-library docs example steps
-  # each filter on their own team:<lib>, so this is the only step that reaches it.
+  # Runs the per-page doctest targets for documentation prose that no library
+  # owns (tagged team:none). The five per-library docs example steps each filter
+  # on their own team:<lib>, so this is the only step that reaches them.
   #
   # Postmerge only. It was already postmerge-only before this comment existed, but
   # by accident rather than intent: the step carried the tag `python`, which no
