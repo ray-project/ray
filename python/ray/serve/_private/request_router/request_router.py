@@ -1285,7 +1285,8 @@ class RequestRouter(ABC):
                     pending_request
                 )
                 try:
-                    async for candidates in gen_choose_replicas_with_backoff:
+                    while not pending_request.future.done():
+                        candidates = await gen_choose_replicas_with_backoff.__anext__()
                         # Clear out pending requests at the front of the
                         # queue that have been cancelled, then reevaluate
                         # if we need to continue this routing task.
@@ -1311,6 +1312,14 @@ class RequestRouter(ABC):
                             # Keep routing until this task's request is done.
                             if pending_request.future.done():
                                 break
+                            # A successful assignment is progress even if FIFO
+                            # matching fulfilled a different request. Start a
+                            # fresh retry cycle for this task's owned request.
+                            await gen_choose_replicas_with_backoff.aclose()
+                            gen_choose_replicas_with_backoff = (
+                                self._choose_replicas_with_backoff(pending_request)
+                            )
+                            backoff_index = 0
                             continue
 
                         backoff_index += 1
@@ -1493,12 +1502,16 @@ class RequestRouter(ABC):
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
-        result: ReplicaResult,
+        result: Optional[ReplicaResult],
     ) -> None:
         """Called when a request is routed to a replica.
 
         This is used as a callback to update the state of the request router
         after a response is generated.
+
+        ``result`` is ``None`` when the caller only picks the replica and sends
+        the request itself (for example, the direct-streaming LLM ingress
+        router, which returns the replica to HAProxy).
         """
         pass
 

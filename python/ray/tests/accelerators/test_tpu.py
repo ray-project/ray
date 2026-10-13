@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 import requests
 
+import ray
 from ray._private.accelerators import TPUAcceleratorManager, tpu
 
 
@@ -435,6 +436,213 @@ def test_set_tpu_visible_ids_sub_chip_allocation(mock_glob):
                 os.environ[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR]
                 == tpu.TPU_CHIPS_PER_HOST_BOUNDS_1_CHIP_CONFIG
             )
+
+
+@pytest.mark.parametrize(
+    "num_devices, tpu_chips, initial_env, expected_visible_chips, expected_chip_bounds, expected_host_bounds",
+    [
+        # 4-chip full-node allocation preserves explicit collective/subslice bounds.
+        (
+            4,
+            ["0", "1", "2", "3"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,2,2",
+            },
+            None,
+            "2,2,1",
+            "1,2,2",
+        ),
+        # 1-chip node (e.g. v6e-1) full-node allocation preserves "1,1,1" defaults.
+        (
+            1,
+            ["0"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,1",
+            },
+            None,
+            "1,1,1",
+            "1,1,1",
+        ),
+        # 2-chip node (e.g. ct6e-standard-2t) full-node allocation preserves "1,2,1" defaults.
+        (
+            2,
+            ["0", "1"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,1",
+            },
+            None,
+            "1,2,1",
+            "1,1,1",
+        ),
+        # Standalone 1-chip task on a 4-chip multi-host container overrides
+        # container-level 4-chip/multi-host defaults to single-host 1-chip bounds.
+        (
+            4,
+            ["0"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,4",
+            },
+            "0",
+            "1,1,1",
+            "1,1,1",
+        ),
+        # Standalone 2-chip task on a 4-chip multi-host container overrides
+        # container bounds to single-host 2-chip bounds.
+        (
+            4,
+            ["2", "3"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "2,3",
+            "1,2,1",
+            "1,1,1",
+        ),
+        # 1-chip-per-worker collective (e.g. TorchTPU / verl without NOSET=1) where
+        # TPU_CHIPS_PER_HOST_BOUNDS already matches "1,1,1" sets TPU_VISIBLE_CHIPS
+        # while preserving the multi-worker TPU_HOST_BOUNDS="2,2,1".
+        (
+            4,
+            ["2"],
+            {
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "2",
+            "1,1,1",
+            "2,2,1",
+        ),
+        # Framework-managed worker with NOSET=1 (e.g. verl PlatformTPU) leaves all
+        # caller-supplied TPU visibility and bounds env vars untouched.
+        (
+            4,
+            ["3"],
+            {
+                tpu.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR: "1",
+                tpu.TPU_VISIBLE_CHIPS_ENV_VAR: "3",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "4,4,1",
+            },
+            "3",
+            "1,1,1",
+            "4,4,1",
+        ),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_preserves_explicit_bounds(
+    mock_glob,
+    num_devices,
+    tpu_chips,
+    initial_env,
+    expected_visible_chips,
+    expected_chip_bounds,
+    expected_host_bounds,
+):
+    """Verify TPU bounds handling across full-node, sub-host, and NOSET=1 tasks."""
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    with patch.dict("os.environ", initial_env, clear=True):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert (
+            os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
+            == expected_chip_bounds
+        )
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == expected_host_bounds
+
+
+@pytest.mark.parametrize(
+    "num_devices, expected_visible_chips",
+    [
+        (4, None),
+        (8, "0,1,2,3"),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_reused_worker_bounds_cleanup(
+    mock_glob, num_devices, expected_visible_chips
+):
+    """Reusing a worker on a >2-chip node (1-chip -> 2-chip -> 4-chip) clears stale sub-host bounds."""
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    with patch.dict("os.environ", {}, clear=True):
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0", "1"])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0,1"
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,2,1"
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+            ["0", "1", "2", "3"]
+        )
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(["0"])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == "0"
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == "1,1,1"
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids([])
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == ""
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
+
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(
+            ["0", "1", "2", "3"]
+        )
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR) is None
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) is None
+
+
+def test_tpu_worker_noset_visible_chips_preserves_framework_env(shutdown_only):
+    """Verify real Ray workers with NOSET=1 preserve per-actor TPU env vars without IndexError."""
+    ray.init(num_cpus=8, resources={"TPU": 8})
+
+    @ray.remote(num_cpus=0.5, resources={"TPU": 1})
+    class FrameworkTPUWorker:
+        def get_tpu_state(self):
+            return {
+                "accelerator_ids": ray.get_runtime_context().get_accelerator_ids()[
+                    "TPU"
+                ],
+                "visible_chips": os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR),
+                "chip_bounds": os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR),
+                "host_bounds": os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR),
+            }
+
+    for resource_per_chip, host_bounds in [(1, "2,2,1"), (2, "2,2,4")]:
+        workers = [
+            FrameworkTPUWorker.options(
+                runtime_env={
+                    "env_vars": {
+                        tpu.NOSET_TPU_VISIBLE_CHIPS_ENV_VAR: "1",
+                        tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: str(resource_per_chip),
+                        tpu.TPU_VISIBLE_CHIPS_ENV_VAR: str(i),
+                        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                        tpu.TPU_HOST_BOUNDS_ENV_VAR: host_bounds,
+                    }
+                }
+            ).remote()
+            for i in range(4)
+        ]
+        for i, state in enumerate(ray.get([w.get_tpu_state.remote() for w in workers])):
+            assert int(state["accelerator_ids"][0]) // resource_per_chip == i
+            assert state["visible_chips"] == str(i)
+            assert state["chip_bounds"] == "1,1,1"
+            assert state["host_bounds"] == host_bounds
 
 
 def test_get_current_process_visible_accelerator_ids(monkeypatch):

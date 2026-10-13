@@ -8,8 +8,7 @@ myst:
 
 # Debugging high worker thread counts
 
-Each Ray worker process has its own gRPC runtime. On nodes that run many worker
-processes, the per-process gRPC threads can add up to a high node-level thread count.
+Each Ray worker process has its own gRPC runtime. On nodes that run many worker processes, the per-process gRPC threads can add up to a high node-level thread count.
 
 ## Inspect worker threads
 
@@ -27,10 +26,7 @@ Compare the thread-name counts across representative workers and at the node lev
 
 ## Distinguish gRPC runtimes
 
-If the application imports the Python `grpcio` package, the worker can load a separate
-gRPC runtime that isn't controlled by `RAY_worker_num_grpc_internal_threads`. Inspect
-the worker's mapped libraries to distinguish that runtime from Ray's bundled gRPC
-runtime:
+If the application imports the Python `grpcio` package, the worker can load a separate gRPC runtime that isn't controlled by `RAY_worker_num_grpc_internal_threads`. Inspect the worker's mapped libraries to distinguish that runtime from Ray's bundled gRPC runtime:
 
 ```bash
 grep grpc /proc/${WORKER_PID}/maps
@@ -38,15 +34,11 @@ grep grpc /proc/${WORKER_PID}/maps
 
 ## Check process and thread limits
 
-When sizing a node or container that runs many workers, monitor its process and thread
-limits. On Linux, check the applicable cgroup `pids.max` and the user process limit:
+When sizing a node or container that runs many workers, monitor its process and thread limits. On Linux, check the applicable cgroup `pids.max` and the user process limit:
 
 ```bash
 cat /sys/fs/cgroup/pids.max
 ulimit -u
 ```
 
-If worker gRPC threads contribute to the high thread count, configure
-`RAY_worker_num_grpc_internal_threads` as described in
-{ref}`worker-grpc-thread-configuration`. Compare task throughput, RPC latency, and
-thread counts before and after changing the value.
+If worker gRPC threads contribute to the high thread count, configure `RAY_worker_num_grpc_internal_threads` as described in {ref}`worker-grpc-thread-configuration`. Compare task throughput, RPC latency, and thread counts before and after changing the value.
