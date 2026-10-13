@@ -166,14 +166,46 @@ local function json_string_field(json_body, name)
     return json_string_at(json_body, start)
 end
 
+local RESPONSE_HEADER_BLOCKLIST = {
+    [DIRECT_RESPONSE_HEADER] = true,
+    ["connection"] = true,
+    ["content-length"] = true,
+    ["keep-alive"] = true,
+    ["proxy-authenticate"] = true,
+    ["proxy-authorization"] = true,
+    ["proxy-connection"] = true,
+    ["te"] = true,
+    ["trailer"] = true,
+    ["transfer-encoding"] = true,
+    ["upgrade"] = true,
+}
+
+local function copy_response_headers(reply, head)
+    local connection_headers = {}
+    for name, value in head:gmatch("\r\n([^:\r\n]+):%s*([^\r\n]*)") do
+        if name:lower() == "connection" then
+            for token in value:gmatch("[^,]+") do
+                connection_headers[token:match("^%s*(.-)%s*$$"):lower()] = true
+            end
+        end
+    end
+
+    local has_content_type = false
+    for name, value in head:gmatch("\r\n([^:\r\n]+):%s*([^\r\n]*)") do
+        local lower_name = name:lower()
+        if not RESPONSE_HEADER_BLOCKLIST[lower_name] and not connection_headers[lower_name] then
+            reply:add_header(name, value)
+            has_content_type = has_content_type or lower_name == "content-type"
+        end
+    end
+    return has_content_type
+end
+
 local function reply_with(txn, status, head, body)
-    local content_type = response_header(head, "content-type")
     local reply = txn:reply()
     reply:set_status(status)
-    reply:add_header("content-type", content_type or "text/plain")
-    local retry_after = response_header(head, "retry-after")
-    if retry_after then
-        reply:add_header("retry-after", retry_after)
+    if not copy_response_headers(reply, head) then
+        reply:add_header("content-type", "text/plain")
     end
     reply:set_body(body)
     txn:done(reply)
