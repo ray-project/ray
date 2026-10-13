@@ -13,7 +13,7 @@ current algorithms: https://github.com/ray-project/ray/issues/2992
 
 import functools
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -41,7 +41,7 @@ def pad_batch_to_sequences_of_same_size(
     view_requirements: Optional[ViewRequirementsDict] = None,
     _enable_new_api_stack: bool = False,
     padding: str = "zero",
-):
+) -> None:
     """Applies padding to `batch` so it's choppable into same-size sequences.
 
     Shuffles `batch` (if desired), makes sure divisibility requirement is met,
@@ -267,21 +267,21 @@ def add_time_dimension(
 @OldAPIStack
 def chop_into_sequences(
     *,
-    feature_columns,
-    state_columns,
-    max_seq_len,
-    episode_ids=None,
-    unroll_ids=None,
-    agent_indices=None,
-    dynamic_max=True,
-    shuffle=False,
-    seq_lens=None,
-    states_already_reduced_to_init=False,
-    handle_nested_data=False,
-    _extra_padding=0,
+    feature_columns: List[Any],
+    state_columns: List[Any],
+    max_seq_len: int,
+    episode_ids: Optional[List[Any]] = None,
+    unroll_ids: Optional[List[Any]] = None,
+    agent_indices: Optional[List[Any]] = None,
+    dynamic_max: bool = True,
+    shuffle: bool = False,
+    seq_lens: Optional[List[int]] = None,
+    states_already_reduced_to_init: bool = False,
+    handle_nested_data: bool = False,
+    _extra_padding: int = 0,
     padding: str = "zero",
     pad_infos_with_empty_dicts: bool = False,
-):
+) -> Tuple[List[Any], List[Any], np.ndarray]:
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
@@ -290,15 +290,22 @@ def chop_into_sequences(
         max_seq_len: Max length of sequences. Sequences longer than max_seq_len
             will be split into subsequences that span the batch dimension
             and sum to max_seq_len.
-        episode_ids (List[EpisodeID]): List of episode ids for each step.
-        unroll_ids (List[UnrollID]): List of identifiers for the sample batch.
+        episode_ids: List of episode ids for each step.
+        unroll_ids: List of identifiers for the sample batch.
             This is used to make sure sequences are cut between sample batches.
-        agent_indices (List[AgentID]): List of agent ids for each step. Note
+        agent_indices: List of agent ids for each step. Note
             that this has to be combined with episode_ids for uniqueness.
         dynamic_max: Whether to dynamically shrink the max seq len.
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
         shuffle: Whether to shuffle the sequence outputs.
+        seq_lens: An optional list of pre-computed sequence lengths. If None or
+            empty, the sequence lengths are computed from `episode_ids`,
+            `unroll_ids`, `agent_indices`, and `max_seq_len`.
+        states_already_reduced_to_init: Whether `state_columns` already only
+            contains the initial states of each sequence (one per sequence). If
+            False, the initial states are extracted from `state_columns` using
+            the computed sequence lengths.
         handle_nested_data: If True, assume that the data in
             `feature_columns` could be nested structures (of data).
             If False, assumes that all items in `feature_columns` are
@@ -464,7 +471,7 @@ def timeslice_along_seq_lens_with_overlap(
 
     Args:
         sample_batch: The SampleBatch to timeslice.
-        seq_lens (Optional[List[int]]): An optional list of seq_lens to slice
+        seq_lens: An optional list of seq_lens to slice
             at. If None, use `sample_batch[SampleBatch.SEQ_LENS]`.
         zero_pad_max_seq_len: If >0, already zero-pad the resulting
             slices up to this length. NOTE: This max-len will include the
@@ -477,7 +484,7 @@ def timeslice_along_seq_lens_with_overlap(
             populate state_in values.
 
     Returns:
-        List[SampleBatch]: The list of (new) SampleBatches.
+        The list of (new) SampleBatches.
 
     Examples:
         assert seq_lens == [5, 5, 2]

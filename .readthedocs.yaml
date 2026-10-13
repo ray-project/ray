@@ -87,28 +87,27 @@ build:
         echo "[global]" > ~/.config/pip/pip.conf
         echo "retries = 10" >> ~/.config/pip/pip.conf
         cat ~/.config/pip/pip.conf
-    # Build with fewer Sphinx workers than there are CPUs.
+    # Build with doc/Makefile's default SPHINX_JOBS of auto, one Sphinx write
+    # worker per CPU, the same as local builds and the Buildkite doc build.
     #
-    # doc/Makefile defaults SPHINX_JOBS to auto, one write worker per CPU.
-    # This builder has 4 CPUs and a 7,130,316,800 byte cgroup memory ceiling
-    # (about 6.64 GiB, the documented Business limit), and each worker holds
-    # its own copy of the build environment. At -j auto the build peaked at
-    # 6,503,370,752 bytes on a run that passed and 6,371,254,272 on one that
-    # was OOM-killed, leaving roughly 600 MB of headroom either way. When the
-    # kernel kills a write worker the parent Sphinx process reports only a
-    # bare EOFError from multiprocessing/connection.py, naming no document,
-    # and the document it dies on moves from build to build.
+    # This job used to pin SPHINX_JOBS=2 (#65643). The builder has a
+    # 7,130,316,800 byte cgroup memory ceiling (about 6.64 GiB, the documented
+    # Business limit), each worker holds its own copy of the build environment,
+    # and at -j auto the build peaked within about 600 MB of that ceiling and
+    # was sometimes OOM-killed. When the kernel kills a write worker the parent
+    # Sphinx process reports only a bare EOFError from
+    # multiprocessing/connection.py, naming no document.
     #
-    # At SPHINX_JOBS=2 the same build peaked at 5,566,427,136 bytes with
-    # memory.events oom_kill 0, so headroom goes from about 600 MB to about
-    # 1.5 GiB. The cost is wall clock: a paired run measured 349 seconds at
-    # -j auto against 620 seconds at 2 on one builder, and the 2 arm had a
-    # warm cache, so treat that as a lower bound on the slowdown.
+    # Most of that memory was a leak: MyST {eval-rst} blocks pickled the whole
+    # build environment into each page's doctree, and every worker loaded those
+    # doctrees back. doc/source/_ext/myst_eval_rst_doctree.py fixes it (#66784).
+    # After the fix, a local build with this job's flags, summing RSS across the
+    # Sphinx processes, peaked at 4.74 GB at -j 4 against 2.67 GB at -j 2, and
+    # took 425 seconds against 914. Summed RSS overstates the cgroup figure,
+    # since it counts pages shared between forked workers more than once.
     #
-    # Only this job sets it. Local builds and the Buildkite doc build keep
-    # -j auto, so nothing off this builder pays for the reduced parallelism.
-    # Raising the RtD memory limit would let the parallelism come back; that
-    # is a separate ask to Read the Docs, not a change in this repo.
+    # If EOFError failures come back, memory is the first suspect: set
+    # SPHINX_JOBS=2 on the make command below.
     #
     # PYTHONFAULTHANDLER=1 makes Python dump the stack of every thread to
     # stderr when the process receives a fatal signal such as SIGSEGV. Since
@@ -121,7 +120,7 @@ build:
     build:
       html:
         - |
-          PYTHONFAULTHANDLER=1 make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html" SPHINX_JOBS=2
+          PYTHONFAULTHANDLER=1 make -C doc html HTMLDIR="$READTHEDOCS_OUTPUT/html"
 
 # Build documentation in the docs/ directory with Sphinx
 sphinx:

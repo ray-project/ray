@@ -140,10 +140,10 @@ class TFPolicy(Policy):
                 logp/log-likelihood calculations.
             log_likelihood: Tensor to calculate the log_likelihood (given
                 action_input and obs_input).
-            dist_class: An optional ActionDistribution class to use for
-                generating a dist object from distribution inputs.
             dist_inputs: Tensor to calculate the distribution
                 inputs/parameters.
+            dist_class: An optional ActionDistribution class to use for
+                generating a dist object from distribution inputs.
             state_inputs: List of RNN state input Tensors.
             state_outputs: List of RNN state output Tensors.
             prev_action_input: placeholder for previous actions.
@@ -658,7 +658,7 @@ class TFPolicy(Policy):
         else:
             return self.model.variables()
 
-    def get_placeholder(self, name) -> "tf1.placeholder":
+    def get_placeholder(self, name: str) -> "tf1.placeholder":
         """Returns the given action or loss input placeholder by name.
 
         If the loss has not been initialized and a loss input placeholder is
@@ -695,9 +695,9 @@ class TFPolicy(Policy):
         """Initializes the loss op from given loss tensor and placeholders.
 
         Args:
-            loss (List[TensorType]): The list of loss ops returned by some
+            losses: The list of loss ops returned by some
                 loss function.
-            loss_inputs (List[Tuple[str, TensorType]]): The list of Tuples:
+            loss_inputs: The list of Tuples:
                 (name, tf1.placeholders) needed for calculating the loss.
         """
         self._loss_input_dict = dict(loss_inputs)
@@ -784,7 +784,7 @@ class TFPolicy(Policy):
         Optional: Only required to work with the multi-GPU optimizer.
 
         Args:
-            existing_inputs (List[Tuple[str, tf1.placeholder]]): Dict mapping
+            existing_inputs: Dict mapping
                 names (str) to tf1.placeholders to re-use (share) with the
                 returned copy of self.
 
@@ -869,11 +869,11 @@ class TFPolicy(Policy):
         """Override this for a custom gradient computation behavior.
 
         Args:
-            optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): A single
+            optimizer: A single
                 LocalOptimizer of a list thereof to use for gradient
                 calculations. If more than one optimizer given, the number of
                 optimizers must match the number of losses provided.
-            loss (Union[TensorType, List[TensorType]]): A single loss term
+            loss: A single loss term
                 or a list thereof to use for gradient calculations.
                 If more than one loss given, the number of loss terms must
                 match the number of optimizers provided.
@@ -904,9 +904,9 @@ class TFPolicy(Policy):
         """Override this for a custom gradient apply computation behavior.
 
         Args:
-            optimizer (Union[LocalOptimizer, List[LocalOptimizer]]): The local
+            optimizer: The local
                 tf optimizer to use for applying the grads and vars.
-            grads_and_vars (Union[ModelGradients, List[ModelGradients]]): List
+            grads_and_vars: List
                 of tuples with grad values and the grad-value's corresponding
                 tf.variable in it.
 

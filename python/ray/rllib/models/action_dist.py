@@ -20,7 +20,7 @@ class ActionDistribution:
 
         Args:
             inputs: input vector to compute samples from.
-            model (ModelV2): reference to model producing the inputs. This
+            model: reference to model producing the inputs. This
                 is mainly useful if you want to use model variables to compute
                 action outputs (i.e., for autoregressive action distributions,
                 see examples/autoregressive_action_dist.py).
@@ -82,7 +82,7 @@ class ActionDistribution:
         options.
 
         Args:
-            action_space (gym.Space): The action space this distribution will
+            action_space: The action space this distribution will
                 be used for, whose shape attributes will be used to determine
                 the required shape of the input parameter tensor.
             model_config: Model's config dict (as defined in catalog.py)

@@ -275,7 +275,17 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         )
 
         out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
-        states_out = {"h": states_out[0], "c": states_out[1]}
+        # Spell out the states' (num_layers, B, hidden_dim) shape before making
+        # them batch-first again. Before torch 2.13, `torch.export` records the
+        # LSTM's state outputs with a spurious extra dim
+        # (https://github.com/pytorch/pytorch/issues/151200), so an ONNX export
+        # with `dynamo=True` gave the transposes below the wrong rank, and
+        # onnxruntime rejected the model. In eager mode this is a no-op.
+        shape = (self.lstm.num_layers, states_in["h"].shape[1], self.lstm.hidden_size)
+        states_out = {
+            "h": states_out[0].reshape(shape),
+            "c": states_out[1].reshape(shape),
+        }
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
