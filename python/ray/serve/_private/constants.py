@@ -454,6 +454,12 @@ SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 # the client instead of interpreting as an application/replica decision.
 SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
 
+# Original client path forwarded by HAProxy to /internal/route. It identifies
+# the API when different endpoints accept the same request body.
+SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
+)
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 

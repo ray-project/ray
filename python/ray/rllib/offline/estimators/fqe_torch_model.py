@@ -34,7 +34,8 @@ class FQETorchModel:
         minibatch_size: int = None,
         polyak_coef: float = 1.0,
     ) -> None:
-        """
+        """Initializes a FQETorchModel instance.
+
         Args:
             policy: Policy to evaluate.
             gamma: Discount factor of the environment.

@@ -92,6 +92,12 @@ class TrXLNet(RecurrentNetwork):
         """Initializes a TrXLNet object.
 
         Args:
+            observation_space: The observation space of the target gym env.
+            action_space: The action space of the target gym env.
+            num_outputs: The size of the output vector of the model.
+            model_config: The "model" sub-config dict within the Algorithm's
+                config dict.
+            name: Name (scope) for the model.
             num_transformer_units: The number of Transformer repeats to
                 use (denoted L in [2]).
             attention_dim: The input and output dimensions of one
@@ -217,6 +223,14 @@ class GTrXLNet(RecurrentNetwork):
         """Initializes a GTrXLNet instance.
 
         Args:
+            observation_space: The observation space of the target gym env.
+            action_space: The action space of the target gym env.
+            num_outputs: The size of the output vector of the model. If None,
+                this model is used as a feature extractor only and
+                `self.num_outputs` is set to `attention_dim`.
+            model_config: The "model" sub-config dict within the Algorithm's
+                config dict.
+            name: Name (scope) for the model.
             num_transformer_units: The number of Transformer repeats to
                 use (denoted L in [2]).
             attention_dim: The input and output dimensions of one

@@ -93,9 +93,77 @@ local function response_header(head, name)
         or head:lower():match("\r\n" .. escaped:lower() .. ":%s*([^\r\n]*)")
 end
 
--- Decision fields are plain strings without escapes.
+local JSON_ESCAPES = {
+    ['"'] = '"',
+    ["\\"] = "\\",
+    ["/"] = "/",
+    b = string.char(8),
+    f = string.char(12),
+    n = "\n",
+    r = "\r",
+    t = "\t",
+}
+
+local function json_string_at(json_body, start)
+    if json_body:sub(start, start) ~= '"' then
+        return nil
+    end
+    local parts = {}
+    local i = start + 1
+    while i <= #json_body do
+        local byte = json_body:byte(i)
+        if byte == 34 then
+            return table.concat(parts)
+        elseif byte == 92 then
+            local escape = json_body:sub(i + 1, i + 1)
+            local decoded = JSON_ESCAPES[escape]
+            if decoded then
+                parts[#parts + 1] = decoded
+                i = i + 2
+            elseif escape == "u" then
+                local hex = json_body:sub(i + 2, i + 5)
+                if not hex:match("^%x%x%x%x$$") then
+                    return nil
+                end
+                local codepoint = tonumber(hex, 16)
+                i = i + 6
+                if codepoint >= 0xD800 and codepoint <= 0xDBFF then
+                    if json_body:sub(i, i + 1) ~= "\\u" then
+                        return nil
+                    end
+                    local low_hex = json_body:sub(i + 2, i + 5)
+                    if not low_hex:match("^%x%x%x%x$$") then
+                        return nil
+                    end
+                    local low = tonumber(low_hex, 16)
+                    if low < 0xDC00 or low > 0xDFFF then
+                        return nil
+                    end
+                    codepoint = 0x10000 + (codepoint - 0xD800) * 0x400 + low - 0xDC00
+                    i = i + 6
+                elseif codepoint >= 0xDC00 and codepoint <= 0xDFFF then
+                    return nil
+                end
+                parts[#parts + 1] = utf8.char(codepoint)
+            else
+                return nil
+            end
+        elseif byte < 32 then
+            return nil
+        else
+            parts[#parts + 1] = string.char(byte)
+            i = i + 1
+        end
+    end
+    return nil
+end
+
 local function json_string_field(json_body, name)
-    return json_body:match('"' .. name .. '"%s*:%s*"([^"\\]*)"')
+    local start = json_body:match('"' .. name .. '"%s*:%s*()')
+    if not start then
+        return nil
+    end
+    return json_string_at(json_body, start)
 end
 
 local function reply_with(txn, status, head, body)
