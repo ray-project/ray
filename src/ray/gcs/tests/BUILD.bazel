@@ -34,9 +34,11 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/asio:fake_periodical_runner",
+        "//src/ray/common:grpc_util",
         "//src/ray/gcs:gcs_pubsub_handler",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/pubsub:publisher",
+        "//src/ray/util:clock",
     ],
 )
 
