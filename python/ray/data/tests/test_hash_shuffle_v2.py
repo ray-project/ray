@@ -474,6 +474,68 @@ def test_shuffle_reduce_task_uses_operator_name():
     assert shuffle_reduce_task.options.call_args.kwargs["name"] == name
 
 
+def test_disk_shuffle_map_task_uses_context_label_selector(restore_data_context):
+    restore_data_context.execution_options.label_selector = {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+    op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_map_operator._disk_shuffle_map_task"
+    ) as shuffle_map_task:
+        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_shuffle_map_task([], [])
+
+    assert shuffle_map_task.options.call_args.kwargs["label_selector"] == {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+
+
+def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):
+    restore_data_context.execution_options.label_selector = {
+        "subcluster": "train",
+        "zone": "us-west",
+    }
+    map_op = DiskHashShuffleMapOp(
+        InputDataBuffer(restore_data_context, []),
+        restore_data_context,
+        num_partitions=1,
+        partition_fn=lambda table: {},
+    )
+    op = DiskHashShuffleReduceOp(
+        map_op,
+        restore_data_context,
+        num_partitions=1,
+        reduce_fn=lambda partition_id, tables_by_input: iter(()),
+        reduce_ray_remote_args={
+            "label_selector": {"subcluster": "validation", "node": "worker-1"}
+        },
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_reduce_operator._disk_shuffle_reduce_task"
+    ) as shuffle_reduce_task:
+        shuffle_reduce_task.options.return_value.remote.return_value = MagicMock()
+        op._submit_reduce_task(0, [RefBundle((), schema=None, owns_blocks=True)])
+
+    assert shuffle_reduce_task.options.call_args.kwargs["label_selector"] == {
+        "subcluster": "validation",
+        "zone": "us-west",
+        "node": "worker-1",
+    }
+
+
 # --- Multi-input reduce -------------------------------------------------------
 # TODO: move these multi-input ShuffleReduceOp tests (and the _get_shard_batch
 # shuffle_tasks tests above) into a dedicated operator/task-level test file --
