@@ -12,6 +12,7 @@ import json
 import time
 from types import SimpleNamespace
 from typing import Any, Dict, Mapping, Optional
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Request, status
 from starlette.responses import JSONResponse
@@ -29,7 +30,9 @@ from ray.llm._internal.serve.core.ingress.router import (
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
 from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.exceptions import RayServeException
@@ -137,7 +140,41 @@ class RouterApplication:
     async def check_health(self):
         pass
 
-    @router_app.post("/v1/models")
+    @router_app.post("/internal/route")
+    async def route(self, request: Request):
+        path = request.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER, "")
+        method = request.headers.get(
+            SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER, ""
+        ).upper()
+
+        if path == "/v1/models" or path.startswith("/v1/models/"):
+            if method not in {"GET", "HEAD"}:
+                return _error(
+                    status.HTTP_405_METHOD_NOT_ALLOWED,
+                    "Method not allowed.",
+                    "MethodNotAllowed",
+                    headers={"Allow": "GET, HEAD"},
+                )
+            if path == "/v1/models":
+                return await self.models()
+            return await self.model_data(unquote(path.removeprefix("/v1/models/")))
+
+        if path == "/v1/chat/completions":
+            if method != "POST":
+                return _error(
+                    status.HTTP_405_METHOD_NOT_ALLOWED,
+                    "Method not allowed.",
+                    "MethodNotAllowed",
+                    headers={"Allow": "POST"},
+                )
+            return await self.chat(request)
+
+        return _error(
+            status.HTTP_404_NOT_FOUND,
+            f"Path '{path}' was not found.",
+            "NotFoundError",
+        )
+
     async def models(self):
         return _response(
             {
@@ -148,7 +185,6 @@ class RouterApplication:
             }
         )
 
-    @router_app.post("/v1/models/{model:path}")
     async def model_data(self, model: str):
         # Like the OpenAI ingress, accept `--` for `/`.
         model = model.replace("--", "/")
@@ -161,7 +197,6 @@ class RouterApplication:
             )
         return _response(_model_card(model))
 
-    @router_app.post("/v1/chat/completions")
     async def chat(self, request: Request):
         body = await request.body()
         try:
