@@ -439,6 +439,8 @@ class ReplicaMetricsManager:
         self._pending_health_push_started_at: float = 0.0
         # What the outstanding heartbeat carries; only meaningful while one is.
         self._pending_health_push_healthy: bool = True
+        # Set while the replica reconfigures; see pause_self_health().
+        self._self_health_paused: bool = False
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -731,14 +733,25 @@ class ReplicaMetricsManager:
             period_s * 0.5,
         )
 
+    def pause_self_health(self) -> None:
+        """Hold the self-check while the replica reconfigures. The controller does not
+        health-check an UPDATING replica, so it would apply a failure seen now only once
+        the replica is RUNNING again, and could replace one that had since recovered."""
+        self._self_health_paused = True
+
+    def resume_self_health(self) -> None:
+        self._self_health_paused = False
+
     async def _eval_and_push_self_health(self):
+        if self._self_health_paused:
+            return
         # Invariant: the pusher registers this task only after setting the callable,
         # so narrow the Optional for the type checkers.
         eval_fn = self._eval_self_health_fn
         assert eval_fn is not None
         # The check keeps running past the threshold so a pass can clear the count:
-        # the controller only health-checks RUNNING replicas, so a failure counted
-        # while UPDATING would otherwise latch and replace a replica that recovered.
+        # one counted while the controller could not act on it, such as during a
+        # controller restart, would otherwise latch and replace a replica that recovered.
         healthy = True
         try:
             # No deadline here: health_check_timeout_s reaches the actor only at
@@ -754,6 +767,9 @@ class ReplicaMetricsManager:
         if self._metrics_pusher.stop_event.is_set():
             # Shutting down: an interrupted check confirmed nothing, so neither count
             # it nor tell the controller.
+            return
+        if self._self_health_paused:
+            # A reconfigure started part way through, so this verdict may reflect it.
             return
         counted_at = time.time()
         if healthy:
@@ -2050,6 +2066,7 @@ class Replica:
         rank: ReplicaRank,
         route_prefix: Optional[str] = None,
     ):
+        self._metrics_manager.pause_self_health()
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -2102,6 +2119,8 @@ class Replica:
 
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
+        finally:
+            self._metrics_manager.resume_self_health()
 
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
