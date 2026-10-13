@@ -742,6 +742,10 @@ class ReplicaMetricsManager:
     def resume_self_health(self) -> None:
         self._self_health_paused = False
 
+    @property
+    def self_health_paused(self) -> bool:
+        return self._self_health_paused
+
     async def _eval_and_push_self_health(self):
         if self._self_health_paused:
             return
@@ -2465,7 +2469,6 @@ class Replica:
             await self._run_user_health_check_locked()
 
     async def _run_user_health_check_locked(self):
-        evaluated = False
         try:
             # Runs the user-defined check_health on the user code loop if defined.
             # Otherwise, if the background watchdog has detected the user loop is
@@ -2475,19 +2478,24 @@ class Replica:
             f = self._user_callable_wrapper.call_user_health_check()
             if f is not None:
                 await f
-            self._healthy = True
-            evaluated = True
+            self._cache_health_verdict(error=None)
         except Exception as e:
             logger.warning("Replica health check failed.")
-            self._healthy = False
-            self._last_self_health_error = repr(e)
-            evaluated = True
+            self._cache_health_verdict(error=repr(e))
             raise e from None
-        finally:
-            # A cancelled check confirmed nothing, so it must neither refresh the
-            # cached verdict nor pull the replica out of the data-plane rotation.
-            if evaluated:
-                self._health_checked_at = time.time()
+
+    def _cache_health_verdict(self, error: Optional[str]) -> None:
+        """Cache a finished check for probes and /-/healthz; error is None if it passed.
+
+        A cancelled check confirmed nothing and never gets here. One that ends while a
+        reconfigure has the self-check paused is dropped too, as it may describe that.
+        """
+        if self._self_health_active and self._metrics_manager.self_health_paused:
+            return
+        self._healthy = error is None
+        if error is not None:
+            self._last_self_health_error = error
+        self._health_checked_at = time.time()
 
     async def record_routing_stats(self) -> Dict[str, Any]:
         try:
