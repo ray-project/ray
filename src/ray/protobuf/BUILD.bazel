@@ -260,6 +260,7 @@ proto_library(
     srcs = ["export_event.proto"],
     deps = [
         ":export_actor_event_proto",
+        ":export_annotation_event_proto",
         ":export_dataset_metadata_proto",
         ":export_dataset_operator_event_proto",
         ":export_dataset_operator_schema_proto",
@@ -274,6 +275,23 @@ proto_library(
 cc_proto_library(
     name = "export_event_cc_proto",
     deps = [":export_event_proto"],
+)
+
+proto_library(
+    name = "export_annotation_event_proto",
+    srcs = ["export_annotation_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_annotation_event_cc_proto",
+    deps = [":export_annotation_event_proto"],
+)
+
+# Python-only: written by `ray._common.observability.annotation`, and read by
+# log collectors and Grafana rather than by any C++ component.
+proto_library(
+    name = "annotation_event_proto",
+    srcs = ["annotation_event.proto"],
 )
 
 proto_library(
@@ -515,6 +533,7 @@ cc_grpc_library(
 python_grpc_compile(
     name = "core_py_proto",
     deps = [
+        ":annotation_event_proto",
         ":autoscaler_proto",
         ":common_proto",
         ":core_worker_proto",

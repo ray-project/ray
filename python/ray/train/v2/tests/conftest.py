@@ -6,6 +6,8 @@ import pytest
 import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
+from ray._common.observability.annotation import Annotation
+from ray._private.protobuf_compat import message_to_dict
 from ray.cluster_utils import Cluster
 
 # * `propagate_logs` is re-exported so tests in this directory can request it
@@ -81,6 +83,30 @@ def shutdown_only():
 def disable_state_actor_polling(monkeypatch):
     monkeypatch.setenv(ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR, "0")
     yield
+
+
+@pytest.fixture
+def captured_annotations(monkeypatch):
+    """Capture the annotations Train emits, without needing a Ray session.
+
+    Yields the list of emitted annotation events, each as the dict the
+    annotation writer serializes it to. The writer itself, including the file it
+    writes to, is covered by ``test_observability_annotation.py``.
+    """
+    records = []
+
+    class _RecordingWriter:
+        def send_event(self, event):
+            records.append(
+                message_to_dict(
+                    event,
+                    always_print_fields_with_no_presence=True,
+                    preserving_proto_field_name=True,
+                )
+            )
+
+    monkeypatch.setattr(Annotation, "_get_writer", staticmethod(_RecordingWriter))
+    yield records
 
 
 @pytest.fixture

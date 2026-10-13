@@ -62,8 +62,14 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
                  std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
     rpc::ExportEvent_SourceType export_event_source_type = *export_event_source_type_ptr;
     source_type_name = ExportEvent_SourceType_Name(export_event_source_type);
-    add_pid_to_file = (export_event_source_type ==
-                       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
+    // An annotation is emitted by whichever process the event happened in, not
+    // by a per-node singleton, so each one writes its own file: several
+    // processes rotating one file race with each other and lose lines.
+    add_pid_to_file =
+        (export_event_source_type ==
+             rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK ||
+         export_event_source_type ==
+             rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ANNOTATION);
   } else {
     // This shouldn't be possible because source_type is typed as SourceTypeVariant
     RAY_LOG(FATAL) << "source_type argument of LogEventReporter is not of type"
@@ -154,6 +160,10 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   } else if (export_event.has_driver_job_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.driver_job_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else if (export_event.has_annotation_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.annotation_event_data(), &event_data_as_string, options)
                   .ok());
   } else {
     RAY_LOG(FATAL)
