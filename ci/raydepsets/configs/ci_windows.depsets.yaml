@@ -37,6 +37,7 @@ depsets:
     build_arg_sets:
       - py310
     pre_hooks:
+      - ci/raydepsets/pre_hooks/compile-constraints.sh
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
   # torch is relaxed so the windows torch depset below can override it. torch

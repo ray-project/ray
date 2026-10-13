@@ -230,16 +230,24 @@ class DependencySetManager:
                     f"Invalid operation: {depset.operation} for depset {depset.name} in config {depset.config_name}"
                 )
             if depset.pre_hooks:
-                for ind, hook in enumerate(depset.pre_hooks):
-                    hook_name = f"{depset.name}_pre_hook_{ind+1}"
-                    self.build_graph.add_node(
-                        hook_name,
-                        operation="pre_hook",
-                        pre_hook=hook,
-                        node_type="pre_hook",
-                        config_name=depset.config_name,
-                    )
+                # Depsets that list the same hook command share one node, so the
+                # hook runs once per build no matter how many depsets need it.
+                prev_hook_name = None
+                for hook in depset.pre_hooks:
+                    hook_name = f"pre_hook: {hook}"
+                    if hook_name not in self.build_graph:
+                        self.build_graph.add_node(
+                            hook_name,
+                            operation="pre_hook",
+                            pre_hook=hook,
+                            node_type="pre_hook",
+                            config_name=depset.config_name,
+                        )
                     self.build_graph.add_edge(hook_name, depset.name)
+                    # Hooks run in the order they are listed.
+                    if prev_hook_name:
+                        self.build_graph.add_edge(prev_hook_name, hook_name)
+                    prev_hook_name = hook_name
         if not build_all_configs:
             self.subgraph_config_nodes()
 
@@ -300,10 +308,12 @@ class DependencySetManager:
 
     def execute_pre_hook(self, pre_hook: str):
         """Execute a pre-hook shell command."""
+        # Hooks that compile with uv use RAYDEPSETS_UV, the same pinned uv as raydepsets.
         status = subprocess.run(
             shlex.split(pre_hook),
             cwd=self.workspace.dir,
             capture_output=True,
+            env={**os.environ, "RAYDEPSETS_UV": self._uv_binary},
         )
         if status.returncode != 0:
             raise RuntimeError(

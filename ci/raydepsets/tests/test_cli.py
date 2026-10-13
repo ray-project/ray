@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 import runfiles
+import yaml
 from click.testing import CliRunner
 from networkx import topological_sort
 
@@ -937,6 +938,49 @@ class TestCli(unittest.TestCase):
             stdout = mock_stdout.getvalue()
             assert "Pre-hook test\n" in stdout
             assert "Executed pre_hook pre-hook-test.sh test successfully" in stdout
+
+    def test_shared_pre_hooks_run_once_in_order(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            depsets = [
+                {
+                    "name": name,
+                    "operation": "compile",
+                    "requirements": ["requirements_test.txt"],
+                    "output": f"requirements_compiled_{name}.txt",
+                    "pre_hooks": ["pre-hook-test.sh first", "pre-hook-test.sh second"],
+                }
+                for name in ("hook_depset_a", "hook_depset_b")
+            ]
+            with open(Path(tmpdir) / "hooks.depsets.yaml", "w") as f:
+                yaml.dump({"depsets": depsets}, f)
+            manager = _create_test_manager(tmpdir, config_path="hooks.depsets.yaml")
+            graph = manager.build_graph
+            hook_nodes = [
+                n for n in graph.nodes if graph.nodes[n]["node_type"] == "pre_hook"
+            ]
+            assert sorted(hook_nodes) == [
+                "pre_hook: pre-hook-test.sh first",
+                "pre_hook: pre-hook-test.sh second",
+            ]
+            assert graph.has_edge(
+                "pre_hook: pre-hook-test.sh first", "pre_hook: pre-hook-test.sh second"
+            )
+            for depset_name in ("hook_depset_a", "hook_depset_b"):
+                for hook in hook_nodes:
+                    assert graph.has_edge(hook, depset_name)
+
+    def test_execute_pre_hook_sets_uv_binary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            copy_data_to_tmpdir(tmpdir)
+            manager = _create_test_manager(tmpdir)
+            with patch("ci.raydepsets.cli.subprocess.run") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=b"", stderr=b""
+                )
+                manager.execute_pre_hook("pre-hook-test.sh")
+            env = mock_run.call_args.kwargs["env"]
+            assert env["RAYDEPSETS_UV"] == manager._uv_binary
 
     def test_get_expanded_depset_requirements(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -25,6 +25,7 @@ depsets:
       - py310
       - py312
     pre_hooks:
+      - ci/raydepsets/pre_hooks/compile-constraints.sh
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
   - name: serve_depset_${PYTHON_SHORT}
