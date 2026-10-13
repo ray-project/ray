@@ -218,13 +218,12 @@ def _lua_str(value: str) -> str:
     return f'"{escaped}"'
 
 
-def _router_application_pools(
+def _format_router_application_pools_lua(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
-) -> "Dict[str, Tuple[BackendConfig, List[ServerConfig]]]":
-    """Router backend -> servers to ask: co-located replicas first, else the
-    fallback proxy when scaled to zero (which also triggers scale-up)."""
-    pools: Dict[str, Tuple[BackendConfig, List[ServerConfig]]] = {}
+) -> Optional[str]:
+    """Render router application metadata and decision endpoints as Lua."""
+    entries = []
     for backend in backends:
         if not backend.is_router_application:
             continue
@@ -233,52 +232,37 @@ def _router_application_pools(
         pool = colocated or servers
         if not pool and backend.fallback_server is not None:
             pool = [backend.fallback_server]
-        pools[backend.name] = (backend, pool)
-    return pools
-
-
-def _router_target_apps(
-    backends: "List[BackendConfig]",
-) -> "Dict[str, BackendConfig]":
-    """Apps a decision may name: non-router apps with a running replica."""
-    return {
-        backend.app_name: backend
-        for backend in backends
-        if backend.app_name
-        and not backend.is_router_application
-        and any(s.replica_id is not None for s in backend.servers)
-    }
-
-
-def _format_router_application_pools_lua(
-    pools: "Dict[str, Tuple[BackendConfig, List[ServerConfig]]]",
-) -> str:
-    """Render {backend_name: {app, p, pool}} as a Lua table literal."""
-    entries = []
-    for name, (backend, pool) in pools.items():
         pool_lua = ", ".join(
             f"{{ host = {_lua_str(s.host)}, port = {s.port}, "
             f"host_header = {_lua_str(f'{s.host}:{s.port}')} }}"
             for s in pool
         )
         entries.append(
-            f"    [{_lua_str(name)}] = {{ app = {_lua_str(backend.app_name)}, "
+            f"    [{_lua_str(backend.name)}] = {{ app = {_lua_str(backend.app_name)}, "
             f"p = {_lua_str(backend.path_prefix or '/')}, pool = {{ {pool_lua} }} }}"
         )
+    if not entries:
+        return None
     return "{\n" + ",\n".join(entries) + "\n}"
 
 
-def _format_router_target_apps_lua(apps: "Dict[str, BackendConfig]") -> str:
-    """Render {app_name: {b, p, d, r = {replica_id: server}}} as a Lua table."""
+def _format_router_target_apps_lua(backends: "List[BackendConfig]") -> str:
+    """Render valid application and replica destinations as Lua."""
     entries = []
-    for app_name, backend in apps.items():
+    for backend in backends:
+        if (
+            not backend.app_name
+            or backend.is_router_application
+            or not any(s.replica_id is not None for s in backend.servers)
+        ):
+            continue
         replicas = ",\n".join(
             f"            [{_lua_str(s.replica_id)}] = {_lua_str(s.name)}"
             for s in backend.servers
             if s.replica_id is not None
         )
         entries.append(
-            f"    [{_lua_str(app_name)}] = {{\n"
+            f"    [{_lua_str(backend.app_name)}] = {{\n"
             f"        b = {_lua_str(backend.name)},\n"
             f"        p = {_lua_str(backend.path_prefix or '/')},\n"
             f"        d = {_lua_str(backend.ingress_deployment_name)},\n"
@@ -1379,8 +1363,10 @@ class HAProxyApi(ProxyApi):
         self, backends: List[BackendConfig]
     ) -> Optional[str]:
         """Write the router-application Lua; None if there are no routers."""
-        pools = _router_application_pools(backends, local_host=get_localhost_ip())
-        if not pools:
+        routers_lua = _format_router_application_pools_lua(
+            backends, local_host=get_localhost_ip()
+        )
+        if routers_lua is None:
             return None
 
         content = _load_lua_template("router_application.lua.tmpl").substitute(
@@ -1388,8 +1374,8 @@ class HAProxyApi(ProxyApi):
             DIRECT_RESPONSE_HEADER=SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
             ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
-            ROUTERS=_format_router_application_pools_lua(pools),
-            APPS=_format_router_target_apps_lua(_router_target_apps(backends)),
+            ROUTERS=routers_lua,
+            APPS=_format_router_target_apps_lua(backends),
         )
         lua_path = os.path.join(
             os.path.dirname(self.config_file_path), "router_application.lua"

@@ -32,8 +32,8 @@ from ray.serve._private.haproxy import (
     HAProxyManager,
     ServerConfig,
     _lua_str,
-    _router_application_pools,
-    _router_target_apps,
+    _format_router_application_pools_lua,
+    _format_router_target_apps_lua,
     get_haproxy_binary,
 )
 from ray.serve.config import HTTPOptions
@@ -225,25 +225,27 @@ class TestRouterApplicationMaps:
             ],
             is_router_application=True,
         )
-        (_, pool) = _router_application_pools([backend], "10.0.0.1")["http-router"]
-        assert [s.name for s in pool] == ["router-local-1", "router-local-2"]
+        local_lua = _format_router_application_pools_lua([backend], "10.0.0.1")
+        assert "port = 9001" in local_lua
+        assert "port = 9002" in local_lua
+        assert "port = 9000" not in local_lua
 
-        (_, pool) = _router_application_pools([backend], "10.0.0.9")["http-router"]
-        assert [s.name for s in pool] == [
-            "router-local-1",
-            "router-local-2",
-            "router-remote",
-        ]
+        remote_lua = _format_router_application_pools_lua([backend], "10.0.0.9")
+        assert "port = 9001" in remote_lua
+        assert "port = 9002" in remote_lua
+        assert "port = 9000" in remote_lua
 
     def test_pool_uses_fallback_when_scaled_to_zero(self):
         fallback = ServerConfig(name="proxy", host="10.0.0.1", port=8000)
         backend = _backend(
             "router", "/", [], is_router_application=True, fallback_server=fallback
         )
-        assert _router_application_pools([backend])["http-router"][1] == [fallback]
+        assert 'host = "10.0.0.1", port = 8000' in (
+            _format_router_application_pools_lua([backend])
+        )
 
         no_fallback = _backend("router", "/", [], is_router_application=True)
-        assert _router_application_pools([no_fallback])["http-router"][1] == []
+        assert "pool = {  }" in _format_router_application_pools_lua([no_fallback])
 
     def test_target_apps(self):
         backends = [
@@ -259,7 +261,10 @@ class TestRouterApplicationMaps:
                 servers=[ServerConfig(name="p", host="h", port=3, replica_id="p")],
             ),
         ]
-        assert list(_router_target_apps(backends)) == ["model-a"]
+        targets_lua = _format_router_target_apps_lua(backends)
+        assert '["model-a"]' in targets_lua
+        assert '["router"]' not in targets_lua
+        assert '["scaled-to-zero"]' not in targets_lua
 
 
 def _serve(app: FastAPI, port: int) -> uvicorn.Server:
