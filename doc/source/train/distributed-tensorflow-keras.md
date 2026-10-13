@@ -191,7 +191,7 @@ Save {class}`checkpoints <ray.train.Checkpoint>` by calling `train.report(metric
 
 Access the latest saved checkpoint through the `checkpoint` attribute of the {py:class}`~ray.train.Result`, and the best saved checkpoints through the `best_checkpoints` attribute.
 
-The following examples show how Ray Train saves checkpoints in distributed training, saving model weights but not models.
+The following example saves the Keras model and the current epoch to a checkpoint during distributed training.
 
 
 ```{testcode}
@@ -251,6 +251,7 @@ By default, checkpoints persist to local disk in the {ref}`log directory <train-
 To load a checkpoint, call `train.get_checkpoint()` in the training function. The following example loads the model from the checkpoint if one exists, and otherwise builds a new model:
 
 ```{testcode}
+import json
 import os
 import tempfile
 
