@@ -39,7 +39,7 @@ doc/source/data/examples.yml: always
 # The doc/source/ exemption doesn't extend to other code under doc/. BUILD
 # files feed buildifier, pre-commit sees doc/*.py outside doc/source/, and
 # notebooks stay on the catch-all.
-doc/source/ray-core/examples/batch_prediction.ipynb: always lint
+doc/source/core/examples/batch_prediction.ipynb: always lint
 doc/source/data/examples/BUILD.bazel: always lint
 doc/BUILD.bazel: always lint
 doc/test_no_new_rst.py: always lint

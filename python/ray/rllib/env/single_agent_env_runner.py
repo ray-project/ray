@@ -75,6 +75,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         Args:
             config: An `AlgorithmConfig` object containing all settings needed to
                 build this `EnvRunner` class.
+            **kwargs: Forwarded to the parent `EnvRunner` constructor. May contain
+                `tune_trial_id` (the Tune trial ID this EnvRunner belongs to) and
+                `spaces` (a dict mapping module IDs to observation/action space
+                tuples).
         """
         super().__init__(config=config, **kwargs)
 

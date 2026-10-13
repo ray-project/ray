@@ -228,7 +228,7 @@ def concat_multi_gpu_td_errors(
 
 @PublicAPI
 def convert_to_torch_tensor(
-    x,
+    x: TensorStructType,
     device: Optional[str] = None,
     pin_memory: bool = False,
     use_stream: bool = False,
@@ -332,8 +332,8 @@ def copy_torch_tensors(x: TensorStructType, device: Optional[str] = None):
     Note if an object in x is not a torch.Tensor, it will be shallow-copied.
 
     Args:
-        x : Any (possibly nested) struct possibly containing torch.Tensors.
-        device : The device to move the tensors to.
+        x: Any (possibly nested) struct possibly containing torch.Tensors.
+        device: The device to move the tensors to.
 
     Returns:
         Any: A new struct with the same structure as `x`, but with all
@@ -622,7 +622,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
 def sequence_mask(
     lengths: TensorType,
     maxlen: Optional[int] = None,
-    dtype=None,
+    dtype: Optional["torch.dtype"] = None,
     time_major: bool = False,
 ) -> TensorType:
     """Offers same behavior as tf.sequence_mask for torch.
@@ -743,8 +743,8 @@ def softmax_cross_entropy_with_logits(
     """Same behavior as tf.nn.softmax_cross_entropy_with_logits.
 
     Args:
-        x: The input predictions.
-        labels: The labels corresponding to `x`.
+        logits: The input predictions.
+        labels: The labels corresponding to `logits`.
 
     Returns:
         The resulting softmax cross-entropy given predictions and labels.
@@ -830,6 +830,8 @@ def two_hot(
             lower than this boundary, they will be encoded as `lower_bound`.
         upper_bound: The upper bound value used for the encoding. If input values are
             higher than this boundary, they will be encoded as `upper_bound`.
+        device: The device on which to create the returned tensor. If None, use
+            the default device.
 
     Returns:
         The two-hot encoded tensor of shape (B, num_buckets).

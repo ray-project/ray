@@ -16,7 +16,7 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
     - Environments that use `self.np_random` might not work as expected.
     """
 
-    def __init__(self, old_env, render_mode: Optional[str] = None):
+    def __init__(self, old_env: MultiAgentEnv, render_mode: Optional[str] = None):
         """A wrapper which converts old-style envs to valid modern envs.
 
         Some information may be lost in the conversion, so we recommend updating your

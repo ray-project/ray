@@ -1,4 +1,4 @@
-from typing import Any, Collection, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -13,6 +13,9 @@ from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentID, EpisodeType
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
 
 @PublicAPI(stability="alpha")
@@ -392,6 +395,7 @@ class FlattenObservations(ConnectorV2):
                 from an offline dataset instead of a simulator. With a simulator the
                 data is simply rewritten.
             keys_to_remove: Optional keys to remove from the observations.
+            **kwargs: Forward API-compatibility kwargs.
 
         """
         self._input_obs_base_struct = None
@@ -498,7 +502,7 @@ class FlattenObservations(ConnectorV2):
 
         return batch
 
-    def _remove_keys_from_dict(self, obs, sa_episode):
+    def _remove_keys_from_dict(self, obs: Any, sa_episode: "SingleAgentEpisode") -> Any:
         """Removes keys from dictionary spaces.
 
         Args:
