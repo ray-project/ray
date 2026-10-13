@@ -23,7 +23,6 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 
@@ -31,7 +30,7 @@ namespace ray {
 
 #define EMPTY_FAILURE_CALLBACK [](const std::string &, const Status &) {}
 
-class MockWorkerClient : public pubsub::SubscriberClientInterface {
+class FakeWorkerClient : public pubsub::SubscriberClientInterface {
  public:
   void PubsubLongPolling(
       rpc::PubsubLongPollingRequest &&request,
@@ -121,7 +120,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
 
   int GetNumberOfInFlightLongPollingRequests() { return long_polling_callbacks.size(); }
 
-  ~MockWorkerClient(){};
+  ~FakeWorkerClient(){};
 
   std::deque<rpc::ClientCallback<rpc::PubsubLongPollingReply>> long_polling_callbacks;
   std::deque<rpc::ClientCallback<rpc::PubsubCommandBatchReply>> command_batch_callbacks;
@@ -137,7 +136,7 @@ class SubscriberTest : public ::testing::Test {
  public:
   SubscriberTest()
       : self_node_id_(NodeID::FromRandom()),
-        owner_client(std::make_shared<MockWorkerClient>()),
+        owner_client(std::make_shared<FakeWorkerClient>()),
         client_pool([&](const rpc::Address &addr) {
           std::shared_ptr<SubscriberClientInterface> t = owner_client;
           return owner_client;
@@ -210,7 +209,7 @@ class SubscriberTest : public ::testing::Test {
 
   instrumented_io_context callback_service_;
   const NodeID self_node_id_;
-  std::shared_ptr<MockWorkerClient> owner_client;
+  std::shared_ptr<FakeWorkerClient> owner_client;
   std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
       client_pool;
   std::shared_ptr<Subscriber> subscriber_;

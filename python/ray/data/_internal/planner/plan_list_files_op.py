@@ -24,13 +24,11 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.data._internal.datasource_v2.listing.file_manifest import (
-    PATH_COLUMN_NAME,
-)
-from ray.data._internal.datasource_v2.listing.listing_utils import (
+from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     partition_files,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import PATH_COLUMN_NAME
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,

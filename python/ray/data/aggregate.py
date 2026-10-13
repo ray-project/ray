@@ -1,4 +1,5 @@
 import abc
+import collections
 import enum
 import math
 import pickle
@@ -25,6 +26,7 @@ from ray.data._internal.arrow_aggregation import (
     ArrowAggSpec,
     count_spec,
     distinct_spec,
+    is_boolean_arrow_type,
     mean_spec,
     minmax_spec,
     missing_pct_spec,
@@ -1776,6 +1778,12 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
             return [0, 0]
 
         arrow_compatible = column_accessor._to_arrow_compatible_container()
+        if not isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
+            # The pandas accessor returns a plain Python list.
+            arrow_compatible = pa.array(arrow_compatible)
+        if is_boolean_arrow_type(arrow_compatible.type):
+            # `equal(bool, int)` has no kernel; treat booleans as 0/1.
+            arrow_compatible = pc.cast(arrow_compatible, pa.int8())
         # Use PyArrow compute to count zeros
         # First create a boolean mask for zero values
         zero_mask = pc.equal(arrow_compatible, 0)
@@ -1922,6 +1930,9 @@ class ApproximateTopK(AggregateFnV2):
         Computes the approximate top k items in a column by using a datasketches frequent_strings_sketch.
         https://datasketches.apache.org/docs/Frequency/FrequentItemsOverview.html
 
+        For an exact variant that returns a plain list of values (at the cost of
+        keeping all distinct values in the accumulator), see :class:`TopKUnique`.
+
         Guarantees:
             - Any item with true frequency > N / (2^log_capacity) is guaranteed to appear in the results
             - Reported counts may have an error of at most ± N / (2^log_capacity).
@@ -2015,3 +2026,231 @@ class ApproximateTopK(AggregateFnV2):
             {column: pickle.loads(bytes.fromhex(item[0])), "count": int(item[1])}
             for item in frequent_items[: self.k]
         ]
+
+
+@PublicAPI
+class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
+    """Defines an exact top-k-by-frequency unique aggregation.
+
+    Counts value frequencies globally (summed across all blocks) and returns the
+    ``k`` most frequent values. The ranking is global: a value that is only
+    moderately frequent in every individual block but frequent overall is
+    correctly preferred over a value that is frequent in a single block.
+
+    Unlike :class:`ApproximateTopK`, the result is exact, no third-party
+    dependency is required, and the output is a plain list of values (like
+    :class:`Unique`) rather than value/count records. The price is that the
+    accumulator holds every distinct value with its count until the final
+    ranking, so memory grows with the number of distinct values.
+
+    Ties are broken deterministically: values with equal counts are ordered by
+    value (ascending), with nulls last.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            from ray.data.aggregate import TopKUnique
+
+            ds = ray.data.from_items([
+                {"word": "apple"}, {"word": "banana"}, {"word": "apple"},
+                {"word": "cherry"}, {"word": "apple"}, {"word": "banana"}
+            ])
+
+            result = ds.aggregate(TopKUnique(on="word", k=2))
+            # result: {'topk_unique(word)': ['apple', 'banana']}
+
+    Args:
+        on: The name of the column to aggregate.
+        k: The number of most frequent values to return.
+        ignore_nulls: Whether to ignore null values when counting. If ``False``
+            (the default, matching :class:`Unique`), nulls are counted like any
+            other value and ``None`` can appear in the result.
+        alias_name: Optional name for the resulting column. Defaults to
+            ``"topk_unique({on})"``.
+        encode_lists: If ``True``, list-type column elements are flattened so
+            that each list element is counted individually. If ``False``, entire
+            lists are treated as single values (converted to tuples for
+            hashability). Note that this is a top-level flatten (not a recursive
+            flatten) operation.
+    """
+
+    def __init__(
+        self,
+        on: str,
+        k: int,
+        ignore_nulls: bool = False,
+        alias_name: Optional[str] = None,
+        encode_lists: bool = False,
+    ):
+        if k <= 0:
+            raise ValueError(f"`k` must be a positive integer (got {k})")
+
+        self._k = k
+        self._encode_lists = bool(encode_lists)
+
+        super().__init__(
+            alias_name if alias_name else f"topk_unique({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: {"values": [], "counts": []},
+        )
+
+    def aggregate_block(self, block: Block) -> Dict[str, List]:
+        accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+
+        if self._encode_lists and accessor.is_composed_of_lists():
+            accessor = BlockColumnAccessor.for_column(accessor.flatten())
+
+        if accessor.is_composed_of_lists():
+            # Whole lists are treated as single values. There's no vectorized
+            # `value_counts` kernel for list types, so count in Python over
+            # tuples (mirroring how `Unique` makes whole-list values hashable).
+            #
+            # NOTE: A row in a list column is either list-like or missing, and
+            #       missing rows can be None, NaN or pd.NA depending on the block
+            #       type - none of which is iterable.
+            counter = collections.Counter(
+                tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else None
+                for value in accessor.to_pylist()
+            )
+            value_counts = {
+                "values": list(counter.keys()),
+                "counts": list(counter.values()),
+            }
+        else:
+            value_counts = accessor.value_counts() or {"values": [], "counts": []}
+
+        values: List[Any] = []
+        counts: List[int] = []
+        # Null accounting differs by block type: a pandas column drops nulls
+        # from `value_counts` entirely, while an Arrow column reports them as
+        # entries (None for nulls, NaN as a float value). Strip null-ish
+        # entries here and re-add one canonical `None` entry below, so both
+        # block types produce the same accumulator.
+        null_count_from_entries = 0
+        for value, count in zip(value_counts["values"], value_counts["counts"]):
+            if is_null(value):
+                null_count_from_entries += count
+                continue
+            # Convert lists to tuples for hashability in `combine`, mirroring
+            # how `Unique` treats whole-list values.
+            values.append(tuple(value) if isinstance(value, list) else value)
+            counts.append(count)
+
+        if not self._ignore_nulls:
+            # Whichever accounting is complete for this block type wins: the
+            # Arrow entries above cover both None and NaN, while the count
+            # delta covers everything a pandas `value_counts` dropped.
+            total = accessor.count(ignore_nulls=False) or 0
+            non_null = accessor.count(ignore_nulls=True) or 0
+            null_count = max(null_count_from_entries, total - non_null)
+            if null_count > 0:
+                values.append(None)
+                counts.append(null_count)
+
+        return {"values": values, "counts": counts}
+
+    def combine(
+        self,
+        current_accumulator: Dict[str, List],
+        new: Dict[str, List],
+    ) -> Dict[str, List]:
+        # NOTE: The engine merges whole accumulator columns through
+        #       `_combine_column`. This pairwise merge is the row-wise
+        #       equivalent, kept as a fallback for values Arrow can't group.
+        values = [self._normalize_value(v) for v in current_accumulator["values"]]
+        counts = list(current_accumulator["counts"])
+
+        value_to_index = {v: i for i, v in enumerate(values)}
+
+        for v_new, c_new in zip(new["values"], new["counts"]):
+            v_new = self._normalize_value(v_new)
+            if v_new in value_to_index:
+                counts[value_to_index[v_new]] += c_new
+            else:
+                value_to_index[v_new] = len(values)
+                values.append(v_new)
+                counts.append(c_new)
+
+        return {"values": values, "counts": counts}
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
+        # NOTE: The result must itself be a valid accumulator: the reduce side
+        #       repeatedly re-combines partially combined blocks before
+        #       finalizing. In particular, counts are kept and the top-k cut is
+        #       only applied in `finalize`.
+        if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
+            try:
+                # Null accumulator rows (empty groups) flatten to nothing.
+                merged = (
+                    pa.table(
+                        {
+                            "value": pc.list_flatten(
+                                pc.struct_field(accumulator_col, "values")
+                            ),
+                            "count": pc.list_flatten(
+                                pc.struct_field(accumulator_col, "counts")
+                            ),
+                        }
+                    )
+                    .group_by("value")
+                    .aggregate([("count", "sum")])
+                )
+                return {
+                    "values": merged["value"].to_pylist(),
+                    "counts": merged["count_sum"].to_pylist(),
+                }
+            except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+                # Values Arrow can't group by (e.g. whole lists)
+                pass
+
+        merged_accumulator = self._zero_accumulator()
+        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+            if accumulator is not None:
+                merged_accumulator = self.combine(merged_accumulator, accumulator)
+        return merged_accumulator
+
+    def finalize(self, accumulator: Dict[str, List]) -> List[Any]:
+        values, counts = accumulator["values"], accumulator["counts"]
+        if not values:
+            return []
+
+        try:
+            table = pa.table(
+                {"value": pa.array(values), "count": pa.array(counts, pa.int64())}
+            )
+            # NOTE: Arrow places nulls last, matching the fallback below.
+            ranked = pc.sort_indices(
+                table, sort_keys=[("count", "descending"), ("value", "ascending")]
+            )
+            return pc.take(table["value"], ranked[: self._k]).to_pylist()
+        except (pa.ArrowInvalid, pa.ArrowNotImplementedError, pa.ArrowTypeError):
+            # Values Arrow can't sort (e.g. whole lists, mixed types)
+            pass
+
+        pairs = list(zip(values, counts))
+        try:
+            pairs.sort(key=lambda pair: (-pair[1], pair[0] is None, pair[0]))
+        except TypeError:
+            # Values aren't mutually comparable (mixed types) - fall back to
+            # their string representation for a deterministic tie-break.
+            pairs.sort(key=lambda pair: (-pair[1], pair[0] is None, str(pair[0])))
+        return [value for value, _ in pairs[: self._k]]
+
+    @staticmethod
+    def _zero_accumulator() -> Dict[str, List]:
+        return {"values": [], "counts": []}
+
+    @staticmethod
+    def _normalize_value(value: Any) -> Any:
+        # Partial accumulators round-trip through Arrow between combine steps,
+        # which turns tuples back into lists - re-canonicalize so lookups in
+        # `combine` stay consistent. NaN objects are likewise canonicalized
+        # since distinct float('nan') instances hash differently.
+        if isinstance(value, list):
+            return tuple(value)
+        if isinstance(value, float) and np.isnan(value):
+            return np.nan
+        return value

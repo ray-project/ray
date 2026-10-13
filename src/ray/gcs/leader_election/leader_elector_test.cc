@@ -23,9 +23,9 @@
 namespace ray {
 namespace gcs {
 
-class MockLeaseClient : public LeaderLeaseClientInterface {
+class FakeLeaseClient : public LeaderLeaseClientInterface {
  public:
-  MockLeaseClient(
+  FakeLeaseClient(
       std::function<Status(const std::string &, int, std::string &)> try_acquire,
       std::function<Status(const std::string &, int, std::string &)> renew,
       std::function<void(const std::string &)> release)
@@ -53,7 +53,7 @@ class MockLeaseClient : public LeaderLeaseClientInterface {
   std::function<void(const std::string &)> release_;
 };
 
-class SharedMockLeaseClient : public LeaderLeaseClientInterface {
+class SharedFakeLeaseClient : public LeaderLeaseClientInterface {
  public:
   void Crash(const std::string &holder_id) {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -141,7 +141,7 @@ TEST_F(LeaderElectorTest, SuccessfulAcquisitionAndRenewal) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -186,7 +186,7 @@ TEST_F(LeaderElectorTest, AcquireFailureRetriesAndSucceeds) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -232,7 +232,7 @@ TEST_F(LeaderElectorTest, AcquireFailsOnErrorButRetries) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -273,7 +273,7 @@ TEST_F(LeaderElectorTest, DestructorCleanStopAndRelease) {
 
   auto release = [&](const std::string &) { release_called = true; };
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -318,7 +318,7 @@ TEST_F(LeaderElectorTest, StepDownOnRenewDeadlineExceeded) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -368,7 +368,7 @@ TEST_F(LeaderElectorTest, StepDownImmediatelyIfLeaseStolen) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -416,7 +416,7 @@ TEST_F(LeaderElectorTest, StepDownOnPersistentRenewalFailure) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -467,7 +467,7 @@ TEST_F(LeaderElectorTest, RenewTransientFailureDoesNotStepDown) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -512,7 +512,7 @@ TEST_F(LeaderElectorTest, LeadershipTransitionCallback) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -557,7 +557,7 @@ TEST_F(LeaderElectorTest, NewLeaderCallbackTriggersOnce) {
 
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -585,7 +585,7 @@ TEST_F(LeaderElectorTest, NewLeaderCallbackTriggersOnce) {
 // Group 4: Multi-Replica Election & Failover
 TEST_F(LeaderElectorTest, TwoReplicasElectionWithGracefulExit) {
   // 1. Setup a shared coordinate client
-  auto shared_client = std::make_shared<SharedMockLeaseClient>();
+  auto shared_client = std::make_shared<SharedFakeLeaseClient>();
 
   // 2. Setup Elector A
   LeaderElectionConfig config_a;
@@ -648,7 +648,7 @@ TEST_F(LeaderElectorTest, TwoReplicasElectionWithGracefulExit) {
 }
 
 TEST_F(LeaderElectorTest, TwoReplicasElectionWithNonGracefulExit) {
-  auto shared_client = std::make_shared<SharedMockLeaseClient>();
+  auto shared_client = std::make_shared<SharedFakeLeaseClient>();
 
   // 1. Setup elector A
   LeaderElectionConfig config_a;
@@ -721,7 +721,7 @@ TEST_F(LeaderElectorTest, RunMultipleTimesIsSafe) {
   };
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;
@@ -753,7 +753,7 @@ TEST_F(LeaderElectorTest, RunCanBeRestartedAfterStop) {
   };
   auto release = [](const std::string &) {};
 
-  auto lease_client = std::make_shared<MockLeaseClient>(try_acquire, renew, release);
+  auto lease_client = std::make_shared<FakeLeaseClient>(try_acquire, renew, release);
 
   LeaderElectionConfig config;
   config.lease_client = lease_client;

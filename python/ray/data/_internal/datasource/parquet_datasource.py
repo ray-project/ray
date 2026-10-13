@@ -25,10 +25,10 @@ from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
 )
-from ray.data._internal.datasource_v2.logical_optimizers import (
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
 )
-from ray.data._internal.datasource_v2.parquet_utils import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     PARQUET_FILE_EXTENSIONS,
     _get_safe_batch_size_for_nested_types,
     _needs_nested_type_fallback,
@@ -1189,7 +1189,7 @@ def _read_batches_from(
     # Imported here rather than at module level: the V2 reader modules import
     # ``pyarrow.dataset`` at load time, which would otherwise make every
     # ``import ray.data`` load PyArrow's dataset extensions.
-    from ray.data._internal.datasource_v2.readers.synthesized_columns import (
+    from ray.data._internal.datasource_v2.common.synthesized_columns import (
         _compute_row_hashes,
     )
 
