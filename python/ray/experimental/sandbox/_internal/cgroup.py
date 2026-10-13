@@ -34,8 +34,11 @@ def _read(path: Path) -> str:
 def _write(path: Path, value: str) -> None:
     # Never create a missing controller file on a regular filesystem.
     # cgroup.kill is write-only, including for the delegated owner.
-    with os.fdopen(os.open(path, os.O_WRONLY), "w") as stream:
-        stream.write(value)
+    fd = os.open(path, os.O_WRONLY)
+    try:
+        os.write(fd, value.encode())
+    finally:
+        os.close(fd)
 
 
 def _cpus(value: str) -> Set[int]:
@@ -71,7 +74,10 @@ def _process_identity(pid: int) -> Optional[str]:
         # cannot own sandboxes even though their /proc entries still exist.
         fields = _read(Path(f"/proc/{pid}/stat")).rsplit(")", 1)[1].split()
         return None if fields[0] == "Z" else fields[19]
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # ESRCH: the process was reaped between open() and read(). Other
+        # errors don't prove that the owner is dead, and _reconcile kills
+        # the sandboxes of dead owners.
         return None
 
 
@@ -119,30 +125,40 @@ def _remove(record_path: Path, record: Dict) -> None:
 
 def _reconcile(state_dir: Path) -> None:
     for record_path, record in _records(state_dir):
-        if not Path(record["path"]).exists():
-            # Cgroups don't survive a node reboot. A reused owner identity
-            # mustn't retain a lease for a cgroup that no longer exists.
-            record_path.unlink(missing_ok=True)
-            continue
-        invalid_partition = False
-        if record["reserved_cpus"]:
-            pool = Path(record["path"]).parent
-            invalid_partition = _read(pool / "cpuset.cpus.partition") not in (
-                "root",
-                "isolated",
-            ) or not set(record["reserved_cpus"]) <= _cpus(
-                _read(pool / "cpuset.cpus.effective")
-            )
-            try:
-                # CPU hotplug can bring a sibling online outside the pool
-                # without invalidating the kernel's partition flag.
-                SandboxCgroupManager._cores(pool)
-            except (OSError, RuntimeError):
-                invalid_partition = True
-        if invalid_partition or (
-            _process_identity(record["owner_pid"]) != record["owner_starttime"]
-        ):
-            _remove(record_path, record)
+        try:
+            _reconcile_lease(record_path, record)
+        except (OSError, RuntimeError) as err:
+            # Keep the lease, and any cores it reserves, for a later pass.
+            # One lease that can't be checked or removed mustn't fail every
+            # allocation on the node.
+            logger.warning("Failed to reclaim sandbox lease %s: %s", record_path, err)
+
+
+def _reconcile_lease(record_path: Path, record: Dict) -> None:
+    if not Path(record["path"]).exists():
+        # Cgroups don't survive a node reboot. A reused owner identity
+        # mustn't retain a lease for a cgroup that no longer exists.
+        record_path.unlink(missing_ok=True)
+        return
+    invalid_partition = False
+    if record["reserved_cpus"]:
+        pool = Path(record["path"]).parent
+        invalid_partition = _read(pool / "cpuset.cpus.partition") not in (
+            "root",
+            "isolated",
+        ) or not set(record["reserved_cpus"]) <= _cpus(
+            _read(pool / "cpuset.cpus.effective")
+        )
+        try:
+            # CPU hotplug can bring a sibling online outside the pool
+            # without invalidating the kernel's partition flag.
+            SandboxCgroupManager._cores(pool)
+        except (OSError, RuntimeError):
+            invalid_partition = True
+    if invalid_partition or (
+        _process_identity(record["owner_pid"]) != record["owner_starttime"]
+    ):
+        _remove(record_path, record)
 
 
 def _reap(state_dir: Path) -> None:

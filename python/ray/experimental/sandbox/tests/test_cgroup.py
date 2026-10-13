@@ -1,5 +1,6 @@
 """Resource enforcement, allocation races, and crash cleanup without gVisor."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,7 +9,10 @@ import pytest
 
 from ray.experimental.sandbox._internal import cgroup
 from ray.experimental.sandbox.config import SandboxConfig
-from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.exceptions import (
+    SandboxCreationError,
+    SandboxTimeoutError,
+)
 
 
 @pytest.fixture
@@ -141,6 +145,30 @@ def test_failed_kill_keeps_core_lease(manager, monkeypatch):
     assert len(list(cgroup._records(manager.state_dir))) == 1
 
 
+def test_unremovable_orphan_keeps_its_cores_without_blocking_others(
+    manager, monkeypatch
+):
+    stuck = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
+    orphan = manager.allocate("ray-sandbox-000000000002", 1, 0, "exclusive")
+    (stuck.path / "cgroup.events").write_text("populated 1")
+    write = cgroup._write
+
+    def fail(path, value):
+        if path == stuck.path / "cgroup.kill":
+            raise PermissionError("cgroup.kill denied")
+        write(path, value)
+
+    monkeypatch.setattr(cgroup, "_write", fail)
+    monkeypatch.setattr(cgroup, "_process_identity", lambda _: "reused-pid")
+    # Both owners died. Only the other orphan's core can be reclaimed.
+    third = manager.allocate("ray-sandbox-000000000003", 1, 0, "exclusive")
+    assert (third.path / "cpuset.cpus").read_text() == "1"
+    assert not orphan.path.exists()
+    assert stuck.path.exists()
+    with pytest.raises(RuntimeError, match="Not enough exclusive"):
+        manager.allocate("ray-sandbox-000000000004", 1, 0, "exclusive")
+
+
 def test_verify_rejects_changed_limits_and_wrong_process(manager):
     lease = manager.allocate("ray-sandbox-000000000001", 1, 0, "shared")
     with pytest.raises(RuntimeError, match="isn't in"):
@@ -195,6 +223,57 @@ def test_backend_rejects_unenforceable_limits_before_image_pull(monkeypatch):
     images.pull_image.assert_not_called()
 
 
+def test_failed_create_reports_its_error_when_release_also_fails(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from ray.experimental.sandbox.backend import gvisor
+
+    lease = Mock()
+    lease.release.side_effect = RuntimeError("Sandbox cgroup is still populated")
+    monkeypatch.setattr(gvisor.SandboxCgroupManager, "allocate", lambda *_: lease)
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path))
+    monkeypatch.setattr("shutil.which", lambda _: "/runsc")
+    backend = gvisor.GVisorSandboxBackend(Mock())
+
+    def start(config, sandbox_id, root_dir, cgroup):
+        os.makedirs(root_dir)
+        raise SandboxTimeoutError("never reached running")
+
+    monkeypatch.setattr(backend, "_start_sandbox", start)
+    with pytest.raises(SandboxTimeoutError, match="never reached running"):
+        backend.create_sandbox(SandboxConfig("busybox", cpu=1))
+    lease.release.assert_called_once()
+    backend._image_manager.release_image.assert_called_once()
+    assert not list(tmp_path.iterdir())
+
+
+def test_failed_cgroup_release_still_frees_files_and_image(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+
+    monkeypatch.setattr(subprocess, "run", Mock())
+    backend = GVisorSandboxBackend(Mock())
+    lease = Mock()
+    lease.release.side_effect = RuntimeError("Sandbox cgroup is still populated")
+    sandbox_id = "ray-sandbox-000000000001"
+    root_dir = tmp_path / sandbox_id
+    root_dir.mkdir()
+    backend._sandbox_metadata[sandbox_id] = {
+        "root_dir": str(root_dir),
+        "config": SandboxConfig("busybox", cpu=1),
+        "cgroup": lease,
+    }
+    with pytest.raises(RuntimeError, match="still populated"):
+        backend.delete_sandbox(sandbox_id)
+    assert not root_dir.exists()
+    backend._image_manager.release_image.assert_called_once_with("busybox", sandbox_id)
+    # The metadata survives, so a retry can still free the lease.
+    lease.release.side_effect = None
+    backend.delete_sandbox(sandbox_id)
+    assert sandbox_id not in backend._sandbox_metadata
+
+
 def test_gofer_cache_is_disabled_only_when_supported():
     from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 
@@ -236,6 +315,22 @@ def test_process_identity_handles_spaces_and_zombies(tmp_path, monkeypatch):
     assert cgroup._process_identity(42) == "987654"
     path.write_text(path.read_text().replace(") S ", ") Z "))
     assert cgroup._process_identity(42) is None
+
+
+def test_process_identity_treats_only_a_vanished_process_as_dead(monkeypatch):
+    def fail(error):
+        def read(_):
+            raise error
+
+        return read
+
+    # The owner was reaped between open() and read().
+    monkeypatch.setattr(cgroup, "_read", fail(ProcessLookupError(3, "ESRCH")))
+    assert cgroup._process_identity(42) is None
+    # EPERM under hidepid=1 doesn't show that the owner exited.
+    monkeypatch.setattr(cgroup, "_read", fail(PermissionError(1, "EPERM")))
+    with pytest.raises(PermissionError):
+        cgroup._process_identity(42)
 
 
 if __name__ == "__main__":

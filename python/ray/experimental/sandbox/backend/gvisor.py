@@ -139,7 +139,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             return self._start_sandbox(config, sandbox_id, root_dir, cgroup)
         except Exception as err:
             if cgroup is not None:
-                cgroup.release()
+                try:
+                    cgroup.release()
+                except Exception as release_err:
+                    # Report the creation error instead. The lease stays
+                    # held until this worker exits and the reaper frees it.
+                    logger.warning(
+                        "Failed to release sandbox %s's cgroup: %s",
+                        sandbox_id,
+                        release_err,
+                    )
             self._image_manager.release_image(config.image, sandbox_id)
             shutil.rmtree(root_dir, ignore_errors=True)
             if isinstance(err, SandboxError):
@@ -330,20 +339,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 self._terminate_tree(proc)
 
             cgroup = meta.get("cgroup")
-            if cgroup is not None:
-                # A detached Sentry needn't remain in runsc's process group.
-                # Keep metadata and its core lease until every process dies.
-                cgroup.release()
+            try:
+                if cgroup is not None:
+                    # A detached Sentry needn't remain in runsc's process group.
+                    # Keep metadata and its core lease until every process dies.
+                    cgroup.release()
+            finally:
+                # Free the files and the image pin even if release fails. The
+                # caller may never retry, and the reaper reclaims only cgroups.
+                if stderr_file:
+                    try:
+                        stderr_file.close()
+                    except Exception:
+                        pass
 
-            if stderr_file:
-                try:
-                    stderr_file.close()
-                except Exception:
-                    pass
-
-            shutil.rmtree(root_dir, ignore_errors=True)
-            # Only now is the cached image unused.
-            self._image_manager.release_image(config.image, sandbox_id)
+                shutil.rmtree(root_dir, ignore_errors=True)
+                self._image_manager.release_image(config.image, sandbox_id)
             self._sandbox_metadata.pop(sandbox_id, None)
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
