@@ -28,9 +28,6 @@ class TopNRewriteRule(Rule):
         assert isinstance(plan, LogicalPlan)
         if plan.context.shuffle_strategy != ShuffleStrategy.SHUFFLE_V2:
             return plan
-        # TODO(vicwen): Remove this fallback once Polars sorts nulls last. See #66925.
-        if plan.context.use_polars or plan.context.use_polars_sort:
-            return plan
         if not plan.context.get_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, False):
             return plan
 

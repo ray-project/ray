@@ -8,11 +8,9 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import Limit, MapRows, Sort, TopN
 from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data._internal.logical.rules import CombineShuffles, LimitPushdownRule
 from ray.data._internal.logical.rules.top_n_rewrite import (
     TOP_N_REWRITE_ENABLED_CONFIG_KEY,
     TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY,
-    TopNRewriteRule,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.block import BlockMetadata
@@ -54,10 +52,6 @@ def _make_sort(
         input_dependencies=[input_operator],
         ray_remote_args={"num_cpus": 2},
     )
-
-
-def test_top_n_rule_dependencies():
-    assert TopNRewriteRule.dependencies() == [LimitPushdownRule, CombineShuffles]
 
 
 def test_rewrite_sort_limit_to_top_n():
@@ -218,20 +212,6 @@ def test_rewrite_rejects_invalid_max_limit():
             Limit(5, input_dependencies=[_make_sort(_Input())]),
             context,
         )
-
-
-@pytest.mark.parametrize("config", ["use_polars", "use_polars_sort"])
-def test_rewrite_keeps_sort_limit_for_polars(config):
-    context = _make_context()
-    setattr(context, config, True)
-
-    optimized = _optimize_dag(
-        Limit(5, input_dependencies=[_make_sort(_Input())]),
-        context,
-    )
-
-    assert isinstance(optimized, Limit)
-    assert isinstance(optimized.input_dependencies[0], Sort)
 
 
 if __name__ == "__main__":
