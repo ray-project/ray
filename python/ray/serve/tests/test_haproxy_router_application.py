@@ -22,6 +22,7 @@ from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
@@ -320,8 +321,8 @@ class FakeRouter:
         async def health():
             return "ok"
 
-        @app.api_route("/{path:path}", methods=["POST"])
-        async def route(path: str, request: Request):
+        @app.post("/internal/route")
+        async def route(request: Request):
             self.calls.append(
                 {
                     "method": request.method,
@@ -451,12 +452,16 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
     assert len(router.calls) == 3
     call = router.calls[-1]
     assert call["method"] == "POST"
-    assert call["path"] == "/v1/chat/completions"
-    assert call["query"] == "x=1"
+    assert call["path"] == "/internal/route"
+    assert call["query"] == ""
     assert json.loads(call["body"])["model"] == "model-b"
     assert call["headers"]["x-request-id"] == "req-b1"
     assert call["headers"]["content-type"] == "application/json"
     assert call["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER] == "POST"
+    assert (
+        call["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+        == "/v1/chat/completions"
+    )
 
 
 @pytest.mark.asyncio
@@ -473,10 +478,14 @@ async def test_get_dispatches_to_selected_application(router_cluster):
     assert served["path"] == "/v1/control/v1/models"
     assert served["query"] == "limit=2"
     assert router.calls[-1]["method"] == "POST"
-    assert router.calls[-1]["path"] == "/v1/models"
+    assert router.calls[-1]["path"] == "/internal/route"
     assert (
         router.calls[-1]["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
         == "GET"
+    )
+    assert (
+        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+        == "/v1/models"
     )
 
 
@@ -495,6 +504,10 @@ async def test_head_uses_post_for_decision_and_head_for_replica(router_cluster):
     assert (
         router.calls[-1]["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
         == "HEAD"
+    )
+    assert (
+        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+        == "/v1/models"
     )
 
 
@@ -520,7 +533,10 @@ async def test_router_prefix_is_replaced(router_cluster):
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["path"] == "/v1/model-a/v1/chat/completions"
-    assert router.calls[-1]["path"] == "/llm/v1/chat/completions"
+    assert (
+        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+        == "/llm/v1/chat/completions"
+    )
 
     # Paths outside the router's prefix are not routed by it.
     assert requests.post(f"{url}/v1/chat/completions", timeout=10).status_code == 404
