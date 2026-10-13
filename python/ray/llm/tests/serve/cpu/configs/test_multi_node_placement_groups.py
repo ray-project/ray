@@ -534,7 +534,7 @@ def test_per_worker_gpus_env_on_replica(
     a fractional bundle's derived value must land on the replica actor's
     runtime_env, an explicit value must win, unrelated user env vars must be
     preserved, an explicit env_vars=None must not crash, and a full-GPU bundle
-    must inject nothing. Regression test for #63875.
+    must inject nothing.
     """
     llm_config = get_llm_config_with_placement_group(
         placement_group_config=placement_group_config,
@@ -554,7 +554,7 @@ def test_all_engine_derived_env_vars_reach_replica(monkeypatch):
     """Every engine-derived env var -- not only VLLM_RAY_PER_WORKER_GPUS -- must
     reach the replica actor. get_deployment_options consumes the engine's
     runtime_env builder wholesale, so a future derived var cannot re-open the
-    gap in #63875.
+    propagation gap.
     """
 
     def fake_derive(self):

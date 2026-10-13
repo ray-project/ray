@@ -786,7 +786,7 @@ class LLMServer(LLMServerProtocol):
         """Seed replica env_vars with engine-derived vars (e.g. fractional-GPU
         VLLM_RAY_PER_WORKER_GPUS) so the engine subprocess inherits them.
 
-        Explicit user-provided env vars win over derived ones. See #63875.
+        Explicit user-provided env vars win over derived ones.
         """
         engine_env_vars = engine_config.get_runtime_env_with_local_env_vars().get(
             "env_vars", {}
