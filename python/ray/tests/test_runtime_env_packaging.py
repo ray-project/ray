@@ -1577,6 +1577,41 @@ def test_untar_package_path_traversal(tmp_path, extension, mode):
     assert len(os.listdir(target_dir)) == 0
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX file modes")
+@pytest.mark.parametrize("archive_format", ["zip", "tar"])
+def test_extracted_file_modes_are_masked(tmp_path, archive_format):
+    members = {"suid.sh": 0o4777, "plain.txt": 0o666, "private.txt": 0o600}
+    archive_path = tmp_path / f"package.{archive_format}"
+    if archive_format == "zip":
+        with zipfile.ZipFile(archive_path, "w") as zip_file:
+            for name, mode in members.items():
+                info = zipfile.ZipInfo(name)
+                info.external_attr = (0o100000 | mode) << 16
+                zip_file.writestr(info, b"x")
+        extract = unzip_package
+    else:
+        with tarfile.open(archive_path, "w") as tar:
+            for name, mode in members.items():
+                info = tarfile.TarInfo(name)
+                info.size = 1
+                info.mode = mode
+                tar.addfile(info, io.BytesIO(b"x"))
+            for name, member_type in [
+                ("fifo", tarfile.FIFOTYPE),
+                ("chardev", tarfile.CHRTYPE),
+            ]:
+                info = tarfile.TarInfo(name)
+                info.type = member_type
+                tar.addfile(info)
+        extract = untar_package
+
+    target_dir = tmp_path / "extracted"
+    extract(str(archive_path), str(target_dir), False, False)
+
+    modes = {p.name: p.stat().st_mode & 0o7777 for p in target_dir.iterdir()}
+    assert modes == {"suid.sh": 0o755, "plain.txt": 0o644, "private.txt": 0o600}
+
+
 def test_unzip_package_skips_path_traversal_entries(tmp_path):
     """Verify that zip entries resolving outside target_dir are skipped."""
     zip_path = tmp_path / "malicious.zip"
