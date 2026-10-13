@@ -7,7 +7,7 @@
 # the gap is explicit rather than a silent glob miss -- and stated plainly rather
 # than wired as `manual` tests, which aren't run in practice:
 #
-#   intel-gaudi/{bert,llama,llama-pretrain,resnet,sd}.ipynb
+#   intel-gaudi/{llama,resnet,sd}.ipynb
 #       Require Intel Gaudi (HPU) accelerators (resources={"HPU": ...}).
 #   jax/intro-to-jax-trainer/README.ipynb
 #       Multi-GPU JAX/Flax training (ScalingConfig(num_workers=2, use_gpu=True)).
