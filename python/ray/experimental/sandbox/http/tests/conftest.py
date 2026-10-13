@@ -238,6 +238,35 @@ class FakeResolver:
                 self.killed.append(name)
 
 
+class LoopbackRuntime(FakeSandboxRuntime):
+    """A fake runtime that acts like a small shell, for tests that can only
+    observe it through a client: ``echo`` prints its arguments,
+    ``sh -c "exit N"`` exits with N, and files read back what was written."""
+
+    def exec(self, instance_id: str, command: Any, **kwargs: Any) -> FakeExecResult:
+        result = super().exec(instance_id, command, **kwargs)
+        argv = command if isinstance(command, list) else [command]
+        if argv[:1] == ["echo"]:
+            return FakeExecResult(stdout=" ".join(argv[1:]) + "\n")
+        if argv[:2] == ["sh", "-c"] and argv[2:3] and argv[2].startswith("exit "):
+            return FakeExecResult(exit_code=int(argv[2].split()[1]))
+        return result
+
+    def read_file(self, instance_id: str, path: str) -> bytes:
+        if path in self.written_files:
+            return self.written_files[path]
+        return super().read_file(instance_id, path)
+
+
+class LoopbackResolver(FakeResolver):
+    """A ``FakeResolver`` whose sandboxes run on ``LoopbackRuntime``."""
+
+    def _runtime_factory(self) -> FakeSandboxRuntime:
+        runtime = LoopbackRuntime()
+        self.runtimes.append(runtime)
+        return runtime
+
+
 @pytest.fixture
 def fake_resolver() -> FakeResolver:
     return FakeResolver()
@@ -291,6 +320,8 @@ __all__ = [
     "FakeSandboxRuntime",
     "FakeHandle",
     "FakeResolver",
+    "LoopbackResolver",
+    "LoopbackRuntime",
     "SandboxExecError",
     "SandboxTimeoutError",
     "wait_until",
