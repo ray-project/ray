@@ -921,7 +921,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 return
             if isinstance(result, RASQueryError):
                 logger.warning(
-                    "Disabling Ray Train hang detector for the rest of this run as `ncclras` returns %s.",
+                    "Disabling Ray Train NCCL hang detector for the rest of this run as `ncclras` returns %s.",
                     result,
                 )
                 self._is_ras_degraded = True
@@ -939,7 +939,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             raise
         except Exception:  # noqa: BLE001
             logger.exception(
-                "The Ray Train hang detector hit an unexpected error, therefore, "
+                "The Ray Train NCCL hang detector hit an unexpected error, therefore, "
                 "disabling it for the rest of this training run."
             )
             self._is_ras_degraded = True
@@ -1010,7 +1010,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         for comm_id, count in self.comm_deadlock_count.items():
             if comm_id not in frozen_counts and count >= self._suspicion_polls:
                 logger.info(
-                    "The Ray Train hang detector callback detects that the "
+                    "The Ray Train NCCL hang detector callback detects that the "
                     "NCCL communicator %s resumed making progress after being stalled "
                     "for %.0f seconds (%d polls). It is no longer suspected of hanging.",
                     comm_id,
@@ -1081,7 +1081,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self._ras_text_logged = False
             stalled_comms = new_suspicions
             headline = (
-                f"Possible NCCL hang detected by the Ray Train hang detector callback! "
+                f"Possible NCCL hang detected by the Ray Train NCCL hang detector callback! "
                 f"{len(new_suspicions)} communicator(s) have made no collective progress "
                 f"for {self._suspicion_polls * self._poll_interval_s:.0f} seconds "
                 "while their ranks disagree on how many collectives they have "
