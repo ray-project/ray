@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import math
@@ -6,7 +7,6 @@ from typing import List
 
 import pytest
 
-from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private import backpressure
 from ray.serve._private.backpressure import (
     COMPUTED_RETRY_AFTER_MAX_S,
@@ -23,6 +23,7 @@ from ray.serve._private.backpressure import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import configure_component_logger
+from ray.serve._private.metrics_utils import MetricsPusher
 from ray.serve.config import BackpressureConfig
 from ray.serve.schema import LoggingConfig
 
@@ -481,67 +482,121 @@ class TestComputeRetryAfterDecision:
         assert rand.num_calls == 1
 
 
+class FakeStopEvent:
+    def __init__(self):
+        self._set = False
+
+    def set(self):
+        self._set = True
+
+    def is_set(self) -> bool:
+        return self._set
+
+
 class FakeMetricsPusher:
     def __init__(self):
         self.calls: List[str] = []
         self.tasks = {}
-
-    def start(self):
-        self.calls.append("start")
+        self.stop_event = FakeStopEvent()
 
     def register_or_update_task(self, name, task_func, interval_s):
         self.calls.append(f"register:{name}:{interval_s}")
         self.tasks[name] = task_func
-
-    def stop_tasks(self):
-        self.calls.append("stop")
-        self.tasks.clear()
 
     async def graceful_shutdown(self):
         self.calls.append("shutdown")
         self.tasks.clear()
 
 
+class FakeMetricsPusherFactory:
+    """Creates `FakeMetricsPusher`s and remembers them."""
+
+    def __init__(self):
+        self.pushers: List[FakeMetricsPusher] = []
+
+    def __call__(self) -> FakeMetricsPusher:
+        self.pushers.append(FakeMetricsPusher())
+        return self.pushers[-1]
+
+
+class ManualSleep:
+    """`async_sleep` for `MetricsPusher` that only returns when released, so a
+    test decides exactly when each sampling interval ends."""
+
+    def __init__(self):
+        self._waiters: List[asyncio.Future] = []
+
+    async def __call__(self, _interval_s: float):
+        waiter = asyncio.get_running_loop().create_future()
+        self._waiters.append(waiter)
+        await waiter
+
+    def end_interval(self):
+        for waiter in self._waiters:
+            if not waiter.done():
+                waiter.set_result(None)
+
+
+async def run_ready_tasks():
+    """Let every task that's ready run until it blocks again (no wall-clock
+    sleeping: each iteration only yields to the event loop)."""
+    for _ in range(20):
+        await asyncio.sleep(0)
+
+
+def count_samples(estimator: DrainRateEstimator) -> List[None]:
+    """Record each call to `estimator.sample()`."""
+    calls: List[None] = []
+    sample = estimator.sample
+
+    def counting_sample(**kwargs):
+        calls.append(None)
+        sample(**kwargs)
+
+    estimator.sample = counting_sample
+    return calls
+
+
 class TestDrainRateTracker:
     def test_sampler_follows_policy(self):
-        pusher = FakeMetricsPusher()
+        factory = FakeMetricsPusherFactory()
         tracker = DrainRateTracker(
             has_pending_work=lambda: True,
             estimator=make_estimator(),
-            metrics_pusher=pusher,
+            metrics_pusher_factory=factory,
             sample_interval_s=0.5,
         )
 
         # Static policy never starts the sampler.
         tracker.update_policy("static")
         assert not tracker.sampling
-        assert pusher.calls == []
+        assert factory.pushers == []
 
         tracker.update_policy("queue_drain_rate")
         assert tracker.sampling
-        assert pusher.calls == [
-            "start",
-            f"register:{DrainRateTracker.SAMPLE_TASK_NAME}:0.5",
-        ]
+        [pusher] = factory.pushers
+        assert pusher.calls == [f"register:{DrainRateTracker.SAMPLE_TASK_NAME}:0.5"]
 
         # Re-applying the same policy (e.g. an unrelated config update) is a
         # no-op, so it doesn't reset the learned rate or add a timer.
         tracker.update_policy("queue_drain_rate")
-        assert len(pusher.calls) == 2
+        assert len(factory.pushers) == 1
+        assert len(pusher.calls) == 1
 
         tracker.update_policy("static")
         assert not tracker.sampling
-        assert pusher.calls[-1] == "stop"
-        assert pusher.tasks == {}
+        assert pusher.stop_event.is_set()
 
     def test_restart_resets_rate_but_not_counter(self):
-        pusher = FakeMetricsPusher()
+        factory = FakeMetricsPusherFactory()
         estimator = make_estimator()
         tracker = DrainRateTracker(
-            has_pending_work=lambda: True, estimator=estimator, metrics_pusher=pusher
+            has_pending_work=lambda: True,
+            estimator=estimator,
+            metrics_pusher_factory=factory,
         )
         tracker.update_policy("queue_drain_rate")
-        sample = pusher.tasks[DrainRateTracker.SAMPLE_TASK_NAME]
+        sample = factory.pushers[-1].tasks[DrainRateTracker.SAMPLE_TASK_NAME]
 
         sample()
         tracker.record_drain()
@@ -554,46 +609,104 @@ class TestDrainRateTracker:
         assert estimator.rate is None
         assert tracker.drain_counter == 1
 
+        # The restart uses a new pusher; the old sampler function is inert.
+        assert len(factory.pushers) == 2
+        estimator._clock.advance(1)
+        sample()
+        sample()
+        assert estimator.num_samples == 0
+
     def test_counter_maintained_under_static_policy(self):
+        factory = FakeMetricsPusherFactory()
         tracker = DrainRateTracker(
-            has_pending_work=lambda: True, metrics_pusher=FakeMetricsPusher()
+            has_pending_work=lambda: True, metrics_pusher_factory=factory
         )
         for _ in range(3):
             tracker.record_drain()
         assert tracker.drain_counter == 3
+        assert factory.pushers == []
 
     @pytest.mark.asyncio
     async def test_policy_update_after_shutdown_is_ignored(self):
-        pusher = FakeMetricsPusher()
-        tracker = DrainRateTracker(has_pending_work=lambda: True, metrics_pusher=pusher)
+        factory = FakeMetricsPusherFactory()
+        tracker = DrainRateTracker(
+            has_pending_work=lambda: True, metrics_pusher_factory=factory
+        )
         await tracker.shutdown()
         tracker.update_policy("queue_drain_rate")
         assert not tracker.sampling
-        assert pusher.calls == ["shutdown"]
+        assert factory.pushers == []
 
     @pytest.mark.asyncio
-    async def test_real_timer_lifecycle(self):
-        pending = {"value": True}
-        estimator = make_estimator(clock=FakeClock())
+    async def test_shutdown_stops_current_sampler(self):
+        factory = FakeMetricsPusherFactory()
         tracker = DrainRateTracker(
-            has_pending_work=lambda: pending["value"],
+            has_pending_work=lambda: True, metrics_pusher_factory=factory
+        )
+        tracker.update_policy("queue_drain_rate")
+        await tracker.shutdown()
+        assert not tracker.sampling
+        assert factory.pushers[-1].calls[-1] == "shutdown"
+
+    @pytest.mark.asyncio
+    async def test_real_pusher_samples_once_per_interval(self):
+        """Drives a real `MetricsPusher` with a manually ended sleep."""
+        sleep = ManualSleep()
+        estimator = make_estimator(warmup_samples=3)
+        samples = count_samples(estimator)
+        tracker = DrainRateTracker(
+            has_pending_work=lambda: True,
             estimator=estimator,
-            sample_interval_s=0.01,
+            metrics_pusher_factory=lambda: MetricsPusher(async_sleep=sleep),
         )
         tracker.update_policy("queue_drain_rate")
         tracker.update_policy("queue_drain_rate")
-        assert len(tracker._metrics_pusher._async_tasks) == 1
 
-        # Busy-zero intervals are counted, so the estimator warms up.
-        async def advance_and_check():
+        # The sampler runs once when it starts (the baseline), then once per
+        # interval. Busy intervals with no drains count toward warmup.
+        await run_ready_tasks()
+        assert len(samples) == 1
+        for expected_samples in (1, 2, 3):
             estimator._clock.advance(1)
-            return estimator.warm
-
-        await async_wait_for_condition(advance_and_check, retry_interval_ms=10)
+            sleep.end_interval()
+            await run_ready_tasks()
+            assert estimator.num_samples == expected_samples
+        assert len(samples) == 4
+        assert estimator.warm
 
         await tracker.shutdown()
         assert not tracker.sampling
-        assert tracker._metrics_pusher._async_tasks == {}
+        estimator._clock.advance(1)
+        sleep.end_interval()
+        await run_ready_tasks()
+        assert len(samples) == 4
+
+    @pytest.mark.asyncio
+    async def test_restart_leaves_a_single_sampler(self):
+        """Stopping and restarting sampling in the same event-loop turn must
+        not leave the first sampler running alongside the second."""
+        sleep = ManualSleep()
+        estimator = make_estimator(warmup_samples=3)
+        samples = count_samples(estimator)
+        tracker = DrainRateTracker(
+            has_pending_work=lambda: True,
+            estimator=estimator,
+            metrics_pusher_factory=lambda: MetricsPusher(async_sleep=sleep),
+        )
+        tracker.update_policy("queue_drain_rate")
+        tracker.update_policy("static")
+        tracker.update_policy("queue_drain_rate")
+
+        await run_ready_tasks()
+        assert len(samples) == 1
+
+        estimator._clock.advance(1)
+        sleep.end_interval()
+        await run_ready_tasks()
+        assert len(samples) == 2
+        assert estimator.num_samples == 1
+
+        await tracker.shutdown()
 
 
 @pytest.fixture

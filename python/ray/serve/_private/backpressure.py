@@ -174,9 +174,10 @@ class DrainRateTracker:
 
     The timer only runs while the `queue_drain_rate` policy is active, and it
     has its own `MetricsPusher` so it runs regardless of whether autoscaling
-    metrics are being pushed. The drain counter is always maintained (it is
-    one integer increment) so acceptance tooling can measure ground truth for
-    the static policy too.
+    metrics are being pushed. Each sampling lifetime gets a new pusher, so a
+    sampler from before a stop can never resume after a restart. The drain
+    counter is always maintained (it is one integer increment) so acceptance
+    tooling can measure ground truth for the static policy too.
 
     Must be used from the owning component's event loop.
     """
@@ -188,14 +189,15 @@ class DrainRateTracker:
         has_pending_work: Callable[[], bool],
         *,
         estimator: Optional[DrainRateEstimator] = None,
-        metrics_pusher: Optional[MetricsPusher] = None,
+        metrics_pusher_factory: Callable[[], MetricsPusher] = MetricsPusher,
         sample_interval_s: float = RAY_SERVE_BACKPRESSURE_DRAIN_RATE_SAMPLE_INTERVAL_S,
     ):
         self._has_pending_work = has_pending_work
         self._estimator = estimator or DrainRateEstimator()
-        self._metrics_pusher = metrics_pusher or MetricsPusher()
+        self._metrics_pusher_factory = metrics_pusher_factory
         self._sample_interval_s = sample_interval_s
-        self._sampling = False
+        # The pusher for the current sampling lifetime; None while not sampling.
+        self._metrics_pusher: Optional[MetricsPusher] = None
         self._shut_down = False
 
     @property
@@ -208,7 +210,7 @@ class DrainRateTracker:
 
     @property
     def sampling(self) -> bool:
-        return self._sampling
+        return self._metrics_pusher is not None
 
     def record_drain(self) -> None:
         self._estimator.record_drain()
@@ -218,19 +220,32 @@ class DrainRateTracker:
         should_sample = retry_after_policy == RETRY_AFTER_POLICY_QUEUE_DRAIN_RATE
         # A config update can arrive while `shutdown` is awaiting; restarting
         # the timer then would leak it.
-        if self._shut_down or should_sample == self._sampling:
+        if self._shut_down or should_sample == self.sampling:
             return
 
         if should_sample:
             # Don't carry over a rate learned before sampling was last stopped.
             self._estimator.reset_rate()
-            self._metrics_pusher.start()
-            self._metrics_pusher.register_or_update_task(
-                self.SAMPLE_TASK_NAME, self._sample, self._sample_interval_s
+            # A stopped pusher can't be restarted safely: `start()` clears the
+            # stop event, which a sampler task that hasn't run yet would then
+            # never see. A new pusher per lifetime keeps old samplers stopped.
+            pusher = self._metrics_pusher_factory()
+
+            def sample():
+                # A sampler task runs its function once before it checks the
+                # stop event, so an old one could still get here.
+                if self._metrics_pusher is pusher:
+                    self._sample()
+
+            pusher.register_or_update_task(
+                self.SAMPLE_TASK_NAME, sample, self._sample_interval_s
             )
+            self._metrics_pusher = pusher
         else:
-            self._metrics_pusher.stop_tasks()
-        self._sampling = should_sample
+            # Only signal the stop: clearing the pusher's tasks (`stop_tasks`)
+            # would make a sampler that hasn't run yet fail its task lookup.
+            self._metrics_pusher.stop_event.set()
+            self._metrics_pusher = None
 
     def _sample(self) -> None:
         self._estimator.sample(has_pending_work=self._has_pending_work())
@@ -251,8 +266,9 @@ class DrainRateTracker:
 
     async def shutdown(self) -> None:
         self._shut_down = True
-        await self._metrics_pusher.graceful_shutdown()
-        self._sampling = False
+        if self._metrics_pusher is not None:
+            pusher, self._metrics_pusher = self._metrics_pusher, None
+            await pusher.graceful_shutdown()
 
 
 @dataclass(frozen=True)

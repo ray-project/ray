@@ -3885,13 +3885,12 @@ class TestRouterDrainCounter:
         router.update_deployment_config(computed)
         router.update_deployment_config(computed)
         assert tracker.sampling
-        assert list(tracker._metrics_pusher._async_tasks) == [
-            DrainRateTracker.SAMPLE_TASK_NAME
-        ]
+        pusher = tracker._metrics_pusher
+        assert list(pusher._async_tasks) == [DrainRateTracker.SAMPLE_TASK_NAME]
 
         router.update_deployment_config(DeploymentConfig())
         assert not tracker.sampling
-        assert tracker._metrics_pusher._async_tasks == {}
+        assert pusher.stop_event.is_set()
 
 
 if __name__ == "__main__":
