@@ -49,9 +49,7 @@ Each worker maps to one TPU VM host. The total number of workers must be a multi
 
 For details on how TPU topologies map to the number of hosts, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 
 # Single slice: 4 v6e VMs in a 4x4 topology
@@ -114,9 +112,7 @@ When you set `use_tpu=True`, Ray Train configures the distributed environment fo
 
 The following example shows a basic TPU training setup with {class}`~ray.train.v2.jax.JaxTrainer`:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray.train
 from ray.train import ScalingConfig
 from ray.train.v2.jax import JaxTrainer
@@ -185,9 +181,7 @@ Each TPU VM host has multiple TPU chips. By default, when you specify `topology`
 
 To override the default, specify the number of chips explicitly in `resources_per_worker`. Supported chip counts are 1, 2, 4, and 8. For example, to use only 2 of the 4 chips on a `ct6e-standard-4t` host:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 
 scaling_config = ScalingConfig(
@@ -229,9 +223,7 @@ ScalingConfig(
 :sync: TPU
 For TPUs, `accelerator_type` specifies the TPU generation. For the full list of supported values, see {ref}`the available accelerator types <accelerator_types>`.
 
-```{testcode}
-:skipif: True
-
+```python
 ScalingConfig(
     num_workers=4,
     use_tpu=True,
@@ -278,9 +270,7 @@ When you use NCCL for distributed training, you can configure which network inte
 
 To set the environment variable on all training workers, pass it in a {ref}`Ray runtime environment <runtime-environments>`:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": "ens5"}}

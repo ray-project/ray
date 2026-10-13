@@ -617,8 +617,8 @@ doctest(
 # needs no edit.
 doctest_each(
     size = "large",
-    # Not listed: handling-dependencies.md, and tasks/nested-tasks.md, whose
-    # `doc_code/` snippet is tested instead.
+    # Not listed: tasks/nested-tasks.md, whose `doc_code/` snippet is tested
+    # instead.
     files = [
         "source/core/actors/async-api.md",
         "source/core/actors/concurrency-group-api.md",
@@ -713,8 +713,7 @@ doctest_each(
         "RAY_TRAIN_V2_ENABLED": "0",
         "TF_USE_LEGACY_KERAS": "1",
     },
-    # Not listed: horovod.md, because CI does not have Horovod installed, and the
-    # GPU pages in doctest[train-gpu] below.
+    # Not listed: the GPU pages in doctest[train-gpu] below.
     files = [
         "source/train/common/torch-configure-run.md",
         "source/train/distributed-tensorflow-keras.md",

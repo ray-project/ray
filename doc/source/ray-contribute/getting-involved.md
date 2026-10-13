@@ -179,7 +179,7 @@ In general, we follow the [Google style guide](https://google.github.io/stylegui
 
 For Python documentation, we follow a subset of the [Google pydoc format](https://sphinxcontrib-napoleon.readthedocs.io/en/latest/example_google.html). The following code snippets demonstrate the canonical Ray pydoc formatting:
 
-```{testcode}
+```python
 def ray_canonical_doc_style(param1: int, param2: str) -> bool:
     """First sentence MUST be inline with the quotes and fit on one line.
 
@@ -208,7 +208,7 @@ def ray_canonical_doc_style(param1: int, param2: str) -> bool:
     """
 ```
 
-```{testcode}
+```python
 class RayClass:
     """The summary line for a class docstring should fit on one line.
 
