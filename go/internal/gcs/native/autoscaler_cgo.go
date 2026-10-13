@@ -42,19 +42,25 @@ func (c *cgoClient) GetAutoscalerStatus(ctx context.Context) (*protopb.GetCluste
 	var cErr *C.char
 
 	log.Log.V(1).Info("Getting autoscaler status")
-	ok := C.ray_gcs_client_autoscaler_get_status(c.getPtr(), &cSerialized, &cSize, &cErr)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		if cSerialized != nil {
-			C.free(unsafe.Pointer(cSerialized))
+	err := c.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_autoscaler_get_status(ptr, &cSerialized, &cSize, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			if cSerialized != nil {
+				C.free(unsafe.Pointer(cSerialized))
+			}
+			return fmt.Errorf("get autoscaler status failed: %s", C.GoString(cErr))
 		}
-		return nil, fmt.Errorf("get autoscaler status failed: %s", C.GoString(cErr))
-	}
-	if ok == 0 {
-		if cSerialized != nil {
-			C.free(unsafe.Pointer(cSerialized))
+		if ok == 0 {
+			if cSerialized != nil {
+				C.free(unsafe.Pointer(cSerialized))
+			}
+			return fmt.Errorf("get autoscaler status failed: C++ returned ok=0 with no error")
 		}
-		return nil, fmt.Errorf("get autoscaler status failed: C++ returned ok=0 with no error")
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Parse the protobuf payload.
@@ -72,9 +78,6 @@ func (c *cgoClient) GetAutoscalerStatus(ctx context.Context) (*protopb.GetCluste
 // ReportAutoscalingState reports the autoscaling state to GCS.
 // autoscalingState holds the protobuf-serialized AutoscalingState bytes.
 func (c *cgoClient) ReportAutoscalingState(autoscalingState string) error {
-	if c.closed.Load() {
-		return fmt.Errorf("client is closed")
-	}
 	stateBytes := []byte(autoscalingState)
 	if len(stateBytes) == 0 {
 		return fmt.Errorf("autoscaling state must not be empty")
@@ -89,19 +92,22 @@ func (c *cgoClient) ReportAutoscalingState(autoscalingState string) error {
 	defer p.Unpin()
 
 	var cErr *C.char
-	ok := C.ray_gcs_client_autoscaler_report_state(
-		c.getPtr(),
-		(*C.char)(unsafe.Pointer(&stateBytes[0])),
-		C.int32_t(len(stateBytes)),
-		&cErr)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		if ok == 0 {
-			return fmt.Errorf("report autoscaling state failed: %s", C.GoString(cErr))
+	err := c.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_autoscaler_report_state(
+			ptr,
+			(*C.char)(unsafe.Pointer(&stateBytes[0])),
+			C.int32_t(len(stateBytes)),
+			&cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			if ok == 0 {
+				return fmt.Errorf("report autoscaling state failed: %s", C.GoString(cErr))
+			}
 		}
-	}
-	if ok == 0 {
-		return fmt.Errorf("report autoscaling state failed: C++ returned ok=0 with no error")
-	}
-	return nil
+		if ok == 0 {
+			return fmt.Errorf("report autoscaling state failed: C++ returned ok=0 with no error")
+		}
+		return nil
+	})
+	return err
 }

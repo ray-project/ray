@@ -74,13 +74,14 @@ func TestNewRuntimeEnvNilNormalization(t *testing.T) {
 }
 
 // TestNewRuntimeEnvUninitialized verifies AC2: with no handle installed,
-// internal() returns rayerrors.ErrRuntimeNotInitialized (internal.go:37-39) and
-// NewRuntimeEnv does not panic. Mirrors internal_test.go's
-// TestInternalNotInitialized pattern.
+// internal() returns rayerrors.ErrRuntimeNotInitialized and NewRuntimeEnv does
+// not panic. Mirrors internal_test.go's TestInternalNotInitialized pattern.
+//
+// The test forces the uninitialized precondition itself by calling
+// clearHandle() at its start, so it holds under any test order (other tests in
+// this binary install a handle and rely on their own defer clears).
 func TestNewRuntimeEnvUninitialized(t *testing.T) {
-	if IsInitialized() {
-		t.Skip("runtime already initialized; run in isolation with -tags apiruntimeenv")
-	}
+	clearHandle()
 	_, err := NewRuntimeEnv()
 	if err == nil || !errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
 		t.Fatalf("NewRuntimeEnv with no runtime = %v, want ErrRuntimeNotInitialized", err)
@@ -88,10 +89,10 @@ func TestNewRuntimeEnvUninitialized(t *testing.T) {
 }
 
 // TestNewRuntimeEnvFromJSONUninitialized verifies AC2 for the deserialize path.
+// Like TestNewRuntimeEnvUninitialized, it forces the uninitialized precondition
+// with clearHandle() so it is order-independent.
 func TestNewRuntimeEnvFromJSONUninitialized(t *testing.T) {
-	if IsInitialized() {
-		t.Skip("runtime already initialized; run in isolation with -tags apiruntimeenv")
-	}
+	clearHandle()
 	_, err := NewRuntimeEnvFromJSON("{}")
 	if err == nil || !errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
 		t.Fatalf("NewRuntimeEnvFromJSON with no runtime = %v, want ErrRuntimeNotInitialized", err)

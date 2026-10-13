@@ -230,6 +230,20 @@ go_test(
     ],
 )
 
+# api.GetPythonActorWithNamespace never-initialized test, gated behind the
+# "apigetpython0" build tag because it requires the package-global handle to be
+# unset: it must not share the untagged api_test binary, where earlier tests
+# install a handle.
+go_test(
+    name = "api_get_python_uninit_test",
+    srcs = ["actor_get_python_uninit_test.go"],
+    embed = [":api"],
+    gotags = ["apigetpython0"],
+    deps = [
+        "//go/pkg/errors",
+    ],
+)
+
 # api placement group facade tests, gated behind the "apipg" build tag because
 # storeHandleLocked mutates package-global handle state (currentHandle) that
 # the default api tests assume is unset. Includes task_return_ref_test.go for

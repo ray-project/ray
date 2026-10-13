@@ -100,6 +100,20 @@ int ray_gcs_client_node_resources_get_total(CGcsClient *client,
                                             char **serialized_out,
                                             int *size_out,
                                             char **error_out);
+// Returns available resources for all nodes at once (serialized array), avoiding
+// N per-node full-cluster RPCs.
+// serialized_out/sizes_out/count_out: each element is malloc-allocated; the Go
+// side must free them one by one.
+int ray_gcs_client_node_resources_get_all_available(CGcsClient *client,
+                                                    char ***serialized_out,
+                                                    int **sizes_out,
+                                                    int *count_out,
+                                                    char **error_out);
+int ray_gcs_client_node_resources_get_all_total(CGcsClient *client,
+                                                char ***serialized_out,
+                                                int **sizes_out,
+                                                int *count_out,
+                                                char **error_out);
 
 // Nodes
 int ray_gcs_client_nodes_get_node_to_connect(CGcsClient *client,

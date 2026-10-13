@@ -14,7 +14,10 @@ import tempfile
 import threading
 import time
 import traceback
-from typing import IO, TYPE_CHECKING, AnyStr, Optional, Tuple
+from collections import defaultdict
+from typing import IO, TYPE_CHECKING, AnyStr, Dict, Optional, Tuple
+
+from filelock import FileLock
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -262,6 +265,10 @@ class Node:
                 node_id = ray.NodeID.from_random().hex()
                 logger.debug(f"Setting node ID to {node_id}")
                 self._node_id = node_id
+
+        self.metrics_agent_port = self._get_cached_port(
+            "metrics_agent_port", default_port=ray_params.metrics_agent_port
+        )
 
         # Resolve node ip address
         node_ip_address = ray_params.node_ip_address
@@ -896,11 +903,6 @@ class Node:
         return self._ray_params.metrics_export_port
 
     @property
-    def metrics_agent_port(self):
-        """Get the metrics agent gRPC port"""
-        return self._ray_params.metrics_agent_port
-
-    @property
     def runtime_env_agent_port(self):
         """Get the port that exposes runtime env agent as http"""
         return self._ray_params.runtime_env_agent_port
@@ -1201,6 +1203,63 @@ class Node:
         else:
             filename = os.path.join(self._logs_dir, f"{name}.{suffix}")
         return filename
+
+    def _get_cached_port(
+        self, port_name: str, default_port: Optional[int] = None
+    ) -> int:
+        """Get a port number from a cache on this node.
+
+        Different driver processes on a node should use the same ports for
+        some purposes, e.g. exporting metrics.  This method returns a port
+        number for the given port name and caches it in a file.  If the
+        port isn't already cached, an unused port is generated and cached.
+
+        Args:
+            port_name: The name of the port, e.g. metrics_export_port.
+            default_port: The port to return and cache if no port has already been
+                cached for the given port_name. If None, an unused port is generated
+                and cached.
+
+        Returns:
+            int: The port number.
+        """
+        file_path = os.path.join(self.get_session_dir_path(), "ports_by_node.json")
+
+        # Make sure only the ports in RAY_CACHED_PORTS are cached.
+        assert port_name in ray_constants.RAY_ALLOWED_CACHED_PORTS
+
+        # Maps a Node.unique_id to a dict that maps port names to port numbers.
+        ports_by_node: Dict[str, Dict[str, int]] = defaultdict(dict)
+
+        with FileLock(file_path + ".lock", mode=0o640):
+            if not os.path.exists(file_path):
+                with open(file_path, "w") as f:
+                    json.dump({}, f)
+
+            with open(file_path, "r") as f:
+                ports_by_node.update(json.load(f))
+
+            if (
+                self.unique_id in ports_by_node
+                and port_name in ports_by_node[self.unique_id]
+            ):
+                # The port has already been cached at this node, so use it.
+                port = int(ports_by_node[self.unique_id][port_name])
+            else:
+                # Pick a new port to use and cache it at this node.
+                allocated_ports = set(ports_by_node[self.unique_id].values())
+
+                if default_port is not None and default_port in allocated_ports:
+                    # The default port is already in use, so don't use it.
+                    default_port = None
+
+                port = default_port or self._get_unused_port(allocated_ports)
+
+                ports_by_node[self.unique_id][port_name] = port
+                with open(file_path, "w") as f:
+                    json.dump(ports_by_node, f)
+
+        return port
 
     def _get_unused_port(self, allocated_ports=None):
         if allocated_ports is None:

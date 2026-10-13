@@ -26,6 +26,11 @@ import (
 
 // Backend is the sink for registered metrics. Implementations may be cgo-backed
 // (CgoMetricBackend) or test doubles.
+//
+// Concurrency contract: implementations must tolerate Record and Unregister
+// being called concurrently for DIFFERENT handles; serialization of same-handle
+// Record/Unregister is the caller's responsibility (metric.Metric enforces it
+// with its own lock).
 type Backend interface {
 	RegisterTagKey(key string) error
 	RegisterCount(name, desc, unit string, tagKeys []string) (int64, error)
@@ -131,10 +136,12 @@ func (m *Metric) Unregister() error {
 	return nil
 }
 
-// Count is a monotonically increasing counter metric. Values reported via
-// Record map to C++ stats::Count, which aggregates with the opencensus Count()
-// aggregation (each Record call counts as one observation; the value is not
-// summed).
+// Count is a counter metric. The aggregation semantics depend on the cluster's
+// `enable_open_telemetry` config, because Record is forwarded to C++
+// stats::Count: with OpenTelemetry enabled it maps to an accumulating counter
+// (each Record adds its value), while with OpenTelemetry disabled it maps to the
+// opencensus Count() aggregation (each Record counts as one observation,
+// ignoring the value).
 type Count struct{ Metric }
 
 // NewCount registers a count metric.

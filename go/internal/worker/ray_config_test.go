@@ -563,3 +563,112 @@ func TestGenerateRandomNamespace(t *testing.T) {
 		t.Errorf("unexpected namespace format: %q", a)
 	}
 }
+
+// TestRayConfig_JobConfigMetadata verifies RayConfig's JobConfigMetadata map is
+// usable after initialization.
+func TestRayConfig_JobConfigMetadata(t *testing.T) {
+	config := &RayConfig{
+		JobConfigMetadata: make(JobConfigMetadata),
+	}
+
+	config.JobConfigMetadata["key1"] = "value1"
+	config.JobConfigMetadata["key2"] = "value2"
+
+	if len(config.JobConfigMetadata) != 2 {
+		t.Errorf("JobConfigMetadata length = %d, want %d", len(config.JobConfigMetadata), 2)
+	}
+	if config.JobConfigMetadata["key1"] != "value1" {
+		t.Errorf("JobConfigMetadata[key1] = %q, want %q", config.JobConfigMetadata["key1"], "value1")
+	}
+	if config.JobConfigMetadata["key2"] != "value2" {
+		t.Errorf("JobConfigMetadata[key2] = %q, want %q", config.JobConfigMetadata["key2"], "value2")
+	}
+}
+
+// TestRayConfig_WithRayAddressEnv verifies NewRayConfig reads the Ray address
+// from the RAY_ADDRESS environment variable.
+func TestRayConfig_WithRayAddressEnv(t *testing.T) {
+	oldRayAddress := os.Getenv("RAY_ADDRESS")
+	defer os.Setenv("RAY_ADDRESS", oldRayAddress)
+
+	os.Setenv("RAY_ADDRESS", "192.168.1.200:6379")
+
+	config, err := NewRayConfig(newTestCmd(), false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.BootstrapIP != "192.168.1.200" {
+		t.Errorf("BootstrapIP = %q, want %q", config.BootstrapIP, "192.168.1.200")
+	}
+	if config.BootstrapPort != 6379 {
+		t.Errorf("BootstrapPort = %d, want %d", config.BootstrapPort, 6379)
+	}
+}
+
+// TestNewRayConfig_WithSocketNames verifies NewRayConfig reads the RayletName and
+// PlasmaStoreName socket paths from the command line.
+func TestNewRayConfig_WithSocketNames(t *testing.T) {
+	cmd := newTestCmd()
+	cmd.Flags().Set(RayletName, "/tmp/ray/raylet.sock")
+	cmd.Flags().Set(PlasmaStoreName, "/tmp/ray/plasma.sock")
+
+	config, err := NewRayConfig(cmd, false, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.RayletName != "/tmp/ray/raylet.sock" {
+		t.Errorf("RayletName = %q, want %q", config.RayletName, "/tmp/ray/raylet.sock")
+	}
+	if config.PlasmaStoreName != "/tmp/ray/plasma.sock" {
+		t.Errorf("PlasmaStoreName = %q, want %q", config.PlasmaStoreName, "/tmp/ray/plasma.sock")
+	}
+}
+
+// TestNewRayConfig_LocalMode verifies NewRayConfig sets run mode LOCAL and worker
+// type DRIVER when localMode is true.
+func TestNewRayConfig_LocalMode(t *testing.T) {
+	config, err := NewRayConfig(newTestCmd(), true, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.RunMode != contract.RunModeLocal {
+		t.Errorf("RunMode = %v, want %v", config.RunMode, contract.RunModeLocal)
+	}
+	if config.WorkerType != options.WorkerTypeDriver {
+		t.Errorf("WorkerType = %v, want %v", config.WorkerType, options.WorkerTypeDriver)
+	}
+}
+
+// TestNewRayConfig_WithNodeIPAddress verifies NewRayConfig reads the node IP
+// address from the command line.
+func TestNewRayConfig_WithNodeIPAddress(t *testing.T) {
+	cmd := newTestCmd()
+	cmd.Flags().Set(NodeIpAddress, "192.168.1.100")
+
+	config, err := NewRayConfig(cmd, false, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.NodeIPAddress != "192.168.1.100" {
+		t.Errorf("NodeIPAddress = %q, want %q", config.NodeIPAddress, "192.168.1.100")
+	}
+}
+
+// TestNewRayConfig_WithSessionAndLogsDir verifies NewRayConfig reads the session
+// and logs directories from the command line.
+func TestNewRayConfig_WithSessionAndLogsDir(t *testing.T) {
+	cmd := newTestCmd()
+	cmd.Flags().Set(SessionDir, "/tmp/ray/session")
+	cmd.Flags().Set(LogsDir, "/tmp/ray/logs")
+
+	config, err := NewRayConfig(cmd, false, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if config.SessionDir != "/tmp/ray/session" {
+		t.Errorf("SessionDir = %q, want %q", config.SessionDir, "/tmp/ray/session")
+	}
+	if config.LogsDir != "/tmp/ray/logs" {
+		t.Errorf("LogsDir = %q, want %q", config.LogsDir, "/tmp/ray/logs")
+	}
+}

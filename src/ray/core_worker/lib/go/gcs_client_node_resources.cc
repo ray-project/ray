@@ -71,6 +71,56 @@ int ray_gcs_client_node_resources_get_available(CGcsClient *client,
   }
 }
 
+int ray_gcs_client_node_resources_get_all_available(CGcsClient *client,
+                                                    char ***serialized_out,
+                                                    int **sizes_out,
+                                                    int *count_out,
+                                                    char **error_out) {
+  if (!client || !client->global_state_accessor || !serialized_out || !count_out) {
+    set_error(error_out, "Invalid arguments");
+    return 0;
+  }
+
+  try {
+    std::vector<std::string> all_resources =
+        client->global_state_accessor->GetAllAvailableResources();
+
+    if (!allocate_serialized_array(all_resources, serialized_out, sizes_out, count_out)) {
+      set_error(error_out, "Failed to allocate memory for serialized array");
+      return 0;
+    }
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
+}
+
+int ray_gcs_client_node_resources_get_all_total(CGcsClient *client,
+                                                char ***serialized_out,
+                                                int **sizes_out,
+                                                int *count_out,
+                                                char **error_out) {
+  if (!client || !client->global_state_accessor || !serialized_out || !count_out) {
+    set_error(error_out, "Invalid arguments");
+    return 0;
+  }
+
+  try {
+    std::vector<std::string> all_resources =
+        client->global_state_accessor->GetAllTotalResources();
+
+    if (!allocate_serialized_array(all_resources, serialized_out, sizes_out, count_out)) {
+      set_error(error_out, "Failed to allocate memory for serialized array");
+      return 0;
+    }
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
+}
+
 int ray_gcs_client_node_resources_get_total(CGcsClient *client,
                                             const char *node_id_hex,
                                             char **serialized_out,

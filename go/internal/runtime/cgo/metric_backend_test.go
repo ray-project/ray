@@ -27,6 +27,13 @@ import (
 	"unsafe"
 )
 
+// newTestBackend returns a CgoMetricBackend with an initialized tag-key cache.
+// Production code goes through RegisterDefaultBackend, which sets the cache on
+// the first Record; tests that touch Record directly initialize it here.
+func newTestBackend() *CgoMetricBackend {
+	return &CgoMetricBackend{tagKeyCache: make(map[int64][]*C.char)}
+}
+
 func TestCStringSliceAndDoubleSliceToC(t *testing.T) {
 	ss := []string{"a", "b"}
 	cs, free := CStringSlice(ss)
@@ -70,7 +77,7 @@ func TestCStringSliceEmptyReturnsNil(t *testing.T) {
 }
 
 func TestCgoMetricBackend_RecordTagCountMismatch(t *testing.T) {
-	b := &CgoMetricBackend{}
+	b := newTestBackend()
 	// Fewer tag values than keys must be rejected before crossing the C++
 	// boundary, which would otherwise build tags from len(tagKeys) and read past
 	// the shorter value array.
@@ -85,7 +92,7 @@ func TestCgoMetricBackend_RecordTagCountMismatch(t *testing.T) {
 }
 
 func TestCgoMetricBackend_RegisterValidationErrors(t *testing.T) {
-	b := &CgoMetricBackend{}
+	b := newTestBackend()
 	// Empty tag key is rejected by the C++ boundary before any stats
 	// interaction, so these are safe to exercise without a real core worker.
 	if err := b.RegisterTagKey(""); err == nil {
@@ -109,5 +116,50 @@ func TestCgoMetricBackend_RegisterValidationErrors(t *testing.T) {
 	// Unregistering an unknown handle is rejected safely.
 	if err := b.Unregister(-1); err == nil {
 		t.Fatal("expected error for unknown metric handle")
+	}
+}
+
+// The tag-key C array is allocated once per handle and reused across Records,
+// then freed by Unregister. White-box on the cache map (same package).
+func TestCgoMetricBackend_TagKeyCachePopulatedAndFreed(t *testing.T) {
+	b := newTestBackend()
+	keys := []string{"k1", "k2"}
+	values := []string{"v1", "v2"}
+
+	// A real handle requires the C++ stats module; when it is not linked (a
+	// plain Go test binary that only carries the boundary symbols via the test
+	// shim), registration is rejected and the cache path cannot be exercised
+	// end-to-end. The cache bookkeeping is still unit-tested white-box below.
+	handle, err := b.RegisterGauge("ray_test_cache", "d", "u", keys)
+	if err != nil {
+		t.Skipf("metric registration unavailable in this test binary: %v", err)
+	}
+
+	if _, ok := b.tagKeyCache[handle]; ok {
+		t.Fatal("cache should start empty for the handle")
+	}
+
+	_ = b.Record(handle, 1.0, keys, values)
+	cached, ok := b.tagKeyCache[handle]
+	if !ok {
+		t.Fatal("tag keys should be cached after the first Record")
+	}
+	if len(cached) != 2 || C.GoString(cached[0]) != "k1" || C.GoString(cached[1]) != "k2" {
+		t.Fatal("cached tag keys do not round-trip")
+	}
+
+	// A second Record must return the identical array (no re-allocation).
+	first := cached
+	_ = b.Record(handle, 2.0, keys, values)
+	if b.tagKeyCache[handle][0] != first[0] {
+		t.Fatal("second Record should reuse the cached tag-key array")
+	}
+
+	// Unregister frees the cached tag-key strings and drops the entry.
+	if err := b.Unregister(handle); err != nil {
+		t.Fatalf("unregister of a live handle failed: %v", err)
+	}
+	if _, ok := b.tagKeyCache[handle]; ok {
+		t.Fatal("Unregister should drop the cached tag-key entry")
 	}
 }

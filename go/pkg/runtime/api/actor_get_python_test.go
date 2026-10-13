@@ -15,32 +15,11 @@
 package api
 
 import (
-	"errors"
 	"testing"
 
-	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
-
-// TestGetPythonActorWithNamespaceNotInitialized verifies that
-// GetPythonActorWithNamespace returns ErrRuntimeNotInitialized when the runtime
-// has not been initialized, mirroring the error path of GetActorWithNamespace.
-func TestGetPythonActorWithNamespaceNotInitialized(t *testing.T) {
-	if IsInitialized() {
-		t.Skip("runtime already initialized; run this test in isolation")
-	}
-	handle, err := GetPythonActorWithNamespace("my_actor", "my_namespace", "my_module", "MyClass")
-	if err == nil {
-		t.Fatal("GetPythonActorWithNamespace should return an error when runtime is not initialized")
-	}
-	if !errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		t.Fatalf("should return ErrRuntimeNotInitialized, got %v", err)
-	}
-	if handle != nil {
-		t.Fatalf("should return a nil handle, got %v", handle)
-	}
-}
 
 // TestGetPythonActorWithNamespace_HandleFeedsActorTask verifies that a
 // PythonActorHandle carries the module/class names and actor ID needed by

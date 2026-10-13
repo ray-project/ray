@@ -166,6 +166,21 @@ func initWithConfig(cfg *HeadConfig) error {
 			)
 		}
 
+		// Reuse the node's cached metrics agent port (ports_by_node.json) so the
+		// driver's metrics exporter can reach the dashboard agent, mirroring the
+		// Python dashboard head (node.py _get_cached_port). Without it the
+		// exporter retries against a disabled port and logs
+		// "Failed to establish connection to the metrics exporter agent" (rpc 14).
+		if initOpts.Runtime.StoreSocket != "" {
+			port, portErr := readMetricsAgentPort(cfg.SessionDir, initOpts.Network.NodeIPAddress, initOpts.Runtime.StoreSocket)
+			if portErr != nil {
+				log.Log.Error(portErr, "failed to read metrics agent port from ports_by_node.json")
+			} else if port > 0 {
+				initOpts.Runtime.MetricsAgentPort = int32(port)
+				log.Log.Info("reusing node metrics agent port for dashboard head", "metrics_agent_port", port)
+			}
+		}
+
 		jobIDHex, err := client.NextJobID(ctx)
 		if err != nil {
 			return err

@@ -50,7 +50,7 @@ const (
 // Global singleton GlobalStateAccessor.
 var (
 	stateAccessorInstance GlobalStateAccessor
-	stateAccessorOnce     sync.Once
+	stateAccessorMu       sync.RWMutex
 )
 
 // GlobalStateAccessor is the synchronous GCS global-state accessor,
@@ -115,18 +115,31 @@ type GlobalStateAccessor interface {
 
 // SetGlobalStateAccessor sets the global GlobalStateAccessor instance. It is
 // called by implementation packages (e.g., go/internal/gcs/native) during
-// initialization. sync.Once ensures it is set only once.
+// initialization. A mutex guards the instance so Set/Clear/Get are safe under
+// concurrent access.
 func SetGlobalStateAccessor(accessor GlobalStateAccessor) {
-	stateAccessorOnce.Do(func() {
-		stateAccessorInstance = accessor
-	})
+	stateAccessorMu.Lock()
+	defer stateAccessorMu.Unlock()
+	stateAccessorInstance = accessor
 }
 
 // GetGlobalStateAccessor returns the global GlobalStateAccessor instance, or
 // (nil, ErrNotImplemented) if it has not been initialized yet.
 func GetGlobalStateAccessor() (GlobalStateAccessor, error) {
+	stateAccessorMu.RLock()
+	defer stateAccessorMu.RUnlock()
 	if stateAccessorInstance == nil {
 		return nil, ErrNotImplemented
 	}
 	return stateAccessorInstance, nil
+}
+
+// ClearGlobalStateAccessor clears the global GlobalStateAccessor instance. It is
+// used by the Close method to clean up resources, preventing later access to a
+// closed accessor. After clearing, SetGlobalStateAccessor can be called again to
+// re-register.
+func ClearGlobalStateAccessor() {
+	stateAccessorMu.Lock()
+	defer stateAccessorMu.Unlock()
+	stateAccessorInstance = nil
 }

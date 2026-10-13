@@ -55,19 +55,25 @@ func (c *cgoClient) CheckAlive(ctx context.Context, nodeIDs []ids.NodeID) ([]boo
 	var cErr *C.char
 	aliveOut := make([]C.int, len(nodeIDs))
 
-	ok := C.ray_gcs_client_nodes_check_alive(
-		c.ptr,
-		&hexIDs[0],
-		C.int(len(nodeIDs)),
-		&aliveOut[0],
-		&cErr,
-	)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		return nil, fmt.Errorf("check alive failed: %s", C.GoString(cErr))
-	}
-	if ok == 0 {
-		return nil, fmt.Errorf("check alive failed")
+	err := c.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_nodes_check_alive(
+			ptr,
+			&hexIDs[0],
+			C.int(len(nodeIDs)),
+			&aliveOut[0],
+			&cErr,
+		)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("check alive failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 {
+			return fmt.Errorf("check alive failed")
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	result := make([]bool, len(nodeIDs))
@@ -109,18 +115,25 @@ func (c *cgoClient) GetAll(ctx context.Context, nodeIDs []ids.NodeID) (map[ids.N
 		hexIDsPtr = &hexIDs[0]
 	}
 
-	ok := C.ray_gcs_client_nodes_get_all(
-		c.ptr,
-		hexIDsPtr,
-		count,
-		&cSerialized,
-		&cSizes,
-		&cCount,
-		&cErr,
-	)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		return nil, fmt.Errorf("get all nodes failed: %s", C.GoString(cErr))
+	ok := C.int(0)
+	err := c.withPtr(func(ptr *C.CGcsClient) error {
+		ok = C.ray_gcs_client_nodes_get_all(
+			ptr,
+			hexIDsPtr,
+			count,
+			&cSerialized,
+			&cSizes,
+			&cCount,
+			&cErr,
+		)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("get all nodes failed: %s", C.GoString(cErr))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	if ok == 0 || cSerialized == nil || cCount == 0 {
 		return make(map[ids.NodeID]*proto.GcsNodeInfo), nil
@@ -182,17 +195,24 @@ func (c *cgoClient) DrainNodes(ctx context.Context, nodeIDs []ids.NodeID) ([]ids
 	var cDrainedIDs **C.char
 	var cDrainedCount C.int
 
-	ok := C.ray_gcs_client_nodes_drain(
-		c.ptr,
-		&hexIDs[0],
-		C.int(len(nodeIDs)),
-		&cDrainedIDs,
-		&cDrainedCount,
-		&cErr,
-	)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		return nil, fmt.Errorf("drain nodes failed: %s", C.GoString(cErr))
+	ok := C.int(0)
+	err := c.withPtr(func(ptr *C.CGcsClient) error {
+		ok = C.ray_gcs_client_nodes_drain(
+			ptr,
+			&hexIDs[0],
+			C.int(len(nodeIDs)),
+			&cDrainedIDs,
+			&cDrainedCount,
+			&cErr,
+		)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("drain nodes failed: %s", C.GoString(cErr))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	if ok == 0 || cDrainedIDs == nil || cDrainedCount == 0 {
 		return []ids.NodeID{}, nil
@@ -234,28 +254,35 @@ func (c *cgoClient) DrainNode(ctx context.Context, nodeID ids.NodeID, reason pro
 	var cAccepted C.int
 	var cRejectionReason *C.char
 
-	ok := C.ray_gcs_client_drain_node(
-		c.ptr,
-		cNodeID,
-		C.int32_t(reason),
-		cReasonMsg,
-		C.int64_t(deadlineTimestampMs),
-		&cAccepted,
-		&cRejectionReason,
-		&cErr,
-	)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		if cRejectionReason != nil {
-			C.free(unsafe.Pointer(cRejectionReason))
+	ok := C.int(0)
+	err := c.withPtr(func(ptr *C.CGcsClient) error {
+		ok = C.ray_gcs_client_drain_node(
+			ptr,
+			cNodeID,
+			C.int32_t(reason),
+			cReasonMsg,
+			C.int64_t(deadlineTimestampMs),
+			&cAccepted,
+			&cRejectionReason,
+			&cErr,
+		)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			if cRejectionReason != nil {
+				C.free(unsafe.Pointer(cRejectionReason))
+			}
+			return fmt.Errorf("drain node failed: %s", C.GoString(cErr))
 		}
-		return false, "", fmt.Errorf("drain node failed: %s", C.GoString(cErr))
-	}
-	if ok == 0 {
-		if cRejectionReason != nil {
-			C.free(unsafe.Pointer(cRejectionReason))
+		if ok == 0 {
+			if cRejectionReason != nil {
+				C.free(unsafe.Pointer(cRejectionReason))
+			}
+			return fmt.Errorf("drain node failed: C++ returned ok=0 with no error")
 		}
-		return false, "", fmt.Errorf("drain node failed: C++ returned ok=0 with no error")
+		return nil
+	})
+	if err != nil {
+		return false, "", err
 	}
 
 	accepted := cAccepted != 0

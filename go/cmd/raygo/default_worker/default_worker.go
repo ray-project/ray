@@ -32,6 +32,7 @@ import (
 	"os"
 
 	"github.com/ray-project/ray/go/internal/common"
+	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/internal/worker" // Use worker package (Plugin mode)
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/options"
@@ -158,6 +159,14 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize config: %w", err)
 	}
+
+	// Init before the runtime consumes the argv area (notably before
+	// base.Initialize, whose C++ side reads the command line): it captures the
+	// original argv string area so SetProcTitle can later overwrite it
+	// (visible to ps / psutil cmdline) and scrub sensitive args (e.g.
+	// --redis-password) from the worker command line. Mirrors
+	// InitProcessTitle(argc, argv) in C++ default_worker.cc.
+	proctitle.Init()
 
 	// For Worker mode, set RAY_JOB_ID environment variable.
 	// C++ core_worker reads JobID from RAY_JOB_ID env var for workers (not from options).

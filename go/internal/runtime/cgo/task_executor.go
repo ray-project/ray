@@ -32,12 +32,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"unsafe"
 
 	"github.com/ray-project/ray/go/internal/errors"
+	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 )
 
@@ -433,6 +436,16 @@ func GoExecuteTask(
 		return nil
 	}
 
+	// Process-title change mirroring Python's _changeproctitle(title,
+	// next_title) and C++ TaskExecutor::ExecuteTask: title = "ray::" +
+	// (task_name if given else the function name), then restore to
+	// "ray::IDLE" for normal tasks or "ray::<actor class>" for actor tasks.
+	// The restore title is derived from the descriptor (field layout matches
+	// Python _raylet.pyx "ray::<class_name>" and C++ ClassName()).
+	title, nextTitle := proctitleTitles(contract.TaskType(taskType), funcDesc)
+	proctitleGuard := proctitle.Begin(title, nextTitle)
+	defer proctitleGuard.End()
+
 	// Execute the task
 	results, err := taskExecutor(
 		int(taskType),
@@ -451,6 +464,58 @@ func GoExecuteTask(
 			"metadataSize", objs[0].metadata_size)
 	}
 	return cResult
+}
+
+// proctitleTitles derives the (title, nextTitle) pair for the process-title
+// guard, mirroring:
+//   - Python _raylet.pyx: title = f"ray::{task_name}"; normal task ->
+//     next_title = "ray::IDLE"; actor task -> next_title = f"ray::{class_name}".
+//   - C++ TaskExecutor::ExecuteTask: title = "ray::" + (task_name or
+//     func_name); normal -> kIdleProcessTitle; else ClassName() or func_name,
+//     prefixed with "ray::" unless already prefixed.
+//
+// The function descriptor fields match the Go layout
+// [module, package, function=actor type, method] (see NewGoActorMethodDescriptor);
+// for normal Go functions FunctionName is the function name. Cross-language
+// (Python/Cpp) descriptors carry class/function names in their ClassName /
+// FunctionName fields. Only the three concrete descriptor kinds are possible
+// here (they come from FunctionDescriptorFromListWithLanguage), so a single
+// type-switch derives both names.
+func proctitleTitles(taskType contract.TaskType, funcDesc function.FunctionDescriptor) (string, string) {
+	var taskName, className, funcName string
+	switch desc := funcDesc.(type) {
+	case *function.GoFunctionDescriptor:
+		// Actor type or plain function name; method name adds ".Method".
+		taskName, className, funcName = desc.FunctionName, desc.FunctionName, desc.FunctionName
+		if desc.HasMethodName() {
+			taskName = desc.FunctionName + "." + desc.MethodName()
+		}
+	case *function.PythonFunctionDescriptor:
+		taskName, className, funcName = desc.FunctionName, desc.ClassName, desc.FunctionName
+		if desc.ClassName != "" {
+			taskName = desc.ClassName + "." + desc.FunctionName
+		}
+	case *function.CppFunctionDescriptor:
+		taskName, className, funcName = desc.CreateFunctionName, desc.ClassName, desc.CreateFunctionName
+		if desc.ClassName != "" {
+			taskName = desc.ClassName + "." + desc.CreateFunctionName
+		}
+	}
+	title := "ray::" + taskName
+	if taskType == contract.TaskTypeNormal {
+		return title, proctitle.IdleTitle()
+	}
+	// Actor creation and actor method tasks: restore to the actor class name,
+	// mirroring Python's f"ray::{class_name}" (fall back to the plain function
+	// name when the descriptor carries no class name).
+	class := className
+	if class == "" {
+		class = funcName
+	}
+	if !strings.HasPrefix(class, "ray::") {
+		class = "ray::" + class
+	}
+	return title, class
 }
 
 // RegisterTaskExecutorCallback registers the Go task executor callback with C++.

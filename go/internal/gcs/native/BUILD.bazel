@@ -25,6 +25,7 @@ go_library(
         "factory.go",
         "nodes_cgo.go",
         "publisher_cgo.go",
+        "state_cgo.go",
     ],
     cdeps = ["//src/ray/core_worker/lib/go:gcs_client_bridge"],
     cgo = True,
@@ -62,6 +63,22 @@ go_test(
         "client_cgo_test.go",
         "native_unit_test.go",
     ],
+    embed = [":native"],
+    importpath = "github.com/ray-project/ray/go/internal/gcs/native",
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/proto",
+    ],
+)
+
+# Unit tests for the synchronous GlobalStateAccessor (stateCgoClient) wrapper:
+# interface conformance, delegation to the wrapped gcs.Client, bound validation
+# and unsupported-method behavior. Uses an in-process mock client, so no live
+# GCS cluster is needed.
+go_test(
+    name = "state_cgo_test",
+    srcs = ["state_cgo_test.go"],
     embed = [":native"],
     importpath = "github.com/ray-project/ray/go/internal/gcs/native",
     deps = [

@@ -83,28 +83,30 @@ func (p *LogBatchPublisher) PublishLogBatch(ctx context.Context, payload gcs.Log
 		}
 	}
 
-	ok := C.ray_gcs_client_publisher_publish_log_batch(
-		p.client.getPtr(),
-		cKeyID,
-		cIP,
-		cPID,
-		cJobID,
-		C.int(boolToInt(payload.IsError)),
-		(**C.char)(unsafe.Pointer(cLines)),
-		C.int(len(payload.Lines)),
-		cActorName,
-		cTaskName,
-		C.int64_t(timeoutMs),
-		&cErr,
-	)
-	if cErr != nil {
-		defer C.free(unsafe.Pointer(cErr))
-		return fmt.Errorf("publish log batch failed: %s", C.GoString(cErr))
-	}
-	if ok == 0 {
-		return fmt.Errorf("publish log batch failed")
-	}
-	return nil
+	return p.client.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_publisher_publish_log_batch(
+			ptr,
+			cKeyID,
+			cIP,
+			cPID,
+			cJobID,
+			C.int(boolToInt(payload.IsError)),
+			(**C.char)(unsafe.Pointer(cLines)),
+			C.int(len(payload.Lines)),
+			cActorName,
+			cTaskName,
+			C.int64_t(timeoutMs),
+			&cErr,
+		)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("publish log batch failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 {
+			return fmt.Errorf("publish log batch failed")
+		}
+		return nil
+	})
 }
 
 func boolToInt(v bool) int {

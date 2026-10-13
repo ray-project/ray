@@ -100,6 +100,9 @@ int ray_metric_register_tag_key(const char *tag_key, char **error);
 // Register metrics. Returns an opaque handle (int64_t) on success, -1 on
 // failure (error set, caller frees with free()).
 //
+// Handle allocation is monotonic (never a raw object address), so handles are
+// never reused and cannot alias a previously freed metric.
+//
 // Handle lifetime: a handle stays valid until ray_metric_unregister is called
 // for it. After unregister the handle is invalid: reusing it with
 // ray_metric_record / ray_metric_unregister returns an error (0) and sets

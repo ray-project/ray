@@ -23,6 +23,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//go/internal/common",
+        "//go/internal/proctitle",
         "//go/internal/worker",
         "//go/pkg/log",
         "//go/pkg/options",

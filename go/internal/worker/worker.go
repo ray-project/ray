@@ -36,6 +36,7 @@ import (
 
 	rayerrors "github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/gcs/native"
+	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/internal/runtime/actor"
 	"github.com/ray-project/ray/go/internal/runtime/base"
 	_ "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory via init()
@@ -556,6 +557,17 @@ func (w *Worker) Run() error {
 	api.SetRuntimeHandleForWorker(w.handle)
 
 	logger.Info("Ray runtime initialized successfully", "handle", w.handle)
+
+	// Now that base.Initialize() has consumed the command line, overwrite the
+	// process title to "ray::IDLE" matching Python worker behavior
+	// (setproctitle("ray::IDLE") in connect()) and C++'s SetProcTitle after
+	// ray::Init. Doing this before Initialize would destroy the args C++ reads
+	// at startup; doing it here also scrubs sensitive argv (e.g. --redis-password).
+	// Only worker processes get the idle title: Python gates this on
+	// mode != SCRIPT_MODE, so a driver keeps its own process title.
+	if w.opts.WorkerType == options.WorkerTypeWorker {
+		proctitle.SetTitle(proctitle.IdleTitle())
+	}
 
 	// Get runtime and check if it's initialized
 	rt := w.handle.Runtime()

@@ -15,8 +15,10 @@
 #include "ray/core_worker/lib/go/metric_ops.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <mutex>
 #include <regex>
 #include <string>
@@ -86,15 +88,22 @@ namespace {
 // Global registry of live metric handles. A handle is valid only while it is
 // present in this map; after unregister it is removed and any reuse (record or
 // unregister) is rejected with an error instead of a use-after-free /
-// double-free. The map is guarded by a mutex: record looks up and calls Record
-// while holding the lock, and unregister erases under the lock before deleting
-// outside of it, so a record can never race a concurrent delete.
+// double-free.
+//
+// The map owns every metric through a shared_ptr and is guarded by a mutex.
+// Handles are monotonic values assigned by g_next_metric_handle, never raw
+// object addresses, so a freed metric can never be aliased by a later
+// allocation reusing the same address (ABA).
 std::mutex g_metric_registry_mutex;
-std::unordered_map<int64_t, ray::stats::Metric *> g_metric_registry;
+std::unordered_map<int64_t, std::shared_ptr<ray::stats::Metric>> g_metric_registry;
+
+// Monotonic handle allocator; starts at 1 so a handle is always positive.
+std::atomic<int64_t> g_next_metric_handle{1};
 
 // RegisterMetric validates the metric name, constructs a stats metric of type
 // MetricT with the given trailing arguments (e.g. histogram buckets), and
-// stores it in the registry. Returns an opaque handle or -1 on failure.
+// stores it in the registry under a freshly allocated handle. Returns the
+// handle or -1 on failure.
 template <typename MetricT, typename... Args>
 int64_t RegisterMetric(const char *name,
                        const char *description,
@@ -112,15 +121,15 @@ int64_t RegisterMetric(const char *name,
       return -1;
     }
     auto tags = ray::go::MetricOps::ToStringVector(tag_keys, tag_key_count);
-    auto *metric = new MetricT(name,
-                               description ? description : "",
-                               unit ? unit : "",
-                               std::forward<Args>(args)...,
-                               tags);
-    int64_t handle = reinterpret_cast<int64_t>(metric);
+    auto metric = std::make_shared<MetricT>(name,
+                                            description ? description : "",
+                                            unit ? unit : "",
+                                            std::forward<Args>(args)...,
+                                            tags);
+    int64_t handle = g_next_metric_handle.fetch_add(1);
     {
       std::lock_guard<std::mutex> lock(g_metric_registry_mutex);
-      g_metric_registry[handle] = metric;
+      g_metric_registry[handle] = std::move(metric);
     }
     return handle;
   } catch (const std::exception &e) {
@@ -218,17 +227,24 @@ int ray_metric_record(int64_t handle,
     *error = nullptr;
   }
   try {
-    // Record holds the registry lock for the whole operation so a concurrent
-    // unregister can never delete the metric mid-record. Record() does not
-    // re-enter this boundary, so there is no lock-order risk.
-    std::lock_guard<std::mutex> lock(g_metric_registry_mutex);
-    auto it = g_metric_registry.find(handle);
-    if (it == g_metric_registry.end()) {
-      SetBoundaryError(error, "unknown metric handle");
-      return 0;
+    // Copy the shared_ptr out under the lock, then Record outside of it: the
+    // registry lock must never be held across Metric::Record, which can block
+    // on stats-internal state (and on the opencensus registration mutex on the
+    // first record). Holding the shared_ptr keeps the metric alive for the
+    // whole Record even if a concurrent unregister drops the registry's
+    // reference; a miss hits the unknown-handle error path.
+    std::shared_ptr<ray::stats::Metric> metric;
+    {
+      std::lock_guard<std::mutex> lock(g_metric_registry_mutex);
+      auto it = g_metric_registry.find(handle);
+      if (it == g_metric_registry.end()) {
+        SetBoundaryError(error, "unknown metric handle");
+        return 0;
+      }
+      metric = it->second;
     }
     auto tags = ray::go::MetricOps::BuildTags(tag_keys, tag_values, tag_count);
-    it->second->Record(value, tags);
+    metric->Record(value, tags);
     return 1;
   } catch (const std::exception &e) {
     SetBoundaryError(error, e.what());
@@ -240,8 +256,8 @@ int ray_metric_unregister(int64_t handle, char **error) {
   if (error) {
     *error = nullptr;
   }
-  ray::stats::Metric *metric = nullptr;
   try {
+    std::shared_ptr<ray::stats::Metric> metric;
     {
       std::lock_guard<std::mutex> lock(g_metric_registry_mutex);
       auto it = g_metric_registry.find(handle);
@@ -249,12 +265,22 @@ int ray_metric_unregister(int64_t handle, char **error) {
         SetBoundaryError(error, "unknown metric handle");
         return 0;
       }
-      metric = it->second;
+      metric = std::move(it->second);
       g_metric_registry.erase(it);
     }
-    // Delete outside the lock so no other boundary call can dereference the
-    // erased pointer, and the destructor never runs while holding the mutex.
-    delete metric;
+    // Release the registry's reference outside the lock. Normally this runs the
+    // destructor (the last reference); if a concurrent Record still holds a
+    // copy, it just drops the reference and the destructor runs when that
+    // Record finishes, so the metric is never destroyed mid-record.
+    //
+    // Destroying the metric does NOT reclaim the opencensus view registered by
+    // Record (see src/ray/stats/metric.cc -> RegisterAsView ->
+    // ViewDescriptor::RegisterForExport): C++ opencensus exposes no view
+    // deregistration API, so a registered view lives for the process lifetime.
+    // Re-registering a metric with the same name reuses that view, so growth is
+    // bounded by the number of distinct metric names -- the same semantics as
+    // the Python and Java workers. No cleanup is attempted here by design.
+    metric.reset();
     return 1;
   } catch (const std::exception &e) {
     SetBoundaryError(error, e.what());

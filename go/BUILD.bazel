@@ -51,14 +51,27 @@ pkg_files(
     visibility = ["//visibility:private"],
 )
 
-# The final zip archive contains two components:
+# Package the default runtime_env JSON schemas that plugin_schema_manager.go
+# reads at runtime. Without shipping these, the schema directory resolved from
+# the installed raygo layout does not exist and plugin validation silently finds
+# no schemas.
+pkg_files(
+    name = "runtime_env_schema_files",
+    srcs = ["//go/internal/runtime_env:schemas"],
+    prefix = "ray/go/internal/runtime_env/schemas",
+    visibility = ["//visibility:private"],
+)
+
+# The final zip archive contains the Go runtime artifacts:
 # 1. raygo - executable CLI tool (cmd directory)
 # 2. go_runtime.so - Go Runtime plugin shared library (lib directory)
+# 3. runtime_env JSON schemas (internal/runtime_env/schemas directory)
 pkg_zip(
     name = "ray_go_pkg_zip",
     srcs = [
         ":go_runtime_so_files",
         ":raygo_executable_files",
+        ":runtime_env_schema_files",
     ],
     out = "ray_go_pkg.zip",
     visibility = ["//visibility:public"],
