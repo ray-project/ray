@@ -19,13 +19,17 @@ from ray.experimental.sandbox._internal.image_utils import (
     image_cache_name,
 )
 from ray.experimental.sandbox.backend.base import SandboxStatus
-from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.backend.gvisor import (
+    GVisorSandboxBackend,
+    _exec_process_tree,
+)
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
     SandboxExecError,
     SandboxNotFoundError,
+    SandboxTimeoutError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
@@ -306,6 +310,65 @@ def test_disk_caps_a_readonly_sandbox_with_a_workdir():
         result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=8")
         assert result.exit_code != 0
         assert "No space left on device" in result.stderr
+    finally:
+        runtime.delete(instance_id)
+
+
+_PS_TABLE = """\
+UID       PID       PPID      PGID      C         TTY       STIME     TIME      CMD
+0         1         0         1         0         ?         20:15     0s        sleep
+0         2         0         2         0         ?         20:15     0s        sh
+0         3         2         2         0         ?         20:15     0s        sleep
+0         4         3         4         0         ?         20:15     0s        python3
+0         5         1         2         0         ?         20:15     0s        node
+0         6         0         6         0         ?         20:15     0s        sh
+0         7         6         6         0         ?         20:15     0s        sleep
+"""
+
+
+def test_exec_process_tree_follows_children_and_the_command_group():
+    # 3 is a child, 4 a grandchild in a group of its own, and 5 a reparented
+    # child that kept the group. 6 and 7 belong to another command.
+    assert _exec_process_tree(_PS_TABLE, 2) == {2, 3, 4, 5}
+    assert _exec_process_tree(_PS_TABLE, 6) == {6, 7}
+
+
+def test_exec_process_tree_without_a_usable_table():
+    without_pgid = "\n".join(
+        " ".join(line.split()[:3] + line.split()[4:]) for line in _PS_TABLE.splitlines()
+    )
+    # Without PGID only parentage counts, so the reparented 5 is missed.
+    assert _exec_process_tree(without_pgid, 2) == {2, 3, 4}
+    assert _exec_process_tree("", 2) == {2}
+    assert _exec_process_tree("runsc: container not found", 2) == {2}
+
+
+def test_exec_timeout_kills_the_command_and_its_children():
+    """A timed-out exec returns at its timeout and leaves nothing running.
+    Killing only `runsc exec` used to leave the command running, and the
+    exec returned only when it exited."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        start = time.monotonic()
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(instance_id, "sleep 30; echo done", timeout=1)
+        assert time.monotonic() - start < 10
+        assert "sleep 30" not in runtime.exec(instance_id, "ps").stdout
+        # The sandbox is still usable.
+        assert runtime.exec(instance_id, "echo ok").stdout == "ok\n"
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_replaces_output_that_is_not_utf8():
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        result = runtime.exec(instance_id, r"printf 'ok \377\376\n'; printf '\377' >&2")
+        assert result.exit_code == 0
+        assert result.stdout == "ok ��\n"
+        assert result.stderr == "�"
     finally:
         runtime.delete(instance_id)
 
