@@ -35,11 +35,8 @@ LIBRARY_DIRS = ("core", "rllib", "serve", "train", "tune")
 UNTESTED = {
     # The `doc_code/` snippet for this page is tested instead.
     "doc/source/core/tasks/nested-tasks.md",
-    # CI does not have Horovod installed.
-    "doc/source/train/horovod.md",
-    # These were excluded from their library's doctest target before the
+    # This was excluded from its library's doctest target before the
     # per-file split, with no reason recorded.
-    "doc/source/core/handling-dependencies.md",
     "doc/source/serve/production-guide/fault-tolerance.md",
 }
 
