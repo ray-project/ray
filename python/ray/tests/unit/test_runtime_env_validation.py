@@ -830,6 +830,31 @@ class TestGetPipHash:
             with pytest.raises(FileNotFoundError):
                 _get_pip_hash(pip_dict)
 
+    @pytest.mark.parametrize(
+        "env_var",
+        [
+            "PIP_INDEX_URL",
+            "PIP_EXTRA_INDEX_URL",
+            "UV_INDEX_URL",
+            "GIT_CONFIG_COUNT",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "REQUESTS_CA_BUNDLE",
+            "SSL_CERT_FILE",
+        ],
+    )
+    def test_pip_uri_changes_with_install_env_vars(self, env_var):
+        default = RuntimeEnv(pip=["requests==2.32.3"])
+        custom = RuntimeEnv(pip=["requests==2.32.3"], env_vars={env_var: "custom"})
+
+        assert default.pip_uri() != custom.pip_uri()
+
+    def test_pip_uri_ignores_unrelated_env_vars(self):
+        default = RuntimeEnv(pip=["requests==2.32.3"])
+        unrelated = RuntimeEnv(pip=["requests==2.32.3"], env_vars={"FOO": "bar"})
+
+        assert default.pip_uri() == unrelated.pip_uri()
+
 
 class TestValidateEnvVars:
     def test_type_validation(self):
