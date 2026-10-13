@@ -147,23 +147,60 @@ World size always reflects the target number of replicas configured for the depl
 ### Rank lifecycle state machine
 
 ```text
+┌─────────────────────────────────────────────────────────────┐
+│                    DEPLOYMENT LIFECYCLE                     │
+└─────────────────────────────────────────────────────────────┘
+
 Initial deployment / upscaling:
-    New replica -> lowest available rank
+┌──────────┐      assign      ┌──────────────────┐
+│ No rank  │ ───────────────> │ Lowest available │
+└──────────┘                  │ rank             │
+                              └──────────────────┘
 
 Replica crash:
-    Replica fully stops -> release rank
-    Replacement starts -> lowest available rank
+┌──────────────┐   release    ┌──────────┐   assign    ┌──────────────────┐
+│ Rank: K      │ ───────────> │ Released │ ──────────> │ Lowest available │
+│ Stopped      │              │          │             │ rank (may be K)  │
+└──────────────┘              └──────────┘             └──────────────────┘
 
 In-place update with max_surge_percent > 0:
-    Old replicas retain ranks -> replacements take available ranks
-    Replacement rank may be >= world_size
-    Old replicas stop -> deployment becomes HEALTHY -> ranks converge
+Example: one replica, world_size = 1 throughout the update.
+
+┌──────────────┐  start replacement   ┌──────────────┬──────────────┐
+│ Old replica  │ ───────────────────> │ Old replica  │ Replacement  │
+│ Rank: 0      │                      │ Rank: 0      │ Rank: 1      │
+└──────────────┘                      └──────────────┴──────────────┘
+                                                     │
+                                Replacement ready; old replica stops
+                                                     │
+                                                     v
+                                     ┌─────────────────────────────┐
+                                     │ Replacement retains rank 1  │
+                                     │ until rank reassignment     │
+                                     └─────────────────────────────┘
+                                                     │
+                                   Deployment HEALTHY; reassign rank
+                                                     │
+                                                     v
+                                     ┌─────────────────────────────┐
+                                     │ Same replacement, rank 0    │
+                                     │ No replica restart          │
+                                     └─────────────────────────────┘
 
 Downscaling:
-    Replicas stop -> release ranks -> deployment becomes HEALTHY -> ranks converge
+┌──────────────┐   release    ┌──────────┐
+│ Rank: K      │ ───────────> │ Released │
+│ Stopped      │              │          │
+└──────────────┘              └──────────┘
+          │
+          └──> Once HEALTHY, remaining ranks converge to 0 through M-1,
+               where M is the reduced target replica count.
 
 Controller recovery:
-    Query replicas -> restore rank assignments
+┌──────────┐   query ranks   ┌──────────────────┐
+│ Running  │ ──────────────> │ Rank assignments │
+│ replicas │                 │ restored         │
+└──────────┘                 └──────────────────┘
 ```
 
 ### Detailed lifecycle events
