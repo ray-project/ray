@@ -11,9 +11,6 @@
 #       Require Intel Gaudi (HPU) accelerators (resources={"HPU": ...}).
 #   jax/intro-to-jax-trainer/README.ipynb
 #       Multi-GPU JAX/Flax training (ScalingConfig(num_workers=2, use_gpu=True)).
-#
-# deepspeed/gptj-deepspeed-fine-tuning.ipynb is not listed here: it is covered by
-# the air_example_gptj_deepspeed_fine_tuning entry in release/release_tests.yaml.
 # ---------------------------------------------------------------------------
 
 filegroup(
