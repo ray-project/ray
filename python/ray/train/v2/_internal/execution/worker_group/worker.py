@@ -12,6 +12,7 @@ import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
 from ray.train import Checkpoint
+from ray.train.health.state import WorkerHealth
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
@@ -236,7 +237,22 @@ class RayTrainWorker:
             training_report=training_report,
             return_value=return_value,
             preemption_info=train_context.preemption_context.preemption_info,
+            health=self._get_worker_health(train_context),
         )
+
+    @staticmethod
+    def _get_worker_health(train_context: TrainContext) -> Optional[WorkerHealth]:
+        """What `ray.train.health.report()` accumulated, or None if nothing."""
+        with train_context.health_lock:
+            if train_context.health_reported_at is None:
+                return None
+            return WorkerHealth(
+                worker_rank=train_context.distributed_context.world_rank,
+                node_id=ray.get_runtime_context().get_node_id(),
+                snapshot_at=train_context.health_reported_at,
+                step=train_context.health_step,
+                reported=dict(train_context.health_metrics),
+            )
 
     def clear_result_queue(self) -> bool:
         """Drain the result queue, discarding any pending training reports.

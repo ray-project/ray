@@ -1,8 +1,11 @@
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.train import Checkpoint
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.train.health import HealthDecision
 
 
 @DeveloperAPI
@@ -49,5 +52,16 @@ class UserCallback(RayTrainCallback):
             run_context: The `TrainRunContext` for the current training run.
             worker_exceptions: A dict from worker world rank to the exception
                 raised by that worker.
+        """
+        pass
+
+    def after_health_decision(
+        self, run_context: TrainRunContext, health_decision: "HealthDecision"
+    ):
+        """[Alpha] Called with each health decision, before Ray Train acts on it.
+
+        Args:
+            run_context: The `TrainRunContext` for the current training run.
+            health_decision: The merged decision. See ``ray.train.health``.
         """
         pass

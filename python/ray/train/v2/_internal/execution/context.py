@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -142,6 +143,12 @@ class TrainContext:
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
     )
+
+    # What `ray.train.health.report()` accumulated, sent on each status poll.
+    health_metrics: Dict[str, Any] = field(default_factory=dict)
+    health_step: Optional[int] = None
+    health_reported_at: Optional[float] = None
+    health_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def __post_init__(self):
         # Ray train initializes worker with current report index
@@ -397,6 +404,13 @@ class TrainContext:
             self.get_result_queue().put(training_report)
             self.current_report_index += 1
             self.report_order_condition.notify_all()
+
+    def report_health(self, metrics: Dict[str, Any], step: Optional[int] = None):
+        with self.health_lock:
+            self.health_metrics.update(metrics)
+            if step is not None:
+                self.health_step = step
+            self.health_reported_at = time.time()
 
     def report(
         self,
