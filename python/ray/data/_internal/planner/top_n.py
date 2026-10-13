@@ -17,22 +17,6 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 
-def _local_top_n_transform(
-    blocks: Iterable[Block],
-    _: TaskContext,
-    *,
-    sort_key,
-    limit: int,
-) -> Iterable[Block]:
-    """Sort each input block and retain only its first ``limit`` rows."""
-    for block in blocks:
-        # TODO(vicwen): Use an exact BlockAccessor Top-N primitive instead of
-        # sorting the entire block when the limit is small.
-        sorted_block = BlockAccessor.for_block(block).sort(sort_key)
-        sorted_accessor = BlockAccessor.for_block(sorted_block)
-        yield sorted_accessor.slice(0, min(limit, sorted_accessor.num_rows()))
-
-
 def plan_top_n_op(
     logical_op: TopN,
     data_context: DataContext,
@@ -40,15 +24,13 @@ def plan_top_n_op(
 ) -> PhysicalOperator:
     """Plan Top-N as local candidate reduction followed by a global merge."""
 
-    def transform(blocks: Iterable[Block], context: TaskContext) -> Iterable[Block]:
-        return _local_top_n_transform(
-            blocks,
-            context,
-            sort_key=logical_op.sort_key,
-            limit=logical_op.limit,
-        )
+    def transform(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+        # Bound each block to at most ``limit`` candidates before the final merge.
+        for block in blocks:
+            yield BlockAccessor.for_block(block).top_n(
+                logical_op.sort_key, logical_op.limit
+            )
 
-    # Each block contributes only its best candidates before the final global merge.
     local_map = MapOperator.create(
         MapTransformer([BlockMapTransformFn(transform, disable_block_shaping=True)]),
         input_physical_op,

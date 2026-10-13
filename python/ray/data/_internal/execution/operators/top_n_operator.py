@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -111,13 +112,11 @@ def _final_top_n_task(
         ):
             result = _empty_block_from_schema(output_schema)
         else:
-            # TODO(vicwen): Reuse an exact bounded-selection primitive instead of
-            # fully sorting all final candidates.
-            merged, _ = BlockAccessor.for_block(blocks[0]).merge_sorted_blocks(
-                blocks, sort_key
-            )
-            merged_accessor = BlockAccessor.for_block(merged)
-            result = merged_accessor.slice(0, min(limit, merged_accessor.num_rows()))
+            builder = DelegatingBlockBuilder()
+            for block in blocks:
+                builder.add_block(block)
+            candidates = builder.build()
+            result = BlockAccessor.for_block(candidates).top_n(sort_key, limit)
 
     return result, BlockMetadataWithSchema.from_block(
         result,
