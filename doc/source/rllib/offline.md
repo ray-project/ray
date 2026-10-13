@@ -1148,9 +1148,9 @@ Customizing the Offline RL components in RLlib, such as the {py:class}`~ray.rlli
 - Pipeline level
 
 ### Connector level
-You can implement small data transformations on {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances by modifying the {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, which is part of the {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and prepares episodes for training. Use any connector from RLlib's library, listed in [RLlib's default connectors](https://github.com/ray-project/ray/tree/master/rllib/connectors), or create a custom connector, shown in [RLlib's ConnectorV2 examples](https://github.com/ray-project/ray/tree/master/rllib/examples/connectors), to integrate into the {py:class}`~ray.rllib.core.learner.learner.Learner`'s {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. Consider the order in which RLlib applies {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` instances carefully, as the implementation of [RLlib's MARWIL algorithm](https://github.com/ray-project/ray/tree/master/rllib/algorithms/marwil) demonstrates. See the [MARWIL paper](https://www.nematilab.info/bmijc/assets/012819_paper.pdf).
+You can implement small data transformations on {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances by modifying the {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, which is part of the {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and prepares episodes for training. Use any connector from RLlib's library, listed in [RLlib's default connectors](https://github.com/ray-project/ray/tree/master/python/ray/rllib/connectors), or create a custom connector, shown in [RLlib's ConnectorV2 examples](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples/connectors), to integrate into the {py:class}`~ray.rllib.core.learner.learner.Learner`'s {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. Consider the order in which RLlib applies {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` instances carefully, as the implementation of [RLlib's MARWIL algorithm](https://github.com/ray-project/ray/tree/master/python/ray/rllib/algorithms/marwil) demonstrates. See the [MARWIL paper](https://www.nematilab.info/bmijc/assets/012819_paper.pdf).
 
-The [MARWIL algorithm](https://github.com/ray-project/ray/tree/master/rllib/algorithms/marwil) computes a loss that extends beyond behavior cloning by improving the expert's strategy during training with advantages. RLlib calculates these advantages through [General Advantage Estimation (GAE)](https://arxiv.org/abs/1506.02438) with a value model. It computes GAE on the fly through the {py:class}`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector. This connector has specific requirements. It processes a list of {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and must be one of the final components in the {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, because it relies on fully prepared batches that contain `OBS`, `REWARDS`, `NEXT_OBS`, `TERMINATED`, and `TRUNCATED` fields. The incoming {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances must also already include one artificially elongated timestep.
+The [MARWIL algorithm](https://github.com/ray-project/ray/tree/master/python/ray/rllib/algorithms/marwil) computes a loss that extends beyond behavior cloning by improving the expert's strategy during training with advantages. RLlib calculates these advantages through [General Advantage Estimation (GAE)](https://arxiv.org/abs/1506.02438) with a value model. It computes GAE on the fly through the {py:class}`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector. This connector has specific requirements. It processes a list of {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and must be one of the final components in the {py:class}`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, because it relies on fully prepared batches that contain `OBS`, `REWARDS`, `NEXT_OBS`, `TERMINATED`, and `TRUNCATED` fields. The incoming {py:class}`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances must also already include one artificially elongated timestep.
 
 To meet these requirements, the pipeline must include the following sequence of {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` instances:
 
@@ -1159,7 +1159,7 @@ To meet these requirements, the pipeline must include the following sequence of 
 1. {py:class}`ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch.AddNextObservationsFromEpisodesToTrainBatch` adds the next observations, `NEXT_OBS`.
 1. Finally, RLlib applies the {py:class}`ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector piece.
 
-The following code snippet from [RLlib's MARWIL algorithm](https://github.com/ray-project/ray/tree/master/rllib/algorithms/marwil) demonstrates this setup:
+The following code snippet from [RLlib's MARWIL algorithm](https://github.com/ray-project/ray/tree/master/python/ray/rllib/algorithms/marwil) demonstrates this setup:
 
 ```python
 @override(AlgorithmConfig)
@@ -1596,19 +1596,19 @@ At this level of RLlib's Offline RL API, you can redefine your complete pipeline
 
 For example, consider overriding the {py:meth}`~ray.rllib.offline.offline_data.OfflineData.__init__` method if you have foundational data transformations, such as transforming image files into NumPy arrays.
 
-```{literalinclude} ../../../rllib/examples/offline_rl/classes/image_offline_data.py
+```{literalinclude} ../../../python/ray/rllib/examples/offline_rl/classes/image_offline_data.py
 :language: python
 ```
 
 In the preceding code example, you define a custom {py:class}`~ray.rllib.offline.offline_data.OfflineData` class to handle reading and preprocessing image data and convert it from a binary encoding format into `numpy` arrays. You then implement a custom {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` to process this data further and transform it into a learner-ready {py:class}`~ray.rllib.policy.sample_batch.MultiAgentBatch` format.
 
-```{literalinclude} ../../../rllib/examples/offline_rl/classes/image_offline_prelearner.py
+```{literalinclude} ../../../python/ray/rllib/examples/offline_rl/classes/image_offline_prelearner.py
 :language: python
 ```
 
 This demonstrates how you can customize the entire Offline Data Pipeline with your own logic. Run the example with the following code:
 
-```{literalinclude} ../../../rllib/examples/offline_rl/offline_rl_with_image_data.py
+```{literalinclude} ../../../python/ray/rllib/examples/offline_rl/offline_rl_with_image_data.py
 :language: python
 ```
 

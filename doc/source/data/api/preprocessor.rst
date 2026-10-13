@@ -22,12 +22,16 @@ Fit/Transform APIs
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~preprocessor.Preprocessor.fit
     ~preprocessor.Preprocessor.fit_transform
     ~preprocessor.Preprocessor.transform
     ~preprocessor.Preprocessor.transform_batch
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
     ~preprocessor.PreprocessorNotFittedException
 
 

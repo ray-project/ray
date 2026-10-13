@@ -2366,23 +2366,42 @@ def test_per_node_metrics_toggle(
             assert per_node_metrics is None
 
 
-def test_dataset_throughput_calculation(ray_start_regular_shared):
-    """Test throughput calculations using mock block stats."""
+def _mock_block_stats(
+    start_time,
+    end_time,
+    num_rows=100,
+    task_idx=None,
+    node_id="node",
+    unix_start=None,
+):
+    """A ``BlockStats`` shaped the way a worker reports one.
 
-    def create_block_stats(start_time, end_time, num_rows):
-        wall_time_s = end_time - start_time
-        exec_stats = BlockExecStats(
+    ``unix_start`` defaults to ``start_time``; pass it separately to model
+    blocks produced on nodes whose monotonic clocks have different origins,
+    which is the case an operator's span has to survive.
+    """
+    wall_time_s = end_time - start_time
+    return BlockStats(
+        num_rows=num_rows,
+        size_bytes=None,
+        exec_stats=BlockExecStats(
             start_time_s=start_time,
             end_time_s=end_time,
+            start_unix_time_s=start_time if unix_start is None else unix_start,
             wall_time_s=wall_time_s,
             cpu_time_s=wall_time_s,
-        )
-        return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
+            task_idx=task_idx,
+            node_id=node_id,
+        ),
+    )
 
+
+def test_dataset_throughput_calculation(ray_start_regular_shared):
+    """Test throughput calculations using mock block stats."""
     blocks_stats = [
-        create_block_stats(0.0, 2.0, 100),
-        create_block_stats(0.5, 2.5, 100),
-        create_block_stats(1.0, 3.0, 100),
+        _mock_block_stats(0.0, 2.0),
+        _mock_block_stats(0.5, 2.5),
+        _mock_block_stats(1.0, 3.0),
     ]
 
     stats = DatasetStats(metadata={"Map": blocks_stats}, parent=None)
@@ -2397,21 +2416,9 @@ def test_dataset_throughput_calculation(ray_start_regular_shared):
 
 def test_operator_throughput_calculation(ray_start_regular_shared):
     """Test operator throughput calculations using mock BlockStats."""
-
-    def create_block_stats(start_time, end_time, num_rows, task_idx):
-        wall_time_s = end_time - start_time
-        exec_stats = BlockExecStats(
-            start_time_s=start_time,
-            end_time_s=end_time,
-            wall_time_s=wall_time_s,
-            cpu_time_s=wall_time_s,
-            task_idx=task_idx,
-        )
-        return BlockStats(num_rows=num_rows, size_bytes=None, exec_stats=exec_stats)
-
     blocks_stats = [
-        create_block_stats(0.0, 2.0, 100, 1),
-        create_block_stats(0.0, 2.0, 100, 2),
+        _mock_block_stats(0.0, 2.0, task_idx=1),
+        _mock_block_stats(0.0, 2.0, task_idx=2),
     ]
 
     summary = OperatorStatsSummary.from_block_metadata(
@@ -2428,6 +2435,32 @@ def test_operator_throughput_calculation(ray_start_regular_shared):
 
     # Estimated single task throughput: Total rows / Sum of individual task wall times｀
     assert summary.num_rows_per_task_s == 200 / (2.0 + 2.0)
+
+
+def test_operator_wall_time_multi_node():
+    blocks = [
+        _mock_block_stats(10800.0, 10810.0, node_id="A", unix_start=1000.0, task_idx=0),
+        _mock_block_stats(120.0, 130.0, node_id="B", unix_start=1002.0, task_idx=0),
+    ]
+
+    summary = OperatorStatsSummary.from_block_metadata(
+        operator_name="MockOperator", block_stats=blocks, is_sub_operator=False
+    )
+
+    assert summary.earliest_start_time == 1000.0
+    assert summary.latest_end_time == 1012.0
+    assert summary.time_total_s == 12.0
+    assert summary.num_rows_per_s == 200 / 12.0
+
+
+def test_block_exec_stats_builder_records_unix_anchor(ray_start_regular_shared):
+    before = time.time()
+    builder = BlockExecStats.builder()
+    stats = builder.build()
+    after = time.time()
+
+    assert before <= stats.start_unix_time_s <= after
+    assert stats.wall_time_s >= 0
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These

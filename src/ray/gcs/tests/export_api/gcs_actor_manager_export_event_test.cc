@@ -22,8 +22,6 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/gcs/gcs_kv_manager.h"
-#include "mock/ray/gcs/gcs_node_manager.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/runtime_env_manager.h"
@@ -32,6 +30,7 @@
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/actor/gcs_actor.h"
 #include "ray/gcs/actor/gcs_actor_manager.h"
+#include "ray/gcs/fake_gcs_kv_manager.h"
 #include "ray/gcs/gcs_function_manager.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
@@ -45,19 +44,20 @@
 namespace ray {
 namespace gcs {
 
-using ::testing::_;
-using ::testing::Return;
 using json = nlohmann::json;
 
-class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
+// Hand-written fake actor scheduler with plain overrides.
+class FakeActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
-  MockActorScheduler() = default;
+  FakeActorScheduler() = default;
 
-  void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
-  void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
-  void ReleaseUnusedActorWorkers(
-      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
-  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {
+  void Schedule(std::shared_ptr<gcs::GcsActor> actor) override {
+    actors.push_back(actor);
+  }
+  void Reschedule(std::shared_ptr<gcs::GcsActor> actor) override {}
+  void ReleaseUnusedActorWorkers(const absl::flat_hash_map<NodeID, std::vector<WorkerID>>
+                                     &node_to_workers) override {}
+  void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) override {
     const auto &actor_id = actor->GetActorID();
     auto pending_it =
         std::find_if(actors.begin(),
@@ -70,20 +70,21 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
     }
   }
 
-  MOCK_CONST_METHOD0(DebugString, std::string());
-  MOCK_METHOD1(CancelOnNode, std::vector<ActorID>(const NodeID &node_id));
-  MOCK_METHOD2(CancelOnWorker, ActorID(const NodeID &node_id, const WorkerID &worker_id));
-  MOCK_METHOD3(CancelOnLeasing,
-               void(const NodeID &node_id,
-                    const ActorID &actor_id,
-                    const LeaseID &lease_id));
+  std::string DebugString() const override { return ""; }
+  std::vector<ActorID> CancelOnNode(const NodeID &node_id) override { return {}; }
+  ActorID CancelOnWorker(const NodeID &node_id, const WorkerID &worker_id) override {
+    return ActorID::Nil();
+  }
+  void CancelOnLeasing(const NodeID &node_id,
+                       const ActorID &actor_id,
+                       const LeaseID &lease_id) override {}
 
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
-class MockWorkerClient : public rpc::FakeCoreWorkerClient {
+class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
  public:
-  explicit MockWorkerClient(instrumented_io_context &io_service)
+  explicit FakeWorkerClient(instrumented_io_context &io_service)
       : io_service_(io_service) {}
 
   void WaitForActorRefDeleted(
@@ -146,7 +147,7 @@ class GcsActorManagerTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    worker_client_ = std::make_shared<MockWorkerClient>(io_service_);
+    worker_client_ = std::make_shared<FakeWorkerClient>(io_service_);
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });
     std::vector<rpc::ChannelType> channels = {rpc::ChannelType::GCS_ACTOR_CHANNEL};
@@ -164,10 +165,10 @@ class GcsActorManagerTest : public ::testing::Test {
         std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
-    kv_ = std::make_unique<gcs::MockInternalKVInterface>();
+    kv_ = std::make_unique<gcs::FakeInternalKV>();
     function_manager_ = std::make_unique<gcs::GCSFunctionManager>(*kv_, io_service_);
-    auto actor_scheduler = std::make_unique<MockActorScheduler>();
-    mock_actor_scheduler_ = actor_scheduler.get();
+    auto actor_scheduler = std::make_unique<FakeActorScheduler>();
+    fake_actor_scheduler_ = actor_scheduler.get();
     raylet_client_pool_ =
         std::make_unique<rpc::RayletClientPool>([](const rpc::Address &address) {
           return std::make_shared<rpc::FakeRayletClient>();
@@ -275,8 +276,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   // Actor scheduler's ownership lies in actor manager.
-  MockActorScheduler *mock_actor_scheduler_ = nullptr;
-  std::shared_ptr<MockWorkerClient> worker_client_;
+  FakeActorScheduler *fake_actor_scheduler_ = nullptr;
+  std::shared_ptr<FakeWorkerClient> worker_client_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
@@ -287,7 +288,7 @@ class GcsActorManagerTest : public ::testing::Test {
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GCSFunctionManager> function_manager_;
-  std::unique_ptr<gcs::MockInternalKVInterface> kv_;
+  std::unique_ptr<gcs::FakeInternalKV> kv_;
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
@@ -319,9 +320,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
                1);
 
   ASSERT_EQ(finished_actors.size(), 0);
-  ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
-  auto actor = mock_actor_scheduler_->actors.back();
-  mock_actor_scheduler_->actors.pop_back();
+  ASSERT_EQ(fake_actor_scheduler_->actors.size(), 1);
+  auto actor = fake_actor_scheduler_->actors.back();
+  fake_actor_scheduler_->actors.pop_back();
 
   // Check that the actor is in state `ALIVE`.
   actor->UpdateAddress(RandomAddress());
