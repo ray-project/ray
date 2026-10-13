@@ -599,11 +599,11 @@ Take this simple example that waits for individual nodes to join the cluster.
 ````{dropdown} example.py
 :animate: fade-in-slide-down
 
-```{literalinclude} ../../yarn/example.py
+```{literalinclude} /cluster/doc_code/yarn/example.py
 :language: python
 ```
 ````
-You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
+You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/source/cluster/doc_code/yarn/example.py).
 Store it locally in a file called `example.py`.
 
 To execute this script in the cloud, download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),

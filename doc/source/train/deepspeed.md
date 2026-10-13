@@ -24,6 +24,7 @@ Use your existing DeepSpeed training code with the Ray Train `TorchTrainer`. The
 :skipif: True
 
 import deepspeed
+import ray
 from deepspeed.accelerator import get_accelerator
 
 def train_func():
@@ -32,12 +33,14 @@ def train_func():
     train_dataset = ...
     eval_dataset = ...
     deepspeed_config = {...} # Your DeepSpeed config
+    collate_fn = ...
+    num_epochs = ...
 
     # Prepare everything for distributed training
     model, optimizer, train_dataloader, lr_scheduler = deepspeed.initialize(
         model=model,
         model_parameters=model.parameters(),
-        training_data=tokenized_datasets["train"],
+        training_data=train_dataset,
         collate_fn=collate_fn,
         config=deepspeed_config,
     )
@@ -47,7 +50,7 @@ def train_func():
 
     # Start training
     for epoch in range(num_epochs):
-        # Training logic
+        # Training logic that computes `loss`
         ...
 
         # Report metrics to Ray Train
@@ -115,24 +118,6 @@ For a step-by-step guide to fine-tuning large language models (LLMs) with Ray Tr
 
 Many deep learning frameworks integrate with DeepSpeed, including Lightning, Transformers, and Accelerate. You can run all these combinations in Ray Train.
 
-The following table lists a user guide and an example for each framework.
-
-```{list-table}
-:header-rows: 1
-
-* - Framework
-  - User guide
-  - Example
-* - Accelerate
-  - {ref}`User guide <train-hf-accelerate>`
-  - [Fine-tune Llama-2 series models with DeepSpeed, Accelerate, and Ray Train](https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed)
-* - Transformers
-  - {ref}`User guide <train-pytorch-transformers>`
-  - {doc}`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj-deepspeed-fine-tuning>`
-* - Lightning
-  - {ref}`User guide <train-pytorch-lightning>`
-  - {doc}`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna-13b-lightning-deepspeed-finetune>`
-```
-
+To get started with each framework, see the {ref}`Accelerate <train-hf-accelerate>`, {ref}`Transformers <train-pytorch-transformers>`, and {ref}`Lightning <train-pytorch-lightning>` user guides.
 
 For DeepSpeed configuration options, see the [DeepSpeed documentation](https://www.deepspeed.ai/docs/config-json/).
