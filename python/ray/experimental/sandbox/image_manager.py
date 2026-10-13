@@ -11,8 +11,8 @@ from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
     _release_image_use,
+    image_cache_name,
     pull_and_extract_container_image,
-    sanitize_image_name,
 )
 from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -278,7 +278,7 @@ class ImageManager(BaseImageManager):
         Returns:
             Absolute directory path for the image cache directory.
         """
-        safe_name = sanitize_image_name(image)
+        safe_name = image_cache_name(image)
         return os.path.join(self._images_dir, safe_name)
 
     def get_rootfs_image(self, image: str) -> str:

@@ -170,6 +170,35 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     return registry, repo, tag
 
 
+def image_cache_name(image: str) -> str:
+    """Name of an image's entry in the image cache.
+
+    A registry reference is normalized first, so every spelling of one image
+    (``python:3.12-slim``, ``library/python:3.12-slim``,
+    ``docker.io/library/python:3.12-slim``) shares one entry instead of each
+    pulling and building its own.
+
+    Args:
+        image: Container image reference or path to a local tar archive.
+
+    Returns:
+        A name that is safe as a directory and file name.
+    """
+    if (
+        not isinstance(image, str)
+        or not image.strip()
+        or os.path.isfile(image)
+        or image.endswith(".tar")
+        or image.startswith(("/", "./", "../"))
+    ):
+        return sanitize_image_name(image)
+    registry, repo, reference = parse_image_ref(image)
+    if registry == "registry-1.docker.io":
+        registry = "docker.io"
+    separator = "@" if "@" in image else ":"
+    return sanitize_image_name(f"{registry}/{repo}{separator}{reference}")
+
+
 def get_platform_arch() -> str:
     """Return normalized CPU architecture matching OCI/Docker conventions."""
     mach = platform.machine().lower()
@@ -848,7 +877,7 @@ def pull_and_extract_container_image(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
 
-    safe_name = sanitize_image_name(image)
+    safe_name = image_cache_name(image)
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 

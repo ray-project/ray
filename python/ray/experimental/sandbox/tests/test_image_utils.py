@@ -17,6 +17,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
+    image_cache_name,
     parse_image_ref,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -60,6 +61,48 @@ def test_sanitize_image_name():
         sanitize_image_name("")
     with pytest.raises(ValueError, match="cannot be safely sanitized"):
         sanitize_image_name("...")
+
+
+def test_image_cache_name_normalizes_registry_spellings():
+    spellings = (
+        "python:3.12-slim",
+        "library/python:3.12-slim",
+        "docker.io/library/python:3.12-slim",
+        "index.docker.io/library/python:3.12-slim",
+        "registry-1.docker.io/library/python:3.12-slim",
+    )
+    assert {image_cache_name(s) for s in spellings} == {
+        "docker.io_library_python_3.12-slim"
+    }
+    assert image_cache_name("busybox") == image_cache_name("busybox:latest")
+    assert image_cache_name("ghcr.io/org/repo:1.0") == "ghcr.io_org_repo_1.0"
+    assert (
+        image_cache_name("quay.io/coreos/etcd@sha256:abcd")
+        == "quay.io_coreos_etcd_sha256_abcd"
+    )
+    assert image_cache_name("localhost:5000/app") == "localhost_5000_app_latest"
+    # Local archives keep their file name.
+    assert (
+        image_cache_name("/tmp/ray/sandbox/images/ubuntu_22.04.tar") == "ubuntu_22.04"
+    )
+
+
+def test_pull_reuses_the_cache_entry_of_another_spelling(tmp_path, monkeypatch):
+    images_dir = str(tmp_path / "images")
+    first = pull_and_extract_container_image("busybox", images_dir=images_dir)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("the image was fetched again")
+
+    monkeypatch.setattr(image_utils, "_extract_image_layers", fail)
+    for spelling in ("busybox:latest", "docker.io/library/busybox:latest"):
+        assert (
+            pull_and_extract_container_image(spelling, images_dir=images_dir) == first
+        )
+    entries = [
+        d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))
+    ]
+    assert entries == [os.path.basename(first)]
 
 
 def test_parse_image_ref():

@@ -9,6 +9,10 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
+from ray.experimental.sandbox._internal.image_utils import (
+    DEFAULT_IMAGES_DIR,
+    image_cache_name,
+)
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
@@ -19,6 +23,8 @@ from ray.experimental.sandbox.exceptions import (
     SandboxNotFoundError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+_BUSYBOX_CACHE = os.path.join(DEFAULT_IMAGES_DIR, image_cache_name("busybox:latest"))
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
@@ -82,7 +88,7 @@ def test_gvisor_backend_container_image_support():
         assert sandbox_id.startswith("ray-sandbox-")
         assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
-        extracted_dir = "/tmp/ray/sandbox/images/busybox_latest"
+        extracted_dir = _BUSYBOX_CACHE
         assert os.path.exists(extracted_dir)
         assert os.path.isdir(extracted_dir)
         assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
@@ -90,7 +96,7 @@ def test_gvisor_backend_container_image_support():
         # doubling its footprint.
         assert os.path.isfile(os.path.join(extracted_dir, "rootfs.erofs"))
         assert not os.path.exists(os.path.join(extracted_dir, "rootfs"))
-        assert not os.path.exists("/tmp/ray/sandbox/images/busybox_latest.tar")
+        assert not os.path.exists(_BUSYBOX_CACHE + ".tar")
 
         res = backend.exec_command(sandbox_id, "/bin/sh -c 'echo hello from busybox'")
         assert res.exit_code == 0
@@ -98,7 +104,7 @@ def test_gvisor_backend_container_image_support():
     finally:
         backend.delete_sandbox(sandbox_id)
 
-    assert os.path.exists("/tmp/ray/sandbox/images/busybox_latest")
+    assert os.path.exists(_BUSYBOX_CACHE)
 
 
 def test_gvisor_backend_image_required():
@@ -281,7 +287,7 @@ def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
     finally:
         backend.delete_sandbox(sb)
     # The write went to the sandbox's overlay, not the shared image cache.
-    assert not os.path.exists("/tmp/ray/sandbox/images/busybox_latest/probe.txt")
+    assert not os.path.exists(os.path.join(_BUSYBOX_CACHE, "probe.txt"))
 
 
 def test_workdir_writability_matrix():
