@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
 
+# How long teardown waits for a sandbox's launch process to exit on its own
+# after the container stops, before it kills the process group.
+_TREE_EXIT_GRACE_SECONDS = 2.0
+
 # Directory for sandbox bundles, cached container images, and per-sandbox
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
@@ -103,7 +107,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         if config.network == "public":
-            missing = [b for b in ("slirp4netns", "nsenter") if not shutil.which(b)]
+            missing = [
+                b for b in ("slirp4netns", "nsenter", "setpriv") if not shutil.which(b)
+            ]
             if missing:
                 raise SandboxCreationError(
                     "network='public' isolates each sandbox in its own network "
@@ -543,8 +549,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
             script = (
+                # This shell stays the parent of the holder, slirp4netns and
+                # runsc, and its exit trap kills and reaps the helpers. When it
+                # exec'd runsc instead, the helpers outlived their parent and
+                # became zombies of the pod's init, which often never reaps
+                # them. Killing the holder's sleep (NSPID) lets unshare reap it.
+                "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
+                # setpriv --pdeathsig kills each child with this shell, which
+                # is what Ray kills when the owning worker exits.
                 # The holder pins the namespaces for the sandbox's lifetime;
                 # --kill-child ties it to this script's process group.
+                "setpriv --pdeathsig KILL -- "
                 "unshare --user --map-root-user --net --fork --kill-child "
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
@@ -558,14 +573,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # foreground, so it lives and dies with this process group.
                 # It writes "1" to --ready-fd once the tap is configured:
                 # that is the go signal.
-                f"{slirp} --ready-fd=3 --netns-type=path "
+                f"setpriv --pdeathsig KILL -- {slirp} --ready-fd=3 --netns-type=path "
                 "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
                 f"3>{ready_file} & "
                 "SLIRP=$!; "
                 f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
                 "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
-                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+                "nsenter --preserve-credentials -U -n -t $NSPID -- "
+                f"setpriv --pdeathsig KILL -- {runsc} & "
+                "wait $!"
             )
             return ["bash", "-c", script]
         return args
@@ -575,8 +592,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         The run Popen is started with ``start_new_session=True``, so its pid
         is the group id for the namespace holder, slirp4netns, runsc run, and the
-        sandbox process.
+        sandbox process. Callers stop the container first, so the launch shell
+        of a network="public" sandbox normally exits on its own once it has
+        reaped its helpers. Killing the group before that would orphan them.
         """
+        try:
+            proc.wait(timeout=_TREE_EXIT_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
