@@ -3137,11 +3137,11 @@ class Dataset:
 
         ds, dataset_length = self._try_count_or_materialize(self)
         cumulative_proportions = np.cumsum(proportions)
-        # The +1e-9 absorbs float dust (e.g. 100 * 0.29 == 28.999999999999996
+        # The +1e-8 absorbs float dust (e.g. 100 * 0.29 == 28.999999999999996
         # while 1 - 0.8 == 0.19999999999999996), without pushing genuinely
         # fractional products up a whole row.
         split_indices = [
-            int(dataset_length * proportion + 1e-9)
+            int(dataset_length * proportion + 1e-8)
             for proportion in cumulative_proportions
         ]
 
@@ -3267,7 +3267,10 @@ class Dataset:
         else:
             self._validate_test_size_float(test_size)
             fraction = test_size
-            n_test = int(np.ceil(round(fraction * ds_length, 9)))
+            # Target test rows rounded to 8 decimals. Cap to preserve non-empty train split when fraction < 1.0.
+            n_test = int(np.ceil(round(fraction * ds_length, 8)))
+            if fraction < 1.0 and n_test >= ds_length:
+                n_test = ds_length - 1
 
         # Per-class test counts via largest remainder, so flooring can't
         # silently shrink (or empty) the test split, and an int test_size
@@ -3276,10 +3279,17 @@ class Dataset:
             (row[stratify], row["count()"])
             for row in ds.groupby(stratify).count().take_all()
         ]
-        base = [min(int(n * fraction), n) for _, n in class_sizes]
-        remainders = [n * fraction - b for (_, n), b in zip(class_sizes, base)]
+        base = []
+        remainders = []
+        for _, count in class_sizes:
+            base_count = min(int(count * fraction), count)
+            base.append(base_count)
+            remainders.append(count * fraction - base_count)
+
         extra = [0] * len(class_sizes)
         deficit = n_test - sum(base)
+        # Sort classes primarily by highest fractional remainder to allocate leftover rows
+        # fairly (Hamilton-Hare largest remainder method). Break ties by class size.
         order = sorted(
             range(len(class_sizes)),
             key=lambda i: (remainders[i], class_sizes[i][1]),
@@ -3307,10 +3317,16 @@ class Dataset:
                 key = col.iloc[0]
             except AttributeError:
                 key = col[0]
-            try:
-                key = key.item()
-            except (AttributeError, ValueError, TypeError):
-                pass
+            if hasattr(key, "item"):
+                try:
+                    key = key.item()
+                except (AttributeError, ValueError, TypeError):
+                    pass
+            elif hasattr(key, "as_py"):
+                try:
+                    key = key.as_py()
+                except (AttributeError, ValueError, TypeError):
+                    pass
             test_count = test_counts.get(key, int(n * fraction))
             test_count = min(max(test_count, 0), n)
             group_batch[_TRAIN_TEST_SPLIT_COLUMN] = np.array(
