@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Set, Union
 
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -86,6 +86,50 @@ def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
         if len(fields) >= 3 and fields[0] == name:
             return fields
     return None
+
+
+# How long a timed-out command gets to release its output pipes after it and
+# the processes it started are killed.
+_EXEC_KILL_GRACE_SECONDS = 5.0
+
+
+def _exec_process_tree(ps_table: str, root_pid: int) -> Set[int]:
+    """PIDs of an exec'd command and of every process it started.
+
+    runsc exec makes the command a process group leader. A child stays in
+    that group after its parent exits and it's reparented, and a child that
+    moved to a group of its own is still found through its parent.
+
+    Args:
+        ps_table: The table that ``runsc ps <container-id>`` prints.
+        root_pid: The command's PID inside the sandbox.
+
+    Returns:
+        The PIDs to kill, ``root_pid`` included.
+    """
+    lines = ps_table.splitlines()
+    header = lines[0].split() if lines else []
+    if "PID" not in header or "PPID" not in header:
+        return {root_pid}
+    pid_col, ppid_col = header.index("PID"), header.index("PPID")
+    pgid_col = header.index("PGID") if "PGID" in header else None
+    rows = []
+    for line in lines[1:]:
+        fields = line.split()
+        try:
+            pgid = int(fields[pgid_col]) if pgid_col is not None else None
+            rows.append((int(fields[pid_col]), int(fields[ppid_col]), pgid))
+        except (IndexError, ValueError):
+            continue
+    tree = {root_pid}
+    grew = True
+    while grew:
+        grew = False
+        for pid, ppid, pgid in rows:
+            if pid not in tree and (ppid in tree or pgid == root_pid):
+                tree.add(pid)
+                grew = True
+    return tree
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -363,10 +407,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             exec_env.update(env)
 
         exec_cwd = cwd or meta["cwd"]
+        # The command's PID inside the sandbox, to kill it if it times out.
+        pid_file = os.path.join(meta["root_dir"], f".exec-{uuid.uuid4().hex}.pid")
 
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", "-cwd", exec_cwd])
+        runsc_args.extend(["exec", "-cwd", exec_cwd, "-internal-pid-file", pid_file])
         if user is not None:
             runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
         if env:
@@ -386,28 +432,76 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
             )
-            stdout_str, stderr_str = proc.communicate(timeout=timeout)
-            duration = time.time() - start_time
-
-            return ExecResult(
-                exit_code=proc.returncode,
-                stdout=stdout_str,
-                stderr=stderr_str,
-                duration_seconds=duration,
-            )
-        except subprocess.TimeoutExpired as err:
-            proc.kill()
-            proc.communicate()
-            duration = time.time() - start_time
-
-            raise SandboxTimeoutError(
-                f"gVisor exec command timed out after {timeout} seconds."
-            ) from err
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as err:
+                # Killing `runsc exec` alone leaves the command running in the
+                # sandbox, with its output pipes open until it exits.
+                self._kill_exec(config, sandbox_id, pid_file)
+                proc.kill()
+                try:
+                    proc.communicate(timeout=_EXEC_KILL_GRACE_SECONDS)
+                except subprocess.TimeoutExpired:
+                    # A process that escaped the kill still holds the pipes.
+                    proc.stdout.close()
+                    proc.stderr.close()
+                    proc.wait()
+                raise SandboxTimeoutError(
+                    f"gVisor exec command timed out after {timeout} seconds."
+                ) from err
+        except SandboxTimeoutError:
+            raise
         except Exception as err:
-            duration = time.time() - start_time
             raise SandboxExecError(f"gVisor exec failed: {err}") from err
+        finally:
+            try:
+                os.remove(pid_file)
+            except OSError:
+                pass
+
+        # Commands may print bytes that aren't UTF-8, and decoding them
+        # strictly would fail the whole exec.
+        return ExecResult(
+            exit_code=proc.returncode,
+            stdout=stdout.decode("utf-8", errors="replace"),
+            stderr=stderr.decode("utf-8", errors="replace"),
+            duration_seconds=time.time() - start_time,
+        )
+
+    def _kill_exec(self, config: SandboxConfig, sandbox_id: str, pid_file: str) -> None:
+        """SIGKILL an exec'd command and every process it started.
+
+        ``runsc kill --pgid`` signals only the group's leader, so each process
+        of the command's tree is killed by PID.
+        """
+        try:
+            with open(pid_file, encoding="utf-8") as f:
+                root_pid = int(f.read())
+        except (OSError, ValueError):
+            # The command hadn't started yet.
+            return
+        base_args = self._runsc_base_args(config)
+        try:
+            ps = subprocess.run(
+                base_args + ["ps", sandbox_id],
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=10,
+            )
+            tree = _exec_process_tree(ps.stdout, root_pid)
+        except (OSError, subprocess.TimeoutExpired):
+            tree = {root_pid}
+        for pid in tree:
+            try:
+                subprocess.run(
+                    base_args + ["kill", "--pid", str(pid), sandbox_id, "SIGKILL"],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
 
     def write_file(
         self,
