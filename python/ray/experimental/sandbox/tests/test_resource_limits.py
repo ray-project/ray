@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -173,6 +174,58 @@ os._exit(0)
     while path.exists() and time.monotonic() < deadline:
         time.sleep(0.1)
     assert not path.exists(), f"Orphaned running sandbox cgroup: {path}"
+
+
+def _stop_reapers() -> None:
+    for entry in Path("/proc").iterdir():
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if b"--reap" in argv and entry.name.isdigit():
+            os.kill(int(entry.name), signal.SIGKILL)
+
+
+def test_worker_exit_that_kills_its_children_still_reaps_the_sandbox():
+    """Ray kills a worker's child processes when it exits. The reaper must
+    survive that, kill the sandbox, and delete its runsc state and bundle."""
+    # Only a reaper that this worker starts can then do the cleanup.
+    _stop_reapers()
+    code = """
+import os, signal
+from pathlib import Path
+from ray.experimental.sandbox.runtime import SandboxRuntime
+runtime = SandboxRuntime()
+sid = runtime.create(os.environ.get('RAY_SANDBOX_TEST_IMAGE', 'python:3.12-slim'),
+                     cpu=1, memory='512Mi', timeout_seconds=300,
+                     env={'PATH':'/usr/local/bin:/usr/bin:/bin'})
+print(sid, flush=True)
+# What Ray's CoreWorker::KillChildProcs does as the worker exits.
+for entry in Path('/proc').iterdir():
+    try:
+        stat = (entry / 'stat').read_text()
+    except OSError:
+        continue
+    if entry.name.isdigit() and int(stat.rsplit(')', 1)[1].split()[1]) == os.getpid():
+        os.kill(int(entry.name), signal.SIGKILL)
+os._exit(0)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=300
+    )
+    assert result.returncode == 0, result.stderr
+    sid = result.stdout.strip()
+    cgroup_path = Path(os.environ["RAY_SANDBOX_CGROUP_PATH"]) / sid
+    bundle = Path("/tmp/ray/sandbox") / sid
+    deadline = time.monotonic() + 15
+    while (cgroup_path.exists() or bundle.exists()) and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not cgroup_path.exists(), f"Orphaned running sandbox cgroup: {cgroup_path}"
+    assert not bundle.exists(), f"Orphaned sandbox bundle: {bundle}"
+    state = subprocess.run(
+        ["runsc", "--root", "/tmp/runsc", "state", sid], capture_output=True
+    )
+    assert state.returncode != 0, "runsc still has the orphan's container state"
 
 
 @pytest.mark.skipif(

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -134,6 +135,35 @@ def _reconcile(state_dir: Path) -> None:
             logger.warning("Failed to reclaim sandbox lease %s: %s", record_path, err)
 
 
+def _clean_up_orphan(record: Dict) -> None:
+    """Delete what a dead owner's sandbox leaves after its cgroup is killed.
+
+    The kill stops the workload, but runsc's container state, the bundle
+    (with the writable overlay's backing file) and the image's in-use marker
+    would otherwise stay on the node.
+    """
+    cleanup = record.get("cleanup") or {}
+    runsc_args = cleanup.get("runsc_args")
+    if runsc_args:
+        try:
+            subprocess.run(
+                [*runsc_args, "delete", "-force", Path(record["path"]).name],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    for path in cleanup.get("remove", []):
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
 def _reconcile_lease(record_path: Path, record: Dict) -> None:
     if not Path(record["path"]).exists():
         # Cgroups don't survive a node reboot. A reused owner identity
@@ -155,18 +185,27 @@ def _reconcile_lease(record_path: Path, record: Dict) -> None:
             SandboxCgroupManager._cores(pool)
         except (OSError, RuntimeError):
             invalid_partition = True
-    if invalid_partition or (
-        _process_identity(record["owner_pid"]) != record["owner_starttime"]
-    ):
+    owner_gone = _process_identity(record["owner_pid"]) != record["owner_starttime"]
+    if invalid_partition or owner_gone:
         _remove(record_path, record)
+        if owner_gone:
+            _clean_up_orphan(record)
 
 
-def _reap(state_dir: Path) -> None:
+def _reap(state_dir: Path, detach: bool = False) -> None:
     with (state_dir / "reaper.lock").open("a+") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
+        # Ray kills a worker's child processes when the worker exits, which
+        # is exactly when its sandboxes need reaping, so the reaper detaches
+        # from the worker that starts it. It forks only once it holds the
+        # lock: a duplicate exits above as the worker's child, which reaps
+        # it, rather than as an orphan that the pod's init may never reap.
+        # The forked reaper keeps the lock through the inherited descriptor.
+        if detach and os.fork() > 0:
+            os._exit(0)
         # Stay alive until node shutdown. Allocation can race an idle
         # reaper's exit, leaving a new sandbox without a crash monitor.
         while True:
@@ -321,7 +360,12 @@ class SandboxCgroupManager:
         return [set(core) for core in sorted(cores)]
 
     def allocate(
-        self, sandbox_id: str, cpu: float, memory: int, isolation: str
+        self,
+        sandbox_id: str,
+        cpu: float,
+        memory: int,
+        isolation: str,
+        cleanup: Optional[Dict] = None,
     ) -> SandboxCgroup:
         if not _SANDBOX_ID.fullmatch(sandbox_id):
             raise ValueError(f"Invalid sandbox ID: {sandbox_id}")
@@ -373,6 +417,9 @@ class SandboxCgroupManager:
                 "owner_pid": os.getpid(),
                 "owner_starttime": _process_identity(os.getpid()),
                 "reserved_cpus": sorted(reserved),
+                # What the reaper deletes after killing an orphan: the
+                # runsc command prefix for `delete -force`, and paths.
+                "cleanup": cleanup or {},
             }
             if record["owner_starttime"] is None:
                 raise RuntimeError("Cannot identify sandbox owner process")
@@ -395,7 +442,14 @@ class SandboxCgroupManager:
                         "Sandbox enforcement requires permission to write cgroup.kill"
                     )
                 subprocess.Popen(
-                    [sys.executable, "-S", __file__, "--reap", str(self.state_dir)],
+                    [
+                        sys.executable,
+                        "-S",
+                        __file__,
+                        "--reap",
+                        str(self.state_dir),
+                        "--detach",
+                    ],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
@@ -410,4 +464,6 @@ class SandboxCgroupManager:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reap", type=Path, required=True)
-    _reap(parser.parse_args().reap)
+    parser.add_argument("--detach", action="store_true")
+    args = parser.parse_args()
+    _reap(args.reap, detach=args.detach)

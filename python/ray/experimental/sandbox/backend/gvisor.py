@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.image_utils import image_use_marker
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -133,8 +134,21 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         try:
             memory = parse_memory_bytes(config.memory) or 0
             if config.cpu > 0 or memory > 0:
+                # If this worker dies, the node's reaper kills the sandbox and
+                # then deletes its runsc state, bundle, and image pin.
+                remove = [root_dir]
+                image_dir = self._image_manager.get_image_dir(config.image)
+                if isinstance(image_dir, str):
+                    remove.append(image_use_marker(image_dir, sandbox_id))
                 cgroup = SandboxCgroupManager().allocate(
-                    sandbox_id, config.cpu, memory, config.cpu_isolation
+                    sandbox_id,
+                    config.cpu,
+                    memory,
+                    config.cpu_isolation,
+                    cleanup={
+                        "runsc_args": self._runsc_base_args(config),
+                        "remove": remove,
+                    },
                 )
             return self._start_sandbox(config, sandbox_id, root_dir, cgroup)
         except Exception as err:

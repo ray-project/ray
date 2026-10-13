@@ -1,8 +1,10 @@
 """Resource enforcement, allocation races, and crash cleanup without gVisor."""
 
 import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,9 @@ from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxTimeoutError,
 )
+
+# The manager fixture stubs subprocess.Popen so allocations start no reaper.
+_POPEN = subprocess.Popen
 
 
 @pytest.fixture
@@ -110,6 +115,76 @@ def test_reconcile_kills_orphan_before_reusing_its_cores(manager, monkeypatch):
     second = manager.allocate("ray-sandbox-000000000002", 2, 0, "exclusive")
     assert not first.path.exists()
     assert (second.path / "cpuset.cpus").read_text() == "0,1"
+
+
+def test_reconcile_deletes_an_orphans_runsc_state_and_files(
+    manager, monkeypatch, tmp_path
+):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / ".gvisor.filestore").write_text("overlay")
+    pin = tmp_path / "pin"
+    pin.write_text("")
+    calls = tmp_path / "runsc-calls"
+    cleanup = {
+        # Stands in for runsc: records the arguments it gets.
+        "runsc_args": ["/bin/sh", "-c", f'echo "$@" >> {calls}', "runsc"],
+        "remove": [str(bundle), str(pin)],
+    }
+    manager.allocate("ray-sandbox-000000000001", 1, 0, "shared", cleanup=cleanup)
+    monkeypatch.setattr(subprocess, "Popen", _POPEN)
+    # A live owner keeps everything.
+    with cgroup._locked(manager.state_dir):
+        cgroup._reconcile(manager.state_dir)
+    assert bundle.exists() and pin.exists() and not calls.exists()
+
+    monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
+    with cgroup._locked(manager.state_dir):
+        cgroup._reconcile(manager.state_dir)
+    assert calls.read_text().split() == [
+        "delete",
+        "-force",
+        "ray-sandbox-000000000001",
+    ]
+    assert not bundle.exists() and not pin.exists()
+
+
+def _reapers(state_dir) -> list:
+    """PIDs of reapers watching ``state_dir``."""
+    pids = []
+    for entry in Path("/proc").iterdir():
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if b"--reap" in argv and str(state_dir).encode() in argv:
+            pids.append(int(entry.name))
+    return pids
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Needs Linux /proc")
+def test_reaper_detaches_from_the_process_that_starts_it(tmp_path):
+    """Ray kills a worker's children when the worker exits, which is exactly
+    when its sandboxes need reaping, so the reaper mustn't be one of them."""
+    state = tmp_path / "state"
+    state.mkdir()
+    command = [sys.executable, "-S", cgroup.__file__, "--reap", str(state)]
+    subprocess.run([*command, "--detach"], check=True, timeout=10)
+    deadline = time.monotonic() + 10
+    while not _reapers(state) and time.monotonic() < deadline:
+        time.sleep(0.05)
+    (reaper,) = _reapers(state)
+    try:
+        ppid = int(
+            Path(f"/proc/{reaper}/stat").read_text().rsplit(")", 1)[1].split()[1]
+        )
+        assert ppid != os.getpid()
+        # With the lock held, another start exits at once instead of
+        # forking a duplicate.
+        subprocess.run([*command, "--detach"], check=True, timeout=10)
+        assert _reapers(state) == [reaper]
+    finally:
+        os.kill(reaper, signal.SIGKILL)
 
 
 def test_failed_setup_releases_allocation(manager, monkeypatch):
@@ -230,7 +305,7 @@ def test_failed_create_reports_its_error_when_release_also_fails(tmp_path, monke
 
     lease = Mock()
     lease.release.side_effect = RuntimeError("Sandbox cgroup is still populated")
-    monkeypatch.setattr(gvisor.SandboxCgroupManager, "allocate", lambda *_: lease)
+    monkeypatch.setattr(gvisor.SandboxCgroupManager, "allocate", lambda *_, **__: lease)
     monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path))
     monkeypatch.setattr("shutil.which", lambda _: "/runsc")
     backend = gvisor.GVisorSandboxBackend(Mock())
