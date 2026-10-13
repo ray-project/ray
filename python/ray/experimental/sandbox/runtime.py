@@ -60,6 +60,7 @@ class SandboxRuntime:
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
+        disk: Union[str, int, float] = 0,
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -95,6 +96,9 @@ class SandboxRuntime:
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
+            disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past
+                it fail with ENOSPC. Zero means no cap. Requires
+                ``readonly=False``.
             **kwargs: Additional parameters.
 
         Returns:
@@ -115,6 +119,7 @@ class SandboxRuntime:
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
+            disk=disk,
             **kwargs,
         )
         self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)

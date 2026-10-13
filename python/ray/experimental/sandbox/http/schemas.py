@@ -9,7 +9,7 @@ in ``tests/test_http_schemas.py`` deliberately when you do.
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Re-exported so the wire contract documents its default in one place; the
 # canonical definition (and rationale) lives in the core sandbox config.
@@ -49,6 +49,14 @@ class ResourceSpec(BaseModel):
     cpu_limit: Optional[float] = Field(default=None, gt=0)
     memory_request_mb: Optional[int] = Field(default=None, gt=0)
     memory_limit_mb: Optional[int] = Field(default=None, gt=0)
+    disk_limit_mb: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Size cap of the sandbox's writable rootfs, in MiB. Writes past it "
+            "fail with ENOSPC. Requires readonly=false."
+        ),
+    )
     custom: Optional[Dict[str, float]] = Field(
         default=None,
         description=(
@@ -141,6 +149,15 @@ class CreateSandboxRequest(BaseModel):
         if network not in VALID_NETWORK_MODES:
             raise ValueError(f"network must be one of {VALID_NETWORK_MODES}")
         return network
+
+    @model_validator(mode="after")
+    def _validate_disk_limit(self) -> "CreateSandboxRequest":
+        if self.resources and self.resources.disk_limit_mb and self.readonly:
+            raise ValueError(
+                "resources.disk_limit_mb caps the writable rootfs; it requires "
+                "readonly=false"
+            )
+        return self
 
     @field_validator("labels")
     @classmethod

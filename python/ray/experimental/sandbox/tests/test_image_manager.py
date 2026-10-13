@@ -297,6 +297,28 @@ def test_custom_image_manager_subclass(tmp_path):
     assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
+@pytest.mark.parametrize(
+    "readonly, disk, options",
+    [
+        (False, "64Mi", "size=67108864"),
+        (False, 1 << 30, "size=1073741824"),
+        (False, 0, None),
+        (False, None, None),
+        # A read-only rootfs gets no overlay, so there's nothing to cap.
+        (True, "64Mi", None),
+    ],
+)
+def test_create_oci_spec_caps_the_writable_overlay(tmp_path, readonly, disk, options):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        readonly=readonly,
+        disk=disk,
+        base_spec=_sample_base_spec(),
+    )
+    assert spec["annotations"].get("dev.gvisor.spec.rootfs.options") == options
+
+
 class _StubImageManager(ImageManager):
     """ImageManager that skips pulling so spec construction is testable offline."""
 

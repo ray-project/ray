@@ -172,6 +172,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 network=config.network,
                 dns=config.dns,
                 _oci_spec_transform_fn=config._oci_spec_transform_fn,
+                disk=config.disk,
             )
         except Exception:
             self._image_manager.release_image(config.image, sandbox_id)
@@ -614,6 +615,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         network: str = "none",
         dns: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
+        disk: Optional[Union[str, int, float]] = None,
     ) -> str:
         return self._image_manager.prepare_oci_bundle(
             root_dir=root_dir,
@@ -628,4 +630,5 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             network=network,
             dns=dns,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
+            disk=disk,
         )

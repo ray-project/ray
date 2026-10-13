@@ -149,6 +149,28 @@ def test_create_maps_resources_to_actor_options_and_limits(
     assert create_call["memory"] == "2048Mi"
 
 
+def test_create_passes_the_disk_limit_to_the_runtime(
+    fake_resolver: FakeResolver,
+) -> None:
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, resources={"disk_limit_mb": 10240})
+        _wait_running(client, info["sandbox_id"])
+        # A read-only rootfs has nothing for the cap to bound.
+        response = client.post(
+            f"{BASE}/sandboxes",
+            json={
+                "image": "python:3.12-slim",
+                "readonly": True,
+                "resources": {"disk_limit_mb": 10240},
+            },
+        )
+        assert response.status_code == 422
+        assert "readonly" in response.text
+
+    (runtime,) = fake_resolver.runtimes
+    assert runtime.create_calls[0]["disk"] == "10240Mi"
+
+
 def test_create_defaults_request_to_limit(fake_resolver: FakeResolver) -> None:
     with _client(fake_resolver) as client:
         _create_sandbox(client, resources={"cpu_limit": 4.0, "memory_limit_mb": 512})

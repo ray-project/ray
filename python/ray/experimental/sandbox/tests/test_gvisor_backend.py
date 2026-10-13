@@ -259,6 +259,25 @@ def test_string_exec_shell_configuration():
         runtime.delete(instance_id)
 
 
+def test_disk_caps_the_writable_overlay():
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(
+        image="busybox:latest", shell="/bin/sh", readonly=False, disk="64Mi"
+    )
+    try:
+        result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=128")
+        assert result.exit_code != 0
+        assert "No space left on device" in result.stderr
+        # Deleting frees the space, and the sandbox keeps working.
+        result = runtime.exec(
+            instance_id,
+            "rm /fill && dd if=/dev/zero of=/again bs=1M count=32 && echo ok",
+        )
+        assert result.stdout.endswith("ok\n"), result.stderr
+    finally:
+        runtime.delete(instance_id)
+
+
 def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
     """readonly + explicit workdir currently runs on a private writable
     overlay: the workdir works, and rootfs writes land in the overlay and are
