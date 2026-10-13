@@ -124,12 +124,28 @@ def test_annotation_unknown_severity_is_reported(logs_dir, captured_warnings):
     """An unrecognized severity is a caller bug, but not a reason to lose the
     event, so it is emitted without one and warned about."""
     Annotation(source=ANNOTATION_SOURCE, base_tags={}).annotate(
-        event="custom_event", severity="critical"
+        event="custom_event", severity="bogus"
     )
 
     data = read_annotations(logs_dir)[0]
     assert data["severity"] == "SEVERITY_UNSPECIFIED"
     assert len(captured_warnings) == 1
+
+
+def test_annotation_write_failure_reported_once(logs_dir, captured_warnings, capsys):
+    """A failed write, such as on a full disk, is warned about once, rather than
+    printing the logging module's traceback to stderr on every emit."""
+    annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
+
+    # `RotatingFileHandler.emit` passes this error on to `handleError`.
+    with mock.patch.object(
+        logging.FileHandler, "emit", side_effect=OSError("No space left on device")
+    ):
+        for _ in range(3):
+            annotation.annotate(event="custom_event")
+
+    assert len(captured_warnings) == 1
+    assert "Logging error" not in capsys.readouterr().err
 
 
 def test_annotation_fields_cannot_shadow_the_schema(logs_dir):

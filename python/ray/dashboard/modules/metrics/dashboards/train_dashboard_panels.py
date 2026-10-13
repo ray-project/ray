@@ -572,12 +572,14 @@ REPORT_CALL_ANNOTATION = GrafanaAnnotation(
 )
 
 # The custom-annotation variants differ only by severity filter, color, and refId.
+# DEBUG shares the Info layer and CRITICAL the Errors layer, to keep the number
+# of annotation toggles on the dashboard down.
 _CUSTOM_ANNOTATION_VARIANTS = [
     (
         "Train Custom Annotations (Info)",
         "rgba(184, 119, 217, 1)",  # purple
         "TrainCustomAnnotationsInfo",
-        "INFO",
+        "DEBUG|INFO",
     ),
     (
         "Train Custom Annotations (Warnings)",
@@ -589,7 +591,7 @@ _CUSTOM_ANNOTATION_VARIANTS = [
         "Train Custom Annotations (Errors)",
         "rgba(224, 47, 68, 1)",  # red
         "TrainCustomAnnotationsError",
-        "ERROR",
+        "ERROR|CRITICAL",
     ),
 ]
 CUSTOM_ANNOTATIONS = [
@@ -601,7 +603,7 @@ CUSTOM_ANNOTATIONS = [
         tag_keys="severity,worker,fields",
         expr=(
             f'| event="ray.train.annotate" '
-            f'| severity="{severity}" {_RUN_FILTERS} '
+            f'| severity=~"{severity}" {_RUN_FILTERS} '
             "| json ray_train_worker_world_rank="
             '"tags.ray_train_worker_world_rank"'
             ', fields="fields.custom_fields" '

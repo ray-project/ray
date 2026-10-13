@@ -4,7 +4,7 @@ import logging.handlers
 import os
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private.protobuf_compat import message_to_dict
 from ray.core.generated.annotation_event_pb2 import AnnotationEvent
@@ -15,10 +15,14 @@ logger = logging.getLogger(__name__)
 # match on this name, so changing it breaks every deployed collector config.
 ANNOTATION_FILE_PREFIX = "annotations"
 
-_SEVERITY_BY_NAME = {
-    "info": AnnotationEvent.Severity.INFO,
-    "warning": AnnotationEvent.Severity.WARNING,
-    "error": AnnotationEvent.Severity.ERROR,
+# Severities mirror the Python logging levels, so a caller passes the level it
+# would log the same event at.
+_SEVERITY_BY_LEVEL = {
+    logging.DEBUG: AnnotationEvent.Severity.DEBUG,
+    logging.INFO: AnnotationEvent.Severity.INFO,
+    logging.WARNING: AnnotationEvent.Severity.WARNING,
+    logging.ERROR: AnnotationEvent.Severity.ERROR,
+    logging.CRITICAL: AnnotationEvent.Severity.CRITICAL,
 }
 
 
@@ -32,21 +36,56 @@ def _stringify(value: Any) -> str:
     return value if isinstance(value, str) else json.dumps(value, default=str)
 
 
-def _to_severity(severity: Optional[str]) -> "AnnotationEvent.Severity":
-    """Map a severity name to its enum value, defaulting to unspecified."""
+def parse_severity(
+    severity: Union[str, int],
+) -> Optional["AnnotationEvent.Severity"]:
+    """Map a Python logging level to its annotation severity.
+
+    Args:
+        severity: A logging level, either as a case-insensitive name such as
+            ``"warning"`` (including the ``"warn"`` and ``"fatal"`` aliases) or
+            as a number such as ``logging.WARNING``.
+
+    Returns:
+        The severity, or ``None`` if ``severity`` is not one of the ``DEBUG``,
+        ``INFO``, ``WARNING``, ``ERROR`` or ``CRITICAL`` levels.
+    """
+    if isinstance(severity, str):
+        # Resolves a level name to its number, or to a non-int for an unknown one.
+        severity = logging.getLevelName(severity.upper())
+    return _SEVERITY_BY_LEVEL.get(severity)
+
+
+def _to_severity(
+    severity: Union[None, str, int],
+) -> "AnnotationEvent.Severity":
+    """Map a logging level to its severity, defaulting to unspecified."""
     if severity is None:
         return AnnotationEvent.Severity.SEVERITY_UNSPECIFIED
 
-    value = _SEVERITY_BY_NAME.get(severity.lower())
+    value = parse_severity(severity)
     if value is None:
         logger.warning(
-            "Unknown annotation severity %r, expected one of %s. The annotation "
-            "is emitted without one.",
+            "Unknown annotation severity %r, expected a logging level, one of "
+            "DEBUG, INFO, WARNING, ERROR or CRITICAL. The annotation is emitted "
+            "without one.",
             severity,
-            sorted(_SEVERITY_BY_NAME),
         )
         return AnnotationEvent.Severity.SEVERITY_UNSPECIFIED
     return value
+
+
+class _RaisingRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """A ``RotatingFileHandler`` that raises write errors to its caller.
+
+    The base handler passes them to ``handleError``, which prints a traceback to
+    stderr on every failed emit. Raising lets ``Annotation.annotate`` report the
+    failure once instead.
+    """
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # Called from inside the handler's `except`, so this re-raises its error.
+        raise
 
 
 class _AnnotationFileWriter:
@@ -67,7 +106,7 @@ class _AnnotationFileWriter:
         self.path = os.path.join(
             logs_dir, f"{ANNOTATION_FILE_PREFIX}_{os.getpid()}.log"
         )
-        self._handler = logging.handlers.RotatingFileHandler(
+        self._handler = _RaisingRotatingFileHandler(
             self.path,
             maxBytes=max_bytes,
             backupCount=backup_count,
@@ -222,7 +261,7 @@ class Annotation:
         event: str,
         *,
         message: str = "",
-        severity: Optional[str] = None,
+        severity: Union[None, str, int] = None,
         **fields: Any,
     ) -> None:
         """Emit a single annotation event to the annotation log file.
@@ -236,9 +275,10 @@ class Annotation:
                 uses it to filter annotations by type.
             message: Human-readable description of the event, which Grafana
                 shows as the annotation text.
-            severity: How important the event is, one of ``"info"``,
-                ``"warning"`` or ``"error"``. Grafana colors annotations by
-                severity. Omit it for an event that has no notion of one.
+            severity: How important the event is, as a Python logging level:
+                a name such as ``"warning"`` or a number such as
+                ``logging.WARNING``. Grafana colors annotations by severity.
+                Omit it for an event that has no notion of one.
             **fields: Arbitrary key-value pairs specific to this event, such as
                 the metrics of a ``ray.train.report`` call. Values are
                 stringified, because a log backend stores them as string labels.

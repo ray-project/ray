@@ -3,6 +3,7 @@ import logging
 import sys
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 import ray
@@ -18,6 +19,7 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2.api import train_fn_utils
 from ray.train.v2.tests.util import create_dummy_run_context
+from ray.util.debug import reset_log_once
 
 
 def create_train_context(world_rank: int = 0) -> TrainContext:
@@ -71,6 +73,8 @@ def captured_api_warnings():
     handler = _CaptureHandler()
     handler.setLevel(logging.WARNING)
     api_logger.addHandler(handler)
+    # Each test starts with no annotation failure reported yet.
+    reset_log_once()
     try:
         yield records
     finally:
@@ -100,50 +104,110 @@ def test_annotate_emits_annotation(in_train_worker, captured_annotations):
     assert json.loads(record["fields"]["custom_fields"]) == {"epoch": 3}
 
 
-def test_annotate_rejects_invalid_severity(in_train_worker, captured_annotations):
+@pytest.mark.parametrize(
+    "severity, expected",
+    [
+        ("debug", "DEBUG"),
+        ("WARNING", "WARNING"),
+        ("warn", "WARNING"),
+        (logging.ERROR, "ERROR"),
+        ("critical", "CRITICAL"),
+    ],
+)
+def test_annotate_accepts_logging_levels(
+    in_train_worker, captured_annotations, severity, expected
+):
+    """The severity is a Python logging level, by name in any case or by number."""
+    ray.train.annotate(message="finished epoch", severity=severity)
+
+    assert [record["severity"] for record in captured_annotations] == [expected]
+
+
+@pytest.mark.parametrize("severity", ["bogus", "notset", 35])
+def test_annotate_rejects_invalid_severity(
+    in_train_worker, captured_annotations, severity
+):
     """An invalid severity must raise rather than emit an annotation that matches
     none of the dashboard layers, which would silently never appear."""
     with pytest.raises(ValueError, match="Invalid annotation severity"):
-        ray.train.annotate(message="finished epoch", severity="critical")
+        ray.train.annotate(message="finished epoch", severity=severity)
 
     assert captured_annotations == []
 
 
-def test_report_annotation_failure_reported_once(
-    monkeypatch, in_train_worker, captured_annotations, captured_api_warnings
+def test_report_annotates_before_reporting(in_train_worker, captured_annotations):
+    """The report blocks on the worker barrier and the checkpoint upload, so the
+    annotation is emitted first to timestamp it at the call, not its return."""
+    train_fn_utils.get_train_fn_utils().report.side_effect = (
+        lambda **kwargs: captured_annotations.append("reported")
+    )
+
+    ray.train.report({"loss": 0.5})
+
+    assert captured_annotations[0]["event"] == TRAIN_ANNOTATION_RAY_TRAIN_REPORT
+    assert captured_annotations[1] == "reported"
+
+
+def test_report_annotation_serializes_arrays_by_size(
+    in_train_worker, captured_annotations
 ):
-    """The annotation is a side effect of ``ray.train.report``, so a failure in
-    it must never break or block the report barrier. It also must not log a
-    traceback per call, since ``ray.train.report`` can be called thousands of
-    times per run."""
-    monkeypatch.setattr(train_fn_utils, "_annotation_failures_reported", set())
+    """A numpy scalar or small array is serialized by value, but a large array
+    only by its shape and dtype, so it is never formatted only to be truncated."""
+    ray.train.report(
+        {
+            "loss": np.float32(0.5),
+            "per_class": np.arange(3),
+            "embeddings": np.zeros((1000, 64), dtype=np.float32),
+        }
+    )
+
+    metrics = json.loads(captured_annotations[0]["fields"]["metrics"])
+    assert metrics == {
+        "loss": 0.5,
+        "per_class": [0, 1, 2],
+        "embeddings": "<ndarray shape=(1000, 64) dtype=float32>",
+    }
+
+
+@pytest.mark.parametrize("call", ["report", "annotate"])
+def test_annotation_failure_reported_once(
+    monkeypatch, in_train_worker, captured_annotations, captured_api_warnings, call
+):
+    """Annotations are best-effort, so a failure in one must never break the
+    training function. It also must not log a traceback per call, since
+    ``ray.train.report`` can be called thousands of times per run."""
     monkeypatch.setattr(
         in_train_worker.annotation, "annotate", MagicMock(side_effect=RuntimeError)
     )
 
     for _ in range(5):
-        ray.train.report({"loss": 0.5})
+        if call == "report":
+            ray.train.report({"loss": 0.5})
+        else:
+            ray.train.annotate(message="finished epoch")
 
+    event = (
+        TRAIN_ANNOTATION_RAY_TRAIN_REPORT
+        if call == "report"
+        else TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE
+    )
     assert len(captured_api_warnings) == 1
     assert captured_api_warnings[0].exc_info is not None
-    assert TRAIN_ANNOTATION_RAY_TRAIN_REPORT in captured_api_warnings[0].getMessage()
+    assert event in captured_api_warnings[0].getMessage()
     assert captured_annotations == []
 
 
-def test_annotate_propagates_annotation_errors(
-    monkeypatch, in_train_worker, captured_annotations
+def test_annotate_unserializable_fields_reported_once(
+    in_train_worker, captured_annotations, captured_api_warnings
 ):
-    """Unlike ``ray.train.report``, ``ray.train.annotate`` is an explicit user
-    call, so a failure in the annotation path raises rather than being silently
-    swallowed. Emission and I/O failures are still handled (swallowed and warned
-    once) inside ``Annotation.annotate`` itself."""
-    monkeypatch.setattr(
-        in_train_worker.annotation, "annotate", MagicMock(side_effect=RuntimeError)
-    )
+    """Fields that ``json.dumps`` can't serialize, such as a self-referencing
+    dict, are swallowed and warned about rather than raised into training."""
+    cyclic = {}
+    cyclic["self"] = cyclic
 
-    with pytest.raises(RuntimeError):
-        ray.train.annotate(message="finished epoch")
+    ray.train.annotate(message="finished epoch", state=cyclic)
 
+    assert len(captured_api_warnings) == 1
     assert captured_annotations == []
 
 
@@ -157,7 +221,6 @@ def test_annotation_no_op_without_train_context(monkeypatch, captured_api_warnin
         MagicMock(),
     )
     monkeypatch.setattr(train_fn_utils, "get_train_fn_utils", MagicMock())
-    monkeypatch.setattr(train_fn_utils, "_annotation_failures_reported", set())
 
     def raise_no_context():
         raise RuntimeError("TrainContext has not been initialized.")

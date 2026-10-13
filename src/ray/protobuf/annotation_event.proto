@@ -16,22 +16,33 @@ syntax = "proto3";
 
 package ray.rpc;
 
-// ExportAnnotationEventData is a point-in-time event that a grafana dashboard renders on
-// the same timeline as its metric panels. A log collector tails the event file and forwards
-// the lines to a log backend, which Grafana queries as an annotation datasource.
+// AnnotationEvent is a point-in-time event that a dashboard renders on the same
+// timeline as its metric panels, such as a Train controller state change or a
+// `ray.train.report` call.
 //
-// The schema deliberately depends on nothing in the ExportEvent envelope: every
-// field a dashboard query selects on lives here, so the payload can move to
-// another event envelope without changing what the queries match.
-message ExportAnnotationEventData {
+// Each process serializes the event as one JSON object per line to
+// `<session_dir>/logs/annotations_<pid>.log`. A log collector tails those files
+// and forwards the lines to a log backend, which Grafana queries as an
+// annotation datasource. The JSON field names are therefore a contract with the
+// generated dashboard queries: rename a field and the queries stop matching.
+//
+// The event is not part of the export API (`ExportEvent`), which is being
+// superseded by `RayEvent` (`src/ray/protobuf/public/events_base_event.proto`).
+// Annotations go to a file because `RayEvent` delivery is not enabled by
+// default. If they later move to `RayEvent`, `timestamp_s`, `session_name`,
+// `message` and `severity` map onto the `RayEvent` base fields and the rest
+// becomes the nested event.
+message AnnotationEvent {
   // How important the event is. Dashboards color annotations by severity, so a
   // producer that has no notion of severity leaves it unspecified rather than
-  // picking one.
+  // picking one. The values mirror the Python logging levels.
   enum Severity {
     SEVERITY_UNSPECIFIED = 0;
-    INFO = 1;
-    WARNING = 2;
-    ERROR = 3;
+    DEBUG = 1;
+    INFO = 2;
+    WARNING = 3;
+    ERROR = 4;
+    CRITICAL = 5;
   }
 
   // The Ray component that emitted the annotation, such as
@@ -41,8 +52,9 @@ message ExportAnnotationEventData {
   // Machine-readable name of the event, such as "controller_state_change". A
   // dashboard renders one annotation layer per event name.
   string event = 2;
-  // Seconds since the Unix epoch when the event was emitted. Informational: a
-  // dashboard positions the annotation by the log entry's own timestamp.
+  // Seconds since the Unix epoch when the event was emitted. A collector can use
+  // it as the log entry's timestamp, which is what a dashboard positions the
+  // annotation by.
   double timestamp_s = 3;
   // The Ray session that emitted the event. Dashboard queries pin it so that a
   // log backend aggregating several clusters cannot render one cluster's
