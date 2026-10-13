@@ -95,7 +95,9 @@ def force_list(
 
 
 @DeveloperAPI
-def flatten_dict(nested: Dict[str, Any], sep="/", env_steps=0) -> Dict[str, Any]:
+def flatten_dict(
+    nested: Dict[str, Any], sep: str = "/", env_steps: int = 0
+) -> Dict[str, Any]:
     """
     Flattens a nested dict into a flat dict with joined keys.
 
@@ -109,6 +111,8 @@ def flatten_dict(nested: Dict[str, Any], sep="/", env_steps=0) -> Dict[str, Any]
     Args:
         nested: A nested dictionary.
         sep: Separator to use when joining keys.
+        env_steps: The number of environment steps the flattened data covers.
+            Currently unused.
 
     Returns:
         A flat dictionary where each key is a path of keys in the nested dict.
@@ -124,7 +128,7 @@ def flatten_dict(nested: Dict[str, Any], sep="/", env_steps=0) -> Dict[str, Any]
 
 
 @DeveloperAPI
-def unflatten_dict(flat: Dict[str, Any], sep="/") -> Dict[str, Any]:
+def unflatten_dict(flat: Dict[str, Any], sep: str = "/") -> Dict[str, Any]:
     """
     Reconstructs a nested dict from a flat dict with joined keys.
 

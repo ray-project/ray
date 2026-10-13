@@ -32,6 +32,7 @@ from ray.data._internal.util import (
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
+    unify_block_metadata_schema,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -487,6 +488,21 @@ def test_iterate_with_retry_matches_class_name():
 def test_matches_error(pattern, error_message, expected):
     """Retry helper matches substring first, then regex; invalid patterns do not raise."""
     assert matches_error(pattern, error_message) is expected
+
+
+def test_unify_block_metadata_schema_all_empty_blocks():
+    """Blocks are not filtered on num_rows when unifying schemas: an empty
+    block still carries a valid schema (issue #59946)."""
+    from ray.data.block import BlockMetadataWithSchema
+
+    empty = pa.table({"apples": pa.array([], pa.int32())})
+    empty_meta = BlockMetadataWithSchema.from_block(empty)
+    assert unify_block_metadata_schema([empty_meta]) == empty.schema
+
+    # Empty-block schemas participate in unification (int32 promotes to int64).
+    non_empty = pa.table({"apples": pa.array([1], pa.int64())})
+    non_empty_meta = BlockMetadataWithSchema.from_block(non_empty)
+    assert unify_block_metadata_schema([empty_meta, non_empty_meta]) == non_empty.schema
 
 
 def test_find_partition_index_single_column_ascending():

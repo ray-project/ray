@@ -53,6 +53,7 @@ class DeploymentInfo:
         return clean_dict
 
     def __setstate__(self, d: Dict[Any, Any]) -> None:
+        d.setdefault("router_application", False)
         self.__dict__ = d
         self._cached_actor_def = None
 
