@@ -41,6 +41,31 @@ steps:
       - ray-core-build(python=3.10)
       - ray-dashboard-build
 
+  # Opt-in docs example tests, for the "docs-example-test" label. Runs only the
+  # doc example tests that name a changed doc file directly, never a library's
+  # whole docs example suite, and never GPU tests: docs examples don't need GPU
+  # tests in premerge or microcheck. Every team's targets run once, in the one
+  # doctestbuild environment, rather than in each library's own images. The
+  # per-library docs example steps, with their own images, stay the coverage
+  # for library code changes and postmerge. See
+  # ci/ray_ci/doc/doc_example_targets.py.
+  - label: "doc: docs example tests (opt-in)"
+    if: build.pull_request.labels includes "docs-example-test"
+    tags:
+      - oss
+      - doc_example
+    instance_type: large
+    commands:
+      - ./ci/ray_ci/doc/run_doc_example_tests.sh
+        --build-name doctestbuild
+        --python-version 3.10
+        --except-tags gpu,post_wheel_build,highly_parallel,timeseries_libs
+        --parallelism-per-worker 3
+    depends_on:
+      - doctestbuild
+      - ray-core-build(python=3.10)
+      - ray-dashboard-build
+
   # java
   - label: ":java: java tests"
     tags: java

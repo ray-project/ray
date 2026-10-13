@@ -1,4 +1,4 @@
-from typing import Type
+from typing import Callable, Type, Union
 
 import gymnasium as gym
 
@@ -18,12 +18,13 @@ class ActionTransform(gym.ActionWrapper):
         ) + self.env.action_space.low
 
 
-def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
+def transform_action_space(
+    env_name_or_creator: Union[str, Callable[[dict], gym.Env]]
+) -> Type[gym.Env]:
     """Wrapper for gym.Envs to have their action space transformed.
 
     Args:
-        env_name_or_creator (Union[str, Callable[]]: String specifier or
-            env_maker function.
+        env_name_or_creator: String specifier or env_maker function.
 
     Returns:
         New transformed_action_space_env function that returns an environment

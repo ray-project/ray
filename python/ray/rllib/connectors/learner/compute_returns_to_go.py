@@ -1,5 +1,6 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+import gymnasium as gym
 import scipy
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
@@ -23,14 +24,21 @@ class ComputeReturnsToGo(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space=None,
-        input_action_space=None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
-        gamma,
+        gamma: float,
     ):
         """Initializes a ComputeReturnsToGo instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             gamma: The discount factor gamma.
         """
         super().__init__(input_observation_space, input_action_space)

@@ -54,22 +54,11 @@ The [GitHub issues page](https://github.com/ray-project/ray/issues) tracks new f
 
 ### API decorators in the codebase
 
-Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new API stack, or `@OldAPIStack` on the old API stack, have the following API compatibility guarantees:
+Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new API stack, or `@OldAPIStack` on the old API stack, have the API compatibility guarantees that each decorator's reference describes:
 
-```{eval-rst}
-.. autofunction:: ray.util.annotations.PublicAPI
-    :noindex:
-```
-
-```{eval-rst}
-.. autofunction:: ray.util.annotations.DeveloperAPI
-    :noindex:
-```
-
-```{eval-rst}
-.. autofunction:: ray.rllib.utils.annotations.OldAPIStack
-    :noindex:
-```
+- {py:func}`~ray.util.annotations.PublicAPI`
+- {py:func}`~ray.util.annotations.DeveloperAPI`
+- {py:func}`~ray.rllib.utils.annotations.OldAPIStack`
 
 ## Benchmarks
 
@@ -79,11 +68,7 @@ The [rl-experiments repo](https://github.com/ray-project/rl-experiments) holds m
 
 ### Finding memory leaks in workers
 
-Keeping the memory usage of long-running workers stable can be challenging. Use the `MemoryTrackingCallbacks` class to track worker memory usage.
-
-```{eval-rst}
-.. autoclass:: ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks
-```
+Keeping the memory usage of long-running workers stable can be challenging. Use the {py:class}`~ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks` class to track worker memory usage.
 
 The callback adds the 20 objects with the highest memory usage in the workers as custom metrics. Monitor these with TensorBoard or other metrics integrations such as Weights & Biases:
 
