@@ -178,6 +178,37 @@ def test_top_n_shuffle_v2_arrow_nulls_last(
     ]
 
 
+@pytest.mark.parametrize("descending", [False, True])
+def test_top_n_shuffle_v2_matches_global_sort_with_arrow_nan(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    descending,
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    blocks = [
+        pa.table({"key": [2.0, float("nan"), 1.0], "row_id": [0, 1, 2]}),
+        pa.table({"key": [float("nan"), 4.0, 3.0], "row_id": [3, 4, 5]}),
+    ]
+
+    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, False)
+    baseline = (
+        ray.data.from_arrow(blocks)
+        .sort("key", descending=descending)
+        .limit(5)
+        .take_all()
+    )
+    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    top_n = (
+        ray.data.from_arrow(blocks)
+        .sort("key", descending=descending)
+        .limit(5)
+        .take_all()
+    )
+
+    assert [row["row_id"] for row in top_n] == [row["row_id"] for row in baseline]
+
+
 def test_top_n_shuffle_v2_pandas_block(
     ray_start_regular_shared_2_cpus,
     restore_data_context,

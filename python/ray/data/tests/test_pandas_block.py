@@ -17,12 +17,49 @@ from ray.data._internal.pandas_block import (
     PandasBlockColumnAccessor,
     PandasRow,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import is_null
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
 np.random.seed(42)
+
+
+@pytest.mark.parametrize(
+    "sort_key,limit",
+    [
+        (SortKey(["a", "b"], descending=[False, True]), 0),
+        (SortKey(["a", "b"], descending=[False, True]), 3),
+        (SortKey(["a", "b"], descending=[True, False]), 5),
+        (SortKey(["a", "b"], descending=[True, True]), 10),
+    ],
+)
+def test_top_n_matches_sort_with_nulls_and_mixed_directions(sort_key, limit):
+    frame = pd.DataFrame(
+        {
+            "a": [2, None, 1, 1, None, 2, 1],
+            "b": ["b", "a", "c", None, "d", "a", "b"],
+            "row_id": list(range(7)),
+        }
+    )
+    accessor = PandasBlockAccessor(frame)
+    expected = accessor.sort(sort_key).iloc[:limit]
+    result = accessor.top_n(sort_key, limit)
+
+    pd.testing.assert_frame_equal(result, expected)
+
+
+def test_top_n_uses_pandas_bounded_selection():
+    frame = pd.DataFrame({"key": [4, 1, 3, 2], "value": [40, 10, 30, 20]})
+    accessor = PandasBlockAccessor(frame)
+
+    result = accessor.top_n(SortKey("key"), 2)
+
+    assert result.to_dict("records") == [
+        {"key": 1, "value": 10},
+        {"key": 2, "value": 20},
+    ]
 
 
 def simple_series(null):

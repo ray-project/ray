@@ -4,10 +4,12 @@ import sys
 import types
 from decimal import Decimal
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from pyarrow import ArrowInvalid
 
@@ -19,9 +21,86 @@ from ray.data._internal.arrow_block import (
     ArrowRow,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
+
+
+@pytest.mark.parametrize(
+    "sort_key,limit",
+    [
+        (SortKey(["a", "b"], descending=[False, True]), 0),
+        (SortKey(["a", "b"], descending=[False, True]), 3),
+        (SortKey(["a", "b"], descending=[True, False]), 5),
+        (SortKey(["a", "b"], descending=[True, True]), 10),
+    ],
+)
+def test_top_n_matches_sort_with_nulls_and_mixed_directions(sort_key, limit):
+    table = pa.table(
+        {
+            "a": [2, None, 1, 1, None, 2, 1],
+            "b": [1, 0, 3, None, 4, 0, 2],
+            "row_id": list(range(7)),
+        }
+    )
+    accessor = ArrowBlockAccessor(table)
+    sorted_table = accessor.sort(sort_key)
+    expected = ArrowBlockAccessor(sorted_table).slice(
+        0, min(limit, sorted_table.num_rows)
+    )
+
+    assert accessor.top_n(sort_key, limit).equals(expected)
+
+
+def test_top_n_uses_arrow_bounded_selection():
+    table = pa.table({"key": [4, 1, 3, 2], "value": [40, 10, 30, 20]})
+    accessor = ArrowBlockAccessor(table)
+
+    with mock.patch.object(
+        pc, "select_k_unstable", wraps=pc.select_k_unstable
+    ) as select_k_unstable:
+        result = accessor.top_n(SortKey("key"), 2)
+
+    select_k_unstable.assert_called_once()
+    assert result.to_pylist() == [
+        {"key": 1, "value": 10},
+        {"key": 2, "value": 20},
+    ]
+
+
+def test_top_n_falls_back_when_arrow_selection_is_unsupported():
+    table = pa.table({"key": [4, 1, 3, 2], "value": [40, 10, 30, 20]})
+    accessor = ArrowBlockAccessor(table)
+
+    with mock.patch.object(
+        pc,
+        "select_k_unstable",
+        side_effect=pa.ArrowNotImplementedError("unsupported"),
+    ):
+        result = accessor.top_n(SortKey("key"), 2)
+
+    assert result.to_pylist() == [
+        {"key": 1, "value": 10},
+        {"key": 2, "value": 20},
+    ]
+
+
+@pytest.mark.parametrize("descending", [False, True])
+def test_top_n_matches_sort_with_nan(descending):
+    table = pa.table(
+        {
+            "key": [2.0, np.nan, 1.0, np.nan, 3.0],
+            "row_id": list(range(5)),
+        }
+    )
+    accessor = ArrowBlockAccessor(table)
+    sort_key = SortKey("key", descending=descending)
+    expected = ArrowBlockAccessor(accessor.sort(sort_key)).slice(0, 4)
+
+    result = accessor.top_n(sort_key, 4)
+
+    assert result["row_id"].to_pylist() == expected["row_id"].to_pylist()
 
 
 def test_combine_chunked_fixed_width_array_large():
