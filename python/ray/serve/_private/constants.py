@@ -460,8 +460,8 @@ SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
 )
 
-# Original client path forwarded by HAProxy to /internal/route. It identifies
-# the API when different endpoints accept the same request body.
+# Original client request target forwarded by HAProxy to /internal/route. Router
+# applications receive the path and query; ingress request routers receive the path.
 SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
     SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
 )

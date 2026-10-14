@@ -86,7 +86,7 @@ local function route(txn, router)
         .. header_line(REQUEST_ID_HEADER, first_header(hdrs, REQUEST_ID_HEADER))
         .. header_line(SESSION_HEADER, session_id_from(hdrs))
         .. header_line(ORIGINAL_METHOD_HEADER, txn.sf:method())
-        .. header_line(REQUEST_PATH_HEADER, txn.sf:path())
+        .. header_line(REQUEST_PATH_HEADER, txn.sf:pathq())
     local truncated = truncated_full_length(txn, body)
     if truncated then
         headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. truncated .. "\r\n"
