@@ -228,6 +228,10 @@ doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
+doc/test_doc_assets.py: doc
+# The doc asset allowlists are read only by the lint step, which runs on every
+# PR, so they route to nothing here.
+doc/asset_allowlists/notebooks.txt:
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
