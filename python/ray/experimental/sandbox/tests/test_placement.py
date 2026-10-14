@@ -82,11 +82,19 @@ def test_a_failed_node_listing_keeps_the_last_one(fake_nodes, monkeypatch):
     fake_nodes.append(_node("aa" * 28, CPU=8.0))
     assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
 
+    calls = []
+
     def unavailable():
+        calls.append(1)
         raise ConnectionError("GCS unavailable")
 
     monkeypatch.setattr(placement.ray, "nodes", unavailable)
     assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
+    # The failure starts a fresh TTL, so a burst of creates tries once.
+    monkeypatch.setattr(placement, "_NODES_TTL_SECONDS", 60)
+    for _ in range(5):
+        assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
+    assert len(calls) == 1
 
 
 def test_create_prefers_the_node_the_image_maps_to(monkeypatch):

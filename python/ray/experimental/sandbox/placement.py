@@ -29,10 +29,11 @@ def _alive_nodes() -> List[Dict[str, Any]]:
         if time.monotonic() - _nodes_fetched_at >= _NODES_TTL_SECONDS:
             try:
                 _nodes = [node for node in ray.nodes() if node.get("Alive")]
-                _nodes_fetched_at = time.monotonic()
             except Exception as err:
-                # A soft preference mustn't fail the create; keep the last list.
+                # A soft preference mustn't fail the create: keep the last
+                # list, and don't retry for every create of a burst.
                 logger.warning("Couldn't list the cluster's nodes: %s", err)
+            _nodes_fetched_at = time.monotonic()
         return _nodes
 
 
