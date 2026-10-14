@@ -798,5 +798,47 @@ def test_extract_tar_layer_defers_restrictive_directory_modes(tmp_path):
     os.chmod(dest / "locked", 0o700)
 
 
+def _write_versioned_tar(path, content, mtime):
+    with tarfile.open(str(path), "w") as tar:
+        info = tarfile.TarInfo("version.txt")
+        info.size = len(content)
+        tar.addfile(info, io.BytesIO(content))
+    os.utime(str(path), (mtime, mtime))
+
+
+def _cached_version(image_dir):
+    # The fake mkfs.erofs writes the image as a tar.
+    with tarfile.open(os.path.join(image_dir, ROOTFS_IMAGE)) as tar:
+        return tar.extractfile("./version.txt").read()
+
+
+def test_invalidate_image_rebuilds_on_the_next_pull_and_keeps_its_users(tmp_path):
+    """Modal's force_build: a pinned image is pulled afresh, while a sandbox
+    already running on the old one stays registered as its user."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = tmp_path / "app.tar"
+    _write_versioned_tar(local_tar, b"one", mtime=1_000_000)
+    image_dir = mgr.pull_image(str(local_tar), instance_id="sb-running")
+
+    # New content that the cache would not notice: the archive looks older
+    # than the cached image, so a plain pull reuses what is there.
+    _write_versioned_tar(local_tar, b"two", mtime=1_000_000)
+    assert _cached_version(mgr.pull_image(str(local_tar))) == b"one"
+
+    mgr.invalidate_image(str(local_tar))
+    assert not mgr.is_image_extracted(str(local_tar))
+    rebuilt = mgr.pull_image(str(local_tar))
+
+    assert rebuilt == image_dir
+    assert _cached_version(rebuilt) == b"two"
+    assert "sb-running" in os.listdir(os.path.join(rebuilt, ".users"))
+
+
+def test_invalidate_image_of_an_uncached_image_is_a_no_op(tmp_path):
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    mgr.invalidate_image("never-pulled:latest")
+    assert not os.path.exists(str(tmp_path / "images"))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
