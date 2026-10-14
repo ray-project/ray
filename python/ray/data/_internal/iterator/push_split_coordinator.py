@@ -59,7 +59,6 @@ from typing import TYPE_CHECKING, Any, Deque, Dict, List, Optional, Set, Tuple, 
 import ray
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
-from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.data.dataset import Dataset
@@ -323,18 +322,18 @@ class PushSplitCoordinator:
 
     def debug_state(self) -> Dict[str, Dict[int, Any]]:
         """Snapshot of per-split flow-control state, for debugging/tests."""
-        flows = self._flows
-        return {
-            "target_rows": {i: f.target_rows for i, f in flows.items()},
-            "rows_pushed": {i: f.rows_pushed for i, f in flows.items()},
-            "rows_consumed": {i: f.rows_consumed for i, f in flows.items()},
-            "bytes_pushed": {i: f.bytes_pushed for i, f in flows.items()},
-            "bytes_consumed": {i: f.bytes_consumed for i, f in flows.items()},
-            "unconsumed_refs": {i: f.num_unconsumed_refs() for i, f in flows.items()},
-            "blocks_pushed": {i: f.blocks_pushed for i, f in flows.items()},
-            "wait_demand_s": {i: f.wait_demand_s for i, f in flows.items()},
-            "wait_output_s": {i: f.wait_output_s for i, f in flows.items()},
-        }
+        state: Dict[str, Dict[int, Any]] = collections.defaultdict(dict)
+        for i, flow in self._flows.items():
+            state["target_rows"][i] = flow.target_rows
+            state["rows_pushed"][i] = flow.rows_pushed
+            state["rows_consumed"][i] = flow.rows_consumed
+            state["bytes_pushed"][i] = flow.bytes_pushed
+            state["bytes_consumed"][i] = flow.bytes_consumed
+            state["unconsumed_refs"][i] = flow.num_unconsumed_refs()
+            state["blocks_pushed"][i] = flow.blocks_pushed
+            state["wait_demand_s"][i] = flow.wait_demand_s
+            state["wait_output_s"][i] = flow.wait_output_s
+        return dict(state)
 
     def get_dataset_schema(self):
         with self._dataset_state_lock:
@@ -425,24 +424,23 @@ class PushSplitCoordinator:
                     self._teardown_complete_for = starting_epoch
                     self._barrier_cond.notify_all()
 
-        start_time = time.time()
+        def released() -> bool:
+            return self._cur_epoch != starting_epoch or (
+                self._num_unarrived_splits_at_barrier == 0
+                and self._teardown_complete_for == starting_epoch
+            )
+
         with self._barrier_cond:
-            while self._cur_epoch == starting_epoch and (
-                self._num_unarrived_splits_at_barrier != 0
-                or self._teardown_complete_for != starting_epoch
+            if not self._barrier_cond.wait_for(
+                released, timeout=BLOCKED_CLIENT_WARN_TIMEOUT
             ):
-                if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
-                    if log_once(f"push_split_blocked_{split_idx}_{starting_epoch}"):
-                        logger.warning(
-                            f"Push-based split (epoch={starting_epoch}, "
-                            f"split={split_idx}) blocked waiting on other "
-                            f"clients for more than "
-                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
-                            "iterate their splits at the same time."
-                        )
-                # Woken by the last arrival; the timeout only paces the
-                # blocked-client warning.
-                self._barrier_cond.wait(timeout=1.0)
+                logger.warning(
+                    f"Push-based split (epoch={starting_epoch}, "
+                    f"split={split_idx}) blocked waiting on other clients for "
+                    f"more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients "
+                    "must iterate their splits at the same time."
+                )
+                self._barrier_cond.wait_for(released)
 
         self._try_start_new_epoch(starting_epoch)
 
@@ -636,6 +634,11 @@ class PushSplitCoordinator:
     def _finish_split(self, epoch_id: int, split_idx: int) -> None:
         executor_to_shutdown = None
         with self._lock:
+            # notify_split_finished is fire-and-forget and this actor runs
+            # calls concurrently, so a consumer's notify for epoch e can run
+            # after its own start_epoch call has helped release the barrier
+            # into epoch e + 1. The barrier already tore epoch e down, so
+            # there is nothing left to finish.
             if epoch_id != self._cur_epoch:
                 return
             self._finished_splits.add(split_idx)
