@@ -1131,8 +1131,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         ):
             stalled_comms = list(self.comm_deadlock_count)
             headline = (
-                f"NCCL hang still suspected! {len(stalled_comms)} "
-                "communicator(s) have made no progress."
+                "NCCL hang still suspected by the Ray Train NCCL hang detector callback! "
+                f"{len(stalled_comms)} communicator(s) have made no progress."
             )
         else:
             return
