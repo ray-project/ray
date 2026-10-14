@@ -12,6 +12,7 @@ from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
 from ray.data.dataset import Dataset
+from ray.data.datasource.partitioning import Partitioning
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
@@ -657,6 +658,24 @@ def test_readback_tfrecords(
         tmp_path, tf_schema=tf_schema, override_num_blocks=1
     )
     _ds_eq_streaming(ds, readback_ds)
+
+
+def test_read_tfrecords_partitioning(
+    ray_start_regular_shared_2_cpus,
+    tmp_path,
+):
+    """Read back a hive-partitioned directory and check the partition column is
+    injected from the path."""
+    ds = ray.data.from_items([{"id": 0}, {"id": 1}, {"id": 2}], override_num_blocks=1)
+    ds.write_tfrecords(os.path.join(tmp_path, "country=us"))
+
+    readback_ds = ray.data.read_tfrecords(
+        tmp_path, partitioning=Partitioning("hive"), override_num_blocks=1
+    )
+
+    rows = sorted(readback_ds.take_all(), key=lambda row: row["id"])
+    assert [row["id"] for row in rows] == [0, 1, 2]
+    assert all(row["country"] == "us" for row in rows)
 
 
 @pytest.mark.parametrize("with_tf_schema", (True, False))
