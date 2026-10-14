@@ -9,6 +9,15 @@ exports_files(
     visibility = ["//ci/ray_ci/automation:__pkg__"],
 )
 
+# Every AWS-to-GCP workload identity credential config in this checkout. Which
+# one a job uses comes from the global config's aws2gce_credentials, so ship
+# them all and let the config pick.
+filegroup(
+    name = "aws2gce_credentials",
+    srcs = glob(["aws2gce*.json"]),
+    visibility = ["//ci/ray_ci/automation:__pkg__"],
+)
+
 _requirements_py310_args = [
     "$(rootpath :requirements_py310.in)",
     "$(rootpath :requirements_py310.txt)",
