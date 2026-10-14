@@ -524,6 +524,7 @@ def _router_application(cls: Type[Any]) -> Type[Any]:
 
     HAProxy asks the ingress of an application whose class carries this marker for
     ``{"application", "replica_id"}`` and sends the request to that replica.
+    Routing decisions must be returned as non-streaming JSON responses.
 
     Internal-only, unstable hook for Serve LLM direct streaming.
     """

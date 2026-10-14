@@ -25,13 +25,52 @@ local RESPONSE_HEADER_BLOCKLIST = {
     ["upgrade"] = true,
 }
 
+local function decode_chunked_body(body)
+    local chunks = {}
+    local pos = 1
+    while true do
+        local line_end = body:find("\r\n", pos, true)
+        if not line_end then
+            return nil
+        end
+        local size_line = body:sub(pos, line_end - 1)
+        local extension = size_line:find(";", 1, true)
+        local size_text = extension and size_line:sub(1, extension - 1) or size_line
+        if size_text == "" or size_text:find("[^%x]") then
+            return nil
+        end
+        local size = tonumber(size_text, 16)
+        if not size or size > #body then
+            return nil
+        end
+        pos = line_end + 2
+        if size == 0 then
+            if body:sub(pos, pos + 1) == "\r\n" then
+                return pos + 1 == #body and table.concat(chunks) or nil
+            end
+            local _, trailers_end = body:find("\r\n\r\n", pos, true)
+            return trailers_end == #body and table.concat(chunks) or nil
+        end
+        local chunk_end = pos + size - 1
+        if body:sub(chunk_end + 1, chunk_end + 2) ~= "\r\n" then
+            return nil
+        end
+        chunks[#chunks + 1] = body:sub(pos, chunk_end)
+        pos = chunk_end + 3
+    end
+end
+
 local function copy_response_headers(reply, head)
     local connection_headers = {}
+    local transfer_encoding = nil
     for name, value in head:gmatch("\r\n([^:\r\n]+):%s*([^\r\n]*)") do
-        if name:lower() == "connection" then
+        local lower_name = name:lower()
+        if lower_name == "connection" then
             for token in value:gmatch("[^,]+") do
                 connection_headers[token:match("^%s*(.-)%s*$$"):lower()] = true
             end
+        elseif lower_name == "transfer-encoding" then
+            transfer_encoding = value:lower():match("^%s*(.-)%s*$$")
         end
     end
 
@@ -43,17 +82,28 @@ local function copy_response_headers(reply, head)
             has_content_type = has_content_type or lower_name == "content-type"
         end
     end
-    return has_content_type
+    return has_content_type, transfer_encoding
 end
 
 local function reply_with(txn, status, head, body)
     local reply = txn:reply()
     reply:set_status(status)
-    if not copy_response_headers(reply, head) then
+    local has_content_type, transfer_encoding = copy_response_headers(reply, head)
+    if transfer_encoding then
+        if transfer_encoding ~= "chunked" then
+            return false
+        end
+        body = decode_chunked_body(body)
+        if body == nil then
+            return false
+        end
+    end
+    if not has_content_type then
         reply:add_header("content-type", "text/plain")
     end
     reply:set_body(body)
     txn:done(reply)
+    return true
 end
 
 local function fail(txn, reason)
@@ -114,10 +164,16 @@ local function route(txn, router)
         return fail(txn, "malformed_decision")
     end
     if response_header(head, DIRECT_RESPONSE_HEADER) == "1" then
-        return reply_with(txn, status, head, response_body)
+        if not reply_with(txn, status, head, response_body) then
+            return fail(txn, "malformed_decision")
+        end
+        return
     end
     if status < 200 or status > 299 then
-        return reply_with(txn, status, head, response_body)
+        if not reply_with(txn, status, head, response_body) then
+            return fail(txn, "malformed_decision")
+        end
+        return
     end
     if status ~= 200 then
         return fail(txn, "malformed_decision")
