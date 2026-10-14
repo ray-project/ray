@@ -221,11 +221,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
         "GCSServer.redis_health_check");
 
-    // Observe the Redis backend like every other one. The health check above
-    // keeps its own concrete pointer and so bypasses the wrapper, which is
-    // correct: a PING is not a storage operation and should not appear in
-    // gcs_storage_operation_count. Only the Redis backend is gated -- the other
-    // two have always been observed, so there is nothing new to roll back.
+    // The health check above keeps its own pointer, so its PINGs are not
+    // counted as storage operations.
     store_client = MaybeObserve(std::move(redis_store_client),
                                 RayConfig::instance().gcs_redis_storage_metrics_enabled(),
                                 metrics_.storage_operation_latency_in_ms_histogram,

@@ -339,11 +339,8 @@ TEST_F(ObservableStoreClientTableLabelTest, NoUserDataInLabels) {
   EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", kv_table), 1);
 }
 
-// GcsServer routes the Redis backend through MaybeObserve, which is the only
-// thing that makes gcs_storage_operation_* exist on that backend at all. The
-// delegate type is irrelevant to the branch, so it is exercised here over the
-// in-memory client; RedisObservableGcsTableStorageTest covers the same branch
-// against a real Redis.
+// Exercises MaybeObserve over the in-memory client;
+// RedisObservableGcsTableStorageTest covers it against a real Redis.
 class MaybeObserveTest : public ::testing::Test {
  public:
   void SetUp() override {

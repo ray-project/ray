@@ -50,10 +50,8 @@ TEST_F(RedisGcsTableStorageTest, TestGcsTableApi) { TestGcsTableApi(); }
 
 TEST_F(RedisGcsTableStorageTest, TestGcsTableWithJobIdApi) { TestGcsTableWithJobIdApi(); }
 
-/// gcs_storage_operation_count and gcs_storage_operation_latency_ms do not exist
-/// on the external-Redis backend unless GcsServer routes the store client
-/// through gcs::MaybeObserve. This exercises that branch against a real Redis,
-/// in both configurations.
+/// Exercises gcs::MaybeObserve against a real Redis, with metrics enabled and
+/// disabled.
 class RedisObservableGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
  public:
   static void SetUpTestCase() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
@@ -83,10 +81,13 @@ class RedisObservableGcsTableStorageTest : public gcs::GcsTableStorageTestBase {
       absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>;
 
   static std::optional<double> ValueFor(const Recorded &recorded,
-                                        const std::string &operation) {
+                                        const std::string &operation,
+                                        const std::string &table) {
     for (const auto &[tags, value] : recorded) {
       auto op = tags.find("Operation");
-      if (op != tags.end() && op->second == operation) {
+      auto tbl = tags.find("TableName");
+      if (op != tags.end() && op->second == operation && tbl != tags.end() &&
+          tbl->second == table) {
         return value;
       }
     }
@@ -105,9 +106,9 @@ TEST_F(RedisObservableGcsTableStorageTest, RecordsOnTheRedisBackend) {
   auto job_table_data = GenJobTableData(job_id);
   Put(gcs_table_storage_->JobTable(), job_id, *job_table_data);
 
-  EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put").value_or(0), 1);
+  EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", "JOB").value_or(0), 1);
   // FakeHistogram keeps the last observation, so only its presence is stable.
-  EXPECT_TRUE(ValueFor(latency_.GetTagToValue(), "Put").has_value());
+  EXPECT_TRUE(ValueFor(latency_.GetTagToValue(), "Put", "JOB").has_value());
 }
 
 TEST_F(RedisObservableGcsTableStorageTest, RecordsNothingWhenTheKillSwitchIsOff) {
