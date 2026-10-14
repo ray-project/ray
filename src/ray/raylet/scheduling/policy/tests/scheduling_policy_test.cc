@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
@@ -21,7 +20,6 @@ namespace ray {
 
 namespace raylet {
 
-using ::testing::_;
 using namespace ray::raylet_scheduling_policy;
 
 NodeResources CreateNodeResources(double available_cpu,

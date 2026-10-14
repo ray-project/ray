@@ -19,12 +19,9 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 #include "ray/object_manager/common.h"
-
-using testing::Test;
 
 namespace ray {
 namespace experimental {

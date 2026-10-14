@@ -30,6 +30,7 @@ The Ray repository includes shared Claude Code configuration that is version-con
 - `.claude/rules/`: coding rules scoped by file type
 - `.claude/skills/`: reusable workflows (rebuild, lint, fetch CI logs, backport docs)
 - `.claude/agents/`: project-specific subagents
+- `doc/AGENTS.md`: documentation instructions for any agent, including a pointer to the {doc}`writing-style guide <writing-style>`. Cursor and other agents that read `AGENTS.md` load it directly. `doc/.claude/CLAUDE.md` imports it for Claude Code and adds only Claude Code-specific content, such as skills.
 
 Personal configuration lives in files that are **not** version-controlled:
 

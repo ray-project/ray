@@ -1,0 +1,860 @@
+---
+myst:
+  html_meta:
+    description: "Use accelerators in Ray tasks and actors: start nodes with GPUs, request fractional accelerators, and pin to accelerator types."
+---
+
+(gpu-support)=
+(accelerator-support)=
+
+# Accelerator support
+
+Accelerators such as GPUs are critical for many machine learning apps. Ray Core natively supports many accelerators as predefined {ref}`resource <core-resources>` types, and you can specify the accelerator {ref}`resource requirements <resource-requirements>` of your tasks and actors.
+
+Ray Core natively supports the following accelerators:
+
+```{list-table}
+:header-rows: 1
+
+* - Accelerator
+  - Ray resource name
+  - Support level
+* - NVIDIA GPU
+  - GPU
+  - Fully tested, supported by the Ray team
+* - AMD GPU
+  - GPU
+  - Experimental, supported by the community
+* - Intel GPU
+  - GPU
+  - Experimental, supported by the community
+* - [AWS Neuron Core](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/model-architecture-fit.html)
+  - neuron_cores
+  - Experimental, supported by the community
+* - Google TPU
+  - TPU
+  - Fully tested, supported by the Ray team
+* - Intel Gaudi
+  - HPU
+  - Experimental, supported by the community
+* - Huawei Ascend
+  - NPU
+  - Experimental, supported by the community
+* - Rebellions RBLN
+  - RBLN
+  - Experimental, supported by the community
+* - METAX GPU
+  - GPU
+  - Experimental, supported by the community
+* - FuriosaAI
+  - FURIOSA
+  - Experimental, supported by the community
+* - Mobilint MBLT
+  - MBLT
+  - Experimental, supported by the community
+```
+
+## Starting Ray nodes with accelerators
+
+By default, Ray sets a node's quantity of accelerator resources to the physical quantity of accelerators that Ray auto-detects. You can {ref}`override <specify-node-resources>` this value.
+
+:::::{tab-set}
+::::{tab-item} NVIDIA GPU
+:sync: NVIDIA GPU
+:::{tip}
+You can set the `CUDA_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the NVIDIA GPUs that are visible to Ray. For example, `CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} AMD GPU
+:sync: AMD GPU
+:::{tip}
+You can set the `ROCR_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the AMD GPUs that are visible to Ray. For example, `ROCR_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} Intel GPU
+:sync: Intel GPU
+:::{tip}
+You can set the `ZE_AFFINITY_MASK` environment variable before starting a Ray node to limit the Intel GPUs that are visible to Ray. For example, `ZE_AFFINITY_MASK=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3. `ONEAPI_DEVICE_SELECTOR` is still read as a fallback for backward compatibility.
+:::
+::::
+
+::::{tab-item} AWS Neuron Core
+:sync: AWS Neuron Core
+:::{tip}
+You can set the `NEURON_RT_VISIBLE_CORES` environment variable before starting a Ray node to limit the AWS Neuron Cores that are visible to Ray. For example, `NEURON_RT_VISIBLE_CORES=1,3 ray start --head --resources='{"neuron_cores": 2}'` lets Ray only see devices 1 and 3.
+
+See the [Amazon documentation](https://awslabs.github.io/data-on-eks/docs/ai-ml/ray-batch-inference) for more examples of Ray on Neuron with EKS as an orchestration substrate.
+:::
+::::
+
+::::{tab-item} Google TPU
+:sync: Google TPU
+:::{tip}
+You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} Intel Gaudi
+:sync: Intel Gaudi
+:::{tip}
+You can set the `HABANA_VISIBLE_MODULES` environment variable before starting a Ray node to limit the Intel Gaudi HPUs that are visible to Ray. For example, `HABANA_VISIBLE_MODULES=1,3 ray start --head --resources='{"HPU": 2}'` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} Huawei Ascend
+:sync: Huawei Ascend
+:::{tip}
+You can set the `ASCEND_RT_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Huawei Ascend NPUs that are visible to Ray. For example, `ASCEND_RT_VISIBLE_DEVICES=1,3 ray start --head --resources='{"NPU": 2}'` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} Rebellions RBLN
+:sync: Rebellions RBLN
+:::{tip}
+You can set the `RBLN_DEVICES` environment variable before starting a Ray node to limit the Rebellions RBLNs that are visible to Ray. For example, `RBLN_DEVICES=1,3 ray start --head --resources='{"RBLN": 2}'` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} METAX GPU
+:sync: METAX GPU
+:::{tip}
+You can set the `CUDA_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the METAX GPUs that are visible to Ray. For example, `CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2` lets Ray only see devices 1 and 3.
+:::
+::::
+
+::::{tab-item} FuriosaAI
+:sync: FuriosaAI
+:::{tip}
+You can set the `FURIOSA_DEVICES` environment variable to a list of `npu:<id>` tokens before starting a Ray node to limit the FuriosaAI NPUs that are visible to Ray. For example, `FURIOSA_DEVICES=npu:1,npu:3 ray start --head` lets Ray only see devices 1 and 3. Ray auto-detects the count. Bare integer IDs, such as `FURIOSA_DEVICES=1,3`, are also accepted on read.
+:::
+
+:::{note}
+When you use the `furiosa_llm.LLM` Python API inside a Ray task or actor, pass the assigned devices explicitly. `LLM(devices=None)` would allocate all visible NPUs and bypass Ray's per-worker isolation. The following example passes the assigned devices:
+
+```
+from furiosa_llm import LLM
+llm = LLM(model_path, devices=os.environ["FURIOSA_DEVICES"])
+```
+
+`furiosa-llm` also accepts the PE-level form `npu:X:Y`, such as `npu:0:0-3` for fused PE 0-3 of NPU 0. However, Ray currently treats each NPU as a single resource and doesn't preserve PE ranges through worker scheduling.
+:::
+::::
+
+::::{tab-item} Mobilint MBLT
+:sync: Mobilint MBLT
+:::{tip}
+You can set the `QBRUNTIME_VISIBLE_DEVICES` environment variable before starting a Ray node to limit the Mobilint MBLTs that are visible to Ray. For example, `QBRUNTIME_VISIBLE_DEVICES=1,3 ray start --head --resources='{"MBLT": 2}'` lets Ray only see devices 1 and 3.
+:::
+::::
+:::::
+:::{note}
+Because Ray resources are {ref}`logical <logical-resources>`, nothing prevents you from specifying more accelerator resources, such as `num_gpus`, than the machine physically has. In this case, Ray schedules tasks and actors that require accelerators as if the machine has the number of accelerators you specified. Problems occur only if those tasks and actors try to use accelerators that don't exist.
+:::
+
+## Using accelerators in tasks and actors
+
+If a task or actor requires accelerators, specify the corresponding {ref}`resource requirements <resource-requirements>`, such as `@ray.remote(num_gpus=1)`. Ray then schedules the task or actor on a node that has enough free accelerator resources. Before running the task or actor code, Ray assigns accelerators to it by setting the corresponding environment variable, such as `CUDA_VISIBLE_DEVICES`.
+
+::::{tab-set}
+:::{tab-item} NVIDIA GPU
+:sync: NVIDIA GPU
+```{testcode}
+import os
+import ray
+
+ray.init(num_gpus=2)
+
+@ray.remote(num_gpus=1)
+class GPUActor:
+    def ping(self):
+        print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+        print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+@ray.remote(num_gpus=1)
+def gpu_task():
+    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+    print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+gpu_actor = GPUActor.remote()
+ray.get(gpu_actor.ping.remote())
+# The actor uses the first GPU so the task uses the second one.
+ray.get(gpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(GPUActor pid=52420) GPU IDs: [0]
+(GPUActor pid=52420) CUDA_VISIBLE_DEVICES: 0
+(gpu_task pid=51830) GPU IDs: [1]
+(gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
+```
+:::
+
+:::{tab-item} AMD GPU
+:sync: AMD GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+:skipif: True
+
+import os
+import ray
+
+ray.init(num_gpus=2)
+
+@ray.remote(num_gpus=1)
+class GPUActor:
+    def ping(self):
+        print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+        print("ROCR_VISIBLE_DEVICES: {}".format(os.environ["ROCR_VISIBLE_DEVICES"]))
+
+@ray.remote(num_gpus=1)
+def gpu_task():
+    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+    print("ROCR_VISIBLE_DEVICES: {}".format(os.environ["ROCR_VISIBLE_DEVICES"]))
+
+gpu_actor = GPUActor.remote()
+ray.get(gpu_actor.ping.remote())
+# The actor uses the first GPU so the task uses the second one.
+ray.get(gpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(GPUActor pid=52420) GPU IDs: [0]
+(GPUActor pid=52420) ROCR_VISIBLE_DEVICES: 0
+(gpu_task pid=51830) GPU IDs: [1]
+(gpu_task pid=51830) ROCR_VISIBLE_DEVICES: 1
+```
+:::
+
+:::{tab-item} Intel GPU
+:sync: Intel GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+:skipif: True
+
+import os
+import ray
+
+ray.init(num_gpus=2)
+
+@ray.remote(num_gpus=1)
+class GPUActor:
+    def ping(self):
+        print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+        print("ZE_AFFINITY_MASK: {}".format(os.environ["ZE_AFFINITY_MASK"]))
+
+@ray.remote(num_gpus=1)
+def gpu_task():
+    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+    print("ZE_AFFINITY_MASK: {}".format(os.environ["ZE_AFFINITY_MASK"]))
+
+gpu_actor = GPUActor.remote()
+ray.get(gpu_actor.ping.remote())
+# The actor uses the first GPU so the task uses the second one.
+ray.get(gpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(GPUActor pid=52420) GPU IDs: [0]
+(GPUActor pid=52420) ZE_AFFINITY_MASK: 0
+(gpu_task pid=51830) GPU IDs: [1]
+(gpu_task pid=51830) ZE_AFFINITY_MASK: 1
+```
+:::
+
+:::{tab-item} AWS Neuron Core
+:sync: AWS Neuron Core
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"neuron_cores": 2})
+
+@ray.remote(resources={"neuron_cores": 1})
+class NeuronCoreActor:
+    def ping(self):
+        print("Neuron Core IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["neuron_cores"]))
+        print("NEURON_RT_VISIBLE_CORES: {}".format(os.environ["NEURON_RT_VISIBLE_CORES"]))
+
+@ray.remote(resources={"neuron_cores": 1})
+def neuron_core_task():
+    print("Neuron Core IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["neuron_cores"]))
+    print("NEURON_RT_VISIBLE_CORES: {}".format(os.environ["NEURON_RT_VISIBLE_CORES"]))
+
+neuron_core_actor = NeuronCoreActor.remote()
+ray.get(neuron_core_actor.ping.remote())
+# The actor uses the first Neuron Core so the task uses the second one.
+ray.get(neuron_core_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(NeuronCoreActor pid=52420) Neuron Core IDs: [0]
+(NeuronCoreActor pid=52420) NEURON_RT_VISIBLE_CORES: 0
+(neuron_core_task pid=51830) Neuron Core IDs: [1]
+(neuron_core_task pid=51830) NEURON_RT_VISIBLE_CORES: 1
+```
+:::
+
+:::{tab-item} Google TPU
+:sync: Google TPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"TPU": 2})
+
+@ray.remote(resources={"TPU": 1})
+class TPUActor:
+    def ping(self):
+        print("TPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["TPU"]))
+        print("TPU_VISIBLE_CHIPS: {}".format(os.environ["TPU_VISIBLE_CHIPS"]))
+
+@ray.remote(resources={"TPU": 1})
+def tpu_task():
+    print("TPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["TPU"]))
+    print("TPU_VISIBLE_CHIPS: {}".format(os.environ["TPU_VISIBLE_CHIPS"]))
+
+tpu_actor = TPUActor.remote()
+ray.get(tpu_actor.ping.remote())
+# The actor uses the first TPU so the task uses the second one.
+ray.get(tpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(TPUActor pid=52420) TPU IDs: [0]
+(TPUActor pid=52420) TPU_VISIBLE_CHIPS: 0
+(tpu_task pid=51830) TPU IDs: [1]
+(tpu_task pid=51830) TPU_VISIBLE_CHIPS: 1
+```
+:::
+
+:::{tab-item} Intel Gaudi
+:sync: Intel Gaudi
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"HPU": 2})
+
+@ray.remote(resources={"HPU": 1})
+class HPUActor:
+    def ping(self):
+        print("HPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["HPU"]))
+        print("HABANA_VISIBLE_MODULES: {}".format(os.environ["HABANA_VISIBLE_MODULES"]))
+
+@ray.remote(resources={"HPU": 1})
+def hpu_task():
+    print("HPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["HPU"]))
+    print("HABANA_VISIBLE_MODULES: {}".format(os.environ["HABANA_VISIBLE_MODULES"]))
+
+hpu_actor = HPUActor.remote()
+ray.get(hpu_actor.ping.remote())
+# The actor uses the first HPU so the task uses the second one.
+ray.get(hpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(HPUActor pid=52420) HPU IDs: [0]
+(HPUActor pid=52420) HABANA_VISIBLE_MODULES: 0
+(hpu_task pid=51830) HPU IDs: [1]
+(hpu_task pid=51830) HABANA_VISIBLE_MODULES: 1
+```
+:::
+
+:::{tab-item} Huawei Ascend
+:sync: Huawei Ascend
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"NPU": 2})
+
+@ray.remote(resources={"NPU": 1})
+class NPUActor:
+    def ping(self):
+        print("NPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["NPU"]))
+        print("ASCEND_RT_VISIBLE_DEVICES: {}".format(os.environ["ASCEND_RT_VISIBLE_DEVICES"]))
+
+@ray.remote(resources={"NPU": 1})
+def npu_task():
+    print("NPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["NPU"]))
+    print("ASCEND_RT_VISIBLE_DEVICES: {}".format(os.environ["ASCEND_RT_VISIBLE_DEVICES"]))
+
+npu_actor = NPUActor.remote()
+ray.get(npu_actor.ping.remote())
+# The actor uses the first NPU so the task uses the second one.
+ray.get(npu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(NPUActor pid=52420) NPU IDs: [0]
+(NPUActor pid=52420) ASCEND_RT_VISIBLE_DEVICES: 0
+(npu_task pid=51830) NPU IDs: [1]
+(npu_task pid=51830) ASCEND_RT_VISIBLE_DEVICES: 1
+```
+:::
+
+:::{tab-item} Rebellions RBLN
+:sync: Rebellions RBLN
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"RBLN": 2})
+
+@ray.remote(resources={"RBLN": 1})
+class RBLNActor:
+    def ping(self):
+        print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+        print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+@ray.remote(resources={"RBLN": 1})
+def rbln_task():
+    print("RBLN IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["RBLN"]))
+    print("RBLN_DEVICES: {}".format(os.environ["RBLN_DEVICES"]))
+
+rbln_actor = RBLNActor.remote()
+ray.get(rbln_actor.ping.remote())
+# The actor uses the first RBLN so the task uses the second one.
+ray.get(rbln_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(RBLNActor pid=52420) RBLN IDs: [0]
+(RBLNActor pid=52420) RBLN_DEVICES: 0
+(rbln_task pid=51830) RBLN IDs: [1]
+(rbln_task pid=51830) RBLN_DEVICES: 1
+```
+:::
+
+:::{tab-item} METAX GPU
+:sync: METAX GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(num_gpus=2)
+
+@ray.remote(num_gpus=1)
+class GPUActor:
+    def ping(self):
+        print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+        print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+@ray.remote(num_gpus=1)
+def gpu_task():
+    print("GPU IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+    print("CUDA_VISIBLE_DEVICES: {}".format(os.environ["CUDA_VISIBLE_DEVICES"]))
+
+gpu_actor = GPUActor.remote()
+ray.get(gpu_actor.ping.remote())
+# The actor uses the first GPU so the task uses the second one.
+ray.get(gpu_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(GPUActor pid=52420) GPU IDs: [0]
+(GPUActor pid=52420) CUDA_VISIBLE_DEVICES: 0
+(gpu_task pid=51830) GPU IDs: [1]
+(gpu_task pid=51830) CUDA_VISIBLE_DEVICES: 1
+```
+:::
+
+:::{tab-item} FuriosaAI
+:sync: FuriosaAI
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"FURIOSA": 2})
+
+@ray.remote(resources={"FURIOSA": 1})
+class RNGDActor:
+    def ping(self):
+        print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+        print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+@ray.remote(resources={"FURIOSA": 1})
+def rngd_task():
+    print("RNGD IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["FURIOSA"]))
+    print("FURIOSA_DEVICES: {}".format(os.environ["FURIOSA_DEVICES"]))
+
+rngd_actor = RNGDActor.remote()
+ray.get(rngd_actor.ping.remote())
+# The actor uses the first RNGD so the task uses the second one.
+ray.get(rngd_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(RNGDActor pid=52420) RNGD IDs: ['0']
+(RNGDActor pid=52420) FURIOSA_DEVICES: npu:0
+(rngd_task pid=51830) RNGD IDs: ['1']
+(rngd_task pid=51830) FURIOSA_DEVICES: npu:1
+```
+:::
+
+:::{tab-item} Mobilint MBLT
+:sync: Mobilint MBLT
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+import os
+import ray
+
+ray.init(resources={"MBLT": 2})
+
+@ray.remote(resources={"MBLT": 1})
+class MBLTActor:
+    def ping(self):
+        print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+        print("QBRUNTIME_VISIBLE_DEVICES: {}".format(os.environ["QBRUNTIME_VISIBLE_DEVICES"]))
+
+@ray.remote(resources={"MBLT": 1})
+def mblt_task():
+    print("MBLT IDs: {}".format(ray.get_runtime_context().get_accelerator_ids()["MBLT"]))
+    print("QBRUNTIME_VISIBLE_DEVICES: {}".format(os.environ["QBRUNTIME_VISIBLE_DEVICES"]))
+
+mblt_actor = MBLTActor.remote()
+ray.get(mblt_actor.ping.remote())
+# The actor uses the first MBLT so the task uses the second one.
+ray.get(mblt_task.remote())
+```
+
+```{testoutput}
+:options: +MOCK
+
+(MBLTActor pid=52420) MBLT IDs: [0]
+(MBLTActor pid=52420) QBRUNTIME_VISIBLE_DEVICES: 0
+(mblt_task pid=51830) MBLT IDs: [1]
+(mblt_task pid=51830) QBRUNTIME_VISIBLE_DEVICES: 1
+```
+:::
+::::
+
+Inside a task or actor, {func}`ray.get_runtime_context().get_accelerator_ids() <ray.runtime_context.RuntimeContext.get_accelerator_ids>` returns a list of accelerator IDs that are available to the task or actor. Typically, it is not necessary to call `get_accelerator_ids()` because Ray automatically sets the corresponding environment variable (e.g. `CUDA_VISIBLE_DEVICES`), which most ML frameworks respect for purposes of accelerator assignment.
+
+:::{note}
+The preceding remote function and actor don't use any accelerators. Ray schedules each one on a node that has at least one accelerator and reserves one accelerator for it while it runs. Using the accelerator is up to your code, which typically does so through an external library such as TensorFlow.
+:::
+
+The following example uses accelerators. To run it, install the GPU version of TensorFlow.
+
+```{testcode}
+@ray.remote(num_gpus=1)
+def gpu_task():
+    import tensorflow as tf
+
+    # Create a TensorFlow session. TensorFlow restricts itself to use the
+    # GPUs specified by the CUDA_VISIBLE_DEVICES environment variable.
+    tf.Session()
+```
+
+:::{note}
+Your code can ignore the assigned accelerators and use all of the accelerators on the machine. Ray doesn't prevent this, and it can lead to too many tasks or actors using the same accelerator at the same time. However, Ray automatically sets the environment variable, such as `CUDA_VISIBLE_DEVICES`, which restricts the accelerators that most deep learning frameworks use unless you override the variable.
+:::
+
+## Fractional accelerators
+
+Ray supports {ref}`fractional resource requirements <fractional-resource-requirements>` so multiple tasks and actors can share the same accelerator.
+
+::::{tab-set}
+:::{tab-item} NVIDIA GPU
+:sync: NVIDIA GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_cpus=4, num_gpus=1)
+
+@ray.remote(num_gpus=0.25)
+def f():
+    import time
+
+    time.sleep(1)
+
+# The four tasks created here can execute concurrently
+# and share the same GPU.
+ray.get([f.remote() for _ in range(4)])
+```
+:::
+
+:::{tab-item} AMD GPU
+:sync: AMD GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_cpus=4, num_gpus=1)
+
+@ray.remote(num_gpus=0.25)
+def f():
+    import time
+
+    time.sleep(1)
+
+# The four tasks created here can execute concurrently
+# and share the same GPU.
+ray.get([f.remote() for _ in range(4)])
+```
+:::
+
+:::{tab-item} Intel GPU
+:sync: Intel GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_cpus=4, num_gpus=1)
+
+@ray.remote(num_gpus=0.25)
+def f():
+    import time
+
+    time.sleep(1)
+
+# The four tasks created here can execute concurrently
+# and share the same GPU.
+ray.get([f.remote() for _ in range(4)])
+```
+:::
+
+:::{tab-item} AWS Neuron Core
+:sync: AWS Neuron Core
+AWS Neuron Core doesn't support fractional resources.
+:::
+
+:::{tab-item} Google TPU
+:sync: Google TPU
+Google TPU doesn't support fractional resources.
+:::
+
+:::{tab-item} Intel Gaudi
+:sync: Intel Gaudi
+Intel Gaudi doesn't support fractional resources.
+:::
+
+:::{tab-item} Huawei Ascend
+:sync: Huawei Ascend
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_cpus=4, resources={"NPU": 1})
+
+@ray.remote(resources={"NPU": 0.25})
+def f():
+    import time
+
+    time.sleep(1)
+
+# The four tasks created here can execute concurrently
+# and share the same NPU.
+ray.get([f.remote() for _ in range(4)])
+```
+:::
+
+:::{tab-item} Rebellions RBLN
+:sync: Rebellions RBLN
+Rebellions RBLN doesn't support fractional resources.
+:::
+
+:::{tab-item} METAX GPU
+:sync: METAX GPU
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_cpus=4, num_gpus=1)
+
+@ray.remote(num_gpus=0.25)
+def f():
+    import time
+
+    time.sleep(1)
+
+# The four tasks created here can execute concurrently
+# and share the same GPU.
+ray.get([f.remote() for _ in range(4)])
+```
+:::
+
+:::{tab-item} FuriosaAI
+:sync: FuriosaAI
+FuriosaAI doesn't support fractional resources.
+:::
+
+:::{tab-item} Mobilint MBLT
+:sync: Mobilint MBLT
+Mobilint MBLT doesn't support fractional resources.
+:::
+::::
+
+:::{note}
+Make sure that individual tasks don't use more than their share of the accelerator memory. You can configure PyTorch and TensorFlow to limit their memory usage.
+:::
+
+When Ray assigns accelerators of a node to tasks or actors with fractional resource requirements, it packs one accelerator before moving on to the next one to avoid fragmentation.
+
+```{testcode}
+:hide:
+
+ray.shutdown()
+```
+
+```{testcode}
+ray.init(num_gpus=3)
+
+@ray.remote(num_gpus=0.5)
+class FractionalGPUActor:
+    def ping(self):
+        print("GPU id: {}".format(ray.get_runtime_context().get_accelerator_ids()["GPU"]))
+
+fractional_gpu_actors = [FractionalGPUActor.remote() for _ in range(3)]
+# Ray tries to pack GPUs if possible.
+[ray.get(fractional_gpu_actors[i].ping.remote()) for i in range(3)]
+```
+
+```{testoutput}
+:options: +MOCK
+
+(FractionalGPUActor pid=57417) GPU id: [0]
+(FractionalGPUActor pid=57416) GPU id: [0]
+(FractionalGPUActor pid=57418) GPU id: [1]
+```
+
+(gpu-leak)=
+
+## Workers not releasing GPU resources
+
+When a worker executes a task that uses a GPU, such as through TensorFlow, the task might allocate memory on the GPU and might not release it when the task finishes executing. This can cause problems the next time a task tries to use the same GPU. To address the problem, Ray disables worker process reuse between GPU tasks by default, so the GPU resources are released after the task process exits. Because this adds overhead to GPU task scheduling, you can re-enable worker reuse by setting `max_calls=0` in the {func}`ray.remote <ray.remote>` decorator.
+
+```{testcode}
+# By default, ray does not reuse workers for GPU tasks to prevent
+# GPU resource leakage.
+@ray.remote(num_gpus=1, max_calls=0)
+def leak_gpus():
+    import tensorflow as tf
+
+    # This task allocates memory on the GPU and then never releases it.
+    tf.Session()
+```
+
+(accelerator-types)=
+
+## Accelerator types
+
+Ray supports resource-specific accelerator types. Use the `accelerator_type` option to force a task or actor to run on a node with a specific type of accelerator. Ray implements the accelerator type option as a {ref}`custom resource requirement <custom-resources>` of `"accelerator_type:<type>": 0.001`. This requirement forces Ray to place the task or actor on a node that has that accelerator type available. It also tells the multi-node-type autoscaler that there's demand for that type of resource, which can trigger the launch of new nodes that provide that accelerator.
+
+```{testcode}
+:hide:
+
+ray.shutdown()
+import ray.util.accelerators
+
+v100_resource_name = f"accelerator_type:{ray.util.accelerators.NVIDIA_TESLA_V100}"
+ray.init(num_gpus=4, resources={v100_resource_name: 1})
+```
+
+```{testcode}
+from ray.util.accelerators import NVIDIA_TESLA_V100
+
+@ray.remote(num_gpus=1, accelerator_type=NVIDIA_TESLA_V100)
+def train(data):
+    return "This function was run on a node with a Tesla V100 GPU"
+
+ray.get(train.remote(1))
+```
+
+See {ref}`ray.util.accelerators <accelerator_types>` for available accelerator types.
