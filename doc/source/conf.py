@@ -146,7 +146,7 @@ llms_txt_exclude = [
     # Helper/utility code files and raw scripts rendered as pages — code, not
     # docs; the real guide pages that literalinclude them are kept.
     "train/user-guides/_collate_utils",
-    "tune/examples/pbt_visualization/pbt_visualization_utils",
+    "tune/examples/pbt-visualization/pbt-visualization-utils",
     "cluster/vms/user-guides/community/slurm-*",
     # Thin literalinclude example stubs (a heading + a code block, no prose).
     "tune/examples/includes/*",
