@@ -8,7 +8,7 @@ in ``tests/test_http_schemas.py`` deliberately when you do.
 
 import os
 from datetime import datetime
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -393,6 +393,21 @@ class SandboxAPISettings(BaseModel):
             "per node hosts every sandbox placed there, and each sandbox's "
             "resources are reserved by a one-bundle placement group; creates "
             "skip a worker process start. Named sandboxes always use 'actor'."
+        ),
+    )
+    warm_pool: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "With host_mode='node': sandboxes each node host keeps booted "
+            "ahead of creates, as a list of {'image', 'network', 'size'} "
+            "plus an optional 'cpu'. A gRPC facade create of that image and "
+            "network with no workdir or resource limits takes one at once, "
+            "and the host boots a replacement in the background. Booted "
+            "sandboxes reserve no cluster resources until a create takes "
+            "them; with 'cpu' (each sandbox's request) and "
+            "reservation_slab_cpus, the host also reserves size x cpu CPUs in "
+            "slabs while the pool fills, so a burst finds its reservations "
+            "ready."
         ),
     )
     reservation_slab_cpus: float = Field(

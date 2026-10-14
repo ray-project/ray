@@ -235,6 +235,9 @@ class RayActorHandleResolver:
         # host_mode="node": node id -> (actor name, handle), and the nodes
         # that sandboxes without a reservation spread over.
         self._node_hosts: Dict[str, Tuple[str, Any]] = {}
+        # host_mode="node": sandbox specs each node host keeps booted ahead
+        # of creates, as [{"spec", "size"}] (set by the gRPC facade).
+        self.warm_templates: List[Dict[str, Any]] = []
         self._nodes: List[str] = []
         self._nodes_at = 0.0
         self._refreshing_nodes = False
@@ -275,10 +278,16 @@ class RayActorHandleResolver:
         from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
         name = f"{NODE_HOST_PREFIX}{node_id}"
-        slab = (
+        config = (
             {"CPU": self._settings.reservation_slab_cpus}
             if self._settings.reservation_slab_cpus
-            else None
+            else None,
+            self.warm_templates,
+            {
+                "max_output_bytes": self._settings.max_output_bytes,
+                "max_exec_history": self._settings.max_exec_history,
+                "max_file_bytes": self._settings.max_file_bytes,
+            },
         )
         handle = actor_class.options(
             name=name,
@@ -288,10 +297,10 @@ class RayActorHandleResolver:
             num_cpus=0,
             max_concurrency=_NODE_HOST_MAX_CONCURRENCY,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-        ).remote(self._sandbox_host_class, slab)
+        ).remote(self._sandbox_host_class, *config)
         # The name may find a host an earlier deployment started, with other
         # settings: this resolver's apply from now on.
-        handle.configure.remote(slab)
+        handle.configure.remote(*config)
         with self._lock:
             entry = self._node_hosts.setdefault(node_id, (name, handle))
         return entry

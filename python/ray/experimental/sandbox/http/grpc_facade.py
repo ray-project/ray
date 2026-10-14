@@ -450,6 +450,41 @@ def _check_stdin(
     raise _RpcError(StatusCode.NOT_FOUND, result.get("message", "exec not found"))
 
 
+def _sandbox_spec(
+    settings: SandboxAPISettings,
+    image: str,
+    network: str,
+    cidr_allowlist: Optional[List[str]] = None,
+    env: Optional[Dict[str, str]] = None,
+    workdir: Optional[str] = None,
+    ttl_seconds: Optional[int] = None,
+    cpu_limit: Optional[float] = None,
+    memory_limit_mb: Optional[int] = None,
+    labels: Optional[Dict[str, str]] = None,
+) -> SandboxSpec:
+    """The host spec for a facade create (and for the warm pool's templates)."""
+    return {
+        "image": image,
+        "env": dict(env or {}),
+        "workdir": workdir,
+        "ttl_seconds": ttl_seconds,
+        "network": network,
+        "dns": None,
+        "cidr_allowlist": cidr_allowlist,
+        "shell": "/bin/bash",
+        "rootless": True,
+        "readonly": False,
+        "capabilities": list(settings.default_capabilities),
+        "cpu_limit": cpu_limit,
+        "memory_limit_mb": memory_limit_mb,
+        # The client SDK doesn't request disk for sandboxes.
+        "disk_limit_mb": None,
+        "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
+        "start_timeout_seconds": _START_TIMEOUT_SECONDS,
+        "labels": dict(labels or {}),
+    }
+
+
 def _terminated() -> Any:
     return api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
 
@@ -678,26 +713,18 @@ class _ControlServicer(ModalClientServicer):
             ttl = min(definition.timeout_secs, ttl)
 
         # entrypoint_args are ignored: SandboxHost keeps the sandbox alive.
-        spec: SandboxSpec = {
-            "image": _decode_id("im-", definition.image_id),
-            "env": _env_from_secret_ids(definition.secret_ids),
-            "workdir": definition.workdir or None,
-            "ttl_seconds": ttl,
-            "network": network,
-            "dns": None,
-            "cidr_allowlist": cidr_allowlist,
-            "shell": "/bin/bash",
-            "rootless": True,
-            "readonly": False,
-            "capabilities": list(settings.default_capabilities),
-            "cpu_limit": cpu_limit,
-            "memory_limit_mb": memory_limit_mb,
-            # The client SDK doesn't request disk for sandboxes.
-            "disk_limit_mb": None,
-            "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
-            "start_timeout_seconds": _START_TIMEOUT_SECONDS,
-            "labels": {tag.tag_name: tag.tag_value for tag in request.tags},
-        }
+        spec = _sandbox_spec(
+            settings,
+            image=_decode_id("im-", definition.image_id),
+            network=network,
+            cidr_allowlist=cidr_allowlist,
+            env=_env_from_secret_ids(definition.secret_ids),
+            workdir=definition.workdir or None,
+            ttl_seconds=ttl,
+            cpu_limit=cpu_limit,
+            memory_limit_mb=memory_limit_mb,
+            labels={tag.tag_name: tag.tag_value for tag in request.tags},
+        )
         host_settings: HostSettings = {
             "max_output_bytes": settings.max_output_bytes,
             "max_exec_history": settings.max_exec_history,
@@ -1163,6 +1190,26 @@ class RaySandboxFacade(_ControlServicer, _RouterServicer):
     ) -> None:
         settings = settings or SandboxAPISettings()
         resolver = handle_resolver or RayActorHandleResolver(settings)
+        if settings.warm_pool and hasattr(resolver, "warm_templates"):
+            # Booted from the same spec a matching create would get.
+            resolver.warm_templates = [
+                {
+                    "spec": _sandbox_spec(
+                        settings,
+                        image=profile["image"],
+                        network=profile.get("network", "none"),
+                    ),
+                    "size": int(profile.get("size", 0)),
+                    # Optional: reserve each pool's CPU (size x cpu) while it
+                    # fills.
+                    "reserve": (
+                        {"CPU": float(profile["cpu"]) * int(profile.get("size", 0))}
+                        if profile.get("cpu")
+                        else None
+                    ),
+                }
+                for profile in settings.warm_pool
+            ]
         if settings.host_mode == "node" and hasattr(resolver, "prestart"):
             # Node hosts start in the background, so the first sandbox on
             # each node doesn't wait for one.

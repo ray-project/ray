@@ -7,6 +7,7 @@ same fake resolver and runtime seams the REST app tests use.
 from __future__ import annotations
 
 import asyncio
+import collections
 import inspect
 import json
 import logging
@@ -383,6 +384,7 @@ class _VacantNodeHostHandle:
         self._sandbox_id = sandbox_id
         self._host = object.__new__(node_host.SandboxNodeHost)
         self._host._sandboxes = {}
+        self._host._exec_starts = collections.deque()
 
     def __getattr__(self, name: str) -> Any:
         method = getattr(self._host, name)

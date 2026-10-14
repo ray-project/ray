@@ -1164,8 +1164,9 @@ By default, each sandbox gets its own Ray actor, so creating one starts a Ray wo
 
 * `host_mode="node"`: one actor per node hosts every sandbox placed on that node, so a create starts no process. Each sandbox still reserves its resources with a placement group.
 * `reservation_slab_cpus`: sandboxes that request only CPUs share placement groups of at least this many CPUs, so a burst costs Ray one reservation per group rather than one per sandbox.
+* `warm_pool`: each node keeps sandboxes booted for the listed profiles, for example `[{"image": "python:3.12-slim", "network": "none", "size": 100, "cpu": 0.25}]`. A create with a profile's image and network, no workdir, and no resource limits takes one of them at once. With `cpu` and `reservation_slab_cpus`, the node also reserves `size` times `cpu` CPUs for the pool.
 
-`reservation_slab_cpus` needs `host_mode="node"`. Both apply to the facade only: the REST API, like named sandboxes, always gives each sandbox its own actor.
+`reservation_slab_cpus` and `warm_pool` need `host_mode="node"`. These settings apply to the facade only: the REST API, like named sandboxes, always gives each sandbox its own actor.
 
 ## API reference
 

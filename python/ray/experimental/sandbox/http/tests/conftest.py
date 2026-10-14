@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import pytest
 
+from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.exceptions import (
     SandboxExecError,
     SandboxTimeoutError,
@@ -75,6 +76,8 @@ class FakeSandboxRuntime:
         # Same for delete, holding a terminate() mid-teardown.
         self.delete_gate: Optional[threading.Event] = None
         self.write_error: Optional[Exception] = None
+        # Set to report the container gone, as if it died on its own.
+        self.container_died = False
 
     def pull_image(self, image: str, timeout_seconds: float = 120.0) -> str:
         self.pull_calls.append({"image": image, "timeout_seconds": timeout_seconds})
@@ -175,6 +178,11 @@ class FakeSandboxRuntime:
         self.allowlist_calls.append({"instance_id": instance_id, "cidrs": list(cidrs)})
         if self.allowlist_error is not None:
             raise self.allowlist_error
+
+    def get_status(self, instance_id: str) -> SandboxStatus:
+        if self.container_died or instance_id in self.deleted:
+            return SandboxStatus.TERMINATED
+        return SandboxStatus.RUNNING
 
     def delete(self, instance_id: str) -> None:
         if self.delete_gate is not None:

@@ -18,9 +18,12 @@ layers a proxy with the ``SandboxHost`` method surface, so they don't change.
 """
 
 import asyncio
+import collections
 import logging
+import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Coroutine, Dict, Optional, Set
+from typing import Any, Coroutine, Dict, List, Optional, Set
 
 from ray.experimental.sandbox.http.host import HostSettings, SandboxHost, SandboxSpec
 from ray.util.annotations import DeveloperAPI
@@ -43,6 +46,45 @@ _SLAB_PLACEMENT_SECONDS = 0.2
 # placement per admit.
 _FULL_SECONDS = 1.0
 _EPSILON = 1e-9
+# Concurrent boots a host spends refilling its warm pool, so a refill never
+# crowds out the creates that drained it.
+_WARM_FILL_CONCURRENCY = 4
+# After a warm boot fails (say, its image can't be pulled), its template
+# boots no replacements for this long, rather than on every create, as in
+# SandboxRuntime's warm pool.
+_WARM_RETRY_SECONDS = 30.0
+# While the sandboxes on a host start more execs a second than this, its
+# refill boots one sandbox at a time: right after a burst drained the pool,
+# full-speed refills cost the new sandboxes' execs ~30 % of their throughput.
+_BUSY_EXECS_PER_SECOND = 50
+
+
+def warm_key(spec: SandboxSpec) -> Optional[tuple]:
+    """What a pre-booted sandbox must share with a create to stand in for it.
+
+    None for a create no pre-booted sandbox can serve: one with a workdir
+    (mounted at boot) or resource limits (set at boot).
+    """
+    if (
+        spec.get("workdir")
+        or spec.get("cpu_limit") is not None
+        or spec.get("memory_limit_mb") is not None
+        or spec.get("disk_limit_mb") is not None
+    ):
+        return None
+    capabilities = spec.get("capabilities")
+    # The egress allowlist is applied at boot as well; None is the default.
+    cidrs = spec.get("cidr_allowlist")
+    return (
+        spec["image"],
+        spec.get("network", "none"),
+        tuple(cidrs) if cidrs is not None else None,
+        bool(spec.get("rootless", True)),
+        bool(spec.get("readonly", True)),
+        tuple(capabilities) if capabilities is not None else None,
+        spec.get("shell"),
+        tuple(spec.get("dns") or ()),
+    )
 
 
 class _Slab:
@@ -100,12 +142,19 @@ class SandboxNodeHost:
         slab: The smallest reservation the host makes at a time and shares
             among its sandboxes, such as ``{"CPU": 4}`` (see ``admit``).
             None reserves each sandbox on its own.
+        warm_pool: Sandboxes to keep booted, as ``{"spec", "size"}`` dicts
+            with an optional ``"reserve"``: resources to hold in slabs for
+            the full pool (ignored without ``slab``).
+        warm_settings: The ``HostSettings`` that pre-booted sandboxes start
+            with; a create that adopts one applies its own.
     """
 
     def __init__(
         self,
         host_class: type = SandboxHost,
         slab: Optional[Dict[str, float]] = None,
+        warm_pool: Optional[List[Dict[str, Any]]] = None,
+        warm_settings: Optional[HostSettings] = None,
     ) -> None:
         import ray
 
@@ -123,22 +172,78 @@ class SandboxNodeHost:
         self._grow_lock = asyncio.Lock()
         self._waiting: list = []
         self._full_until = 0.0
-        # Boots run as tasks nobody awaits; the loop keeps only weak
-        # references to tasks.
+        # Boots and refills run as tasks nobody awaits; the loop keeps only
+        # weak references to tasks.
         self._background: Set[asyncio.Task] = set()
+        # Warm pool: per template, sandboxes booted ahead of the creates
+        # that will adopt them (see add), and the reservations to hold for
+        # full pools (see _set_warm_pool).
+        self._warm_templates: Dict[tuple, Any] = {}
+        self._warm_reserve: Dict[tuple, Dict[str, float]] = {}
+        self._reserve_floor: Dict[str, float] = {}
+        self._warm: Dict[tuple, collections.deque] = {}
+        self._warm_booting: Dict[tuple, int] = {}
+        # When each template's last warm boot failed (see _WARM_RETRY_SECONDS).
+        self._warm_failed_at: Dict[tuple, float] = {}
+        self._set_warm_pool(warm_pool)
+        self._warm_settings: HostSettings = dict(warm_settings or {})
+        self._fill_slots = asyncio.Semaphore(_WARM_FILL_CONCURRENCY)
+        self._busy_slot = asyncio.Semaphore(1)
+        self._exec_starts: collections.deque = collections.deque()
 
-    async def configure(self, slab: Optional[Dict[str, float]]) -> None:
+    def _set_warm_pool(self, warm_pool: Optional[List[Dict[str, Any]]]) -> None:
+        """Set the warm pools; a pool no longer listed shuts its sandboxes down."""
+        templates: Dict[tuple, Any] = {}
+        # Reservations to hold for full pools: {"CPU": size x cpu} per
+        # template that asks for it (warm_pool "cpu"), reserved while
+        # filling, and the slab capacity they keep: never released for
+        # idleness.
+        reserve: Dict[tuple, Dict[str, float]] = {}
+        floor: Dict[str, float] = {}
+        for profile in warm_pool or []:
+            key = warm_key(profile["spec"])
+            if key is None or int(profile.get("size", 0)) <= 0:
+                continue
+            templates[key] = (dict(profile["spec"]), int(profile["size"]))
+            # Only creates placed in slabs use the reserve, so a host
+            # without slabs would hold it beside each create's own group.
+            if profile.get("reserve") and self._slab_shape:
+                reserve[key] = {k: float(v) for k, v in profile["reserve"].items()}
+                for k, v in reserve[key].items():
+                    floor[k] = floor.get(k, 0.0) + v
+        for key in set(self._warm) - set(templates):
+            for host in self._warm.pop(key):
+                self._spawn(host._shutdown())
+        for key in templates:
+            self._warm.setdefault(key, collections.deque())
+            self._warm_booting.setdefault(key, 0)
+        self._warm_templates = templates
+        self._warm_reserve = reserve
+        self._reserve_floor = floor
+
+    async def configure(
+        self,
+        slab: Optional[Dict[str, float]],
+        warm_pool: Optional[List[Dict[str, Any]]],
+        warm_settings: Optional[HostSettings],
+    ) -> None:
         """Take the settings of the facade that calls this host.
 
         A host is detached and found by name, so it outlives the deployment
         that started it; each resolver sends its own settings on first use
-        (see ``RayActorHandleResolver``). Slabs stay; later reservations
-        follow these settings.
+        (see ``RayActorHandleResolver``). Slabs and booted sandboxes stay;
+        later reservations and boots follow these settings.
 
         Args:
             slab: As in the constructor.
+            warm_pool: As in the constructor.
+            warm_settings: As in the constructor.
         """
+        self._use_executor()
         self._slab_shape = dict(slab or {})
+        self._warm_settings = dict(warm_settings or {})
+        self._set_warm_pool(warm_pool)
+        self._refill()
 
     def _spawn(self, coro: Coroutine[Any, Any, Any]) -> None:
         task = asyncio.ensure_future(coro)
@@ -162,19 +267,123 @@ class SandboxNodeHost:
         settings: HostSettings,
         reservation: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Register a sandbox and start booting it. Idempotent."""
+        """Register a sandbox and start booting it. Idempotent.
+
+        A create that a warm template matches takes a pre-booted sandbox
+        instead, which is running already.
+        """
         self._use_executor()
         if sandbox_id not in self._sandboxes:
-            self._sandboxes[sandbox_id] = self._host_class(
-                sandbox_id,
-                spec,
-                settings,
-                on_exit=lambda: self._release(sandbox_id),
-            )
-            self._spawn(self._sandboxes[sandbox_id].boot())
+            warm = self._take_warm(spec)
+            if warm is not None:
+                warm.adopt(
+                    sandbox_id,
+                    spec,
+                    settings,
+                    on_exit=lambda: self._release(sandbox_id),
+                )
+                self._sandboxes[sandbox_id] = warm
+            else:
+                self._sandboxes[sandbox_id] = self._host_class(
+                    sandbox_id,
+                    spec,
+                    settings,
+                    on_exit=lambda: self._release(sandbox_id),
+                )
+                self._spawn(self._sandboxes[sandbox_id].boot())
             if reservation:
                 self._reservations[sandbox_id] = reservation
+            # Every create tops the pools up, which also fills them on a host
+            # that prestart never reached (its node joined later) and after
+            # a fill whose boots failed.
+            self._refill()
         return {"ok": True}
+
+    def _take_warm(self, spec: SandboxSpec) -> Optional[SandboxHost]:
+        key = warm_key(spec)
+        pool = self._warm.get(key) if key is not None else None
+        while pool:
+            host = pool.popleft()
+            if host._status == "running" and not host._terminating:
+                if host.container_running():
+                    return host
+                # Died while pooled: free what it holds, try the next one.
+                self._spawn(host._shutdown())
+        return None
+
+    def _refill(self) -> None:
+        """Boot sandboxes until every warm template's pool is full again."""
+        if self._warm_reserve:
+            reserve, self._warm_reserve = self._warm_reserve, {}
+            self._spawn(self._pregrow(reserve))
+        now = time.monotonic()
+        for key, (template, size) in self._warm_templates.items():
+            failed_at = self._warm_failed_at.get(key)
+            if failed_at is not None and now - failed_at < _WARM_RETRY_SECONDS:
+                continue
+            missing = size - len(self._warm[key]) - self._warm_booting[key]
+            for _ in range(max(0, missing)):
+                self._warm_booting[key] += 1
+                self._spawn(self._boot_warm(key, template))
+
+    async def _pregrow(self, reserve: Dict[tuple, Dict[str, float]]) -> None:
+        """Reserve slabs for full warm pools ahead of the creates that use them.
+
+        Each entry is one sandbox's demand times its pool's size. Slabs that
+        never held a sandbox are not released for idleness.
+        """
+        for key, total in reserve.items():
+            size = self._warm_templates.get(key, (None, 1))[1]
+            one = {k: v / max(1, size) for k, v in total.items()}
+            # While it waits, the pool's total rides along with any admit that
+            # grows slabs; then only what is still short of the floor grows.
+            waiting = dict(total)
+            self._waiting.append(waiting)
+            try:
+                async with self._grow_lock:
+                    for k in waiting:
+                        floor = self._reserve_floor.get(k, 0.0)
+                        waiting[k] = max(0.0, floor - self._held(k))
+                    if any(v > _EPSILON for v in waiting.values()):
+                        await self._grow(one)
+            except Exception as exc:
+                logger.warning("Failed to reserve slabs for the warm pool: %s", exc)
+            finally:
+                self._waiting.remove(waiting)
+
+    def _recent_exec_starts(self, now: float) -> int:
+        """Execs this host's sandboxes started in the last second."""
+        starts = self._exec_starts
+        while starts and starts[0] < now - 1.0:
+            starts.popleft()
+        return len(starts)
+
+    def _busy(self) -> bool:
+        return self._recent_exec_starts(time.monotonic()) > _BUSY_EXECS_PER_SECOND
+
+    async def _boot_warm(self, key: tuple, template: SandboxSpec) -> None:
+        booted = False
+        try:
+            async with self._fill_slots:
+                host = self._host_class(
+                    f"warm-{uuid.uuid4().hex[:12]}", template, self._warm_settings
+                )
+                if self._busy():
+                    async with self._busy_slot:
+                        await host.boot()
+                else:
+                    await host.boot()
+                booted = host._status == "running"
+                if not booted:
+                    logger.warning("A warm sandbox failed to boot: %s", host._error)
+                elif key in self._warm_templates:
+                    self._warm[key].append(host)
+                else:
+                    await host._shutdown()  # its pool was removed meanwhile
+        finally:
+            if not booted:
+                self._warm_failed_at[key] = time.monotonic()
+            self._warm_booting[key] -= 1
 
     async def admit(
         self,
@@ -306,7 +515,8 @@ class SandboxNodeHost:
         self._slabs.append(slab)
         # Idle from the start, not only once a sandbox leaves: a slab no
         # admit ends up taking (a repeated admit whose sandbox was already
-        # added, say) would stay reserved for good. A take cancels this.
+        # added, say) would stay reserved for good. A take cancels this, and
+        # the warm pools' floor keeps the slabs it needs (see _drop_slab).
         slab.idle_timer = asyncio.get_running_loop().call_later(
             _SLAB_IDLE_SECONDS, self._drop_slab, slab
         )
@@ -318,14 +528,31 @@ class SandboxNodeHost:
             return
         slab.give_back(sandbox_id)
         self._full_until = 0.0  # room again
-        if not slab.sandboxes and slab.idle_timer is None:
+        if (
+            not slab.sandboxes
+            and slab.idle_timer is None
+            and not self._within_floor(slab)
+        ):
             slab.idle_timer = asyncio.get_running_loop().call_later(
                 _SLAB_IDLE_SECONDS, self._drop_slab, slab
             )
 
+    def _held(self, k: str) -> float:
+        """How much of resource ``k`` this host's slabs hold."""
+        return sum(s.capacity.get(k, 0.0) for s in self._slabs)
+
+    def _within_floor(self, slab: _Slab) -> bool:
+        """True if releasing ``slab`` would drop below the warm pools' reservation."""
+        for k, floor in self._reserve_floor.items():
+            if self._held(k) - slab.capacity.get(k, 0.0) < floor - _EPSILON:
+                return True
+        return False
+
     def _drop_slab(self, slab: _Slab) -> None:
         slab.idle_timer = None
-        if slab.sandboxes or slab not in self._slabs:
+        # The floor again: other idle slabs may have gone since this timer
+        # started.
+        if slab.sandboxes or slab not in self._slabs or self._within_floor(slab):
             return
         self._slabs.remove(slab)
         self._spawn(self._remove_group(slab.reservation, "a sandbox slab"))
@@ -377,6 +604,9 @@ class SandboxNodeHost:
         self, sandbox_id: str, *args: Any, **kwargs: Any
     ) -> Dict[str, Any]:
         host = self._sandboxes.get(sandbox_id)
+        now = time.monotonic()
+        self._recent_exec_starts(now)
+        self._exec_starts.append(now)
         if host is None:
             return _gone(sandbox_id)
         return await host.start_exec(*args, **kwargs)
@@ -473,6 +703,13 @@ class SandboxNodeHost:
         self._release(sandbox_id)
 
     async def sandbox_ids(self) -> list:
-        """The sandboxes hosted here."""
+        """The sandboxes hosted here; also starts filling the warm pool."""
         self._use_executor()
+        self._refill()
         return list(self._sandboxes)
+
+    def warm_status(self) -> Dict[str, Any]:
+        return {
+            "ready": {str(k[:2]): len(v) for k, v in self._warm.items()},
+            "booting": {str(k[:2]): n for k, n in self._warm_booting.items()},
+        }
