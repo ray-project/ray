@@ -70,6 +70,9 @@ from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+        OpRuntimeMetrics,
+    )
     from ray.data._internal.issue_detection.issue_detector_manager import (
         IssueDetectorManager,
     )
@@ -793,6 +796,22 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
         ]
 
+    def _get_phase_metrics_and_tags(
+        self,
+    ) -> Tuple[List["OpRuntimeMetrics"], List[str]]:
+        """Returns per-phase metrics of multi-phase operators and their tags.
+
+        Each phase is tagged ``<operator tag>/<phase name>`` so it shows up as
+        its own series next to the operator-level one.
+        """
+        phase_metrics: List["OpRuntimeMetrics"] = []
+        phase_tags: List[str] = []
+        for i, op in enumerate(self._topology):
+            for phase_name, metrics in op.get_phase_metrics().items():
+                phase_metrics.append(metrics)
+                phase_tags.append(f"{self._get_operator_id(op, i)}/{phase_name}")
+        return phase_metrics, phase_tags
+
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
         return {
@@ -824,11 +843,14 @@ class StreamingExecutor(Executor, threading.Thread):
             force_update
             or (now - self._metrics_last_updated) > self.UPDATE_METRICS_INTERVAL_S
         ):
+            phase_metrics, phase_tags = self._get_phase_metrics_and_tags()
             _StatsManager.update_execution_metrics(
                 self._dataset_id,
                 [op.metrics for op in self._topology],
                 self._get_operator_tags(),
                 self._get_state_dict(state=state),
+                phase_metrics=phase_metrics,
+                phase_tags=phase_tags,
             )
             self._metrics_last_updated = now
 
