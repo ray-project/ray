@@ -868,14 +868,19 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         """Whether the task-output estimate exceeds the remaining budget.
 
         Before the operator has produced any output, the per-task estimate is
-        ``None``. Fall back to one byte rather than zero so that an exhausted
+        ``None``. Treat that as one byte rather than zero so that an exhausted
         object-store budget still blocks submission: with zero the check would
         read ``budget < 0`` and never block, bypassing object-store backpressure
-        for every task submitted before metrics exist.
+        for every task submitted before metrics exist. A real estimate of ``0``
+        (outputs observed, all empty) is kept as is, since such tasks add no
+        object-store pressure.
         """
-        return budget.object_store_memory < (
-            op.metrics.obj_store_mem_max_pending_output_per_task or 1
+        expected_pending_output_bytes = (
+            op.metrics.obj_store_mem_max_pending_output_per_task
         )
+        if expected_pending_output_bytes is None:
+            expected_pending_output_bytes = 1
+        return budget.object_store_memory < expected_pending_output_bytes
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)

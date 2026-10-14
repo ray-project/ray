@@ -1073,21 +1073,29 @@ class TestOutputBackpressureGuard:
             assert guard.should_unblock(o2) is True
 
     @pytest.mark.parametrize(
-        "object_store_budget, expected_can_submit",
+        "pending_output_per_task, object_store_budget, expected_can_submit",
         [
-            # No budget left: block, even though no per-task estimate exists yet.
-            (0, False),
-            # Any budget at all is enough before the first output is observed.
-            (1, True),
+            # No estimate yet and no budget left: block.
+            (None, 0, False),
+            # No estimate yet, but any budget at all is enough.
+            (None, 1, True),
+            # A real zero-byte estimate is not "missing": such tasks add no
+            # object-store pressure, so a zero budget still admits them.
+            (0.0, 0, True),
         ],
     )
     def test_exhausted_output_budget_blocks_before_metrics_exist(
-        self, object_store_budget, expected_can_submit, restore_data_context
+        self,
+        pending_output_per_task,
+        object_store_budget,
+        expected_can_submit,
+        restore_data_context,
     ):
         """An operator that hasn't produced output yet has no per-task output
         estimate. The missing estimate must count as one byte, not zero, or an
         exhausted object-store budget never blocks submission and backpressure
-        is bypassed until the first task completes.
+        is bypassed until the first task completes. Only a missing estimate gets
+        the fallback; an observed estimate of zero is used as is.
         """
         metrics_patch, guard, alloc, o2, o3 = _build_blocked_downstream(
             ray_remote_args={"num_cpus": 4},
@@ -1096,10 +1104,13 @@ class TestOutputBackpressureGuard:
             # Liveness allowance off, so the output-budget check alone decides.
             pressure_fraction=None,
             execution_usage=900,
-            pending_output_per_task=None,
+            pending_output_per_task=pending_output_per_task,
         )
         with metrics_patch:
-            assert o3.metrics.obj_store_mem_max_pending_output_per_task is None
+            assert (
+                o3.metrics.obj_store_mem_max_pending_output_per_task
+                is pending_output_per_task
+            )
             assert alloc.can_submit_new_task(o3) is expected_can_submit
             assert guard.should_unblock(o2) is (not expected_can_submit)
 
