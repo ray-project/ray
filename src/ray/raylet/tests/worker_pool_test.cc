@@ -359,7 +359,7 @@ class WorkerPoolMock : public WorkerPool {
       auto pushed_it = pushedProcesses_.find(pid);
       if (pushed_it == pushedProcesses_.end()) {
         int runtime_env_hash = 0;
-        bool is_java = false;
+        Language language = Language::PYTHON;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
         for (const std::string &command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
@@ -370,7 +370,11 @@ class WorkerPoolMock : public WorkerPool {
           }
           pos = command_args.find("java");
           if (pos != std::string::npos) {
-            is_java = true;
+            language = Language::JAVA;
+          }
+          pos = command_args.find("go_worker_command");
+          if (pos != std::string::npos) {
+            language = Language::GO;
           }
         }
         // TODO(SongGuyang): support C++ language workers.
@@ -381,7 +385,7 @@ class WorkerPoolMock : public WorkerPool {
         for (int i = 0; i < register_workers; i++) {
           auto worker = CreateWorker(GetWorkerId(it->first),
                                      nullptr,
-                                     is_java ? Language::JAVA : Language::PYTHON,
+                                     language,
                                      job_id,
                                      rpc::WorkerType::WORKER,
                                      runtime_env_hash);
@@ -628,6 +632,59 @@ static inline LeaseSpecification ExampleLeaseSpec(
 
   message.mutable_runtime_env_info()->CopyFrom(runtime_env_info);
   return LeaseSpecification(std::move(message));
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, StartGoWorkerWithCodeSearchPathCommand) {
+  // A Go worker carries the per-job code search path as a single
+  // --code-search-path=<path> token (BuildProcessCommandArgs). This is how
+  // go/cmd/raygo defaultworker receives userfuncs.so on the command line.
+  // The default fixture pool has no GO command, so recreate it with one.
+  SetWorkerCommands({
+      {Language::PYTHON, {"dummy_py_worker_command"}},
+      {Language::JAVA, {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}},
+      {Language::GO,
+       {"dummy_go_worker_command", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"}},
+  });
+
+  JobID job_id = JobID::FromInt(12346);
+  auto actor_creation_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1);
+  LeaseSpecification lease_spec = ExampleLeaseSpec(
+      actor_creation_id, Language::GO, job_id, {}, LeaseID::FromRandom());
+
+  rpc::JobConfig job_config = rpc::JobConfig();
+  // Two paths joined by ':' exercise the multi-path join in BuildProcessCommandArgs.
+  job_config.add_code_search_path("/pkg/one/userfuncs.so");
+  job_config.add_code_search_path("/pkg/two/userfuncs.so");
+  worker_pool_->HandleJobStarted(job_id, job_config);
+
+  ASSERT_NE(worker_pool_->PopWorkerSync(lease_spec), nullptr);
+  const auto real_command =
+      worker_pool_->GetWorkerCommand(*worker_pool_->LastStartedWorkerProcess());
+
+  // The GO per-process options in this codebase push the raw worker ID hex, not a
+  // startup token: BuildProcessCommandArgs appends --worker-id=<hex> then
+  // --runtime-env-hash=<n>. Remove the dynamically generated worker ID before
+  // comparing (same handling as StartWorkerWithDynamicOptionsCommand).
+  std::vector<std::string> real_command_without_id = real_command;
+  auto it =
+      std::find_if(real_command_without_id.begin(),
+                   real_command_without_id.end(),
+                   [](const std::string &s) { return s.find("--worker-id=") == 0; });
+  ASSERT_NE(it, real_command_without_id.end());
+  real_command_without_id.erase(it);
+
+  // Ray-defined per-job options (single token, colon-joined paths), then
+  // per-process options injected after the RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER.
+  std::vector<std::string> expected_command;
+  expected_command.push_back("dummy_go_worker_command");
+  expected_command.insert(
+      expected_command.end(),
+      {"--code-search-path=/pkg/one/userfuncs.so:/pkg/two/userfuncs.so"});
+  expected_command.push_back("--runtime-env-hash=0");
+  expected_command.push_back("--language=GO");
+
+  ASSERT_EQ(real_command_without_id, expected_command);
+  worker_pool_->HandleJobFinished(job_id);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestGetRegisteredDriver) {

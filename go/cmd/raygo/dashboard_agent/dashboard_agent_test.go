@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
+	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
 	"github.com/ray-project/ray/go/pkg/gcs"
@@ -55,7 +56,6 @@ func testArgs(overrides map[string]string) []string {
 		"stderr-filepath":            "/tmp/ray/agent.err",
 		"logging-level":              "debug",
 		"disable-metrics-collection": "true",
-		"events-export-addr":         "localhost:8125",
 	}
 	for k, v := range overrides {
 		base[k] = v
@@ -112,9 +112,6 @@ func TestBuildConfig(t *testing.T) {
 	}
 	if !cfg.MetricsCollectionDisabled {
 		t.Errorf("cfg.MetricsCollectionDisabled = false, want true")
-	}
-	if cfg.EventsExportAddr != "localhost:8125" {
-		t.Errorf("cfg.EventsExportAddr = %q, want %q", cfg.EventsExportAddr, "localhost:8125")
 	}
 }
 
@@ -195,24 +192,27 @@ func (f *buildModulesFakeGCS) GetAll(_ context.Context, nodeIDs []ids.NodeID) (m
 	return result, nil
 }
 
-// TestBuildModules verifies the log and healthz modules are wired into the
-// agent module list and that a missing log directory fails startup before
+// TestBuildModules verifies the log, healthz and event modules are wired into
+// the agent module list and that a missing log directory fails startup before
 // serving.
 func TestBuildModules(t *testing.T) {
 	fakeGCS := &buildModulesFakeGCS{}
-	t.Run("returns log and healthz modules", func(t *testing.T) {
+	t.Run("returns log, healthz and event modules", func(t *testing.T) {
 		mods, err := buildModules(agent.Config{LogDir: t.TempDir(), GCS: fakeGCS})
 		if err != nil {
 			t.Fatalf("buildModules: %v", err)
 		}
-		if len(mods) != 2 {
-			t.Fatalf("buildModules returned %d modules, want 2", len(mods))
+		if len(mods) != 3 {
+			t.Fatalf("buildModules returned %d modules, want 3", len(mods))
 		}
 		if _, ok := mods[0].(*dashboardlog.LogAgentModule); !ok {
 			t.Errorf("module[0] type = %T, want *log.LogAgentModule", mods[0])
 		}
 		if _, ok := mods[1].(*healthz.HealthzAgent); !ok {
 			t.Errorf("module[1] type = %T, want *healthz.HealthzAgent", mods[1])
+		}
+		if _, ok := mods[2].(*dashboardevent.EventAgent); !ok {
+			t.Errorf("module[2] type = %T, want *event.EventAgent", mods[2])
 		}
 	})
 

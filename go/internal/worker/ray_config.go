@@ -315,6 +315,16 @@ func parseClusterFlags(cmd *cobra.Command, config *RayConfig) error {
 	if err != nil {
 		return err
 	}
+	// The raylet puts the per-job code search path in the command line as
+	// --code-search-path=<path> (see worker_pool.cc BuildProcessCommandArgs),
+	// matching this flag's name. The RAY_CODE_SEARCH_PATH environment variable
+	// (worker_pool.cc sets it for GO workers) is the fallback: it bypasses the
+	// argv channel (which, for GO workers, transits the runtime-env exec layer
+	// that can re-quote or drop argv), so the worker still receives the path if
+	// the flag is lost.
+	if searchPath == "" {
+		searchPath = os.Getenv("RAY_CODE_SEARCH_PATH")
+	}
 	if searchPath != "" {
 		// Multiple paths separated by ':'.
 		paths := strings.Split(searchPath, ":")

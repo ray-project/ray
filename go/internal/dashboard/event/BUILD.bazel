@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "event",
+    srcs = [
+        "consts.go",
+        "event.go",
+        "monitor.go",
+        "report.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/internal/dashboard/event",
+    visibility = ["//go:__subpackages__"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/dashboard/agent",
+        "//go/pkg/gcs",
+        "//go/pkg/log",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "event_test",
+    srcs = [
+        "consts_test.go",
+        "event_test.go",
+        "monitor_test.go",
+        "report_test.go",
+    ],
+    embed = [":event"],
+    deps = [
+        "//go/internal/common",
+        "//go/internal/dashboard/agent",
+        "//go/pkg/gcs",
+    ],
+)

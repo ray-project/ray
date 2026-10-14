@@ -23,6 +23,7 @@ import (
 
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
+	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
 	"github.com/ray-project/ray/go/internal/gcs/native"
@@ -65,7 +66,6 @@ var (
 
 	// Optional behavior flags.
 	disableMetricsCollection bool
-	eventsExportAddr         string
 
 	// Reserved flags (P0 deferred).
 	minimal bool
@@ -121,7 +121,6 @@ func init() {
 
 	// Optional behavior flags.
 	DashboardAgentCmd.Flags().BoolVar(&disableMetricsCollection, "disable-metrics-collection", false, "Disable metrics collection for this agent.")
-	DashboardAgentCmd.Flags().StringVar(&eventsExportAddr, "events-export-addr", "", "The address events are exported to, e.g. an external statsd endpoint.")
 
 	// Reserved flags.
 	DashboardAgentCmd.Flags().BoolVar(&minimal, "minimal", false, "Run a minimal dashboard agent (not supported yet).")
@@ -187,7 +186,6 @@ func buildConfig() (*agent.Config, error) {
 		ListenPort:                listenPort,
 		NodeManagerPort:           nodeManagerPortInt,
 		MetricsCollectionDisabled: disableMetricsCollection,
-		EventsExportAddr:          eventsExportAddr,
 	}, nil
 }
 
@@ -318,7 +316,11 @@ func buildModules(cfg agent.Config) ([]agent.Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create healthz module: %w", err)
 	}
-	return []agent.Module{logAgent, healthzAgent}, nil
+	eventAgent, err := dashboardevent.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create event module: %w", err)
+	}
+	return []agent.Module{logAgent, healthzAgent, eventAgent}, nil
 }
 
 // isValidLogLevel reports whether level is one of common.LoggerLevelChoices.

@@ -60,8 +60,6 @@ type Config struct {
 	MetricsExportPort int
 	// MetricsCollectionDisabled disables metrics collection when true.
 	MetricsCollectionDisabled bool
-	// EventsExportAddr is the address events are exported to.
-	EventsExportAddr string
 	// HTTPClient is the shared HTTP client used by modules.
 	HTTPClient *http.Client
 }

@@ -413,6 +413,35 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
 }
 
+TEST_F(GcsActorManagerTest, TestGoActorClassName) {
+  auto job_id = JobID::FromInt(1);
+  auto request = GenRegisterActorRequest(job_id,
+                                         /*max_restarts=*/0,
+                                         /*detached=*/true,
+                                         /*name=*/"go_actor",
+                                         /*ray_namespace=*/"test");
+  // Overwrite the default (Python) function descriptor with a Go one so GCS
+  // must fill in the class name for Go actors. Go has no dedicated class_name
+  // field; the actor type name is carried in function_name.
+  rpc::FunctionDescriptor go_function_descriptor;
+  go_function_descriptor.mutable_go_function_descriptor()->set_module_name(
+      "github.com/example/ray-mm");
+  go_function_descriptor.mutable_go_function_descriptor()->set_package_path("pkg/actors");
+  go_function_descriptor.mutable_go_function_descriptor()->set_function_name("Worker");
+  go_function_descriptor.mutable_go_function_descriptor()->set_method_name("<init>");
+  *request.mutable_task_spec()->mutable_function_descriptor() = go_function_descriptor;
+
+  Status status = gcs_actor_manager_->RegisterActor(request, [](const Status &) {});
+  io_service_.run_one();
+  ASSERT_TRUE(status.ok());
+
+  auto actor_id =
+      ActorID::FromBinary(request.task_spec().actor_creation_task_spec().actor_id());
+  auto actor = gcs_actor_manager_->GetRegisteredActors().at(actor_id);
+  ASSERT_NE(actor, nullptr);
+  ASSERT_EQ(actor->GetActorTableData().class_name(), "Worker");
+}
+
 TEST_F(GcsActorManagerTest, TestActorStateMetrics) {
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);

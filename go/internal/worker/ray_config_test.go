@@ -672,3 +672,40 @@ func TestNewRayConfig_WithSessionAndLogsDir(t *testing.T) {
 		t.Errorf("LogsDir = %q, want %q", config.LogsDir, "/tmp/ray/logs")
 	}
 }
+
+// TestNewRayConfig_CodeSearchPathFromEnv verifies the RAY_CODE_SEARCH_PATH
+// fallback: when the command line does not carry --code-search-path, the
+// worker reads the environment variable (worker_pool.cc sets it for GO
+// workers as the bypass channel for argv lost through the runtime-env exec
+// layer). The flag wins when both are present.
+func TestNewRayConfig_CodeSearchPathFromEnv(t *testing.T) {
+	cmd := newTestCmd()
+	t.Setenv("RAY_CODE_SEARCH_PATH", "/env/lib/go.so:/env/lib/another.so")
+	config, err := NewRayConfig(cmd, false, false)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	expected := []string{"/env/lib/go.so", "/env/lib/another.so"}
+	if len(config.CodeSearchPath) != len(expected) {
+		t.Fatalf("CodeSearchPath from env length = %d, want %d (%v)", len(config.CodeSearchPath), len(expected), config.CodeSearchPath)
+	}
+	for i, p := range expected {
+		if config.CodeSearchPath[i] != p {
+			t.Errorf("CodeSearchPath[%d] = %q, want %q", i, config.CodeSearchPath[i], p)
+		}
+	}
+
+	// The command-line flag takes precedence over the environment variable.
+	flagCmd := newTestCmd()
+	if err := flagCmd.Flags().Set(CodeSearchPath, "/flag/lib/userfuncs.so"); err != nil {
+		t.Fatalf("set flag failed: %v", err)
+	}
+	flagConfig, err := NewRayConfig(flagCmd, false, false)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	want := []string{"/flag/lib/userfuncs.so"}
+	if len(flagConfig.CodeSearchPath) != 1 || flagConfig.CodeSearchPath[0] != want[0] {
+		t.Errorf("CodeSearchPath = %v, want %v (flag must win over env)", flagConfig.CodeSearchPath, want)
+	}
+}

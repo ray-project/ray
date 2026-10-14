@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//go/internal/common",
         "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/event",
         "//go/internal/dashboard/healthz",
         "//go/internal/dashboard/log",
         "//go/internal/gcs/native",
@@ -24,6 +25,7 @@ go_test(
     embed = [":dashboard_agent"],
     deps = [
         "//go/internal/dashboard/agent",
+        "//go/internal/dashboard/event",
         "//go/internal/dashboard/healthz",
         "//go/internal/dashboard/log",
         "//go/pkg/gcs",

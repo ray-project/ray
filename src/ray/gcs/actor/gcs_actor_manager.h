@@ -601,6 +601,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   FRIEND_TEST(GcsActorManagerTest, TestPreviousIncarnationsAppendedOnRestart);
   FRIEND_TEST(GcsActorManagerTest, TestPreviousIncarnationsBoundedByLimit);
   FRIEND_TEST(GcsActorManagerTest, TestPreviousIncarnationsIdempotentOnRetriedRestart);
+  FRIEND_TEST(GcsActorManagerTest, TestGoActorClassName);
 
   friend class GcsActorManagerTest;
 };
