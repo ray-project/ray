@@ -191,8 +191,8 @@ def test_custom_checkpoint_callback(ray_start_6_cpus_2_gpus):
 
 
 def test_report_callback_checkpoint_frequency(ray_start_6_cpus_2_gpus):
-    """`checkpoint_frequency` should skip checkpointing on non-matching epochs
-    while metrics are still reported on every epoch."""
+    """`checkpoint_frequency` should skip reporting (metrics and checkpoint) on
+    non-matching epochs."""
 
     num_workers = 2
     num_epochs = 6
@@ -222,11 +222,11 @@ def test_report_callback_checkpoint_frequency(ray_start_6_cpus_2_gpus):
     )
     result = trainer.fit()
 
-    # Metrics are reported every epoch regardless of checkpoint_frequency.
+    # The last report comes from the last checkpointed epoch.
     assert result.metrics["epoch"] == num_epochs - 1
 
     # Only epochs where (epoch + 1) % checkpoint_frequency == 0 should have
-    # produced a checkpoint: epochs 2 and 5 out of 0..5.
+    # reported: epochs 2 and 5 out of 0..5.
     expected_checkpoints = num_epochs // checkpoint_frequency
     assert len(result.best_checkpoints) == expected_checkpoints
     checkpointed_epochs = sorted(
