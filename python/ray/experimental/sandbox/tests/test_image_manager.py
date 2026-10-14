@@ -655,6 +655,42 @@ def test_image_cache_eviction(tmp_path):
     assert partial.exists()  # mid-pull (no marker): protected
 
 
+def test_image_cache_eviction_keeps_a_free_space_floor(tmp_path, monkeypatch):
+    """Under no size cap, eviction still frees the disk down to the floor,
+    oldest first, and never takes an image in use."""
+    import time
+
+    from ray.experimental.sandbox._internal import image_utils
+
+    images = []
+    for i, age in enumerate((5000, 4000, 3000, 2000, 1000)):
+        d = tmp_path / f"img{i}"
+        d.mkdir()
+        (d / "blob").write_bytes(b"x" * 1000)
+        marker = d / ".extracted"
+        marker.write_text("ok")
+        os.utime(marker, (time.time() - age, time.time() - age))
+        images.append(d)
+    image_utils._mark_image_in_use(str(images[1]), "sb-live")
+    # 500 bytes free, plus whatever eviction gives back.
+    monkeypatch.setattr(
+        image_utils,
+        "_free_bytes",
+        lambda path: 500 + 1000 * sum(not d.exists() for d in images),
+    )
+
+    image_utils.evict_least_recently_used_images(
+        str(tmp_path), max_bytes=None, min_free_bytes=2400
+    )
+    assert [d.exists() for d in images] == [False, True, False, True, True]
+
+    # Nothing evictable is left short of the floor; the in-use image stays.
+    image_utils.evict_least_recently_used_images(
+        str(tmp_path), max_bytes=None, min_free_bytes=10**9
+    )
+    assert [d.exists() for d in images] == [False, True, False, False, False]
+
+
 def test_create_oci_spec_requires_cached_image(tmp_path):
     """Spec construction refuses a cache entry with no image rather than
     handing runsc a root it cannot mount."""
