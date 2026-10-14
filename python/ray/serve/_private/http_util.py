@@ -76,7 +76,13 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class _RouterApplicationASGIApp:
-    """Translate HAProxy's internal decision request into the client request."""
+    """Present HAProxy's internal routing request as the original client request.
+
+    HAProxy uses ``POST /internal/route`` as its control protocol so routing
+    responses can always contain a body. This wrapper restores the original
+    method, path, and query string in the ASGI scope, allowing the router
+    application to expose only its normal client-facing routes.
+    """
 
     def __init__(self, app: ASGIApp):
         self._app = app
