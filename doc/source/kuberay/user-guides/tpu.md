@@ -20,7 +20,7 @@ To create a GKE cluster with TPU node pools and the KubeRay TPU initialization w
 - **Multi-host TPU slices** span two or more ICI-connected TPU nodes (such as a four-node `v6e` `4x4` slice or a two-node `TPU7x` `2x2x2` slice). GKE provisions each multi-host slice as a dedicated node pool that scales atomically.
 - **Multi-slice configurations** combine multiple TPU slices over DCN using MegaScale collectives to scale beyond a single ICI domain.
 
-Ray supports both **SPMD (single program, multiple data)** workloads—where all workers run the same program across data or model shards—and **MPMD (multiple program, multiple data)** workloads—where distinct actor groups (such as reinforcement learning rollout and training actors) run different programs concurrently across devices, subslices, or slices. Depending on your framework, you can schedule workers at two granularities:
+Ray supports both **SPMD (single program, multiple data)** workloads—where all workers run the same program across data or model shards—and **MPMD (multiple program, multiple data)** workloads—where distinct actor groups (such as reinforcement learning rollout and training actors) run different programs concurrently across devices or slices. Depending on your framework, you can schedule workers at two granularities:
 
 - **One process per TPU host (`{"TPU": 4}`):** One Ray task or actor runs on each TPU node and manages all local TPU devices on that host. Frameworks such as JAX, {class}`~ray.train.v2.jax.JaxTrainer`, MaxText, and the JAX `tpu-inference` backend for vLLM use this model.
 - **One process per TPU device (`{"TPU": 1}`):** One Ray task or actor runs on each logical TPU device, matching the one-process-per-GPU model. Frameworks such as PyTorch with `torch_tpu`, {class}`~ray.train.torch.TorchTrainer` with the `tpu_dist` backend, the PyTorch `vllm-torchtpu` backend for vLLM, and per-device MPMD actor groups use this model.
@@ -153,7 +153,7 @@ ray.get(pg.ready())
 
 ### TPU scheduling utility library
 
-In a cluster with multiple slices of the same TPU Pod type, `bundle_label_selector={"ray.io/tpu-pod-type": "v6e-16"}` alone can spread bundles across different physical slices. The `ray.util.tpu` package builds on Ray's {ref}`label selector API <labels>` to guarantee atomic slice and subslice placement for both SPMD and MPMD workloads.
+In a cluster with multiple slices of the same TPU Pod type, `bundle_label_selector={"ray.io/tpu-pod-type": "v6e-16"}` alone can spread bundles across different physical slices. The `ray.util.tpu` package builds on Ray's {ref}`label selector API <labels>` to guarantee atomic slice placement for both SPMD and MPMD workloads.
 
 #### `SlicePlacementGroup`
 
@@ -234,44 +234,23 @@ slice_handle.shutdown()
 In multi-process collective runtimes such as `torch.distributed` with `torch_tpu`, all worker processes on a host open the full local `/dev/vfio/*` mesh and select their device via `LOCAL_RANK`. When launching custom per-device actors outside of {class}`~ray.train.torch.TorchTrainer` or `vllm-torchtpu`, set `RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS=1` in the actor `runtime_env` (or clear `TPU_VISIBLE_CHIPS`, `TPU_CHIPS_PER_HOST_BOUNDS`, and `TPU_HOST_BOUNDS`) before initializing `torch_tpu`.
 :::
 
-#### `SubslicePlacementGroup`
-
-Use {func}`ray.util.tpu.subslice_placement_group` to partition a larger multi-host TPU slice into smaller, ICI-connected subslices (for example, two `2x4` subslices inside a `4x4` `v6e` slice, or two `2x2x2` subslices inside a `2x2x4` `TPU7x` slice). Ray discovers the physical chip coordinates on each host via `libtpu`, caches valid rectangular subslice mappings, and returns a {class}`~ray.util.tpu.SubslicePlacementGroup` pinned to an idle subslice:
-
-```python
-import ray
-from ray.util.tpu import subslice_placement_group
-
-# Reserve a 2x4 subslice (2 hosts, 8 chips) inside a parent 4x4 v6e slice.
-subslice_handle = subslice_placement_group(
-    subslice_topology="2x4",
-    accelerator_version="v6e",
-)
-ray.get(subslice_handle.placement_group.ready(), timeout=600)
-subslice_handle.shutdown()
-```
-
 ### Reinforcement learning (RL) on TPUs
 
 Reinforcement learning post-training workloads (using frameworks such as [VeRL](https://github.com/volcengine/verl), [SkyRL](https://github.com/NovaSky-AI/SkyRL), or [Tunix](https://github.com/google/tunix)) alternate between rollout generation and policy training. Because each physical TPU chip locks `/dev/vfio` exclusively to a single process and routes ICI collectives across fixed torus meshes, Ray supports two placement architectures for RL on TPUs:
 
 - **Colocated RL (shared slice):** Rollout and training run in the same worker process on a single {func}`~ray.util.tpu.slice_placement_group`. Use this when the model, optimizer states, and KV cache fit in slice memory (or with host DRAM offloading) to avoid transferring weights over the network.
-- **Disaggregated RL (separate slices or subslices):** Rollout actors (such as [vLLM](https://docs.vllm.ai/)) and learner actors (such as PyTorch `torch_tpu` or JAX) run on separate slices via {func}`~ray.util.tpu.slice_placement_group` or on subslices of a larger slice via {func}`~ray.util.tpu.subslice_placement_group`. Use this to dedicate full slice HBM to rollout KV caches and transfer updated weights over the data center network (DCN) between steps (see {ref}`Recommended GKE node pool options <kuberay-gke-tpu-cluster-setup>` for multi-NIC DRANET setup).
+- **Disaggregated RL (separate slices):** Rollout actors (such as [vLLM](https://docs.vllm.ai/)) and learner actors (such as PyTorch `torch_tpu` or JAX) run on separate TPU slices reserved with {func}`~ray.util.tpu.slice_placement_group`. Use this to dedicate full slice HBM to rollout KV caches and transfer updated weights over the data center network (DCN) between steps (see {ref}`Recommended GKE node pool options <kuberay-gke-tpu-cluster-setup>` for multi-NIC DRANET setup).
 
-The following example partitions a `4x4` `v6e` slice into two `2x4` subslices—one for rollout actors and one for learner actors:
+The following example reserves two `4x4` `v6e` slices—one for rollout actors and one for learner actors:
 
 ```python
 import ray
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from ray.util.tpu import subslice_placement_group
+from ray.util.tpu import slice_placement_group
 
-# Partition a 4x4 v6e slice into two 2x4 subslices (2 hosts, 8 TPUs each).
-rollout_pg = subslice_placement_group(
-    subslice_topology="2x4", accelerator_version="v6e", subslice_index=0
-)
-learner_pg = subslice_placement_group(
-    subslice_topology="2x4", accelerator_version="v6e", subslice_index=1
-)
+# Reserve two 4x4 v6e slices (4 hosts, 16 TPUs each).
+rollout_pg = slice_placement_group(topology="4x4", accelerator_version="v6e")
+learner_pg = slice_placement_group(topology="4x4", accelerator_version="v6e")
 ray.get(
     [rollout_pg.placement_group.ready(), learner_pg.placement_group.ready()],
     timeout=600,
@@ -319,7 +298,7 @@ rollout_pg.shutdown()
 learner_pg.shutdown()
 ```
 
-For per-device MPMD RL actors (such as `torch_tpu`), pass `resources_per_bundle={"CPU": 4, "TPU": 4}` to `subslice_placement_group` and schedule `chips_per_host` actors (`@ray.remote(resources={"TPU": 1})`) onto each host bundle.
+For per-device MPMD RL actors (such as `torch_tpu`), pass `resources_per_bundle={"TPU": 1}` to `slice_placement_group` and schedule one actor (`@ray.remote(resources={"TPU": 1})`) onto each device bundle.
 
 #### TPU Pod information utilities
 
