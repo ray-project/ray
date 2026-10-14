@@ -53,18 +53,82 @@ def copy_fs_tree(
             raise
 
 
+def get_current_node_id() -> Optional[str]:
+    """Get current Ray node ID, or hostname fallback if Ray is not initialized."""
+    try:
+        import ray
+
+        if ray.is_initialized():
+            node_id = ray.get_runtime_context().get_node_id()
+            if node_id:
+                return str(node_id)
+    except Exception:
+        pass
+    import socket
+
+    return socket.gethostname()
+
+
+class CheckpointPath(str):
+    """String path to a sandbox checkpoint bundle carrying scheduling metadata.
+
+    Subclasses ``str`` for 100% backward compatibility with filesystem path
+    operations (``os.path``, ``open``, equality with ``str``), while carrying
+    ``node_id``, ``remote``, ``cpu``, and ``memory`` so ``sandbox.restore()``
+    can schedule the restored actor onto the right node with the right resources
+    even when the driver is on a different node than a node-local checkpoint.
+    """
+
+    node_id: Optional[str]
+    remote: bool
+    cpu: Optional[float]
+    memory: Optional[Any]
+
+    def __new__(
+        cls,
+        path: str,
+        *,
+        node_id: Optional[str] = None,
+        remote: bool = False,
+        cpu: Optional[float] = None,
+        memory: Optional[Any] = None,
+    ):
+        obj = super().__new__(cls, path)
+        obj.node_id = node_id
+        obj.remote = bool(remote)
+        obj.cpu = cpu
+        obj.memory = memory
+        return obj
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (str(self),),
+            {
+                "node_id": self.node_id,
+                "remote": self.remote,
+                "cpu": self.cpu,
+                "memory": self.memory,
+            },
+        )
+
+
 def create_manifest(
     sandbox_id: str,
     config: SandboxConfig,
     cwd: str,
     workdir: Optional[str],
     leave_running: bool,
+    remote: bool = False,
+    node_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate the manifest metadata dictionary for a checkpoint bundle."""
     return {
         "version": "1.0",
         "created_at": time.time(),
         "sandbox_id": sandbox_id,
+        "node_id": node_id or get_current_node_id(),
+        "remote": bool(remote),
         "image": config.image,
         "cwd": cwd,
         "workdir": workdir,
@@ -222,9 +286,11 @@ class StagedCheckpoint:
         with open(manifest_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
 
-    def harden_permissions(self, rootless: bool = False) -> None:
-        """Ensure bundle outer directory and memory dumps are accessible only to owner (0700/go-rwx),
+    def harden_permissions(self, rootless: bool = False, remote: bool = False) -> None:
+        """Ensure bundle outer directory and memory dumps are properly restricted,
         while preserving guest file mode permissions inside fs/ intact.
+        Permissions are restricted to owner only (0700/0600) to protect memory dumps
+        and environment secrets even on shared cross-node filesystems.
         """
         paths_to_harden = [self.staging_path, self.state_dir]
         for top_file in ("manifest.json", "config.json", "resolv.conf", "hosts"):
@@ -232,37 +298,43 @@ class StagedCheckpoint:
             if os.path.isfile(p):
                 paths_to_harden.append(p)
 
+        dir_mode = "0700"
+        file_mode = "0600"
+        state_mode = "u+rwX,go-rwx"
+        dir_octal = 0o700
+        file_octal = 0o600
+
         if not rootless and os.geteuid() != 0 and shutil.which("sudo"):
             uid = os.getuid()
             gid = os.getgid()
             subprocess.run(
-                ["sudo", "chown", f"{uid}:{gid}", self.staging_path, self.state_dir],
+                ["sudo", "chown", "-R", f"{uid}:{gid}", self.staging_path],
                 capture_output=True,
             )
             for path in paths_to_harden:
                 if os.path.isdir(path):
                     subprocess.run(
-                        ["sudo", "chmod", "0700", path],
+                        ["sudo", "chmod", dir_mode, path],
                         capture_output=True,
                     )
                 elif os.path.isfile(path):
                     subprocess.run(
-                        ["sudo", "chmod", "0600", path],
+                        ["sudo", "chmod", file_mode, path],
                         capture_output=True,
                     )
             subprocess.run(
-                ["sudo", "chmod", "-R", "u+rwX,go-rwx", self.state_dir],
+                ["sudo", "chmod", "-R", state_mode, self.state_dir],
                 capture_output=True,
             )
         else:
             try:
                 for path in paths_to_harden:
                     if os.path.isdir(path):
-                        os.chmod(path, 0o700)
+                        os.chmod(path, dir_octal)
                     elif os.path.isfile(path):
-                        os.chmod(path, 0o600)
+                        os.chmod(path, file_octal)
                 subprocess.run(
-                    ["chmod", "-R", "u+rwX,go-rwx", self.state_dir],
+                    ["chmod", "-R", state_mode, self.state_dir],
                     capture_output=True,
                 )
             except OSError:

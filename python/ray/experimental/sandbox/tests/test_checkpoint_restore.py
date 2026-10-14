@@ -14,6 +14,7 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class TestCheckpointRestore(unittest.TestCase):
@@ -124,6 +125,16 @@ class TestCheckpointRestore(unittest.TestCase):
             assert "--exclude-committed-zero-pages" in cmd
             assert any(arg.startswith("--image-path=") for arg in cmd)
 
+            # Check that resume was called after files were copied because leave_running=True
+            resume_calls = [
+                call[0][0]
+                for call in mock_run.call_args_list
+                if len(call[0]) > 0
+                and isinstance(call[0][0], list)
+                and "resume" in call[0][0]
+            ]
+            assert len(resume_calls) == 1
+
     def test_restore_validation_errors(self):
         # Non-existent checkpoint path
         with pytest.raises(SandboxError, match="Checkpoint path does not exist"):
@@ -180,6 +191,34 @@ class TestCheckpointRestore(unittest.TestCase):
         assert "slirp4netns" in cmd_public[2]
         assert "restore" in cmd_public[2]
         assert "--direct" in cmd_public[2]
+        assert "trap 'kill -KILL" in cmd_public[2]
+        assert "setpriv --pdeathsig KILL" in cmd_public[2]
+
+    def test_checkpoint_already_paused_sandbox_remains_paused(self):
+        sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
+        self.backend._sandbox_metadata[sandbox_id]["status"] = SandboxStatus.PAUSED
+        dest_checkpoint_dir = os.path.join(self.temp_dir, "paused_checkpoint")
+
+        with (
+            patch.object(self.backend, "pause_sandbox") as mock_pause,
+            patch.object(self.backend, "resume_sandbox") as mock_resume,
+            patch("subprocess.run") as mock_run,
+        ):
+            mock_run.return_value = MagicMock(returncode=0)
+            result = self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=dest_checkpoint_dir,
+                leave_running=True,
+            )
+
+            assert os.path.isdir(result["checkpoint_path"])
+            # Because it was already paused, checkpoint_sandbox should NOT have paused or resumed it
+            mock_pause.assert_not_called()
+            mock_resume.assert_not_called()
+            assert (
+                self.backend._sandbox_metadata[sandbox_id]["status"]
+                == SandboxStatus.PAUSED
+            )
 
     def test_restore_success(self):
         # Setup mock checkpoint directory
@@ -319,6 +358,7 @@ class TestCheckpointRestore(unittest.TestCase):
             sandbox_id="id-123",
             checkpoint_path="/custom",
             leave_running=True,
+            remote=False,
             timeout_seconds=30.0,
         )
 
@@ -334,7 +374,7 @@ class TestCheckpointRestore(unittest.TestCase):
                 "ray.experimental.sandbox.backend.checkpoint_utils.copy_fs_tree",
                 side_effect=PermissionError("Permission denied"),
             ),
-            patch.object(self.backend, "_delete_container_state") as mock_delete_state,
+            patch.object(self.backend, "delete_sandbox") as mock_delete,
         ):
             mock_run.return_value = MagicMock(returncode=0)
             with pytest.raises(SandboxError, match="Failed to copy rootfs overlay"):
@@ -342,22 +382,18 @@ class TestCheckpointRestore(unittest.TestCase):
 
             meta = self.backend._sandbox_metadata[sandbox_id]
             assert meta["status"] == SandboxStatus.RUNNING
-            mock_delete_state.assert_not_called()
+            mock_delete.assert_not_called()
 
     def test_checkpoint_leave_running_false_terminates_on_success(self):
         sandbox_id, _ = self._create_mock_sandbox(rootless=False)
         with (
             patch("subprocess.run") as mock_run,
-            patch.object(self.backend, "_delete_container_state") as mock_delete_state,
-            patch.object(self.backend, "_terminate_tree") as mock_terminate,
+            patch.object(self.backend, "delete_sandbox") as mock_delete,
         ):
             mock_run.return_value = MagicMock(returncode=0)
             self.backend.checkpoint_sandbox(sandbox_id, leave_running=False)
 
-            meta = self.backend._sandbox_metadata[sandbox_id]
-            assert meta["status"] == SandboxStatus.TERMINATED
-            mock_delete_state.assert_called_once()
-            mock_terminate.assert_called_once()
+            mock_delete.assert_called_once_with(sandbox_id)
 
     def test_checkpoint_clears_existing_destination(self):
         sandbox_id, root_dir = self._create_mock_sandbox(rootless=False)
@@ -452,10 +488,14 @@ class TestCheckpointRestore(unittest.TestCase):
         with open(os.path.join(fs_dir, "valid.txt"), "w") as f:
             f.write("valid overlay")
 
-        with patch("subprocess.run") as mock_run:
+        with (
+            patch.object(self.backend, "pause_sandbox") as mock_pause,
+            patch("subprocess.run") as mock_run,
+        ):
             mock_run.return_value = MagicMock(returncode=1, stderr="runsc crashed")
             with pytest.raises(SandboxError, match="Failed to checkpoint sandbox"):
                 self.backend.checkpoint_sandbox(sandbox_id, checkpoint_path=ckpt_dir)
+            mock_pause.assert_called_once()
 
         assert os.path.isfile(os.path.join(ckpt_dir, "manifest.json"))
         with open(os.path.join(ckpt_dir, "manifest.json")) as f:
@@ -673,6 +713,83 @@ class TestCheckpointRestore(unittest.TestCase):
                 mock_prep.call_args.kwargs["_oci_spec_transform_fn"] is sample_transform
             )
 
+    def test_restore_with_existing_config_json_applies_overrides_and_transform(self):
+        ckpt_dir = os.path.join(self.temp_dir, "existing_config_checkpoint")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "sandbox_id": "ray-sandbox-cfg",
+            "config": {
+                "image": "busybox:latest",
+                "workdir": "/workspace",
+                "rootless": False,
+                "network": "none",
+                "readonly": True,
+                "env": {"FOO": "BAR"},
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        # Write an existing config.json into checkpoint bundle
+        bundle_spec = {
+            "ociVersion": "1.0.0",
+            "process": {
+                "cwd": "/workspace",
+                "env": ["FOO=BAR", "ORIG=1"],
+                "capabilities": {"bounding": ["CAP_CHOWN"]},
+            },
+            "root": {"path": "/old/path/rootfs"},
+            "mounts": [],
+        }
+        with open(os.path.join(ckpt_dir, "config.json"), "w") as f:
+            json.dump(bundle_spec, f)
+
+        mock_proc = MagicMock()
+        mock_proc.poll.return_value = 0
+        mock_proc.returncode = 0
+
+        def sample_transform(spec):
+            spec["annotations"] = spec.get("annotations", {})
+            spec["annotations"]["transformed"] = "true"
+            return spec
+
+        with (
+            patch("subprocess.Popen", return_value=mock_proc),
+            patch("subprocess.run") as mock_run,
+            patch("time.sleep"),
+        ):
+            mock_run.return_value = MagicMock(
+                returncode=0, stdout=json.dumps({"status": "running"})
+            )
+            restored_id = self.backend.restore_sandbox(
+                ckpt_dir,
+                env={"FOO": "NEW_BAR", "EXTRA": "VAL"},
+                capabilities=["CAP_NET_BIND_SERVICE"],
+                _oci_spec_transform_fn=sample_transform,
+            )
+            meta = self.backend._sandbox_metadata[restored_id]
+            restored_root = meta["root_dir"]
+            restored_cfg = os.path.join(restored_root, "config.json")
+            assert os.path.isfile(restored_cfg)
+            with open(restored_cfg) as f:
+                saved_spec = json.load(f)
+
+            # Verify transform fn was executed and patched into config.json
+            assert saved_spec.get("annotations", {}).get("transformed") == "true"
+            # Verify env was updated
+            env_list = saved_spec["process"]["env"]
+            assert "FOO=NEW_BAR" in env_list
+            assert "EXTRA=VAL" in env_list
+            assert "ORIG=1" in env_list
+            # Verify capabilities were updated
+            assert saved_spec["process"]["capabilities"]["bounding"] == [
+                "CAP_NET_BIND_SERVICE"
+            ]
+
     def test_copy_fs_tree_preserves_symlinks_without_following(self):
         src_dir = os.path.join(self.temp_dir, "symlink_src")
         dst_dir = os.path.join(self.temp_dir, "symlink_dst")
@@ -815,9 +932,157 @@ class TestCheckpointRestore(unittest.TestCase):
                 cpu=None,
                 memory=None,
                 ttl_seconds=None,
+                remote=None,
                 timeout_seconds=30.0,
             )
 
+    def test_checkpoint_remote_flag(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "remote_ckpt")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            res = self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=ckpt_dir,
+                leave_running=True,
+                remote=True,
+            )
+            assert res["remote"] is True
+            assert isinstance(res["checkpoint_path"], sandbox_api.CheckpointPath)
+            assert res["checkpoint_path"].remote is True
+
+            with open(os.path.join(ckpt_dir, "manifest.json")) as f:
+                manifest = json.load(f)
+            assert manifest["remote"] is True
+            assert "node_id" in manifest
+
+    def test_restore_remote_flag_allows_cross_node(self):
+        ckpt_dir = os.path.join(self.temp_dir, "cross_node_ckpt")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "node_id": "node_A",
+            "remote": False,
+            "config": {
+                "image": "busybox:latest",
+                "rootless": False,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        # Node mismatch with remote=False should raise SandboxError
+        with patch(
+            "ray.experimental.sandbox.backend.gvisor.get_current_node_id",
+            return_value="node_B",
+        ):
+            with pytest.raises(
+                SandboxError, match="node-local checkpoint on node 'node_A'"
+            ):
+                self.backend.restore_sandbox(ckpt_dir)
+
+            # Node mismatch with remote=True should be allowed
+            with (
+                patch("subprocess.Popen") as mock_popen,
+                patch("subprocess.run") as mock_run,
+                patch("shutil.which", return_value="/usr/bin/runsc"),
+            ):
+                mock_proc = MagicMock()
+                mock_proc.poll.return_value = None
+                mock_proc.pid = 12345
+                mock_popen.return_value = mock_proc
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=json.dumps({"status": "running"})
+                )
+
+                restored_id = self.backend.restore_sandbox(ckpt_dir, remote=True)
+                assert restored_id.startswith("ray-sandbox-")
+
+    def test_top_level_restore_scheduling_strategy_local_vs_remote(self):
+        valid_node_id = "a" * 56
+        ckpt_local = sandbox_api.CheckpointPath(
+            os.path.join(self.temp_dir, "ckpt_local"),
+            node_id=valid_node_id,
+            remote=False,
+            cpu=2.0,
+            memory="1Gi",
+        )
+        ckpt_remote = sandbox_api.CheckpointPath(
+            os.path.join(self.temp_dir, "ckpt_remote"),
+            node_id=valid_node_id,
+            remote=True,
+            cpu=2.0,
+            memory="1Gi",
+        )
+
+        with patch.object(sandbox_api.Sandbox, "options") as mock_options:
+            mock_remote = MagicMock()
+            mock_options.return_value = mock_remote
+
+            # Restoring node-local CheckpointPath should attach NodeAffinitySchedulingStrategy
+            sandbox_api.restore(ckpt_local)
+            call_kwargs = mock_options.call_args[1]
+            assert "scheduling_strategy" in call_kwargs
+            strategy = call_kwargs["scheduling_strategy"]
+            assert isinstance(strategy, NodeAffinitySchedulingStrategy)
+            assert strategy.node_id == valid_node_id
+            assert strategy.soft is False
+
+            # Restoring remote CheckpointPath should NOT set scheduling_strategy
+            mock_options.reset_mock()
+            sandbox_api.restore(ckpt_remote)
+            call_kwargs = mock_options.call_args[1]
+            assert "scheduling_strategy" not in call_kwargs
+
+    def test_sandbox_actor_forwards_config_on_restore(self):
+        with patch("ray.experimental.sandbox.sandbox.SandboxRuntime") as mock_rt_cls:
+            mock_rt = mock_rt_cls.return_value
+            mock_rt.restore.return_value = "sb-restored-id"
+
+            underlying_class = getattr(
+                sandbox_api.Sandbox, "__ray_actor_class__", sandbox_api.Sandbox
+            )
+            _ = underlying_class(
+                restore_from="/test/ckpt",
+                env={"MY_VAR": "VAL"},
+                workdir="/custom/workdir",
+                network="none",
+                readonly=False,
+                capabilities=["CAP_NET_ADMIN"],
+                disk="500M",
+            )
+            mock_rt.restore.assert_called_once_with(
+                checkpoint_path="/test/ckpt",
+                cpu=None,
+                memory=None,
+                ttl_seconds=None,
+                remote=None,
+                timeout_seconds=30.0,
+                env={"MY_VAR": "VAL"},
+                workdir="/custom/workdir",
+                network="none",
+                readonly=False,
+                capabilities=["CAP_NET_ADMIN"],
+                disk="500M",
+            )
+
+    def test_runtime_checkpoint_leave_running_false_cancels_ttl_timer(self):
+        rt = SandboxRuntime()
+        instance_id = "test-timer-id"
+        mock_timer = MagicMock()
+        rt._ttl_timers[instance_id] = mock_timer
+
+        with patch.object(rt._backend, "checkpoint_sandbox") as mock_ckpt:
+            mock_ckpt.return_value = {"checkpoint_path": "/test/ckpt"}
+            rt.checkpoint(instance_id, leave_running=False)
+
+            mock_timer.cancel.assert_called_once()
+            assert instance_id not in rt._ttl_timers
+
 
 if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main(["-v", __file__]))

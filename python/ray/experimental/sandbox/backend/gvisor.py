@@ -20,16 +20,19 @@ from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
 )
+from ray.experimental.sandbox._internal.image_utils import ROOTFS_IMAGE
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.checkpoint_utils import (
+    CheckpointPath,
     StagedCheckpoint,
     build_restored_config,
     copy_fs_tree,
     create_manifest,
+    get_current_node_id,
     load_checkpoint_manifest,
 )
 from ray.experimental.sandbox.config import (
@@ -1309,6 +1312,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         compression: str = "none",
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
+        remote: bool = False,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -1316,6 +1320,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
+        node_id = get_current_node_id()
 
         # Step 1: Validate pre-conditions and determine target checkpoint directory path.
         if config.rootless:
@@ -1341,66 +1346,103 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         # Step 2: Begin atomic staging using StagedCheckpoint context manager.
         # All state dumps and filesystem copies occur inside a staging directory first.
-        with StagedCheckpoint(checkpoint_path) as stage:
-            # Step 3: Dump kernel and process memory state via `runsc checkpoint`.
-            checkpoint_args = self._runsc_base_args(config)
-            checkpoint_args.extend(["checkpoint", f"--image-path={stage.state_dir}"])
-            # Always leave container running during checkpoint creation so guest is
-            # preserved if filesystem copying fails.
-            checkpoint_args.append("--leave-running")
-            if compression in ("none", "flate-best-speed"):
-                checkpoint_args.append(f"--compression={compression}")
-            if exclude_committed_zero_pages:
-                checkpoint_args.append("--exclude-committed-zero-pages")
-            if direct:
-                checkpoint_args.append("--direct")
-            checkpoint_args.append(sandbox_id)
+        prior_status = meta.get("status", SandboxStatus.RUNNING)
+        was_paused_by_checkpoint = False
+        success = False
+        try:
+            # If the sandbox was running, pause it first to freeze guest memory
+            # and filesystem state while taking the checkpoint and copying files.
+            if prior_status == SandboxStatus.RUNNING:
+                self.pause_sandbox(sandbox_id, timeout_seconds=timeout_seconds)
+                was_paused_by_checkpoint = True
 
-            res = subprocess.run(
-                checkpoint_args,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-            )
-            if res.returncode != 0:
-                raise SandboxError(
-                    f"Failed to checkpoint sandbox '{sandbox_id}': {res.stderr}"
+            with StagedCheckpoint(checkpoint_path) as stage:
+                # Step 3: Dump kernel and process memory state via `runsc checkpoint`.
+                # We pass --leave-running so runsc does not stop/destroy the container sandbox,
+                # keeping it suspended in-memory so it can be resumed afterwards.
+                checkpoint_args = self._runsc_base_args(config)
+                checkpoint_args.extend(
+                    [
+                        "checkpoint",
+                        "--leave-running",
+                        f"--image-path={stage.state_dir}",
+                    ]
+                )
+                if compression in ("none", "flate-best-speed"):
+                    checkpoint_args.append(f"--compression={compression}")
+                if exclude_committed_zero_pages:
+                    checkpoint_args.append("--exclude-committed-zero-pages")
+                if direct:
+                    checkpoint_args.append("--direct")
+                checkpoint_args.append(sandbox_id)
+
+                res = subprocess.run(
+                    checkpoint_args,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                )
+                if res.returncode != 0:
+                    raise SandboxError(
+                        f"Failed to checkpoint sandbox '{sandbox_id}': {res.stderr}"
+                    )
+
+                # Step 4: Snapshot the copy-on-write rootfs overlay and writable workdir into staging.
+                stage.copy_bundle_filesystems(
+                    root_dir=root_dir,
+                    workdir=meta.get("workdir"),
+                    sandbox_id=sandbox_id,
                 )
 
-            # Step 4: Snapshot the copy-on-write rootfs overlay and writable workdir into staging.
-            stage.copy_bundle_filesystems(
-                root_dir=root_dir,
-                workdir=meta.get("workdir"),
-                sandbox_id=sandbox_id,
-            )
-
-            # Step 5: Generate checkpoint manifest and apply strict file permission hardening.
-            manifest = create_manifest(
-                sandbox_id=sandbox_id,
-                config=config,
-                cwd=meta["cwd"],
-                workdir=meta.get("workdir"),
-                leave_running=leave_running,
-            )
-            stage.write_manifest(manifest)
-            stage.harden_permissions(rootless=config.rootless)
+                # Step 5: Generate checkpoint manifest and apply strict file permission hardening.
+                manifest = create_manifest(
+                    sandbox_id=sandbox_id,
+                    config=config,
+                    cwd=meta["cwd"],
+                    workdir=meta.get("workdir"),
+                    leave_running=leave_running,
+                    remote=remote,
+                    node_id=node_id,
+                )
+                stage.write_manifest(manifest)
+                stage.harden_permissions(rootless=config.rootless, remote=remote)
+            success = True
+        finally:
+            if was_paused_by_checkpoint and (
+                leave_running or (not success and prior_status == SandboxStatus.RUNNING)
+            ):
+                # Resume execution only if the sandbox was running prior to checkpointing
+                # and either leave_running is requested or an error aborted checkpointing.
+                # If prior_status was already PAUSED, it remains paused.
+                try:
+                    self.resume_sandbox(sandbox_id)
+                except Exception as resume_err:
+                    logger.warning(
+                        f"Failed to resume sandbox '{sandbox_id}' after checkpoint: {resume_err}"
+                    )
 
         # Step 6: Atomic swap completed upon exiting context manager.
-        # If leave_running is False, terminate the source sandbox after bundle promotion succeeds.
+        # If leave_running is False, terminate and fully clean up the source sandbox.
         duration = time.time() - start_time
         if not leave_running:
-            self._delete_container_state(config, sandbox_id)
-            proc = meta.get("proc") or meta.get("process")
-            if proc:
-                self._terminate_tree(proc)
-            meta["status"] = SandboxStatus.TERMINATED
+            self.delete_sandbox(sandbox_id)
+
+        ckpt_path_obj = CheckpointPath(
+            checkpoint_path,
+            node_id=node_id,
+            remote=remote,
+            cpu=config.cpu,
+            memory=config.memory,
+        )
 
         return {
-            "checkpoint_path": checkpoint_path,
+            "checkpoint_path": ckpt_path_obj,
             "sandbox_id": sandbox_id,
             "duration_seconds": duration,
             "leave_running": leave_running,
             "image": config.image,
+            "remote": remote,
+            "node_id": node_id,
         }
 
     def restore_sandbox(
@@ -1410,6 +1452,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         memory: Optional[Union[str, int, float]] = None,
         background: bool = True,
         direct: bool = False,
+        remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -1421,6 +1464,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         manifest, state_dir = load_checkpoint_manifest(checkpoint_path)
         config = build_restored_config(manifest, cpu=cpu, memory=memory, **kwargs)
+
+        is_remote = (
+            remote if remote is not None else bool(manifest.get("remote", False))
+        )
+        if not is_remote:
+            checkpoint_node_id = manifest.get("node_id")
+            current_node_id = get_current_node_id()
+            if (
+                checkpoint_node_id
+                and current_node_id
+                and checkpoint_node_id != current_node_id
+            ):
+                raise SandboxError(
+                    f"Checkpoint at '{checkpoint_path}' was created as a node-local "
+                    f"checkpoint on node '{checkpoint_node_id}', but restore is running "
+                    f"on a different node '{current_node_id}'. To restore checkpoints "
+                    f"across different VM nodes, create or restore the checkpoint with "
+                    f"remote=True on a shared mount path."
+                )
 
         # Step 2: Verify host runtime environment dependencies (runsc, network helpers).
         if not shutil.which("runsc"):
@@ -1452,7 +1514,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            self._image_manager.pull_image(
+            image_dir = self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=timeout_seconds,
                 instance_id=sandbox_id,
@@ -1555,6 +1617,33 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     elif workdir_path and dest == container_cwd:
                         mount["source"] = workdir_path
 
+                # Apply environment variable overrides if provided
+                if config.env:
+                    proc_sec = spec_data.setdefault("process", {})
+                    current_env = proc_sec.get("env", [])
+                    filtered_env = []
+                    for e in current_env:
+                        key = e.split("=", 1)[0]
+                        if key not in config.env:
+                            filtered_env.append(e)
+                    for k, v in config.env.items():
+                        filtered_env.append(f"{k}={v}")
+                    proc_sec["env"] = filtered_env
+
+                # Apply capabilities overrides if provided
+                if config.capabilities is not None:
+                    proc_sec = spec_data.setdefault("process", {})
+                    caps = proc_sec.get("capabilities")
+                    if not isinstance(caps, dict):
+                        caps = {}
+                        proc_sec["capabilities"] = caps
+                    from ray.experimental.sandbox.image_manager import (
+                        _OCI_CAPABILITY_SETS,
+                    )
+
+                    for cap_set in _OCI_CAPABILITY_SETS:
+                        caps[cap_set] = list(dict.fromkeys(config.capabilities))
+
                 # Apply CPU and memory cgroup limit overrides if requested
                 if cpu is not None or memory is not None:
                     linux_sec = spec_data.setdefault("linux", {})
@@ -1570,6 +1659,23 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         if parsed_mem is not None and parsed_mem > 0:
                             mem_res = resources.setdefault("memory", {})
                             mem_res["limit"] = parsed_mem
+
+                # Update annotations to target node's locally pulled EROFS image
+                if image_dir:
+                    erofs_image_path = os.path.join(image_dir, ROOTFS_IMAGE)
+                    annotations = spec_data.get("annotations")
+                    if (
+                        isinstance(annotations, dict)
+                        and "dev.gvisor.spec.rootfs.source" in annotations
+                        and os.path.isfile(erofs_image_path)
+                    ):
+                        annotations["dev.gvisor.spec.rootfs.source"] = erofs_image_path
+
+                # Apply user-supplied _oci_spec_transform_fn if present
+                if config._oci_spec_transform_fn is not None:
+                    transformed = config._oci_spec_transform_fn(spec_data)
+                    if transformed is not None:
+                        spec_data = transformed
 
                 with open(target_config_path, "w", encoding="utf-8") as f:
                     json.dump(spec_data, f, indent=2)
@@ -1623,8 +1729,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         if status == "running":
                             break
                         elif status in ("stopped", "error"):
+                            stderr_str = ""
+                            if stderr_file is not None:
+                                try:
+                                    stderr_file.seek(0)
+                                    stderr_str = stderr_file.read()
+                                except Exception:
+                                    pass
                             raise SandboxCreationError(
-                                f"Restored gVisor container stopped unexpectedly (status: {status})."
+                                f"Restored gVisor container stopped unexpectedly (status: {status}). Stderr: {stderr_str}"
                             )
                     except Exception as e:
                         if isinstance(e, SandboxCreationError):
@@ -1818,6 +1931,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
             script = (
+                # This shell stays the parent of the holder, slirp4netns and
+                # runsc, and its exit trap kills and reaps the helpers.
+                "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
+                # setpriv --pdeathsig kills each child with this shell, which
+                # is what Ray kills when the owning worker exits.
+                "setpriv --pdeathsig KILL -- "
                 "unshare --user --map-root-user --net --fork --kill-child "
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
@@ -1825,14 +1944,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
-                f"{slirp} --ready-fd=3 --netns-type=path "
+                f"setpriv --pdeathsig KILL -- {slirp} --ready-fd=3 --netns-type=path "
                 "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
                 f"3>{ready_file} & "
                 "SLIRP=$!; "
                 f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
                 "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
-                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+                "nsenter --preserve-credentials -U -n -t $NSPID -- "
+                f"setpriv --pdeathsig KILL -- {runsc} & "
+                "wait $!"
             )
             return ["bash", "-c", script]
         return args

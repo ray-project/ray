@@ -39,7 +39,7 @@ ROOTFS_IMAGE = "rootfs.erofs"
 # Cache format recorded in each image's ``.extracted`` marker. A mismatch (an
 # extracted-directory cache left by an earlier Ray, say) re-pulls the image
 # once; sandboxes already running on the old cache keep it until they exit.
-_EXTRACT_FORMAT = 3
+_EXTRACT_FORMAT = 4
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
 # How many of an image's layers download at once, as in Docker.
@@ -667,6 +667,7 @@ def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
         ids = ownership.get(os.path.normpath(ti.name))
         ti.uid, ti.gid = ids if ids else (0, 0)
         ti.uname = ti.gname = ""
+        ti.mtime = 0
         return ti
 
     return _filter
@@ -748,6 +749,8 @@ def build_erofs_image(
                 "--tar=f",
                 f"-b{mmap.PAGESIZE}",
                 "-E^inline_data",
+                "-T0",
+                "-U00000000-0000-0000-0000-000000000000",
                 out_path,
                 flat_tar,
             ],
