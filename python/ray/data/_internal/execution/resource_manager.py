@@ -867,13 +867,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     ) -> bool:
         """Whether the task-output estimate exceeds the remaining budget.
 
-        Before the operator has produced any output, the per-task estimate is
-        ``None``. Treat that as one byte rather than zero so that an exhausted
-        object-store budget still blocks submission: with zero the check would
-        read ``budget < 0`` and never block, bypassing object-store backpressure
-        for every task submitted before metrics exist. A real estimate of ``0``
-        (outputs observed, all empty) is kept as is, since such tasks add no
-        object-store pressure.
+        With no estimate yet (no output observed), require at least one byte of
+        budget so an exhausted budget still blocks. A real estimate of ``0`` is
+        kept as is.
         """
         expected_pending_output_bytes = (
             op.metrics.obj_store_mem_max_pending_output_per_task

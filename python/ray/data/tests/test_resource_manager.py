@@ -183,9 +183,8 @@ def _build_blocked_downstream(
     Returns ``(metrics_patch, guard, alloc, o2, o3)``, where ``o2`` feeds the
     blocked downstream op ``o3``. ``metrics_patch`` must be entered to make each
     task emit ``pending_output_per_task`` bytes of object-store output (``None``
-    models an operator that has not produced output yet). The idle detector is
-    disabled so that ``should_unblock`` reflects Case 1 alone rather than falling
-    back to it.
+    means no output observed yet). The idle detector is disabled so that
+    ``should_unblock`` reflects Case 1 alone rather than falling back to it.
     Use ``_set_queued_input_blocks(guard._topology, o3, n)`` to change the queue.
 
     ``overshoot_ratio`` together with ``op_object_store_usage`` drive the shared
@@ -1075,12 +1074,10 @@ class TestOutputBackpressureGuard:
     @pytest.mark.parametrize(
         "pending_output_per_task, object_store_budget, expected_can_submit",
         [
-            # No estimate yet and no budget left: block.
+            # No estimate yet: a zero budget blocks, any budget admits.
             (None, 0, False),
-            # No estimate yet, but any budget at all is enough.
             (None, 1, True),
-            # A real zero-byte estimate is not "missing": such tasks add no
-            # object-store pressure, so a zero budget still admits them.
+            # A real zero-byte estimate is not "missing" and fits a zero budget.
             (0.0, 0, True),
         ],
     )
@@ -1091,11 +1088,8 @@ class TestOutputBackpressureGuard:
         expected_can_submit,
         restore_data_context,
     ):
-        """An operator that hasn't produced output yet has no per-task output
-        estimate. The missing estimate must count as one byte, not zero, or an
-        exhausted object-store budget never blocks submission and backpressure
-        is bypassed until the first task completes. Only a missing estimate gets
-        the fallback; an observed estimate of zero is used as is.
+        """A missing output estimate counts as one byte, so an exhausted budget
+        blocks submission instead of being bypassed until the first output.
         """
         metrics_patch, guard, alloc, o2, o3 = _build_blocked_downstream(
             ray_remote_args={"num_cpus": 4},
