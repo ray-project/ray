@@ -22,7 +22,6 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 from ray.data._internal.execution.operators.join import (
     JoinOperator,
     _make_join_reduce_fn,
-    _with_polars_thread_cap,
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
@@ -200,9 +199,7 @@ def _plan_join_shuffle_v2(
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
-        reduce_ray_remote_args=_with_polars_thread_cap(
-            logical_op.aggregator_ray_remote_args
-        ),
+        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
         name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
         **reduce_kwargs,
     )

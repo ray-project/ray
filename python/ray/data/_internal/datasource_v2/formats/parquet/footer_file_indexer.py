@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # A pool of footer-reading actors spread across the cluster, provisioned once
 # per ``list_files`` call. Footer reads are network-bound, so several actors each
 # driving many concurrent reads keeps IO from bottlenecking on a single node.
-_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 32)
+_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 8)
 _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 128)
 # Files per ``read_footers`` call. Small footers -> batch several per task to
 # amortize the per-task and per-result object-store overhead.
