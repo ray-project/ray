@@ -391,7 +391,7 @@ results.get_dataframe()
 <p>4 rows × 23 columns</p>
 </div>
 
-Checkpoints, metrics, and the log directory for each trial can be accessed through the `ResultGrid` output of a Tune experiment. For more information on how to interact with the returned `ResultGrid`, see {doc}`/tune/examples/tune_analyze_results`.
+Checkpoints, metrics, and the log directory for each trial can be accessed through the `ResultGrid` output of a Tune experiment. For more information on how to interact with the returned `ResultGrid`, see {doc}`/tune/examples/tune-analyze-results`.
 
 ### How do I access Tune results after I am finished?
 
