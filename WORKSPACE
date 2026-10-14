@@ -124,8 +124,8 @@ python_register_toolchains(
     register_toolchains = False,
 )
 
-load("@python3_10//:defs.bzl", python310 = "interpreter")
-load("@rules_python//python/pip_install:repositories.bzl", "pip_install_dependencies")
+# rules_python >= 1.0 no longer exports `interpreter` from defs.bzl; the host
+# interpreter is @<name>_host//:python.
 
 # The pip that whl_library shells out to, overridden ahead of the one rules_python
 # brings.
@@ -191,14 +191,15 @@ py_library(
     url = "https://files.pythonhosted.org/packages/ef/7d/500c9ad20238fcfcb4cb9243eede163594d7020ce87bd9610c9e02771876/pip-24.3.1-py3-none-any.whl",
 )
 
-pip_install_dependencies()
+# rules_python >= 1.0: py_repositories() (above) sets up what
+# pip_install_dependencies() used to.
 
 load("@rules_python//python:pip.bzl", "pip_parse")
 
 # For CI scripts use only; not for ray testing.
 pip_parse(
     name = "py_deps_py310",
-    python_interpreter_target = python310,
+    python_interpreter_target = "@python3_10_host//:python",
     requirements_lock = "//release:requirements_py310.txt",
 )
 

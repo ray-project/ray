@@ -21,3 +21,9 @@ register_toolchains(
     "@rules_rust_pyo3//toolchains:toolchain",
     "@rules_rust_pyo3//toolchains:rust_toolchain",
 )
+
+# One rules_python for both dependency systems, so Ray's py_* rules and
+# rules_rust_pyo3's pyo3_extension share one PyInfo. That lets a
+# pyo3_extension be a real deps edge of Ray's py_library/py_test targets.
+# rules_rust_pyo3 already requires this version.
+bazel_dep(name = "rules_python", version = "1.6.3", repo_name = "rules_python")
