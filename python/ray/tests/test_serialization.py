@@ -909,7 +909,8 @@ def test_library_serializers_apply_to_functions(shutdown_only):
     """A library imported after `ray.init` gets its serializers for the
     functions the process pickles, not just its values: a remote function
     capturing a slice of an Arrow table carries only the slice."""
-    ray.init(num_cpus=1)
+    # No dashboard: nothing serializes a value before the function is pickled.
+    ray.init(num_cpus=1, include_dashboard=False)
     pa = pytest.importorskip("pyarrow")
 
     table = pa.table({"x": list(range(100_000))})
