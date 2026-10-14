@@ -111,6 +111,30 @@ def test_tensor_array_series_reindex():
     np.testing.assert_array_equal(result.array.to_numpy(), expected)
 
 
+@pytest.mark.parametrize(
+    "allow_fill,indices", [(True, [1, 0, 1]), (False, [-1, 0, -1])]
+)
+def test_variable_shaped_tensor_array_take_without_fill(allow_fill, indices):
+    source = [np.arange(4).reshape((2, 2)), np.arange(6).reshape((2, 3))]
+
+    result = TensorArray(source).take(indices, allow_fill=allow_fill)
+
+    assert result.is_variable_shaped
+    assert len(result) == len(indices)
+    for actual, index in zip(result.to_numpy(), indices):
+        np.testing.assert_array_equal(actual, source[index])
+
+
+@pytest.mark.parametrize("fill_value", [None, 0.0, -7.0])
+def test_variable_shaped_tensor_array_take_only_missing(fill_value):
+    source = [np.arange(4).reshape((2, 2)), np.arange(6).reshape((2, 3))]
+
+    result = TensorArray(source).take([-1, -1], allow_fill=True, fill_value=fill_value)
+
+    expected_fill = np.nan if fill_value is None else fill_value
+    np.testing.assert_array_equal(result.to_numpy(), [expected_fill, expected_fill])
+
+
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
