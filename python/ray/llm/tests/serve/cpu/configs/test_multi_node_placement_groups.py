@@ -14,6 +14,7 @@ def get_llm_config_with_placement_group(
     pipeline_parallel_size: int = 1,
     placement_group_config: Dict[str, Any] = None,
     runtime_env: Dict[str, Any] = None,
+    extra_engine_kwargs: Dict[str, Any] = None,
 ) -> LLMConfig:
     """Create LLMConfig with specified parallelism parameters and placement group config."""
     return LLMConfig(
@@ -31,6 +32,7 @@ def get_llm_config_with_placement_group(
             tensor_parallel_size=tensor_parallel_size,
             pipeline_parallel_size=pipeline_parallel_size,
             distributed_executor_backend="ray",
+            **(extra_engine_kwargs or {}),
         ),
         placement_group_config=placement_group_config,
         runtime_env=runtime_env,
@@ -95,6 +97,34 @@ def test_llm_serve_default_placement_strategy(tp_size, pp_size):
     # All configurations should default to PACK strategy
     assert serve_options["placement_group_strategy"] == "PACK"
     assert len(serve_options["placement_group_bundles"]) == tp_size * pp_size
+
+
+@pytest.mark.parametrize(
+    "tp_size,pp_size,pcp_size,dcp_size,expected_devices",
+    [
+        (1, 1, 4, 4, 4),  # PCP x DCP: DCP spans the PCP ranks
+        (4, 1, 2, 1, 8),  # TP x PCP
+        (2, 2, 2, 1, 8),  # TP x PP x PCP
+        (8, 1, 1, 8, 8),  # DCP alone adds no devices
+    ],
+)
+def test_llm_serve_default_placement_bundles_include_pcp(
+    tp_size, pp_size, pcp_size, dcp_size, expected_devices
+):
+    """vLLM runs TP x PP x PCP workers per engine, so the default placement
+    group must reserve one bundle per worker, including the PCP ranks."""
+    llm_config = get_llm_config_with_placement_group(
+        tensor_parallel_size=tp_size,
+        pipeline_parallel_size=pp_size,
+        extra_engine_kwargs=dict(
+            prefill_context_parallel_size=pcp_size,
+            decode_context_parallel_size=dcp_size,
+        ),
+    )
+
+    assert llm_config.get_engine_config().num_devices == expected_devices
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert len(serve_options["placement_group_bundles"]) == expected_devices
 
 
 def test_llm_serve_placement_group_validation():
