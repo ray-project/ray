@@ -118,16 +118,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
+        # The instance id pins the image in the cache while this sandbox
+        # lives (its EROFS image is the sandbox's root filesystem). Pulled
+        # first, so a pull's error (say, an unknown image) reaches the caller
+        # as raised and leaves nothing behind.
+        self._image_manager.pull_image(
+            config.image,
+            timeout_seconds=config.timeout_seconds,
+            instance_id=sandbox_id,
+        )
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
 
-            # The instance id pins the image in the cache while this sandbox
-            # lives (its EROFS image is the sandbox's root filesystem).
-            self._image_manager.pull_image(
-                config.image,
-                timeout_seconds=config.timeout_seconds,
-                instance_id=sandbox_id,
-            )
             # The process cwd: an explicit workdir, else the image's WORKDIR.
             container_cwd = (
                 config.workdir or self._image_manager.get_workdir(config.image) or "/"

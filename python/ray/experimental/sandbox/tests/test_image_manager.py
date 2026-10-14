@@ -1,8 +1,10 @@
+import fcntl
 import io
 import json
 import os
 import sys
 import tarfile
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock
 
 import pytest
@@ -44,6 +46,106 @@ def test_get_default_oci_spec():
     assert "process" in spec
     assert "root" in spec
     assert "mounts" in spec
+
+
+def test_default_oci_spec_is_cached_per_runsc_binary(tmp_path, monkeypatch):
+    """`runsc spec` runs once per runsc binary, and each caller gets a copy."""
+    from ray.experimental.sandbox import image_manager as image_manager_mod
+
+    runsc = tmp_path / "runsc"
+    runsc.write_text("")
+    monkeypatch.setattr(image_manager_mod.shutil, "which", lambda name: str(runsc))
+    monkeypatch.setattr(image_manager_mod, "_default_spec_cache", {})
+    calls = []
+
+    def fake_run(args, cwd, check, **kwargs):
+        calls.append(args)
+        with open(os.path.join(cwd, "config.json"), "w", encoding="utf-8") as f:
+            json.dump({"ociVersion": "1.0.2", "process": {"env": []}}, f)
+
+    monkeypatch.setattr(image_manager_mod.subprocess, "run", fake_run)
+    first = get_default_oci_spec()
+    first["process"]["env"].append("LEAKED=1")
+    assert get_default_oci_spec() == {"ociVersion": "1.0.2", "process": {"env": []}}
+    assert len(calls) == 1
+    # Another runsc binary (here: a new mtime) runs `runsc spec` again.
+    os.utime(runsc, ns=(0, 10**9))
+    get_default_oci_spec()
+    assert len(calls) == 2
+
+
+def test_only_a_pull_scans_the_cache_for_eviction(tmp_path, monkeypatch):
+    """A cache hit, which every create after an image's first one is, skips
+    the eviction scan while the disk is above the free-space floor; a pull,
+    which grows the cache, makes room."""
+    from ray.experimental.sandbox._internal import image_utils
+
+    scans = []
+    monkeypatch.setattr(image_utils, "image_cache_max_bytes", lambda _: 1 << 40)
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "12345")
+    monkeypatch.setattr(image_utils, "_free_bytes", lambda path: 1 << 50)
+    monkeypatch.setattr(
+        image_utils,
+        "evict_least_recently_used_images",
+        lambda *args, **kwargs: scans.append(kwargs),
+    )
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = _hello_tar(tmp_path)
+
+    image_dir = mgr.pull_image(str(local_tar), instance_id="sb-1")
+    # The pull makes room under both the size cap and the free-space floor.
+    assert [(s["keep"], s["min_free_bytes"]) for s in scans] == [
+        (os.path.basename(image_dir), 12345)
+    ]
+    assert mgr.pull_image(str(local_tar), instance_id="sb-2") == image_dir
+    assert len(scans) == 1
+    # A hit still registers its sandbox as a user of the image.
+    assert sorted(os.listdir(os.path.join(image_dir, ".users"))) == ["sb-1", "sb-2"]
+
+
+def test_a_cache_hit_below_the_free_space_floor_evicts(tmp_path, monkeypatch):
+    """Running sandboxes' overlays can fill the disk without any pull, so a
+    cache hit below the free-space floor still evicts unused images."""
+    from ray.experimental.sandbox._internal import image_utils
+
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    unused = mgr.pull_image(str(_hello_tar(tmp_path, "old.tar")))
+    image = str(_hello_tar(tmp_path))
+    image_dir = mgr.pull_image(image, instance_id="sb-1")
+    # The disk is below the floor until the unused image goes.
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "1000")
+    monkeypatch.setattr(
+        image_utils,
+        "_free_bytes",
+        lambda path: 0 if os.path.exists(unused) else 1 << 50,
+    )
+
+    assert mgr.pull_image(image, instance_id="sb-2") == image_dir
+    assert not os.path.exists(unused)
+    assert sorted(os.listdir(os.path.join(image_dir, ".users"))) == ["sb-1", "sb-2"]
+
+
+def test_cache_hits_share_the_image_lock(tmp_path):
+    """A cache hit registers its sandbox under a shared lock, so creates of
+    one image don't queue on each other."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+    local_tar = _hello_tar(tmp_path)
+    image_dir = mgr.pull_image(str(local_tar), instance_id="sb-1")
+
+    with ThreadPoolExecutor(1) as pool, open(f"{image_dir}.lock") as held:
+        # Another create of the image, still registering under the lock.
+        fcntl.flock(held, fcntl.LOCK_SH)
+        hit = pool.submit(mgr.pull_image, str(local_tar), instance_id="sb-2")
+        assert hit.result(timeout=10) == image_dir
+
+
+def _hello_tar(tmp_path, name="app.tar"):
+    local_tar = tmp_path / name
+    with tarfile.open(str(local_tar), "w") as tar:
+        ti = tarfile.TarInfo("hello.txt")
+        ti.size = 2
+        tar.addfile(ti, io.BytesIO(b"hi"))
+    return local_tar
 
 
 def test_image_manager_pull_and_paths(tmp_path):

@@ -117,7 +117,8 @@ class SandboxRuntime:
             _ignore_cgroups=_ignore_cgroups,
             **kwargs,
         )
-        self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
+        # The backend pulls the image (a cache hit after the first create)
+        # and pins it for the sandbox's lifetime.
         instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
             timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))
