@@ -1429,9 +1429,7 @@ def create_ray_logs_for_failed_test(rep):
     if platform.system() != "Linux" and platform.system() != "Windows":
         return
 
-    # Archive on setup failures too: a test that dies in fixture setup (e.g. a
-    # `ray start` that times out) never reaches the "call" phase, so restricting
-    # to "call" drops the logs for exactly the failures that need them.
+    # (claude) Include "setup" so tests that fail inside a fixture also get logs.
     if rep.when not in ("setup", "call") or not rep.failed:
         return
 
