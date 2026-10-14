@@ -1,30 +1,30 @@
 ---
 myst:
   html_meta:
-    description: "Tutorial tuning a PyTorch CNN with the Tuner API, ASHAScheduler for early stopping, and HyperOpt for Bayesian search."
+    description: "Tutorial tuning a PyTorch CNN with the Tuner API, ASHAScheduler for early stopping, and Hyperopt for Bayesian search."
 ---
 
 <!-- TODO: make this an executable notebook later on. -->
 
 (tune-tutorial)=
 
-# Getting Started with Ray Tune
+# Get started with Ray Tune
 
-This tutorial will walk you through the process of setting up a Tune experiment. To get started, we take a PyTorch model and show you how to leverage Ray Tune to optimize the hyperparameters of this model. Specifically, we'll leverage early stopping and Bayesian Optimization via HyperOpt to do so.
+This tutorial walks you through setting up a Ray Tune experiment. Starting from a PyTorch model, you use Tune to optimize the model's hyperparameters with early stopping and with Bayesian optimization through Hyperopt.
 
 :::{tip}
-If you have suggestions on how to improve this tutorial, please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
+If you have suggestions on how to improve this tutorial, [open an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
 :::
 
-To run this example, you will need to install the following:
+To run this example, install the following packages:
 
 ```bash
 $ pip install "ray[tune]" torch torchvision
 ```
 
-## Setting Up a PyTorch Model to Tune
+## Set up a PyTorch model to tune
 
-To start off, let's first import some dependencies. We import some PyTorch and TorchVision modules to help us create a model and train it. Also, we'll import Ray Tune to help us optimize the model. As you can see we use a so-called scheduler, in this case the `ASHAScheduler` that we will use for tuning the model later in this tutorial.
+First, import the dependencies. The PyTorch and torchvision modules help you create and train a model, and Ray Tune helps you optimize it. The imports also include a scheduler, in this case the `ASHAScheduler`, which you use to tune the model later in this tutorial.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -32,7 +32,7 @@ To start off, let's first import some dependencies. We import some PyTorch and T
 :end-before: __tutorial_imports_end__
 ```
 
-Then, let's define a simple PyTorch model that we'll be training. If you're not familiar with PyTorch, the simplest way to define a model is to implement a `nn.Module`. This requires you to set up your model with `__init__` and then implement a `forward` pass. In this example we're using a small convolutional neural network consisting of one 2D convolutional layer, a fully connected layer, and a softmax function.
+Next, define a simple PyTorch model to train. If you're not familiar with PyTorch, the simplest way to define a model is to implement a `nn.Module`. Set up the model in `__init__`, and then implement the `forward` pass. This example uses a small convolutional neural network with one 2D convolutional layer, a fully connected layer, and a softmax function.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -40,7 +40,7 @@ Then, let's define a simple PyTorch model that we'll be training. If you're not 
 :end-before:  __model_def_end__
 ```
 
-Below, we have implemented functions for training and evaluating your PyTorch model. We define a `train` and a `test` function for that purpose. If you know how to do this, skip ahead to the next section.
+The following `train` and `test` functions train and evaluate your PyTorch model. If you already know how to write them, skip ahead to the next section.
 
 :::{dropdown} Training and evaluating the model
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
@@ -52,11 +52,11 @@ Below, we have implemented functions for training and evaluating your PyTorch mo
 
 (tutorial-tune-setup)=
 
-## Setting up a `Tuner` for a Training Run with Tune
+## Set up a `Tuner` for a training run with Tune
 
-Below, we define a function that trains the PyTorch model for multiple epochs. This function will be executed on a separate {ref}`Ray Actor (process) <actor-guide>` underneath the hood, so we need to communicate the performance of the model back to Tune (which is on the main Python process).
+The following function trains the PyTorch model for multiple epochs. This function runs in a separate process as a {ref}`Ray actor <actor-guide>`, so you need to report the model's performance back to Tune, which runs in the main Python process.
 
-To do this, we call {func}`tune.report() <ray.tune.report>` in our training function, which sends the performance value back to Tune. Since the function is executed on the separate process, make sure that the function is {ref}`serializable by Ray <serialization-guide>`.
+To do this, call {func}`tune.report() <ray.tune.report>` in the training function, which sends the performance value back to Tune. Because the function runs in a separate process, make sure it's {ref}`serializable by Ray <serialization-guide>`.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -64,7 +64,7 @@ To do this, we call {func}`tune.report() <ray.tune.report>` in our training func
 :end-before: __train_func_end__
 ```
 
-Let's run one trial by calling {ref}`Tuner.fit <tune-run-ref>` and {ref}`randomly sample <tune-search-space>` from a uniform distribution for learning rate and momentum.
+Run one trial by calling {ref}`Tuner.fit <tune-run-ref>`, and {ref}`randomly sample <tune-search-space>` the learning rate and momentum from a uniform distribution.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -72,7 +72,7 @@ Let's run one trial by calling {ref}`Tuner.fit <tune-run-ref>` and {ref}`randoml
 :end-before: __eval_func_end__
 ```
 
-`Tuner.fit` returns an {ref}`ResultGrid object <tune-analysis-docs>`. You can use this to plot the performance of this trial.
+`Tuner.fit` returns a {ref}`ResultGrid object <tune-analysis-docs>`. You can use it to plot the trial's performance.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -81,18 +81,16 @@ Let's run one trial by calling {ref}`Tuner.fit <tune-run-ref>` and {ref}`randoml
 ```
 
 :::{note}
-Tune will automatically run parallel trials across all available cores/GPUs on your machine or cluster. To limit the number of concurrent trials, use the {ref}`ConcurrencyLimiter <limiter>`.
+Tune automatically runs trials in parallel across all available cores and GPUs on your machine or cluster. To limit the number of concurrent trials, use the {ref}`ConcurrencyLimiter <limiter>`.
 :::
 
+## Stop trials early with Asynchronous Successive Halving
 
-## Early Stopping with Adaptive Successive Halving (ASHAScheduler)
+Next, add early stopping to the optimization process with {ref}`ASHA <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
 
-Let's integrate early stopping into our optimization process. Let's use {ref}`ASHA <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
+At a high level, ASHA stops less promising trials and allocates more time and resources to more promising ones. Because the optimization process becomes more efficient, you can afford to **increase the search space by 5x** by adjusting the `num_samples` parameter.
 
-
-On a high level, ASHA terminates trials that are less promising and allocates more time and resources to more promising trials. As our optimization process becomes more efficient, we can afford to **increase the search space by 5x**, by adjusting the parameter `num_samples`.
-
-ASHA is implemented in Tune as a "Trial Scheduler". These Trial Schedulers can early terminate bad trials, pause trials, clone trials, and alter hyperparameters of a running trial. See {ref}`the TrialScheduler documentation <tune-schedulers>` for more details of available schedulers and library integrations.
+Tune implements ASHA as a trial scheduler, `ASHAScheduler`. Trial schedulers can stop bad trials early, pause trials, clone trials, and alter the hyperparameters of a running trial. For details on the available schedulers and library integrations, see {ref}`Tune trial schedulers <tune-schedulers>`.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -100,7 +98,7 @@ ASHA is implemented in Tune as a "Trial Scheduler". These Trial Schedulers can e
 :end-before: __run_scheduler_end__
 ```
 
-You can run the below in a Jupyter notebook to visualize trial progress.
+To visualize trial progress, you can run the following code in a Jupyter notebook.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -109,22 +107,22 @@ You can run the below in a Jupyter notebook to visualize trial progress.
 ```
 
 ```{image} /images/tune-df-plot.png
+:alt: Plot of trial progress.
 :scale: 50%
 :align: center
 ```
 
-You can also use {ref}`TensorBoard <tensorboard>` for visualizing results.
+You can also visualize results with {ref}`TensorBoard <tensorboard>`.
 
 ```bash
 $ tensorboard --logdir {logdir}
 ```
 
+## Use search algorithms in Tune
 
-## Using Search Algorithms in Tune
+In addition to {ref}`trial schedulers <tune-schedulers>`, you can further optimize your hyperparameters with an intelligent search technique such as Bayesian optimization. To do this, you can use a Tune {ref}`search algorithm <tune-search-alg>`. Search algorithms use optimization algorithms to navigate the given hyperparameter space intelligently.
 
-In addition to {ref}`TrialSchedulers <tune-schedulers>`, you can further optimize your hyperparameters by using an intelligent search technique like Bayesian Optimization. To do this, you can use a Tune {ref}`Search Algorithm <tune-search-alg>`. Search Algorithms leverage optimization algorithms to intelligently navigate the given hyperparameter space.
-
-Note that each library has a specific way of defining the search space.
+Each library has its own way of defining the search space.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -133,12 +131,12 @@ Note that each library has a specific way of defining the search space.
 ```
 
 :::{note}
-Tune allows you to use some search algorithms in combination with different trial schedulers. See {ref}`this page for more details <tune-schedulers>`.
+You can combine some search algorithms with different trial schedulers. For details, see {ref}`Tune trial schedulers <tune-schedulers>`.
 :::
 
-## Evaluating Your Model after Tuning
+## Evaluate your model after tuning
 
-You can evaluate the best trained model using the {ref}`ExperimentAnalysis object <tune-analysis-docs>` to retrieve the best model:
+To evaluate the best trained model, retrieve it with the {ref}`ResultGrid <tune-analysis-docs>` object:
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -146,10 +144,9 @@ You can evaluate the best trained model using the {ref}`ExperimentAnalysis objec
 :end-before: __run_analysis_end__
 ```
 
+## Next steps
 
-### Next Steps
-
-* Check out the {ref}`Tune tutorials <tune-guides>` for guides on using Tune with your preferred machine learning library.
-* Browse our {ref}`gallery of examples <tune-examples-others>` to see how to use Tune with PyTorch, XGBoost, Tensorflow, etc.
-* [Let us know](https://github.com/ray-project/ray/issues) if you ran into issues or have any questions by opening an issue on our GitHub.
-* To check how your application is doing, you can use the {ref}`Ray dashboard <observability-getting-started>`.
+* See the {ref}`Tune tutorials <tune-guides>` for guides on using Tune with your preferred machine learning library.
+* Browse the {ref}`gallery of examples <tune-examples-others>` to see how to use Tune with PyTorch, XGBoost, TensorFlow, and other libraries.
+* If you run into problems or have questions, [open an issue on GitHub](https://github.com/ray-project/ray/issues).
+* To check on your application, you can use the {ref}`Ray dashboard <observability-getting-started>`.
