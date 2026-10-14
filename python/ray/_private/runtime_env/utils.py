@@ -39,7 +39,9 @@ class SubprocessCalledProcessError(subprocess.CalledProcessError):
         for name, s in out.items():
             if s:
                 subtitle = f"Last {self.LAST_N_LINES} lines of {name}:"
-                last_n_line_str = self._get_last_n_line(s, self.LAST_N_LINES).strip()
+                last_n_line_str = redact_uris_in_text(
+                    self._get_last_n_line(s, self.LAST_N_LINES).strip()
+                )
                 str_list.append(
                     f"{subtitle}\n{textwrap.indent(last_n_line_str, ' ' * 4)}"
                 )

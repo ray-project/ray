@@ -39,7 +39,11 @@ def redact_uri(uri: Any) -> Any:
     """
     if not isinstance(uri, str):
         return uri
-    parts = urlsplit(uri)
+    try:
+        parts = urlsplit(uri)
+    except ValueError:
+        # Malformed, e.g. an unclosed IPv6 bracket. Fail closed.
+        return REDACTED_PLACEHOLDER
     if not parts.scheme or not parts.netloc:
         return uri
     host = parts.netloc.rpartition("@")[2]

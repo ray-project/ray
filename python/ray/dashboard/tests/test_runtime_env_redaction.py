@@ -88,6 +88,7 @@ def test_redact_runtime_env_does_not_mutate_input():
         ),
         ("gcs://_ray_pkg_abc123.zip", "gcs://_ray_pkg_abc123.zip"),
         ("/local/dir?not-a-query", "/local/dir?not-a-query"),
+        (f"https://user:{SECRET}@[bad/pkg.zip", REDACTED_PLACEHOLDER),
     ],
 )
 def test_redact_runtime_env_strips_uri_credentials(uri, expected):
