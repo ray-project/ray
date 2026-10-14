@@ -26,8 +26,8 @@ With the Ray Tune function API, save and load checkpoints as the following examp
 
 The preceding code does the following:
 
-- It saves a checkpoint with {meth}`tune.report(..., checkpoint=checkpoint) <ray.tune.report>`. You must report every checkpoint alongside a set of metrics, so that checkpoints can be ordered by a specified metric.
-- During training iteration `epoch`, it saves the checkpoint to the path `<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>` on the node where training happens. Depending on the {ref}`storage configuration <tune-storage-options>`, the checkpoint can then be synced to a consolidated storage location.
+- It saves a checkpoint with {meth}`tune.report(..., checkpoint=checkpoint) <ray.tune.report>`. You must report every checkpoint alongside a set of metrics, so that Tune can order checkpoints by a specified metric.
+- During training iteration `epoch`, it saves the checkpoint to the path `<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>` on the node where training happens. Depending on the {ref}`storage configuration <tune-storage-options>`, Tune can then sync the checkpoint to a consolidated storage location.
 - It loads a checkpoint with {meth}`tune.get_checkpoint() <ray.tune.get_checkpoint>`. Whenever Tune restores a trial, this call returns the trial's latest checkpoint. Tune restores a trial when the trial is configured to retry after a failure, when the experiment is restored, or when the trial resumes after a pause, such as with {doc}`PBT </tune/examples/pbt-guide>`.
 
   % TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.
@@ -76,7 +76,7 @@ In the preceding example, when `detect_instance_preemption` returns `True`, the 
 
 ### Checkpoint manually from a Tuner callback
 
-As with {ref}`manual checkpointing from the trainable <tune-class-trainable-checkpointing_manual-checkpointing>`, you can trigger checkpointing from {class}`Tuner <ray.tune.Tuner>` {class}`Callback <ray.tune.callback.Callback>` methods. In the {meth}`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback, set the `result["should_checkpoint"] = True` flag, or `result[tune.result.SHOULD_CHECKPOINT] = True`. Unlike checkpointing in the class API, this approach decouples checkpointing logic from training logic. It also gives you access to all {class}`Trial <ray.tune.Trial>` instances, so you can build more complex checkpointing strategies.
+As with {ref}`manual checkpointing from the trainable <tune-class-trainable-checkpointing_manual-checkpointing>`, you can trigger checkpointing from {class}`Tuner <ray.tune.Tuner>` {class}`Callback <ray.tune.Callback>` methods. In the {meth}`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback, set the `result["should_checkpoint"] = True` flag, or `result[tune.result.SHOULD_CHECKPOINT] = True`. Unlike checkpointing in the class API, this approach decouples checkpointing logic from training logic. It also gives you access to all {class}`Trial <ray.tune.experiment.trial.Trial>` instances, so you can build more complex checkpointing strategies.
 
 ```{literalinclude} /tune/doc_code/trial_checkpoint.py
 :language: python

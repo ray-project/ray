@@ -57,7 +57,7 @@ To analyze your results, start TensorBoard on the remote head node:
 ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 ```
 
-To customize the results directory, set `storage_path` in the `RunConfig` that you pass to `Tuner`, as in `RunConfig(storage_path=..)`. Then point TensorBoard to that directory to visualize the results. You can also use [awless](https://github.com/wallix/awless) to manage clusters on AWS.
+To customize the results directory, set `storage_path` in the `RunConfig` that you pass to `Tuner`, as in `RunConfig(storage_path=...)`. Then point TensorBoard to that directory to visualize the results. You can also use [awless](https://github.com/wallix/awless) to manage clusters on AWS.
 
 ## Run a distributed Tune experiment
 
@@ -177,7 +177,7 @@ The following steps run Tune on spot instances. They assume you've already set u
    ```
 
 1. Download the example cluster configuration file, {download}`tune-default.yaml </../../python/ray/tune/examples/tune-default.yaml>`.
-1. Run `ray submit` as follows to run Tune across the nodes. Append `[--start]` if the cluster isn't up yet. Append `[--stop]` to shut down your nodes automatically after the run.
+1. Run `ray submit` as follows to run Tune across the nodes. Append `--start` if the cluster isn't up yet. Append `--stop` to shut down your nodes automatically after the run.
 
    ```bash
    ray submit tune-default.yaml mnist_pytorch_trainable.py --start -- --ray-address=localhost:6379

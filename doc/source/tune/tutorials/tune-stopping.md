@@ -13,10 +13,10 @@ When you run a Ray Tune experiment, it can be hard to know in advance how long t
 
 For example, you might want to stop in any of the following cases:
 
-1. End the experiment after `N` epochs or when the reported evaluation score passes a threshold, whichever comes first.
-1. Stop the experiment after `T` seconds.
-1. Stop the experiment when trials encounter runtime errors.
-1. Stop underperforming trials early with Tune's early-stopping schedulers.
+- End the experiment after `N` epochs or when the reported evaluation score passes a threshold, whichever comes first.
+- Stop the experiment after `T` seconds.
+- Stop the experiment when trials encounter runtime errors.
+- Stop underperforming trials early with Tune's early-stopping schedulers.
 
 This guide shows how to set up each of these stopping criteria in a Tune experiment.
 
@@ -38,7 +38,7 @@ If you force a Tune experiment to stop, for example by pressing `Ctrl+C` several
 
 Ray Tune also accepts the `SIGUSR1` signal to interrupt training gracefully. Use it when you run Ray Tune in a remote Ray task, because Ray filters out `SIGINT` and `SIGTERM` signals by default.
 
-## Stop using metric-based criteria
+## Stop with metric-based criteria
 
 Besides manual stopping, Tune provides several ways to stop experiments programmatically. The simplest is metric-based criteria, a fixed set of thresholds that determine when to stop.
 
@@ -76,7 +76,7 @@ In the following example, each trial stops when it completes `10` iterations or 
 ::::
 
 ::::{tab-item} Custom stopper class
-Finally, you can implement the {class}`~ray.tune.stopper.Stopper` interface to stop individual trials or entire experiments based on custom stopping criteria. For example, the following stopper stops all trials once any individual trial meets the criteria, and prevents new trials from starting:
+You can implement the {class}`~ray.tune.stopper.Stopper` interface to stop individual trials or entire experiments based on custom stopping criteria. For example, the following stopper stops all trials once any individual trial meets the criteria, and prevents new trials from starting:
 
 ```{literalinclude} /tune/doc_code/stopping.py
 :language: python
@@ -84,7 +84,7 @@ Finally, you can implement the {class}`~ray.tune.stopper.Stopper` interface to s
 :end-before: __stopping_cls_end__
 ```
 
-In this example, once any trial reaches a `mean_accuracy` of 0.8 or more, all trials stop.
+In this example, once any trial reaches a `mean_accuracy` of `0.8` or more, all trials stop.
 
 :::{note}
 When `stop_all` returns `True`, running trials don't stop immediately. Each one stops at the end of its ongoing training iteration, after its next `tune.report` call or `step`.
@@ -116,7 +116,7 @@ If the training loop hangs, Tune can't intercept the training and stop the trial
 
 ### Stop the experiment with a timeout
 
-To stop the experiment after `time_budget_s` seconds, set `TuneConfig(time_budget_s)`.
+To stop the experiment after `time_budget_s` seconds, set `time_budget_s` in `tune.TuneConfig`.
 
 ```{literalinclude} /tune/doc_code/stopping.py
 :language: python
@@ -132,7 +132,7 @@ If you use the {ref}`function trainable API <tune-function-api>`, include some i
 
 Besides stopping trials based on their performance, you can stop the entire experiment if any trial encounters a runtime error. To do this, use the {class}`ray.tune.FailureConfig` class.
 
-With this configuration, the entire experiment stops immediately if any trial encounters an error.
+With `FailureConfig(fail_fast=True)`, the entire experiment stops immediately if any trial encounters an error.
 
 ```{literalinclude} /tune/doc_code/stopping.py
 :language: python
@@ -158,7 +158,7 @@ The following example combines a dictionary of stopping criteria with an early-s
 
 ## Summary
 
-This guide covered how to stop Tune experiments with metrics, trial errors, and early-stopping schedulers.
+This guide covered how to stop Tune experiments manually, with metrics, after a time limit, on trial errors, and with early-stopping schedulers.
 
 See the following resources for more information:
 

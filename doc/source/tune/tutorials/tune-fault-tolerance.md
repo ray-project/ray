@@ -167,7 +167,7 @@ The following example configures {class}`~ray.tune.FailureConfig` for the `train
 
 With this configuration, when a trial encounters a runtime error, Tune reschedules that trial up to `max_failures=3` times.
 
-Similarly, if node `X` fails, for example because it's preempted or loses its connection, Tune reschedules all trials that ran on node `X` up to `3` times.
+Similarly, if node `X` fails, for example because it's preempted or loses its connection, Tune reschedules all trials that ran on node `X` up to three times.
 
 ## Summary
 

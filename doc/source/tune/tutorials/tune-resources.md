@@ -72,7 +72,7 @@ Tune uses the resources you specify this way only to schedule trials. It doesn't
 
 ## Use GPUs in Tune
 
-To use GPUs, set `gpu` in `tune.with_resources(trainable, resources_per_trial)`. Setting `gpu` also sets `CUDA_VISIBLE_DEVICES` for each trial automatically.
+To use GPUs, set `gpu` in `tune.with_resources(trainable, resources)`. Setting `gpu` also sets `CUDA_VISIBLE_DEVICES` for each trial automatically.
 
 ```python
 # If you have 8 GPUs, this will run 8 trials at once.
@@ -108,7 +108,7 @@ A new trial might occasionally run into GPU memory issues. The cause might be th
 
 To tune distributed training jobs, you can use Ray Tune with Ray Train. Tune runs multiple trials in parallel, and each trial runs distributed training with Ray Train.
 
-For more details, see {ref}`Ray Train Hyperparameter Optimization <train-tune>`.
+For more details, see {ref}`Hyperparameter tuning with Ray Tune <train-tune>`.
 
 ## Limit concurrency in Tune
 

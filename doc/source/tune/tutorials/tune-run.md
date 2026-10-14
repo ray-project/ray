@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Run basic Tune experiments with independent trials in parallel, and how Tune compares to writing the same sweep with Ray Core tasks."
+    description: "Run basic Tune experiments with independent trials in parallel, and compare Tune with writing the same sweep with Ray Core tasks."
 ---
 
 (tune-parallel-experiments-guide)=
@@ -22,7 +22,7 @@ The following example uses Tune to run `N` independent model training trials as 
 :end-before: __step1_end__
 ```
 
-**Step 2:** Define the space of trials to run. This example defines a grid sweep from `0..NUM_MODELS`, which generates the configuration dictionaries that Tune passes to each model function. To learn about the features Tune offers for defining search spaces, see {ref}`tune-search-space-tutorial`.
+**Step 2:** Define the space of trials to run. This example defines a grid sweep from `0..NUM_MODELS`, which generates the configuration dictionaries that Tune passes to the training function. To learn about the features Tune offers for defining search spaces, see {ref}`tune-search-space-tutorial`.
 
 ```{literalinclude} ../doc_code/tune.py
 :language: python
@@ -91,8 +91,8 @@ You can also run trials in parallel with Ray Core {ref}`tasks <ray-remote-functi
 
 Compared to Ray tasks, Tune offers the following additional features:
 
-* Status reporting and tracking, including integrations and callbacks to common monitoring tools.
-* Checkpointing of trials for fine-grained fault tolerance.
-* Gang scheduling of multi-worker trials.
+* Status reporting and tracking, including integrations and callbacks to common monitoring tools
+* Checkpointing of trials for fine-grained fault tolerance
+* Gang scheduling of multi-worker trials
 
 Consider using Tune if you need status tracking or support for more advanced ML workloads.
