@@ -12,6 +12,7 @@ import fcntl
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -217,17 +218,60 @@ def _reap(state_dir: Path, detach: bool = False) -> None:
             time.sleep(1)
 
 
+# gVisor gives a sandbox at least this many vCPUs, because some applications
+# drop locking on a single CPU. runsc applies the same floor when it sizes a
+# sandbox from a cgroup quota.
+_MIN_SANDBOX_CPUS = 2
+
+
+def _pool_cpus(root: Path) -> Set[int]:
+    """CPUs that sandboxes in the shared pool may run on."""
+    effective = root / "cpuset.cpus.effective"
+    if effective.exists():
+        return _cpus(_read(effective))
+    return set(os.sched_getaffinity(0))
+
+
+def _shared_affinity(cpu: float, pool: Set[int], leases: List[Dict]) -> List[int]:
+    """CPUs for a shared sandbox's affinity, or [] to leave it unrestricted.
+
+    gVisor sizes a sandbox's vCPUs from the CPUs the sandbox may run on, not
+    from its cgroup quota, so a shared sandbox sees every CPU in ``nproc``
+    and tools size their worker pools for the whole node. Restricting it to
+    ``max(2, ceil(cpu))`` CPUs makes ``nproc`` match its budget. The CPUs
+    that the fewest other shared sandboxes use are chosen, so sandboxes
+    spread over the pool.
+    """
+    count = max(_MIN_SANDBOX_CPUS, math.ceil(cpu))
+    if count >= len(pool):
+        return []
+    load = {c: 0 for c in pool}
+    for record in leases:
+        for c in record.get("affinity", ()):
+            if c in load:
+                load[c] += 1
+    return sorted(sorted(load, key=lambda c: (load[c], c))[:count])
+
+
 class SandboxCgroup:
     """An enforced sandbox budget and optional exclusive-core allocation."""
 
-    def __init__(self, path: Path, state_dir: Path, limits: Dict[str, str]):
+    def __init__(
+        self,
+        path: Path,
+        state_dir: Path,
+        limits: Dict[str, str],
+        affinity: Optional[List[int]] = None,
+    ):
         self.path = path
         self.state_dir = state_dir
         self.limits = limits
+        self.affinity = affinity or []
 
     def wrap(self, command: List[str]) -> List[str]:
         launcher = Path(__file__).with_name("cgroup_launcher.py")
-        return [sys.executable, "-S", str(launcher), str(self.path), *command]
+        cpus = ["--cpus", _cpu_list(set(self.affinity))] if self.affinity else []
+        return [sys.executable, "-S", str(launcher), str(self.path), *cpus, *command]
 
     def verify(self, pid: int) -> None:
         if "cpuset.cpus" in self.limits and _read(
@@ -408,6 +452,11 @@ class SandboxCgroupManager:
                 # per physical core. nproc agrees with the integer CPU budget.
                 limits["cpuset.mems"] = _read(root / "cpuset.mems.effective")
                 limits["cpuset.cpus"] = _cpu_list({min(core) for core in selected})
+            affinity = (
+                _shared_affinity(cpu, _pool_cpus(root), [r for _, r in leases])
+                if isolation == "shared" and cpu > 0
+                else []
+            )
             path = root / sandbox_id
             record_path = self.state_dir / f"{sandbox_id}.json"
             if path.exists() or record_path.exists():
@@ -417,6 +466,7 @@ class SandboxCgroupManager:
                 "owner_pid": os.getpid(),
                 "owner_starttime": _process_identity(os.getpid()),
                 "reserved_cpus": sorted(reserved),
+                "affinity": affinity,
                 # What the reaper deletes after killing an orphan: the
                 # runsc command prefix for `delete -force`, and paths.
                 "cleanup": cleanup or {},
@@ -428,7 +478,7 @@ class SandboxCgroupManager:
             temporary = record_path.with_suffix(".tmp")
             temporary.write_text(json.dumps(record))
             temporary.replace(record_path)
-            cgroup = SandboxCgroup(path, self.state_dir, limits)
+            cgroup = SandboxCgroup(path, self.state_dir, limits, affinity)
             try:
                 path.mkdir()
                 for name, value in limits.items():

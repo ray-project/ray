@@ -90,6 +90,47 @@ def test_fractional_cpu_and_memory_are_enforced_together(manager):
     assert not lease.path.exists()
 
 
+def test_shared_sandboxes_run_on_a_spread_cpu_subset(manager):
+    first = manager.allocate("ray-sandbox-000000000001", 1, 0, "shared")
+    second = manager.allocate("ray-sandbox-000000000002", 0.5, 0, "shared")
+    third = manager.allocate("ray-sandbox-000000000003", 1.5, 0, "shared")
+    # At least two CPUs each, least-used first.
+    assert (first.affinity, second.affinity, third.affinity) == ([0, 1], [2, 3], [0, 1])
+    assert first.wrap(["runsc"])[4:] == ["--cpus", "0,1", "runsc"]
+    # A budget the size of the pool, or no CPU limit, stays unrestricted.
+    whole = manager.allocate("ray-sandbox-000000000004", 4, 0, "shared")
+    memory_only = manager.allocate("ray-sandbox-000000000005", 0, 1 << 30, "shared")
+    assert whole.affinity == memory_only.affinity == []
+    assert whole.wrap(["runsc"])[4:] == ["runsc"]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Needs sched_setaffinity")
+def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
+    (tmp_path / "cgroup.procs").write_text("")
+    cpu = min(os.sched_getaffinity(0))
+    launcher = Path(cgroup.__file__).with_name("cgroup_launcher.py")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(launcher),
+            str(tmp_path),
+            "--cpus",
+            str(cpu),
+            sys.executable,
+            "-c",
+            "import os; print(sorted(os.sched_getaffinity(0)), os.getpid())",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    affinity, pid = result.stdout.rsplit(" ", 1)
+    assert affinity == str([cpu])
+    # The launcher wrote its own PID, which exec kept for the command.
+    assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
+
+
 def test_workers_reserve_all_smt_siblings_and_do_not_overlap(manager):
     first = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
     # A second manager models an independent worker process on the same node.

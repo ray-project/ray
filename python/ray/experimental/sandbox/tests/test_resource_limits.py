@@ -73,6 +73,21 @@ def test_busy_workers_cannot_exceed_cpu_bandwidth(network, request):
 
 
 @pytest.mark.parametrize("network", ["none", "public"])
+def test_shared_sandbox_reports_its_cpu_budget(network, request):
+    """nproc reports max(2, ceil(cpu)) instead of every CPU on the node."""
+    if network == "public":
+        request.getfixturevalue("ensure_slirp4netns")
+    if len(os.sched_getaffinity(0)) <= 3:
+        pytest.skip("Needs more than three CPUs")
+    for cpu, expected in ((1, "2"), (2.5, "3")):
+        runtime, sid = _create(network, cpu=cpu)
+        try:
+            assert runtime.exec(sid, "nproc").stdout.strip() == expected
+        finally:
+            runtime.delete(sid)
+
+
+@pytest.mark.parametrize("network", ["none", "public"])
 def test_memory_limit_contains_oom_and_preserves_worker(network, request):
     if network == "public":
         request.getfixturevalue("ensure_slirp4netns")
