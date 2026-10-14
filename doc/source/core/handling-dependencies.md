@@ -1072,3 +1072,9 @@ ray.init(runtime_env={"pip": ["requests"]})
 ```
 
 For more details, see {ref}`Log files in logging directory <logging-directory-structure>`.
+
+```{toctree}
+:hidden:
+
+runtime-env-auth
+```
