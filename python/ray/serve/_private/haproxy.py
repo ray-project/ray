@@ -1349,7 +1349,6 @@ class HAProxyApi(ProxyApi):
             # so lowercase here for the Lua lookup. Empty string disables
             # forwarding entirely.
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
-            ORIGINAL_METHOD_HEADER=SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
             REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
