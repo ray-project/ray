@@ -442,7 +442,7 @@ Cancellation behavior depends on the task's current state:
 - **Running tasks on regular or threaded actors**: For tasks on a single-threaded or multi-threaded actor, Ray sets a cancellation flag that you can check with `ray.get_runtime_context().is_canceled()`. To cancel gracefully, check the cancellation status periodically within the task.
 - **Running async actor tasks**: For tasks on {ref}`async actors <async-actors>`, Ray tries to cancel the associated `asyncio.Task`. This cancellation follows the semantics of [asyncio task cancellation](https://docs.python.org/3/library/asyncio-task.html#task-cancellation). If the async function doesn't `await`, the `asyncio.Task` isn't interrupted in the middle of execution. Async actors don't support `ray.get_runtime_context().is_canceled()`, and calling it raises a `RuntimeError`.
 - **Cancellation guarantee**: Ray attempts to cancel tasks on a *best-effort* basis, so cancellation isn't always guaranteed. For example, if the cancellation request doesn't reach the executor, Ray might not cancel the task. To check whether Ray cancelled the task, call `ray.get(actor_task_ref)`.
-- **Recursive cancellation**: Ray tracks all child tasks and actor tasks. When you pass `recursive=True`, Ray cancels all child tasks and actor tasks.
+- **Recursive cancellation**: Ray tracks all child tasks and actor tasks. By default, Ray cancels all child tasks and actor tasks. To cancel only the target task, pass `recursive=False`.
 
 ### Detecting cancellation in running actor tasks
 

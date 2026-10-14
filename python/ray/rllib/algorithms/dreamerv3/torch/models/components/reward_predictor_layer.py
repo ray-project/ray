@@ -69,7 +69,7 @@ class RewardPredictorLayer(nn.Module):
         # self.reward_buckets_layer.weight.data.fill_(0.0)
         # self.reward_buckets_layer.bias.data.fill_(0.0)
 
-    def forward(self, inputs, return_logits=False):
+    def forward(self, inputs: "torch.Tensor", return_logits: bool = False):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:

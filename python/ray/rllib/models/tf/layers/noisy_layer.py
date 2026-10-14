@@ -31,10 +31,10 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
         """Initializes a NoisyLayer object.
 
         Args:
-            prefix:
+            prefix: Name prefix for this layer's variables.
             out_size: Output size for Noisy Layer
             sigma0: Initialization value for sigma_b (bias noise)
-            non_linear: Non-linear activation for Noisy Layer
+            activation: Non-linear activation for Noisy Layer
         """
         super().__init__()
         self.prefix = prefix

@@ -49,7 +49,7 @@ The following fault-tolerant version returns `x` directly. In this example, the 
 :end-before: __return_directly_end__
 ```
 
-Third, avoid {ref}`custom resource requirements <custom-resources>` that only particular nodes can satisfy. If that node fails, Ray won't retry the running tasks or actors.
+Third, avoid {ref}`custom resource requirements <custom-resources>` that only particular nodes can satisfy. If that node fails, Ray can't retry the running tasks or actors on other nodes.
 
 ```{literalinclude} ../doc_code/fault_tolerance_tips.py
 :language: python

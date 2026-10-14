@@ -60,7 +60,7 @@ In these cases, you can use a remote generator function that returns a *dynamic*
 :end-before: __dynamic_generator_end__
 ```
 
-You can also pass the `ObjectRef` that a task with `num_returns="dynamic"` returns to another task. The receiving task gets the `DynamicObjectRefGenerator`, which it can use to iterate over the original task's return values. Similarly, you can pass the `DynamicObjectRefGenerator` itself as a task argument.
+You can also pass the `ObjectRef` that a task with `num_returns="dynamic"` returns to another task. The receiving task gets the `DynamicObjectRefGenerator`, which it can use to iterate over the original task's return values. You can also pass the `DynamicObjectRefGenerator` itself as a task argument, but avoid this pattern. Getting the generator takes an extra `ray.get` call, which blocks the driver.
 
 ```{literalinclude} ../doc_code/generator.py
 :language: python

@@ -388,7 +388,7 @@ Placement groups can add placement constraints among bundles.
 
 For example, you might want to pack your bundles onto the same node, or spread them out across multiple nodes as much as possible. Specify the strategy with the `strategy` argument. This way, you can make sure that Ray schedules your actors and tasks with certain placement constraints.
 
-The following example creates a placement group of two bundles with a PACK strategy, so both bundles have to be created on the same node. PACK is a soft policy. If Ray can't pack the bundles onto a single node, it spreads them to other nodes. To avoid this problem, use the `STRICT_PACK` policy instead, which fails to create the placement group if Ray can't satisfy the placement requirements.
+The following example creates a placement group of two bundles with a PACK strategy, so Ray tries to create both bundles on the same node. PACK is a soft policy. If Ray can't pack the bundles onto a single node, it spreads them to other nodes. To avoid this problem, use the `STRICT_PACK` policy instead, which fails to create the placement group if Ray can't satisfy the placement requirements.
 
 ```{literalinclude} ../doc_code/placement_group_example.py
 :language: python
@@ -746,7 +746,7 @@ ray start --labels="ray.io/gpu-domain=rack-1"
 
 Many GB200 and GB300 clusters use Kubernetes as their scheduler. The NVIDIA GPU Operator exposes an identifier for each NVLink domain with the node label `nvidia.com/gpu.clique` from GPU Feature Discovery.
 
-If your Ray workers run in Pods, you can use the Kubernetes Downward API to set an environment variable such as `NVIDIA_GPU_CLIQUE` to the value of the `nvidia.com/gpu.clique` node label, which enables the NVLink domain-aware placement groups feature.
+If your Ray workers run in Pods, you can use the Kubernetes Downward API to set an environment variable such as `NVIDIA_GPU_CLIQUE` to the value of the `nvidia.com/gpu.clique` node label. Then pass that value as the `ray.io/gpu-domain` label when you start the worker, as the following example shows.
 
 For example, a Ray worker's start command might look like this:
 

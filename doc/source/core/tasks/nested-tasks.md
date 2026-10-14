@@ -29,7 +29,7 @@ Calling `g` and `h` produces the following output:
 ```
 
 :::{note}
-Define `f` before you define `g` and `h`. As soon as you define `g`, Ray pickles it and ships it to the workers. If you haven't defined `f` yet, the definition of `g` is incomplete.
+Define `f` before you first call `g.remote()` or `h.remote()`. Ray pickles `g` and ships it to the workers the first time you call `g.remote()`. If you haven't defined `f` by then, the definition of `g` is incomplete.
 :::
 
 ## Yielding resources while blocked

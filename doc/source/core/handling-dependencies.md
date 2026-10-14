@@ -371,7 +371,7 @@ Keep the following best practices and tips in mind when you use uv:
 
 Ray implements `uv run` support with a low-level runtime environment plugin called `py_executable`. This plugin specifies the Python executable, including its arguments, that Ray starts workers in. For uv, Ray sets `py_executable` to `uv run` with the same parameters that you used to run the driver. Ray also uses the `working_dir` runtime environment to propagate the driver's working directory, including the `pyproject.toml`, to the workers. As a result, uv can set up the right dependencies and environment for the workers to run in. In some advanced use cases, you might want to use the `py_executable` mechanism directly in your programs:
 
-- **Applications with heterogeneous dependencies**: Ray supports a different runtime environment for each task or actor. This is useful for deploying different inference engines, models, or microservices in different [Ray Serve deployments](https://docs.ray.io/en/latest/serve/production-guide/handling-dependencies.html#dependencies-per-deployment), and for heterogeneous data pipelines in Ray Data. To implement this, specify a different `py_executable` for each runtime environment, and use `uv run` with a different `--project` parameter for each. Alternatively, use a different `working_dir` for each environment.
+- **Applications with heterogeneous dependencies**: Ray supports a different runtime environment for each task or actor. This is useful for deploying different inference engines, models, or microservices in different [Ray Serve deployments](../serve/production-guide/handling-dependencies.md#dependencies-per-deployment), and for heterogeneous data pipelines in Ray Data. To implement this, specify a different `py_executable` for each runtime environment, and use `uv run` with a different `--project` parameter for each. Alternatively, use a different `working_dir` for each environment.
 
 - **Customizing the command the worker runs in**: You might want to pass uv special arguments on the workers that the driver doesn't use. Or you might want to run processes with `poetry run`, a build system such as Bazel, a profiler, or a debugger. In these cases, specify the executable the worker runs in through `py_executable`. The executable can even be a shell script stored in `working_dir`, if you want to wrap multiple processes in more complex ways.
 
@@ -601,13 +601,22 @@ The `runtime_env` is a Python dictionary or a {class}`ray.runtime_env.RuntimeEnv
 
   - Example: `{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}`
 
-- `image_uri` (dict): Requires a given Docker image. The worker process runs in a container with this image.
+- `image_uri` (str): Requires a given Docker image. The worker process runs in a container with this image.
 
   - Example: `{"image_uri": "anyscale/ray:2.53.0-py310-cpu"}`
 
   :::{note}
   `image_uri` is experimental. If you have requirements or run into problems, open an issue on [GitHub](https://github.com/ray-project/ray/issues).
   :::
+
+  **Podman prerequisites on VM workers**
+
+  Ray invokes `podman` to start the worker container. On every VM worker, do the following:
+
+  - Install Podman and make sure the `podman` command is on the `PATH` of the Ray process, including the raylet and runtime environment subprocesses.
+  - Configure rootful Podman. Ray requires this mode because it uses the host network, PID, and IPC namespaces for worker containers.
+  - If Ray runs as a non-root user, configure a `podman` wrapper that invokes rootful Podman with narrowly scoped `sudo` permission and removes the rootless-only `--userns=keep-id` argument. The wrapper must preserve all other arguments exactly.
+  - Allow outbound network access from the worker so Podman can pull the requested image.
 
 - `config` (dict | {class}`ray.runtime_env.RuntimeEnvConfig <ray.runtime_env.RuntimeEnvConfig>`): Configuration for the runtime environment, as either a dict or a `RuntimeEnvConfig`. It supports the following fields:
 
@@ -792,7 +801,7 @@ Keep three more things in mind when you use a `local://` URI:
 
 The `working_dir` and `py_modules` arguments in the `runtime_env` dictionary can specify either local paths or remote URIs.
 
-A local path must be a directory path. Ray accesses the directory's contents directly as the `working_dir` or a `py_module`. A remote URI must link directly to a zip file or, for `py_module` only, a wheel file. The zip file must contain only a single top-level directory. Ray accesses the contents of this directory directly as the `working_dir` or a `py_module`.
+A local path can be a directory, or a file where the API reference allows one, such as a local archive for `working_dir` or a `.whl` file for `py_modules`. Ray accesses a directory's contents directly as the `working_dir` or a `py_module`. A remote URI must link directly to a `.zip`, `.tar.gz`, `.tgz`, or `.tar.xz` archive or, for `py_module` only, a wheel file. The archive must contain only a single top-level directory. Ray accesses the contents of this directory directly as the `working_dir` or a `py_module`.
 
 For example, suppose you want to use the contents of your local `/some_path/example_dir` directory as your `working_dir`. To specify this directory as a local path, include the following in your `runtime_env` dictionary:
 

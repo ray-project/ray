@@ -54,7 +54,7 @@ Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Po
 
 ## TPU workload scheduling
 
-After Ray deploys a Pod with TPU resources, the Pod can execute tasks and actors annotated with TPU requests. Ray supports TPUs as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources). Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
+After Ray deploys a Pod with TPU resources, the Pod can execute tasks and actors annotated with TPU requests. Ray supports TPUs as a {ref}`custom resource <custom-resources>`. Tasks or actors request TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
 
 ### TPU default labels
 
@@ -90,7 +90,7 @@ Going even further, the new TPU utility library leverages the default node label
 
 #### `SlicePlacementGroup`
 
-The `SlicePlacementGroup` class provides a high-level interface to reserve one or more complete, available TPU slices and create a Ray [Placement Group](https://docs.ray.io/en/latest/ray-core/scheduling/placement-group.html) constrained to those slices. This guarantees that all bundles within the placement group (and thus the tasks/actors scheduled on them) run on workers belonging to the reserved physical TPU slices.
+The `SlicePlacementGroup` class provides a high-level interface to reserve one or more complete, available TPU slices and create a Ray [Placement Group](../../core/scheduling/placement-group.md) constrained to those slices. This guarantees that all bundles within the placement group (and thus the tasks/actors scheduled on them) run on workers belonging to the reserved physical TPU slices.
 
 **How it works:**
 

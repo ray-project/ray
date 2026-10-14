@@ -141,8 +141,13 @@ def _build_multi_agent_batch(
     """Build MultiAgentBatch from a dict of _PolicyCollectors.
 
     Args:
-        env_steps: total env steps.
-        policy_collectors: collected training SampleBatchs by policy.
+        episode_id: ID of the episode the collected data belongs to.
+        batch_builder: Group of per-policy collectors holding the collected
+            training SampleBatches.
+        large_batch_threshold: Number of agent steps above which a warning
+            about unexpectedly large batches is logged.
+        multiple_episodes_in_batch: Whether more than one episode is allowed
+            per built batch. Only used to refine the above warning message.
 
     Returns:
         Always returns a sample batch in MultiAgentBatch format.
@@ -217,7 +222,8 @@ class EnvRunnerV2:
         count_steps_by: str = "env_steps",
         render: bool = None,
     ):
-        """
+        """Initializes an EnvRunnerV2 instance.
+
         Args:
             worker: Reference to the current rollout worker.
             base_env: Env implementing BaseEnv.
@@ -323,8 +329,8 @@ class EnvRunnerV2:
         """Samples and yields training episodes continuously.
 
         Yields:
-            Object containing state, action, reward, terminal condition,
-            and other fields as dictated by `policy`.
+            SampleBatchType: Object containing state, action, reward, terminal
+            condition, and other fields as dictated by `policy`.
         """
         while True:
             outputs = self.step()
@@ -748,6 +754,7 @@ class EnvRunnerV2:
         Args:
             env_id: The env id.
             obs: The Resetted obs.
+            infos: The infos dict returned by the env's reset call.
             episode: New episode.
             to_eval: List of agent connector data for policy eval.
         """
@@ -800,7 +807,6 @@ class EnvRunnerV2:
         Args:
             env_id: Environment ID.
             env_obs_or_exception: Last per-environment observation or Exception.
-            env_infos: Last per-environment infos.
             is_done: If all agents are done.
             active_envs: Set of active env ids.
             to_eval: Output container for policy eval data.
@@ -1214,9 +1220,8 @@ def _get_or_raise(
     """Returns an object under key `policy_id` in `mapping`.
 
     Args:
-        mapping (Dict[PolicyID, Union[Policy, Preprocessor, Filter]]): The
-            mapping dict from policy id (str) to actual object (Policy,
-            Preprocessor, etc.).
+        mapping: The mapping dict from policy id (str) to actual object
+            (Policy, Preprocessor, etc.).
         policy_id: The policy ID to lookup.
 
     Returns:

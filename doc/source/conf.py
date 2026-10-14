@@ -133,21 +133,20 @@ llms_txt_exclude = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/doc/*",
-    "rllib/package_ref/env/doc/*",
+    "rllib/api/doc/*",
+    "rllib/api/env/doc/*",
+    "ray-more-libs/api/doc/*",
     # Deprecated pages: surfacing a superseded API/guide to an agent is worse
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
     "train/deprecated-user-guides/*",
-    # Retired Ray AIR namespace: orphaned, no longer in the site nav.
-    "ray-air/deployment",
     # Include-only fragments spliced into other pages (no standalone title).
     "train/common/*",
     "ray-contribute/involvement",
     # Helper/utility code files and raw scripts rendered as pages — code, not
     # docs; the real guide pages that literalinclude them are kept.
     "train/user-guides/_collate_utils",
-    "tune/examples/pbt_visualization/pbt_visualization_utils",
+    "tune/examples/pbt-visualization/pbt-visualization-utils",
     "cluster/vms/user-guides/community/slurm-*",
     # Thin literalinclude example stubs (a heading + a code block, no prose).
     "tune/examples/includes/*",
@@ -212,8 +211,6 @@ llms_txt_exclude += [
     "train/api/transformers",
     "train/api/tune-integration",
     "train/api/xgboost",
-    "train/examples/pytorch/torch_regression_example",
-    "train/examples/tf/tensorflow_regression_example",
     "tune/api/api",
     "tune/api/execution",
     "tune/api/integration",
@@ -263,8 +260,9 @@ remove_from_toctrees = [
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/doc/*",
-    "rllib/package_ref/env/doc/*",
+    "rllib/api/doc/*",
+    "rllib/api/env/doc/*",
+    "ray-more-libs/api/doc/*",
 ]
 
 myst_enable_extensions = [
@@ -431,6 +429,9 @@ exclude_patterns = [
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
     "serve/tutorials/video-analysis/*.ipynb",
+    # Unpublished until the example is rebuilt on current diffusers. A
+    # temporary redirect in doc/redirects/current.yaml covers the old URL.
+    "train/examples/pytorch/dreambooth-finetuning.md",
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
@@ -705,7 +706,7 @@ def add_custom_assets(
     ]:
         return "examples.html"
 
-    if pagename == "train/train":
+    if pagename == "train/index":
         app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
