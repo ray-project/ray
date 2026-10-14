@@ -37,10 +37,10 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Linux**: x86_64 or arm64.
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
-* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
+* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it. Nodes that [build images](#build-images) need 1.8 or later, which adds the `mkfs.erofs --incremental` option the builder uses to apply each layer.
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. Ubuntu 24.04 packages erofs-utils 1.7, which can't build images; build a release from source to build images there. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
 
 For example, the following Dockerfile adds all three tools to a Ray image for nodes with 4 KiB pages. Ray's images are based on Ubuntu 22.04, whose `erofs-utils` is too old, so it builds erofs-utils from source. It does so in a separate stage, so the build tools stay out of the final image. On an Ubuntu 24.04 or Debian 13 base image, `apt-get install erofs-utils` instead:
 
@@ -337,7 +337,43 @@ Sandboxes boot from OCI container images. The image manager pulls an image strai
 
 ### Bound the image cache
 
-The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before pulling or building an image it doesn't have, Ray evicts the least recently used images until the cache fits under the cap. Built images and their layers count toward the same cap. A built image is evicted in two steps: first its root filesystem goes, while its layers stay, so the next sandbox that needs it rebuilds it from the cached layers without running any build step again. Its layers go only if the cache is still over the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+
+### Build images
+
+The Modal-compatible `Image` can add build steps on top of a base image, such as `run_commands()`, `pip_install()`, `apt_install()`, `uv_pip_install()`, and `add_local_dir(..., copy=True)`. The node that runs a sandbox builds the image the first time it needs it, then caches it like any other image:
+
+```python
+from ray.experimental.sandbox import modal
+
+image = (
+    modal.Image.debian_slim("3.12")
+    .apt_install("git")
+    .pip_install("numpy", "pandas")
+    .run_commands("python -c 'import numpy'")
+)
+sandbox = modal.Sandbox.create(image=image, timeout=300)
+```
+
+Each build step becomes a cached layer:
+
+* The step runs in a short-lived build sandbox on the image so far, with public network access, as root, and with the image's environment and working directory.
+* Ray records what the step changed, as an OCI layer, and appends it to the image.
+* A layer's cache key covers the base image, every earlier step, and the step itself, including the content of any copied files. Two images that share their first steps therefore share those layers, and changing the last step only rebuilds the last step.
+* Later sandboxes on the node, and other images with the same leading steps, reuse the cached layers. A sandbox on a fully cached image starts as fast as one on a pulled image.
+
+The commands match Modal's image builder version 2025.06, so a step installs what it would on Modal.
+
+A few things differ from Modal:
+
+* **Builds happen per node.** Each node builds the images its sandboxes need, so the first sandbox on a node waits for the build. Build output goes to the sandbox actor's log. A node builds at most two images at a time; set `RAY_SANDBOX_IMAGE_BUILD_CONCURRENCY` on worker nodes to change that, or to `0` for no limit. Each build step may run for an hour; set `RAY_SANDBOX_IMAGE_BUILD_TIMEOUT_SECONDS` to change that. Build sandboxes may use the whole node; set `RAY_SANDBOX_IMAGE_BUILD_CPU` (CPUs) and `RAY_SANDBOX_IMAGE_BUILD_MEMORY` (for example `8Gi`) to cap them.
+* **Nodes can build different files from one image definition.** Modal builds each image once and runs the result everywhere. Here each node runs the build steps itself, so a step whose inputs change over time can produce different files on different nodes, or on one node after its cache evicted the step. Steps that copy local files always produce the same files on every node. Other steps produce the same files when you pin what they fetch:
+  * Base images: reference them by digest alone, such as `Image.from_registry("python@sha256:...")`. A tag resolves when a node first pulls it, and again after the node evicts it.
+  * Python packages: pin exact versions (`pip_install("numpy==2.1.3")`), install from a requirements file with `--require-hashes`, or use `uv_sync(frozen=True)` with a `uv.lock`. Set `uv_version=` rather than relying on `uv`'s `latest` tag.
+  * Debian packages: `apt-get update` fetches whatever the mirror holds at build time. Pin package versions, or point apt at a snapshot mirror such as `snapshot.debian.org`.
+* **`force_build=True` rebuilds once per `Image` object on each node, not on every sandbox.** As on Modal, a rebuilt layer also invalidates the layers built on it in other images.
+* **Steps can't use Modal Secrets, volumes, or GPUs.** The `env=` argument of a build step reaches only that step, as Modal's does.
+* **Some builders aren't available yet.** Dockerfile parsing (`dockerfile_commands()`, `from_dockerfile()`) and `run_function()` aren't supported yet.
 
 ### Route Docker Hub pulls through a mirror
 
@@ -358,6 +394,135 @@ Keep the following in mind:
 * **A bare host means HTTPS.** Write an explicit `http://` prefix for a plain-HTTP mirror, which an in-cluster `registry:2` proxy typically is.
 * **The mirror is authoritative.** Unlike Docker's registry-mirrors behavior, Ray does not fall back to Docker Hub. If the mirror is unreachable or does not contain the image, the pull fails.
 * **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow. If your mirror normally requires authentication, expose it to Ray through network-level access instead, such as a VPC endpoint or cluster-internal service.
+
+(ray-sandbox-modal-api)=
+
+## Modal-compatible API
+
+`ray.experimental.sandbox.modal` presents the [Modal Sandbox API](https://modal.com/docs/guide/sandbox) on top of Ray Sandboxes. Use it to move an existing Modal-based agent or RL workload onto a Ray cluster without rewriting its call sites, or when you want a live process handle rather than the buffered `ExecResult` that {func}`~ray.experimental.sandbox.create` returns.
+
+The two APIs differ in shape. The core API gives you an `ActorHandle`, so every call goes through `ray.get(...)`. The Modal-compatible API gives you an object with ordinary methods, and `exec()` returns a process you can stream from and write to while it runs:
+
+```python
+from ray.experimental.sandbox import modal
+
+sandbox = modal.Sandbox.create(image="python:3.13-slim", timeout=120)
+
+# Output arrives as the command produces it, not only when it exits.
+process = sandbox.exec("bash", "-c", "for i in 1 2 3; do echo step $i; sleep 1; done")
+for line in process.stdout:
+    print(line, end="")
+assert process.wait() == 0
+
+sandbox.terminate()
+```
+
+### Streams and stdin
+
+`exec()` returns a `ContainerProcess` whose `stdout` and `stderr` you can read whole or iterate, and whose `stdin` accepts input while the command runs:
+
+```python
+process = sandbox.exec("cat")
+process.stdin.write(b"piped in\n")
+process.stdin.write_eof()
+process.stdin.drain()
+print(process.stdout.read())  # "piped in\n"
+process.wait()
+```
+
+Pass `stdout=modal.StreamType.DEVNULL` to discard a stream, or `StreamType.STDOUT` to have it printed locally as it arrives. Use `text=False` for bytes instead of decoded text, and `bufsize=1` to iterate a line at a time.
+
+Reading consumes, as in Modal's client from 1.6: a `StreamReader` keeps one position, which `read()` and every loop over it share, so each byte comes back once. A second `read()` after the end returns empty, and a loop that breaks off part-way is continued exactly by the next `read()` or loop.
+
+### Filesystem
+
+`sandbox.filesystem` is a full path-based namespace. All paths must be absolute:
+
+```python
+sandbox.filesystem.write_text("hello\n", "/tmp/hello.txt")
+print(sandbox.filesystem.read_text("/tmp/hello.txt"))
+
+info = sandbox.filesystem.stat("/tmp/hello.txt")
+print(info.name, info.size, info.permissions)
+
+for entry in sandbox.filesystem.list_files("/tmp"):
+    print(entry.name, entry.type)
+
+sandbox.filesystem.make_directory("/tmp/a/b/c")
+sandbox.filesystem.copy_from_local("local.json", "/tmp/input.json")
+sandbox.filesystem.copy_to_local("/tmp/output.txt", "local_output.txt")
+sandbox.filesystem.remove("/tmp/a", recursive=True)
+```
+
+Failures raise typed errors — `SandboxFilesystemNotFoundError`, `SandboxFilesystemIsADirectoryError`, `SandboxFilesystemNotADirectoryError`, `SandboxFilesystemDirectoryNotEmptyError`, `SandboxFilesystemPathAlreadyExistsError`, and `SandboxFilesystemPermissionError` — all deriving from `SandboxFilesystemError`.
+
+Note that the write methods take the data first, matching Modal: `write_text(data, remote_path)`.
+
+### Async
+
+Every method blocks by default and also carries an `.aio` variant that you can await from any event loop:
+
+```python
+import asyncio
+from ray.experimental.sandbox import modal
+
+async def main():
+    sandbox = await modal.Sandbox.create.aio(image="python:3.13-slim")
+    process = await sandbox.exec.aio("echo", "hello")
+    async for line in process.stdout:
+        print(line, end="")
+    await process.wait.aio()
+    await sandbox.terminate.aio()
+
+asyncio.run(main())
+```
+
+As on Modal, the work behind both forms runs on one background event loop, and an `.aio` call awaits it from yours. So you can mix the blocking and `.aio` forms on one object, read a stream part-way in one `asyncio.run()` and finish it in the next, and a `StreamType.STDOUT` process keeps printing after your loop ends. Cancelling an `.aio` call, or a timeout around it, cancels the work and waits for it to clean up first. A blocking call made inside a running event loop stalls that loop, and warns with `modal.exception.AsyncUsageWarning`, as on Modal.
+
+### Exit codes
+
+`Sandbox.returncode` reflects the most recent `wait()` or `poll()` and follows Modal's conventions:
+
+| Outcome | Exit code |
+| --- | --- |
+| Main process exited normally | Its own exit code |
+| Main process killed by signal *N* | `128 + N` |
+| Sandbox hit its `timeout` | `124`, and `wait()` raises `SandboxTimeoutError` |
+| Sandbox was terminated while running | `137`, and `wait()` raises `SandboxTerminatedError` |
+| `exec(timeout=...)` elapsed | `-1` on that process, with no exception raised |
+
+`ContainerProcess.returncode` differs deliberately from `Sandbox.returncode`: it raises `InvalidError` until you call `wait()`. To check a still-running process without blocking, use `poll()`.
+
+### What isn't supported
+
+A Ray sandbox is owned by the handle that created it and there's no hosted control plane behind it, so the parts of Modal's API that depend on one raise `NotImplementedError` rather than failing quietly:
+
+| Modal feature | Status |
+| --- | --- |
+| `Sandbox.create`, `exec`, `wait`, `poll`, `terminate`, `returncode` | Supported |
+| `stdout` / `stderr` / `stdin`, `StreamType`, `text`, `bufsize` | Supported |
+| `filesystem.*` except `watch()` | Supported |
+| `App`, and the `app` / `name` arguments | Accepted and ignored |
+| `Image` | Supported from a registry image, a local root-filesystem tar (such as `docker export` output, not a `docker save` archive, which carries no Env, CMD or WORKDIR), `debian_slim()`, or `micromamba()`. Build steps such as `run_commands()`, `pip_install()`, `apt_install()`, `uv_pip_install()`, `uv_sync()`, `poetry_install_from_file()`, and `add_local_*(copy=True)` are built and cached on each node; see [Build images](#build-images). `dockerfile_commands()`, `from_dockerfile()`, and `run_function()` aren't supported yet. |
+| `cpu`, `memory`, `timeout`, `workdir`, `env`, `block_network` | Supported |
+| `readiness_probe`, `wait_until_ready()` | Supported with `Probe.with_exec()`. `Probe.with_tcp()` isn't. |
+| `from_id`, `from_name`, `list`, `get_tags`, `set_tags` | Not supported — sandboxes aren't registered anywhere |
+| `tunnels`, `create_connect_token`, and the `*_ports` arguments | Not supported — the backend publishes no ports |
+| `snapshot_filesystem`, `snapshot_directory`, `mount_image`, `unmount_image` | Not supported |
+| `secrets`, `volumes`, `network_file_systems`, `proxy` | Not supported |
+| `cloud`, `region`, `idle_timeout`, `pty` | Not supported |
+| `gpu` | Not supported — no GPU device is passed into the sandbox, so a reservation would go unused |
+| `outbound_cidr_allowlist`, `outbound_domain_allowlist`, `inbound_cidr_allowlist`, `_experimental_outbound_policy` | Not supported — network access is all-or-nothing, so use `block_network=True`. An empty allowlist is refused too, since on Modal it allows nothing. |
+| `runtime` | `"gvisor"` accepted, since every sandbox runs under gVisor; `"vm"` isn't supported |
+| `filesystem.watch()` | Not supported — needs inotify inside the sandbox |
+
+Three behavioral differences worth knowing:
+
+* **Writable by default.** `Sandbox.create()` here defaults to `readonly=False`, so the filesystem is writable like Modal's. Writes land in a per-sandbox copy-on-write overlay, so the base image is never modified and sandboxes sharing an image can't see each other's changes. The core {func}`~ray.experimental.sandbox.create` API defaults to `readonly=True` instead.
+* **Network on by default.** Modal sandboxes have internet access unless you pass `block_network=True`, so this API defaults to `network="public"`: a network namespace private to the sandbox, which can still reach anything the node can reach, including other Ray nodes. The core API defaults to `network="none"`. Pass `block_network=True` for untrusted code.
+* **Unread output is held in memory, up to a bound.** Output you read as it's produced is never dropped. Output nobody reads stays in the sandbox's actor: the newest 64 MiB of each `exec` stream, the newest 256 MiB of the sandbox's own stdout and stderr, and 512 MiB across the sandbox, finished commands' oldest output first to go. Modal keeps an `exec` command's whole unread output on its servers. A reader that lost output reports it on `truncated` and `bytes_lost` rather than raising.
+
+The filesystem layer runs POSIX shell commands inside the sandbox, so the image needs `/bin/sh` and the usual `stat`, `readlink`, and `cat` utilities. Both busybox-based and GNU coreutils images work; a distroless image with no shell doesn't.
 
 ## Networking and DNS
 
@@ -437,7 +602,7 @@ The Ray Sandboxes subsystem has the following layers:
 * **Sandbox actor ({class}`~ray.experimental.sandbox.Sandbox`)**: A Ray actor that serves as a proxy to forward command execution and file I/O to the isolated sandbox instance while managing the scheduling and lifecycle of the sandbox.
 * **Sandbox runtime ({class}`~ray.experimental.sandbox.SandboxRuntime`)**: A low-level abstraction that manages the lifecycle of local sandboxes, image pulling and caching, and interactions with the execution backend.
 * **gVisor backend (`ray.experimental.sandbox.backend.GVisorSandboxBackend`)**: Executes commands and isolates processes through gVisor's OCI runtime (`runsc`).
-* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local tar archives, extracts root filesystems into `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
+* **Image manager (`ray.experimental.sandbox.image_manager.ImageManager`)**: Automatically pulls container images from sources such as Docker Hub, GHCR, or local root-filesystem tar archives, caches each as an EROFS image under `/tmp/ray/sandbox/images`, and builds OCI `config.json` runtime specifications.
 
 ## Security and isolation model
 
@@ -650,6 +815,8 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **`gVisor container failed to start: WARNING: host page size mismatch - running on non-4K host`**: The node's kernel uses 64 KiB pages, and gVisor's prebuilt `runsc` only supports 4 KiB pages. Build `runsc` from source with `--define=pagesize=64k` (see [Requirements](#requirements)).
 * **`mkfs.erofs` not found or too old**: Sandbox creation fails with an error naming erofs-utils 1.7. Install erofs-utils 1.7 or later on every worker node; Ubuntu 22.04's packaged 1.4 predates the `--tar` option Ray relies on.
+* **Image builds fail with an error naming erofs-utils 1.8**: The node's `mkfs.erofs` predates the `--incremental` option that image builds use. Install erofs-utils 1.8 or later on nodes that build images. Pulling prebuilt images still works with 1.7.
+* **`ImageBuildError` from `Sandbox.create`**: A build step exited non-zero. The error carries the command, its exit code, and the end of its output; the full output is in the sandbox actor's log.
 * **`mkfs.erofs failed: ... invalid block size 65536`**: The node's kernel uses 64 KiB pages, and its erofs-utils package can only build 4 KiB blocks. Build erofs-utils from source with `./configure MAX_BLOCK_SIZE=65536` (see [Requirements](#requirements)).
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
 * **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.
