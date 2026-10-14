@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from starlette.datastructures import Headers
 
-from ray.exceptions import RayActorError
+from ray.exceptions import RayActorError, RaySystemError
 from ray.llm._internal.serve.constants import get_llm_serve_runtime_env
 from ray.llm._internal.serve.core.ingress import (
     router_application as router_application_module,
@@ -82,7 +82,11 @@ class FakeHandle:
             {"args": args, "kwargs": kwargs, "session_id": self.session_id}
         )
         if self.delay_s:
-            await asyncio.sleep(self.delay_s)
+            delay = asyncio.sleep(self.delay_s)
+            if "_selection_timeout_s" in kwargs:
+                await asyncio.wait_for(delay, kwargs["_selection_timeout_s"])
+            else:
+                await delay
         if kwargs.get("_reserve") is False and self.pick_only_delay_s:
             await asyncio.sleep(self.pick_only_delay_s)
         if kwargs.get("_reserve") is False and self.pick_only_error is not None:
@@ -154,6 +158,35 @@ async def _chat(router, body, headers=None):
 
 
 class TestModels:
+    @pytest.mark.asyncio
+    async def test_cors_preflight_is_direct_response(self):
+        router, handles, patcher = _new_router()
+        try:
+            response = await _route(
+                router,
+                "OPTIONS",
+                "/v1/chat/completions",
+                headers={
+                    "origin": "https://example.com",
+                    "access-control-request-method": "POST",
+                    "access-control-request-headers": "authorization,content-type",
+                },
+            )
+
+            assert response.status_code == 200
+            _assert_direct(response)
+            assert response.headers["access-control-allow-origin"] == (
+                "https://example.com"
+            )
+            assert response.headers["access-control-allow-credentials"] == "true"
+            assert "POST" in response.headers["access-control-allow-methods"]
+            assert response.headers["access-control-allow-headers"] == (
+                "authorization,content-type"
+            )
+            assert handles == {}
+        finally:
+            patcher.stop()
+
     @pytest.mark.asyncio
     async def test_models_are_static_direct_response(self):
         router, handles, patcher = _new_router()
@@ -466,6 +499,28 @@ class TestRoutingDecision:
                 _cancel_handle_tasks(router)
 
     @pytest.mark.asyncio
+    async def test_transient_ray_system_error_is_retried(self, monkeypatch):
+        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        deployed = False
+
+        def get_app_handle(app_name):
+            if not deployed:
+                raise RaySystemError("controller unavailable")
+            return FakeHandle(app_name)
+
+        with patch.object(
+            router_application_module.serve, "get_app_handle", get_app_handle
+        ):
+            router = _new(RouterApplication, MODEL_APPS)
+            try:
+                await asyncio.sleep(0.05)
+                deployed = True
+                decision = await _chat(router, {"model": "model-a"})
+                assert decision["application"] == "llm-model-a"
+            finally:
+                _cancel_handle_tasks(router)
+
+    @pytest.mark.asyncio
     async def test_unexpected_lookup_error_is_not_retried(self, monkeypatch):
         monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
         lookups = 0
@@ -503,6 +558,23 @@ class TestRoutingDecision:
             patcher.stop()
 
     @pytest.mark.asyncio
+    async def test_invalid_routing_payload(self):
+        router, handles, patcher = _new_router()
+        try:
+            handle = FakeHandle("llm-model-a")
+            handle.error = ValueError("messages must not be empty")
+            handles["llm-model-a"] = handle
+
+            response = await _chat(router, {"model": "model-a", "messages": []})
+
+            assert response.status_code == 400
+            error = _body(response)["error"]
+            assert error["message"] == "messages must not be empty"
+            assert error["type"] == "BadRequestError"
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
     async def test_falls_back_to_reserving_path(self, monkeypatch):
         monkeypatch.setattr(router_application_module, "PICK_ONLY_TIMEOUT_S", 0.05)
         router, handles, patcher = _new_router()
@@ -513,7 +585,8 @@ class TestRoutingDecision:
 
             decision = await _chat(router, {"model": "model-a"})
             assert decision["replica_id"] == handle.replica_id
-            assert [c["kwargs"] for c in handle.calls] == [{"_reserve": False}, {}]
+            assert handle.calls[0]["kwargs"] == {"_reserve": False}
+            assert handle.calls[1]["kwargs"]["_selection_timeout_s"] > 0
         finally:
             patcher.stop()
 
