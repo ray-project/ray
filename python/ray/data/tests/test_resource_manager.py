@@ -175,14 +175,17 @@ def _build_blocked_downstream(
     execution_usage: float,
     overshoot_ratio: Optional[float] = None,
     op_object_store_usage: float = 0,
+    pending_output_per_task: Optional[float] = 1,
 ) -> tuple:
     """Build an executor whose most-downstream op is idle with queued input and an
     exhausted output budget.
 
     Returns ``(metrics_patch, guard, alloc, o2, o3)``, where ``o2`` feeds the
     blocked downstream op ``o3``. ``metrics_patch`` must be entered to make each
-    task emit one byte of object-store output. The idle detector is disabled so
-    that ``should_unblock`` reflects Case 1 alone rather than falling back to it.
+    task emit ``pending_output_per_task`` bytes of object-store output (``None``
+    models an operator that has not produced output yet). The idle detector is
+    disabled so that ``should_unblock`` reflects Case 1 alone rather than falling
+    back to it.
     Use ``_set_queued_input_blocks(guard._topology, o3, n)`` to change the queue.
 
     ``overshoot_ratio`` together with ``op_object_store_usage`` drive the shared
@@ -221,7 +224,7 @@ def _build_blocked_downstream(
             type(o3.metrics),
             "obj_store_mem_max_pending_output_per_task",
             new_callable=PropertyMock,
-            return_value=1,
+            return_value=pending_output_per_task,
         ),
         guard,
         alloc,
@@ -1068,6 +1071,37 @@ class TestOutputBackpressureGuard:
             alloc._object_store_memory_pressure_fraction = None
             assert alloc.can_submit_new_task(o3) is False
             assert guard.should_unblock(o2) is True
+
+    @pytest.mark.parametrize(
+        "object_store_budget, expected_can_submit",
+        [
+            # No budget left: block, even though no per-task estimate exists yet.
+            (0, False),
+            # Any budget at all is enough before the first output is observed.
+            (1, True),
+        ],
+    )
+    def test_exhausted_output_budget_blocks_before_metrics_exist(
+        self, object_store_budget, expected_can_submit, restore_data_context
+    ):
+        """An operator that hasn't produced output yet has no per-task output
+        estimate. The missing estimate must count as one byte, not zero, or an
+        exhausted object-store budget never blocks submission and backpressure
+        is bypassed until the first task completes.
+        """
+        metrics_patch, guard, alloc, o2, o3 = _build_blocked_downstream(
+            ray_remote_args={"num_cpus": 4},
+            num_cpus_budget=4,
+            object_store_budget=object_store_budget,
+            # Liveness allowance off, so the output-budget check alone decides.
+            pressure_fraction=None,
+            execution_usage=900,
+            pending_output_per_task=None,
+        )
+        with metrics_patch:
+            assert o3.metrics.obj_store_mem_max_pending_output_per_task is None
+            assert alloc.can_submit_new_task(o3) is expected_can_submit
+            assert guard.should_unblock(o2) is (not expected_can_submit)
 
     def test_unblock_backpressure_fallback_to_idle_detector(self, restore_data_context):
         """When unblock conditions not met, falls back to idle detector result."""
