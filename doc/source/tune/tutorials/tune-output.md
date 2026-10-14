@@ -59,6 +59,7 @@ $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 ```
 
 ```{image} ../images/ray-tune-tensorboard.png
+:alt: TensorBoard Scalars dashboard plotting ray/tune/mean_accuracy and ray/tune/time_this_iter_s against training step for several Tune trials.
 ```
 
 If you use TensorFlow 2.x, Tune also generates TensorBoard HParams output automatically, as the following example shows:
@@ -75,6 +76,7 @@ results = tuner.fit()
 ```
 
 ```{image} ../../images/tune-hparams.png
+:alt: TensorBoard HParams table view listing four Tune trials with their lr and momentum values alongside ray/tune/tng_loss and ray/tune/val_loss.
 ```
 
 (tune-console-output)=
@@ -142,18 +144,18 @@ If you use Ray Tune with Ray Train, the `log_to_file` configuration doesn't cove
 If you configure your Tune workload to sync to the head node, the `log_to_file` outputs are in each trial directory. If you configure it to sync to the cloud instead, the `log_to_file` outputs aren't synced to the cloud, and you can find them only on the worker nodes where the corresponding trial ran.
 
 :::{note}
-This behavior can cause problems when a trainable moves between nodes during its lifetime, which can happen with some schedulers or with node failures. The Ray project may prioritize enabling this feature if enough users request it. If this affects your workflow, consider commenting on [this ticket](https://github.com/ray-project/ray/issues/32142).
+This behavior can cause problems when a trainable moves between nodes during its lifetime, which can happen with some schedulers or with node failures. The Ray project may prioritize enabling this feature if enough users request it. If this affects your workflow, consider commenting on [GitHub issue #32142](https://github.com/ray-project/ray/issues/32142).
 :::
 
 ### Leave feedback on this feature
 
-To share how you prefer to interact with logging in trainables, leave a comment on [this ticket](https://github.com/ray-project/ray/issues/32142).
+To share how you prefer to interact with logging in trainables, leave a comment on [GitHub issue #32142](https://github.com/ray-project/ray/issues/32142).
 
 (trainable-logging)=
 
 ## How do you log arbitrary files from a Tune trainable?
 
-By default, Tune logs only the *training result dictionaries* and *checkpoints* from your trainable. You may also want to save a file that visualizes the model weights or model graph, or use a custom logging library that requires multi-process logging, for example to log images to TensorBoard. These saved files are *trial artifacts*.
+By default, Tune logs only the training result dictionaries and checkpoints from your trainable. You may also want to save a file that visualizes the model weights or model graph, or use a custom logging library that requires multi-process logging, for example to log images to TensorBoard. These saved files are *trial artifacts*.
 
 :::{note}
 If you set {class}`SyncConfig(sync_artifacts=True) <ray.tune.SyncConfig>`, trial artifacts are uploaded periodically from each trial to the {class}`RunConfig(storage_path) <ray.tune.RunConfig>`. With Ray Train, they're uploaded from each remote training worker.
@@ -161,11 +163,11 @@ If you set {class}`SyncConfig(sync_artifacts=True) <ray.tune.SyncConfig>`, trial
 See the {class}`~ray.tune.SyncConfig` API reference for artifact syncing configuration options.
 :::
 
-You can save trial artifacts directly in the trainable, as the following examples show:
-
 :::{tip}
 Keep any logging calls or objects within the scope of the trainable. Otherwise, you may see pickling or other serialization errors, or inconsistent logs.
 :::
+
+You can save trial artifacts directly in the trainable, as the following examples show:
 
 ::::{tab-set}
 :::{tab-item} Function API

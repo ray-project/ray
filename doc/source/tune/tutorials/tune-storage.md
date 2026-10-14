@@ -23,9 +23,9 @@ Configure persistent storage in a distributed Ray cluster to support the followi
 
 Tune supports three storage scenarios:
 
-1. Cloud storage, such as AWS S3 or Google Cloud Storage, that all machines in the cluster can access.
-1. A network filesystem (NFS) mounted on all machines in the cluster.
-1. The local filesystem as the persistent storage location, when you run Tune on a single node.
+- Cloud storage, such as AWS S3 or Google Cloud Storage, that all machines in the cluster can access.
+- A network filesystem (NFS) mounted on all machines in the cluster.
+- The local filesystem as the persistent storage location, when you run Tune on a single node.
 
 :::{note}
 You can also configure a network filesystem or cloud storage for single-node experiments. Persisting your experiment results to external storage can be useful, for example, when the instance that runs your experiment clears its local storage after termination.
@@ -39,7 +39,7 @@ See {class}`~ray.tune.SyncConfig` for the full set of configuration options and 
 
 ### Configure Tune with cloud storage
 
-If all nodes in a Ray cluster have access to cloud storage, such as AWS S3 or Google Cloud Storage (GCS), Tune can save all experiment outputs in a shared cloud bucket.
+If all nodes in a Ray cluster have access to cloud storage, such as AWS S3 or Google Cloud Storage, Tune can save all experiment outputs in a shared cloud bucket.
 
 To configure cloud storage, set `storage_path` to a remote location for Tune to upload to:
 

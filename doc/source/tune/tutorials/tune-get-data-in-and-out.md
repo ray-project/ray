@@ -77,7 +77,7 @@ For example, passing a large pandas DataFrame or an unserializable model object 
 Instead, use strings or other identifiers as your values, and initialize or load the objects directly inside your trainable based on those values.
 
 ```{note}
-You can use [Datasets](data_quickstart) directly as values in the search space.
+You can use [Ray Data datasets](data_quickstart) directly as values in the search space.
 ```
 
 In this example, you tune the two model hyperparameters and set the number of epochs so you can adjust it later. Use the `tune.uniform` distribution for the hyperparameters, and modify `training_function` to read those values from the `config` dictionary.
@@ -121,7 +121,7 @@ In short, use the `tune.with_parameters` utility function to specify large const
 
 If you have large objects that are constant across trials, you can use the {func}`tune.with_parameters <ray.tune.with_parameters>` utility to pass them directly into the trainable. The objects are stored in the [Ray object store](serialization-guide), so each trial worker can access them to get a local copy to use in its process.
 
-```{tip}
+```{note}
 Objects put into the Ray object store must be serializable.
 ```
 
@@ -191,7 +191,7 @@ You can now run tuning, though you won't get any meaningful outputs back yet.
 results = tuner.fit()
 ```
 
-## Get data out of Ray Tune
+## Get data out of Tune
 
 You can now run tuning with the `training_function` trainable. Next, report *metrics* to Tune that it can use to guide the optimization. You also want to *checkpoint* your trained models so you can resume training after an interruption and use the models for prediction later.
 

@@ -28,7 +28,7 @@ results = tuner.fit()
 
 Tune evaluates `my_trainable` multiple times in parallel, with different hyperparameters sampled from `uniform(0, 1)`.
 
-Every Tune run consists of a driver process and many worker processes. The driver process is the Python process that calls `Tuner.fit()`, which calls `ray.init()` internally. The Tune driver process runs on the node where you run the script that calls `Tuner.fit()`. The trainable actors run on any node, either the same node or, with distributed Ray only, on worker nodes.
+Every Tune run consists of a driver process and many worker processes. The driver process is the Python process that calls `Tuner.fit()`, which calls `ray.init()` internally. The Tune driver process runs on the node where you run the script that calls `Tuner.fit()`. The trainable actors run on any node, either on the same node or, with distributed Ray only, on worker nodes.
 
 :::{note}
 Use {ref}`Ray actors <actor-guide>` to parallelize an instance of a Python class. When you instantiate a class that's a Ray actor, Ray starts an instance of that class in a separate process, either on the same machine or, if you're running a Ray cluster, on another machine. The actor can then execute method calls asynchronously and maintain its own internal state.
@@ -48,7 +48,7 @@ Tune uses {ref}`Ray actors <actor-guide>` to parallelize the evaluation of multi
 
 The definition of your trainable is {ref}`serialized with cloudpickle <serialization-guide>` and sent to each actor process. Each Ray actor starts an instance of the trainable to execute.
 
-If the trainable is a class, it executes iteratively through calls to `train/step`. After each invocation, the driver receives a notification that a result dictionary is ready. The driver then pulls the result through `ray.get`.
+If the trainable is a class, it executes iteratively through calls to `train()`, which calls `step()`. After each invocation, the driver receives a notification that a result dictionary is ready. The driver then pulls the result through `ray.get`.
 
 If the trainable is a callable or a function, it executes in the Ray actor process on a separate execution thread. Whenever your function calls `tune.report`, the execution thread pauses and waits for the driver to pull a result. After the driver pulls the result, the actor's execution thread resumes automatically. For the implementation, see [function_trainable.py](https://github.com/ray-project/ray/blob/master/python/ray/tune/trainable/function_trainable.py).
 
@@ -56,7 +56,7 @@ If the trainable is a callable or a function, it executes in the Ray actor proce
 
 Before it runs a trial, the Tune driver checks whether the cluster has available resources. It compares the available resources with the resources the trial requires. See {ref}`resource-requirements`.
 
-If the cluster has space, the Tune driver starts a worker, which is a Ray actor. The actor is scheduled and executes on a node where the resources are available. For more information, see {doc}`tune-resources`.
+If the cluster has space, the Tune driver starts a worker, which is a Ray actor. Ray schedules the actor on a node where the resources are available, and the actor executes there. For more information, see {doc}`tune-resources`.
 
 (trial-lifecycle)=
 
@@ -66,15 +66,15 @@ A trial's lifecycle consists of six stages:
 
 * **Initialization**, or generation: Tune first generates the trial as a hyperparameter sample and configures its parameters according to what you provided in `Tuner`. Tune then places the trial in a queue to execute, with the status `PENDING`.
 
-* **`PENDING`**: A pending trial is waiting to execute on the machine. Every trial has configured resource values. Whenever the trial's resource values are available, Tune runs the trial by starting a Ray actor that holds the configuration and the training function.
+* `PENDING`: A pending trial is waiting to execute on the machine. Every trial has configured resource values. Whenever the trial's resource values are available, Tune runs the trial by starting a Ray actor that holds the configuration and the training function.
 
-* **`RUNNING`**: A running trial has an assigned Ray actor. Multiple trials can run in parallel. For more details, see the {ref}`trainable execution <trainable-execution>` section.
+* `RUNNING`: A running trial has an assigned Ray actor. Multiple trials can run in parallel. For more details, see the {ref}`trainable execution <trainable-execution>` section.
 
-* **`ERRORED`**: If a running trial throws an exception, Tune catches the exception and marks the trial as errored. Exceptions can propagate from an actor to the main Tune driver process. If you set `max_retries`, Tune sets the trial back to `PENDING` and later starts it from the last checkpoint.
+* `ERRORED`: If a running trial throws an exception, Tune catches the exception and marks the trial as errored. Exceptions can propagate from an actor to the main Tune driver process. If you set `max_retries`, Tune sets the trial back to `PENDING` and later starts it from the last checkpoint.
 
-* **`TERMINATED`**: A trial terminates if a stopper or scheduler stops it. With the function API, the trial also terminates when the function stops.
+* `TERMINATED`: A trial terminates if a stopper or scheduler stops it. With the function API, the trial also terminates when the function stops.
 
-* **`PAUSED`**: A trial scheduler can pause a trial, which stops the trial's actor. A paused trial can later resume from the most recent checkpoint.
+* `PAUSED`: A trial scheduler can pause a trial, which stops the trial's actor. A paused trial can later resume from the most recent checkpoint.
 
 (tune-s-architecture)=
 

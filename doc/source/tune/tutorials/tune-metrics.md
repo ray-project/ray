@@ -10,7 +10,7 @@ myst:
 
 ## Use callbacks in Tune
 
-Ray Tune supports callbacks that it calls at various points during training. Pass your callbacks to `RunConfig` through its `callbacks` parameter, and pass the `RunConfig` to `Tuner`. Tune then invokes the callback methods you implement automatically.
+Ray Tune supports callbacks that it calls at various points during training. Pass your callbacks to `RunConfig` through its `callbacks` parameter, and pass the `RunConfig` to `Tuner`. Tune then automatically invokes the callback methods you implement.
 
 This callback prints a metric each time Tune receives a result:
 

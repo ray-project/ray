@@ -94,6 +94,8 @@ This benchmark runs up to 1,000 concurrent trials on a cluster. It then adjusts 
 
 With logging and synchronization disabled, the threshold for acceptable performance seems to be around 500 total results per second. With logging enabled, Ray Tune can still manage around 50 to 100 results per second without too much overhead. Beyond that, consider measures to decrease the number of incoming results.
 
+The following table shows the results.
+
 ```{list-table}
 :header-rows: 1
 
@@ -166,6 +168,8 @@ This setup disables the CSV, JSON, and TensorBoardX loggers, except where noted.
 This benchmark runs 96 concurrent trials on a single node. It then adjusts the reporting frequency of the trials, measured in results per second, to find the throughput limits. Because fewer trials run in parallel than in the cluster benchmark, the trials report much more often.
 
 On a single node, throughput seems to be a bit higher. With logging, handling 1,000 results per second seems acceptable in terms of overhead, though you should probably still target a lower number.
+
+The following table shows the results.
 
 ```{list-table}
 :header-rows: 1
