@@ -905,5 +905,22 @@ def test_library_serializers_wait_for_the_library(shutdown_only):
     assert ray.get(actor.loaded.remote())
 
 
+def test_library_serializers_apply_to_functions(shutdown_only):
+    """A library imported after `ray.init` gets its serializers for the
+    functions the process pickles, not just its values: a remote function
+    capturing a slice of an Arrow table carries only the slice."""
+    ray.init(num_cpus=1)
+    pa = pytest.importorskip("pyarrow")
+
+    table = pa.table({"x": list(range(100_000))})
+    sliced = table.slice(0, 1)
+
+    @ray.remote
+    def buffer_size():
+        return sliced.get_total_buffer_size()
+
+    assert ray.get(buffer_size.remote()) < table.get_total_buffer_size()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

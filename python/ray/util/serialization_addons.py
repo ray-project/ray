@@ -53,41 +53,50 @@ if sys.platform != "win32":
     _ADDONS.append(("pyarrow", _register_arrow_serializers))
 
 
+# The libraries whose serializers wait for the process to import them, and the
+# context to register them on (`apply(..., lazily=True)`). Process-wide, like
+# the registrations: whatever pickles a value (`SerializationContext`, or
+# `pickle_dumps` for functions and classes) checks them first.
+_pending = []
+_pending_context = None
+
+
 @DeveloperAPI
 def apply(serialization_context: Any, lazily: bool = False) -> None:
     """Registers the libraries' serializers: of every one that's installed, or,
     `lazily`, of those the process has imported, and of the others once it
-    imports them (a worker's context calls `apply_pending` before each
-    serialization).
+    imports them (whatever pickles a value calls `apply_pending` first).
 
     Args:
         serialization_context: The context to register them on.
         lazily: Whether to wait for each library to be imported.
     """
+    global _pending, _pending_context
     if not lazily:
         # Each registration imports its library, if it's installed.
         for _, register in _ADDONS:
             register(serialization_context)
         return
-    serialization_context._pending_addons = list(_ADDONS)
-    apply_pending(serialization_context)
+    _pending_context = serialization_context
+    _pending = list(_ADDONS)
+    apply_pending()
 
 
-def apply_pending(serialization_context: Any) -> None:
+def apply_pending() -> None:
     """Registers the serializers of the libraries the process has imported
-    since: called before each serialization. Once there's nothing left to
+    since: called before pickling a value. Once there's nothing left to
     register (or no library imported yet), it costs a check or two.
 
-    Args:
-        serialization_context: The context `apply` was called with.
+    Concurrent calls may both register a library, which is harmless: a
+    registration replaces the same entries.
     """
-    pending = getattr(serialization_context, "_pending_addons", None)
-    if not pending:
+    global _pending
+    if not _pending:
         return
     remaining = []
-    for module, register in pending:
+    for module, register in _pending:
         if module in sys.modules:
-            register(serialization_context)
+            register(_pending_context)
         else:
             remaining.append((module, register))
-    serialization_context._pending_addons = remaining
+    _pending = remaining

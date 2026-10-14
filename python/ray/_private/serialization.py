@@ -152,9 +152,6 @@ class SerializationContext:
     def __init__(self, worker):
         self.worker = worker
         self._thread_local = threading.local()
-        # The libraries whose serializers wait for the process to import them
-        # (`serialization_addons.apply_pending`).
-        self._pending_addons = []
 
         # These flags are to mark whether the custom serializer for a rdt type
         # (e.g. torch.Tensor or jax.Array) has been registered.
@@ -630,6 +627,9 @@ class SerializationContext:
         )
 
     def _serialize_to_msgpack(self, value):
+        # Libraries imported since the last serialization get their
+        # serializers.
+        serialization_addons.apply_pending()
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
         contained_object_refs = []
@@ -795,10 +795,6 @@ class SerializationContext:
         Returns:
             Serialized value.
         """
-        # Libraries imported since the last serialization get their
-        # serializers.
-        if self._pending_addons:
-            serialization_addons.apply_pending(self)
         if isinstance(value, bytes):
             # If the object is a byte array, skip serializing it and
             # use a special metadata to indicate it's raw binary. So
