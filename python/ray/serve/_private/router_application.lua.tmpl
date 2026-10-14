@@ -1,6 +1,7 @@
 -- Routes a held request using an application and replica decision.
 
 local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
+local ORIGINAL_METHOD_HEADER = "${ORIGINAL_METHOD_HEADER}"
 
 -- router backend -> { app, p = route prefix, pool = replicas or fallback proxy }
 local ROUTERS = ${ROUTERS}
