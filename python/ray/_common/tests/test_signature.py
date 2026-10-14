@@ -7,6 +7,7 @@ and flattening function signatures for serialization.
 
 import inspect
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Optional
 from unittest.mock import Mock, patch
 
@@ -553,6 +554,25 @@ class TestSignatureCache:
             validate_args(params, (1,), {"b": 3})
             with pytest.raises(TypeError):
                 validate_args(params, (), {})
+
+    def test_threads_past_the_cache_bound_are_all_checked_right(self):
+        def test_func(a, b=2):
+            pass
+
+        def check_new_lists():
+            for _ in range(2000):
+                params = extract_signature(test_func)
+                validate_args(params, (1,), {"b": 3})
+
+        # Switch threads as often as possible, so they interleave mid-eviction.
+        interval = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)
+        try:
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                for future in [pool.submit(check_new_lists) for _ in range(8)]:
+                    future.result()
+        finally:
+            sys.setswitchinterval(interval)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 import inspect
 import logging
+import threading
 from inspect import Parameter
 from typing import Any, Dict, List, Tuple
 
@@ -19,9 +20,12 @@ DUMMY_TYPE = b"__RAY_DUMMY__"
 # same one on every call, so its signature is built once rather than on every
 # `.remote()`. Each entry holds its list, so the list's id can't be reused
 # while it's cached. Bounded, for callers that build a new list per call: past
-# the bound, the oldest entry goes.
+# the bound, the oldest entry goes. Lookups need no lock; adding an entry (and
+# evicting one) takes `_signatures_lock`, since threads calling `.remote()`
+# together could otherwise both evict the same entry.
 _SIGNATURE_CACHE_SIZE = 1024
 _signatures: Dict[int, Tuple[List[Parameter], inspect.Signature]] = {}
+_signatures_lock = threading.Lock()
 
 
 def _signature_of(signature_parameters: List[Parameter]) -> inspect.Signature:
@@ -31,9 +35,10 @@ def _signature_of(signature_parameters: List[Parameter]) -> inspect.Signature:
     if cached is not None and cached[0] is signature_parameters:
         return cached[1]
     built = inspect.Signature(parameters=signature_parameters)
-    if len(_signatures) >= _SIGNATURE_CACHE_SIZE:
-        del _signatures[next(iter(_signatures))]
-    _signatures[id(signature_parameters)] = (signature_parameters, built)
+    with _signatures_lock:
+        if len(_signatures) >= _SIGNATURE_CACHE_SIZE:
+            del _signatures[next(iter(_signatures))]
+        _signatures[id(signature_parameters)] = (signature_parameters, built)
     return built
 
 
