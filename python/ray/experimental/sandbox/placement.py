@@ -1,6 +1,8 @@
 """Placing sandboxes on the node that caches their image."""
 
 import hashlib
+import logging
+import os
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -10,6 +12,8 @@ from ray.experimental.sandbox._internal.image_utils import parse_image_ref
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+logger = logging.getLogger(__name__)
 
 # How long a process reuses the cluster's node list, so a burst of creates
 # doesn't ask the GCS for it each time.
@@ -23,9 +27,22 @@ def _alive_nodes() -> List[Dict[str, Any]]:
     global _nodes, _nodes_fetched_at
     with _nodes_lock:
         if time.monotonic() - _nodes_fetched_at >= _NODES_TTL_SECONDS:
-            _nodes = [node for node in ray.nodes() if node.get("Alive")]
-            _nodes_fetched_at = time.monotonic()
+            try:
+                _nodes = [node for node in ray.nodes() if node.get("Alive")]
+                _nodes_fetched_at = time.monotonic()
+            except Exception as err:
+                # A soft preference mustn't fail the create; keep the last list.
+                logger.warning("Couldn't list the cluster's nodes: %s", err)
         return _nodes
+
+
+def _is_local_archive(image: str) -> bool:
+    """Whether ``image`` names a tar archive on the local filesystem."""
+    return (
+        image.endswith(".tar")
+        or image.startswith(("/", "./", "../"))
+        or os.path.isfile(image)
+    )
 
 
 def _image_key(image: str) -> str:
@@ -72,11 +89,16 @@ def image_scheduling_strategy(
         resources: The actor's custom resource requests.
 
     Returns:
-        A soft node affinity, or None when Ray isn't initialized, no live
-        node fits the actor, or the caller runs in a placement group, whose
-        child actors a strategy would take out of it.
+        A soft node affinity. None when Ray isn't initialized, when ``image`` is
+        a local archive, which is on one node's filesystem only, when no live
+        node fits the actor, or when the caller runs in a placement group,
+        whose child actors a strategy would take out of it.
     """
-    if not ray.is_initialized() or get_current_placement_group() is not None:
+    if (
+        not ray.is_initialized()
+        or _is_local_archive(image)
+        or get_current_placement_group() is not None
+    ):
         return None
     demand = {
         "CPU": 1 if num_cpus is None else num_cpus,
@@ -88,7 +110,7 @@ def image_scheduling_strategy(
         node["NodeID"]
         for node in _alive_nodes()
         if all(
-            node.get("Resources", {}).get(name, 0) >= amount
+            (node.get("Resources") or {}).get(name, 0) >= amount
             for name, amount in demand.items()
             if amount
         )

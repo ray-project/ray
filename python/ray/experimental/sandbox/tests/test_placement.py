@@ -33,6 +33,7 @@ def test_an_image_maps_to_one_fitting_node_however_spelled(fake_nodes):
             _node("bb" * 28, CPU=2.0, gvisor=1.0),
             _node("cc" * 28, CPU=8.0),
             _node("dd" * 28, alive=False, CPU=8.0, gvisor=1.0),
+            {"NodeID": "ee" * 28, "Alive": True, "Resources": None},
         ]
     )
     strategies = [
@@ -63,13 +64,29 @@ def test_images_spread_over_nodes_and_few_move_when_a_node_joins(fake_nodes):
     assert {after[image] for image in moved} == {"ee" * 28}
 
 
-def test_no_preference_without_ray_or_inside_a_placement_group(fake_nodes, monkeypatch):
+def test_no_preference_without_ray_for_archives_or_in_placement_groups(
+    fake_nodes, monkeypatch
+):
     fake_nodes.append(_node("aa" * 28, CPU=8.0))
     assert image_scheduling_strategy("busybox:latest") is not None
+    # A local archive is on one node's filesystem, so it stays unplaced.
+    for archive in ("/data/images/app.tar", "./app.tar", "app.tar"):
+        assert image_scheduling_strategy(archive) is None
     monkeypatch.setattr(placement, "get_current_placement_group", lambda: object())
     assert image_scheduling_strategy("busybox:latest") is None
     monkeypatch.setattr(placement.ray, "is_initialized", lambda: False)
     assert image_scheduling_strategy("busybox:latest") is None
+
+
+def test_a_failed_node_listing_keeps_the_last_one(fake_nodes, monkeypatch):
+    fake_nodes.append(_node("aa" * 28, CPU=8.0))
+    assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
+
+    def unavailable():
+        raise ConnectionError("GCS unavailable")
+
+    monkeypatch.setattr(placement.ray, "nodes", unavailable)
+    assert image_scheduling_strategy("busybox:latest").node_id == "aa" * 28
 
 
 def test_create_prefers_the_node_the_image_maps_to(monkeypatch):

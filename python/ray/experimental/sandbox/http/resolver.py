@@ -128,6 +128,7 @@ class RayActorHandleResolver:
         Returns:
             The actor handle.
         """
+        image = (ctor_kwargs.get("spec") or {}).get("image")
         handle = (
             self._actor_class()
             .options(
@@ -136,11 +137,13 @@ class RayActorHandleResolver:
                 lifetime="detached",
                 get_if_exists=get_if_exists,
                 scheduling_strategy=image_scheduling_strategy(
-                    ctor_kwargs["spec"]["image"],
+                    image,
                     num_cpus=actor_options.get("num_cpus"),
                     memory=actor_options.get("memory"),
                     resources=actor_options.get("resources"),
-                ),
+                )
+                if image
+                else None,
                 **actor_options,
             )
             .remote(**ctor_kwargs)

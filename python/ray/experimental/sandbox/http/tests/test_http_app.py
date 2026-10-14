@@ -834,9 +834,8 @@ def test_resolver_reuses_one_actor_class_and_caches_fresh_handles(
     monkeypatch.setattr(ray, "get_actor", fake_get_actor)
     resolver = RayActorHandleResolver(SandboxAPISettings())
 
-    ctor_kwargs = {"spec": {"image": "busybox:latest"}}
-    fresh = resolver.create("sb-fresh", {}, ctor_kwargs, get_if_exists=False)
-    resolver.create("sb-token", {}, ctor_kwargs, get_if_exists=True)
+    fresh = resolver.create("sb-fresh", {}, {}, get_if_exists=False)
+    resolver.create("sb-token", {}, {}, get_if_exists=True)
 
     # One ActorClass (one class export) for every create.
     assert len(exported) == 1
