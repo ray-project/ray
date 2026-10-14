@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Hyperparameter tuning and experiment execution at any scale, with algorithms like PBT and ASHA and integrations for PyTorch, XGBoost, and Optuna."
+    description: "Hyperparameter tuning and experiment execution at any scale, with algorithms such as PBT and ASHA and integrations for PyTorch, XGBoost, and Optuna."
 ---
 
 (tune-main)=
@@ -75,7 +75,7 @@ To tune a Keras model with Hyperopt, wrap the model in an objective function and
 
 ::::{tab-item} PyTorch and Optuna
 
-To tune a PyTorch model with Optuna, wrap the model in an objective function and use the function's `config` to select hyperparameters. This example tunes only the `momentum` and `lr` parameters of the model's optimizer, where `lr` is the learning rate, but you can tune any other model parameter. After you define the search space, initialize the `OptunaSearch` object and pass it to `Tuner` as the `search_alg` argument of `tune.TuneConfig`. Tell Ray Tune which metric to optimize and whether to maximize or minimize it. This example stops the training run after `5` iterations, but you can define other stopping rules.
+To tune a PyTorch model with Optuna, wrap the model in an objective function and use the function's `config` to select hyperparameters. This example tunes only the `momentum` and `lr` parameters of the model's optimizer, where `lr` is the learning rate, but you can tune any other model parameter. After you define the search space, initialize the `OptunaSearch` object and pass it to `Tuner` as the `search_alg` argument of `tune.TuneConfig`. Tell Ray Tune which metric to optimize and whether to maximize or minimize it. This example stops each trial after five iterations, but you can define other stopping rules.
 
 :::{callout}
 ```{literalinclude} doc_code/pytorch_optuna.py
@@ -89,7 +89,7 @@ To tune a PyTorch model with Optuna, wrap the model in an objective function and
 
 <2> Define a search space and initialize the search algorithm.
 
-<3> Start a Tune run that maximizes mean accuracy and stops after 5 iterations.
+<3> Start a Tune run that maximizes mean accuracy and stops after five iterations.
 ```
 :::
 ::::
@@ -208,7 +208,7 @@ Many other hyperparameter optimization libraries exist. If you're new to Tune, y
 
 You're probably looking into hyperparameter optimization because you want to improve your model performance quickly.
 
-With Tune, you can use a variety of cutting-edge optimization algorithms that reduce the cost of tuning by {ref}`terminating bad runs early <tune-scheduler-hyperband>`, {ref}`choosing better parameters to evaluate <tune-search-alg>`, or even {ref}`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize schedules.
+With Tune, you can use a variety of cutting-edge optimization algorithms that reduce the cost of tuning by {ref}`terminating bad trials early <tune-scheduler-hyperband>`, {ref}`choosing better parameters to evaluate <tune-search-alg>`, or even {ref}`changing the hyperparameters during training <tune-scheduler-pbt>` to optimize schedules.
 :::
 
 :::{dropdown} First-class developer productivity
