@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import os
 import shlex
@@ -102,15 +103,20 @@ def _modify_context_impl(
 
     # Ray-owned values for the container. The job's env_vars and the host's
     # RAY_* vars are added when the worker is exec'd; see
-    # RuntimeEnvContext.exec_worker.
+    # RuntimeEnvContext._exec_container_worker.
     container_env = dict()
 
     # Mount the token file rather than passing the token via --env, which is
     # logged and visible in `ps`.
     if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in context.env_vars:
         if os.environ.get("RAY_AUTH_TOKEN"):
-            token_path = os.path.join(ray_tmp_dir, "image_uri_auth_token")
-            _write_owner_only_file(token_path, os.environ["RAY_AUTH_TOKEN"])
+            token = os.environ["RAY_AUTH_TOKEN"]
+            # ray_tmp_dir can be shared by clusters with different tokens.
+            token_digest = hashlib.sha256(token.encode()).hexdigest()[:16]
+            token_path = os.path.join(
+                ray_tmp_dir, f"image_uri_auth_token_{token_digest}"
+            )
+            _write_owner_only_file(token_path, token)
         else:
             token_path = os.path.abspath(
                 context.env_vars.get("RAY_AUTH_TOKEN_PATH")
@@ -145,13 +151,17 @@ def _modify_context_impl(
 
 def _write_owner_only_file(path: str, content: str) -> None:
     # Write then rename, so a worker starting concurrently never reads a
-    # partially written token.
-    tmp_path = f"{path}.{os.getpid()}.tmp"
-    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        os.fchmod(fd, 0o600)
-        f.write(content)
-    os.replace(tmp_path, path)
+    # partially written token. mkstemp creates a fresh 0600 file with
+    # O_EXCL, so a symlink planted in the directory, which containers mount
+    # read-write, can't redirect the write.
+    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
 
 class ImageURIPlugin(RuntimeEnvPlugin):

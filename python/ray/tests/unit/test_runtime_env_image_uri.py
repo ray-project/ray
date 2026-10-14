@@ -101,7 +101,7 @@ def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
 
     command = _container_command(ray_tmp_dir=str(tmp_path))
 
-    token_path = tmp_path / "image_uri_auth_token"
+    (token_path,) = tmp_path.glob("image_uri_auth_token_*")
     assert token_path.read_text() == TOKEN
     assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
     assert f"-v {token_path}:{token_path}:ro" in command
@@ -142,7 +142,11 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     auth_env.setenv("RAY_RUNTIME_ENV_BEARER_TOKEN", "bearer-secret")
     injected = "x'$(touch /tmp/pwned)'`id`"
     context = RuntimeEnvContext(
-        env_vars={"JOB_SECRET": injected, "LD_PRELOAD": "/evil.so"}
+        env_vars={
+            "JOB_SECRET": injected,
+            "LD_PRELOAD": "/evil.so",
+            "STOLEN": "${RAY_RUNTIME_ENV_BEARER_TOKEN}",
+        }
     )
 
     argv, launcher_env = _launch(
@@ -162,6 +166,8 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     assert "RAY_AUTH_TOKEN" not in argv
     assert "RAY_RUNTIME_ENV_BEARER_TOKEN" not in argv
     assert TOKEN not in " ".join(argv)
+    assert "STOLEN=${RAY_RUNTIME_ENV_BEARER_TOKEN}" in argv
+    assert "bearer-secret" not in " ".join(argv)
     # Each run_options item is split like a shell would, without expansion.
     assert argv[argv.index("--cap-drop") + 1] == "SYS_ADMIN"
     assert argv[argv.index("--label") + 1] == "a b"

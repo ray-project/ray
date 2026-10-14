@@ -130,7 +130,9 @@ class RuntimeEnvContext:
             for name in launcher_env
             if name.startswith("RAY_") and name not in _NODE_SECRET_ENV_VARS
         }
-        container_env.update({name: os.environ[name] for name in self.env_vars})
+        # Raw values: expanding ${VAR} against the host env would let a job
+        # copy node secrets into its container.
+        container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 
         cmd = list(self.container["command"])
