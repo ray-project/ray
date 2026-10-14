@@ -19,8 +19,12 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
+    INTERNET,
+    INTERNET_EXCLUDED_IPV4,
+    INTERNET_IPV6,
     SandboxConfig,
     normalize_cidr_allowlist,
+    parse_cidr_allowlist_entry,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -110,10 +114,13 @@ def _render_egress_ruleset(cidrs: List[str], dns_servers: List[str]) -> str:
     The ruleset is one transaction: ``flush ruleset`` (the namespace is
     private to the sandbox, so this only ever clears this sandbox's own
     rules) followed by a single ``inet`` table whose output chain drops by
-    default and accepts loopback, the listed networks, and DNS (UDP and TCP
-    port 53) to the sandbox's resolvers. One rule per network and a numeric
-    hook priority keep it valid on every nft from 0.9 on, and nothing
-    depends on conntrack, so only nf_tables itself is needed in the kernel.
+    default and accepts loopback, the listed destinations, and DNS (UDP and
+    TCP port 53) to the sandbox's resolvers. An entry with ports accepts only
+    those TCP and UDP ports, and ``internet`` accepts every address outside
+    the non-public IPv4 networks plus IPv6 global unicast. Plain prefix
+    matches and a numeric hook priority keep it valid on every nft from 0.9
+    on, and nothing depends on conntrack, so only nf_tables itself is needed
+    in the kernel.
 
     Args:
         cidrs: Allowed destination networks (IPv4 or IPv6, any form
@@ -133,9 +140,22 @@ def _render_egress_ruleset(cidrs: List[str], dns_servers: List[str]) -> str:
         "        type filter hook output priority 0; policy drop;",
         '        oif "lo" accept',
     ]
-    for cidr in normalize_cidr_allowlist(cidrs):
-        family = "ip6" if ipaddress.ip_network(cidr).version == 6 else "ip"
-        lines.append(f"        {family} daddr {cidr} accept")
+    for entry in normalize_cidr_allowlist(cidrs):
+        destination, ports = parse_cidr_allowlist_entry(entry)
+        if destination == INTERNET:
+            matches = [
+                " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4),
+                f"ip6 daddr {INTERNET_IPV6}",
+            ]
+        else:
+            family = "ip6" if ipaddress.ip_network(destination).version == 6 else "ip"
+            matches = [f"{family} daddr {destination}"]
+        for match in matches:
+            if ports is None:
+                lines.append(f"        {match} accept")
+            else:
+                for proto in ("tcp", "udp"):
+                    lines.append(f"        {match} {proto} dport {ports} accept")
     for server in dns_servers:
         try:
             address = ipaddress.ip_address(str(server).strip())

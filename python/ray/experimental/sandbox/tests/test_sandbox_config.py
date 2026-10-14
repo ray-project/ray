@@ -135,6 +135,47 @@ def test_normalize_cidr_allowlist():
         normalize_cidr_allowlist("10.0.0.0/8")
 
 
+def test_normalize_cidr_allowlist_ports_and_internet():
+    assert normalize_cidr_allowlist(
+        [
+            "10.0.0.5:8000",
+            "10.0.1.7/24:8000-8010",
+            "[2001:db8::1]:443",
+            "[2001:db8::/32]",
+            " Internet ",
+            "internet:443",
+            "10.0.0.5:22-22",
+        ]
+    ) == [
+        "10.0.0.5/32:8000",
+        "10.0.1.0/24:8000-8010",
+        "[2001:db8::1/128]:443",
+        "2001:db8::/32",
+        "internet",
+        "internet:443",
+        "10.0.0.5/32:22",
+    ]
+
+
+@pytest.mark.parametrize(
+    "entry, message",
+    [
+        ("10.0.0.5:0", "port"),
+        ("10.0.0.5:65536", "port"),
+        ("10.0.0.5:9000-8000", "port"),
+        ("10.0.0.5:", "port"),
+        ("internet:https", "port"),
+        ("[2001:db8::1:443", "unclosed"),
+        ("[2001:db8::1]443", "unclosed"),
+        ("example.com:443", "not an IP address"),
+    ],
+)
+def test_cidr_allowlist_rejects_bad_ports_and_destinations(entry, message):
+    with pytest.raises(ValueError, match=message) as err:
+        normalize_cidr_allowlist([entry])
+    assert repr(entry) in str(err.value)
+
+
 def test_sandbox_network_requires_rootful():
     with pytest.raises(ValueError, match="rootless"):
         SandboxConfig(image="python:3.10-slim", network="sandbox")

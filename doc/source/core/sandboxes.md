@@ -391,7 +391,7 @@ sb = sandbox.create(
 
 ### Restrict egress to an allowlist
 
-Pass `cidr_allowlist` with `network="public"` to let a sandbox reach only the listed IPv4 or IPv6 networks. Every other destination is dropped, for every protocol:
+Pass `cidr_allowlist` with `network="public"` to let a sandbox reach only the listed destinations. Every other destination is dropped, for every protocol:
 
 ```python
 sb = sandbox.create(
@@ -409,7 +409,8 @@ Keep these semantics in mind:
 
 * **DNS stays reachable.** UDP and TCP port 53 to the resolvers in `dns` (the public defaults unless you set it) are the one implicit exception, so names still resolve. Everything else to those resolvers is dropped like any other unlisted destination. Put the resolver addresses in the allowlist if the sandbox needs more than DNS from them.
 * **`[]` allows nothing but DNS.** Use it as the strictest `public` sandbox, or as the starting point for a policy you widen later.
-* **Entries must be IP literals.** Ray normalizes `10.0.1.5/24` to `10.0.1.0/24` and rejects host names. Domain-based allowlists need a TLS-inspecting proxy, which Ray doesn't provide.
+* **Entries are IP literals, with optional ports.** An entry is an IPv4 or IPv6 address or network, such as `10.0.1.0/24`. Add `:port` or `:low-high` to allow only those TCP and UDP ports, such as `10.0.1.5:8000`, and put an IPv6 destination with a port in brackets, such as `[2001:db8::1]:443`. Ray normalizes `10.0.1.5/24` to `10.0.1.0/24` and rejects host names. Domain-based allowlists need a TLS-inspecting proxy, which Ray doesn't provide.
+* **`internet` is every public address.** It leaves out private, shared, loopback, link-local, multicast, and the other special-purpose IPv4 networks, and allows IPv6 global unicast. Those networks hold your cluster's nodes, Pods, and Services, so `["internet"]` reaches the internet but not the cluster. `internet:443` allows only HTTPS. To also reach one service in the cluster, list its address and port. For example, `["internet", "10.0.0.84:8000"]` reaches a model server on a node without reaching that node's Ray ports. In a cluster that rewrites Service IPs to Pod IPs at connect time, as Cilium does, list the Pod's address.
 * **Change it at runtime.** `SandboxRuntime.set_egress_allowlist(instance_id, cidrs)` replaces the ruleset atomically for a sandbox that was created with `cidr_allowlist`. Pass `["0.0.0.0/0", "::/0"]` at creation to start open and narrow later. Connections the new list no longer permits stall from their next packet rather than being reset. A sandbox created without `cidr_allowlist` has a fixed policy.
 * **Node requirements.** The `nft` binary must be on the `$PATH` and the kernel must provide `nf_tables`; creation fails with a clear error otherwise.
 

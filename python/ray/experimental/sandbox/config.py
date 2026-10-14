@@ -1,7 +1,7 @@
 import ipaddress
 import re
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, List, Optional, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 # Sandbox network modes. "none", "host", and "sandbox" map directly to runsc
 # --network; "public" runs runsc with host networking inside a per-sandbox
@@ -18,15 +18,103 @@ DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 # back at runtime.
 ALLOW_ALL_CIDRS = ("0.0.0.0/0", "::/0")
 
+# The cidr_allowlist entry for the public internet: every destination outside
+# INTERNET_EXCLUDED_IPV4, plus IPv6 global unicast (INTERNET_IPV6).
+INTERNET = "internet"
+
+# IPv4 networks that aren't the public internet: private (RFC 1918), shared
+# (RFC 6598), loopback, link-local, the other special-purpose ranges in the
+# IANA registry (RFC 6890), multicast, and reserved space. They hold a
+# cluster's nodes, pods, and services, and slirp4netns's own 198.18.0.0/24.
+INTERNET_EXCLUDED_IPV4 = (
+    "0.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.0.0.0/24",
+    "192.0.2.0/24",
+    "192.88.99.0/24",
+    "192.168.0.0/16",
+    "198.18.0.0/15",
+    "198.51.100.0/24",
+    "203.0.113.0/24",
+    "224.0.0.0/4",
+    "240.0.0.0/4",
+)
+
+# IPv6 global unicast. Unique-local, link-local, loopback, and multicast
+# addresses are all outside it.
+INTERNET_IPV6 = "2000::/3"
+
+_PORTS = re.compile(r"(\d{1,5})(?:-(\d{1,5}))?")
+
+
+def parse_cidr_allowlist_entry(entry: str) -> Tuple[str, Optional[str]]:
+    """Split an egress allowlist entry into its destination and port range.
+
+    An entry is a destination with an optional port or port range, which
+    then applies to both TCP and UDP:
+
+    * ``10.0.1.0/24`` or ``10.0.1.5``: an IPv4 or IPv6 network or address.
+    * ``10.0.1.5:8000`` or ``10.0.1.0/24:8000-8010``: only those ports.
+    * ``[2001:db8::1]:443``: an IPv6 destination with a port, in brackets.
+    * ``internet``, or ``internet:443``: every public address, which leaves
+      out private and other special-purpose networks (see
+      ``INTERNET_EXCLUDED_IPV4``).
+
+    Args:
+        entry: The entry to parse.
+
+    Returns:
+        The canonical destination (a network in CIDR form, or ``internet``)
+        and the canonical port or port range, or None for every port.
+
+    Raises:
+        ValueError: If the destination isn't an IP address, network, or
+            ``internet``, or the port isn't in 1-65535.
+    """
+    text = str(entry).strip()
+    destination, ports = text, None
+    if text.startswith("["):
+        destination, close, rest = text[1:].partition("]")
+        if not close or (rest and not rest.startswith(":")):
+            raise ValueError(f"cidr_allowlist entry {entry!r} has an unclosed '['")
+        ports = rest[1:] if rest else None
+    elif text.count(":") == 1:
+        destination, ports = text.split(":")
+    if destination.strip().lower() == INTERNET:
+        destination = INTERNET
+    else:
+        try:
+            destination = str(ipaddress.ip_network(destination.strip(), strict=False))
+        except ValueError as err:
+            raise ValueError(
+                f"cidr_allowlist entry {entry!r} is not an IP address or "
+                f"CIDR network: {err}"
+            ) from None
+    if ports is not None:
+        match = _PORTS.fullmatch(ports.strip())
+        low, high = (int(match[1]), int(match[2] or match[1])) if match else (0, 0)
+        if not 1 <= low <= high <= 65535:
+            raise ValueError(
+                f"cidr_allowlist entry {entry!r} needs a port or port range in "
+                "1-65535 after the ':'"
+            )
+        ports = str(low) if low == high else f"{low}-{high}"
+    return destination, ports
+
 
 def normalize_cidr_allowlist(cidrs: Iterable[str]) -> List[str]:
     """Validate egress allowlist entries and return them in canonical form.
 
-    Every entry must be an IPv4 or IPv6 address or network (``10.0.1.5`` or
-    ``10.0.1.0/24``); host bits are cleared, so ``10.0.1.5/24`` becomes
-    ``10.0.1.0/24``. The entries end up in an nftables ruleset, so anything
-    that is not an address literal, such as a host name, is rejected here
-    rather than at sandbox start.
+    Every entry is an IPv4 or IPv6 address or network (``10.0.1.5`` or
+    ``10.0.1.0/24``), or ``internet``, optionally followed by a port or port
+    range (see ``parse_cidr_allowlist_entry``). Host bits are cleared, so
+    ``10.0.1.5/24`` becomes ``10.0.1.0/24``. The entries end up in an
+    nftables ruleset, so anything that is not an address literal, such as a
+    host name, is rejected here rather than at sandbox start.
 
     Args:
         cidrs: The entries to validate.
@@ -44,14 +132,13 @@ def normalize_cidr_allowlist(cidrs: Iterable[str]) -> List[str]:
         )
     normalized: List[str] = []
     for entry in cidrs:
-        try:
-            network = ipaddress.ip_network(str(entry).strip(), strict=False)
-        except ValueError as err:
-            raise ValueError(
-                f"cidr_allowlist entry {entry!r} is not an IP address or "
-                f"CIDR network: {err}"
-            ) from None
-        normalized.append(str(network))
+        destination, ports = parse_cidr_allowlist_entry(entry)
+        if ports is None:
+            normalized.append(destination)
+        elif ":" in destination:
+            normalized.append(f"[{destination}]:{ports}")
+        else:
+            normalized.append(f"{destination}:{ports}")
     return normalized
 
 
