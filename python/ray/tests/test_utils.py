@@ -165,5 +165,20 @@ def test_object_store_memory_returns_int_when_capped_by_shm():
             assert isinstance(result, int)
 
 
+def test_object_store_memory_cap_on_windows():
+    """Test that the default object store memory is capped on Windows."""
+    cap = ray_constants.WINDOWS_DEFAULT_OBJECT_STORE_MEMORY_LIMIT
+
+    with patch("ray._private.utils.sys.platform", "win32"):
+        assert resolve_object_store_memory(100 * (1024**3), None) == cap
+        small = 4 * (1024**3)
+        assert resolve_object_store_memory(small, None) == int(
+            small * ray_constants.DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
+        )
+        assert resolve_object_store_memory(100 * (1024**3), 10 * (1024**3)) == (
+            10 * (1024**3)
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
