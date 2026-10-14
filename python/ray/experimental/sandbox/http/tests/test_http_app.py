@@ -834,8 +834,9 @@ def test_resolver_reuses_one_actor_class_and_caches_fresh_handles(
     monkeypatch.setattr(ray, "get_actor", fake_get_actor)
     resolver = RayActorHandleResolver(SandboxAPISettings())
 
-    fresh = resolver.create("sb-fresh", {}, {}, get_if_exists=False)
-    resolver.create("sb-token", {}, {}, get_if_exists=True)
+    ctor_kwargs = {"spec": {"image": "busybox:latest"}}
+    fresh = resolver.create("sb-fresh", {}, ctor_kwargs, get_if_exists=False)
+    resolver.create("sb-token", {}, ctor_kwargs, get_if_exists=True)
 
     # One ActorClass (one class export) for every create.
     assert len(exported) == 1
@@ -847,6 +848,43 @@ def test_resolver_reuses_one_actor_class_and_caches_fresh_handles(
     resolver.forget("sb-fresh")
     assert resolver.get("sb-fresh") == "handle-sb-fresh"
     assert lookups == ["sb-token", "sb-fresh"]
+
+
+def test_resolver_prefers_the_node_the_image_maps_to(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import ray
+    from ray.experimental.sandbox.http import resolver as resolver_module
+
+    options = []
+
+    class _ActorClass:
+        def options(self, **actor_options):
+            options.append(actor_options)
+            return self
+
+        def remote(self, **kwargs):
+            return object()
+
+    monkeypatch.setattr(ray, "remote", lambda cls: _ActorClass())
+    monkeypatch.setattr(
+        resolver_module,
+        "image_scheduling_strategy",
+        lambda image, **demand: ("strategy", image, demand),
+    )
+    resolver = RayActorHandleResolver(SandboxAPISettings())
+    resolver.create(
+        "sb-1",
+        {"num_cpus": 2, "memory": 1 << 30, "resources": {"gvisor": 1}},
+        {"spec": {"image": "python:3.12-slim"}},
+        get_if_exists=False,
+    )
+    assert options[0]["scheduling_strategy"] == (
+        "strategy",
+        "python:3.12-slim",
+        {"num_cpus": 2, "memory": 1 << 30, "resources": {"gvisor": 1}},
+    )
+    assert options[0]["resources"] == {"gvisor": 1}
 
 
 class _LosesFirstBoot(FakeResolver):
