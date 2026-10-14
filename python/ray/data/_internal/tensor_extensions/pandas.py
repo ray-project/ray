@@ -1003,7 +1003,7 @@ class TensorArray(
 
                 # Put tensors at the given positive indices into array.
                 is_nonneg = indices >= 0
-                np.put(values, np.where(is_nonneg)[0], self._tensor[indices[is_nonneg]])
+                values[is_nonneg] = self._tensor[indices[is_nonneg]]
 
                 return TensorArray(values)
 

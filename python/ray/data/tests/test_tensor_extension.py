@@ -77,6 +77,40 @@ def test_tensor_array_from_tensor_array_element():
     np.testing.assert_array_equal(t_arr.to_numpy(), np.arange(4, 8).reshape((1, 2, 2)))
 
 
+@pytest.mark.parametrize("shape", [(), (0,), (2,), (2, 2), (2, 2, 2)])
+@pytest.mark.parametrize("fill_value", [None, 0.0, -7.0])
+def test_tensor_array_take_with_fill(shape, fill_value):
+    source = np.arange(2 * np.prod(shape, dtype=int), dtype=np.float64).reshape(
+        (2,) + shape
+    )
+    filled_row = np.full(shape, np.nan if fill_value is None else fill_value)
+    expected = np.stack([source[1], filled_row, source[0], source[1]])
+
+    result = TensorArray(source).take(
+        [1, -1, 0, 1], allow_fill=True, fill_value=fill_value
+    )
+
+    np.testing.assert_array_equal(result.to_numpy(), expected)
+
+
+@pytest.mark.parametrize("allow_fill,indices", [(True, [1, 0]), (False, [-1, 0])])
+def test_tensor_array_take_without_fill(allow_fill, indices):
+    source = np.array([[10.0, 11.0], [20.0, 21.0]])
+
+    result = TensorArray(source).take(indices, allow_fill=allow_fill)
+
+    np.testing.assert_array_equal(result.to_numpy(), source[indices])
+
+
+def test_tensor_array_series_reindex():
+    series = pd.Series(TensorArray(np.array([[10.0, 11.0], [20.0, 21.0]])))
+
+    result = series.reindex([0, 1, 2])
+
+    expected = np.array([[10.0, 11.0], [20.0, 21.0], [np.nan, np.nan]])
+    np.testing.assert_array_equal(result.array.to_numpy(), expected)
+
+
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
