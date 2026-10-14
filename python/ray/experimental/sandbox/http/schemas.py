@@ -410,6 +410,15 @@ class SandboxAPISettings(BaseModel):
             "ready."
         ),
     )
+    host_channel: bool = Field(
+        default=False,
+        description=(
+            "With host_mode='node': API replicas call node hosts over a direct "
+            "connection each (served on the host's event loop) instead of Ray "
+            "actor tasks, falling back to Ray when it is unavailable. Ray's "
+            "per-task dispatch limits a busy node host."
+        ),
+    )
     reservation_slab_cpus: float = Field(
         default=0.0,
         ge=0,

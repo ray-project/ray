@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Coroutine, Dict, List, Optional, Set
 
 from ray.experimental.sandbox.http.host import HostSettings, SandboxHost, SandboxSpec
+from ray.experimental.sandbox.http.host_channel import HostChannelServer
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -57,6 +58,25 @@ _WARM_RETRY_SECONDS = 30.0
 # refill boots one sandbox at a time: right after a burst drained the pool,
 # full-speed refills cost the new sandboxes' execs ~30 % of their throughput.
 _BUSY_EXECS_PER_SECOND = 50
+# What API replicas may call over a host channel (see host_channel.py): the
+# per-sandbox calls and admit, all safe to repeat through Ray when a
+# connection breaks.
+CHANNEL_METHODS = frozenset(
+    {
+        "admit",
+        "describe",
+        "start_exec",
+        "get_exec",
+        "get_exec_by_key",
+        "fs_read",
+        "fs_write_open",
+        "stdin_write",
+        "stdin_status",
+        "write_file",
+        "read_file",
+        "terminate",
+    }
+)
 
 
 def warm_key(spec: SandboxSpec) -> Optional[tuple]:
@@ -190,6 +210,7 @@ class SandboxNodeHost:
         self._fill_slots = asyncio.Semaphore(_WARM_FILL_CONCURRENCY)
         self._busy_slot = asyncio.Semaphore(1)
         self._exec_starts: collections.deque = collections.deque()
+        self._channel: Optional[HostChannelServer] = None
 
     def _set_warm_pool(self, warm_pool: Optional[List[Dict[str, Any]]]) -> None:
         """Set the warm pools; a pool no longer listed shuts its sandboxes down."""
@@ -701,6 +722,14 @@ class SandboxNodeHost:
         if host is not None:
             await host._shutdown()
         self._release(sandbox_id)
+
+    async def channel_endpoint(self) -> Dict[str, Any]:
+        """Where and how to connect a host channel; serves one from the first call."""
+        import ray
+
+        if self._channel is None:
+            self._channel = HostChannelServer(self, CHANNEL_METHODS)
+        return await self._channel.start(ray.util.get_node_ip_address())
 
     async def sandbox_ids(self) -> list:
         """The sandboxes hosted here; also starts filling the warm pool."""

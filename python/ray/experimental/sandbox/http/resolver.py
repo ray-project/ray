@@ -16,7 +16,8 @@ from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.experimental.sandbox.http.host import SandboxHost
-from ray.experimental.sandbox.http.node_host import SandboxNodeHost
+from ray.experimental.sandbox.http.host_channel import HostChannel, HostChannelError
+from ray.experimental.sandbox.http.node_host import CHANNEL_METHODS, SandboxNodeHost
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
 from ray.util.annotations import PublicAPI
 
@@ -40,6 +41,10 @@ _NODE_HOST_MAX_CONCURRENCY = 100_000
 _NODES_TTL_SECONDS = 5.0
 # How long a listing waits for the node hosts to report their sandboxes.
 _LIST_HOSTS_SECONDS = 10.0
+# After a host channel fails to connect or breaks, calls to that host go
+# through Ray for this long before the next attempt.
+_CHANNEL_RETRY_SECONDS = 30.0
+_CHANNEL_CONNECT_SECONDS = 10.0
 # A hosted sandbox's id names its node, so any resolver finds the sandbox
 # without a registry: "sb-", then the first _NODE_PREFIX_CHARS hex characters
 # of the node id, a marker that hex never contains, and random hex, 22
@@ -57,6 +62,19 @@ def _hosted_sandbox_id(node_id: str) -> str:
         f"{SANDBOX_ID_PREFIX}{node_id[:_NODE_PREFIX_CHARS]}{_HOSTED_MARKER}"
         f"{uuid.uuid4().hex[:11]}"
     )
+
+
+class _ChannelSlot:
+    """One event loop's channel to one node host (see host_channel)."""
+
+    __slots__ = ("channel", "connecting", "retry_at", "task")
+
+    def __init__(self) -> None:
+        self.channel: Optional[HostChannel] = None
+        self.connecting = False
+        self.retry_at = 0.0
+        # The connect task (the loop keeps only weak references to tasks).
+        self.task: Optional[asyncio.Task] = None
 
 
 class _HostedCall:
@@ -77,7 +95,21 @@ class _HostedCall:
         self._method = method
         self._args = args
         self._kwargs = kwargs
-        self._ref = self._submit()
+        self._ref: Any = None
+        self._sent: Any = None
+        resolver = handle._resolver
+        channel = (
+            resolver.host_channel(handle.host)
+            if resolver is not None and method in CHANNEL_METHODS
+            else None
+        )
+        if channel is not None:
+            try:
+                self._sent = channel.call(method, (handle.sandbox_id, *args), kwargs)
+            except HostChannelError:
+                self._sent = None
+        if self._sent is None:
+            self._ref = self._submit()
 
     def _submit(self) -> Any:
         return getattr(self._handle.host, self._method).remote(
@@ -88,6 +120,13 @@ class _HostedCall:
         return self._run().__await__()
 
     async def _run(self) -> Any:
+        if self._sent is not None:
+            try:
+                return await self._sent
+            except HostChannelError:
+                # The connection broke; every method the channel serves is
+                # safe to repeat, so run it as a Ray task instead.
+                self._ref = self._submit()
         try:
             return await self._ref
         except Exception as exc:
@@ -242,6 +281,8 @@ class RayActorHandleResolver:
         self._nodes_at = 0.0
         self._refreshing_nodes = False
         self._spread = itertools.count()
+        # host_channel: (host actor id, event loop id) -> its _ChannelSlot.
+        self._channels: Dict[Tuple[str, int], "_ChannelSlot"] = {}
 
     def _actor_class(self) -> Any:
         # One ActorClass for the resolver's lifetime: a fresh
@@ -328,9 +369,16 @@ class RayActorHandleResolver:
                 )
                 host_name, host = entry
                 try:
-                    result = await host.admit.remote(
-                        name, ctor_kwargs["spec"], ctor_kwargs["settings"], demand
-                    )
+                    args = (name, ctor_kwargs["spec"], ctor_kwargs["settings"], demand)
+                    result = None
+                    channel = self.host_channel(host)
+                    if channel is not None:
+                        try:
+                            result = await channel.call("admit", args, {})
+                        except HostChannelError:
+                            result = None
+                    if result is None:
+                        result = await host.admit.remote(*args)
                     break
                 except Exception as exc:
                     if attempt or not _is_actor_gone(exc):
@@ -389,6 +437,54 @@ class RayActorHandleResolver:
             self._node_hosts[node_id] = (handle.host_name, host)
         handle.host = host
         return host
+
+    def host_channel(self, host: Any) -> Optional[HostChannel]:
+        """A connected channel to ``host`` for calls on this event loop, or None.
+
+        With ``host_channel`` set, the first call to a host from a loop starts
+        connecting in the background; calls go through Ray until it is up,
+        and for _CHANNEL_RETRY_SECONDS after it fails or breaks.
+
+        Args:
+            host: A ``SandboxNodeHost`` actor handle.
+
+        Returns:
+            The channel, or None while there is no usable one.
+        """
+        if not self._settings.host_channel:
+            return None
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return None
+        key = (host._actor_id.hex(), id(loop))
+        slot = self._channels.get(key)
+        if slot is None:
+            slot = self._channels[key] = _ChannelSlot()
+        channel = slot.channel
+        if channel is not None and channel.ready:
+            return channel
+        now = time.monotonic()
+        if not slot.connecting and now >= slot.retry_at:
+            slot.connecting = True
+            slot.retry_at = now + _CHANNEL_RETRY_SECONDS
+            slot.task = loop.create_task(self._open_channel(slot, host))
+        return None
+
+    async def _open_channel(self, slot: "_ChannelSlot", host: Any) -> None:
+        try:
+            endpoint = await asyncio.wait_for(
+                host.channel_endpoint.remote(), _CHANNEL_CONNECT_SECONDS
+            )
+            channel = HostChannel(endpoint)
+            await asyncio.wait_for(channel.connect(), _CHANNEL_CONNECT_SECONDS)
+            if slot.channel is not None:
+                slot.channel.close()
+            slot.channel = channel
+        except Exception as exc:  # noqa: BLE001 - Ray carries the calls meanwhile
+            logger.info("No channel to sandbox node host (using Ray calls): %s", exc)
+        finally:
+            slot.connecting = False
 
     def _drop_node_host(self, node_id: str, handle: Any) -> None:
         """Forget a cached host that has died, so the next use starts another."""
