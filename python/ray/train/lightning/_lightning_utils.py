@@ -256,16 +256,14 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     You can also provide the following arguments to the callback:
 
-    - checkpoint_frequency: Only report a checkpoint every ``checkpoint_frequency``
-        training epochs (e.g. ``2`` checkpoints on every other epoch). Defaults to
-        ``1``, which checkpoints on every epoch. On other epochs, nothing is
-        reported, so metrics and checkpoints are always reported together. If
-        ``max_epochs`` is not a multiple of ``checkpoint_frequency``, the epochs
-        after the last multiple are not reported or checkpointed.
     - checkpoint_upload_mode: The manner in which to upload the checkpoint.
         See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>` for more details.
     - validation: Whether to asynchronously validate the checkpoint.
         See :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>` for more details.
+    - checkpoint_frequency: Only report a checkpoint and metrics every
+        ``checkpoint_frequency``. Defaults to ``1``, which is checkpoints on every
+        epoch. If ``max_epochs`` is not a multiple of ``checkpoint_frequency``, it
+        will not be reported.
 
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user
@@ -276,10 +274,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def __init__(
         self,
-        checkpoint_frequency: int = 1,
         # v2-only arguments
         checkpoint_upload_mode=None,
         validation=False,
+        checkpoint_frequency: int = 1,
     ) -> None:
         super().__init__()
         if not isinstance(checkpoint_frequency, int) or isinstance(
