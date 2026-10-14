@@ -105,7 +105,9 @@ def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
     # Containers mount ray_tmp_dir read-write, so the token must live elsewhere.
     (token_path,) = (tmp_path / ".ray").glob("image_uri_auth_token_*")
     assert token_path.read_text() == TOKEN
-    assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
+    # Windows reports 0o666 for any writable file.
+    if sys.platform != "win32":
+        assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
     assert f"-v {token_path}:{token_path}:ro" in command
     assert f"--env RAY_AUTH_TOKEN_PATH={token_path}" in command
     assert TOKEN not in command
