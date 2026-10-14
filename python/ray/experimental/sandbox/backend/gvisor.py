@@ -1,13 +1,16 @@
+import fcntl
+import glob
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
-import signal
 import subprocess
+import threading
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import IO, Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -31,8 +34,18 @@ logger = logging.getLogger(__name__)
 _RUNSC_ROOT = "/tmp/runsc"
 
 # How long teardown waits for a sandbox's launch process to exit on its own
-# after the container stops, before it kills the process group.
+# after the container stops, before it kills that process.
 _TREE_EXIT_GRACE_SECONDS = 2.0
+
+# Each bundle holds a file that its owner keeps open and locked while the
+# sandbox lives. The kernel drops the lock when the owner exits or crashes, so
+# a backend in any process can find the bundles that nobody owns anymore.
+_OWNER_FILE = ".owner"
+_BUNDLE_NAME = re.compile(r"ray-sandbox-[0-9a-f]{12}")
+# How often a process looks for bundles nobody owns.
+_RECLAIM_INTERVAL_SECONDS = 60.0
+_reclaim_lock = threading.Lock()
+_last_reclaim = float("-inf")
 
 # Directory for sandbox bundles, cached container images, and per-sandbox
 # overlay state.
@@ -42,8 +55,8 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
 # namespaces; slirp4netns attaches to them from the pod side, so its uplink
-# is the pod's network, and runs in the foreground inside the sandbox's
-# process group; runsc runs inside via nsenter as mapped root. runsc still
+# is the pod's network, and runs in the foreground under the sandbox's
+# launch shell; runsc runs inside via nsenter as mapped root. runsc still
 # gets --network=host, but "host" is now private to the sandbox: binds cannot
 # collide with or be reached by the pod or other sandboxes, while egress
 # leaves through slirp4netns's tap. Mount and pid namespaces stay shared, so
@@ -83,6 +96,17 @@ _SLIRP4NETNS_FLAGS = [
 ]
 
 
+def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
+    """runsc and the global flags that its run/exec/kill/delete share."""
+    args = ["runsc"]
+    if rootless:
+        args.append("--rootless")
+    if ignore_cgroups:
+        args.append("--ignore-cgroups")
+    args.extend(["--root", _RUNSC_ROOT])
+    return args
+
+
 def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
     """Return the fields of the ``name`` entry in passwd- or group-style text."""
     for line in text.splitlines():
@@ -120,12 +144,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "and util-linux on the node image."
                 )
 
+        self._maybe_reclaim_unowned_bundles()
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
+        owner_file = None
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
+            owner_file = self._own_bundle(config, root_dir)
 
             # The instance id pins the image in the cache while this sandbox
             # lives (its EROFS image is the sandbox's root filesystem).
@@ -159,6 +186,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
             self._image_manager.release_image(config.image, sandbox_id)
+            # The next reclaim deletes the bundle.
+            if owner_file:
+                owner_file.close()
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
@@ -182,21 +212,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             )
         except Exception:
             self._image_manager.release_image(config.image, sandbox_id)
+            owner_file.close()
             raise
         run_args = self._build_run_command(config, root_dir, sandbox_id)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
-        # start_new_session puts the namespace holder, slirp4netns, and runsc run
-        # in one process group so cleanup can kill the whole tree; they share
-        # the stderr log so startup failures (missing /dev/net/tun, no
-        # uplink) surface through the SandboxCreationError path below.
+        # The launch process stays in this process's group, so the sandbox
+        # can't outlive a Ray worker that owns it: when a worker exits or
+        # crashes, the raylet kills the worker's process group. Everything
+        # the launch process started dies with it, runsc's sandbox through
+        # runsc's parent-death signal and a network="public" sandbox's
+        # helpers through setpriv. The tree shares the stderr log so startup
+        # failures (missing /dev/net/tun, no uplink) surface through the
+        # SandboxCreationError path below.
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
-            start_new_session=True,
         )
         start_time = time.time()
         timeout = config.timeout_seconds
@@ -246,6 +280,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # The sandbox never registered, so delete_sandbox will not run
             # for it: release the image here to keep it evictable.
             self._image_manager.release_image(config.image, sandbox_id)
+            owner_file.close()
             raise
 
         self._sandbox_metadata[sandbox_id] = {
@@ -253,10 +288,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
-            # The process group leader whose tree holds the sandbox and,
-            # for network="public", the namespace holder and slirp4netns.
+            # The launch process whose tree holds the sandbox and, for
+            # network="public", the namespace holder and slirp4netns.
             "proc": proc,
             "stderr_file": stderr_file,
+            "owner_file": owner_file,
             "status": SandboxStatus.RUNNING,
         }
         return sandbox_id
@@ -293,6 +329,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             shutil.rmtree(root_dir, ignore_errors=True)
             # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
+            # Last, so no other backend reclaims the bundle while it's
+            # being deleted.
+            if meta.get("owner_file"):
+                meta["owner_file"].close()
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
@@ -489,23 +529,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
-        args = ["runsc"]
-        if config.rootless:
-            args.append("--rootless")
-        if (
-            getattr(config, "_ignore_cgroups", False)
-            or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
-        ):
-            args.append("--ignore-cgroups")
-        args.extend(["--root", _RUNSC_ROOT])
-        return args
+        return _runsc_args(
+            rootless=config.rootless,
+            ignore_cgroups=(
+                getattr(config, "_ignore_cgroups", False)
+                or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
+            ),
+        )
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
 
         Bounded by a timeout: a wedged gVisor (the usual reason a create
-        timed out) must not block the process-group kill and slirp4netns reap
-        that follow, which is what actually frees the sandbox.
+        timed out) must not block stopping the launch process, which is what
+        actually frees the sandbox.
         """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
         try:
@@ -557,7 +594,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # setpriv --pdeathsig kills each child with this shell, which
                 # is what Ray kills when the owning worker exits.
                 # The holder pins the namespaces for the sandbox's lifetime;
-                # --kill-child ties it to this script's process group.
+                # --kill-child ties its sleep to it.
                 "setpriv --pdeathsig KILL -- "
                 "unshare --user --map-root-user --net --fork --kill-child "
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
@@ -569,7 +606,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 # slirp4netns attaches from the pod side and stays in the
-                # foreground, so it lives and dies with this process group.
+                # foreground, so it lives and dies with this shell.
                 # It writes "1" to --ready-fd once the tap is configured:
                 # that is the go signal.
                 f"setpriv --pdeathsig KILL -- {slirp} --ready-fd=3 --netns-type=path "
@@ -587,30 +624,135 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
-        """Reap the launch process, and SIGKILL its process group if it hangs.
+        """Stop a sandbox's launch process, and everything it started, and reap it.
 
-        The run Popen is started with ``start_new_session=True``, so its pid
-        is the group id for the namespace holder, slirp4netns and runsc run;
-        runsc starts the sandbox and gofer in sessions of their own. Callers
-        stop the container first, so the launch process normally exits on its
-        own and leaves an empty group: the launch shell of a network="public"
-        sandbox reaps its helpers first. Killing the group before that would
-        orphan them.
+        Callers stop the container first, so the launch process normally exits
+        on its own; a network="public" sandbox's shell reaps its helpers first.
+        Otherwise it gets SIGKILL, and the processes it started die with it
+        through their parent-death signals.
         """
         try:
             proc.wait(timeout=_TREE_EXIT_GRACE_SECONDS)
         except subprocess.TimeoutExpired:
-            # Only while the launch process is unreaped: once it's reaped,
-            # its pid, the group id, can go to an unrelated process group.
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                if proc.poll() is None:
-                    proc.kill()
+            proc.kill()
         try:
             proc.communicate(timeout=2)
         except (subprocess.TimeoutExpired, ValueError):
             pass
+
+    def _own_bundle(self, config: SandboxConfig, root_dir: str) -> IO[str]:
+        """Lock a new bundle's owner file for this backend and return it open.
+
+        The backend keeps the file, and so its lock, until it deletes the
+        sandbox. The file is locked before it takes its name, so a backend
+        looking for unowned bundles never takes one that's being created. It
+        also records what reclaiming the bundle takes.
+        """
+        path = os.path.join(root_dir, _OWNER_FILE)
+        runsc_args = self._runsc_base_args(config)
+        owner_file = open(f"{path}.tmp", "x", encoding="utf-8")
+        try:
+            fcntl.flock(owner_file, fcntl.LOCK_EX)
+            # Flags rather than a command line: a backend never runs one that
+            # it reads from disk.
+            json.dump(
+                {
+                    "pid": os.getpid(),
+                    "image": config.image,
+                    "rootless": "--rootless" in runsc_args,
+                    "ignore_cgroups": "--ignore-cgroups" in runsc_args,
+                },
+                owner_file,
+            )
+            owner_file.flush()
+            os.rename(f"{path}.tmp", path)
+        except BaseException:
+            owner_file.close()
+            raise
+        return owner_file
+
+    def _maybe_reclaim_unowned_bundles(self) -> None:
+        """Run ``_reclaim_unowned_bundles`` at most once a minute per process."""
+        global _last_reclaim
+        if not _reclaim_lock.acquire(blocking=False):
+            return
+        try:
+            now = time.monotonic()
+            if now - _last_reclaim < _RECLAIM_INTERVAL_SECONDS:
+                return
+            _last_reclaim = now
+            self._reclaim_unowned_bundles()
+        except Exception:
+            logger.exception("Failed to reclaim sandboxes whose owner is gone")
+        finally:
+            _reclaim_lock.release()
+
+    def _reclaim_unowned_bundles(self) -> List[str]:
+        """Delete what sandboxes whose owner is gone left on this node.
+
+        A sandbox that a Ray worker owns stops with the worker (see
+        ``create_sandbox``), but its runsc state, its bundle (with the
+        writable overlay's backing file) and its image pin stay on the node,
+        and the pin keeps the image from being evicted. A sandbox whose owner
+        wasn't a Ray worker can still be running. Either way its owner file
+        is unlocked, and this backend holds the lock while it reclaims the
+        bundle, so no other backend reclaims it too.
+
+        Returns:
+            The IDs of the sandboxes reclaimed.
+        """
+        reclaimed = []
+        for root_dir in glob.glob(os.path.join(_RAY_SANDBOX_DIR, "ray-sandbox-*")):
+            sandbox_id = os.path.basename(root_dir)
+            if not _BUNDLE_NAME.fullmatch(sandbox_id):
+                continue
+            try:
+                if self._reclaim_if_unowned(root_dir, sandbox_id):
+                    reclaimed.append(sandbox_id)
+            except Exception:
+                logger.exception("Failed to reclaim sandbox %s", sandbox_id)
+        if reclaimed:
+            logger.info("Reclaimed sandboxes whose owner is gone: %s", reclaimed)
+        return reclaimed
+
+    def _reclaim_if_unowned(self, root_dir: str, sandbox_id: str) -> bool:
+        """Reclaim one bundle if nobody owns it, and return whether it did."""
+        try:
+            owner_file = open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8")
+        except OSError:
+            # Being created, or made by a Ray that didn't lock it.
+            return False
+        with owner_file:
+            try:
+                fcntl.flock(owner_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                return False  # Its owner is alive.
+            if os.fstat(owner_file.fileno()).st_nlink == 0:
+                return False  # Its owner deleted it since we opened the file.
+            try:
+                owner = json.load(owner_file)
+            except ValueError:
+                owner = None
+            if not isinstance(owner, dict):
+                owner = {}
+            runsc_args = _runsc_args(
+                rootless=owner.get("rootless") is True,
+                ignore_cgroups=owner.get("ignore_cgroups") is True,
+            )
+            for action in (
+                ["kill", sandbox_id, "SIGKILL"],
+                ["delete", "-force", sandbox_id],
+            ):
+                try:
+                    subprocess.run(
+                        [*runsc_args, *action], capture_output=True, timeout=10
+                    )
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            shutil.rmtree(root_dir, ignore_errors=True)
+            if isinstance(owner.get("image"), str):
+                self._image_manager.release_image(owner["image"], sandbox_id)
+        return True
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
         clean_path = relative_or_abs_path.lstrip("/")
