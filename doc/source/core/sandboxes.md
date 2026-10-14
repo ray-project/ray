@@ -37,10 +37,10 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Linux**: x86_64 or arm64.
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
-* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
+* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it. Nodes that [build images](#build-images) need 1.8 or later, which adds the `mkfs.erofs --incremental` option the builder uses to apply each layer.
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. Ubuntu 24.04 packages erofs-utils 1.7, which can't build images; build a release from source to build images there. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
 
 For example, the following Dockerfile adds all three tools to a Ray image for nodes with 4 KiB pages. Ray's images are based on Ubuntu 22.04, whose `erofs-utils` is too old, so it builds erofs-utils from source. It does so in a separate stage, so the build tools stay out of the final image. On an Ubuntu 24.04 or Debian 13 base image, `apt-get install erofs-utils` instead:
 
@@ -337,7 +337,43 @@ Sandboxes boot from OCI container images. The image manager pulls an image strai
 
 ### Bound the image cache
 
-The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before pulling or building an image it doesn't have, Ray evicts the least recently used images until the cache fits under the cap. Built images and their layers count toward the same cap. A built image is evicted in two steps: first its root filesystem goes, while its layers stay, so the next sandbox that needs it rebuilds it from the cached layers without running any build step again. Its layers go only if the cache is still over the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+
+### Build images
+
+The Modal-compatible `Image` can add build steps on top of a base image, such as `run_commands()`, `pip_install()`, `apt_install()`, `uv_pip_install()`, and `add_local_dir(..., copy=True)`. The node that runs a sandbox builds the image the first time it needs it, then caches it like any other image:
+
+```python
+from ray.experimental.sandbox import modal
+
+image = (
+    modal.Image.debian_slim("3.12")
+    .apt_install("git")
+    .pip_install("numpy", "pandas")
+    .run_commands("python -c 'import numpy'")
+)
+sandbox = modal.Sandbox.create(image=image, timeout=300)
+```
+
+Each build step becomes a cached layer:
+
+* The step runs in a short-lived build sandbox on the image so far, with public network access, as root, and with the image's environment and working directory.
+* Ray records what the step changed, as an OCI layer, and appends it to the image.
+* A layer's cache key covers the base image, every earlier step, and the step itself, including the content of any copied files. Two images that share their first steps therefore share those layers, and changing the last step only rebuilds the last step.
+* Later sandboxes on the node, and other images with the same leading steps, reuse the cached layers. A sandbox on a fully cached image starts as fast as one on a pulled image.
+
+The commands match Modal's image builder version 2025.06, so a step installs what it would on Modal.
+
+A few things differ from Modal:
+
+* **Builds happen per node.** Each node builds the images its sandboxes need, so the first sandbox on a node waits for the build. Build output goes to the sandbox actor's log. A node builds at most two images at a time; set `RAY_SANDBOX_IMAGE_BUILD_CONCURRENCY` on worker nodes to change that, or to `0` for no limit. Each build step may run for an hour; set `RAY_SANDBOX_IMAGE_BUILD_TIMEOUT_SECONDS` to change that. Build sandboxes may use the whole node; set `RAY_SANDBOX_IMAGE_BUILD_CPU` (CPUs) and `RAY_SANDBOX_IMAGE_BUILD_MEMORY` (for example `8Gi`) to cap them.
+* **Nodes can build different files from one image definition.** Modal builds each image once and runs the result everywhere. Here each node runs the build steps itself, so a step whose inputs change over time can produce different files on different nodes, or on one node after its cache evicted the step. Steps that copy local files always produce the same files on every node. Other steps produce the same files when you pin what they fetch:
+  * Base images: reference them by digest alone, such as `Image.from_registry("python@sha256:...")`. A tag resolves when a node first pulls it, and again after the node evicts it.
+  * Python packages: pin exact versions (`pip_install("numpy==2.1.3")`), install from a requirements file with `--require-hashes`, or use `uv_sync(frozen=True)` with a `uv.lock`. Set `uv_version=` rather than relying on `uv`'s `latest` tag.
+  * Debian packages: `apt-get update` fetches whatever the mirror holds at build time. Pin package versions, or point apt at a snapshot mirror such as `snapshot.debian.org`.
+* **`force_build=True` rebuilds once per `Image` object on each node, not on every sandbox.** As on Modal, a rebuilt layer also invalidates the layers built on it in other images.
+* **Steps can't use Modal Secrets, volumes, or GPUs.** The `env=` argument of a build step reaches only that step, as Modal's does.
+* **Some builders aren't available yet.** Dockerfile parsing (`dockerfile_commands()`, `from_dockerfile()`) and `run_function()` aren't supported yet.
 
 ### Route Docker Hub pulls through a mirror
 
@@ -467,7 +503,7 @@ A Ray sandbox is owned by the handle that created it and there's no hosted contr
 | `stdout` / `stderr` / `stdin`, `StreamType`, `text`, `bufsize` | Supported |
 | `filesystem.*` except `watch()` | Supported |
 | `App`, and the `app` / `name` arguments | Accepted and ignored |
-| `Image` | Supported as a reference to a registry image or a local root-filesystem tar (such as `docker export` output, not a `docker save` archive), which carries no Env, CMD or WORKDIR. Cached on each node like any sandbox image and pulled again with `force_build=True`. Layer builders such as `pip_install()` aren't available. |
+| `Image` | Supported from a registry image, a local root-filesystem tar (such as `docker export` output, not a `docker save` archive, which carries no Env, CMD or WORKDIR), `debian_slim()`, or `micromamba()`. Build steps such as `run_commands()`, `pip_install()`, `apt_install()`, `uv_pip_install()`, `uv_sync()`, `poetry_install_from_file()`, and `add_local_*(copy=True)` are built and cached on each node; see [Build images](#build-images). `dockerfile_commands()`, `from_dockerfile()`, and `run_function()` aren't supported yet. |
 | `cpu`, `memory`, `timeout`, `workdir`, `env`, `block_network` | Supported |
 | `readiness_probe`, `wait_until_ready()` | Supported with `Probe.with_exec()`. `Probe.with_tcp()` isn't. |
 | `from_id`, `from_name`, `list`, `get_tags`, `set_tags` | Not supported — sandboxes aren't registered anywhere |
@@ -779,6 +815,8 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`runsc` not found in `$PATH`**: Verify that gVisor's `runsc` binary is installed on all Ray worker nodes and sits in a directory on the system `$PATH`, such as `/usr/local/bin/runsc`.
 * **`gVisor container failed to start: WARNING: host page size mismatch - running on non-4K host`**: The node's kernel uses 64 KiB pages, and gVisor's prebuilt `runsc` only supports 4 KiB pages. Build `runsc` from source with `--define=pagesize=64k` (see [Requirements](#requirements)).
 * **`mkfs.erofs` not found or too old**: Sandbox creation fails with an error naming erofs-utils 1.7. Install erofs-utils 1.7 or later on every worker node; Ubuntu 22.04's packaged 1.4 predates the `--tar` option Ray relies on.
+* **Image builds fail with an error naming erofs-utils 1.8**: The node's `mkfs.erofs` predates the `--incremental` option that image builds use. Install erofs-utils 1.8 or later on nodes that build images. Pulling prebuilt images still works with 1.7.
+* **`ImageBuildError` from `Sandbox.create`**: A build step exited non-zero. The error carries the command, its exit code, and the end of its output; the full output is in the sandbox actor's log.
 * **`mkfs.erofs failed: ... invalid block size 65536`**: The node's kernel uses 64 KiB pages, and its erofs-utils package can only build 4 KiB blocks. Build erofs-utils from source with `./configure MAX_BLOCK_SIZE=65536` (see [Requirements](#requirements)).
 * **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
 * **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.

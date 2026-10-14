@@ -172,6 +172,23 @@ class BaseSandboxBackend(ABC):
             f"{type(self).__name__} cannot signal a single command."
         )
 
+    def export_rootfs_upper(self, sandbox_id: str, path: str) -> None:
+        """Write what the sandbox changed in its root filesystem to a tar file.
+
+        The image builder uses this to turn a build step into a layer.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox; its rootfs
+                must be writable.
+            path: Host path of the tar file to write.
+
+        Raises:
+            NotImplementedError: This backend cannot export its changes.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot export a sandbox's filesystem changes."
+        )
+
     @abstractmethod
     def write_file(
         self,

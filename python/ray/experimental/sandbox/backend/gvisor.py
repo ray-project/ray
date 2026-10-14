@@ -493,6 +493,38 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         runsc_args.extend(["kill", "-pgid", str(pid), sandbox_id, "KILL"])
         return runsc_args
 
+    def export_rootfs_upper(self, sandbox_id: str, path: str) -> None:
+        """Write the sandbox's overlay upper layer to ``path`` as a tar file.
+
+        ``runsc tar rootfs-upper`` serializes only the root mount's upper
+        layer: what the sandbox created, changed or deleted, in overlayfs's
+        own encoding (see ``_internal/image_layers.normalize_overlay_diff``).
+        It always writes to a file: runsc logs to stdout, which would corrupt
+        an archive streamed there.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            path: Host path of the tar file to write.
+
+        Raises:
+            SandboxError: runsc failed, for example because the sandbox has a
+                read-only root filesystem and so no upper layer.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        args = self._runsc_base_args(meta["config"]) + [
+            "tar",
+            "rootfs-upper",
+            "--file",
+            path,
+            sandbox_id,
+        ]
+        res = subprocess.run(args, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise SandboxError(
+                f"Failed to export the filesystem changes of sandbox "
+                f"'{sandbox_id}': {(res.stderr or res.stdout).strip()[-500:]}"
+            )
+
     def exec_command(
         self,
         sandbox_id: str,

@@ -20,6 +20,7 @@ from ray.experimental.sandbox.modal._command import (  # noqa: F401
     ARG_MAX_BYTES,
     validate_exec_args as _validate_exec_args,
 )
+from ray.experimental.sandbox.modal._image_build import prepare_build_plan
 from ray.experimental.sandbox.modal._sync import (
     needs_ray,
     require_ray_connection,
@@ -573,6 +574,13 @@ class _Sandbox:
         memory_limit = _limit(memory)
 
         resolved = resolve_image(image) or resolve_image(DEFAULT_IMAGE)
+        # Reads the files build steps copy and uploads them; the node that
+        # runs the sandbox fetches them only for layers it has not cached.
+        build_plan = None
+        if resolved.build_specs:
+            build_plan = await asyncio.to_thread(
+                prepare_build_plan, resolved.build_specs
+            )
 
         create_kwargs: Dict[str, Any] = {
             "image": resolved.reference,
@@ -593,6 +601,8 @@ class _Sandbox:
         }
         if resolved.shell:
             create_kwargs["shell"] = resolved.shell
+        if build_plan is not None:
+            create_kwargs["build"] = build_plan
         # The container's cgroup caps.
         if cpu_limit is not None:
             create_kwargs["cpu"] = cpu_limit
@@ -612,7 +622,7 @@ class _Sandbox:
             None,
         )
         actor = _SandboxActor.options(**actor_options).remote(
-            create_kwargs, timeout, resolved.force_pull, readiness_probe
+            create_kwargs, timeout, resolved.force_token, readiness_probe
         )
 
         logger.info("Creating sandbox from image %s", resolved.reference)

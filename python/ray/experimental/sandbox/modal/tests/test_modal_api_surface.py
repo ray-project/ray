@@ -117,11 +117,12 @@ def test_image_from_registry_carries_the_reference():
     assert Image.from_registry("python:3.13-slim").reference == "python:3.13-slim"
 
 
-def test_debian_slim_is_refused_until_building_lands():
-    # It is a base plus a toolchain layer, and there is no builder to add the
-    # layer. Handing back the bare base would diverge from Modal invisibly.
-    with pytest.raises(NotImplementedError, match="from_registry"):
-        Image.debian_slim("3.12")
+def test_debian_slim_is_a_base_plus_modals_toolchain_layer():
+    # Handing back the bare base would diverge from Modal invisibly: a later
+    # pip_install of a package without a wheel would fail here only.
+    image = Image.debian_slim("3.12")
+    assert image.reference == "python:3.12.10-slim-bookworm"
+    assert image != Image.from_registry(image.reference)
 
 
 def test_images_compare_by_reference():
