@@ -293,3 +293,9 @@ def test_actual_pyiceberg_auth_configuration(rest_auth, expected):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

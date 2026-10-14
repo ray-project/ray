@@ -235,3 +235,9 @@ def test_iceberg_worker_storage_write_denial(ray_start_regular_shared):
     _assert_storage_denial(caught.value)
     table.refresh()
     assert table.current_snapshot() == before
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
