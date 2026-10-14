@@ -100,10 +100,12 @@ class URICache:
             # TODO(architkulkarni): Evict least recently used URI instead
             arbitrary_unused_uri = next(iter(self._unused_uris))
             self._unused_uris.remove(arbitrary_unused_uri)
-            num_bytes_deleted = self._delete_fn(arbitrary_unused_uri, logger)
             # The contents may have changed since insertion. Remove exactly
             # the size that was accounted for when this URI was added.
+            # Update accounting before deletion so a callback error cannot
+            # leave a recorded size for a URI no longer in the cache.
             self._total_size_bytes -= self._uri_sizes.pop(arbitrary_unused_uri)
+            num_bytes_deleted = self._delete_fn(arbitrary_unused_uri, logger)
             logger.info(
                 f"Deleted URI {arbitrary_unused_uri} with size " f"{num_bytes_deleted}."
             )
