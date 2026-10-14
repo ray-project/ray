@@ -64,7 +64,7 @@ Tune allocates the CPUs and GPUs that you specify in `tune.with_resources` to ea
 
 You can also request memory, in bytes, with the `"memory"` key, and request custom resources.
 
-If your function trainable starts more remote workers, pass a placement group factory object to request resources for them. See the {class}`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>` for details. The same applies if you use other libraries built on Ray, such as Modin. If you don't set resources correctly, the cluster might deadlock and hang.
+If your trainable starts more remote workers, pass a placement group factory object to request resources for them. See the {class}`PlacementGroupFactory documentation <ray.tune.execution.placement_groups.PlacementGroupFactory>` for details. The same applies if you use other libraries built on Ray, such as Modin. If you don't set resources correctly, the cluster might deadlock and hang.
 
 :::{note}
 Tune uses the resources you specify this way only to schedule trials. It doesn't automatically enforce them on your trainable. Make sure your trainable has enough resources to run, for example by setting `n_jobs` on a scikit-learn model to match.
