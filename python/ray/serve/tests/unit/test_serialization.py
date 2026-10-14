@@ -1,11 +1,12 @@
+import subprocess
 import sys
 import threading
 
 import pytest
-from fastapi import FastAPI
-from pydantic import BaseModel, ConfigDict, ValidationError
+from fastapi.testclient import TestClient
+from pydantic import BaseModel, ConfigDict
 
-from ray import cloudpickle, serve
+from ray import cloudpickle
 from ray.serve._private.utils import ensure_serialization_context
 
 
@@ -35,39 +36,56 @@ def test_thread_lock_serializer_round_trips():
     restored.rlock.release()
 
 
-def test_pydantic_deferred_build_model_round_trips():
-    """A defer_build=True pydantic model holds a placeholder validator that recursed when
-    unpickled; it must round-trip and still build a working validator on first use.
-    """
+def test_pydantic_deferred_model_app_works_where_unpickled(tmp_path):
+    """serve.ingress pickles the app; its deferred models must still validate and build
+    in the process that unpickles it, as a replica does."""
+    # Msg lives in the script's __main__, so cloudpickle pickles it by value.
+    script = """
+import sys
+from fastapi import FastAPI
+from pydantic import BaseModel, ConfigDict
+from ray import cloudpickle, serve
+
+
+class Msg(BaseModel):
+    model_config = ConfigDict(defer_build=True)
+    text: str
+
+
+app = FastAPI()
+
+
+@app.post("/")
+async def shout(m: Msg) -> dict:
+    return Msg(text=m.text.upper()).model_dump()
+
+
+@serve.ingress(app)
+class Ingress:
+    pass
+
+
+open(sys.argv[1], "wb").write(cloudpickle.dumps(app))
+"""
+    path = tmp_path / "app.pkl"
+    subprocess.run([sys.executable, "-c", script, str(path)], check=True)
+    client = TestClient(cloudpickle.loads(path.read_bytes()))
+    assert client.post("/", json={"text": "hi"}).json() == {"text": "HI"}
+    assert client.post("/", json={}).status_code == 422
+
+
+def test_pydantic_deferred_model_reloaded_after_first_use():
+    """Loading in the pickling process puts the captured placeholder back on a model
+    that has since been built."""
     ensure_serialization_context()
 
     class Msg(BaseModel):
         model_config = ConfigDict(defer_build=True)
         text: str
 
-    restored = cloudpickle.loads(cloudpickle.dumps(Msg))
-    assert restored.model_validate({"text": "hi"}).text == "hi"
-    with pytest.raises(ValidationError):
-        restored.model_validate({})
-
-
-def test_ingress_accepts_route_with_deferred_build_model():
-    """serve.ingress(app) freezes the app by pickling it, which raised RecursionError when
-    a route took a defer_build=True model, as OpenAI SDK models are."""
-
-    class Msg(BaseModel):
-        model_config = ConfigDict(defer_build=True)
-        text: str
-
-    app = FastAPI()
-
-    @app.post("/")
-    async def echo(m: Msg) -> Msg:
-        return m
-
-    @serve.ingress(app)
-    class Ingress:
-        pass
+    payload = cloudpickle.dumps(Msg)
+    Msg.model_validate({"text": "a"})
+    assert cloudpickle.loads(payload)(text="b").text == "b"
 
 
 if __name__ == "__main__":

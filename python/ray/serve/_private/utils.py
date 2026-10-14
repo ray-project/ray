@@ -318,7 +318,7 @@ def _register_thread_lock_serializer(serialization_context):
 
 
 def _register_pydantic_mock_serializer(serialization_context):
-    """Rebuild pydantic's deferred-build placeholder through its constructor on load.
+    """Restore pydantic's deferred-build placeholder from its slots on load.
 
     Its __getattr__ reads a slot that is still unset mid-unpickle, so unpickling recursed.
     """
@@ -326,20 +326,30 @@ def _register_pydantic_mock_serializer(serialization_context):
         from pydantic._internal._mock_val_ser import MockValSer
     except ImportError:
         return
-    serialization_context._register_cloudpickle_serializer(
+    serialization_context._register_cloudpickle_reducer(
         MockValSer,
-        custom_serializer=lambda mock: {
-            "error_message": mock._error_message,
-            "code": mock._code,
-            "val_or_ser": (
-                "validator"
-                if mock._val_or_ser.__name__ == "SchemaValidator"
-                else "serializer"
-            ),
-            "attempt_rebuild": mock._attempt_rebuild,
-        },
-        custom_deserializer=lambda kwargs: MockValSer(**kwargs),
+        lambda mock: (
+            object.__new__,
+            (MockValSer,),
+            {name: getattr(mock, name) for name in MockValSer.__slots__},
+            None,
+            None,
+            _restore_pydantic_mock,
+        ),
     )
+
+
+def _restore_pydantic_mock(mock, state):
+    from pydantic import BaseModel
+
+    for name, value in state.items():
+        object.__setattr__(mock, name, value)
+    # cloudpickle leaves out a by-value model's `__pydantic_complete__ = False` (it is
+    # BaseModel's own object), so the class restored with this mock claims to be built.
+    for cell in getattr(state["_attempt_rebuild"], "__closure__", None) or ():
+        owner = cell.cell_contents
+        if isinstance(owner, type) and issubclass(owner, BaseModel):
+            owner.__pydantic_complete__ = False
 
 
 def ensure_serialization_context():
