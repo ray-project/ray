@@ -11,9 +11,14 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from ray._common.utils import get_or_create_event_loop
 from ray.serve import HTTPOptions
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import (
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
+)
 from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
+    _RouterApplicationASGIApp,
     configure_http_middlewares,
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
@@ -23,6 +28,41 @@ from ray.serve._private.http_util import (
 )
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+
+
+@pytest.mark.asyncio
+async def test_router_application_internal_request_uses_original_target():
+    captured_scope = None
+
+    async def app(scope, receive, send):
+        nonlocal captured_scope
+        captured_scope = scope
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/internal/route",
+        "raw_path": b"/internal/route",
+        "query_string": b"",
+        "headers": [
+            (
+                SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER.encode(),
+                b"GET",
+            ),
+            (
+                SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER.encode(),
+                b"/v1/models/model%2Fone?limit=2&detail=full",
+            ),
+        ],
+    }
+
+    await _RouterApplicationASGIApp(app)(scope, None, None)
+
+    assert captured_scope["method"] == "GET"
+    assert captured_scope["path"] == "/v1/models/model/one"
+    assert captured_scope["raw_path"] == b"/v1/models/model%2Fone"
+    assert captured_scope["query_string"] == b"limit=2&detail=full"
+    assert scope["path"] == "/internal/route"
 
 
 @pytest.mark.asyncio
