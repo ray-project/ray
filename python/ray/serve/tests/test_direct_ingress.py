@@ -62,6 +62,15 @@ from ray.serve.schema import (
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 from ray.serve.tests.test_config_files.grpc_deployment import multiplexed_g
 
+# A replica only appears in target_groups once it is running and its
+# direct-ingress port is allocated, which lags the app reporting RUNNING.
+# Measured just over 10s under CI-like contention.
+TARGET_GROUP_CONVERGENCE_TIMEOUT_S = 60
+
+# Driving an app to the terminal DEPLOY_FAILED state means exhausting replica
+# retries, which measures up to ~21s under CI-like contention.
+DEPLOY_FAILED_TIMEOUT_S = 60
+
 
 @ray.remote
 class Collector:
@@ -696,7 +705,7 @@ def test_replica_gives_up_after_max_port_retries_for_http(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -730,7 +739,7 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
         assert status == DeploymentStatus.DEPLOY_FAILED
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
     serve.delete("default", _blocking=True)
 
@@ -769,14 +778,14 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
         )
         return True
 
-    wait_for_condition(_func, timeout=20)
+    wait_for_condition(_func, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas release ports on shutdown."""
 
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = {40000, 40001, 40002, 40003}
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -893,7 +902,7 @@ def test_only_ingress_deployment_replicas_are_used_for_target_groups(
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
     assert len(set(http_ports) & {30000, 30001, 30002, 30003, 30004}) == 3
-    assert len(set(grpc_ports) & {40000, 40001, 40002, 40003, 40004}) == 3
+    assert len(set(grpc_ports) & {31500, 31501, 31502, 31503, 31504}) == 3
 
     http_urls = get_application_urls("HTTP")
     grpc_urls = get_application_urls("gRPC", from_proxy_manager=True)
@@ -918,7 +927,7 @@ def test_crashed_replica_port_is_released_and_reused(
 ):
     """Test that crashed replica port is released and reused."""
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = {40000, 40001, 40002, 40003}
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # Wait until all ports can be bound (not just until nothing is listening).
     # This ensures the ports are fully released from TIME_WAIT state.
@@ -1043,7 +1052,7 @@ def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_insta
     """Test that multiple applications, such that each app has a ingress deployment"""
 
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = {40000, 40001, 40002, 40003}
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1078,8 +1087,8 @@ def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_insta
 
     assert set(http_ports_1) == {30000, 30001}
     assert set(http_ports_2) == {30002, 30003}
-    assert set(grpc_ports_1) == {40000, 40001}
-    assert set(grpc_ports_2) == {40002, 40003}
+    assert set(grpc_ports_1) == {31500, 31501}
+    assert set(grpc_ports_2) == {31502, 31503}
 
     # make a request to the ingress deployment
     for http_port in http_ports_1:
@@ -1100,7 +1109,7 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     deployment is used for the target groups"""
 
     expected_http_ports = {30000, 30001}
-    expected_grpc_ports = {40000, 40001}
+    expected_grpc_ports = {31500, 31501}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1175,7 +1184,7 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
         [30002, 30003, 30004]
     ), "Child deployment is occupying ports"
     assert not _is_port_in_use(
-        [40002, 40003, 40004]
+        [31502, 31503, 31504]
     ), "Child deployment is occupying ports"
 
 
@@ -1187,7 +1196,7 @@ def test_only_running_apps_are_used_for_target_groups(
     signal_actor = SignalActor.remote()
 
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = {40000, 40001, 40002, 40003}
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1241,7 +1250,7 @@ def test_only_running_apps_are_used_for_target_groups(
         {30000, 30001} if RAY_SERVE_ENABLE_HA_PROXY else {30000, 30001, 8000}
     )
     assert set(grpc_ports) == (
-        {40000, 40001} if RAY_SERVE_ENABLE_HA_PROXY else {40000, 40001, 9000}
+        {31500, 31501} if RAY_SERVE_ENABLE_HA_PROXY else {31500, 31501, 9000}
     )
 
     ray.get(signal_actor.send.remote())
@@ -1258,7 +1267,7 @@ def test_only_running_apps_are_used_for_target_groups(
     http_ports = get_http_ports("/app-1", first_only=False)
     grpc_ports = get_grpc_ports("/app-1", first_only=False)
     assert set(http_ports) == {30000, 30001}
-    assert set(grpc_ports) == {40000, 40001}
+    assert set(grpc_ports) == {31500, 31501}
 
     http_urls = get_application_urls("HTTP", app_name="app-1")
 
@@ -1271,7 +1280,7 @@ def test_only_running_apps_are_used_for_target_groups(
     http_ports = get_http_ports("/app-2", first_only=False)
     grpc_ports = get_grpc_ports("/app-2", first_only=False)
     assert set(http_ports) == {30002, 30003}
-    assert set(grpc_ports) == {40002, 40003}
+    assert set(grpc_ports) == {31502, 31503}
 
     http_urls = get_application_urls("HTTP", app_name="app-2")
 
@@ -1284,7 +1293,7 @@ def test_only_running_apps_are_used_for_target_groups(
 
 def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
     expected_http_ports = {30000, 30001}
-    expected_grpc_ports = {40000, 40001}
+    expected_grpc_ports = {31500, 31501}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1316,7 +1325,7 @@ def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
         assert set(grpc_ports) == expected_grpc_ports
         return True
 
-    wait_for_condition(_func, timeout=10)
+    wait_for_condition(_func, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S)
 
     # check status of the deployment
     serve_details = ServeInstanceDetails(
@@ -2478,7 +2487,7 @@ def test_deploy_app_custom_exception(_skip_if_ff_not_enabled, serve_instance):
         assert "custom exception info" in status.message
         return True
 
-    wait_for_condition(check_custom_exception, timeout=10)
+    wait_for_condition(check_custom_exception, timeout=DEPLOY_FAILED_TIMEOUT_S)
 
 
 # Copied from test_controller.py
@@ -2510,7 +2519,19 @@ def test_get_serve_instance_details_json_serializable(
         return "1"
 
     serve.run(autoscaling_app.bind())
-    details = ray.get(controller.get_serve_instance_details.remote())
+
+    details = None
+
+    def snapshot_has_all_target_groups() -> bool:
+        nonlocal details
+        details = ray.get(controller.get_serve_instance_details.remote())
+        assert len(details["target_groups"]) == 2
+        return True
+
+    wait_for_condition(
+        snapshot_has_all_target_groups, timeout=TARGET_GROUP_CONVERGENCE_TIMEOUT_S
+    )
+
     details_json = json.dumps(details)
     controller_details = ray.get(controller.get_actor_details.remote())
     node_id = controller_details.node_id
@@ -2655,6 +2676,9 @@ def test_get_serve_instance_details_json_serializable(
                 }
             },
             "target_capacity": None,
+            # Set by the controller: this version restores a deployment option
+            # that a re-applied config stops setting.
+            "restores_unset_config_options": True,
             "target_groups": [
                 {
                     "targets": [
@@ -2671,6 +2695,7 @@ def test_get_serve_instance_details_json_serializable(
                     "protocol": "HTTP",
                     "app_name": "" if RAY_SERVE_ENABLE_HA_PROXY else "default",
                     "ingress_request_router_targets": [],
+                    "ingress_router_fallback": False,
                     "ingress_deployment_name": ""
                     if RAY_SERVE_ENABLE_HA_PROXY
                     else "autoscaling_app",
@@ -2679,7 +2704,7 @@ def test_get_serve_instance_details_json_serializable(
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000 if RAY_SERVE_ENABLE_HA_PROXY else 40000,
+                            "port": 9000 if RAY_SERVE_ENABLE_HA_PROXY else 31500,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
                             if RAY_SERVE_ENABLE_HA_PROXY

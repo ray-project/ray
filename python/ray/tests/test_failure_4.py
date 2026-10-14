@@ -18,6 +18,7 @@ from ray._common.test_utils import (
 )
 from ray._private.state_api_test_utils import verify_failed_task
 from ray._private.test_utils import (
+    auth_token_grpc_metadata,
     get_error_message,
     init_error_pubsub,
     kill_raylet,
@@ -361,7 +362,8 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head, error_pubs
         print(f"Sending a shutdown request to {build_address(ip, port)}")
         try:
             stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+                metadata=auth_token_grpc_metadata(),
             )
         except _InactiveRpcError:
             assert not graceful
@@ -463,7 +465,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     for worker_id in worker_node_ids:
         data = r.drain_node_data.add()
         data.node_id = NodeID.from_hex(worker_id).binary()
-    stub.DrainNode(r)
+    stub.DrainNode(r, metadata=auth_token_grpc_metadata())
 
     p = error_pubsub
     # Error shouldn't be printed to the driver.
@@ -482,7 +484,7 @@ def test_gcs_drain(ray_start_cluster_head, error_pubsub):
     Make sure the API is idempotent.
     """
     for _ in range(10):
-        stub.DrainNode(r)
+        stub.DrainNode(r, metadata=auth_token_grpc_metadata())
     p = error_pubsub
     # Error shouldn't be printed to the driver.
     errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR, timeout=5)

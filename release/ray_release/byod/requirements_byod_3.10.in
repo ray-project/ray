@@ -19,6 +19,8 @@ memray
 openskill
 orjson
 petastorm
+# Ray Data joins each hash partition with Polars.
+polars
 protobuf
 pyarrow
 pydantic>=2.5.0

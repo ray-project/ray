@@ -35,6 +35,7 @@ THIRD_PARTY_MOCK_MODULES = [
     "fsspec",
     "google",
     "grpc",
+    "grpc_reflection",
     "gymnasium",
     "horovod",
     "huggingface",

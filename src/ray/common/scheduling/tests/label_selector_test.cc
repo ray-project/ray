@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 namespace ray {
@@ -90,10 +89,6 @@ TEST(LabelSelectorTest, SingleValueNotInParsing) {
 }
 
 TEST(LabelSelectorTest, ToStringMap) {
-  using ::testing::ElementsAre;
-  using ::testing::IsEmpty;
-  using ::testing::Pair;
-
   // Unpopulated label selector.
   LabelSelector empty_selector;
   auto empty_map = empty_selector.ToStringMap();

@@ -119,7 +119,9 @@ def test_non_retryable_error():
 
 def test_infinite_controller_failure_retry():
     policy = create_failure_policy(FailureConfig(controller_failure_limit=-1))
-    controller_error = _controller_error(retryable=True)
+    controller_error = ControllerError(
+        controller_failure=WorkerGroupStartupTimeoutError(0)
+    )
     for _ in range(10):
         assert (
             policy.make_decision(training_failed_error=controller_error)
