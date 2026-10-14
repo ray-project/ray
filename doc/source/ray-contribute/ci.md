@@ -68,7 +68,7 @@ An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/so
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for pages that have their own test target: every Ray Data page, and the Core, RLlib, Serve, and Train pages with a runnable example.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for pages that have their own test target: every Ray Data page, and the Core, RLlib, Serve, and Train pages with a runnable example.
 
 A prose-only change also skips most of the lint group. The following lint steps still run:
 
@@ -100,7 +100,7 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
-* **The file feeds only a shared doctest target.** Prose pages outside the library directories share one doctest target, `//doc:doctest`, so the label doesn't run them. These pages also don't start the opt-in step, so on a PR that changes only such pages, the label has no effect and there's no step log. This line appears only when another changed file starts the step.
+* **The file feeds only a shared doctest target.** Prose pages outside the library directories share one doctest target, `//doc:doctest`, so the label doesn't run them.
 * **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
 * **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.

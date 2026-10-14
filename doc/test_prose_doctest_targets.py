@@ -7,15 +7,12 @@ to an unlisted page runs nowhere, not even post-merge. This check fails when:
 
 - A page under one of those library directories has a runnable example but no
   doctest target names it. Add the page to the library's list in
-  doc/BUILD.bazel and to the matching doc_example rule in
-  .buildkite/test.rules.txt, or add it to UNTESTED below with a reason.
+  doc/BUILD.bazel, or add it to UNTESTED below with a reason.
 - A page a doctest target names has no runnable example. Its target would pass
-  without testing anything, so remove it from doc/BUILD.bazel and
-  .buildkite/test.rules.txt.
-- The doc_example rule in .buildkite/test.rules.txt and the CPU doctest lists
-  in doc/BUILD.bazel name different pages. A listed page that the rule doesn't
-  route never starts the "docs-example-test" opt-in step. GPU pages are left out
-  of the rule, because the opt-in never runs GPU tests.
+  without testing anything, so remove it from doc/BUILD.bazel.
+
+The doc_example rule in .buildkite/test.rules.txt routes all prose under
+doc/source/, so these lists are the only place a page needs to be named.
 
 A runnable example is a `>>>` prompt, or a `testcode` directive that isn't
 marked `:skipif: True`. Like pytest-sphinx, the directive syntax follows the
@@ -53,12 +50,6 @@ _DIRECTIVE_RE = {
 }
 _OPTION_RE = re.compile(r"^\s*:[\w-]+:")
 _SKIPIF_TRUE_RE = re.compile(r"^\s*:skipif:\s*True\s*$")
-_BUILD_CALL_RE = re.compile(r"^doctest(?:_each)?\(\n.*?^\)$", re.MULTILINE | re.DOTALL)
-_GPU_RE = re.compile(r"^\s*gpu = True,$", re.MULTILINE)
-_RULES_PAGE_RE = re.compile(
-    r"^(doc/source/(?:%s)/[^*\s]+\.(?:md|rst))$" % "|".join(LIBRARY_DIRS),
-    re.MULTILINE,
-)
 _BUILD_PAGE_RE = re.compile(
     r'"(source/(?:%s)/[^"*]+\.(?:md|rst))"' % "|".join(LIBRARY_DIRS)
 )
@@ -94,22 +85,6 @@ def listed_pages(doc_dir: Path) -> Set[str]:
     return {"doc/" + page for page in _BUILD_PAGE_RE.findall(build)}
 
 
-def gpu_pages(doc_dir: Path) -> Set[str]:
-    """Pages named by a `gpu = True` doctest call in doc/BUILD.bazel."""
-    build = (doc_dir / "BUILD.bazel").read_text(encoding="utf-8")
-    pages = set()
-    for call in _BUILD_CALL_RE.findall(build):
-        if _GPU_RE.search(call):
-            pages |= {"doc/" + page for page in _BUILD_PAGE_RE.findall(call)}
-    return pages
-
-
-def routed_pages(repo_root: Path) -> Set[str]:
-    """Library prose pages listed by name in .buildkite/test.rules.txt."""
-    rules = (repo_root / ".buildkite" / "test.rules.txt").read_text(encoding="utf-8")
-    return set(_RULES_PAGE_RE.findall(rules))
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -133,23 +108,18 @@ def main() -> int:
     missing = sorted(runnable - listed - UNTESTED)
     vacuous = sorted(listed - runnable)
     stale_untested = sorted(UNTESTED - runnable)
-    cpu_listed = listed - gpu_pages(doc_dir)
-    routed = routed_pages(repo_root)
-    unrouted = sorted(cpu_listed - routed)
-    routed_unlisted = sorted(routed - cpu_listed)
 
     for header, pages in (
         (
             "Pages with a runnable example but no doctest target. Add each to "
-            "its library's list in doc/BUILD.bazel and to the doc_example rule "
-            "in .buildkite/test.rules.txt, or to UNTESTED in "
+            "its library's list in doc/BUILD.bazel, or to UNTESTED in "
             "doc/test_prose_doctest_targets.py with a reason:",
             missing,
         ),
         (
             "Pages named by a doctest target with no runnable example. Their "
             "targets would pass without testing anything. Remove them from "
-            "doc/BUILD.bazel and .buildkite/test.rules.txt:",
+            "doc/BUILD.bazel:",
             vacuous,
         ),
         (
@@ -157,23 +127,13 @@ def main() -> int:
             "UNTESTED in doc/test_prose_doctest_targets.py:",
             stale_untested,
         ),
-        (
-            "Pages with a CPU doctest target that the doc_example rule in "
-            ".buildkite/test.rules.txt doesn't route. Add them to the rule:",
-            unrouted,
-        ),
-        (
-            "Pages the doc_example rule in .buildkite/test.rules.txt routes "
-            "with no CPU doctest target. Remove them from the rule:",
-            routed_unlisted,
-        ),
     ):
         if pages:
             print(header, file=sys.stderr)
             for page in pages:
                 print(f"  - {page}", file=sys.stderr)
 
-    if missing or vacuous or stale_untested or unrouted or routed_unlisted:
+    if missing or vacuous or stale_untested:
         return 1
     print(f"{len(listed)} listed pages; every runnable page is accounted for.")
     return 0

@@ -137,25 +137,31 @@ doc/source/tune/tutorials/BUILD.bazel: ml_doc
 doc/source/core/examples/BUILD.bazel: core_doc
 doc/source/llm/examples/batch/BUILD.bazel: llm
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
-# Prose with per-file doctest targets (`doctest_each`) routes to the opt-in
-# step: Data's by directory, other libraries' page by page. API pages still hit
-# the doc_api rule first.
+# All prose under doc/source/ routes to the opt-in step, whether or not a
+# per-file doctest target names the page: the opt-in selects targets by changed
+# file when it runs, so the rule doesn't need to know which pages have one. API
+# pages still hit the doc_api rule first.
 doc/source/data/key-concepts.rst: doc_example
 doc/source/data/working-with-tensors.md: doc_example
 doc/source/core/actors/named-actors.md: doc_example
 doc/source/rllib/api/utils.rst: doc_api doc_example
 doc/source/serve/advanced-guides/multi-app-container.md: doc_example
 doc/source/train/getting-started-xgboost.md: doc_example
-# Prose with no per-file target stays skipped, including pages that a library's
-# doctest list leaves out, such as GPU pages and pages that collect no test.
-# Static images under a library doc dir are skipped too. The per-library rules
+doc/source/core/tasks/nested-tasks.md: doc_example
+doc/source/train/user-guides/using-accelerators.md: doc_example
+doc/source/tune/index.md: doc_example
+doc/source/serve/index.md: doc_example
+doc/source/core/tasks.md: doc_example
+doc/source/index.md: doc_example
+doc/source/ray-references/glossary.md: doc_example
+doc/source/cluster/kubernetes/index.md: doc_example
+# Prose that Sphinx never renders as a page stays skipped.
+doc/source/_includes/_help-links.md:
+doc/source/_templates/autosummary/class.rst:
+doc/source/templates/README.md:
+# Static images under a library doc dir are skipped. The per-library rules
 # match whole directories, so these cases lock in that the leading skip rule
 # wins first.
-doc/source/core/tasks/nested-tasks.md:
-doc/source/train/user-guides/using-accelerators.md:
-doc/source/tune/index.md:
-doc/source/serve/index.md:
-doc/source/core/tasks.md:
 doc/source/rllib/images/rllib-stack.svg:
 doc/source/data/images/dataset-arch.png:
 doc/source/train/images/overview.jpg:

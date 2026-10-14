@@ -76,58 +76,32 @@ doc/source/ray-more-libs/api/
 @ doc_api
 ;
 
-# Prose pages with per-file doctest targets (`doctest_each` in doc/BUILD.bazel)
-# are the only prose that the "docs-example-test" opt-in can test file by
-# file. Emit doc_example for them, ahead of the prose skip rule below. Only the
-# label-gated opt-in step listens for that tag, so without the label this runs
-# nothing. Data's prose is matched by directory. Other libraries list only the
-# pages with a per-file target, because until rayci drops label-gated steps
-# before dependency marking, every match also builds the opt-in step's images.
-# Keep this list in sync with the `doctest_each` file lists;
-# doc/test_prose_doctest_targets.py checks it.
-doc/source/data/*.md
-doc/source/data/*.rst
-doc/source/core/actors/async-api.md
-doc/source/core/actors/concurrency-group-api.md
-doc/source/core/actors/index.md
-doc/source/core/actors/named-actors.md
-doc/source/core/actors/task-orders.md
-doc/source/core/actors/terminating-actors.md
-doc/source/core/configure.md
-doc/source/core/internals/task-lifecycle.md
-doc/source/core/miscellaneous.md
-doc/source/core/objects/index.md
-doc/source/core/objects/serialization.md
-doc/source/core/scheduling/accelerators.md
-doc/source/core/scheduling/memory-management.md
-doc/source/core/starting-ray.md
-doc/source/core/tips-for-first-time.md
-doc/source/core/user-spawn-processes.md
-doc/source/rllib/algorithm-config.md
-doc/source/rllib/callback.md
-doc/source/rllib/checkpoints.md
-doc/source/rllib/env-to-module-connector.md
-doc/source/rllib/env.md
-doc/source/rllib/hierarchical-envs.md
-doc/source/rllib/index.md
-doc/source/rllib/key-concepts.md
-doc/source/rllib/learner-connector.md
-doc/source/rllib/learner.md
-doc/source/rllib/metrics-logger.md
-doc/source/rllib/multi-agent-envs.md
-doc/source/rllib/new-api-stack-migration-guide.md
-doc/source/rllib/offline.md
-doc/source/rllib/rl-modules.md
-doc/source/rllib/scaling-guide.md
-doc/source/rllib/single-agent-episode.md
-doc/source/serve/advanced-guides/multi-app-container.md
-doc/source/train/common/torch-configure-run.md
-doc/source/train/distributed-tensorflow-keras.md
-doc/source/train/getting-started-jax.md
-doc/source/train/getting-started-lightgbm.md
-doc/source/train/getting-started-xgboost.md
-doc/source/train/overview.md
-doc/source/train/user-guides/persistent-storage.md
+# Prose under doc/source/ that Sphinx never renders as a page: autosummary
+# templates, include fragments, and the READMEs beside build inputs and starter
+# templates. No per-file doctest target names any of them, so they stay skipped
+# rather than matching the doc_example rule below.
+doc/source/_*.md
+doc/source/_*.rst
+doc/source/templates/*.md
+# pass
+;
+
+# Documentation prose emits doc_example, so that the "docs-example-test" opt-in
+# can run the per-file doctest target (`doctest_each` in doc/BUILD.bazel) of a
+# changed page. Only the label-gated opt-in step listens for that tag, so
+# without the label no test runs. Which pages have a target is decided in
+# doc/BUILD.bazel, not here: the opt-in step selects targets by changed file
+# when it runs, and a page with no target selects nothing. A page rename, a
+# move, or a page gaining a runnable example needs no edit to this file.
+#
+# The cost: rayci marks a step's dependencies before Buildkite evaluates the
+# step's `if:` label guard, so every match also builds the opt-in step's images,
+# from cache, even when the step itself is skipped.
+#
+# The API reference rules above still claim their pages first. The prose skip
+# rule below still skips prose everywhere else in the repository.
+doc/source/*.md
+doc/source/*.rst
 @ doc_example
 ;
 
@@ -144,8 +118,9 @@ doc/source/train/user-guides/persistent-storage.md
 #
 # Executable and config assets are deliberately not skipped here. They route
 # to the owning library's opt-in tag below, so the "docs-example-test" label
-# can run the tests that consume them. The API reference pages above are the one prose exception:
-# they emit doc_api and are matched by the earlier rule, before this one.
+# can run the tests that consume them. Most prose under doc/source/ never
+# reaches this rule: the API reference rules and the doc_example rule above
+# match it first.
 #
 # Static images stay doc-scoped, not a repo-wide *.png, and are listed here
 # ahead of the per-library rules because those rules match a whole directory and
