@@ -57,8 +57,13 @@ _DIRECTIVE_RE = {
 }
 _OPTION_RE = re.compile(r"^\s*:[\w-]+:")
 _SKIPIF_TRUE_RE = re.compile(r"^\s*:skipif:\s*True\s*$")
-_BUILD_CALL_RE = re.compile(r"^doctest(?:_each)?\(\n.*?^\)$", re.MULTILINE | re.DOTALL)
-_GPU_RE = re.compile(r"^\s*gpu = True,$", re.MULTILINE)
+# buildifier normalizes spacing in doc/BUILD.bazel but keeps end-of-line
+# comments, so a call's closing parenthesis and its `gpu` argument can carry one.
+_BUILD_CALL_RE = re.compile(
+    r"^doctest(?:_each)?\(\n.*?^\)[ \t]*(?:#[^\n]*)?$", re.MULTILINE | re.DOTALL
+)
+_GPU_RE = re.compile(r"^\s*gpu = True,[ \t]*(?:#.*)?$", re.MULTILINE)
+_COMMENT_RE = re.compile(r"#.*")
 _RULES_PAGE_RE = re.compile(r"^(doc/source/[^*\s]+\.(?:md|rst))$", re.MULTILINE)
 _BUILD_PAGE_RE = re.compile(r'"(source/[^"*]+\.(?:md|rst))"')
 
@@ -87,12 +92,17 @@ def doc_pages(doc_dir: Path) -> Iterable[Path]:
         yield from (doc_dir / "source").rglob(suffix)
 
 
+def _build_pages(call: str) -> Set[str]:
+    """Pages a doctest call names, ignoring commented-out entries."""
+    return set(_BUILD_PAGE_RE.findall(_COMMENT_RE.sub("", call)))
+
+
 def listed_pages(doc_dir: Path) -> Set[str]:
     """Pages named by a doctest call in doc/BUILD.bazel."""
     build = (doc_dir / "BUILD.bazel").read_text(encoding="utf-8")
     pages = set()
     for call in _BUILD_CALL_RE.findall(build):
-        pages |= {"doc/" + page for page in _BUILD_PAGE_RE.findall(call)}
+        pages |= {"doc/" + page for page in _build_pages(call)}
     return pages
 
 
@@ -102,7 +112,7 @@ def gpu_pages(doc_dir: Path) -> Set[str]:
     pages = set()
     for call in _BUILD_CALL_RE.findall(build):
         if _GPU_RE.search(call):
-            pages |= {"doc/" + page for page in _BUILD_PAGE_RE.findall(call)}
+            pages |= {"doc/" + page for page in _build_pages(call)}
     return pages
 
 
