@@ -47,8 +47,8 @@ To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. Also 
 
 Ray Train supports two worker granularities on TPUs:
 
-- **One worker per TPU host (default, JAX):** By default, each Ray Train worker maps to one TPU host and manages all TPU chips on that host (for example, with {class}`~ray.train.v2.jax.JaxTrainer`). The total `num_workers` must be a multiple of the number of hosts in a single slice. For example, a [TPU v6e (Trillium)](https://cloud.google.com/tpu/docs/v6e) slice with a `4x4` topology has four hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
-- **One worker per TPU device (PyTorch with `torch_tpu`):** For PyTorch workloads using `torch_tpu` and {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker process per logical TPU device. Set `num_workers` to the total number of logical TPU devices across your slices (such as `num_workers=16` for one 16-device `v6e` `4x4` or [Ironwood (`TPU7x`)](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) `2x2x2` slice).
+- **One worker per TPU host (default, JAX):** By default, each Ray Train worker maps to one TPU host and manages all TPU chips on that host (for example, with {class}`~ray.train.v2.jax.JaxTrainer`). The total `num_workers` must be a multiple of the number of hosts in a single slice. For example, a [TPU v6e](https://cloud.google.com/tpu/docs/v6e) slice with a `4x4` topology has four hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
+- **One worker per TPU device (PyTorch with `torch_tpu`):** For PyTorch workloads using `torch_tpu` and {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker process per logical TPU device. Set `num_workers` to the total number of logical TPU devices across your slices (such as `num_workers=16` for one 16-device TPU v6e `4x4` or [TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) `2x2x2` slice).
 
 For details on how TPU topologies map to hosts and devices, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
@@ -229,16 +229,16 @@ trainer.fit()
 
 :::{tab-item} TPU
 :sync: TPU
-Each TPU host has multiple TPU chips (for example, four chips on a `v6e` `4x4` or `TPU-V7X` `2x2x2` host). By default, when you specify `topology` and `accelerator_type`, Ray Train auto-detects the full-host `resources_per_worker` (`{"TPU": 4}`) so one worker process manages the entire host.
+Each TPU host has multiple TPU chips (for example, four chips on a TPU v6e `4x4` or TPU7x `2x2x2` host). By default, when you specify `topology` and `accelerator_type`, Ray Train auto-detects the full-host `resources_per_worker` (`{"TPU": 4}`) so one worker process manages the entire host.
 
-To launch one worker process per logical TPU device (such as with `torch_tpu` and {class}`~ray.train.torch.TorchTrainer`), set `resources_per_worker={"TPU": 1}`. On `TPU-V7X`, where each dual-chiplet physical chip exposes two logical TPU devices (`8` devices per four-chip host), also set `RAY_TPU_RESOURCE_PER_CHIP=2` and advertise `{"TPU": 8}` on the cluster nodes:
+To launch one worker process per logical TPU device (such as with `torch_tpu` and {class}`~ray.train.torch.TorchTrainer`), set `resources_per_worker={"TPU": 1}`. On TPU7x, where each dual-chiplet physical chip exposes two logical TPU devices (`8` devices per four-chip host), also set `RAY_TPU_RESOURCE_PER_CHIP=2` and advertise `{"TPU": 8}` on the cluster nodes:
 
 ```{testcode}
 :skipif: True
 
 from ray.train import ScalingConfig
 
-# 1 logical TPU device per worker (16 workers across a 16-device v6e 4x4 or TPU-V7X 2x2x2 slice)
+# 1 logical TPU device per worker (16 workers across a 16-device TPU v6e 4x4 or TPU7x 2x2x2 slice)
 scaling_config = ScalingConfig(
     num_workers=16,
     use_tpu=True,

@@ -48,7 +48,7 @@ On Google Cloud TPU nodes, Ray also sets the following TPU-specific default labe
 | `ray.io/tpu-slice-name` | The unique name of the TPU slice that the node belongs to. |
 | `ray.io/tpu-worker-id` | The zero-based integer host index (`0`, `1`, ...) of the node within its TPU slice. |
 | `ray.io/tpu-topology` | The physical interconnect topology of the TPU slice, such as `4x4` or `2x2x2`. |
-| `ray.io/tpu-pod-type` | The TPU Pod type combining generation and logical device count, such as `v6e-16` or `tpu7x-16`. |
+| `ray.io/tpu-pod-type` | The TPU Pod type combining generation and logical device count, such as `v6e-16` or `v7x-16`. |
 
 ```{note}
 You can override default values with `ray start` parameters.

@@ -11,7 +11,7 @@ Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices
 
 ## Topology and placement
 
-A TPU topology describes the chip grid in one physical TPU slice. For example, a [TPU v6e (Trillium)](https://cloud.google.com/tpu/docs/v6e) `4x4` slice has 16 chips. Multi-host slices spread those chips across multiple TPU hosts connected by the TPU interconnect. For v6e `4x4`, that usually means four hosts with four chips each. For visualization, check out [TPU Topology Visualizer](https://tpu-visualizer.uc.r.appspot.com/).
+A TPU topology describes the chip grid in one physical TPU slice. For example, a [TPU v6e](https://cloud.google.com/tpu/docs/v6e) `4x4` slice has 16 chips. Multi-host slices spread those chips across multiple TPU hosts connected by the TPU interconnect. For TPU v6e `4x4`, that usually means four hosts with four chips each. For visualization, check out [TPU Topology Visualizer](https://tpu-visualizer.uc.r.appspot.com/).
 
 Ray Serve LLM uses `tensor_parallel_size * pipeline_parallel_size` as the number of TPU chips that one model replica requests. When you also set a TPU topology, Ray Serve LLM computes the number of chips per host and creates one placement group bundle per TPU host:
 
@@ -23,7 +23,7 @@ LLMConfig(
 )
 ```
 
-For a v6e `4x4` slice, this produces four host-level bundles:
+For a TPU v6e `4x4` slice, this produces four host-level bundles:
 
 ```python
 [
@@ -63,7 +63,7 @@ Ray Serve LLM supports two vLLM TPU execution backends:
 - **PyTorch backend (`vllm-torchtpu`):** When serving with `vllm-torchtpu` (`torch_tpu`), vLLM runs one `RayWorkerWrapper` actor per logical TPU device (`{"TPU": 1}`). Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` and `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env` on `LLMConfig` so that `SlicePlacementGroup` creates one `{"TPU": 1}` bundle per logical TPU device across the reserved slice.
 
 :::{note}
-On [Ironwood (`TPU-V7X`)](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood), each dual-chiplet physical chip exposes two logical TPU devices (`8` logical devices per four-chip host). For the JAX backend (`tpu-inference`), which runs one worker per host, use the default `{"TPU": 4}` host bundles (`RAY_TPU_RESOURCE_PER_CHIP` isn't required). For `vllm-torchtpu`, which runs one worker per logical TPU device (`{"TPU": 1}`), configure your Ray worker Pods with `RAY_TPU_RESOURCE_PER_CHIP=2` and `resources: {TPU: "8"}` so `SlicePlacementGroup` creates 16 per-device bundles across the two hosts in a `2x2x2` slice.
+On [TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood), each dual-chiplet physical chip exposes two logical TPU devices (`8` logical devices per four-chip host). For the JAX backend (`tpu-inference`), which runs one worker per host, use the default `{"TPU": 4}` host bundles (`RAY_TPU_RESOURCE_PER_CHIP` isn't required). For `vllm-torchtpu`, which runs one worker per logical TPU device (`{"TPU": 1}`), configure your Ray worker Pods with `RAY_TPU_RESOURCE_PER_CHIP=2` and `resources: {TPU: "8"}` so `SlicePlacementGroup` creates 16 per-device bundles across the two hosts in a `2x2x2` slice.
 :::
 
 ## Example
@@ -127,7 +127,7 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 
 ::::
 
-These examples serve a model across one `v6e` `4x4` slice (16 TPU devices across four hosts) with `tensor_parallel_size=16`. Set `model_source` to a Hugging Face model ID or a storage path that all TPU hosts can read.
+These examples serve a model across one TPU v6e `4x4` slice (16 TPU devices across four hosts) with `tensor_parallel_size=16`. Set `model_source` to a Hugging Face model ID or a storage path that all TPU hosts can read.
 
 ## See also
 

@@ -6,7 +6,7 @@ myst:
 
 (kuberay-gke-tpu-cluster-setup)=
 
-# Set up a GKE cluster with TPUs
+# Set up a Google Cloud GKE cluster with TPUs for KubeRay
 
 This guide shows how to create a Google Kubernetes Engine (GKE) Standard cluster with TPU slice node pools for KubeRay. For full details, see [Deploy TPU workloads in GKE Standard](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus).
 
@@ -25,21 +25,19 @@ Replace the following placeholders:
 
 - `<cluster-name>`: The name of the GKE cluster to create.
 - `<region>` and `<zone>`: The Google Cloud region and zone with TPU quota (for example, `us-central1` and `us-central1-b`). For TPU availability by zone, see [TPU regions and zones](https://cloud.google.com/tpu/docs/regions-zones).
-- `<cluster-version>`: The GKE version. [TPU v6e (Trillium)](https://cloud.google.com/tpu/docs/v6e) requires GKE `1.31.2-gke.1115000` or later, and [Ironwood (`TPU7x`)](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) requires GKE `1.34.1-gke.2541000` or later. See [TPUs in GKE](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for minimum supported versions.
+- `<cluster-version>`: The GKE version. [TPU v6e](https://cloud.google.com/tpu/docs/v6e) requires GKE `1.31.2-gke.1115000` or later, and [TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) requires GKE `1.34.1-gke.2541000` or later. See [TPUs in GKE](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for minimum supported versions.
 
 Run the following commands on your local machine (with the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed) or in [Google Cloud Shell](https://cloud.google.com/shell).
 
-Create a Standard GKE cluster with the [GKE Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke), GKE Dataplane V2, and Image Streaming enabled:
+Create a Standard GKE cluster with the [GKE Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) enabled:
 
 ```sh
 gcloud container clusters create $CLUSTER_NAME \
     --location=$ZONE \
     --cluster-version=$CLUSTER_VERSION \
     --machine-type=e2-standard-16 \
-    --addons=RayOperator \
-    --enable-dataplane-v2 \
-    --enable-image-streaming \
-    --scopes=https://www.googleapis.com/auth/cloud-platform
+    --num-nodes=1 \
+    --addons=RayOperator
 ```
 
 Add a TPU slice node pool to the cluster (or create one from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console)):
@@ -48,7 +46,7 @@ Add a TPU slice node pool to the cluster (or create one from the [Google Cloud C
 
 :::{tab-item} TPU v6e single-host (2x2)
 
-Create a single-host `v6e` node pool (`ct6e-standard-4t`, four chips per node). Do not set `--tpu-topology` for single-host node pools; GKE automatically labels each node with `cloud.google.com/gke-tpu-topology: 2x2` and scales individual TPU nodes between `--min-nodes` and `--max-nodes`:
+Create a single-host TPU v6e node pool (`ct6e-standard-4t`, four chips per node). Do not set `--tpu-topology` for single-host node pools; GKE automatically labels each node with `cloud.google.com/gke-tpu-topology: 2x2` and scales individual TPU nodes between `--min-nodes` and `--max-nodes`:
 
 ```sh
 gcloud container node-pools create tpu-v6e-singlehost \
@@ -58,16 +56,14 @@ gcloud container node-pools create tpu-v6e-singlehost \
   --num-nodes=1 \
   --min-nodes=0 \
   --max-nodes=10 \
-  --enable-autoscaling \
-  --disk-size=200GB \
-  --scopes=https://www.googleapis.com/auth/cloud-platform
+  --enable-autoscaling
 ```
 
 :::
 
 :::{tab-item} TPU v6e multi-host (4x4)
 
-Create a multi-host `v6e` node pool with a `4x4` topology (16 chips across four hosts). GKE scales multi-host node pools atomically as a complete slice between `0` and `--max-nodes=4`:
+Create a multi-host TPU v6e node pool with a `4x4` topology (16 chips across four hosts). GKE scales multi-host node pools atomically as a complete slice between `0` and `--max-nodes=4`:
 
 ```sh
 gcloud container node-pools create tpu-v6e-multihost \
@@ -78,16 +74,14 @@ gcloud container node-pools create tpu-v6e-multihost \
   --num-nodes=4 \
   --min-nodes=0 \
   --max-nodes=4 \
-  --enable-autoscaling \
-  --disk-size=200GB \
-  --scopes=https://www.googleapis.com/auth/cloud-platform
+  --enable-autoscaling
 ```
 
 :::
 
 :::{tab-item} TPU7x multi-host (2x2x2)
 
-For multi-host `TPU7x` (Ironwood) node pools, create a `HIGH_THROUGHPUT` workload policy that defines the `2x2x2` topology (eight dual-chiplet chips, or 16 logical TPU devices, across two hosts) and attach it with `--placement-policy`:
+For multi-host TPU7x node pools, create a `HIGH_THROUGHPUT` workload policy that defines the `2x2x2` topology (eight dual-chiplet chips, or 16 logical TPU devices, across two hosts) and attach it with `--placement-policy`:
 
 ```sh
 gcloud compute resource-policies create workload-policy tpu7x-2x2x2-policy \
@@ -103,10 +97,7 @@ gcloud container node-pools create tpu7x-multihost \
   --num-nodes=2 \
   --min-nodes=0 \
   --max-nodes=2 \
-  --enable-autoscaling \
-  --disk-type=hyperdisk-balanced \
-  --disk-size=200GB \
-  --scopes=https://www.googleapis.com/auth/cloud-platform
+  --enable-autoscaling
 ```
 
 :::
@@ -119,7 +110,7 @@ Configure the following node pool options based on your workload:
 
 - **Single-host versus multi-host scaling:** Single-host node pools scale node by node. Multi-host node pools represent a single ICI-connected TPU slice and scale atomically between `0` and the slice size (`numOfHosts`). To provision multiple multi-host slices, create one node pool per slice or use [ClusterAutoscaler custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class).
 - **Consumption options:** Add `--spot` for Spot VMs, `--flex-start` (with `--num-nodes=0 --enable-autoscaling`) for Dynamic Workload Scheduler Flex-Start, or `--reservation-affinity=specific --reservation=<reservation-name>` for reserved capacity. See [Choose a TPU consumption option](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#tpu_reservation).
-- **Multi-NIC networking (DRANET):** Multi-chip TPU VMs (such as `ct6e-standard-4t` and `tpu7x-standard-4t`) have multiple network interfaces (NICs), but Pods use only the primary NIC (`eth0`) by default. For data center network (DCN)-intensive workloads such as multi-slice training or disaggregated RL weight transfer, pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` during node pool creation. These flags provision secondary VPC networks and enable [GKE managed DRANET](https://cloud.google.com/kubernetes-engine/docs/how-to/allocate-network-resources-dra) so Ray worker Pods can claim secondary NICs (`netdev.google.com`) through a Kubernetes `ResourceClaimTemplate`. See [Configure automated networking for accelerator VMs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
+- **Multi-NIC networking (DRANET):** Multi-chip TPU VMs (such as `ct6e-standard-4t` and `tpu7x-standard-4t`) have multiple network interfaces (NICs), but Pods use only the primary NIC (`eth0`) by default. For data center network (DCN)-intensive workloads such as multi-slice training or disaggregated RL weight transfer, create the cluster with `--enable-dataplane-v2` and pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` during node pool creation. These flags provision secondary VPC networks and enable [GKE managed DRANET](https://cloud.google.com/kubernetes-engine/docs/how-to/allocate-network-resources-dra) so Ray worker Pods can claim secondary NICs (`netdev.google.com`) through a Kubernetes `ResourceClaimTemplate`. See [Configure automated networking for accelerator VMs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
 
 ## Step 2: Connect to the GKE cluster
 
