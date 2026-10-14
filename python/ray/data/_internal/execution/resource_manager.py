@@ -277,26 +277,22 @@ class ResourceManager:
         """Return the global pending resource usage at the current time."""
         return self._global_pending_usage
 
-    def get_global_usage_excluding_consumer_blocked_ops(self) -> ExecutionResources:
-        """Return the global usage, excluding ops blocked on a slow consumer.
+    def is_blocked_on_consumer(self) -> bool:
+        """Whether the last op is waiting for the consumer to read its outputs.
 
-        Walks back from the last op and stops at the first op that isn't blocked.
+        More nodes won't help then, since they won't speed up the consumer.
         """
-        usage = self.get_global_usage()
         for op in reversed(self._topology):
-            # An ineligible op running tasks isn't blocked.
+            # Skip finished ops and pass-through ops, e.g., OutputSplitter.
             if not self.is_op_eligible(op) and op.num_active_tasks() == 0:
                 continue
-            if not self._is_blocked_on_downstream(op):
-                return usage
-            usage = usage.subtract(
-                self.get_op_usage(op, include_ineligible_downstream=True)
-            )
-        # Every op is blocked. The rest only hold outputs.
-        return ExecutionResources.zero()
+            return self._is_blocked_on_object_store_memory(op)
+        # Every op has finished, so only outputs are left.
+        return True
 
-    def _is_blocked_on_downstream(self, op: PhysicalOperator) -> bool:
-        """Whether the op is waiting for its outputs to be read downstream."""
+    def _is_blocked_on_object_store_memory(self, op: PhysicalOperator) -> bool:
+        """Whether the op is held back by its unread outputs in the object store,
+        rather than by CPU, GPU, or memory."""
         if op.in_task_output_backpressure:
             return True
         if op.num_active_tasks() > 0:

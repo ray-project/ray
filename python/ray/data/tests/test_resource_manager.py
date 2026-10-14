@@ -546,84 +546,55 @@ class TestResourceManager:
         total_obj_store = resource_manager.get_global_usage().object_store_memory
         assert total_obj_store == 300
 
-    def test_global_usage_excluding_consumer_blocked_ops(self, restore_data_context):
-        o1 = InputDataBuffer(DataContext.get_current(), [])
-        cpu_op = mock_map_op(o1, name="CpuMap")
-        gpu_op = mock_map_op(cpu_op, name="GpuMap")
-        limit_op = LimitOperator(100, gpu_op, DataContext.get_current())
-        for op, usage, per_task in [
-            (cpu_op, ExecutionResources(cpu=4), ExecutionResources(cpu=1)),
-            (gpu_op, ExecutionResources(gpu=2), ExecutionResources(gpu=1)),
-        ]:
-            op.current_logical_usage = MagicMock(return_value=usage)
-            op.running_logical_usage = MagicMock(return_value=usage)
-            op.incremental_resource_usage = MagicMock(return_value=per_task)
-
-        counter = StubBlockRefCounter()
-        topo = build_streaming_topology(limit_op, ExecutionOptions(), counter)
-        resource_manager = ResourceManager(
-            topo,
-            ExecutionOptions(),
-            MagicMock(return_value=ExecutionResources.zero()),
-            DataContext.get_current(),
-            counter,
+    @pytest.mark.parametrize(
+        "output_bp, active_tasks, submission_bp, cpu_budget, expected",
+        [
+            # Its task outputs can't be read.
+            (True, 0, False, 1, True),
+            # It's running tasks.
+            (False, 1, False, 1, False),
+            # Idle and can't submit even though its budget fits another task.
+            (False, 0, True, 1, True),
+            # Idle and can't submit because it's short on CPU. More nodes help.
+            (False, 0, True, 0, False),
+            # Idle and not backpressured, e.g., waiting for inputs.
+            (False, 0, False, 1, False),
+        ],
+    )
+    def test_is_blocked_on_consumer(
+        self, output_bp, active_tasks, submission_bp, cpu_budget, expected
+    ):
+        resource_manager, _, (first, last) = _build_reservation_allocator(
+            2, ray_remote_args={"num_cpus": 1}
         )
-        counter.on_block_produced(None, 100, cpu_op.id)
-        counter.on_block_produced(None, 200, gpu_op.id)
-        counter.on_block_produced(None, 50, limit_op.id)
-        resource_manager.update_usages()
-        # Each budget fits one more task.
-        budgets = {
-            cpu_op: ExecutionResources(cpu=1),
-            gpu_op: ExecutionResources(gpu=1),
-        }
-        resource_manager._op_resource_allocator.get_budget = budgets.get
+        budgets = resource_manager.op_resource_allocator._op_budgets
+        # The first map can't fit its next task either, but only the last one matters.
+        budgets[first] = ExecutionResources.zero()
+        first.notify_in_task_submission_backpressure(True)
+        budgets[last] = ExecutionResources(cpu=cpu_budget)
+        last.notify_in_task_output_backpressure(output_bp)
+        last.num_active_tasks = MagicMock(return_value=active_tasks)
+        last.notify_in_task_submission_backpressure(submission_bp)
 
-        def usage():
-            u = resource_manager.get_global_usage_excluding_consumer_blocked_ops()
-            return u.cpu, u.gpu, u.object_store_memory
+        assert resource_manager.is_blocked_on_consumer() == expected
 
-        assert usage() == (4, 2, 350)
+    @pytest.mark.parametrize("active_tasks, expected", [(0, True), (1, False)])
+    def test_is_blocked_on_consumer_skips_finished_ops(self, active_tasks, expected):
+        # The finished last map is skipped, unless it's still running tasks.
+        resource_manager, _, (first, last) = _build_reservation_allocator(2)
+        first.notify_in_task_output_backpressure(True)
+        last.mark_execution_finished()
+        last.num_active_tasks = MagicMock(return_value=active_tasks)
 
-        # Slow consumer: the GPU op and the Limit after it are excluded.
-        gpu_op.notify_in_task_output_backpressure(True)
-        assert usage() == (4, 0, 100)
+        assert resource_manager.is_blocked_on_consumer() == expected
 
-        # The backpressure reaches the CPU op too.
-        cpu_op.notify_in_task_output_backpressure(True)
-        assert usage() == (0, 0, 0)
+    def test_is_blocked_on_consumer_after_all_ops_finish(self):
+        # Only outputs are left.
+        resource_manager, _, map_ops = _build_reservation_allocator(2)
+        for op in map_ops:
+            op.mark_execution_finished()
 
-        # GPU-bound: the CPU op waits on a GPU op that isn't blocked, so both count.
-        gpu_op.notify_in_task_output_backpressure(False)
-        assert usage() == (4, 2, 350)
-
-        # Slow consumer, tasks done: the ops sit idle with outputs filling budgets.
-        cpu_op.notify_in_task_output_backpressure(False)
-        gpu_op.notify_in_task_submission_backpressure(True)
-        assert usage() == (4, 0, 100)
-        cpu_op.notify_in_task_submission_backpressure(True)
-        assert usage() == (0, 0, 0)
-
-        # An idle op that can't fit a GPU task needs more nodes, so both ops count.
-        budgets[gpu_op] = ExecutionResources.zero()
-        assert usage() == (4, 2, 350)
-        budgets[gpu_op] = ExecutionResources(gpu=1)
-
-        # An op that still has running tasks isn't blocked, so both ops count.
-        gpu_op.num_active_tasks = MagicMock(return_value=1)
-        assert usage() == (4, 2, 350)
-
-        # The CPU op finished, but the GPU op is still running, so both count.
-        cpu_op.mark_execution_finished()
-        assert usage() == (4, 2, 350)
-        # Both finished: their outputs only wait for the consumer.
-        gpu_op.num_active_tasks = MagicMock(return_value=0)
-        gpu_op.mark_execution_finished()
-        assert usage() == (0, 0, 0)
-
-        # An ineligible op running tasks, like sort sampling, stops the walk.
-        limit_op.num_active_tasks = MagicMock(return_value=1)
-        assert usage() == (4, 2, 350)
+        assert resource_manager.is_blocked_on_consumer()
 
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
