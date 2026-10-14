@@ -313,6 +313,23 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         .Double();
   }
 
+  bool HasOutstandingBundleCleanup() const {
+    return !scheduler_->outstanding_bundle_cleanup_.empty();
+  }
+
+  bool GrantRemovePlacementGroupBundlesWithStatus(size_t raylet_index,
+                                                  const Status &status) {
+    auto &callbacks = raylet_clients_[raylet_index]->remove_pg_bundles_callbacks;
+    if (callbacks.empty()) {
+      return false;
+    }
+    rpc::RemovePlacementGroupBundlesReply reply;
+    auto callback = callbacks.front();
+    callback(status, std::move(reply));
+    callbacks.pop_front();
+    return true;
+  }
+
   std::shared_ptr<GcsPlacementGroup> MakeStrictPackPlacementGroup(int bundles_count,
                                                                   double cpu_per_bundle) {
     auto request = GenCreatePlacementGroupRequest(
@@ -1148,6 +1165,82 @@ TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitIsCleanedBeforeRetry) {
       placement_group->GetPlacementGroupID());
   ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
   ASSERT_EQ(raylet_clients_[1]->num_bundles_removed, 1);
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 1);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitCleanupIsRetriedOnRemoval) {
+  auto node0 = GenNodeInfo(0);
+  AddNode(node0);
+
+  auto placement_group =
+      MakeStrictPackPlacementGroup(/*bundles_count=*/1, /*cpu_per_bundle=*/10);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+
+  // The commit may have reached the raylet even though its reply was lost.
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+
+  // Exhaust every cleanup attempt while the original node remains alive.
+  for (int attempt = 1; attempt <= 5; ++attempt) {
+    ASSERT_TRUE(WaitForCondition(
+        [this, attempt] {
+          return raylet_clients_[0]->num_remove_pg_bundles_requested == attempt;
+        },
+        timeout_ms_.count()));
+    ASSERT_TRUE(GrantRemovePlacementGroupBundlesWithStatus(
+        0, ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  }
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // Retry the placement group on another node.
+  auto node1 = GenNodeInfo(1);
+  AddNode(node1);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Removing the placement group must retry both the current placement and the
+  // outstanding cleanup on the original node.
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 6);
+  ASSERT_EQ(raylet_clients_[1]->num_remove_pg_bundles_requested, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  ASSERT_TRUE(raylet_clients_[1]->GrantRemovePlacementGroupBundles());
+
+  // Successful cleanup removes both obligations, so repeated deletion is a no-op.
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+      placement_group->GetPlacementGroupID());
+  ASSERT_EQ(raylet_clients_[0]->num_remove_pg_bundles_requested, 6);
+  ASSERT_EQ(raylet_clients_[1]->num_remove_pg_bundles_requested, 1);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, OutstandingCommitCleanupIsForgottenWhenNodeDies) {
+  auto node = GenNodeInfo(0);
+  const auto node_id = NodeID::FromBinary(node->node_id());
+  AddNode(node);
+
+  auto placement_group =
+      MakeStrictPackPlacementGroup(/*bundles_count=*/1, /*cpu_per_bundle=*/10);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+
+  ASSERT_TRUE(HasOutstandingBundleCleanup());
+  RemoveNode(node);
+  ASSERT_TRUE(scheduler_->GetAndRemoveBundlesOnNode(node_id).empty());
+  ASSERT_FALSE(HasOutstandingBundleCleanup());
+
+  // Complete the already-issued request. The dead node must not leave a retained
+  // cleanup obligation behind.
+  ASSERT_TRUE(raylet_clients_[0]->GrantRemovePlacementGroupBundles());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, FailedCommitCanBeCancelledDuringCleanup) {
