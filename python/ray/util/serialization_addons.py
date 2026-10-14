@@ -86,13 +86,18 @@ def apply_pending() -> None:
     """Registers the serializers of the libraries the process has imported
     since: called before pickling a value. Once there's nothing left to
     register (or no library imported yet), it costs a check or two.
-
-    Concurrent calls may both register a library, which is harmless: a
-    registration replaces the same entries.
     """
     global _pending
     if not _pending:
         return
+    # No lock: threads may pickle concurrently, and a library that's never
+    # imported stays pending, so a lock would be taken on every pickle. Without
+    # one, concurrent calls can each register the same library, and one's
+    # `_pending` can replace another's, leaving a registered library pending
+    # until the next call. Both are harmless: a registration only sets the
+    # library's entries in the pickler's dispatch table, so repeating it
+    # changes nothing. And a call only drops the libraries it registered
+    # itself, so none is dropped unregistered.
     remaining = []
     for module, register in _pending:
         if module in sys.modules:
