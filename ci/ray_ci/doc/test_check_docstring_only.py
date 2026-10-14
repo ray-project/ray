@@ -65,6 +65,22 @@ def test_adding_and_removing_docstrings_pass():
 @pytest.mark.parametrize(
     "old,new",
     [
+        ("", '"""Package."""\n'),
+        ('"""Package."""\n', ""),
+        ("# License header.\n", '# License header.\n"""Package."""\n'),
+    ],
+)
+def test_empty_module_docstring_edits_pass(old, new):
+    assert check_file("pkg/__init__.py", old, new) is None
+
+
+def test_empty_module_to_pass_is_code():
+    assert check_file("pkg/__init__.py", "", "pass\n") is not None
+
+
+@pytest.mark.parametrize(
+    "old,new",
+    [
         ("return x  # identity", "return x + 1"),
         ("import os", "import sys"),
         ("def run(self, x):", "def run(self, x, y=None):"),

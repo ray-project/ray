@@ -40,7 +40,11 @@ class _DocstringStripper(ast.NodeTransformer):
     def generic_visit(self, node: ast.AST) -> ast.AST:
         super().generic_visit(node)
         if isinstance(node, _DOCSTRING_OWNERS) and _has_docstring(node.body):
-            node.body = node.body[1:] or [ast.Pass()]
+            node.body = node.body[1:]
+            # A module body can be empty, so an empty file and a docstring-only
+            # file compare equal. A class or function body can't.
+            if not node.body and not isinstance(node, ast.Module):
+                node.body = [ast.Pass()]
         return node
 
 
