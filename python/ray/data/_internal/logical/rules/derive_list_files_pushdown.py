@@ -25,7 +25,9 @@ class DeriveListFilesPushdown(Rule):
     it is no stronger than what the downstream ``ReadFiles`` applies. This rule
     derives that state from the scanner once, after the optimize loop, instead
     of having every pushdown rule mirror onto ``ListFiles``. Non-``ReadFiles``
-    consumers (e.g. after ``PushdownCountFiles``) clear the constraints.
+    consumers clear the constraints -- unless the ``ListFiles`` says
+    ``pushdown_is_final``, which is how a rule that rewrote the consumer keeps
+    the constraints it deliberately set (see ``PushdownCountFiles``).
 
     The limit is never derived onto a ``ListFiles`` that shuffles row groups
     (``FileShuffleConfig.small_chunks_shuffle``): the shuffle runs on the listed
@@ -47,7 +49,8 @@ class DeriveListFilesPushdown(Rule):
             new_inputs: list[LogicalOperator] = []
             changed = False
             for input_op in inputs:
-                if not isinstance(input_op, ListFiles):
+                # Not a listing, or one a rule already set and vouched for.
+                if not isinstance(input_op, ListFiles) or input_op.pushdown_is_final:
                     new_inputs.append(input_op)
                     continue
                 # Listing stops at the limit *before* the row-group shuffle, so
