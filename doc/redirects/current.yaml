@@ -72,6 +72,12 @@ redirects:
 - from: /serve/tutorials/intel-habana-gaudi-inference.html
   to: /serve/tutorials/intel-gaudi-inference.html
   type: page
+- from: /serve/getting_started.html
+  to: /serve/getting-started.html
+  type: page
+- from: /serve/model_composition.html
+  to: /serve/model-composition.html
+  type: page
 - from: /train/examples/hpu/resnet.html
   to: /train/examples/intel_gaudi/resnet.html
   type: page
