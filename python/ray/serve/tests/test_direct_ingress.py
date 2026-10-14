@@ -5,7 +5,7 @@ import socket
 import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
-from typing import Iterable, Optional, Set, Tuple
+from typing import Iterable, Optional, Tuple
 from uuid import UUID
 
 import grpc
@@ -281,11 +281,6 @@ def get_grpc_ports(route_prefix=None, first_only=True):
             ):
                 grpc_ports.extend([target.port for target in target_group.targets])
         return grpc_ports
-
-
-def _expected_grpc_ports(*offsets: int) -> Set[int]:
-    """gRPC ports at `offsets` from the start of the configured range."""
-    return {RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT + offset for offset in offsets}
 
 
 def _can_bind_to_port(port):
@@ -790,7 +785,7 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
     """Test that replicas release ports on shutdown."""
 
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = _expected_grpc_ports(0, 1, 2, 3)
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -907,7 +902,7 @@ def test_only_ingress_deployment_replicas_are_used_for_target_groups(
     http_ports = get_http_ports()
     grpc_ports = get_grpc_ports()
     assert len(set(http_ports) & {30000, 30001, 30002, 30003, 30004}) == 3
-    assert len(set(grpc_ports) & _expected_grpc_ports(0, 1, 2, 3, 4)) == 3
+    assert len(set(grpc_ports) & {31500, 31501, 31502, 31503, 31504}) == 3
 
     http_urls = get_application_urls("HTTP")
     grpc_urls = get_application_urls("gRPC", from_proxy_manager=True)
@@ -932,7 +927,7 @@ def test_crashed_replica_port_is_released_and_reused(
 ):
     """Test that crashed replica port is released and reused."""
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = _expected_grpc_ports(0, 1, 2, 3)
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # Wait until all ports can be bound (not just until nothing is listening).
     # This ensures the ports are fully released from TIME_WAIT state.
@@ -1057,7 +1052,7 @@ def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_insta
     """Test that multiple applications, such that each app has a ingress deployment"""
 
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = _expected_grpc_ports(0, 1, 2, 3)
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1092,8 +1087,8 @@ def test_multiple_applications_on_same_node(_skip_if_ff_not_enabled, serve_insta
 
     assert set(http_ports_1) == {30000, 30001}
     assert set(http_ports_2) == {30002, 30003}
-    assert set(grpc_ports_1) == _expected_grpc_ports(0, 1)
-    assert set(grpc_ports_2) == _expected_grpc_ports(2, 3)
+    assert set(grpc_ports_1) == {31500, 31501}
+    assert set(grpc_ports_2) == {31502, 31503}
 
     # make a request to the ingress deployment
     for http_port in http_ports_1:
@@ -1114,7 +1109,7 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
     deployment is used for the target groups"""
 
     expected_http_ports = {30000, 30001}
-    expected_grpc_ports = _expected_grpc_ports(0, 1)
+    expected_grpc_ports = {31500, 31501}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1189,7 +1184,7 @@ def test_app_with_composite_deployments(_skip_if_ff_not_enabled, serve_instance)
         [30002, 30003, 30004]
     ), "Child deployment is occupying ports"
     assert not _is_port_in_use(
-        _expected_grpc_ports(2, 3, 4)
+        [31502, 31503, 31504]
     ), "Child deployment is occupying ports"
 
 
@@ -1201,7 +1196,7 @@ def test_only_running_apps_are_used_for_target_groups(
     signal_actor = SignalActor.remote()
 
     expected_http_ports = {30000, 30001, 30002, 30003}
-    expected_grpc_ports = _expected_grpc_ports(0, 1, 2, 3)
+    expected_grpc_ports = {31500, 31501, 31502, 31503}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -1255,9 +1250,7 @@ def test_only_running_apps_are_used_for_target_groups(
         {30000, 30001} if RAY_SERVE_ENABLE_HA_PROXY else {30000, 30001, 8000}
     )
     assert set(grpc_ports) == (
-        _expected_grpc_ports(0, 1)
-        if RAY_SERVE_ENABLE_HA_PROXY
-        else _expected_grpc_ports(0, 1) | {9000}
+        {31500, 31501} if RAY_SERVE_ENABLE_HA_PROXY else {31500, 31501, 9000}
     )
 
     ray.get(signal_actor.send.remote())
@@ -1274,7 +1267,7 @@ def test_only_running_apps_are_used_for_target_groups(
     http_ports = get_http_ports("/app-1", first_only=False)
     grpc_ports = get_grpc_ports("/app-1", first_only=False)
     assert set(http_ports) == {30000, 30001}
-    assert set(grpc_ports) == _expected_grpc_ports(0, 1)
+    assert set(grpc_ports) == {31500, 31501}
 
     http_urls = get_application_urls("HTTP", app_name="app-1")
 
@@ -1287,7 +1280,7 @@ def test_only_running_apps_are_used_for_target_groups(
     http_ports = get_http_ports("/app-2", first_only=False)
     grpc_ports = get_grpc_ports("/app-2", first_only=False)
     assert set(http_ports) == {30002, 30003}
-    assert set(grpc_ports) == _expected_grpc_ports(2, 3)
+    assert set(grpc_ports) == {31502, 31503}
 
     http_urls = get_application_urls("HTTP", app_name="app-2")
 
@@ -1300,7 +1293,7 @@ def test_only_running_apps_are_used_for_target_groups(
 
 def test_some_replicas_not_running(_skip_if_ff_not_enabled, serve_instance):
     expected_http_ports = {30000, 30001}
-    expected_grpc_ports = _expected_grpc_ports(0, 1)
+    expected_grpc_ports = {31500, 31501}
 
     # TIME_WAIT can last up to 60s on Linux, so use a generous timeout
     wait_for_condition(
@@ -2711,9 +2704,7 @@ def test_get_serve_instance_details_json_serializable(
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000
-                            if RAY_SERVE_ENABLE_HA_PROXY
-                            else RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+                            "port": 9000 if RAY_SERVE_ENABLE_HA_PROXY else 31500,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name
                             if RAY_SERVE_ENABLE_HA_PROXY
