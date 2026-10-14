@@ -1160,9 +1160,12 @@ ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the
 
 #### Bursts of sandboxes
 
-By default, each sandbox gets its own Ray actor, so creating one starts a Ray worker process, which takes about a CPU-second. For bursts of hundreds of sandboxes, set `host_mode="node"` in the application's `args`: one actor per node hosts every sandbox placed on that node, so a create starts no process. Each sandbox still reserves its resources with a placement group.
+By default, each sandbox gets its own Ray actor, so creating one starts a Ray worker process, which takes about a CPU-second. For bursts of hundreds of sandboxes, set these arguments:
 
-This setting applies to the facade only: the REST API, like named sandboxes, always gives each sandbox its own actor.
+* `host_mode="node"`: one actor per node hosts every sandbox placed on that node, so a create starts no process. Each sandbox still reserves its resources with a placement group.
+* `reservation_slab_cpus`: sandboxes that request only CPUs share placement groups of at least this many CPUs, so a burst costs Ray one reservation per group rather than one per sandbox.
+
+`reservation_slab_cpus` needs `host_mode="node"`. Both apply to the facade only: the REST API, like named sandboxes, always gives each sandbox its own actor.
 
 ## API reference
 

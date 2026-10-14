@@ -381,7 +381,8 @@ class _VacantNodeHostHandle:
 
     def __init__(self, sandbox_id: str) -> None:
         self._sandbox_id = sandbox_id
-        self._host = node_host.SandboxNodeHost()
+        self._host = object.__new__(node_host.SandboxNodeHost)
+        self._host._sandboxes = {}
 
     def __getattr__(self, name: str) -> Any:
         method = getattr(self._host, name)

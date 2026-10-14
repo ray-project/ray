@@ -395,6 +395,17 @@ class SandboxAPISettings(BaseModel):
             "skip a worker process start. Named sandboxes always use 'actor'."
         ),
     )
+    reservation_slab_cpus: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "With host_mode='node': CPUs each node host reserves at a time "
+            "(one placement group) and shares among the sandboxes it hosts, "
+            "so a burst costs Ray one reservation per slab rather than per "
+            "sandbox. 0 reserves each sandbox on its own. Only sandboxes that "
+            "request nothing but CPUs use slabs."
+        ),
+    )
     default_actor_num_cpus: float = Field(
         default=1.0,
         ge=0,

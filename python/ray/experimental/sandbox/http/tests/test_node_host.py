@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ray.experimental.sandbox.http.node_host import SandboxNodeHost
+from ray.experimental.sandbox.http import node_host
+from ray.experimental.sandbox.http.node_host import SandboxNodeHost, _Slab
 from ray.experimental.sandbox.http.resolver import (
     NODE_HOST_PREFIX,
     RayActorHandleResolver,
@@ -28,8 +29,20 @@ class _Sandbox:
 
 
 def _host() -> SandboxNodeHost:
-    host = SandboxNodeHost(_Sandbox)
+    # __init__ needs a Ray worker (the host's node id).
+    host = object.__new__(SandboxNodeHost)
+    host._host_class = _Sandbox
+    host._sandboxes = {}
+    host._reservations = {}
     host._executor_set = True  # keep the test loop's default executor
+    host._node_id = "node"
+    host._slab_shape = {}
+    host._slabs = []
+    host._slab_of = {}
+    host._grow_lock = asyncio.Lock()
+    host._waiting = []
+    host._full_until = 0.0
+    host._background = set()
     return host
 
 
@@ -77,6 +90,61 @@ def test_a_sandbox_that_exits_on_its_own_frees_its_reservation():
     assert released == ["pg-1"]
     assert described["status"] == "terminated"
     assert described["error_code"] == "sandbox_not_found"
+
+
+def test_a_slab_no_admit_takes_is_released_when_idle(monkeypatch):
+    """A slab grown for an admit that ended up not taking it (a repeat whose
+    sandbox was already added) is released after the idle time."""
+    monkeypatch.setattr(node_host, "_SLAB_IDLE_SECONDS", 0.05)
+
+    async def scenario():
+        host = _host()
+        removed = []
+
+        async def remove_group(reservation, what):
+            removed.append(reservation)
+
+        host._remove_group = remove_group
+        unused = host._add_slab("pg-unused", {"CPU": 1.0})
+        used = host._add_slab("pg-used", {"CPU": 1.0})
+        used.take("sb-1", {"CPU": 0.5})
+        await asyncio.sleep(0.2)
+        return removed, [slab.reservation for slab in host._slabs], unused
+
+    removed, left, unused = asyncio.run(scenario())
+    assert removed == ["pg-unused"]
+    assert left == ["pg-used"]
+
+
+def test_a_repeated_admit_takes_its_share_once():
+    """A repeat of an admit (a lost reply replayed through Ray) that arrives
+    while the first waits must not charge the slab twice."""
+
+    async def scenario():
+        host = _host()
+        slab = _Slab(
+            SimpleNamespace(id=SimpleNamespace(hex=lambda: "pg")), {"CPU": 1.0}
+        )
+
+        async def grow(demand):
+            # Both admits wait here, for the one slab this grows.
+            await asyncio.sleep(0.05)
+            if slab not in host._slabs:
+                host._slabs.append(slab)
+            return slab
+
+        host._grow = grow
+        spec = {"image": "python:3.12-slim"}
+        demand = {"CPU": 0.25}
+        results = await asyncio.gather(
+            *(host.admit("sb-1", spec, {}, demand) for _ in range(2))
+        )
+        return results, slab.used, list(host._sandboxes), list(slab.sandboxes)
+
+    results, used, sandboxes, holders = asyncio.run(scenario())
+    assert results == [{"ok": True}, {"ok": True}]
+    assert used == {"CPU": 0.25}
+    assert sandboxes == holders == ["sb-1"]
 
 
 def test_background_tasks_are_held_until_done():

@@ -275,6 +275,11 @@ class RayActorHandleResolver:
         from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
         name = f"{NODE_HOST_PREFIX}{node_id}"
+        slab = (
+            {"CPU": self._settings.reservation_slab_cpus}
+            if self._settings.reservation_slab_cpus
+            else None
+        )
         handle = actor_class.options(
             name=name,
             namespace=self._settings.namespace,
@@ -283,10 +288,50 @@ class RayActorHandleResolver:
             num_cpus=0,
             max_concurrency=_NODE_HOST_MAX_CONCURRENCY,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-        ).remote(self._sandbox_host_class)
+        ).remote(self._sandbox_host_class, slab)
+        # The name may find a host an earlier deployment started, with other
+        # settings: this resolver's apply from now on.
+        handle.configure.remote(slab)
         with self._lock:
             entry = self._node_hosts.setdefault(node_id, (name, handle))
         return entry
+
+    def _cached_node_host(self, node_id: str) -> Optional[Tuple[str, Any]]:
+        with self._lock:
+            return self._node_hosts.get(node_id)
+
+    async def _admit(
+        self,
+        demand: Dict[str, float],
+        ctor_kwargs: Dict[str, Any],
+    ) -> Optional[HostedSandboxHandle]:
+        """Place a sandbox in some node host's slab, round robin; None if all are full."""
+        nodes = await asyncio.to_thread(self._cpu_nodes)
+        if not nodes:
+            return None
+        start = next(self._spread)
+        for i in range(len(nodes)):
+            node_id = nodes[(start + i) % len(nodes)]
+            name = _hosted_sandbox_id(node_id)
+            for attempt in (0, 1):
+                entry = self._cached_node_host(node_id) or await asyncio.to_thread(
+                    self._node_host, node_id
+                )
+                host_name, host = entry
+                try:
+                    result = await host.admit.remote(
+                        name, ctor_kwargs["spec"], ctor_kwargs["settings"], demand
+                    )
+                    break
+                except Exception as exc:
+                    if attempt or not _is_actor_gone(exc):
+                        raise
+                    self._drop_node_host(node_id, host)
+            if result.get("ok"):
+                handle = HostedSandboxHandle(host, host_name, name, self)
+                self._cache(name, handle)
+                return handle
+        return None
 
     def prestart(self) -> int:
         """Start the host on every node that can run sandboxes (host_mode="node").
@@ -421,6 +466,12 @@ class RayActorHandleResolver:
         )
 
         bundle = _reservation_bundle(actor_options)
+        if bundle and self._settings.reservation_slab_cpus and set(bundle) == {"CPU"}:
+            handle = await self._admit(bundle, ctor_kwargs)
+            if handle is not None:
+                return handle
+            # Every host is full: reserve this sandbox on its own, which also
+            # shows the autoscaler the demand.
         reservation = None
         if bundle:
             reservation = await asyncio.to_thread(
