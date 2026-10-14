@@ -131,7 +131,11 @@ def test_slice_repartition(
         .repartition(num_partitions, shuffle=True)
         .materialize()
     )
-    blocks = ray.get(out.get_internal_block_refs())
+    blocks = [
+        ray.get(block_ref)
+        for ref_bundle in out.iter_internal_ref_bundles()
+        for block_ref in ref_bundle.block_refs
+    ]
     assert len(blocks) == num_partitions
     assert all(block.schema == tables[0].schema for block in blocks)
     rows_by_partition = [block["id"].to_pylist() for block in blocks]
@@ -181,7 +185,11 @@ def test_slice_repartition_chunked_extensions(
     assert all(column.num_chunks == 2 for column in table.columns)
 
     out = ray.data.from_arrow(table).repartition(4, shuffle=True).materialize()
-    blocks = ray.get(out.get_internal_block_refs())
+    blocks = [
+        ray.get(block_ref)
+        for ref_bundle in out.iter_internal_ref_bundles()
+        for block_ref in ref_bundle.block_refs
+    ]
     assert len(blocks) == 4
     all_ids = []
     for block in blocks:
