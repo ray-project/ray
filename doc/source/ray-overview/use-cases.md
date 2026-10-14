@@ -162,7 +162,7 @@ Read more about building ML platforms with Ray in {ref}`this section <ray-for-ml
 The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
 - {doc}`[Example] Text classification with Ray </train/examples/transformers/huggingface-text-classification>`
-- {doc}`[Example] Object detection with Ray </train/examples/pytorch/torch-detection>`
+- {doc}`[Example] Object detection with Ray </_collections/ray-overview/examples/object-detection/README>`
 - {doc}`[Example] Machine learning on tabular data </_collections/ray-overview/examples/e2e-xgboost/README>`
 
 ## Large Scale Workload Orchestration

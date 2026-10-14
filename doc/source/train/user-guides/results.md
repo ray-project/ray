@@ -134,6 +134,6 @@ If an error occurs during training, {attr}`Result.error <ray.train.Result>` cont
 (finding-results-on-persistent-storage)=
 
 ## Find results on persistent storage
-Ray Train stores all training results, including reported metrics and checkpoints, on the configured {ref}`persistent storage <train-log-dir>`.
+Ray Train stores checkpoints and the metrics attached to them on the configured {ref}`persistent storage <train-log-dir>`.
 
 To configure this location for your training run, see {ref}`the persistent storage guide <train-log-dir>`.

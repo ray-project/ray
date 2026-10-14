@@ -83,7 +83,7 @@ scaling_config = ScalingConfig(
 :sync: GPU
 When you set `use_gpu=True`, Ray Train automatically sets up environment variables, such as `CUDA_VISIBLE_DEVICES`, in your training function so that your code can detect and use the GPUs.
 
-Get the associated devices with {meth}`ray.train.torch.get_device`.
+Get the associated device with {meth}`ray.train.torch.get_device`.
 
 ```{testcode}
 import torch
