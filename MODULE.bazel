@@ -48,3 +48,9 @@ single_version_override(
 )
 
 bazel_dep(name = "zlib", version = "1.3.2.bcr.2", repo_name = "zlib")
+
+# rules_python too, so Ray's py_* rules, the Bazel 8 autoloads and
+# rules_rust_pyo3's pyo3_extension share one PyInfo. That lets a
+# pyo3_extension be a real deps edge of Ray's py_library/py_test targets.
+# rules_rust_pyo3 already requires this version.
+bazel_dep(name = "rules_python", version = "1.6.3", repo_name = "rules_python")

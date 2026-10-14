@@ -7,12 +7,19 @@ pyo3_extension(
     edition = "2021",
 )
 
-# PyInfo from bzlmod-world rules_python 1.6.3 is a different provider identity
-# than WORKSPACE-world rules_python 0.40.0's, so ":ray_probe_ext" cannot go in
-# deps. Consume the .so as a data file instead -- the same shape Ray already
-# uses for _raylet.so.
+# Consuming the .so as a data file, the shape Ray uses for _raylet.so. On the
+# Bazel 7.5 POC this was the only option (two rules_python copies, two PyInfo
+# providers); see ray_probe_ext_deps_test below for the deps form.
 py_test(
     name = "ray_probe_ext_test",
     srcs = ["ray_probe_ext_test.py"],
     data = [":ray_probe_ext"],
+)
+
+# With rules_python unified in MODULE.bazel (one PyInfo for both dependency
+# systems), the extension is an ordinary deps edge.
+py_test(
+    name = "ray_probe_ext_deps_test",
+    srcs = ["ray_probe_ext_deps_test.py"],
+    deps = [":ray_probe_ext"],
 )
