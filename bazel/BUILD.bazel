@@ -1,4 +1,3 @@
-load("@python3_10//:defs.bzl", python310 = "interpreter")
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_runtime", "py_runtime_pair")
 
@@ -72,14 +71,14 @@ config_setting(
 
 py_runtime(
     name = "py310_runtime",
-    interpreter = python310,
+    # rules_python >= 1.0: the host interpreter is @<name>_host//:python.
+    interpreter = "@python3_10_host//:python",
     python_version = "PY3",
     visibility = ["//visibility:private"],
 )
 
 py_runtime_pair(
     name = "py310_runtime_pair",
-    py2_runtime = None,
     py3_runtime = ":py310_runtime",
     visibility = ["//visibility:private"],
 )
