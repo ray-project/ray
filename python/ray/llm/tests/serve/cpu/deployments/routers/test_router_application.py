@@ -17,7 +17,9 @@ from ray.llm._internal.serve.core.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.serve._private.constants import (
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve.exceptions import DeploymentUnavailableError, RayServeException
@@ -29,12 +31,21 @@ MODEL_APPS = {
 
 
 class _FakeRequest:
-    def __init__(self, body: bytes = b"", headers: Optional[dict] = None):
+    def __init__(
+        self,
+        body: bytes = b"",
+        headers: Optional[dict] = None,
+        form: Optional[dict] = None,
+    ):
         self._body = body
         self.headers = Headers(headers or {})
+        self._form = form or {}
 
     async def body(self) -> bytes:
         return self._body
+
+    async def form(self) -> dict:
+        return self._form
 
 
 class FakeHandle:
@@ -128,9 +139,18 @@ def _assert_direct(response):
     assert response.headers[SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER] == "1"
 
 
+async def _route(router, method, path, body=b"", headers=None, form=None):
+    headers = {
+        **(headers or {}),
+        SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: path,
+        SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER: method,
+    }
+    return await router.route(_FakeRequest(body, headers, form))
+
+
 async def _chat(router, body, headers=None):
     raw = body if isinstance(body, bytes) else json.dumps(body).encode()
-    return await router.chat(_FakeRequest(raw, headers))
+    return await _route(router, "POST", "/v1/chat/completions", raw, headers)
 
 
 class TestModels:
@@ -138,7 +158,7 @@ class TestModels:
     async def test_models_are_static_direct_response(self):
         router, handles, patcher = _new_router()
         try:
-            response = await router.models()
+            response = await _route(router, "GET", "/v1/models")
 
             assert response.status_code == 200
             _assert_direct(response)
@@ -164,7 +184,7 @@ class TestModels:
     async def test_model_data(self, path):
         router, handles, patcher = _new_router()
         try:
-            response = await router.model_data(path)
+            response = await _route(router, "GET", f"/v1/models/{path}")
 
             assert response.status_code == 200
             _assert_direct(response)
@@ -177,7 +197,7 @@ class TestModels:
     async def test_model_data_unknown(self):
         router, _, patcher = _new_router()
         try:
-            response = await router.model_data("nope")
+            response = await _route(router, "GET", "/v1/models/nope")
 
             assert response.status_code == 404
             _assert_direct(response)
@@ -186,7 +206,47 @@ class TestModels:
             patcher.stop()
 
 
-class TestChatDecision:
+class TestRoutingDecision:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/v1/chat/completions",
+            "/v1/completions",
+            "/v1/embeddings",
+            "/v1/score",
+            "/tokenize",
+            "/a/future/vllm/route",
+        ],
+    )
+    async def test_public_routes_are_owned_by_selected_application(self, path):
+        router, handles, patcher = _new_router()
+        try:
+            body = json.dumps({"model": "model-a"}).encode()
+            decision = await _route(router, "POST", path, body)
+
+            assert decision["application"] == "llm-model-a"
+            assert decision["replica_id"] == handles["llm-model-a"].replica_id
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_routes_multipart_request_by_model(self):
+        router, handles, patcher = _new_router()
+        try:
+            decision = await _route(
+                router,
+                "POST",
+                "/v1/audio/transcriptions",
+                headers={"content-type": "multipart/form-data; boundary=test"},
+                form={"model": "org/model-b"},
+            )
+
+            assert decision["application"] == "llm-model-b"
+            assert decision["replica_id"] == handles["llm-model-b"].replica_id
+        finally:
+            patcher.stop()
+
     @pytest.mark.asyncio
     @pytest.mark.parametrize("model_id", MODEL_APPS)
     async def test_returns_application_and_full_replica_id(self, model_id):
@@ -250,7 +310,7 @@ class TestChatDecision:
                 _chat(router, {"model": "model-a"}),
             )
 
-        assert lookups == {app_name: 1 for app_name in MODEL_APPS.values()}
+        assert lookups == dict.fromkeys(MODEL_APPS.values(), 1)
         assert decisions[0]["replica_id"] == decisions[1]["replica_id"]
 
     @pytest.mark.asyncio
@@ -270,7 +330,9 @@ class TestChatDecision:
             chat_task = asyncio.create_task(_chat(router, {"model": "model-a"}))
             assert await asyncio.to_thread(lookup_started.wait, 1)
 
-            response = await asyncio.wait_for(router.models(), timeout=0.1)
+            response = await asyncio.wait_for(
+                _route(router, "GET", "/v1/models"), timeout=0.1
+            )
             assert response.status_code == 200
 
             release_lookup.set()
