@@ -22,7 +22,6 @@ local function route(txn, app, pool, replica_map)
     local hdrs = txn.http:req_get_headers()
     local headers = header_line("Content-Type", "application/json")
         .. header_line(REQUEST_PATH_HEADER, txn.sf:path())
-        .. header_line(ORIGINAL_METHOD_HEADER, txn.sf:method())
         .. header_line(REQUEST_ID_HEADER, first_header(hdrs, REQUEST_ID_HEADER))
         .. header_line(SESSION_HEADER, session_id_from(hdrs))
 

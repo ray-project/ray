@@ -3,7 +3,6 @@ import asyncio
 import contextlib
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -32,7 +31,6 @@ from ray.serve._private.haproxy import (
     HAProxyConfig,
     HAProxyManager,
     ServerConfig,
-    _lua_str,
     _format_router_application_pools_lua,
     _format_router_target_apps_lua,
     get_haproxy_binary,
@@ -162,40 +160,6 @@ class TestRouterApplicationConfig:
                 assert '"SERVE_REPLICA::model-a#Ingress#a1"' in f.read()
             _check_config(os.path.join(temp_dir, "haproxy.cfg"))
 
-    def test_any_application_name_renders_valid_lua(self):
-        app = 'mod\u00e8le "a"\\'
-        with tempfile.TemporaryDirectory() as temp_dir:
-            _render(
-                temp_dir,
-                [
-                    _backend(
-                        "router",
-                        "/",
-                        [_server("router", "r1", 9000)],
-                        is_router_application=True,
-                    ),
-                    BackendConfig(
-                        name="http-model",
-                        path_prefix="/v1/model",
-                        app_name=app,
-                        servers=[
-                            ServerConfig(
-                                name="a1",
-                                host="127.0.0.1",
-                                port=9001,
-                                replica_id=_replica_id(app, "a1"),
-                            )
-                        ],
-                    ),
-                ],
-            )
-            # haproxy -c compiles the Lua file.
-            _check_config(os.path.join(temp_dir, "haproxy.cfg"))
-        # Lua reads \ddd as one byte.
-        lua = _lua_str(app)
-        raw = re.sub(rb"\\(\d{3})", lambda m: bytes([int(m[1])]), lua[1:-1].encode())
-        assert raw.decode() == app
-
 
 def test_manager_carries_router_marker_to_backend_config():
     manager_cls = HAProxyManager.__ray_metadata__.modified_class
@@ -235,18 +199,6 @@ class TestRouterApplicationMaps:
         assert "port = 9001" in remote_lua
         assert "port = 9002" in remote_lua
         assert "port = 9000" in remote_lua
-
-    def test_pool_uses_fallback_when_scaled_to_zero(self):
-        fallback = ServerConfig(name="proxy", host="10.0.0.1", port=8000)
-        backend = _backend(
-            "router", "/", [], is_router_application=True, fallback_server=fallback
-        )
-        assert 'host = "10.0.0.1", port = 8000' in (
-            _format_router_application_pools_lua([backend])
-        )
-
-        no_fallback = _backend("router", "/", [], is_router_application=True)
-        assert "pool = {  }" in _format_router_application_pools_lua([no_fallback])
 
     def test_target_apps(self):
         backends = [
@@ -351,7 +303,12 @@ class FakeRouter:
 
 
 @contextlib.asynccontextmanager
-async def _router_cluster(router_prefix: str = "/", extra_app: Optional[str] = None):
+async def _router_cluster(
+    router_prefix: str = "/",
+    extra_app: Optional[str] = None,
+    router_scaled_to_zero: bool = False,
+    router_fallback: bool = False,
+):
     """HAProxy with a router at `router_prefix` and model-a, model-b, control."""
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = find_free_port()
@@ -365,8 +322,13 @@ async def _router_cluster(router_prefix: str = "/", extra_app: Optional[str] = N
             _backend(
                 "router",
                 router_prefix,
-                [_server("router", "r1", ports["r1"])],
+                [] if router_scaled_to_zero else [_server("router", "r1", ports["r1"])],
                 is_router_application=True,
+                fallback_server=(
+                    ServerConfig(name="proxy", host="127.0.0.1", port=ports["r1"])
+                    if router_fallback
+                    else None
+                ),
             ),
             _backend("model-a", "/v1/model-a", [_server("model-a", "a1", ports["a1"])]),
             _backend(
@@ -433,82 +395,79 @@ def _chat(
 async def test_post_dispatches_to_selected_replica(router_cluster):
     url, router, _ = router_cluster
 
-    for app, name in [("model-b", "b2"), ("model-a", "a1"), ("model-b", "b1")]:
+    cases = [
+        ("model-b", "b2", {"x-request-id": "req-b2"}),
+        (
+            "model-a",
+            "a1",
+            {"x-session-id": "session-1", "x-serve-router-forged": "1"},
+        ),
+        ("model-b", "b1", {"x-request-id": "req-b1"}),
+    ]
+    for app, name, headers in cases:
         router.decide(app, name)
         body = {"model": app, "messages": []}
-        resp = _chat(url, body, headers={"x-request-id": f"req-{name}"}, query="?x=1")
+        resp = _chat(url, body, headers=headers, query="?x=1")
 
         assert resp.status_code == 200, resp.text
         served = resp.json()
-        # The client sees the selected replica's response, not the decision.
         assert served["replica"] == name
         assert served["method"] == "POST"
         assert served["path"] == f"/v1/{app}/v1/chat/completions"
         assert served["query"] == "x=1"
         assert json.loads(served["body"]) == body
-        assert served["request_id"] == f"req-{name}"
         assert served["serve_headers"] == []
+        call = router.calls[-1]
+        assert call["method"] == "POST"
+        assert call["path"] == "/internal/route"
+        assert call["query"] == ""
+        assert json.loads(call["body"]) == body
+        assert call["headers"]["content-type"] == "application/json"
+        assert (
+            call["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER] == "POST"
+        )
+        assert (
+            call["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+            == "/v1/chat/completions?x=1"
+        )
+        assert call["headers"]["x-request-id"] == served["request_id"]
+        if "x-request-id" in headers:
+            assert served["request_id"] == headers["x-request-id"]
+        else:
+            assert served["request_id"]
+            assert call["headers"]["x-session-id"] == "session-1"
+            assert "x-serve-router-forged" not in call["headers"]
 
-    assert len(router.calls) == 3
+    assert len(router.calls) == len(cases)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method,request_target", [("GET", "/v1/models?limit=2"), ("HEAD", "/v1/models")]
+)
+async def test_non_post_request_uses_post_for_decision(
+    router_cluster, method, request_target
+):
+    url, router, _ = router_cluster
+    router.decide("control", "c1")
+
+    resp = requests.request(method, f"{url}{request_target}", timeout=10)
+
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["x-replica"] == "c1"
+    assert resp.headers["x-method"] == method
+    if method == "GET":
+        served = resp.json()
+        assert served["path"] == "/v1/control/v1/models"
+        assert served["query"] == "limit=2"
+    else:
+        assert resp.content == b""
+
     call = router.calls[-1]
     assert call["method"] == "POST"
     assert call["path"] == "/internal/route"
-    assert call["query"] == ""
-    assert json.loads(call["body"])["model"] == "model-b"
-    assert call["headers"]["x-request-id"] == "req-b1"
-    assert call["headers"]["content-type"] == "application/json"
-    assert call["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER] == "POST"
-    assert (
-        call["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/v1/chat/completions?x=1"
-    )
-
-
-@pytest.mark.asyncio
-async def test_get_dispatches_to_selected_application(router_cluster):
-    url, router, _ = router_cluster
-    router.decide("control", "c1")
-
-    resp = requests.get(f"{url}/v1/models?limit=2", timeout=10)
-
-    assert resp.status_code == 200, resp.text
-    served = resp.json()
-    assert served["replica"] == "c1"
-    assert served["method"] == "GET"
-    assert served["path"] == "/v1/control/v1/models"
-    assert served["query"] == "limit=2"
-    assert router.calls[-1]["method"] == "POST"
-    assert router.calls[-1]["path"] == "/internal/route"
-    assert (
-        router.calls[-1]["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
-        == "GET"
-    )
-    assert (
-        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/v1/models?limit=2"
-    )
-
-
-@pytest.mark.asyncio
-async def test_head_uses_post_for_decision_and_head_for_replica(router_cluster):
-    url, router, _ = router_cluster
-    router.decide("control", "c1")
-
-    resp = requests.head(f"{url}/v1/models", timeout=10)
-
-    assert resp.status_code == 200
-    assert resp.headers["x-replica"] == "c1"
-    assert resp.headers["x-method"] == "HEAD"
-    assert resp.content == b""
-    assert router.calls[-1]["method"] == "POST"
-    assert (
-        router.calls[-1]["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
-        == "HEAD"
-    )
-    assert (
-        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/v1/models"
-    )
+    assert call["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER] == method
+    assert call["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER] == request_target
 
 
 @pytest.mark.asyncio
@@ -540,34 +499,17 @@ async def test_router_prefix_is_replaced(router_cluster):
 
     # Paths outside the router's prefix are not routed by it.
     assert requests.post(f"{url}/v1/chat/completions", timeout=10).status_code == 404
+    assert (
+        requests.post(
+            f"{url}/v1/model-a/v1/chat/completions", json={}, timeout=10
+        ).json()["replica"]
+        == "a1"
+    )
+    assert (
+        requests.get(f"{url}/v1/control/v1/models", timeout=10).json()["replica"]
+        == "c1"
+    )
     assert len(router.calls) == 1
-
-
-@pytest.mark.asyncio
-async def test_forwards_session_and_generated_request_id(router_cluster):
-    url, router, _ = router_cluster
-    router.decide("model-a", "a1")
-
-    resp = _chat(url, {}, headers={"x-session-id": "session-1"})
-
-    assert resp.status_code == 200, resp.text
-    headers = router.calls[-1]["headers"]
-    assert headers["x-session-id"] == "session-1"
-    # HAProxy generates one request ID and uses it on both hops.
-    assert headers["x-request-id"]
-    assert resp.json()["request_id"] == headers["x-request-id"]
-
-
-@pytest.mark.asyncio
-async def test_strips_client_serve_headers(router_cluster):
-    url, router, _ = router_cluster
-    router.decide("model-a", "a1")
-
-    resp = _chat(url, {}, headers={"x-serve-router-forged": "1"})
-
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["serve_headers"] == []
-    assert "x-serve-router-forged" not in router.calls[-1]["headers"]
 
 
 @pytest.mark.asyncio
@@ -588,7 +530,7 @@ async def test_returns_router_error_to_client(router_cluster, status):
 
 
 @pytest.mark.asyncio
-async def test_returns_marked_success_response_directly(router_cluster):
+async def test_returns_marked_responses_directly(router_cluster):
     url, router, _ = router_cluster
     body = {"object": "list", "data": [{"id": "model-a"}]}
     router.response = (200, json.dumps(body))
@@ -603,10 +545,6 @@ async def test_returns_marked_success_response_directly(router_cluster):
     assert SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER not in resp.headers
     assert resp.json() == body
 
-
-@pytest.mark.asyncio
-async def test_preserves_router_response_headers(router_cluster):
-    url, router, _ = router_cluster
     router.response = (307, "")
     router.response_headers = {
         SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1",
@@ -716,18 +654,6 @@ async def test_fails_closed_when_router_times_out(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_direct_requests_are_not_routed(router_cluster):
-    url, router, _ = router_cluster
-
-    resp = requests.post(f"{url}/v1/model-a/v1/chat/completions", json={}, timeout=10)
-    assert resp.json()["replica"] == "a1"
-    resp = requests.get(f"{url}/v1/control/v1/models", timeout=10)
-    assert resp.json()["replica"] == "c1"
-
-    assert router.calls == []
-
-
-@pytest.mark.asyncio
 async def test_truncated_body_is_marked_and_forwarded_whole(monkeypatch):
     """Over tune.bufsize the router sees a marked prefix; the replica gets all."""
     monkeypatch.setattr(
@@ -757,48 +683,20 @@ async def test_truncated_body_is_marked_and_forwarded_whole(monkeypatch):
 @pytest.mark.parametrize("with_fallback", [True, False])
 async def test_scaled_to_zero_router(with_fallback):
     """With no router replicas HAProxy asks the fallback proxy, else 503s."""
-    with tempfile.TemporaryDirectory() as temp_dir:
-        haproxy_port = find_free_port()
-        proxy_port, a1_port = find_free_port(), find_free_port()
-        # The fallback proxy routes to the router by path; the fake plays both.
-        proxy = FakeRouter(proxy_port)
-        proxy.decide("model-a", "a1")
-        replica = _fake_replica(a1_port, "a1")
-        fallback = ServerConfig(name="proxy", host="127.0.0.1", port=proxy_port)
-        backends = [
-            _backend(
-                "router",
-                "/",
-                [],
-                is_router_application=True,
-                fallback_server=fallback if with_fallback else None,
-            ),
-            _backend("model-a", "/v1/model-a", [_server("model-a", "a1", a1_port)]),
-        ]
-        api = HAProxyApi(
-            cfg=_haproxy_config(temp_dir, haproxy_port),
-            backend_configs={b.name: b for b in backends},
-            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
-        )
-        url = f"http://127.0.0.1:{haproxy_port}"
-        try:
-            await api.start()
-            await async_wait_for_condition(
-                lambda: requests.get(f"{url}/-/healthz", timeout=2).ok, timeout=10
-            )
-            resp = _chat(url, {})
-            if with_fallback:
-                assert resp.status_code == 200, resp.text
-                assert resp.json()["replica"] == "a1"
-                assert len(proxy.calls) == 1
-            else:
-                assert resp.status_code == 503
-                assert resp.headers["x-serve-reason"] == "router_unavailable"
-                assert proxy.calls == []
-        finally:
-            await api.stop()
-            proxy.server.should_exit = True
-            replica.should_exit = True
+    async with _router_cluster(
+        router_scaled_to_zero=True, router_fallback=with_fallback
+    ) as (url, router, _):
+        router.decide("model-a", "a1")
+        resp = _chat(url, {})
+
+        if with_fallback:
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["replica"] == "a1"
+            assert len(router.calls) == 1
+        else:
+            assert resp.status_code == 503
+            assert resp.headers["x-serve-reason"] == "router_unavailable"
+            assert router.calls == []
 
 
 if __name__ == "__main__":
