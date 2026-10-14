@@ -8,7 +8,7 @@ myst:
 
 # Monitor and log metrics
 
-{func}`ray.train.report(metrics, checkpoint) <ray.train.report>` is a fault tolerance API, not an experiment tracking API. It persists a {ref}`checkpoint <train-checkpointing>` so that Ray Train can {ref}`restore training after a failure <train-fault-tolerance>`. The metrics that you pass to `ray.train.report` are attached to that checkpoint. Ray Train doesn't persist metrics reported without a checkpoint.
+{func}`ray.train.report(metrics, checkpoint) <ray.train.report>` persists a {ref}`checkpoint <train-checkpointing>` so that Ray Train can {ref}`restore training after a failure <train-fault-tolerance>`. The metrics that you pass to `ray.train.report` are attached to that checkpoint. Ray Train doesn't persist metrics reported without a checkpoint.
 
 Ray Train uses the metrics attached to checkpoints for the following:
 
