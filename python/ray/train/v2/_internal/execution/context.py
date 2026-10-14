@@ -19,6 +19,7 @@ from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+    TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
     TRAIN_ANNOTATION_SOURCE,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import (
@@ -155,11 +156,7 @@ class TrainContext:
 
     @cached_property
     def annotation(self) -> Annotation:
-        """The annotation emitter for this worker.
-
-        Cached because ``ray.train.report`` annotates on every call, and the base
-        tags are fixed for the lifetime of the context.
-        """
+        """The annotation emitter for this worker, cached as its tags are fixed."""
         return Annotation(
             source=TRAIN_ANNOTATION_SOURCE,
             base_tags={
@@ -507,6 +504,19 @@ class TrainContext:
                 # Keep collective sequence aligned across workers. The next report will increment it.
                 self.collective_seq -= 1
                 return
+
+            # Annotated once every rank has reached the barrier, so a report that
+            # is skipped or raises before it is never annotated.
+            if self.get_world_rank() == 0:
+                self.annotation.annotate(
+                    event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
+                    metrics=metrics,
+                    has_checkpoint=checkpoint is not None,
+                    checkpoint_dir_name=(
+                        checkpoint_dir_name if checkpoint is not None else ""
+                    ),
+                    validation=bool(validation),
+                )
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:

@@ -1,13 +1,14 @@
+import json
 import logging
 import os
+from unittest.mock import MagicMock
 
 import pytest
 
 import ray
 from ray import runtime_context
 from ray._common import utils as ray_utils
-from ray._common.observability.annotation import Annotation
-from ray._private.protobuf_compat import message_to_dict
+from ray._common.observability import annotation as annotation_mod
 from ray.cluster_utils import Cluster
 
 # * `propagate_logs` is re-exported so tests in this directory can request it
@@ -89,23 +90,26 @@ def disable_state_actor_polling(monkeypatch):
 def captured_annotations(monkeypatch):
     """Capture the annotations Train emits, without needing a Ray session.
 
-    Yields the list of emitted annotation events, each as the dict the
-    annotation writer serializes it to. The writer itself, including the file it
-    writes to, is covered by ``test_observability_annotation.py``.
+    Yields the list of emitted annotation records, each as the dict parsed from
+    its JSON line. The file writing itself is covered by
+    ``test_observability_annotation.py``.
     """
+    import ray._private.worker as worker_mod
+
     records = []
 
-    class _RecordingWriter:
-        def send_event(self, event):
-            records.append(
-                message_to_dict(
-                    event,
-                    always_print_fields_with_no_presence=True,
-                    preserving_proto_field_name=True,
-                )
-            )
+    class _RecordingHandler:
+        def handle(self, record):
+            records.append(json.loads(record.getMessage()))
 
-    monkeypatch.setattr(Annotation, "_get_writer", staticmethod(_RecordingWriter))
+    monkeypatch.setattr(
+        worker_mod,
+        "_global_node",
+        MagicMock(session_name="session_test", get_logs_dir_path=lambda: ""),
+    )
+    monkeypatch.setattr(
+        annotation_mod, "_get_handler", lambda *args: _RecordingHandler()
+    )
     yield records
 
 

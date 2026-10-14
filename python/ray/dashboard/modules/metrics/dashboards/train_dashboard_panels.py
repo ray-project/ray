@@ -529,8 +529,13 @@ assert len(all_panel_ids) == len(
     set(all_panel_ids)
 ), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
-# Must match `ray.train.v2._internal.constants.TRAIN_ANNOTATION_SOURCE`
+# Must match the `TRAIN_ANNOTATION_*` constants in
+# `ray.train.v2._internal.constants`, which `test_train_annotations.py` checks.
+# They're duplicated so that the dashboard doesn't import Ray Train.
 TRAIN_ANNOTATION_SOURCE = "ray_train_annotation"
+TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE = "controller_state_change"
+TRAIN_ANNOTATION_RAY_TRAIN_REPORT = "ray.train.report"
+TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE = "ray.train.annotate"
 
 # Queries are isolated to prevent annotations appearing in other jobs. The run
 # tags live under the annotation record's `tags`, so each query lifts the ones it
@@ -547,7 +552,10 @@ CONTROLLER_STATE_ANNOTATION = GrafanaAnnotation(
     icon_color="rgba(31, 120, 193, 1)",  # blue
     ref_id="TrainControllerStateAnnotations",
     tag_keys="__no_tags__",
-    expr=f'| event="controller_state_change" {_RUN_FILTERS} | line_format "{{{{.message}}}}"',
+    expr=(
+        f'| event="{TRAIN_ANNOTATION_CONTROLLER_STATE_CHANGE}" {_RUN_FILTERS} '
+        '| line_format "{{.message}}"'
+    ),
 )
 
 REPORT_CALL_ANNOTATION = GrafanaAnnotation(
@@ -557,16 +565,15 @@ REPORT_CALL_ANNOTATION = GrafanaAnnotation(
     ref_id="TrainReportCallAnnotations",
     tag_keys="metrics_pill,checkpoint_pill,validation_pill",
     expr=(
-        f'| event="ray.train.report" {_RUN_FILTERS} '
+        f'| event="{TRAIN_ANNOTATION_RAY_TRAIN_REPORT}" {_RUN_FILTERS} '
         '| json metrics="fields.metrics"'
         ', has_checkpoint="fields.has_checkpoint"'
         ', checkpoint_dir_name="fields.checkpoint_dir_name"'
-        ', validation="fields.validation"'
-        ', validation_config="fields.validation_config" '
+        ', validation="fields.validation" '
         "| label_format "
         "metrics_pill=`metrics: {{.metrics}}`, "
         'checkpoint_pill=`{{if eq .has_checkpoint "true"}}checkpoint{{if .checkpoint_dir_name}}: {{.checkpoint_dir_name}}{{end}}{{else}}no checkpoint{{end}}`, '
-        'validation_pill=`{{if eq .validation "true"}}with validation{{if .validation_config}} {{.validation_config}}{{end}}{{else}}no validation{{end}}` '
+        'validation_pill=`{{if eq .validation "true"}}with validation{{else}}no validation{{end}}` '
         '| line_format "ray.train.report()"'
     ),
 )
@@ -602,7 +609,7 @@ CUSTOM_ANNOTATIONS = [
         ref_id=ref_id,
         tag_keys="severity,worker,fields",
         expr=(
-            f'| event="ray.train.annotate" '
+            f'| event="{TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE}" '
             f'| severity=~"{severity}" {_RUN_FILTERS} '
             "| json ray_train_worker_world_rank="
             '"tags.ray_train_worker_world_rank"'

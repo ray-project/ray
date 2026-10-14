@@ -606,40 +606,22 @@ class Row:
 @DeveloperAPI
 @dataclass
 class GrafanaAnnotation:
-    """Defines a Grafana dashboard annotation query.
+    """A Grafana annotation layer over Ray's annotation log lines.
 
-    Annotations overlay event markers onto every panel's time axis. Each one runs
-    a query against a log datasource and renders a marker per matching log line.
-
-    Only the event-specific half of the query is declared here. Every Ray
-    annotation record carries the same two fields -- ``annotation_source`` and
-    ``session_name``, written by
-    :class:`ray._common.observability.annotation.Annotation` -- so the common
-    preamble that finds this source's lines and scopes them to one cluster is
-    built at generation time by
-    :func:`~ray.dashboard.modules.metrics.grafana_dashboard_factory.generate_annotation`.
-    ``expr`` picks up from there.
-
-    Scoping to a single cluster is not configurable, and deliberately so: the
-    session name is baked in as a literal, so no datasource or stream selector
-    the operator supplies can widen a dashboard onto another cluster's events.
-    Narrowing further, to a run or a worker, is left to the query and is
-    normally a dashboard variable the viewer selects.
+    Only the event-specific query stages are declared here. The common preamble,
+    which selects this ``source``'s lines and pins them to the current session,
+    is added by ``generate_annotation``.
 
     Attributes:
-        name: Display name shown in the dashboard's annotation toggle.
-        source: The ``annotation_source`` written by the emitting library, e.g.
-            ``"ray_train_annotation"``. Used both as a cheap line pre-filter and
-            as the field the preamble matches on.
-        expr: The event-specific pipeline stages, appended to the generated
-            preamble. Starts at a ``|`` stage, e.g.
-            ``| event="ray.train.report" | line_format "..."``.
-        icon_color: rgba/hex color for the annotation markers.
-        ref_id: Grafana refId for the annotation's target query.
-        tag_keys: Comma-separated label keys surfaced as annotation tags.
-        query_type: Datasource query type (e.g. "range").
-        enable: Whether the annotation is enabled by default.
-        hide: Whether the annotation toggle is hidden by default.
+        name: Display name in the dashboard's annotation toggle.
+        source: The ``annotation_source`` written by the emitter.
+        expr: Event-specific LogQL stages, starting with ``|``.
+        icon_color: Marker color.
+        ref_id: Grafana refId for the query.
+        tag_keys: Comma-separated labels shown as tooltip tags.
+        query_type: Datasource query type.
+        enable: Whether the layer is on by default.
+        hide: Whether the toggle is hidden by default.
     """
 
     name: str
