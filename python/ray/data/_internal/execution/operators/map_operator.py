@@ -13,6 +13,7 @@ from typing import (
     Callable,
     Dict,
     Final,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
@@ -643,19 +644,25 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
         # the identity is.
         lineage_tracker = self._lineage_tracker
         lineage_task_id: Optional[LineageTaskId] = None
-        reconstruction_plan_id: Optional[ReconstructionPlanId] = None
+        reconstruction_plan_ids: FrozenSet[ReconstructionPlanId] = frozenset()
         if lineage_tracker is not None:
             (
                 lineage_task_id,
-                reconstruction_plan_id,
+                reconstruction_plan_ids,
                 dependencies,
             ) = self._lineage_for_submission(lineage_tracker, task_index, inputs)
-            lineage_tracker.register_task_submission(
-                lineage_task_id, dependencies, reconstruction_plan_id
-            )
-            # If the task is a seed task (and this is not a reconstruction attempt), register the inputs of the task as seed inputs
-            if self._is_seed_operator() and reconstruction_plan_id is None:
-                lineage_tracker.register_seed_input(lineage_task_id, inputs)
+            # Sort by logical task ID for repeatability
+            sorted_reconstruction_plan_ids = sorted(reconstruction_plan_ids)
+            if sorted_reconstruction_plan_ids:
+                for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                    lineage_tracker.register_task_submission(
+                        lineage_task_id, dependencies, reconstruction_plan_id
+                    )
+            else:
+                lineage_tracker.register_task_submission(lineage_task_id, dependencies)
+                # A fresh seed task retains its input, so reconstruction can resubmit it.
+                if self._is_seed_operator():
+                    lineage_tracker.register_seed_input(lineage_task_id, inputs)
 
         # This task's next output_index. A per-task closure local, so it is scoped
         # exactly right and resets naturally on a re-execution.
@@ -678,33 +685,39 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                 lineage_tracker.register_block_output(
                     lineage_task_id, output.block_refs[0].hex(), output_index
                 )
-                if reconstruction_plan_id is not None:
-                    status = lineage_tracker.get_object_reuse_status(
-                        lineage_task_id, output_index, reconstruction_plan_id
-                    )
-                    # REUSED: withhold until the child's whole input set is
-                    # re-produced, then release it as one bundle
-                    # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
-                    # child against part of its input.
-                    if status is ObjectReuseStatus.OBJECT_REUSED:
-                        self._reconstruction_outputs.setdefault(
-                            reconstruction_plan_id, {}
-                        )[
-                            ParentBlockOutput(
-                                parent_lineage_task_id=lineage_task_id,
-                                output_index=output_index,
-                            )
-                        ] = output
-                        return
+                if sorted_reconstruction_plan_ids:
+                    # Whether any plan says this output is NEW.
+                    is_new_output = False
+                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        status = lineage_tracker.get_object_reuse_status(
+                            lineage_task_id, output_index, reconstruction_plan_id
+                        )
+                        # REUSED: withhold until the child's whole input set is
+                        # re-produced, then release it as one bundle
+                        # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
+                        # child against part of its input.
+                        if status is ObjectReuseStatus.OBJECT_REUSED:
+                            self._reconstruction_outputs.setdefault(
+                                reconstruction_plan_id, {}
+                            )[
+                                ParentBlockOutput(
+                                    parent_lineage_task_id=lineage_task_id,
+                                    output_index=output_index,
+                                )
+                            ] = output
+                        elif status is ObjectReuseStatus.OBJECT_NEW:
+                            is_new_output = True
                     # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
-                    # plan already finished with this task): no consumer is waiting,
-                    # so drop it rather than re-emit rows the consumer already has.
-                    # NEW falls through to the output queue.
-                    if status is not ObjectReuseStatus.OBJECT_NEW:
+                    # plan already finished with this task).
+                    if not is_new_output:
                         return
-                lineage_tracker.register_block_queued(
-                    lineage_task_id, output_index, reconstruction_plan_id
-                )
+                    # Otherwise, the block is
+                    lineage_tracker.register_block_queued(
+                        lineage_task_id, output_index, lineage_task_id
+                    )
+                else:
+                    # This is a fresh task
+                    lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
@@ -740,13 +753,16 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
             if lineage_tracker is not None and exception is None:
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
-                if reconstruction_plan_id is not None:
-                    self._release_reconstruction_blocks_to_child(
-                        lineage_task_id, reconstruction_plan_id, task_index
-                    )
-                lineage_tracker.register_task_complete(
-                    lineage_task_id, reconstruction_plan_id
-                )
+                if sorted_reconstruction_plan_ids:
+                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        self._release_reconstruction_blocks_to_child(
+                            lineage_task_id, reconstruction_plan_id, task_index
+                        )
+                        lineage_tracker.register_task_complete(
+                            lineage_task_id, reconstruction_plan_id
+                        )
+                else:
+                    lineage_tracker.register_task_complete(lineage_task_id)
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -765,7 +781,7 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
             task_done_callback=functools.partial(_task_done_callback, task_index),
             operator_name=self.name,
             lineage_task_id=lineage_task_id,
-            reconstruction_plan_id=reconstruction_plan_id,
+            reconstruction_plan_ids=reconstruction_plan_ids,
         )
         self._metrics.on_task_submitted(
             task_index, inputs, task_id=data_task.get_task_id()

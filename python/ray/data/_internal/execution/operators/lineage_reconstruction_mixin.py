@@ -1,7 +1,7 @@
 import abc
 import logging
 from dataclasses import replace
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Set, Tuple
 
 from typing_extensions import override
 
@@ -43,6 +43,14 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         self._reconstruction_outputs: Dict[
             ReconstructionPlanId, Dict[ParentBlockOutput, RefBundle]
         ] = {}
+        # Mapping of seed task ID -> the set of reconstruction plans served by the
+        # re-execution of this task that is queued but not yet submitted. A plan that
+        # traces back to a queued seed joins this set instead of re-injecting the seed.
+        self._queued_seed_reexecutions: Dict[
+            LineageTaskId, Set[ReconstructionPlanId]
+        ] = {}
+        # Plans that joined a queued seed re-execution.
+        self._num_seed_reexecutions_joined = 0
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod
@@ -85,12 +93,14 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         lineage_tracker: LineageTracker,
         task_index: int,
         inputs: RefBundle,
-    ) -> Tuple[LineageTaskId, Optional[ReconstructionPlanId], List[ParentBlockOutput]]:
+    ) -> Tuple[LineageTaskId, FrozenSet[ReconstructionPlanId], List[ParentBlockOutput]]:
         """Return the metadata this task that is being submitted should register with ``lineage_tracker``.
 
         Only called for a lineage-tracked operator. Returns
-        ``(lineage_task_id, reconstruction_plan_id, dependencies)``, where ``reconstruction_plan_id`` is the reconstruction plan ID
-        if this is a reconstruction task. ``reconstruction_plan_id`` is ``None`` for a fresh task.
+        ``(lineage_task_id, reconstruction_plan_ids, dependencies)``, where ``reconstruction_plan_ids`` are the
+        reconstruction plans this task serves if it is a reconstruction task, and empty for a fresh task.
+        A reconstruction child serves the one plan on its stamp. A re-executed seed serves every plan that
+        joined its queued re-execution.
 
         A fresh task returns lineage task ID ``f"{operator_id}:{task_index}"``. A *reconstruction* attempt
         must re-use the original logical id of the original task attempt, or the plan never resolves and
@@ -107,9 +117,92 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         stamp = inputs.reconstruction_stamp
         if stamp is not None:
             assert self.owns_data_task(stamp.lineage_task_id), stamp
-            return stamp.lineage_task_id, stamp.reconstruction_plan_id, dependencies
+            if self._is_seed_operator():
+                reconstruction_plan_ids = self._pop_queued_seed_reexecution(
+                    stamp.lineage_task_id
+                )
+            else:
+                reconstruction_plan_ids = frozenset({stamp.reconstruction_plan_id})
+            return stamp.lineage_task_id, reconstruction_plan_ids, dependencies
 
-        return self._lineage_task_id_for(task_index), None, dependencies
+        return self._lineage_task_id_for(task_index), frozenset(), dependencies
+
+    def stamp_seed_reexecution(
+        self,
+        seed_task_id: LineageTaskId,
+        reconstruction_plan_ids: Iterable[ReconstructionPlanId],
+        seed_input: RefBundle,
+    ) -> RefBundle:
+        """Stamp a seed input for re-injection, and queue the plans its re-execution serves.
+
+        Only called when no re-execution of the seed is queued. Otherwise the plans
+        join it with ``join_queued_seed_reexecution``.
+
+        Args:
+            seed_task_id: The ID of the seed task to re-execute.
+            reconstruction_plan_ids: The reconstruction plans the re-execution serves.
+            seed_input: The retained input of the seed task.
+
+        Returns:
+            The seed input, stamped for re-injection.
+        """
+        plan_ids = set(reconstruction_plan_ids)
+        assert plan_ids, seed_task_id
+        assert seed_task_id not in self._queued_seed_reexecutions, seed_task_id
+        self._queued_seed_reexecutions[seed_task_id] = plan_ids
+        # The stamp's plan only records which plan queued the bundle. Submission
+        # takes the full plan set from `_queued_seed_reexecutions`.
+        return replace(
+            seed_input,
+            reconstruction_stamp=ReconstructionStamp(
+                lineage_task_id=seed_task_id,
+                reconstruction_plan_id=min(plan_ids),
+            ),
+        )
+
+    def join_queued_seed_reexecution(
+        self,
+        seed_task_id: LineageTaskId,
+        reconstruction_plan_ids: Iterable[ReconstructionPlanId],
+    ) -> bool:
+        """Add plans to a queued, not yet submitted re-execution of a seed task.
+
+        A queued re-execution has not run, so it can serve more plans. The join
+        check and the submission both run on the scheduling thread, so a queued
+        entry means the re-execution has not started.
+
+        Plans that share a pending child of the seed can join too. The re-execution
+        releases that child once per plan, as separately stamped bundles, and each
+        is submitted under its own plan.
+
+        Args:
+            seed_task_id: The ID of the seed task to re-execute.
+            reconstruction_plan_ids: The reconstruction plans to add.
+
+        Returns:
+            True if the queued re-execution now serves the plans. False if the
+            caller must re-inject the seed with ``stamp_seed_reexecution``.
+        """
+        queued_plan_ids = self._queued_seed_reexecutions.get(seed_task_id)
+        if queued_plan_ids is None:
+            return False
+        new_plan_ids = set(reconstruction_plan_ids) - queued_plan_ids
+        queued_plan_ids.update(new_plan_ids)
+        self._num_seed_reexecutions_joined += len(new_plan_ids)
+        return True
+
+    def _pop_queued_seed_reexecution(
+        self, seed_task_id: LineageTaskId
+    ) -> FrozenSet[ReconstructionPlanId]:
+        """Claim the plans of the queued re-execution of a seed task, as it is
+        submitted. Once claimed, no further plan can join it."""
+        plan_ids = self._queued_seed_reexecutions.pop(seed_task_id, None)
+        if plan_ids is None:
+            raise ValueError(
+                f"Seed task {seed_task_id} was submitted as a re-execution, but no "
+                "re-execution of it was queued."
+            )
+        return frozenset(plan_ids)
 
     def _release_reconstruction_blocks_to_child(
         self, lineage_task_id: str, reconstruction_plan_id: str, task_index: int
@@ -203,3 +296,4 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
     def clear_internal_output_queue(self) -> None:
         super().clear_internal_output_queue()
         self._reconstruction_outputs.clear()
+        self._queued_seed_reexecutions.clear()

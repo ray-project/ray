@@ -11,6 +11,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    FrozenSet,
     Iterator,
     List,
     Optional,
@@ -172,7 +173,7 @@ class DataOpTask(OpTask):
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
         lineage_task_id: Optional[str] = None,
-        reconstruction_plan_id: Optional[str] = None,
+        reconstruction_plan_ids: FrozenSet[str] = frozenset(),
     ):
         """Create a DataOpTask
         Args:
@@ -197,9 +198,9 @@ class DataOpTask(OpTask):
                 Used for logging the operator name in warnings/errors.
             lineage_task_id: Logical Ray Data ID of this task, stable across lineage
                 reconstruction attempts.
-            reconstruction_plan_id: The reconstruction plan this attempt serves; ``None`` for a
-                fresh attempt. Carried here because the output and completion
-                callbacks need it after submission.
+            reconstruction_plan_ids: The reconstruction plans this attempt serves; empty
+                for a fresh attempt. Carried here because the output and completion
+                callbacks need them after submission.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -216,7 +217,7 @@ class DataOpTask(OpTask):
         self._block_ref_counter: BlockRefCounter = block_ref_counter
         self._producer_id: str = producer_id
         self._lineage_task_id = lineage_task_id
-        self._reconstruction_plan_id: Optional[str] = reconstruction_plan_id
+        self._reconstruction_plan_ids: FrozenSet[str] = reconstruction_plan_ids
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -439,9 +440,9 @@ class DataOpTask(OpTask):
         return self._lineage_task_id is not None
 
     @property
-    def reconstruction_plan_id(self) -> Optional[str]:
-        """The reconstruction plan this attempt serves; ``None`` if fresh."""
-        return self._reconstruction_plan_id
+    def reconstruction_plan_ids(self) -> FrozenSet[str]:
+        """The reconstruction plans this attempt serves; empty if fresh."""
+        return self._reconstruction_plan_ids
 
     @property
     def has_finished(self) -> bool:
