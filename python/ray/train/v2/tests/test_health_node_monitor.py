@@ -6,20 +6,16 @@ import pytest
 
 import ray
 from ray.train.health import NodeProbe, ProbeResult
-from ray.train.health._internal.node_monitor import NodeMonitor
+from ray.train.health._internal.node_monitor import NodeMonitor, ScheduledProbe
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
 
 
 class Temp(NodeProbe):
-    poll_interval_s = 0.05
-
     def poll(self):
         return ProbeResult(metrics={"temp_c": 60.0})
 
 
 class Pid(NodeProbe):
-    poll_interval_s = 3600.0
-
     def poll(self):
         return ProbeResult(metrics={"pid": float(os.getpid())})
 
@@ -29,12 +25,26 @@ class Broken(NodeProbe):
         raise RuntimeError("sensor gone")
 
 
+class Hang(NodeProbe):
+    def poll(self):
+        time.sleep(600)
+
+
+def _temp():
+    return ScheduledProbe(Temp(), poll_interval_s=0.05)
+
+
+def _pid():
+    return ScheduledProbe(Pid(), poll_interval_s=3600.0)
+
+
 def _slow_probe(name, seconds):
     def poll(self):
         time.sleep(seconds)
         return ProbeResult(metrics={"seconds": seconds})
 
-    return type(name, (NodeProbe,), {"name": name, "poll": poll})()
+    probe = type(name, (NodeProbe,), {"name": name, "poll": poll})()
+    return ScheduledProbe(probe, poll_interval_s=10.0)
 
 
 def _wait_for(fn, timeout_s=10.0):
@@ -48,7 +58,7 @@ def _wait_for(fn, timeout_s=10.0):
 
 
 def test_each_probe_is_sampled_on_its_own_interval():
-    monitor = NodeMonitor([Temp(), Pid()])
+    monitor = NodeMonitor([_temp(), _pid()])
     first = _wait_for(
         lambda: len(monitor.poll_status().probe_results) == 2 and monitor.poll_status()
     )
@@ -60,7 +70,7 @@ def test_each_probe_is_sampled_on_its_own_interval():
 
 
 def test_a_failing_probe_is_reported_and_the_others_keep_sampling():
-    monitor = NodeMonitor([Broken(), Temp()])
+    monitor = NodeMonitor([ScheduledProbe(Broken(), poll_interval_s=10.0), _temp()])
     status = _wait_for(
         lambda: "Broken" in monitor.poll_status().probe_errors
         and "Temp" in monitor.poll_status().probe_results
@@ -77,13 +87,29 @@ def test_poll_status_does_not_wait_for_a_slow_probe():
     assert time.monotonic() - started < 0.5
 
 
+def test_run_once_polls_each_probe_once_and_waits_up_to_the_timeout():
+    started = time.monotonic()
+    status = NodeMonitor([]).run_once([Temp(), Broken(), Hang()], timeout_s=0.3)
+    assert time.monotonic() - started < 1.0
+    assert status.probe_results["Temp"].metrics == {"temp_c": 60.0}
+    assert status.probe_results["Temp"].timestamp_s is not None
+    assert isinstance(status.probe_errors["Broken"], RuntimeError)
+    assert isinstance(status.probe_errors["Hang"], TimeoutError)
+
+
+def test_run_once_timeout_must_be_less_than_the_health_check_timeout():
+    group = NodeMonitorGroup([], health_check_timeout_s=3.0)
+    with pytest.raises(ValueError, match="health_check_timeout_s"):
+        group.run_once([Temp()], timeout_s=3.0)
+
+
 def _local_node_id():
     return ray.get_runtime_context().get_node_id()
 
 
 def test_monitors_sample_outside_the_driver_and_stop_on_shutdown(ray_start_4_cpus):
     node_id = _local_node_id()
-    group = NodeMonitorGroup([Temp(), Pid()])
+    group = NodeMonitorGroup([_temp(), _pid()])
     group.start([node_id])
 
     def results():
@@ -102,7 +128,7 @@ def test_start_adds_monitors_only_where_missing_and_shutdown_can_stop_some(
     ray_start_4_cpus,
 ):
     node_id = _local_node_id()
-    group = NodeMonitorGroup([Temp()])
+    group = NodeMonitorGroup([_temp()])
     group.start([node_id])
     monitor = group._monitors[node_id]
 
@@ -142,7 +168,7 @@ def test_an_unresponsive_monitor_is_reported_after_the_health_check_timeout(
 
 def test_a_dead_monitor_is_reported(ray_start_4_cpus):
     node_id = _local_node_id()
-    group = NodeMonitorGroup([Temp()])
+    group = NodeMonitorGroup([_temp()])
     group.start([node_id])
     group.poll_status(timeout=30)
 
@@ -151,6 +177,19 @@ def test_a_dead_monitor_is_reported(ray_start_4_cpus):
     # The kill is asynchronous, so a poll right after it may still be answered.
     errors = _wait_for(lambda: group.poll_status(timeout=30).errors)
     assert isinstance(errors[node_id], ray.exceptions.RayActorError)
+    group.shutdown()
+
+
+def test_run_once_polls_probes_on_the_given_monitors(ray_start_4_cpus):
+    node_id = _local_node_id()
+    group = NodeMonitorGroup([_temp()])
+    group.start([node_id])
+
+    statuses = group.run_once([Pid()], timeout_s=10, node_ids=[node_id])
+    pid = statuses.node_monitor_statuses[node_id].probe_results["Pid"]
+    assert pid.metrics["pid"] != os.getpid()
+    with pytest.raises(ValueError, match="No NodeMonitor"):
+        group.run_once([Pid()], timeout_s=10, node_ids=["some-other-node"])
     group.shutdown()
 
 

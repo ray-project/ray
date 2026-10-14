@@ -2,14 +2,18 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional, Union
 
 from ray.train.health.probe import NodeProbe, ProbeResult
 
 logger = logging.getLogger(__name__)
 
-# The shortest time between two samples of one probe.
-_MIN_POLL_INTERVAL_S = 0.1
+
+class ScheduledProbe(NamedTuple):
+    """A ``NodeProbe`` and the seconds between its polls."""
+
+    probe: NodeProbe
+    poll_interval_s: float
 
 
 @dataclass
@@ -17,11 +21,13 @@ class NodeMonitorStatus:
     """The latest results of ``NodeProbe``\\ s on one node.
 
     Attributes:
-        probe_results: ``{probe name: ProbeResult}``. A probe without a result
-            yet is absent.
+        probe_results: ``{probe name: ProbeResult}``.
         probe_errors: ``{probe name: exception}`` for the probes whose last poll
-            raised.
-        error: An error reaching the monitor, if any.
+            raised. The monitor itself answered.
+        error: Set by ``NodeMonitorGroup`` when the monitor itself could not
+            answer: Ray's ``RayActorError`` if it died, or a ``TimeoutError`` if
+            it has not answered for longer than the health-check timeout. Its
+            probes' results are then unknown.
     """
 
     probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
@@ -30,24 +36,25 @@ class NodeMonitorStatus:
 
 
 class NodeMonitor:
-    """Samples ``NodeProbe``\\ s on the node it runs on.
+    """Samples ``NodeProbe``\\ s on the node it runs on, and polls probes once
+    when asked.
 
     Each probe is sampled in its own thread every ``poll_interval_s``, and
     ``poll_status()`` returns the latest sample of each.
 
     Args:
-        probes: The probes to sample.
+        probes: The ``NodeProbe``\\ s to sample, each with its poll interval.
     """
 
-    def __init__(self, probes: List[NodeProbe]):
+    def __init__(self, probes: List[ScheduledProbe]):
         self._lock = threading.Lock()
         self._latest: Dict[str, ProbeResult] = {}
         self._errors: Dict[str, Exception] = {}
-        for probe in probes:
+        for scheduled_probe in probes:
             threading.Thread(
                 target=self._sample,
-                args=(probe,),
-                name=f"NodeMonitor-{probe.probe_name()}",
+                args=(scheduled_probe,),
+                name=f"NodeMonitor-{scheduled_probe.probe.probe_name()}",
                 daemon=True,
             ).start()
 
@@ -62,15 +69,57 @@ class NodeMonitor:
                 probe_results=dict(self._latest), probe_errors=dict(self._errors)
             )
 
-    def _sample(self, probe: NodeProbe) -> None:
-        """Poll ``probe`` every ``poll_interval_s`` until the monitor is killed.
-        A result without a ``timestamp_s`` is stamped with the time its poll
-        finished."""
+    def run_once(self, probes: List[NodeProbe], timeout_s: float) -> NodeMonitorStatus:
+        """Poll each probe once, each in its own thread, and wait up to
+        ``timeout_s`` for them.
+
+        Args:
+            probes: The probes to poll.
+            timeout_s: Timeout in seconds to wait for them.
+
+        Returns:
+            The results of the probes that finished, and an error for each of
+            the others.
+        """
+        outcomes: List[Optional[Union[ProbeResult, Exception]]] = [None] * len(probes)
+
+        def run(i: int) -> None:
+            try:
+                outcomes[i] = self._poll(probes[i])
+            except Exception as e:
+                outcomes[i] = e
+
+        threads = [
+            threading.Thread(target=run, args=(i,), daemon=True)
+            for i in range(len(probes))
+        ]
+        for thread in threads:
+            thread.start()
+        deadline = time.monotonic() + timeout_s
+        for thread in threads:
+            thread.join(max(deadline - time.monotonic(), 0))
+
+        status = NodeMonitorStatus()
+        for probe, outcome in zip(probes, list(outcomes)):
+            name = probe.probe_name()
+            if outcome is None:
+                status.probe_errors[name] = TimeoutError(
+                    f"Node probe {name} did not finish within {timeout_s} seconds."
+                )
+            elif isinstance(outcome, Exception):
+                status.probe_errors[name] = outcome
+            else:
+                status.probe_results[name] = outcome
+        return status
+
+    def _sample(self, scheduled_probe: ScheduledProbe) -> None:
+        """Poll the probe every ``poll_interval_s`` until the monitor is
+        killed."""
+        probe = scheduled_probe.probe
         name = probe.probe_name()
-        interval_s = max(probe.poll_interval_s, _MIN_POLL_INTERVAL_S)
         while True:
             try:
-                result = probe.poll()
+                result = self._poll(probe)
             except Exception as e:
                 with self._lock:
                     first_failure = name not in self._errors
@@ -78,9 +127,16 @@ class NodeMonitor:
                 if first_failure:
                     logger.warning("Node probe %s failed.", name, exc_info=True)
             else:
-                if result.timestamp_s is None:
-                    result = replace(result, timestamp_s=time.time())
                 with self._lock:
                     self._latest[name] = result
                     self._errors.pop(name, None)
-            time.sleep(interval_s)
+            time.sleep(scheduled_probe.poll_interval_s)
+
+    @staticmethod
+    def _poll(probe: NodeProbe) -> ProbeResult:
+        """Poll a probe. A result without a ``timestamp_s`` is stamped with the
+        time the probe returned."""
+        result = probe.poll()
+        if result.timestamp_s is None:
+            result = replace(result, timestamp_s=time.time())
+        return result

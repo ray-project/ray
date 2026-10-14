@@ -1,21 +1,31 @@
 import logging
 import time
 from dataclasses import dataclass
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.health._internal.node_monitor import NodeMonitor, NodeMonitorStatus
+from ray.train.health._internal.node_monitor import (
+    NodeMonitor,
+    NodeMonitorStatus,
+    ScheduledProbe,
+)
 from ray.train.health.probe import NodeIdStr, NodeProbe
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+# The time in seconds a NodeMonitor may leave a poll unanswered before it is
+# reported as failed.
 DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S = 60.0
 
-# How long poll_status() waits for the monitors by default.
+# Timeout in seconds for poll_status() to wait for the monitors.
 DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S = 1.0
+
+# Grace period in seconds that run_once() waits for a monitor's reply after the
+# monitor's own timeout.
+_RUN_ONCE_REPLY_GRACE_S = 5.0
 
 
 class _OngoingPoll(NamedTuple):
@@ -40,14 +50,16 @@ class NodeMonitorGroup:
     """One ``NodeMonitor`` actor on each of a set of nodes.
 
     Args:
-        probes: The ``NodeProbe``\\ s every monitor samples.
-        health_check_timeout_s: How long a monitor's ``poll_status()`` may stay
-            unanswered before it is reported as an error.
+        probes: The ``NodeProbe``\\ s every monitor samples, each with its poll
+            interval.
+        health_check_timeout_s: The time in seconds a monitor's
+            ``poll_status()`` may stay unanswered before it is reported as an
+            error.
     """
 
     def __init__(
         self,
-        probes: List[NodeProbe],
+        probes: List[ScheduledProbe],
         health_check_timeout_s: float = DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S,
     ):
         self._probes = list(probes)
@@ -112,15 +124,11 @@ class NodeMonitorGroup:
                 self._ongoing_polls[node_id] = _OngoingPoll(
                     start_time, monitor.poll_status.remote()
                 )
-        if not self._ongoing_polls:
-            return NodeMonitorGroupPollStatus(node_monitor_statuses={})
 
         task_to_node = {poll.task: node for node, poll in self._ongoing_polls.items()}
-        done, hanging = ray.wait(
-            list(task_to_node), num_returns=len(task_to_node), timeout=timeout
-        )
-
-        node_monitor_statuses: Dict[NodeIdStr, NodeMonitorStatus] = {}
+        node_monitor_statuses, hanging = _wait(task_to_node, timeout)
+        for node_id in node_monitor_statuses:
+            del self._ongoing_polls[node_id]
         for task in hanging:
             node_id = task_to_node[task]
             elapsed_s = time.monotonic() - self._ongoing_polls[node_id].start_time
@@ -131,14 +139,85 @@ class NodeMonitorGroup:
                     f"for {elapsed_s:.1f} seconds."
                 )
             node_monitor_statuses[node_id] = NodeMonitorStatus(error=error)
-
-        for task in done:
-            node_id = task_to_node[task]
-            del self._ongoing_polls[node_id]
-            try:
-                node_monitor_statuses[node_id] = ray.get(task)
-            except Exception as e:
-                logger.warning("Polling the NodeMonitor on node %s failed.", node_id)
-                node_monitor_statuses[node_id] = NodeMonitorStatus(error=e)
-
         return NodeMonitorGroupPollStatus(node_monitor_statuses=node_monitor_statuses)
+
+    def run_once(
+        self,
+        probes: List[NodeProbe],
+        timeout_s: float = 30.0,
+        node_ids: Optional[List[NodeIdStr]] = None,
+    ) -> NodeMonitorGroupPollStatus:
+        """Poll some probes once on some monitors, and wait for the results.
+
+        Each monitor polls the probes in its own threads and answers within
+        ``timeout_s``. A monitor that does not answer in time, or that could
+        not be reached, carries the error in its status.
+
+        Args:
+            probes: The ``NodeProbe``\\ s to poll.
+            timeout_s: Timeout in seconds for each monitor to wait for the
+                probes. While it waits, it answers no ``poll_status()``.
+            node_ids: The nodes to poll the probes on. ``None`` means all.
+
+        Returns:
+            The status of every monitor polled.
+
+        Raises:
+            ValueError: If ``timeout_s`` is not less than
+                ``health_check_timeout_s``, or a node has no monitor.
+        """
+        if timeout_s >= self._health_check_timeout_s:
+            raise ValueError(
+                f"timeout_s ({timeout_s}) must be less than health_check_timeout_s "
+                f"({self._health_check_timeout_s})."
+            )
+        node_ids = list(self._monitors) if node_ids is None else node_ids
+        missing = [node_id for node_id in node_ids if node_id not in self._monitors]
+        if missing:
+            raise ValueError(f"No NodeMonitor on nodes {missing}.")
+
+        task_to_node = {
+            self._monitors[node_id].run_once.remote(probes, timeout_s): node_id
+            for node_id in node_ids
+        }
+        node_monitor_statuses, hanging = _wait(
+            task_to_node, timeout_s + _RUN_ONCE_REPLY_GRACE_S
+        )
+        for task in hanging:
+            node_id = task_to_node[task]
+            node_monitor_statuses[node_id] = NodeMonitorStatus(
+                error=TimeoutError(
+                    f"The NodeMonitor on node {node_id} did not answer run_once() "
+                    "in time."
+                )
+            )
+        return NodeMonitorGroupPollStatus(node_monitor_statuses=node_monitor_statuses)
+
+
+def _wait(
+    task_to_node: Dict[ObjectRef, NodeIdStr], timeout: float
+) -> Tuple[Dict[NodeIdStr, NodeMonitorStatus], List[ObjectRef]]:
+    """Wait up to ``timeout`` for calls to monitors.
+
+    Args:
+        task_to_node: ``{call: node ID}`` for the calls to wait for.
+        timeout: Timeout in seconds to wait for the calls.
+
+    Returns:
+        The status of each monitor whose call finished, carrying the error if the
+        call failed, and the calls still running.
+    """
+    if not task_to_node:
+        return {}, []
+    done, hanging = ray.wait(
+        list(task_to_node), num_returns=len(task_to_node), timeout=timeout
+    )
+    node_monitor_statuses: Dict[NodeIdStr, NodeMonitorStatus] = {}
+    for task in done:
+        node_id = task_to_node[task]
+        try:
+            node_monitor_statuses[node_id] = ray.get(task)
+        except Exception as e:
+            logger.warning("Calling the NodeMonitor on node %s failed.", node_id)
+            node_monitor_statuses[node_id] = NodeMonitorStatus(error=e)
+    return node_monitor_statuses, hanging
