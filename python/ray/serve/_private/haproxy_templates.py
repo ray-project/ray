@@ -145,7 +145,8 @@ frontend prometheus
 frontend http_frontend
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
     {%- if has_ingress_request_router or has_router_applications %}
-    # Routed requests make two hops; give both the same request ID.
+    # A routed client request creates an internal routing-decision request and
+    # a subsequent data-plane request. Give both backend requests the same ID.
     unique-id-format %[uuid]
     http-request set-header x-request-id %[unique-id] if !{ req.hdr(x-request-id) -m found }
     {%- endif %}
