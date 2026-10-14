@@ -19,7 +19,7 @@ DUMMY_TYPE = b"__RAY_DUMMY__"
 # same one on every call, so its signature is built once rather than on every
 # `.remote()`. Each entry holds its list, so the list's id can't be reused
 # while it's cached. Bounded, for callers that build a new list per call: past
-# the bound, the cache starts over.
+# the bound, the oldest entry goes.
 _SIGNATURE_CACHE_SIZE = 1024
 _signatures: Dict[int, Tuple[List[Parameter], inspect.Signature]] = {}
 
@@ -32,7 +32,7 @@ def _signature_of(signature_parameters: List[Parameter]) -> inspect.Signature:
         return cached[1]
     built = inspect.Signature(parameters=signature_parameters)
     if len(_signatures) >= _SIGNATURE_CACHE_SIZE:
-        _signatures.clear()
+        del _signatures[next(iter(_signatures))]
     _signatures[id(signature_parameters)] = (signature_parameters, built)
     return built
 

@@ -526,7 +526,7 @@ class TestSignatureCache:
             for _ in range(5):
                 assert flatten_args(params, (1,), {"c": 4}) == [DUMMY_TYPE, 1, "c", 4]
             validate_args(params, (1, 2), {})
-            assert built.call_count <= 1
+            assert built.call_count == 1
 
     def test_each_list_is_checked_against_its_own_signature(self):
         def one_arg(a):
