@@ -355,7 +355,7 @@ class MaybeObserveTest : public ::testing::Test {
   // fired by the time the test asserts.
   void PutAndWait(StoreClient &client) {
     std::atomic<bool> done{false};
-    client.AsyncPut("table",
+    client.AsyncPut(rpc::TablePrefix_Name(rpc::TablePrefix::JOB),
                     "key",
                     "value",
                     /*overwrite=*/true,
@@ -366,13 +366,14 @@ class MaybeObserveTest : public ::testing::Test {
   using Recorded =
       absl::flat_hash_map<absl::flat_hash_map<std::string, std::string>, double>;
 
-  // Matches on Operation alone rather than on the whole tag set, so the test
-  // does not depend on which other tags the wrapper records.
   static std::optional<double> ValueFor(const Recorded &recorded,
-                                        const std::string &operation) {
+                                        const std::string &operation,
+                                        const std::string &table) {
     for (const auto &[tags, value] : recorded) {
       auto op = tags.find("Operation");
-      if (op != tags.end() && op->second == operation) {
+      auto tbl = tags.find("TableName");
+      if (op != tags.end() && op->second == operation && tbl != tags.end() &&
+          tbl->second == table) {
         return value;
       }
     }
@@ -393,9 +394,9 @@ TEST_F(MaybeObserveTest, RecordsWhenEnabled) {
                              clock_);
   PutAndWait(*client);
 
-  EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put").value_or(0), 1);
+  EXPECT_EQ(ValueFor(count_.GetTagToValue(), "Put", "JOB").value_or(0), 1);
   // FakeHistogram keeps the last observation, so only its presence is stable.
-  EXPECT_TRUE(ValueFor(latency_.GetTagToValue(), "Put").has_value());
+  EXPECT_TRUE(ValueFor(latency_.GetTagToValue(), "Put", "JOB").has_value());
 }
 
 TEST_F(MaybeObserveTest, RecordsNothingWhenDisabled) {
