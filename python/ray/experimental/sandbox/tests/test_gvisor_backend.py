@@ -563,7 +563,14 @@ def test_build_run_command_has_no_overlay_flag():
     never from a runsc --overlay2 flag."""
     cmd = _run_argv("none")
     assert not any(a.startswith("--overlay2") for a in cmd)
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def _owned_busybox_tar(tar_path: str) -> None:
@@ -732,7 +739,9 @@ def test_build_run_command_public_wraps_with_slirp4netns():
         "setpriv --pdeathsig KILL -- "
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert script.endswith("run --bundle /tmp/rd sb-1 & wait $!")
+    assert script.endswith(
+        "run --pid-file /tmp/rd/sandbox.pid --bundle /tmp/rd sb-1 & wait $!"
+    )
     for fragment in (
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the foreground under the launch shell, and
@@ -790,7 +799,14 @@ def test_build_run_command_other_modes_exec_runsc(network, rootless):
     assert cmd[:5] == ["sh", "-c", "trap '' INT QUIT; exec \"$@\"", "sh", "runsc"]
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 @pytest.mark.parametrize("binary", ["slirp4netns", "nsenter", "setpriv"])

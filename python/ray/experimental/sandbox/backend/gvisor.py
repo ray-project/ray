@@ -73,6 +73,15 @@ _CPUS_LOCK_FILE = "cpus.lock"
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
+# `runsc run --pid-file` writes this file once the container exists. The
+# start loop stats it every _START_POLL_SECONDS and asks `runsc state` (a Go
+# process per call) whether the container runs only after that, every
+# _STATE_POLL_SECONDS: a create returns soon after its boot without spending
+# the CPU a burst of boots needs on `runsc state` processes.
+_PID_FILE = "sandbox.pid"
+_START_POLL_SECONDS = 0.01
+_STATE_POLL_SECONDS = 0.05
+
 # network="public" gives each sandbox a private user+network namespace pair
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
@@ -676,6 +685,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             raise
         start_time = time.time()
         timeout = config.timeout_seconds
+        pid_file = os.path.join(root_dir, _PID_FILE)
 
         try:
             while True:
@@ -686,9 +696,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container failed to start: {stderr_str}"
                     )
 
-                state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
-                if res.returncode == 0:
+                delay = _START_POLL_SECONDS
+                res = None
+                if os.path.exists(pid_file):
+                    state_args = self._runsc_base_args(config) + ["state", sandbox_id]
+                    res = subprocess.run(state_args, capture_output=True, text=True)
+                    delay = _STATE_POLL_SECONDS
+                if res is not None and res.returncode == 0:
                     try:
                         state_data = json.loads(res.stdout)
                         status = state_data.get("status")
@@ -718,7 +732,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         f"gVisor container '{sandbox_id}' failed to reach 'running' state within {timeout} seconds."
                     )
 
-                time.sleep(0.1)
+                time.sleep(delay)
         except Exception:
             # Delete runsc's container state, then stop the launch process
             # and everything it started.
@@ -1306,7 +1320,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # per-sandbox namespace when wrapped, of the worker otherwise.
             runsc_network = "host" if config.network == "public" else config.network
             args.extend(["--network", runsc_network])
-        args.extend(["run", "--bundle", root_dir, sandbox_id])
+        pid_file = os.path.join(root_dir, _PID_FILE)
+        args.extend(["run", "--pid-file", pid_file, "--bundle", root_dir, sandbox_id])
         if use_netns:
             netns_pidfile = shlex.quote(os.path.join(root_dir, "netns.pid"))
             ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
@@ -1335,9 +1350,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
                 # Stop waiting as soon as the holder dies, and refuse an
-                # empty NSPID (which would resolve to /proc//ns/net).
-                f"for i in $(seq 1 100); do [ -s {netns_pidfile} ] && break; "
-                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.1; done; "
+                # empty NSPID (which would resolve to /proc//ns/net). Both
+                # waits check every 10 ms for up to 10 s: the holder and
+                # slirp4netns are up within tens of milliseconds.
+                f"for i in $(seq 1 1000); do [ -s {netns_pidfile} ] && break; "
+                "kill -0 $HOLDER 2>/dev/null || break; sleep 0.01; done; "
                 f"NSPID=$(cat {netns_pidfile} 2>/dev/null); "
                 '[ -n "$NSPID" ] || { echo "netns holder failed to start" >&2; exit 1; }; '
                 # slirp4netns attaches from the pod side and stays in the
@@ -1348,8 +1365,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
                 f"3>{ready_file} & "
                 "SLIRP=$!; "
-                f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
-                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
+                f"for i in $(seq 1 1000); do [ -s {ready_file} ] && break; "
+                "kill -0 $SLIRP 2>/dev/null || break; sleep 0.01; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
                 # The egress ruleset goes in after the tap exists and
                 # before anything runs behind it; a failed install aborts
