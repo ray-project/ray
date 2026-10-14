@@ -20,7 +20,7 @@ import pytest
 from google.protobuf import empty_pb2
 from grpc import StatusCode
 
-from ray.experimental.sandbox.http import grpc_facade
+from ray.experimental.sandbox.http import grpc_facade, node_host
 from ray.experimental.sandbox.http._proto import (
     sandbox_control_pb2 as api_pb2,
     sandbox_exec_pb2 as sr_pb2,
@@ -374,6 +374,63 @@ class _DeadHandle:
                 return asyncio.get_running_loop().create_task(_raise())
 
         return _Method()
+
+
+class _VacantNodeHostHandle:
+    """A hosted sandbox's handle whose node host doesn't have the sandbox."""
+
+    def __init__(self, sandbox_id: str) -> None:
+        self._sandbox_id = sandbox_id
+        self._host = node_host.SandboxNodeHost()
+
+    def __getattr__(self, name: str) -> Any:
+        method = getattr(self._host, name)
+        sandbox_id = self._sandbox_id
+
+        class _Method:
+            def remote(self, *args: Any, **kwargs: Any) -> "asyncio.Future":
+                return asyncio.ensure_future(method(sandbox_id, *args, **kwargs))
+
+        return _Method()
+
+
+def test_a_sandbox_its_node_host_lacks_is_not_found() -> None:
+    """A hosted id resolves while its node's host lives, even when that host
+    never had the sandbox or has released it. GetTaskId and an exec start
+    then answer NOT_FOUND, as for a sandbox actor that no longer exists, and
+    a wait reports the sandbox terminated."""
+    port = next(_next_port)
+
+    async def scenario() -> Tuple[List[Any], int]:
+        resolver = FakeResolver()
+        resolver.handles["sb-vacant"] = _VacantNodeHostHandle("sb-vacant")
+        async with _Facade(resolver, port):
+            channel, control, router = _channel(port)
+            try:
+                codes = []
+                for call in (
+                    lambda: control.SandboxGetTaskId(
+                        api_pb2.SandboxGetTaskIdRequest(sandbox_id="sb-vacant")
+                    ),
+                    lambda: router.TaskExecStart(
+                        sr_pb2.TaskExecStartRequest(
+                            task_id="sb-vacant", exec_id="ex", command_args=["true"]
+                        )
+                    ),
+                ):
+                    with pytest.raises(grpc.aio.AioRpcError) as failed:
+                        await call()
+                    codes.append(failed.value.code())
+                wait = await control.SandboxWait(
+                    api_pb2.SandboxWaitRequest(sandbox_id="sb-vacant", timeout=0)
+                )
+                return codes, wait.result.status
+            finally:
+                await channel.close()
+
+    codes, wait_status = asyncio.run(scenario())
+    assert codes == [StatusCode.NOT_FOUND] * 2
+    assert wait_status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
 
 
 def test_named_create_replaces_dead_actor() -> None:

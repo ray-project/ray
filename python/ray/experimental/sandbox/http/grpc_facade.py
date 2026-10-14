@@ -39,6 +39,7 @@ import logging
 import os
 import re
 import shlex
+import threading
 import uuid
 from typing import (
     Any,
@@ -71,6 +72,7 @@ from ray.experimental.sandbox.http._proto.sandbox_exec_pb2_grpc import (
 from ray.experimental.sandbox.http.host import HostSettings, SandboxSpec
 from ray.experimental.sandbox.http.resolver import (
     SANDBOX_ID_PREFIX,
+    HostedSandboxHandle,
     RayActorHandleResolver,
     _is_actor_gone,
     _is_actor_unavailable,
@@ -414,6 +416,17 @@ def _job_stream(info: Dict[str, Any], want_stdout: bool) -> bytes:
     return _fs_error("Other", info.get("error") or "file operation failed")
 
 
+def _check_found(result: Dict[str, Any]) -> None:
+    """Raise NOT_FOUND for a sandbox its node host doesn't have.
+
+    A hosted sandbox's id resolves while its node's host lives, so an id
+    never created, or one already released, reaches the host; the status
+    matches a sandbox actor that no longer exists.
+    """
+    if result.get("error_code") == "sandbox_not_found":
+        raise _RpcError(StatusCode.NOT_FOUND, result["message"])
+
+
 def _check_stdin(
     result: Dict[str, Any], settings: SandboxAPISettings
 ) -> Dict[str, Any]:
@@ -690,16 +703,39 @@ class _ControlServicer(ModalClientServicer):
             "max_exec_history": settings.max_exec_history,
             "max_file_bytes": settings.max_file_bytes,
         }
-        handle = await asyncio.to_thread(
-            state.resolver.create,
-            sandbox_id,
-            actor_options,
-            {"sandbox_id": sandbox_id, "spec": spec, "settings": host_settings},
-            # Named sandboxes are get-or-create so retries converge; a fresh
-            # random id needs no lookup.
-            get_if_exists=bool(definition.name),
-        )
-        handle.boot.remote()
+        ctor_kwargs = {
+            "sandbox_id": sandbox_id,
+            "spec": spec,
+            "settings": host_settings,
+        }
+        # Named sandboxes are get-or-create so retries converge; a fresh
+        # random id needs no lookup.
+        get_if_exists = bool(definition.name)
+        acreate = getattr(state.resolver, "acreate", None)
+        if acreate is not None:
+            try:
+                handle = await acreate(
+                    sandbox_id, actor_options, ctor_kwargs, get_if_exists=get_if_exists
+                )
+            except asyncio.TimeoutError:
+                raise _RpcError(
+                    StatusCode.RESOURCE_EXHAUSTED,
+                    "no node has room for the sandbox's resources yet",
+                )
+            if isinstance(handle, HostedSandboxHandle):
+                # A hosted sandbox's id names its node, so the resolver picks it.
+                sandbox_id = handle.sandbox_id
+        else:
+            handle = await asyncio.to_thread(
+                state.resolver.create,
+                sandbox_id,
+                actor_options,
+                ctor_kwargs,
+                get_if_exists=get_if_exists,
+            )
+        if not isinstance(handle, HostedSandboxHandle):
+            # A node host starts the boot when it adds the sandbox.
+            handle.boot.remote()
         logger.info(
             "Created sandbox %s (image=%s, network=%s, cidr_allowlist=%s)",
             sandbox_id,
@@ -722,6 +758,7 @@ class _ControlServicer(ModalClientServicer):
             # An unscheduled actor looks like a booting one to the client:
             # an empty task id keeps the SDK polling.
             return api_pb2.SandboxGetTaskIdResponse(task_id="")
+        _check_found(info)
         status = info["status"]
         if status in ("error", "terminated"):
             raise _RpcError(
@@ -868,6 +905,7 @@ class _RouterServicer(TaskCommandRouterServicer):
                 StatusCode.UNAVAILABLE,
                 "sandbox actor is not reachable; the cluster may still be scaling",
             )
+        _check_found(started)
         if started.get("error_code"):
             raise _RpcError(
                 StatusCode.FAILED_PRECONDITION,
@@ -1091,6 +1129,13 @@ class _RouterServicer(TaskCommandRouterServicer):
         return sr_pb2.TaskSetNetworkAccessResponse()
 
 
+def _prestart(resolver: Any) -> None:
+    try:
+        logger.info("Started %d sandbox node hosts", resolver.prestart())
+    except Exception as exc:
+        logger.warning("Failed to prestart sandbox node hosts: %s", exc)
+
+
 @DeveloperAPI
 class RaySandboxFacade(_ControlServicer, _RouterServicer):
     """The facade's gRPC servicer: both services, sharing one state.
@@ -1118,6 +1163,10 @@ class RaySandboxFacade(_ControlServicer, _RouterServicer):
     ) -> None:
         settings = settings or SandboxAPISettings()
         resolver = handle_resolver or RayActorHandleResolver(settings)
+        if settings.host_mode == "node" and hasattr(resolver, "prestart"):
+            # Node hosts start in the background, so the first sandbox on
+            # each node doesn't wait for one.
+            threading.Thread(target=_prestart, args=(resolver,), daemon=True).start()
         token = os.environ.get(settings.token_env_var) or None
         self._state = _FacadeState(resolver, settings, advertise_url, token)
         # Exec starts that outlive their call (see TaskExecStart); the loop

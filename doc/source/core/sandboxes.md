@@ -1158,6 +1158,12 @@ spec:
 
 ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the backend, which cap file writes at about 7.5 MiB and output reads on a running command at about 11 minutes, once the SDK's retries run out. The annotations `nginx.ingress.kubernetes.io/proxy-body-size: "0"`, `nginx.ingress.kubernetes.io/proxy-read-timeout`, and `nginx.ingress.kubernetes.io/proxy-send-timeout` on the facade's Ingress raise those limits, but no ingress-nginx setting lets it serve the client SDK's command-router connection.
 
+#### Bursts of sandboxes
+
+By default, each sandbox gets its own Ray actor, so creating one starts a Ray worker process, which takes about a CPU-second. For bursts of hundreds of sandboxes, set `host_mode="node"` in the application's `args`: one actor per node hosts every sandbox placed on that node, so a create starts no process. Each sandbox still reserves its resources with a placement group.
+
+This setting applies to the facade only: the REST API, like named sandboxes, always gives each sandbox its own actor.
+
 ## API reference
 
 For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref`.

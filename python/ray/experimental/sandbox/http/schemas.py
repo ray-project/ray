@@ -384,6 +384,17 @@ class SandboxAPISettings(BaseModel):
             "polls."
         ),
     )
+    host_mode: Literal["actor", "node"] = Field(
+        default="actor",
+        description=(
+            "How the gRPC facade hosts sandboxes (the REST app always uses "
+            "'actor'). 'actor': one detached SandboxHost actor (one Ray "
+            "worker process) per sandbox. 'node': one SandboxNodeHost actor "
+            "per node hosts every sandbox placed there, and each sandbox's "
+            "resources are reserved by a one-bundle placement group; creates "
+            "skip a worker process start. Named sandboxes always use 'actor'."
+        ),
+    )
     default_actor_num_cpus: float = Field(
         default=1.0,
         ge=0,
