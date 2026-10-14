@@ -1426,6 +1426,134 @@ def test_assign_worker_ranks(
         assert ctx == expected, f"Worker {i}: expected {expected}, got {ctx}"
 
 
+def test_assign_worker_ranks_tpu():
+    """Verify TPU worker rank assignment sorts by pod name, groups by node ID,
+    and sorts workers on the same node by their lowest assigned TPU ID."""
+    worker_cls = ray.remote(num_cpus=0)(RayTrainWorker)
+    specs = [
+        ("slice-1", "node2", "10.0.0.3", ["1"]),
+        ("slice-0", "node0", "10.0.0.1", ["2"]),
+        ("slice-0", "node1", "10.0.0.2", ["1"]),
+        ("slice-0", "node0", "10.0.0.1", ["0"]),
+        ("slice-1", "node2", "10.0.0.3", ["0"]),
+        ("slice-0", "node1", "10.0.0.2", ["0"]),
+        ("slice-0", "node0", "10.0.0.1", ["1", "3"]),
+    ]
+    actors = [
+        worker_cls.options(runtime_env={"env_vars": {"TPU_NAME": pod_name}}).remote()
+        for pod_name, _, _, _ in specs
+    ]
+    try:
+        workers = [
+            Worker(
+                actor=actor,
+                metadata=ActorMetadata(
+                    node_id=node_id,
+                    node_ip=node_ip,
+                    hostname="dummy",
+                    accelerator_ids={"TPU": tpu_ids},
+                    pid=i,
+                ),
+                resources={"TPU": len(tpu_ids)},
+            )
+            for i, (actor, (_, node_id, node_ip, tpu_ids)) in enumerate(
+                zip(actors, specs)
+            )
+        ]
+
+        result = WorkerGroup._assign_worker_ranks(workers)
+
+        assert [
+            (
+                w.metadata.node_id,
+                w.metadata.accelerator_ids["TPU"],
+                w.distributed_context,
+            )
+            for w in result
+        ] == [
+            (
+                "node0",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=3,
+                    world_rank=0,
+                    world_size=7,
+                    node_rank=0,
+                ),
+            ),
+            (
+                "node0",
+                ["1", "3"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=3,
+                    world_rank=1,
+                    world_size=7,
+                    node_rank=0,
+                ),
+            ),
+            (
+                "node0",
+                ["2"],
+                DistributedContext(
+                    local_rank=2,
+                    local_world_size=3,
+                    world_rank=2,
+                    world_size=7,
+                    node_rank=0,
+                ),
+            ),
+            (
+                "node1",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=3,
+                    world_size=7,
+                    node_rank=1,
+                ),
+            ),
+            (
+                "node1",
+                ["1"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=4,
+                    world_size=7,
+                    node_rank=1,
+                ),
+            ),
+            (
+                "node2",
+                ["0"],
+                DistributedContext(
+                    local_rank=0,
+                    local_world_size=2,
+                    world_rank=5,
+                    world_size=7,
+                    node_rank=2,
+                ),
+            ),
+            (
+                "node2",
+                ["1"],
+                DistributedContext(
+                    local_rank=1,
+                    local_world_size=2,
+                    world_rank=6,
+                    world_size=7,
+                    node_rank=2,
+                ),
+            ),
+        ]
+    finally:
+        for actor in actors:
+            ray.kill(actor)
+
+
 if __name__ == "__main__":
     import sys
 

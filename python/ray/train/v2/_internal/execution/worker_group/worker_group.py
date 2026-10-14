@@ -1081,18 +1081,28 @@ class WorkerGroup(ExecutionGroup):
         Sort workers by their TPU Pod name to ensure deterministic
         topology mapping for TPU multi-slice. The TPU Pod name is based on
         TPU_NAME env var, which is unique and indexed within the Ray worker group
-        requesting TPUs.
+        requesting TPUs. Within each pod, group workers by node ID and sort
+        workers on the same node by their lowest assigned TPU ID.
         """
         pod_name_refs = [
             worker.execute_async(get_current_pod_name) for worker in workers
         ]
         pod_names = ray.get(pod_name_refs)
 
-        # Zip workers with names and sort by name.
-        worker_name_pairs = list(zip(workers, pod_names))
-        worker_name_pairs.sort(key=lambda pair: pair[1] or "")
+        pod_to_workers = collections.defaultdict(list)
+        for worker, pod_name in sorted(
+            zip(workers, pod_names), key=lambda pair: pair[1] or ""
+        ):
+            pod_to_workers[pod_name or ""].append(worker)
 
-        return [w for w, name in worker_name_pairs]
+        sorted_workers = []
+        for pod_workers in pod_to_workers.values():
+            sorted_workers.extend(
+                WorkerGroup._sort_workers_by_gpu_id_grouped_by_node(
+                    pod_workers, resource_name="TPU"
+                )
+            )
+        return sorted_workers
 
     @staticmethod
     def _assign_worker_ranks(
@@ -1195,9 +1205,11 @@ class WorkerGroup(ExecutionGroup):
 
     @staticmethod
     def _sort_workers_by_gpu_id_grouped_by_node(
-        workers: List[Worker], _first_id: Optional[str] = None
+        workers: List[Worker],
+        _first_id: Optional[str] = None,
+        resource_name: str = "GPU",
     ) -> List[Worker]:
-        """Reorder the workers by grouping by node id and sorting each group by lowest GPU id.
+        """Reorder the workers by grouping by node id and sorting each group by lowest accelerator id.
 
         Example:
             Given workers with the following attributes:
@@ -1220,6 +1232,7 @@ class WorkerGroup(ExecutionGroup):
         Args:
             workers: The workers to sort.
             _first_id: The first node id to group by.
+            resource_name: Accelerator resource key in ``worker.metadata.accelerator_ids``.
 
         Returns:
             List of sorted workers.
@@ -1232,23 +1245,22 @@ class WorkerGroup(ExecutionGroup):
         for worker in workers:
             node_id_to_workers[worker.metadata.node_id].append(worker)
 
-        # Sort workers on the same node by the lowest GPU id
+        # Sort workers on the same node by the lowest accelerator id
         # More details: https://github.com/ray-project/ray/issues/40803
-        def get_lowest_gpu_id(worker) -> int:
-            gpu_ids = worker.metadata.accelerator_ids.get("GPU", [])
-            # If there are no GPU IDs, return 0 as a default
-            if not gpu_ids:
+        def get_lowest_accelerator_id(worker) -> Union[int, str]:
+            acc_ids = worker.metadata.accelerator_ids.get(resource_name, [])
+            if not acc_ids:
                 return 0
 
-            # Attempt to convert GPU IDs to integers and find the minimum ID.
+            # Attempt to convert accelerator IDs to integers and find the minimum ID.
             # Fallback to return the minimum string-based ID
             try:
-                return min(int(gpu_id) for gpu_id in gpu_ids)
+                return min(int(acc_id) for acc_id in acc_ids)
             except ValueError:
-                return min(gpu_ids)
+                return min(acc_ids)
 
         for node_id in node_id_to_workers:
-            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
+            node_id_to_workers[node_id].sort(key=get_lowest_accelerator_id)
 
         sorted_workers = []
         for workers in node_id_to_workers.values():
