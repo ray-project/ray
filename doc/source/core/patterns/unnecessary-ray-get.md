@@ -8,11 +8,11 @@ myst:
 
 # Anti-pattern: Calling ray.get unnecessarily harms performance
 
-**TLDR:** Avoid calling {func}`ray.get() <ray.get>` unnecessarily for intermediate steps. Work with object references directly, and only call `ray.get()` at the end to get the final result.
+Avoid calling {func}`ray.get() <ray.get>` unnecessarily for intermediate steps. Work with object refs directly, and call `ray.get()` only at the end to get the final result.
 
-When `ray.get()` is called, objects must be transferred to the worker/node that calls `ray.get()`. If you don't need to manipulate the object, you probably don't need to call `ray.get()` on it!
+When you call `ray.get()`, the objects must be transferred to the worker or node that makes the call. If you don't need to manipulate an object, you probably don't need to call `ray.get()` on it.
 
-Typically, it’s best practice to wait as long as possible before calling `ray.get()`, or even design your program to avoid having to call `ray.get()` at all.
+Typically, wait as long as possible before you call `ray.get()`, or design your program so that it doesn't need to call `ray.get()` at all.
 
 ## Code example
 
@@ -38,11 +38,11 @@ Typically, it’s best practice to wait as long as possible before calling `ray.
 ```{figure} ../images/unnecessary-ray-get-better.svg
 ```
 
-Notice in the anti-pattern example, we call `ray.get()` which forces us to transfer the large rollout to the driver, then again to the *reduce* worker.
+In the anti-pattern example, the call to `ray.get()` forces the large rollout to be transferred to the driver, and then again to the `reduce` worker.
 
-In the fixed version, we only pass the reference to the object to the *reduce* task. The `reduce` worker will implicitly call `ray.get()` to fetch the actual rollout data directly from the `generate_rollout` worker, avoiding the extra copy to the driver.
+In the fixed version, you pass only the object ref to the `reduce` task. The `reduce` worker implicitly calls `ray.get()` to fetch the rollout data directly from the `generate_rollout` worker, which avoids the extra copy to the driver.
 
-Other `ray.get()` related anti-patterns are:
+Other anti-patterns related to `ray.get()` are the following:
 
 - {doc}`ray-get-loop`
 - {doc}`ray-get-submission-order`

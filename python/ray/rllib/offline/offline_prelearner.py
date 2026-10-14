@@ -63,6 +63,8 @@ def _validate_deprecated_map_args(
 
     Args:
         kwargs: The kwargs for the map function to check for deprecated args
+        config: The `AlgorithmConfig` to fall back on for any deprecated arg that
+            is not passed in via `kwargs`
 
     Returns:
         The validated arguments

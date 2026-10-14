@@ -1,14 +1,14 @@
 ---
 myst:
   html_meta:
-    description: "Run Python functions asynchronously as Ray tasks: request resources, pass ObjectRefs, wait for partial results, and cancel tasks."
+    description: "Run Python functions asynchronously as Ray tasks: request resources, pass object refs, wait for partial results, and cancel tasks."
 ---
 
 (ray-remote-functions)=
 
 # Tasks
 
-Ray enables arbitrary functions to be executed asynchronously on separate worker processes. Such functions are called **Ray remote functions** and their asynchronous invocations are called **Ray tasks**. Here is an example.
+With Ray, you can run arbitrary functions asynchronously on separate worker processes. Such a function is a *Ray remote function*, and each asynchronous invocation of a remote function is a *Ray task*. The following example defines and invokes remote functions:
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -87,7 +87,7 @@ for(int i = 0; i < 4; i++) {
 :::
 ::::
 
-Use `ray summary tasks` from {ref}`State API <state-api-overview-ref>`  to see running and finished tasks and count:
+Use `ray summary tasks` from the {ref}`State API <state-api-overview-ref>` to see the running and finished tasks and their counts:
 
 ```bash
 # This API is only available when you download Ray via `pip install "ray[default]"`
@@ -113,7 +113,7 @@ Table (group by func_name):
 
 ## Specifying required resources
 
-You can specify resource requirements in tasks (see {ref}`resource-requirements` for more details.)
+You can specify resource requirements for tasks. For more details, see {ref}`resource-requirements`.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -143,7 +143,7 @@ ray::Task(MyFunction).SetResource("CPU", 4.0).SetResource("GPU", 2.0).Remote();
 
 ## Passing object refs to Ray tasks
 
-In addition to values, {doc}`Object refs <../objects/index>` can also be passed into remote functions. When the task gets executed, inside the function body **the argument will be the underlying value**. For example, take this function:
+In addition to values, you can pass {doc}`object refs <../objects/index>` into remote functions. When the task runs, the argument inside the function body is the underlying value, not the object ref. The following example passes the object ref that one task returns to a second task:
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -190,14 +190,12 @@ assert(*obj_ref2.Get() == 2);
 
 Note the following behaviors:
 
-> -  As the second task depends on the output of the first task, Ray will not execute the second task until the first task has finished.
-> -  If the two tasks are scheduled on different machines, the output of the
->    first task (the value corresponding to `obj_ref1/objRef1`) will be sent over the
->    network to the machine where the second task is scheduled.
+- Because the second task depends on the output of the first task, Ray doesn't execute the second task until the first task finishes.
+- If Ray schedules the two tasks on different machines, it sends the output of the first task, which is the value of `obj_ref1/objRef1`, over the network to the machine where it scheduled the second task.
 
-## Waiting for Partial Results
+## Waiting for partial results
 
-Calling **ray.get** on Ray task results will block until the task finished execution. After launching a number of tasks, you may want to know which ones have finished executing without blocking on all of them. This could be achieved by {func}`ray.wait() <ray.wait>`. The function works as follows.
+Calling `ray.get` on a task's result blocks until the task finishes. After you launch several tasks, you might want to know which ones have finished without blocking on all of them. Use {func}`ray.wait() <ray.wait>` for this, as the following example shows:
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -224,13 +222,14 @@ ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*t
 ::::
 
 ## Generators
-Ray is compatible with Python generator syntax. See {ref}`Ray Generators <generators>` for more details.
+
+Ray is compatible with Python generator syntax. For more details, see {ref}`Ray generators <generators>`.
 
 (ray-task-returns)=
 
 ## Multiple returns
 
-By default, a Ray task only returns a single Object Ref. However, you can configure Ray tasks to return multiple Object Refs, by setting the `num_returns` option.
+By default, a task returns a single object ref. To return multiple object refs, set the `num_returns` option.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -242,7 +241,7 @@ By default, a Ray task only returns a single Object Ref. However, you can config
 :::
 ::::
 
-For tasks that return multiple objects, Ray also supports remote generators that allow a task to return one object at a time to reduce memory usage at the worker. Ray also supports an option to set the number of return values dynamically, which can be useful when the task caller does not know how many return values to expect. See the {ref}`user guide <generators>` for more details on use cases.
+For tasks that return multiple objects, Ray also supports remote generators, which return one object at a time to reduce memory usage on the worker. You can also set the number of return values dynamically, which can be useful when the caller doesn't know how many return values to expect. For use cases, see {ref}`Ray generators <generators>`.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -258,7 +257,7 @@ For tasks that return multiple objects, Ray also supports remote generators that
 
 ## Cancelling tasks
 
-Ray tasks can be canceled by calling {func}`ray.cancel() <ray.cancel>` on the returned Object ref.
+To cancel a task, call {func}`ray.cancel() <ray.cancel>` on the object ref that the task returned.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -273,24 +272,24 @@ Ray tasks can be canceled by calling {func}`ray.cancel() <ray.cancel>` on the re
 
 ## Scheduling
 
-For each task, Ray will choose a node to run it and the scheduling decision is based on a few factors like {ref}`the task's resource requirements <ray-scheduling-resources>`, {ref}`the specified scheduling strategy <ray-scheduling-strategies>` and {ref}`locations of task arguments <ray-scheduling-locality>`. See {ref}`Ray scheduling <ray-scheduling>` for more details.
+For each task, Ray chooses a node to run it on. Ray bases this decision on factors such as {ref}`the task's resource requirements <ray-scheduling-resources>`, {ref}`the specified scheduling strategy <ray-scheduling-strategies>`, and {ref}`the locations of task arguments <ray-scheduling-locality>`. For more details, see {ref}`Ray scheduling <ray-scheduling>`.
 
-## Fault Tolerance
+## Fault tolerance
 
-By default, Ray will {ref}`retry <task-retries>` failed tasks due to system failures and specified application-level failures. You can change this behavior by setting `max_retries` and `retry_exceptions` options in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>`. See {ref}`Ray fault tolerance <fault-tolerance>` for more details.
+By default, Ray {ref}`retries <task-retries>` tasks that fail because of system failures and specified application-level failures. To change this behavior, set the `max_retries` and `retry_exceptions` options in {func}`ray.remote() <ray.remote>` or {meth}`.options() <ray.remote_function.RemoteFunction.options>`. For more details, see {ref}`Ray fault tolerance <fault-tolerance>`.
 
 (task-events)=
 
-## Task Events
+## Task events
 
 
 By default, Ray traces the execution of tasks, reporting task status events and profiling events that the Ray dashboard and {ref}`State API <state-api-overview-ref>` use.
 
-You can change this behavior by setting `enable_task_events` options in {func}`ray.remote() <ray.remote>` and {meth}`.options() <ray.remote_function.RemoteFunction.options>` to disable task events, which reduces the overhead of task execution, and the amount of data the task sends to the Ray dashboard. Nested tasks don't inherit the task events settings from the parent task. You need to set the task events settings for each task separately.
+To disable task events, set the `enable_task_events` option in {func}`ray.remote() <ray.remote>` or {meth}`.options() <ray.remote_function.RemoteFunction.options>`. Disabling task events reduces the overhead of task execution and the amount of data the task sends to the Ray dashboard. Nested tasks don't inherit the task events settings from the parent task, so set them for each task separately.
 
 
 
-## More about Ray Tasks
+## More about Ray tasks
 
 ```{toctree}
 :maxdepth: 1

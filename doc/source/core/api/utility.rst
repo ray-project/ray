@@ -64,3 +64,27 @@ Debugging
    ray.util.rpdb.set_trace
    ray.util.inspect_serializability
    ray.timeline
+
+.. _api-stability-annotations-ref:
+
+API stability annotations
+-------------------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   ray.util.annotations.PublicAPI
+   ray.util.annotations.DeveloperAPI
+   ray.util.annotations.Deprecated
+
+.. _testing-utilities-ref:
+
+Testing utilities
+-----------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   ray.cluster_utils.AutoscalingCluster

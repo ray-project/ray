@@ -3,8 +3,7 @@ load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 ray_cc_library(
     name = "util",
     hdrs = ["util.h"],
-    # NOTE(edoakes): scheduling/ tests use this; the dependency should be broken.
-    visibility = ["//visibility:public"],
+    visibility = ["//src/ray/raylet/scheduling/tests:__pkg__"],
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:lease",

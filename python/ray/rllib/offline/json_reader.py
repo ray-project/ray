@@ -7,7 +7,7 @@ import random
 import re
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional, Union
 from urllib.parse import urlparse
 
 import numpy as np
@@ -315,14 +315,15 @@ class JsonReader(InputReader):
         ret = concat_samples(ret)
         return ret
 
-    def read_all_files(self) -> SampleBatchType:
+    def read_all_files(self) -> Iterator[SampleBatchType]:
         """Reads through all files and yields one SampleBatchType per line.
 
         When reaching the end of the last file, will start from the beginning
         again.
 
         Yields:
-            One SampleBatch or MultiAgentBatch per line in all input files.
+            SampleBatchType: One SampleBatch or MultiAgentBatch per line in all
+                input files.
         """
         for path in self.files:
             file = self._try_open_file(path)

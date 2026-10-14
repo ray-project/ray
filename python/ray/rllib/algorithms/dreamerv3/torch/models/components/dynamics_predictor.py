@@ -61,7 +61,7 @@ class DynamicsPredictor(nn.Module):
             num_classes_per_categorical=num_classes_per_categorical,
         )
 
-    def forward(self, h, return_z_probs=False):
+    def forward(self, h: "torch.Tensor", return_z_probs: bool = False):
         """Performs a forward pass through the dynamics (or "prior") network.
 
         Args:
@@ -69,6 +69,11 @@ class DynamicsPredictor(nn.Module):
             return_z_probs: Whether to return the probabilities for the categorical
                 distribution (in the shape of [B, num_categoricals, num_classes])
                 as a second return value.
+
+        Returns:
+            The prior z-states (one-hot, straight-through differentiable) of shape
+            [B, num_categoricals, num_classes]. If `return_z_probs` is True, a tuple
+            of these z-states and the probabilities used to draw them.
         """
         out = self.mlp(h)
         return self.representation_layer(out, return_z_probs=return_z_probs)

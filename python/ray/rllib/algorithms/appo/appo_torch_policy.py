@@ -126,8 +126,8 @@ class APPOTorchPolicy(
         With IS modifications and V-trace for Advantage Estimation.
 
         Args:
-            model (ModelV2): The Model to calculate the loss for.
-            dist_class (Type[ActionDistribution]): The action distr. class.
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
             train_batch: The training data.
 
         Returns:
@@ -330,7 +330,6 @@ class APPOTorchPolicy(
         """Stats function for APPO. Returns a dict with important loss stats.
 
         Args:
-            policy: The Policy to generate stats for.
             train_batch: The SampleBatch (already) used for training.
 
         Returns:

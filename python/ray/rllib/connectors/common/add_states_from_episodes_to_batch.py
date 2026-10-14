@@ -186,10 +186,18 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         """Initializes a AddObservationsFromEpisodesToBatch instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             as_learner_connector: Whether this connector is part of a Learner connector
                 pipeline, as opposed to a env-to-module pipeline. As a Learner
                 connector, it will add an entire Episode's observations (each timestep)
                 to the batch.
+            **kwargs: Forward API-compatibility kwargs.
         """
         super().__init__(
             input_observation_space=input_observation_space,

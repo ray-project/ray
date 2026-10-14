@@ -160,12 +160,7 @@ To answer these questions, use the global state API.
 
 ### Node information
 
-To get information about the current nodes in your cluster, use `ray.nodes()`:
-
-```{eval-rst}
-.. autofunction:: ray.nodes
-   :noindex:
-```
+To get information about the current nodes in your cluster, use {py:func}`ray.nodes`:
 
 ```{testcode}
 :hide:
@@ -206,20 +201,9 @@ The preceding output includes the following fields:
 
 ### Resource information
 
-To get the current total resource capacity of your cluster, use `ray.cluster_resources()`.
+To get the current total resource capacity of your cluster, use {py:func}`ray.cluster_resources`.
 
-```{eval-rst}
-.. autofunction:: ray.cluster_resources
-   :noindex:
-```
-
-
-To get the current available resource capacity of your cluster, use `ray.available_resources()`.
-
-```{eval-rst}
-.. autofunction:: ray.available_resources
-   :noindex:
-```
+To get the current available resource capacity of your cluster, use {py:func}`ray.available_resources`.
 
 ## Running large Ray clusters
 

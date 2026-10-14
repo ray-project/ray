@@ -1,21 +1,21 @@
 ---
 myst:
   html_meta:
-    description: "Ray remote objects and ObjectRefs: fetching data, passing objects as arguments, closure capture, nested objects, and fault tolerance."
+    description: "Ray remote objects and object refs: fetching data, passing objects as arguments, closure capture, nested objects, and fault tolerance."
 ---
 
 (objects-in-ray)=
 
 # Objects
 
-In Ray, tasks and actors create and compute on objects. We refer to these objects as **remote objects** because they can be stored anywhere in a Ray cluster, and we use **object refs** to refer to them. Remote objects are cached in Ray's distributed [shared-memory](https://en.wikipedia.org/wiki/Shared_memory) **object store**, and there is one object store per node in the cluster. In the cluster setting, a remote object can live on one or many nodes, independent of who holds the object ref(s).
+Ray tasks and actors create and compute on objects. Ray calls these objects *remote objects* because they can live anywhere in a Ray cluster, and you refer to them with *object refs*. Ray caches remote objects in its distributed [shared-memory](https://en.wikipedia.org/wiki/Shared_memory) *object store*, with one object store per node in the cluster. In a cluster, a remote object can live on one or many nodes, regardless of who holds its object refs.
 
-An **object ref** is essentially a pointer or a unique ID that can be used to refer to a remote object without seeing its value. If you're familiar with futures, Ray object refs are conceptually similar.
+An object ref acts as a pointer or a unique ID that you use to refer to a remote object without seeing its value. Object refs are conceptually similar to futures.
 
-Object refs can be created in two ways.
+You get object refs in two ways:
 
-> 1. They are returned by remote function calls.
-> 2. They are returned by {func}`ray.put() <ray.put>`.
+1. A remote function call returns them.
+1. {func}`ray.put() <ray.put>` returns them.
 
 ::::{tab-set}
 :::{tab-item} Python
@@ -46,17 +46,17 @@ ray::ObjectRef<int> object_ref = ray::Put(y);
 ::::
 
 :::{note}
-Remote objects are immutable. That is, their values cannot be changed after creation. This allows remote objects to be replicated in multiple object stores without needing to synchronize the copies.
+Remote objects are immutable, so you can't change their values after creation. Because of this, Ray can replicate remote objects in multiple object stores without synchronizing the copies.
 :::
 
 
-## Fetching Object Data
+## Fetching object data
 
-You can use the {func}`ray.get() <ray.get>` method to fetch the result of a remote object from an object ref. If the current node's object store does not contain the object, the object is downloaded.
+Call the {func}`ray.get() <ray.get>` method to fetch the result of a remote object from an object ref. If the current node's object store doesn't contain the object, Ray downloads it.
 
 ::::{tab-set}
 :::{tab-item} Python
-If the object is a [numpy array](https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html) or a collection of numpy arrays, the `get` call is zero-copy and returns arrays backed by shared object store memory. Otherwise, we deserialize the object data into a Python object.
+If the object is a [NumPy array](https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html) or a collection of NumPy arrays, the `get` call is zero-copy and returns arrays backed by shared object store memory. Otherwise, Ray deserializes the object data into a Python object.
 
 ```{testcode}
 import ray
@@ -138,23 +138,23 @@ assert(*results[2] == 2);
 :::
 ::::
 
-## Passing Object Arguments
+## Passing object arguments
 
-Ray object references can be freely passed around a Ray application. This means that they can be passed as arguments to tasks, actor methods, and even stored in other objects. Objects are tracked via *distributed reference counting*, and their data is automatically freed once all references to the object are deleted.
+You can pass object refs freely around a Ray application. Pass them as arguments to tasks and actor methods, or even store them in other objects. Ray tracks objects through *distributed reference counting* and automatically frees an object's data once all references to the object are deleted.
 
-There are two different ways one can pass an object to a Ray task or method. Depending on the way an object is passed, Ray will decide whether to *de-reference* the object prior to task execution.
+You can pass an object to a task or actor method in two ways. Depending on how you pass the object, Ray decides whether to *de-reference* it before the task runs.
 
-**Passing an object as a top-level argument**: When an object is passed directly as a top-level argument to a task, Ray will de-reference the object. This means that Ray will fetch the underlying data for all top-level object reference arguments, not executing the task until the object data becomes fully available.
+**Passing an object as a top-level argument**: When you pass an object directly as a top-level argument to a task, Ray de-references the object. Ray fetches the underlying data for all top-level object ref arguments and doesn't run the task until the object data is fully available.
 
 ```{literalinclude} ../doc_code/obj_val.py
 ```
 
-**Passing an object as a nested argument**: When an object is passed within a nested object, for example, within a Python list, Ray will *not* de-reference it. This means that the task will need to call `ray.get()` on the reference to fetch the concrete value. However, if the task never calls `ray.get()`, then the object value never needs to be transferred to the machine the task is running on. We recommend passing objects as top-level arguments where possible, but nested arguments can be useful for passing objects on to other tasks without needing to see the data.
+**Passing an object as a nested argument**: When you pass an object within a nested object, such as a Python list, Ray doesn't de-reference it. The task needs to call `ray.get()` on the reference to fetch the concrete value. If the task never calls `ray.get()`, Ray never needs to transfer the object value to the machine the task runs on. Pass objects as top-level arguments where possible. Nested arguments can be useful for passing objects on to other tasks without seeing the data.
 
 ```{literalinclude} ../doc_code/obj_ref.py
 ```
 
-The top-level vs not top-level passing convention also applies to actor constructors and actor method calls:
+The same top-level and nested passing convention applies to actor constructors and actor method calls:
 
 ```{testcode}
 @ray.remote
@@ -176,16 +176,20 @@ actor_handle.method.remote(obj)  # by-value
 actor_handle.method.remote([obj])  # by-reference
 ```
 
-## Closure Capture of Objects
+## Closure capture of objects
 
-You can also pass objects to tasks via *closure-capture*. This can be convenient when you have a large object that you want to share verbatim between many tasks or actors, and don't want to pass it repeatedly as an argument. Be aware however that defining a task that closes over an object ref will pin the object via reference-counting, so the object will not be evicted until the job completes.
+You can also pass objects to tasks through *closure capture*. Closure capture can be convenient when you want to share a large object verbatim between many tasks or actors without passing it repeatedly as an argument.
+
+:::{caution}
+Defining a task that closes over an object ref pins the object through reference counting, so Ray doesn't evict the object until the job completes.
+:::
 
 ```{literalinclude} ../doc_code/obj_capture.py
 ```
 
-## Nested Objects
+## Nested objects
 
-Ray also supports nested object references. This allows you to build composite objects that themselves hold references to further sub-objects.
+Ray also supports nested object refs, so you can build composite objects that hold references to further sub-objects.
 
 ```{testcode}
 # Objects can be nested within each other. Ray will keep the inner object
@@ -193,11 +197,11 @@ Ray also supports nested object references. This allows you to build composite o
 object_ref_2 = ray.put([object_ref])
 ```
 
-## Fault Tolerance
+## Fault tolerance
 
-Ray can automatically recover from object data loss via {ref}`lineage reconstruction <fault-tolerance-objects-reconstruction>` but not {ref}`owner <fault-tolerance-ownership>` failure. See {ref}`Ray fault tolerance <fault-tolerance>` for more details.
+Ray can automatically recover from object data loss through {ref}`lineage reconstruction <fault-tolerance-objects-reconstruction>`, but not from {ref}`owner <fault-tolerance-ownership>` failure. See {ref}`Ray fault tolerance <fault-tolerance>` for more details.
 
-## More about Ray Objects
+## More about Ray objects
 
 ```{toctree}
 :maxdepth: 1
