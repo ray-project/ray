@@ -15,10 +15,11 @@ from typing import Any, Dict, Mapping, Optional
 from urllib.parse import unquote
 
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
 from ray import serve
-from ray.exceptions import RayActorError
+from ray.exceptions import RayError
 from ray.llm._internal.serve.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     get_llm_serve_runtime_env,
@@ -116,7 +117,16 @@ def _model_card(model_id: str) -> Dict[str, Any]:
     }
 
 
+_CORS_OPTIONS = {
+    "allow_origins": ["*"],
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
 router_app = FastAPI()
+router_app.add_middleware(CORSMiddleware, **_CORS_OPTIONS)
+_cors_middleware = CORSMiddleware(router_app, **_CORS_OPTIONS)
 
 
 @serve._router_application
@@ -149,6 +159,15 @@ class RouterApplication:
         method = request.headers.get(
             SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER, ""
         ).upper()
+
+        if (
+            method == "OPTIONS"
+            and "origin" in request.headers
+            and "access-control-request-method" in request.headers
+        ):
+            response = _cors_middleware.preflight_response(request.headers)
+            response.headers[SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER] = "1"
+            return response
 
         if path == "/v1/models" or path.startswith("/v1/models/"):
             if method not in {"GET", "HEAD"}:
@@ -276,7 +295,7 @@ class RouterApplication:
                 handle = await asyncio.to_thread(serve.get_app_handle, app_name)
                 break
             # Not deployed yet (or misnamed), no controller yet, or controller restarting.
-            except (RayServeException, RayActorError) as e:
+            except (RayServeException, RayError) as e:
                 now = time.monotonic()
                 if first_failure_s is None:
                     first_failure_s = last_log_s = now
@@ -309,17 +328,25 @@ class RouterApplication:
         request: Request,
     ):
         application_name = self._model_applications[model_id]
+        deadline_s = time.monotonic() + CHOOSE_REPLICA_TIMEOUT_S
         try:
-
-            async def resolve_and_choose() -> str:
-                handle = await asyncio.shield(self._handles[model_id])
-                session_id = session_id_from_headers(request.headers)
-                if session_id:
-                    handle = handle.options(session_id=session_id)
-                return await self._choose_replica(handle, routing_payload)
-
-            replica_id = await asyncio.wait_for(
-                resolve_and_choose(), timeout=CHOOSE_REPLICA_TIMEOUT_S
+            handle = await asyncio.wait_for(
+                asyncio.shield(self._handles[model_id]),
+                timeout=max(0, deadline_s - time.monotonic()),
+            )
+            session_id = session_id_from_headers(request.headers)
+            if session_id:
+                handle = handle.options(session_id=session_id)
+            replica_id = await self._choose_replica(
+                handle,
+                routing_payload,
+                timeout_s=max(0, deadline_s - time.monotonic()),
+            )
+        except ValueError as e:
+            return _error(
+                status.HTTP_400_BAD_REQUEST,
+                str(e),
+                "BadRequestError",
             )
         except (
             asyncio.TimeoutError,
@@ -342,7 +369,9 @@ class RouterApplication:
 
     @staticmethod
     async def _choose_replica(
-        handle: DeploymentHandle, routing_payload: Optional[SimpleNamespace]
+        handle: DeploymentHandle,
+        routing_payload: Optional[SimpleNamespace],
+        timeout_s: float,
     ) -> str:
         """Pick a replica without dispatching; HAProxy sends the request.
 
@@ -350,6 +379,7 @@ class RouterApplication:
         quickly, wait on the reserving path, which lets the model scale from zero.
         """
         route_args = (routing_payload,) if routing_payload is not None else ()
+        deadline_s = time.monotonic() + timeout_s
 
         async def pick(**kwargs) -> str:
             async with handle.choose_replica(*route_args, **kwargs) as selection:
@@ -357,10 +387,13 @@ class RouterApplication:
 
         try:
             return await asyncio.wait_for(
-                pick(_reserve=False), timeout=PICK_ONLY_TIMEOUT_S
+                pick(_reserve=False),
+                timeout=min(PICK_ONLY_TIMEOUT_S, max(0, deadline_s - time.monotonic())),
             )
         except asyncio.TimeoutError:
-            return await pick()
+            return await pick(
+                _selection_timeout_s=max(0, deadline_s - time.monotonic())
+            )
 
     @classmethod
     def get_deployment_options(cls) -> Dict[str, Any]:
