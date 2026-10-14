@@ -104,21 +104,29 @@ def registry_credentials(
 
     host = _hostname(registry)
     key = _DOCKER_HUB_KEY if host == "registry-1.docker.io" else host
-    # A registry listed in credHelpers, even with an empty helper, never
-    # falls back to credsStore.
-    helpers = config.get("credHelpers") or {}
-    helper = helpers[key] if key in helpers else config.get("credsStore")
-    if helper:
-        return _helper_credentials(helper, key, timeout)
+    try:
+        # A registry listed in credHelpers, even with an empty helper, never
+        # falls back to credsStore.
+        helpers = config.get("credHelpers") or {}
+        helper = helpers[key] if key in helpers else config.get("credsStore")
+        if helper:
+            return _helper_credentials(helper, key, timeout)
 
-    auths = config.get("auths") or {}
-    entry = auths.get(key)
-    if entry is None:
-        # Older ``docker login`` versions keyed entries by URL.
-        entry = next(
-            (v for k, v in auths.items() if _hostname(k) == _hostname(key)), None
-        )
-    return _auths_credentials(entry, key, path) if entry else None
+        auths = config.get("auths") or {}
+        entry = auths.get(key)
+        if entry is None:
+            # Older ``docker login`` versions keyed entries by URL.
+            entry = next(
+                (v for k, v in auths.items() if _hostname(k) == _hostname(key)),
+                None,
+            )
+        return _auths_credentials(entry, key, path) if entry else None
+    except (AttributeError, TypeError) as err:
+        # A field of the wrong type, as the Docker CLI also refuses. The
+        # message names types, not values, so it carries no secret.
+        raise SandboxCreationError(
+            f"The Docker config file {path} is malformed: {err}"
+        ) from None
 
 
 def _helper_credentials(

@@ -497,6 +497,25 @@ def test_lookup_without_a_config_file_and_with_a_broken_one(docker_config):
         registry_credentials("a.example", timeout=10)
 
 
+@pytest.mark.parametrize(
+    "config",
+    [
+        ["not", "an", "object"],
+        {"auths": ["a.example"]},
+        {"auths": {"a.example": "user:secret"}},
+        {"auths": {"a.example": {"auth": 12345}}},
+    ],
+)
+def test_lookup_refuses_a_malformed_config(docker_config, config):
+    """A field of the wrong type fails the lookup with the file's path, as the
+    Docker CLI refuses such a file, and the message carries no secret."""
+    path = docker_config(config)
+    with pytest.raises(SandboxCreationError, match="is malformed") as err:
+        registry_credentials("a.example", timeout=10)
+    assert str(path) in str(err.value)
+    assert "secret" not in str(err.value)
+
+
 def test_credentials_repr_hides_the_secrets():
     creds = RegistryCredentials("user", "pass-s3cret", "idtok-s3cret", "regtok-s3cret")
     assert "user" in repr(creds)
