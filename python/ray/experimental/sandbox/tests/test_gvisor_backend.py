@@ -29,7 +29,11 @@ from ray.experimental.sandbox.backend.gvisor import (
     _render_egress_ruleset,
     _write_egress_ruleset,
 )
-from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, GVisorSandboxConfig
+from ray.experimental.sandbox.config import (
+    DEFAULT_PUBLIC_DNS,
+    INTERNET_EXCLUDED_IPV4,
+    GVisorSandboxConfig,
+)
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -828,6 +832,30 @@ def test_render_egress_ruleset_pins_the_policy():
     )
 
 
+def test_render_egress_ruleset_ports_and_internet():
+    """A port entry accepts only that port, for TCP and UDP. "internet" is
+    every address outside the non-public IPv4 networks, plus IPv6 global
+    unicast."""
+    text = _render_egress_ruleset(
+        ["10.0.0.5:8000", "[2001:db8::1]:443-444", "internet"], ["8.8.8.8"]
+    )
+    rules = [line.strip() for line in text.splitlines() if line.endswith(" accept")]
+    not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
+    assert rules == [
+        'oif "lo" accept',
+        "ip daddr 10.0.0.5/32 tcp dport 8000 accept",
+        "ip daddr 10.0.0.5/32 udp dport 8000 accept",
+        "ip6 daddr 2001:db8::1/128 tcp dport 443-444 accept",
+        "ip6 daddr 2001:db8::1/128 udp dport 443-444 accept",
+        f"{not_public} accept",
+        "ip6 daddr 2000::/3 accept",
+        "ip daddr 8.8.8.8 udp dport 53 accept",
+        "ip daddr 8.8.8.8 tcp dport 53 accept",
+    ]
+    assert "ip daddr != 10.0.0.0/8" in not_public
+    assert "ip daddr != 198.18.0.0/15" in not_public
+
+
 def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
     text = _render_egress_ruleset([], ["8.8.8.8", "1.1.1.1"])
     assert "ip daddr 8.8.8.8 udp dport 53 accept" in text
@@ -1132,6 +1160,54 @@ def test_netns_egress_allowlist_enforced(ensure_nft_egress):
         assert res.stdout.strip().count(".") == 3
     finally:
         backend.delete_sandbox(sb)
+
+
+def _probe(host: str, port: int) -> str:
+    """A command that prints how a TCP connect from the sandbox ends."""
+    return (
+        'python3 -c "import socket\n'
+        "try:\n"
+        f"    socket.create_connection(('{host}', {port}), timeout=5).close(); print('open')\n"
+        "except socket.timeout:\n"
+        "    print('timeout')\n"
+        "except OSError as e:\n"
+        "    print(type(e).__name__)\n"
+        '"'
+    )
+
+
+def test_netns_egress_ports_and_internet(ensure_nft_egress):
+    """A port entry opens one port on an address that is otherwise closed, and
+    "internet" reaches public addresses but not the node's own network."""
+    host = _host_ip()
+    listeners = [socket.create_server((host, 0)) for _ in range(2)]
+    allowed, other = (s.getsockname()[1] for s in listeners)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="python:3.10-slim",
+            network="public",
+            cidr_allowlist=["internet", f"{host}:{allowed}"],
+        )
+    )
+    try:
+        reach = {
+            name: backend.exec_command(sb, _probe(h, p), timeout=60).stdout.strip()
+            for name, (h, p) in {
+                "allowed port": (host, allowed),
+                "other port": (host, other),
+                "public address": ("1.1.1.1", 443),
+            }.items()
+        }
+        assert reach == {
+            "allowed port": "open",
+            "other port": "timeout",
+            "public address": "open",
+        }
+    finally:
+        backend.delete_sandbox(sb)
+        for listener in listeners:
+            listener.close()
 
 
 def test_netns_egress_allowlist_runtime_update(ensure_nft_egress):
