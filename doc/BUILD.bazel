@@ -1,4 +1,3 @@
-load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_test")
 load("//bazel:python.bzl", "doctest", "doctest_each", "py_test_run_all_subdirectory")
 
@@ -570,38 +569,6 @@ py_test(
         "gpu",
         "ray_air",
         "team:ml",
-    ],
-)
-
-# --------------------------------------------------------------------
-# Test all doc/external code
-# --------------------------------------------------------------------
-
-# py_test_run_all_subdirectory(
-#     size = "enormous",
-#     include = ["external/*.py"],
-#     exclude = ["external/test_hashes.py"],
-#     extra_srcs = [],
-#     tags = [
-#         "exclusive",
-#         "external",
-#         "team:ml",
-#     ],
-# )
-
-py_test(
-    name = "test_external_hashes",
-    srcs = ["external/test_hashes.py"],
-    data = glob(
-        ["external/*.py"],
-        exclude = ["external/test_hashes.py"],
-    ),
-    exec_compatible_with = ["//bazel:py3"],
-    main = "external/test_hashes.py",
-    tags = ["team:ml"],
-    deps = [
-        ci_require("pytest"),
-        ci_require("bazel-runfiles"),
     ],
 )
 

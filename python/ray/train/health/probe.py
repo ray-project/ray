@@ -1,6 +1,6 @@
 import abc
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ray.util.annotations import PublicAPI
 
@@ -26,8 +26,8 @@ class ProbeResult:
 
 @PublicAPI(stability="alpha")
 class Probe(abc.ABC):
-    """Takes a health reading. Subclass ``WorkerProbe`` or ``NodeProbe`` to
-    choose where it runs.
+    """Takes a health reading. Subclass ``WorkerProbe``, ``NodeProbe`` or
+    ``ControllerProbe`` to choose where it runs.
 
     Attributes:
         name: The probe's name, which identifies its readings. Defaults to the
@@ -65,5 +65,20 @@ class NodeProbe(Probe):
 
         Returns:
             The reading.
+        """
+        raise NotImplementedError
+
+
+@PublicAPI(stability="alpha")
+class ControllerProbe(Probe):
+    """A probe that runs in the controller process."""
+
+    @abc.abstractmethod
+    def poll(self) -> Dict[Any, ProbeResult]:
+        """Take one reading of each node, worker or other item the probe
+        observes.
+
+        Returns:
+            ``{node ID, world rank or key: ProbeResult}``.
         """
         raise NotImplementedError
