@@ -17,9 +17,7 @@ from ray.llm._internal.serve.core.ingress import (
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.serve._private.constants import (
-    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
-    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve.exceptions import DeploymentUnavailableError, RayServeException
@@ -130,18 +128,9 @@ def _assert_direct(response):
     assert response.headers[SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER] == "1"
 
 
-async def _route(router, method, path, body=b"", headers=None):
-    headers = {
-        **(headers or {}),
-        SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: path,
-        SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER: method,
-    }
-    return await router.route(_FakeRequest(body, headers))
-
-
 async def _chat(router, body, headers=None):
     raw = body if isinstance(body, bytes) else json.dumps(body).encode()
-    return await _route(router, "POST", "/v1/chat/completions", raw, headers)
+    return await router.chat(_FakeRequest(raw, headers))
 
 
 class TestModels:
@@ -149,7 +138,7 @@ class TestModels:
     async def test_models_are_static_direct_response(self):
         router, handles, patcher = _new_router()
         try:
-            response = await _route(router, "GET", "/v1/models")
+            response = await router.models()
 
             assert response.status_code == 200
             _assert_direct(response)
@@ -175,7 +164,7 @@ class TestModels:
     async def test_model_data(self, path):
         router, handles, patcher = _new_router()
         try:
-            response = await _route(router, "GET", f"/v1/models/{path}")
+            response = await router.model_data(path)
 
             assert response.status_code == 200
             _assert_direct(response)
@@ -188,7 +177,7 @@ class TestModels:
     async def test_model_data_unknown(self):
         router, _, patcher = _new_router()
         try:
-            response = await _route(router, "GET", "/v1/models/nope")
+            response = await router.model_data("nope")
 
             assert response.status_code == 404
             _assert_direct(response)
@@ -281,9 +270,7 @@ class TestChatDecision:
             chat_task = asyncio.create_task(_chat(router, {"model": "model-a"}))
             assert await asyncio.to_thread(lookup_started.wait, 1)
 
-            response = await asyncio.wait_for(
-                _route(router, "GET", "/v1/models"), timeout=0.1
-            )
+            response = await asyncio.wait_for(router.models(), timeout=0.1)
             assert response.status_code == 200
 
             release_lookup.set()

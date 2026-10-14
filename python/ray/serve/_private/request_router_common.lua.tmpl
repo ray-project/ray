@@ -99,7 +99,7 @@ local function json_string_at(json_body, start)
     while i <= #json_body do
         local byte = json_body:byte(i)
         if byte == 34 then
-            return table.concat(parts)
+            return table.concat(parts), i + 1
         elseif byte == 92 then
             local escape = json_body:sub(i + 1, i + 1)
             local decoded = JSON_ESCAPES[escape]
@@ -144,12 +144,54 @@ local function json_string_at(json_body, start)
     return nil
 end
 
+local function skip_json_whitespace(json_body, start)
+    local i = start
+    while i <= #json_body and json_body:sub(i, i):match("%s") do
+        i = i + 1
+    end
+    return i
+end
+
 local function json_string_field(json_body, name)
-    local start = json_body:match('"' .. name .. '"%s*:%s*()')
-    if not start then
+    local i = skip_json_whitespace(json_body, 1)
+    if json_body:sub(i, i) ~= "{" then
         return nil
     end
-    return json_string_at(json_body, start)
+    local closing = {["{"] = "}", ["["] = "]"}
+    local stack = {"}"}
+    i = i + 1
+    while i <= #json_body do
+        local char = json_body:sub(i, i)
+        if char == '"' then
+            local value, next_i = json_string_at(json_body, i)
+            if not next_i then
+                return nil
+            end
+            if #stack == 1 and stack[1] == "}" then
+                local colon = skip_json_whitespace(json_body, next_i)
+                if value == name and json_body:sub(colon, colon) == ":" then
+                    local start = skip_json_whitespace(json_body, colon + 1)
+                    return json_string_at(json_body, start)
+                end
+            end
+            i = next_i
+        elseif char == "{" or char == "[" then
+            stack[#stack + 1] = closing[char]
+            i = i + 1
+        elseif char == "}" or char == "]" then
+            if char ~= stack[#stack] then
+                return nil
+            end
+            stack[#stack] = nil
+            if #stack == 0 then
+                return nil
+            end
+            i = i + 1
+        else
+            i = i + 1
+        end
+    end
+    return nil
 end
 
 local function truncated_full_length(txn, body)

@@ -460,7 +460,7 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
     assert call["headers"][SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER] == "POST"
     assert (
         call["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/v1/chat/completions"
+        == "/v1/chat/completions?x=1"
     )
 
 
@@ -485,7 +485,7 @@ async def test_get_dispatches_to_selected_application(router_cluster):
     )
     assert (
         router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/v1/models"
+        == "/v1/models?limit=2"
     )
 
 
@@ -513,7 +513,7 @@ async def test_head_uses_post_for_decision_and_head_for_replica(router_cluster):
 
 @pytest.mark.asyncio
 async def test_dispatches_escaped_decision_values():
-    app = 'mod\u00e8le "a"\\\U0001f680'
+    app = 'mod\u00e8le "replica_id": "x\\\U0001f680'
     async with _router_cluster(extra_app=app) as (url, router, _):
         router.decide(app, "extra")
 
