@@ -544,6 +544,7 @@ class _SynchronizerSlot:
         default_factory=threading.Lock, init=False, repr=False
     )
     _in_flight: int = field(default=0, init=False, repr=False)
+    _on_close_callbacks: List[Any] = field(default_factory=list, init=False, repr=False)
 
     @property
     def is_closed(self) -> bool:
@@ -559,8 +560,9 @@ class _SynchronizerSlot:
             return True
 
     def finish_in_flight(self) -> None:
-        """Completes an in-flight transfer and runs deferred C++ teardown if closed."""
+        """Completes an in-flight transfer and runs deferred C++ teardown and unregistration if closed."""
         ws_to_close = None
+        callbacks: List[Any] = []
         with self._lock:
             if self._in_flight > 0:
                 self._in_flight -= 1
@@ -568,8 +570,15 @@ class _SynchronizerSlot:
                 ws_to_close = self.ws
                 self.ws = None
                 self.bound_tensors = []
+                callbacks = list(self._on_close_callbacks)
+                self._on_close_callbacks.clear()
         if ws_to_close is not None:
             self._teardown_ws(ws_to_close)
+        for cb in callbacks:
+            try:
+                cb()
+            except Exception:
+                pass
 
     @staticmethod
     def _teardown_ws(ws: Any) -> None:
@@ -597,26 +606,37 @@ class _SynchronizerSlot:
             return False
         return True
 
-    def close(self) -> None:
+    def close(self, on_deferred_close: Optional[Any] = None) -> bool:
         """Idempotently unbinds device tensors and shuts down the C++ WeightSynchronizer.
 
         If a C++ transfer (`_in_flight > 0`) is currently active on this slot, marks the
-        slot closed and defers `ws.unbind_weights()` / `ws.shutdown()` (as well as
-        releasing `bound_tensors`) until `finish_in_flight()` runs after
-        `wait_for_transfer_completion` returns, so `UnbindWeights()` never races with an
-        in-flight C++ D2H/H2D/push.
+        slot closed and defers `ws.unbind_weights()`, `ws.shutdown()`, releasing
+        `bound_tensors`, and `on_deferred_close` (e.g. WSM unregistration) until
+        `finish_in_flight()` runs after `wait_for_transfer_completion` returns, so
+        `UnbindWeights()` and unit unregistration never race with an in-flight transfer.
+
+        Returns True if the slot is already quiescent (`_in_flight == 0`) so immediate
+        unregistration can proceed, or False if teardown was deferred to `finish_in_flight()`.
         """
         ws_to_close = None
         with self._lock:
             if self._closed and (self.ws is None or self._in_flight > 0):
-                return
+                if self._in_flight > 0 and on_deferred_close is not None:
+                    self._on_close_callbacks.append(on_deferred_close)
+                return self._in_flight == 0
             self._closed = True
             if self._in_flight == 0:
                 ws_to_close = self.ws
                 self.ws = None
                 self.bound_tensors = []
+                quiescent = True
+            else:
+                if on_deferred_close is not None:
+                    self._on_close_callbacks.append(on_deferred_close)
+                quiescent = False
         if ws_to_close is not None:
             self._teardown_ws(ws_to_close)
+        return quiescent
 
 
 def _get_local_sender_registry() -> Tuple[
@@ -952,6 +972,28 @@ class TpuSyncTensorTransport(TensorTransportManager):
                     with self._lock:
                         self._coordinator_actor = None
 
+    def _close_and_unregister_slots(
+        self, slots: List[_SynchronizerSlot], from_finalizer: bool = False
+    ) -> None:
+        """Closes slots and unregisters quiescent ones immediately, deferring in-flight slots."""
+        if not slots:
+            self._unregister_slots([], from_finalizer=from_finalizer)
+            return
+        immediate_unregister: List[_SynchronizerSlot] = []
+        self_weak = weakref.ref(self)
+        for s in slots:
+
+            def _deferred_unreg(slot_to_unreg: _SynchronizerSlot = s) -> None:
+                mgr = self_weak()
+                if mgr is not None:
+                    mgr._unregister_slots(
+                        [slot_to_unreg], from_finalizer=from_finalizer
+                    )
+
+            if s.close(on_deferred_close=_deferred_unreg):
+                immediate_unregister.append(s)
+        self._unregister_slots(immediate_unregister, from_finalizer=from_finalizer)
+
     def clear_cached_synchronizers(
         self, include_active: bool = False, from_finalizer: bool = False
     ) -> None:
@@ -985,9 +1027,7 @@ class TpuSyncTensorTransport(TensorTransportManager):
                             (s.unit.job_name, s.unit.job_replica_id, s.unit.data_name),
                             None,
                         )
-        for slot in slots_to_close:
-            slot.close()
-        self._unregister_slots(slots_to_close, from_finalizer=from_finalizer)
+        self._close_and_unregister_slots(slots_to_close, from_finalizer=from_finalizer)
 
     def _acquire_slot(
         self,
@@ -1110,9 +1150,7 @@ class TpuSyncTensorTransport(TensorTransportManager):
             else:
                 evicted_slots.append(slot)
 
-        for s in evicted_slots:
-            s.close()
-        self._unregister_slots(evicted_slots, from_finalizer=from_finalizer)
+        self._close_and_unregister_slots(evicted_slots, from_finalizer=from_finalizer)
 
     def extract_tensor_transport_metadata(
         self,
@@ -1347,10 +1385,20 @@ class TpuSyncTensorTransport(TensorTransportManager):
         self_weak = weakref.ref(self)
         done_event = fetch_request.done_or_aborted_event
         dst_slot.mark_in_flight()
+        reg_lock, reg_map = _get_local_sender_registry()
+        with reg_lock:
+            local_src_slot = reg_map.get(
+                (
+                    src_unit.job_name,
+                    src_unit.job_replica_id,
+                    src_unit.data_name,
+                )
+            )
+        src_in_flight = (
+            local_src_slot.mark_in_flight() if local_src_slot is not None else False
+        )
 
         def _run_transfer() -> None:
-            local_src_slot: Optional[_SynchronizerSlot] = None
-            src_in_flight = False
             try:
                 if done_event.is_set() or dst_slot.is_closed:
                     return
@@ -1362,30 +1410,14 @@ class TpuSyncTensorTransport(TensorTransportManager):
                     return
                 wsm_client = transport._get_wsm_client(manager_addr)
                 del transport
-                reg_lock, reg_map = _get_local_sender_registry()
-                with reg_lock:
-                    local_src_slot = reg_map.get(
-                        (
-                            src_unit.job_name,
-                            src_unit.job_replica_id,
-                            src_unit.data_name,
-                        )
-                    )
-                if local_src_slot is not None:
-                    src_in_flight = local_src_slot.mark_in_flight()
-                try:
-                    wsm_client.coordinate_transfer(
-                        src_units=[src_unit],
-                        dst_units=[dst_unit],
-                        use_block_chunks=True,
-                        is_sender=True,
-                        uuid=transfer_uuid,
-                        dst_mem_type=RaidenMemoryType.DRAM,
-                    )
-                finally:
-                    if src_in_flight and local_src_slot is not None:
-                        local_src_slot.finish_in_flight()
-                        src_in_flight = False
+                wsm_client.coordinate_transfer(
+                    src_units=[src_unit],
+                    dst_units=[dst_unit],
+                    use_block_chunks=True,
+                    is_sender=True,
+                    uuid=transfer_uuid,
+                    dst_mem_type=RaidenMemoryType.DRAM,
+                )
                 # Once coordinate_transfer is called, always wait for C++ transfer
                 # completion before finish_in_flight() can run unbind_weights()/shutdown().
                 dst_ws.wait_for_transfer_completion(transfer_uuid)
@@ -1560,6 +1592,4 @@ class TpuSyncTensorTransport(TensorTransportManager):
                     slots_to_close.append(req.receiver_slot)
                 req.done_or_aborted_event.set()
 
-        for s in slots_to_close:
-            s.close()
-        self._unregister_slots(slots_to_close)
+        self._close_and_unregister_slots(slots_to_close)

@@ -990,16 +990,16 @@ def test_abort_and_close_defer_teardown_until_wait_for_transfer_completion_retur
 
         # Even though abort_transport and wait_fetch_complete have both completed and
         # marked recv_slot closed, wait_for_transfer_completion is still in flight, so
-        # unbind_weights() and shutdown() MUST NOT have been called yet!
+        # unbind_weights(), shutdown(), and WSM unregistration MUST NOT have been called yet!
         assert recv_slot.is_closed is True
         assert recv_slot._in_flight == 1
         assert recv_ws.unbind_weights_calls == 0
         assert recv_ws.shutdown_calls == 0
         assert recv_ws.is_shutdown is False
         assert recv_ws.device_tensors is not None
-        assert len(fake_tpu_env.unregistered_units) == unreg_before + 1
+        assert len(fake_tpu_env.unregistered_units) == unreg_before
 
-        # Now let wait_for_transfer_completion return and verify deferred teardown runs once.
+        # Now let wait_for_transfer_completion return and verify deferred teardown and unregistration run once.
         release_wait_ev.set()
         deadline = time.monotonic() + 5.0
         while recv_slot._in_flight > 0 and time.monotonic() < deadline:
@@ -1009,6 +1009,7 @@ def test_abort_and_close_defer_teardown_until_wait_for_transfer_completion_retur
         assert recv_ws.shutdown_calls == 1
         assert recv_ws.is_shutdown is True
         assert recv_ws.device_tensors is None
+        assert len(fake_tpu_env.unregistered_units) == unreg_before + 1
     finally:
         release_wait_ev.set()
         fake_tpu_env.wait_completion_entered_event = None
@@ -1016,13 +1017,15 @@ def test_abort_and_close_defer_teardown_until_wait_for_transfer_completion_retur
 
 
 def test_sender_in_flight_guard_and_unbind_failure_on_garbage_collect(fake_tpu_env):
-    """Verifies garbage_collect on an in-flight or failing-unbind sender slot never calls unbind_weights() while in flight and never reuses/rebinds the slot (R4-H4)."""
+    """Verifies garbage_collect on an in-flight or failing-unbind sender slot never calls unbind_weights() or unregisters WSM unit while in flight and never reuses/rebinds the slot (R4-H4)."""
     sender = TpuSyncTensorTransport()
     receiver = TpuSyncTensorTransport()
     comm_meta = sender.get_communicator_metadata(None, None)
 
-    # Case 1: Real in-flight transfer via receiver.fetch_multiple_tensors blocked inside
-    # coordinate_transfer when sender.garbage_collect runs.
+    # Case 1: Real in-flight transfer via receiver.fetch_multiple_tensors:
+    # sender slot is marked in-flight synchronously in fetch_multiple_tensors (before worker
+    # starts) and stays in-flight across both coordinate_transfer and wait_for_transfer_completion,
+    # deferring both C++ teardown and WSM unregistration when garbage_collect runs early.
     t1 = _FakeTensor(shape=(32, 32), device="tpu:0", value=12.0)
     meta1 = sender.extract_tensor_transport_metadata("obj_src_inflight", [t1])
     src_slot = sender._active_senders["obj_src_inflight"]
@@ -1030,21 +1033,30 @@ def test_sender_in_flight_guard_and_unbind_failure_on_garbage_collect(fake_tpu_e
 
     entered_coord = threading.Event()
     release_coord = threading.Event()
+    entered_wait = threading.Event()
+    release_wait = threading.Event()
     fake_tpu_env.coordinate_entered_events[meta1.src_data_name] = entered_coord
     fake_tpu_env.block_obj_ids[meta1.src_data_name] = release_coord
+    fake_tpu_env.wait_completion_entered_event = entered_wait
+    fake_tpu_env.wait_completion_release_event = release_wait
 
     try:
+        unreg_before = len(fake_tpu_env.unregistered_units)
         req = receiver.fetch_multiple_tensors("obj_src_inflight", meta1, comm_meta)
+        # Marked in-flight synchronously before fetch_multiple_tensors returns!
+        assert src_slot._in_flight == 1
         assert entered_coord.wait(timeout=5.0)
         assert src_slot._in_flight == 1
 
         # Run garbage_collect on sender while coordinate_transfer is still in flight!
         sender.garbage_collect("obj_src_inflight", meta1, [t1])
-        # unbind_weights() and shutdown() must NOT be called while _in_flight > 0,
+        # unbind_weights(), shutdown(), and WSM unregistration must NOT run while _in_flight > 0,
         # and src_slot must be closed and NOT placed into _free_slots.
         assert src_ws.unbind_weights_calls == 0
         assert src_ws.shutdown_calls == 0
         assert src_slot.is_closed is True
+        assert src_slot._unregistered is False
+        assert len(fake_tpu_env.unregistered_units) == unreg_before
         assert len(sender._free_slots) == 0
 
         # Creating another object with the same shape while the push is in flight must
@@ -1055,19 +1067,34 @@ def test_sender_in_flight_guard_and_unbind_failure_on_garbage_collect(fake_tpu_e
         assert meta2.src_job_name != meta1.src_job_name
         assert src_ws.bind_weights_calls == 0
 
-        # Finish the in-flight transfer: deferred unbind_weights() + shutdown() now run on src_ws.
+        # Release coordinate_transfer and verify src_slot STILL stays _in_flight == 1 while
+        # blocked in dst_ws.wait_for_transfer_completion(transfer_uuid)!
         release_coord.set()
+        assert entered_wait.wait(timeout=5.0)
+        assert src_slot._in_flight == 1
+        assert src_ws.unbind_weights_calls == 0
+        assert src_ws.shutdown_calls == 0
+        assert src_slot._unregistered is False
+
+        # Finish wait_for_transfer_completion: deferred unbind_weights(), shutdown(), and WSM
+        # unregistration now run on src_slot.
+        release_wait.set()
         res = receiver.wait_fetch_complete(req, timeout=5.0)
         assert res[0].value == 12.0
         assert src_slot._in_flight == 0
         assert src_ws.unbind_weights_calls == 1
         assert src_ws.shutdown_calls == 1
         assert src_ws.is_shutdown is True
+        assert src_slot._unregistered is True
+        assert len(fake_tpu_env.unregistered_units) == unreg_before + 1
         sender.garbage_collect("obj_src_concurrent", meta2, [t2])
     finally:
         release_coord.set()
+        release_wait.set()
         fake_tpu_env.coordinate_entered_events.clear()
         fake_tpu_env.block_obj_ids.clear()
+        fake_tpu_env.wait_completion_entered_event = None
+        fake_tpu_env.wait_completion_release_event = None
 
     # Case 2: Duplicate obj_id in extract_tensor_transport_metadata retires the old slot
     # via _retire_slot rather than calling bind_weights in-place under lock.
