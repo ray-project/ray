@@ -318,14 +318,29 @@ def _register_thread_lock_serializer(serialization_context):
 
 
 def _register_pydantic_mock_serializer(serialization_context):
-    """Restore pydantic's deferred-build placeholder from its slots on load.
+    """Restore pydantic's MockValSer (an unbuilt model's placeholder) from its slots.
 
     Its __getattr__ reads a slot that is still unset mid-unpickle, so unpickling recursed.
     """
     try:
+        from pydantic import BaseModel
         from pydantic._internal._mock_val_ser import MockValSer
     except ImportError:
         return
+
+    # Nested so cloudpickle ships it by value and loading never imports ray.serve.
+    def restore(mock, state):
+        for name, value in state.items():
+            object.__setattr__(mock, name, value)
+        # cloudpickle restores a by-value model onto a built, field-less skeleton and
+        # omits its `__pydantic_complete__ = False` (BaseModel's object); undo both.
+        for cell in getattr(state["_attempt_rebuild"], "__closure__", None) or ():
+            owner = cell.cell_contents
+            if isinstance(owner, type) and issubclass(owner, BaseModel):
+                owner.__pydantic_complete__ = False
+                if "__pydantic_core_schema__" in owner.__dict__:
+                    del owner.__pydantic_core_schema__
+
     serialization_context._register_cloudpickle_reducer(
         MockValSer,
         lambda mock: (
@@ -334,22 +349,9 @@ def _register_pydantic_mock_serializer(serialization_context):
             {name: getattr(mock, name) for name in MockValSer.__slots__},
             None,
             None,
-            _restore_pydantic_mock,
+            restore,
         ),
     )
-
-
-def _restore_pydantic_mock(mock, state):
-    from pydantic import BaseModel
-
-    for name, value in state.items():
-        object.__setattr__(mock, name, value)
-    # cloudpickle leaves out a by-value model's `__pydantic_complete__ = False` (it is
-    # BaseModel's own object), so the class restored with this mock claims to be built.
-    for cell in getattr(state["_attempt_rebuild"], "__closure__", None) or ():
-        owner = cell.cell_contents
-        if isinstance(owner, type) and issubclass(owner, BaseModel):
-            owner.__pydantic_complete__ = False
 
 
 def ensure_serialization_context():
