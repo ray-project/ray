@@ -119,6 +119,10 @@ constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node-id";
 // The accelerator type associated with the Ray node (e.g., "A100").
 constexpr char kLabelKeyNodeAcceleratorType[] = RAY_LABEL_KEY_PREFIX "accelerator-type";
 
+// Bytes of VRAM on each GPU of this Ray node.
+constexpr char kLabelKeyGpuMemoryPerDevice[] =
+    RAY_LABEL_KEY_PREFIX "gpu-memory-per-device";
+
 // The market type of the cloud instance this Ray node runs on (e.g., "on-demand" or
 // "spot").
 constexpr char kLabelKeyNodeMarketType[] = RAY_LABEL_KEY_PREFIX "market-type";

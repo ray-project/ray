@@ -184,7 +184,8 @@ scheduling::NodeID HybridSchedulingPolicy::Schedule(
     const ResourceRequest &resource_request, SchedulingOptions options) {
   RAY_CHECK(options.scheduling_type_ == SchedulingType::HYBRID)
       << "HybridPolicy policy requires type = HYBRID";
-  if (!options.avoid_gpu_nodes_ || resource_request.Has(ResourceID::GPU())) {
+  if (!options.avoid_gpu_nodes_ || resource_request.Has(ResourceID::GPU()) ||
+      resource_request.Has(ResourceID::GPUMemory())) {
     return ScheduleImpl(resource_request,
                         options.spread_threshold_,
                         options.avoid_local_node_,

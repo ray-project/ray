@@ -562,6 +562,9 @@ bool LocalLeaseManager::PoppedWorkerHandler(
     const auto &required_resource =
         lease.GetLeaseSpecification().GetRequiredResources().GetResourceMap();
     for (auto &entry : required_resource) {
+      if (entry.first == kGPUMemory_ResourceLabel) {
+        continue;
+      }
       // This is to make sure PG resource is not deleted during popping worker
       // unless the lease request is cancelled.
       RAY_CHECK(cluster_resource_scheduler_.GetLocalResourceManager().ResourcesExist(
