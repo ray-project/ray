@@ -268,6 +268,27 @@ def test_pull_pins_image_until_release(tmp_path, monkeypatch):
     assert not os.path.exists(extracted_dir)
 
 
+def test_image_cache_min_free_bytes_default_and_env(tmp_path, monkeypatch):
+    import shutil
+
+    from ray.experimental.sandbox._internal.image_utils import (
+        image_cache_min_free_bytes,
+    )
+
+    monkeypatch.delenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", raising=False)
+    tenth = shutil.disk_usage(str(tmp_path)).total // 10
+    assert image_cache_min_free_bytes(str(tmp_path)) == tenth
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "12345")
+    assert image_cache_min_free_bytes(str(tmp_path)) == 12345
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "0")
+    assert image_cache_min_free_bytes(str(tmp_path)) == 0
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "5G")
+    assert image_cache_min_free_bytes(str(tmp_path)) == tenth
+
+
 def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
     import shutil
 
