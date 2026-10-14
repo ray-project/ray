@@ -109,6 +109,10 @@ class NodeInfoGcsServiceHandler {
       GetAllNodeAddressAndLivenessRequest request,
       GetAllNodeAddressAndLivenessReply *reply,
       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateNodeLabels(UpdateNodeLabelsRequest request,
+                                      UpdateNodeLabelsReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 class NodeResourceInfoGcsServiceHandler {
