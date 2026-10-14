@@ -111,11 +111,13 @@ def _modify_context_impl(
     if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in context.env_vars:
         if os.environ.get("RAY_AUTH_TOKEN"):
             token = os.environ["RAY_AUTH_TOKEN"]
-            # ray_tmp_dir can be shared by clusters with different tokens.
+            # Not under ray_tmp_dir: containers mount it read-write and could
+            # swap the file for a symlink before the next worker mounts it.
+            # The digest keeps clusters with different tokens apart.
+            token_dir = _get_default_token_path().parent
+            token_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             token_digest = hashlib.sha256(token.encode()).hexdigest()[:16]
-            token_path = os.path.join(
-                ray_tmp_dir, f"image_uri_auth_token_{token_digest}"
-            )
+            token_path = str(token_dir / f"image_uri_auth_token_{token_digest}")
             _write_owner_only_file(token_path, token)
         else:
             token_path = os.path.abspath(
@@ -152,8 +154,7 @@ def _modify_context_impl(
 def _write_owner_only_file(path: str, content: str) -> None:
     # Write then rename, so a worker starting concurrently never reads a
     # partially written token. mkstemp creates a fresh 0600 file with
-    # O_EXCL, so a symlink planted in the directory, which containers mount
-    # read-write, can't redirect the write.
+    # O_EXCL, so a symlink planted in the directory can't redirect the write.
     fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, "w") as f:

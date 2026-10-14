@@ -99,9 +99,11 @@ def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
     auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
     reset_auth_token_state()
 
-    command = _container_command(ray_tmp_dir=str(tmp_path))
+    ray_tmp_dir = tmp_path / "ray"
+    command = _container_command(ray_tmp_dir=str(ray_tmp_dir))
 
-    (token_path,) = tmp_path.glob("image_uri_auth_token_*")
+    # Containers mount ray_tmp_dir read-write, so the token must live elsewhere.
+    (token_path,) = (tmp_path / ".ray").glob("image_uri_auth_token_*")
     assert token_path.read_text() == TOKEN
     assert stat.S_IMODE(token_path.stat().st_mode) == 0o600
     assert f"-v {token_path}:{token_path}:ro" in command
