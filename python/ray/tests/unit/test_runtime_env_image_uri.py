@@ -9,7 +9,10 @@ import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.image_uri import _modify_context_impl
+from ray._private.runtime_env.image_uri import (
+    _modify_context_impl,
+    _write_owner_only_file,
+)
 from ray.core.generated.common_pb2 import Language
 
 TOKEN = "secret-token-value"
@@ -111,6 +114,17 @@ def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
     assert f"-v {token_path}:{token_path}:ro" in command
     assert f"--env RAY_AUTH_TOKEN_PATH={token_path}" in command
     assert TOKEN not in command
+
+
+def test_failed_token_write_leaves_no_temp_file(tmp_path):
+    def fail_replace(src, dst):
+        os.unlink(src)
+        raise PermissionError("replace failed")
+
+    with mock.patch.object(os, "replace", fail_replace):
+        with pytest.raises(PermissionError, match="replace failed"):
+            _write_owner_only_file(str(tmp_path / "token"), TOKEN)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_no_mount_when_auth_disabled(auth_env, tmp_path):

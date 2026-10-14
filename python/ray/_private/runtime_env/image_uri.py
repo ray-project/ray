@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import hashlib
 import logging
 import os
@@ -161,7 +162,8 @@ def _write_owner_only_file(path: str, content: str) -> None:
             f.write(content)
         os.replace(tmp_path, path)
     except BaseException:
-        os.unlink(tmp_path)
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
         raise
 
 
