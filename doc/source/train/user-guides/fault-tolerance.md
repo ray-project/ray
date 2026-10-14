@@ -9,7 +9,7 @@ myst:
 # Handle failures and node preemption
 
 :::{important}
-This guide covers fault tolerance for Ray Train V2, which is available starting in Ray 2.43 when you set the environment variable `RAY_TRAIN_V2_ENABLED=1`. This guide assumes that you've set this environment variable.
+This guide covers fault tolerance for Ray Train V2, which is the default starting in Ray 2.51. In Ray 2.43 through 2.50, enable Ray Train V2 by setting the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 
 For information about the deprecation and migration, see {ref}`Fault tolerance API deprecations <train-fault-tolerance-deprecation-info>`.
 :::
@@ -293,7 +293,7 @@ It also made configuration confusing. The old API loaded some configurations fro
 
 To migrate from the old `<Framework>Trainer.restore` API to the new pattern, do the following:
 
-1. Enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
+1. If you use Ray 2.50 or earlier, enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 1. Replace `<Framework>Trainer.restore` with the regular `<Framework>Trainer` constructor, and pass the same `storage_path` and `name` as the previous run.
 
 ### `<Framework>Trainer(restore_from_checkpoint)` API deprecation
