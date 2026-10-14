@@ -49,6 +49,16 @@ Read the Docs builds the site on your PR and reports the `docs/readthedocs.com:a
 
 The preview build skips when your PR changes nothing under `doc/` and nothing in `.readthedocs.yaml`. Files under `doc/.claude/` don't count, because they never participate in the Sphinx build. This check isn't a required merge gate, but a red render gate almost always means the published page is broken.
 
+A PR that changes only Python source still changes the API reference when it edits docstrings. To build the preview for such a PR, start a line with `@rtd-build` in the message of any commit on the PR:
+
+```text
+Clarify the batch_size docstring in map_batches
+
+@rtd-build
+```
+
+The guard reads every commit on the PR, so the line takes effect on the push that adds it and on every push after. Ray squash-merges with the PR title and description, so the line doesn't reach `master`.
+
 ### The API surface checks
 
 Two Buildkite steps cross-check the documented API surface against the code:
