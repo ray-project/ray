@@ -498,13 +498,14 @@ async def test_router_prefix_is_replaced(router_cluster):
     url, router, _ = router_cluster
     router.decide("model-a", "a1")
 
-    resp = requests.post(f"{url}/llm/v1/chat/completions", json={}, timeout=10)
+    resp = requests.post(f"{url}/llm/v1/chat/completions?x=1", json={}, timeout=10)
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["path"] == "/v1/model-a/v1/chat/completions"
+    assert resp.json()["query"] == "x=1"
     assert (
         router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/llm/v1/chat/completions"
+        == "/v1/chat/completions?x=1"
     )
 
     # Paths outside the router's prefix are not routed by it.
@@ -520,6 +521,36 @@ async def test_router_prefix_is_replaced(router_cluster):
         == "c1"
     )
     assert len(router.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_forwards_cors_preflight_headers(router_cluster):
+    url, router, _ = router_cluster
+    router.response = (200, "OK")
+    router.response_headers = {
+        SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1",
+        "Access-Control-Allow-Origin": "https://example.com",
+    }
+
+    resp = requests.options(
+        f"{url}/v1/chat/completions",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+        timeout=10,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.headers["access-control-allow-origin"] == "https://example.com"
+    call_headers = router.calls[-1]["headers"]
+    assert call_headers["origin"] == "https://example.com"
+    assert call_headers["access-control-request-method"] == "POST"
+    assert (
+        call_headers["access-control-request-headers"]
+        == "authorization,content-type"
+    )
 
 
 @pytest.mark.asyncio
