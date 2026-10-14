@@ -15,6 +15,7 @@ import pytest_asyncio
 import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
+from starlette.responses import StreamingResponse
 
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
@@ -266,6 +267,7 @@ class FakeRouter:
         self.calls: List[Dict] = []
         self.response: Tuple[int, str] = (500, "unset")
         self.response_headers: Dict[str, str] = {}
+        self.stream_response = False
         self.delay_s = 0.0
         app = FastAPI()
 
@@ -286,6 +288,14 @@ class FakeRouter:
             )
             await asyncio.sleep(self.delay_s)
             status, body = self.response
+            if self.stream_response:
+                midpoint = len(body) // 2
+                return StreamingResponse(
+                    iter([body[:midpoint], body[midpoint:]]),
+                    status_code=status,
+                    media_type="application/json",
+                    headers=self.response_headers,
+                )
             return Response(
                 body,
                 status_code=status,
@@ -545,6 +555,15 @@ async def test_returns_marked_responses_directly(router_cluster):
     assert SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER not in resp.headers
     assert resp.json() == body
 
+    router.stream_response = True
+    resp = requests.get(f"{url}/v1/models", timeout=10)
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/json"
+    assert SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER not in resp.headers
+    assert resp.json() == body
+
+    router.stream_response = False
     router.response = (307, "")
     router.response_headers = {
         SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER: "1",
