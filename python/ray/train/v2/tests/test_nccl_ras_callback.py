@@ -15,6 +15,7 @@ import pytest
 from ray.train.v2._internal.callbacks import nccl_ras
 from ray.train.v2._internal.callbacks.nccl_ras import (
     DiagnosticResult,
+    NCCLHangDetectorState,
     NCCLRASCallback,
     RASPoller,
     RASQueryError,
@@ -36,10 +37,6 @@ from ray.train.v2._internal.constants import (
     TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
 from ray.train.v2._internal.metrics import base as metrics_base
-from ray.train.v2._internal.metrics.nccl_hang_detector import (
-    NCCLHangDetectorMetrics,
-    NCCLHangDetectorState,
-)
 from ray.train.v2.api.exceptions import NCCLHangError
 from ray.train.v2.tests.util import create_dummy_run_context
 
@@ -1772,9 +1769,11 @@ def mock_gauge(monkeypatch):
 
 def recorded_detector_metrics(callback):
     """The detector's ``(state, stall duration)`` metrics as last recorded."""
+    state_metric = callback._metrics[nccl_ras.GRAFANA_STATE]
+    (state,) = [s for s in NCCLHangDetectorState if state_metric.get_value(s)]
     return (
-        callback._metrics[NCCLHangDetectorMetrics.STATE].get_value(),
-        callback._metrics[NCCLHangDetectorMetrics.STALL_DURATION_S].get_value(),
+        state,
+        callback._metrics[nccl_ras.GRAFANA_STALL_DURATION_S].get_value(),
     )
 
 
@@ -1840,14 +1839,16 @@ def test_detector_metrics_tagged_with_the_run(monkeypatch, mock_gauge):
     callback.after_controller_start(run_context)
     callback.after_worker_group_poll_status(MagicMock())
 
-    expected_tags = frozenset(
-        {
-            "ray_train_run_name": run_context.get_run_config().name,
-            "ray_train_run_id": run_context.run_id,
-        }.items()
-    )
-    for metric in callback._metrics.values():
-        assert metric._gauge.values == {expected_tags: 0.0}
+    base_tags = {
+        "ray_train_run_name": run_context.get_run_config().name,
+        "ray_train_run_id": run_context.run_id,
+    }
+    stall_metric = callback._metrics[nccl_ras.GRAFANA_STALL_DURATION_S]
+    assert stall_metric._gauge.values == {frozenset(base_tags.items()): 0.0}
+    # The state is an enum metric: one series per state, tagged with its name.
+    state_tags = {**base_tags, nccl_ras.GRAFANA_STATE_TAG_KEY: "HEALTHY"}
+    state_metric = callback._metrics[nccl_ras.GRAFANA_STATE]
+    assert state_metric._gauge.values == {frozenset(state_tags.items()): 1}
 
 
 def test_detector_metrics_skipped_before_controller_start(monkeypatch):

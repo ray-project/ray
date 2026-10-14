@@ -30,7 +30,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
@@ -71,6 +71,7 @@ from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
 from ray.train.v2._internal.metrics.base import (
     RUN_ID_TAG_KEY,
     RUN_NAME_TAG_KEY,
+    EnumMetric,
     Metric,
     ValueMetric,
 )
@@ -102,17 +103,18 @@ _UNSAFE_FILENAME_CHARS = re.compile(r"[^0-9A-Za-z._-]")
 _FIRST_SUSPICION_AFTER_S: float = 60.0
 _PERIODIC_WARN_EVERY_S: float = 120.0
 
-# Grafana Dashbaord name
+# Grafana dashboard metric names
 GRAFANA_STATE = "train_nccl_hang_detector_state"
 GRAFANA_STALL_DURATION_S = "train_nccl_hang_stall_duration_s"
+GRAFANA_STATE_TAG_KEY = "ray_train_nccl_hang_detector_state"
 
 
-class NCCLHangDetectorState(IntEnum):
-    """What the NCCL hang detector believes about the run, as a gauge value."""
+class NCCLHangDetectorState(Enum):
+    """What the NCCL hang detector believes about the run."""
 
-    HEALTHY = 0
-    SUSPECTED = 1
-    CONFIRMED = 2
+    HEALTHY = "HEALTHY"
+    SUSPECTED = "SUSPECTED"
+    CONFIRMED = "CONFIRMED"
 
 
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
@@ -807,13 +809,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             RUN_ID_TAG_KEY: train_run_context.run_id,
         }
         self._metrics = {
-            GRAFANA_STATE: ValueMetric(
+            GRAFANA_STATE: EnumMetric[NCCLHangDetectorState](
                 name=GRAFANA_STATE,
-                description=(
-                    "State of the NCCL hang detector: 0 for healthy, 1 for a "
-                    "suspected hang and 2 for a confirmed hang."
-                ),
+                description="Current state of the NCCL hang detector.",
                 base_tags=base_tags,
+                enum_tag_key=GRAFANA_STATE_TAG_KEY,
             ),
             GRAFANA_STALL_DURATION_S: ValueMetric(
                 name=GRAFANA_STALL_DURATION_S,
@@ -962,11 +962,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         )
 
         if max_streak >= self._confirm_poll_counts:
-            self._metrics[GRAFANA_STATE].record(int(NCCLHangDetectorState.CONFIRMED))
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.CONFIRMED)
         elif max_streak >= max(self._suspicion_polls, 1):
-            self._metrics[GRAFANA_STATE].record(int(NCCLHangDetectorState.SUSPECTED))
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.SUSPECTED)
         else:
-            self._metrics[GRAFANA_STATE].record(int(NCCLHangDetectorState.HEALTHY))
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.HEALTHY)
 
     def log_recovered_comms(self, frozen_counts: Dict[str, int]):
         """Log each previously suspected communicator that is no longer frozen.

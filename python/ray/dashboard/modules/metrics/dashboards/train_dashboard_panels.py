@@ -44,18 +44,14 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
 NCCL_HANG_DETECTOR_STATE_PANEL = Panel(
     id=31,
     title="NCCL Hang Detector State",
-    description="State of the NCCL hang detector for the run's most stalled communicator: 0 = healthy, 1 = hang suspected, 2 = hang confirmed. Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
+    description="State of the NCCL hang detector for the run's most stalled communicator: HEALTHY, SUSPECTED or CONFIRMED. Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
     unit="",
     targets=[
         Target(
-            expr='max(ray_train_nccl_hang_detector_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name)',
-            legend="Run Name: {{ray_train_run_name}}",
+            expr='sum(ray_train_nccl_hang_detector_state{{ray_train_run_name=~"$TrainRunName", ray_train_run_id=~"$TrainRunId", {global_filters}}}) by (ray_train_run_name, ray_train_nccl_hang_detector_state)',
+            legend="Run Name: {{ray_train_run_name}}, Detector State: {{ray_train_nccl_hang_detector_state}}",
         ),
     ],
-    fill=0,
-    stack=False,
-    min_val=0,
-    max_val=2,
 )
 
 NCCL_HANG_STALL_DURATION_PANEL = Panel(
