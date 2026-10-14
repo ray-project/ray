@@ -1305,6 +1305,10 @@ class ServeController:
             )
             return
 
+        # Check before mutating any state: rejects a tracing config change.
+        if config.tracing_config is not None:
+            self.reconfigure_global_tracing_config(config.tracing_config)
+
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
@@ -1324,10 +1328,6 @@ class ServeController:
             self._target_capacity_direction,
         )
         self._target_capacity = config.target_capacity
-
-        # A no-op for the config the controller started with; rejects a change.
-        if config.tracing_config is not None:
-            self.reconfigure_global_tracing_config(config.tracing_config)
 
         for app_config in config.applications:
             # If the application logging config is not set, use the global logging

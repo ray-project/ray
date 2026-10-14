@@ -22,8 +22,9 @@ from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.exceptions import RayTaskError
+from ray.exceptions import ActorDiedError, RayTaskError
 from ray.serve._private.api import serve_start_async
+from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -894,6 +895,96 @@ def test_serve_start_rejects_bad_exporter_import_path(ray_shutdown):
     serve.start(tracing_config=TracingConfig(enabled=False))
     client = _get_global_client()
     assert ray.get(client._controller.get_tracing_config.remote()).enabled is False
+    serve.shutdown()
+
+
+_EXPORTER_SETUP_ERROR = "serve-test-tracing-exporter-setup-failure"
+_RAISING_EXPORTER_PATH = "ray.serve.tests.test_standalone:raising_tracing_exporter"
+
+
+def raising_tracing_exporter():
+    """Importable tracing exporter that fails when tracing is set up."""
+    raise RuntimeError(_EXPORTER_SETUP_ERROR)
+
+
+def test_serve_start_fails_when_proxy_tracing_setup_fails(ray_shutdown):
+    """An exporter that imports but raises fails proxy startup and serve.start.
+
+    The controller's import check passes; the proxy invokes the exporter in
+    setup_tracing, so its creation fails and serve.start's readiness wait raises.
+    """
+    config = TracingConfig(enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH)
+    with pytest.raises(ActorDiedError, match=_EXPORTER_SETUP_ERROR):
+        serve.start(tracing_config=config)
+
+
+def test_replica_tracing_setup_failure_fails_deployment(ray_shutdown):
+    """An exporter that imports but raises fails replica startup.
+
+    Proxies are disabled so the replica is the first to set tracing up. Serve
+    reports replica constructor errors in the deployment status.
+    """
+    config = TracingConfig(enabled=True, exporter_import_path=_RAISING_EXPORTER_PATH)
+    serve.start(proxy_location=ProxyLocation.Disabled, tracing_config=config)
+
+    @serve.deployment(max_constructor_retry_count=1)
+    class Model:
+        def __call__(self):
+            return "ok"
+
+    with pytest.raises(RuntimeError, match="Failed to update the deployments"):
+        serve.run(Model.bind())
+
+    deployment = (
+        serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["Model"]
+    )
+    assert deployment.status == "DEPLOY_FAILED"
+    assert _EXPORTER_SETUP_ERROR in deployment.message
+    serve.shutdown()
+
+
+def test_rejected_tracing_change_does_not_mutate_target_capacity(ray_shutdown):
+    """A deploy rejected for a tracing change leaves controller state unchanged.
+
+    The rejected config would change target capacity, its direction, and the
+    app config, so any partial application of it is detectable.
+    """
+    tracing_config = TracingConfig(enabled=False, sampling_ratio=0.5)
+    serve.start(tracing_config=tracing_config)
+    client = _get_global_client()
+
+    def deploy_config(target_capacity, route_prefix, tracing):
+        return ServeDeploySchema(
+            target_capacity=target_capacity,
+            tracing_config=tracing,
+            applications=[
+                ServeApplicationSchema(
+                    name="app",
+                    route_prefix=route_prefix,
+                    import_path="ray.serve.tests.test_standalone.WaiterNode",
+                )
+            ],
+        )
+
+    # New apps with a target capacity scale UP.
+    client.deploy_apps(deploy_config(50, "/", tracing_config))
+    wait_for_condition(lambda: serve.status().target_capacity == 50)
+    direction = ray.get(client._controller._get_target_capacity_direction.remote())
+    assert direction == TargetCapacityDirection.UP
+    app_configs = ray.get(client._controller.get_app_configs.remote())
+
+    # Lowering target capacity would scale DOWN, but the tracing change is
+    # rejected before anything is applied.
+    changed_tracing = TracingConfig(enabled=False, sampling_ratio=1.0)
+    with pytest.raises(ValueError, match="Tracing config cannot be changed"):
+        client.deploy_apps(deploy_config(30, "/changed", changed_tracing))
+
+    assert serve.status().target_capacity == 50
+    assert (
+        ray.get(client._controller._get_target_capacity_direction.remote())
+        == TargetCapacityDirection.UP
+    )
+    assert ray.get(client._controller.get_app_configs.remote()) == app_configs
     serve.shutdown()
 
 
