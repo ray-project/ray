@@ -2969,8 +2969,18 @@ def _bare_haproxy_manager():
     return cls.__new__(cls)
 
 
+@pytest.mark.parametrize(
+    "applied_version",
+    [
+        RoutingConfigVersion(generation=1, sequence=2),
+        RoutingConfigVersion(generation=2, sequence=1),
+    ],
+    ids=["same-generation", "controller-restart"],
+)
 @pytest.mark.asyncio
-async def test_serving_waits_for_expected_routing_config_version(monkeypatch):
+async def test_serving_waits_for_expected_routing_config_version(
+    monkeypatch, applied_version
+):
     manager = _bare_haproxy_manager()
     manager._received_target_groups_broadcast = True
     manager._draining_start_time = None
@@ -3004,9 +3014,7 @@ async def test_serving_waits_for_expected_routing_config_version(monkeypatch):
     async def apply_expected_version_after_sleep(_):
         nonlocal sleep_calls
         sleep_calls += 1
-        manager._applied_target_groups_version = RoutingConfigVersion(
-            generation=1, sequence=2
-        )
+        manager._applied_target_groups_version = applied_version
 
     monkeypatch.setattr(asyncio, "sleep", apply_expected_version_after_sleep)
 
@@ -3014,6 +3022,70 @@ async def test_serving_waits_for_expected_routing_config_version(monkeypatch):
         expected_routing_config_version=RoutingConfigVersion(generation=1, sequence=2)
     )
     assert sleep_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_serving_waits_for_update_received_during_reload(monkeypatch):
+    monkeypatch.setattr(haproxy, "RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S", 0)
+
+    manager = _bare_haproxy_manager()
+    manager.event_loop = asyncio.get_running_loop()
+    manager._target_groups = []
+    manager._target_groups_version = None
+    manager._received_target_groups_broadcast = False
+    manager._applied_target_groups = None
+    manager._applied_target_groups_version = None
+    manager._draining_start_time = None
+    manager._grpc_options = mock.Mock(port=0, grpc_servicer_functions=[])
+    manager._http_fallback_target = None
+    manager._grpc_fallback_target = None
+    manager._reload_lock = asyncio.Lock()
+    manager._haproxy_start_task = asyncio.create_task(asyncio.sleep(0))
+    manager._update_pending = False
+    manager._coalesce_task = None
+    manager._coalesce_armed_at = None
+    manager._haproxy_update_latency = mock.Mock()
+
+    reload_started = [asyncio.Event(), asyncio.Event()]
+    finish_reload = [asyncio.Event(), asyncio.Event()]
+    reload_count = 0
+
+    async def reload_haproxy():
+        nonlocal reload_count
+        reload_index = reload_count
+        reload_count += 1
+        reload_started[reload_index].set()
+        await finish_reload[reload_index].wait()
+
+    manager._haproxy = mock.Mock()
+    manager._haproxy.reload = mock.AsyncMock(side_effect=reload_haproxy)
+    manager._haproxy.get_all_stats = mock.AsyncMock(return_value={})
+
+    version_a = RoutingConfigVersion(generation=1, sequence=1)
+    version_b = RoutingConfigVersion(generation=1, sequence=2)
+    manager.update_target_groups(
+        RoutingConfigSnapshot(target_groups=[], version=version_a)
+    )
+    await asyncio.wait_for(reload_started[0].wait(), timeout=5)
+
+    manager.update_target_groups(
+        RoutingConfigSnapshot(target_groups=[], version=version_b)
+    )
+    serving_task = asyncio.create_task(
+        manager.serving(expected_routing_config_version=version_b)
+    )
+    await asyncio.sleep(0)
+    assert not serving_task.done()
+
+    finish_reload[0].set()
+    await asyncio.wait_for(reload_started[1].wait(), timeout=5)
+    assert manager._applied_target_groups_version == version_a
+    assert not serving_task.done()
+
+    finish_reload[1].set()
+    await asyncio.wait_for(manager._coalesce_task, timeout=5)
+    await asyncio.wait_for(serving_task, timeout=5)
+    assert manager._applied_target_groups_version == version_b
 
 
 @pytest.mark.asyncio

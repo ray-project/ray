@@ -11,6 +11,7 @@ import ray
 from ray import serve
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.deploy_utils import get_app_code_version
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import (
     AutoscalingConfig,
@@ -31,6 +32,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
     TracingConfig,
+    _deployment_info_to_schema,
 )
 from ray.serve.tests.common.remote_uris import (
     TEST_DEPLOY_GROUP_PINNED_URI,
@@ -1574,9 +1576,6 @@ def test_serve_instance_details_includes_controller_health_metrics():
 def test_deployment_info_to_schema_includes_max_replicas_per_node():
     """_deployment_info_to_schema should propagate max_replicas_per_node
     from ReplicaConfig into the resulting DeploymentSchema."""
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     rc = ReplicaConfig.create(
         deployment_def="",
         init_args=(),
@@ -1597,9 +1596,6 @@ def test_deployment_info_to_schema_includes_max_replicas_per_node():
 
 @pytest.mark.parametrize("user_config", ["updated", ["updated"]])
 def test_deployment_info_user_config_schema_roundtrip(user_config):
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     info = DeploymentInfo(
         deployment_config=DeploymentConfig.from_default(user_config=user_config),
         replica_config=ReplicaConfig.create(
@@ -1619,9 +1615,6 @@ def test_deployment_info_user_config_schema_roundtrip(user_config):
 def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
     """When max_replicas_per_node is None (default), the schema field should
     remain at its default (DEFAULT.VALUE), i.e. unset."""
-    from ray.serve._private.deployment_info import DeploymentInfo
-    from ray.serve.schema import _deployment_info_to_schema
-
     rc = ReplicaConfig.create(
         deployment_def="",
         init_args=(),
