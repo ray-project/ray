@@ -1,7 +1,9 @@
 import os
+import signal
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -838,6 +840,50 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_runtime_warm_pool_serves_matching_creates():
+    """A create matching a warm-pool profile takes a booted sandbox, which
+    runs commands with the create's env."""
+    runtime = SandboxRuntime(
+        warm_pool=[{"image": "busybox:latest", "shell": "/bin/sh", "size": 2}]
+    )
+    try:
+        assert runtime.wait_for_warm_pool(timeout_seconds=120)
+        booted = {i for pool in runtime._warm._ready.values() for i in pool}
+        instance_id = runtime.create(
+            image="busybox:latest", shell="/bin/sh", env={"MODE": "warm"}
+        )
+        assert instance_id in booted
+        res = runtime.exec(instance_id, "echo $MODE")
+        assert (res.exit_code, res.stdout.strip()) == (0, "warm")
+        runtime.delete(instance_id)
+        assert runtime.wait_for_warm_pool(timeout_seconds=120)
+    finally:
+        runtime.close()
+
+
+def test_get_status_reports_a_sandbox_whose_runsc_exited():
+    """A sandbox whose attached `runsc run` exited reads as terminated
+    before delete_sandbox runs (the warm pool never hands one out). The
+    check doesn't reap the process: its pid stays the sandbox's process
+    group id until delete_sandbox kills the group."""
+    backend = GVisorSandboxBackend()
+    sandbox_id = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    )
+    try:
+        assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
+        proc = backend._sandbox_metadata[sandbox_id]["proc"]
+        os.kill(proc.pid, signal.SIGKILL)
+        deadline = time.monotonic() + 10
+        while backend.get_status(sandbox_id) == SandboxStatus.RUNNING:
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        assert proc.returncode is None
+        assert os.path.exists(f"/proc/{proc.pid}")
+    finally:
+        backend.delete_sandbox(sandbox_id)
 
 
 if __name__ == "__main__":

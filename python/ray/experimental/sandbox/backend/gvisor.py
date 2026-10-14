@@ -88,6 +88,23 @@ def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
     return None
 
 
+def _exited(proc: Optional[subprocess.Popen]) -> bool:
+    """Whether ``proc`` has exited, without reaping it.
+
+    Its pid is the sandbox's process group id, which delete_sandbox signals;
+    reaping it earlier would free the id for an unrelated process group.
+    """
+    if proc is None:
+        return False
+    if proc.returncode is not None:
+        return True
+    try:
+        status = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return True
+    return status is not None
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -478,7 +495,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def get_status(self, sandbox_id: str) -> SandboxStatus:
         """Get operational status of the gVisor sandbox."""
         meta = self._sandbox_metadata.get(sandbox_id)
-        if meta and os.path.exists(meta["root_dir"]):
+        # `runsc run` stays attached for the sandbox's lifetime, so its exit
+        # means the sandbox is gone even before delete_sandbox runs.
+        if meta and os.path.exists(meta["root_dir"]) and not _exited(meta.get("proc")):
             return SandboxStatus.RUNNING
         return SandboxStatus.TERMINATED
 
