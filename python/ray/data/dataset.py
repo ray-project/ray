@@ -5971,7 +5971,10 @@ class Dataset:
         """Writes the dataset to `WebDataset <https://github.com/webdataset/webdataset>`_
         tar archives.
 
-        Each row is written as a WebDataset sample.
+        Each row is written as a WebDataset sample. A ``__key__`` that WebDataset
+        readers can't read back, such as an empty key or one with a dot in its last
+        path part like ``"img_001.jpg"``, raises a ``ValueError``. Readers split each
+        tar member name at the first dot of its last path part.
 
         This is only supported for datasets convertible to Arrow records.
         To control the number of files, use :meth:`Dataset.repartition`.
