@@ -14,7 +14,7 @@ To use Ray Train effectively, understand the following four main concepts:
 
 * {ref}`Training function <train-overview-training-function>`: A Python function that contains your model training logic.
 * {ref}`Worker <train-overview-worker>`: A process that runs the training function.
-* {ref}`Scaling configuration <train-overview-scaling-config>`: A configuration of the number of workers and the compute resources, such as CPUs or GPUs.
+* {ref}`Scaling configuration <train-overview-scaling-config>`: A configuration of the number of workers and the compute resources, such as CPUs, GPUs, or TPUs.
 * {ref}`Trainer <train-overview-trainers>`: A Python class that ties together the training function, workers, and scaling configuration to run a distributed training job.
 
 ```{figure} images/overview.png
@@ -53,10 +53,11 @@ Ray Train distributes model training compute to individual worker processes acro
 
 ## Scaling configuration
 
-The {class}`~ray.train.ScalingConfig` defines the scale of the training job. Specify the following two basic parameters for worker parallelism and compute resources:
+The {class}`~ray.train.ScalingConfig` defines the scale of the training job. Specify the following basic parameters for worker parallelism and compute resources:
 
 * {class}`num_workers <ray.train.ScalingConfig>`: The number of workers to launch for a distributed training job.
 * {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU.
+* {class}`use_tpu <ray.train.ScalingConfig>`: Whether workers use Google Cloud TPUs (paired with `topology` and `accelerator_type`). See {ref}`Configure and scale accelerators <train_scaling_config>`.
 
 ```{testcode}
 from ray.train import ScalingConfig

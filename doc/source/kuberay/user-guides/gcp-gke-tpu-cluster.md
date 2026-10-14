@@ -6,105 +6,138 @@ myst:
 
 (kuberay-gke-tpu-cluster-setup)=
 
-# Start Google Cloud GKE Cluster with TPUs for KubeRay
+# Set up a GKE cluster with TPUs
 
-See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how-to/tpus>) for full details, or continue reading for a quick start.
+This guide shows how to create a Google Kubernetes Engine (GKE) Standard cluster with TPU slice node pools for KubeRay. For full details, see [Deploy TPU workloads in GKE Standard](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus).
 
-## Step 1: Create a Kubernetes cluster on GKE
+## Step 1: Create a GKE cluster and TPU node pool
 
-First, set the following environment variables to be used for GKE cluster creation:
+Set the environment variables for your cluster:
+
 ```sh
-export CLUSTER_NAME=CLUSTER_NAME
-export ZONE=ZONE
-export CLUSTER_VERSION=CLUSTER_VERSION
+export CLUSTER_NAME=<cluster-name>
+export REGION=<region>
+export ZONE=<zone>
+export CLUSTER_VERSION=<cluster-version>
 ```
-Replace the following:
-- CLUSTER_NAME: The name of the GKE cluster to be created.
-- ZONE: The zone with available TPU quota, for a list of TPU availability by zones, see the [GKE documentation](https://cloud.google.com/tpu/docs/regions-zones).
-- CLUSTER_VERSION: The GKE version to use. TPU v6e is supported in GKE versions 1.31.2-gke.1115000 or later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
 
-Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
+Replace the following placeholders:
 
-Create a Standard GKE cluster and enable the Ray Operator:
+- `<cluster-name>`: The name of the GKE cluster to create.
+- `<region>` and `<zone>`: The Google Cloud region and zone with TPU quota (for example, `us-central1` and `us-central1-b`). For TPU availability by zone, see [TPU regions and zones](https://cloud.google.com/tpu/docs/regions-zones).
+- `<cluster-version>`: The GKE version. [TPU v6e (Trillium)](https://cloud.google.com/tpu/docs/v6e) requires GKE `1.31.2-gke.1115000` or later, and [Ironwood (`TPU7x`)](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) requires GKE `1.34.1-gke.2541000` or later. See [TPUs in GKE](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for minimum supported versions.
+
+Run the following commands on your local machine (with the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install) installed) or in [Google Cloud Shell](https://cloud.google.com/shell).
+
+Create a Standard GKE cluster with the [GKE Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke), GKE Dataplane V2, and Image Streaming enabled:
 
 ```sh
 gcloud container clusters create $CLUSTER_NAME \
-    --addons=RayOperator \
-    --machine-type=n1-standard-16 \
+    --location=$ZONE \
     --cluster-version=$CLUSTER_VERSION \
-    --location=$ZONE
+    --machine-type=e2-standard-16 \
+    --addons=RayOperator \
+    --enable-dataplane-v2 \
+    --enable-image-streaming \
+    --scopes=https://www.googleapis.com/auth/cloud-platform
 ```
 
-Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
+Add a TPU slice node pool to the cluster (or create one from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console)):
 
-Create a node pool with a single-host v4 TPU topology as follows:
-```sh
-gcloud container node-pools create v4-4 \
-  --zone $ZONE \
-  --cluster $CLUSTER_NAME \
-  --num-nodes 1 \
-  --min-nodes 0 \
-  --max-nodes 10 \
-  --enable-autoscaling \
-  --machine-type ct4p-hightpu-4t \
-  --tpu-topology 2x2x1
-```
-- For v4 TPUs, ZONE must be `us-central2-b`.
+::::{tab-set}
 
-Alternatively, create a multi-host node pool as follows:
+:::{tab-item} TPU v6e single-host (2x2)
+
+Create a single-host `v6e` node pool (`ct6e-standard-4t`, four chips per node). Do not set `--tpu-topology` for single-host node pools; GKE automatically labels each node with `cloud.google.com/gke-tpu-topology: 2x2` and scales individual TPU nodes between `--min-nodes` and `--max-nodes`:
 
 ```sh
-gcloud container node-pools create v4-8 \
-  --zone $ZONE \
-  --cluster $CLUSTER_NAME \
-  --num-nodes 2 \
-  --min-nodes 0 \
-  --max-nodes 10 \
+gcloud container node-pools create tpu-v6e-singlehost \
+  --location=$ZONE \
+  --cluster=$CLUSTER_NAME \
+  --machine-type=ct6e-standard-4t \
+  --num-nodes=1 \
+  --min-nodes=0 \
+  --max-nodes=10 \
   --enable-autoscaling \
-  --machine-type ct4p-hightpu-4t \
-  --tpu-topology 2x2x2
+  --disk-size=200GB \
+  --scopes=https://www.googleapis.com/auth/cloud-platform
 ```
-- For v4 TPUs, ZONE must be `us-central2-b`.
-- For other TPU types, see [TPU locations on Google Cloud documentation](https://docs.cloud.google.com/compute/docs/regions-zones/tpu-regions-zones).
 
-The `--tpu-topology` flag specifies the physical topology of the TPU Pod slice. This example uses a v4 TPU slice with either a 2x2x1 or 2x2x2 topology. v4 TPUs have 4 chips per VM host, so a 2x2x2 v4 slice has 8 chips total and 2 TPU hosts, each scheduled on their own node. GKE treats multi-host TPU slices as atomic units, and scales them using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. For more information about selecting a TPU topology and accelerator, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
+:::
 
-GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
+:::{tab-item} TPU v6e multi-host (4x4)
+
+Create a multi-host `v6e` node pool with a `4x4` topology (16 chips across four hosts). GKE scales multi-host node pools atomically as a complete slice between `0` and `--max-nodes=4`:
+
+```sh
+gcloud container node-pools create tpu-v6e-multihost \
+  --location=$ZONE \
+  --cluster=$CLUSTER_NAME \
+  --machine-type=ct6e-standard-4t \
+  --tpu-topology=4x4 \
+  --num-nodes=4 \
+  --min-nodes=0 \
+  --max-nodes=4 \
+  --enable-autoscaling \
+  --disk-size=200GB \
+  --scopes=https://www.googleapis.com/auth/cloud-platform
+```
+
+:::
+
+:::{tab-item} TPU7x multi-host (2x2x2)
+
+For multi-host `TPU7x` (Ironwood) node pools, create a `HIGH_THROUGHPUT` workload policy that defines the `2x2x2` topology (eight dual-chiplet chips, or 16 logical TPU devices, across two hosts) and attach it with `--placement-policy`:
+
+```sh
+gcloud compute resource-policies create workload-policy tpu7x-2x2x2-policy \
+  --type=HIGH_THROUGHPUT \
+  --accelerator-topology=2x2x2 \
+  --region=$REGION
+
+gcloud container node-pools create tpu7x-multihost \
+  --location=$ZONE \
+  --cluster=$CLUSTER_NAME \
+  --machine-type=tpu7x-standard-4t \
+  --placement-policy=tpu7x-2x2x2-policy \
+  --num-nodes=2 \
+  --min-nodes=0 \
+  --max-nodes=2 \
+  --enable-autoscaling \
+  --disk-type=hyperdisk-balanced \
+  --disk-size=200GB \
+  --scopes=https://www.googleapis.com/auth/cloud-platform
+```
+
+:::
+
+::::
+
+### Recommended GKE node pool options
+
+Configure the following node pool options based on your workload:
+
+- **Single-host versus multi-host scaling:** Single-host node pools scale node by node. Multi-host node pools represent a single ICI-connected TPU slice and scale atomically between `0` and the slice size (`numOfHosts`). To provision multiple multi-host slices, create one node pool per slice or use [ClusterAutoscaler custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class).
+- **Consumption options:** Add `--spot` for Spot VMs, `--flex-start` (with `--num-nodes=0 --enable-autoscaling`) for Dynamic Workload Scheduler Flex-Start, or `--reservation-affinity=specific --reservation=<reservation-name>` for reserved capacity. See [Choose a TPU consumption option](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#tpu_reservation).
+- **Multi-NIC networking (DRANET):** Multi-chip TPU VMs (such as `ct6e-standard-4t` and `tpu7x-standard-4t`) have multiple network interfaces (NICs), but Pods use only the primary NIC (`eth0`) by default. For data center network (DCN)-intensive workloads such as multi-slice training or disaggregated RL weight transfer, pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` during node pool creation. These flags provision secondary VPC networks and enable [GKE managed DRANET](https://cloud.google.com/kubernetes-engine/docs/how-to/allocate-network-resources-dra) so Ray worker Pods can claim secondary NICs (`netdev.google.com`) through a Kubernetes `ResourceClaimTemplate`. See [Configure automated networking for accelerator VMs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
 
 ## Step 2: Connect to the GKE cluster
 
-Run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
+Install [`gke-gcloud-auth-plugin`](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl#install_plugin) if needed, then configure `kubectl` and verify the cluster nodes:
 
 ```sh
-gcloud container clusters get-credentials $CLUSTER_NAME --zone $ZONE
+gcloud components install gke-gcloud-auth-plugin
+gcloud container clusters get-credentials $CLUSTER_NAME --location=$ZONE
+kubectl get nodes
 ```
 
-The remote GKE cluster is now reachable through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+For more details, see [Configure cluster access for kubectl](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
 
+### Optional: Manually install KubeRay and the TPU webhook
 
-### [Optional] Manually install KubeRay and the TPU webhook in a GKE cluster without the Ray Operator Addon:
+When you enable the [GKE Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) (`--addons=RayOperator`), GKE automatically manages KubeRay and the TPU initialization webhook.
 
-In a cluster without the Ray Operator Addon enabled, KubeRay can be manually installed using Helm with the following commands. See {ref}`KubeRay Operator Installation <kuberay-operator-deploy>` for the full installation guide.
+If you manage your own KubeRay installation instead of using the GKE add-on, complete the following steps:
 
-```sh
-helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-
-# Install both CRDs and KubeRay operator v1.7.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
-```
-
-GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.
-
-When manually installing the webhook, [cert-manager](https://github.com/cert-manager/cert-manager) is required to handle TLS certificate injection. You can install cert-manager in both GKE Standard and Autopilot clusters using the following helm commands:
-
-Install cert-manager:
-```
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-helm install --create-namespace --namespace cert-manager --set installCRDs=true --set global.leaderElection.namespace=cert-manager cert-manager jetstack/cert-manager
-```
-
-Next, deploy the Ray TPU initialization webhook:
-1. `git clone https://github.com/GoogleCloudPlatform/ai-on-gke`
-2. `cd ray-on-gke/tpu/kuberay-tpu-webhook`
-3. `make deploy deploy-cert`
+1. Install the KubeRay operator (`v1.6.0` or later recommended). See {ref}`KubeRay Operator Installation <kuberay-operator-deploy>`.
+2. Install the [KubeRay TPU initialization webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) (`v1.4.0` or later) by following the [installation instructions in the `kuberay-tpu-webhook` README](https://github.com/ai-on-gke/kuberay-tpu-webhook#installation).

@@ -92,7 +92,9 @@ See the [Amazon documentation](https://awslabs.github.io/data-on-eks/docs/ai-ml/
 ::::{tab-item} Google TPU
 :sync: Google TPU
 :::{tip}
-You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` lets Ray only see devices 1 and 3.
+You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs visible to Ray. Use `TPU_VISIBLE_CHIPS` to partition a multi-chip TPU VM across multiple Ray worker containers or reserve specific chips for non-Ray processes. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` restricts Ray to chips 1 and 3.
+
+On [TPU v4](https://cloud.google.com/tpu/docs/v4), [v5e](https://cloud.google.com/tpu/docs/v5e), [v5p](https://cloud.google.com/tpu/docs/v5p), and [v6e (Trillium)](https://cloud.google.com/tpu/docs/v6e), each physical chip exposes one logical TPU device (`4` devices on a four-chip host). On [Ironwood (`TPU7x`)](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood), each physical chip contains [two compute chiplets](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet-architecture) that expose two separate logical TPU devices (`8` devices on a four-chip host). By default, Ray registers one `TPU` resource per physical chip (`{"TPU": 4}`), which is sufficient for host-level SPMD workloads (one process per host, such as JAX). When running one process per logical TPU device (`{"TPU": 1}`, such as PyTorch `torch_tpu` or per-device MPMD workloads) on `TPU7x`, set `RAY_TPU_RESOURCE_PER_CHIP=2` and advertise `{"TPU": 8}` so Ray maps two `TPU` resources to each physical chip.
 :::
 ::::
 
@@ -359,6 +361,8 @@ ray.get(tpu_task.remote())
 (tpu_task pid=51830) TPU IDs: [1]
 (tpu_task pid=51830) TPU_VISIBLE_CHIPS: 1
 ```
+
+When a task or actor requests a subset of a host's TPUs, Ray sets `TPU_VISIBLE_CHIPS`, `TPU_CHIPS_PER_HOST_BOUNDS`, and `TPU_HOST_BOUNDS`. When a task or actor requests all TPUs on the host, Ray clears those sub-host variables so the framework uses the full host. For multi-host slice scheduling, per-device execution, and MPMD workloads, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 :::
 
 :::{tab-item} Intel Gaudi
