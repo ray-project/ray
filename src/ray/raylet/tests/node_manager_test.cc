@@ -463,7 +463,7 @@ class NodeManagerTest : public ::testing::Test {
     lease_spec.GetMutableMessage().add_dependencies()->set_object_id(object_dep.Binary());
 
     rpc::Address owner_addr;
-    RAY_UNUSED(mock_store_client_->TryCreateImmediately(
+    RAY_UNUSED(fake_store_client_->TryCreateImmediately(
         object_dep,
         owner_addr,
         arg_bytes,
@@ -482,18 +482,11 @@ class NodeManagerTest : public ::testing::Test {
     request.set_grant_or_reject(true);
     request.set_is_selected_based_on_locality(true);
 
-    EXPECT_CALL(*mock_object_manager_, Pull(_, _, _))
-        .Times(::testing::AnyNumber())
-        .WillRepeatedly(Return(1));
-
     std::shared_ptr<MockWorker> worker =
         std::make_shared<MockWorker>(WorkerID::FromRandom(), 10, clock_);
     PopWorkerCallback pop_cb;
-    EXPECT_CALL(mock_worker_pool_, PopWorker(_, _))
-        .Times(1)
-        .WillOnce([&](const LeaseSpecification &, const PopWorkerCallback &cb) {
-          pop_cb = cb;
-        });
+    fake_worker_pool_.pop_worker_hook = [&](const LeaseSpecification &,
+                                            const PopWorkerCallback &cb) { pop_cb = cb; };
     node_manager_->HandleRequestWorkerLease(
         request, &reply, [](Status s, std::function<void()>, std::function<void()>) {
           ASSERT_TRUE(s.ok());
@@ -502,6 +495,7 @@ class NodeManagerTest : public ::testing::Test {
     local_lease_manager_->LeasesUnblocked(ready);
     RAY_CHECK(pop_cb);
     pop_cb(worker, PopWorkerStatus::OK, "");
+    fake_worker_pool_.pop_worker_hook = nullptr;
     return {lease_id, worker};
   }
 
