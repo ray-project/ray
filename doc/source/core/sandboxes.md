@@ -808,7 +808,7 @@ Keep these limits in mind:
 
 * **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step.
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
-* **State**: The facade keeps exec state in memory, so run one facade process per cluster.
+* **State**: The facade keeps no exec state of its own: each exec lives with its sandbox, so several facade processes can serve the same sandboxes.
 * **Network**: The facade maps the client SDK's network settings onto network modes and egress allowlists.
 
 The facade handles each of the client SDK's network settings as follows:
@@ -836,7 +836,7 @@ applications:
     import_path: ray.experimental.sandbox.http.grpc_app:build_app
 ```
 
-The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where other Pods and processes on the cluster's network can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
+The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where other Pods and processes on the cluster's network can reach them. To run more than one replica, set `num_replicas` in the application's `args`. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
 
 Clients use the address of Serve's gRPC proxy as their server URL. By default, the facade gives each client `https://` plus the host it dialed as its command-router URL, which suits a TLS endpoint on port 443 in front of the proxy. For any other setup, set `advertise_url` in the application's `args`, such as `http://127.0.0.1:9000` for clients of a local proxy.
 
