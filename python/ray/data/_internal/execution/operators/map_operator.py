@@ -711,7 +711,7 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                     # plan already finished with this task).
                     if not is_new_output:
                         return
-                    # Otherwise, the block is
+                    # Otherwise, the block is NEW
                     lineage_tracker.register_block_queued(
                         lineage_task_id, output_index, lineage_task_id
                     )
