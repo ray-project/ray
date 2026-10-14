@@ -19,9 +19,7 @@ Among other information, the {class}`~ray.train.Result` object contains the foll
 ## View metrics
 You can retrieve reported metrics attached to a checkpoint from the {class}`~ray.train.Result` object.
 
-Common metrics include the training or validation loss and prediction accuracy.
-
-The metrics in the {class}`~ray.train.Result` object correspond to the metrics you pass as an argument to {func}`train.report <ray.train.report>` {ref}`in your training function <train-monitoring-and-logging>`.
+The metrics in the {class}`~ray.train.Result` object are the metrics that you attach to a checkpoint when you call {func}`ray.train.report <ray.train.report>` {ref}`in your training function <train-monitoring-and-logging>`. They typically include the metric that you rank checkpoints by, such as the validation loss or accuracy. For a full history of metrics over the course of training, use an {ref}`experiment tracking tool <train-experiment-tracking-native>`.
 
 
 :::{note}
