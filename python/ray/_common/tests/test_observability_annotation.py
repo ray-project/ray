@@ -5,6 +5,7 @@ import os
 import sys
 from unittest import mock
 
+import numpy as np
 import pytest
 
 from ray._common.observability import annotation as annotation_mod
@@ -92,7 +93,7 @@ def test_annotation_emits_json_line(logs_dir):
     )
     annotation.annotate(
         event="custom_event",
-        # Non-ASCII, which the platform default encoding can't always write.
+        # Non-ASCII, which JSON escapes, so the file is ASCII in any locale.
         message="INITIALIZING → RUNNING",
         severity="warning",
         epoch=3,
@@ -113,6 +114,27 @@ def test_annotation_emits_json_line(logs_dir):
     # An event with no severity leaves it unspecified rather than defaulting.
     assert second["severity"] == "SEVERITY_UNSPECIFIED"
     assert second["message"] == ""
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        # Scalars, such as a 0-d loss tensor, render as their value.
+        ({"loss": np.float32(0.5)}, {"loss": 0.5}),
+        ({"loss": np.array(0.5)}, {"loss": 0.5}),
+        # Arrays render by shape only.
+        ({"x": np.zeros((2, 3))}, {"x": "Array(shape=(2, 3))"}),
+        # A key JSON can't encode is skipped, rather than dropping the event.
+        ({("val", "acc"): 0.9, "loss": 0.5}, {"loss": 0.5}),
+    ],
+)
+def test_annotation_field_encoding(logs_dir, value, expected):
+    Annotation(source=ANNOTATION_SOURCE, base_tags={}).annotate(
+        event="custom_event", metrics=value
+    )
+
+    (record,) = read_annotations(logs_dir)
+    assert json.loads(record["fields"]["metrics"]) == expected
 
 
 def test_annotation_drops_before_ray_init(monkeypatch, tmp_path):

@@ -6,8 +6,6 @@ import threading
 import time
 from typing import Any, Dict, Optional, Tuple, Union
 
-import numpy as np
-
 from ray._private.protobuf_compat import message_to_dict
 from ray.core.generated.annotation_event_pb2 import AnnotationEvent
 from ray.util.debug import log_once
@@ -36,13 +34,26 @@ _MAX_FIELD_LENGTH = 4096
 
 def _json_default(value: Any) -> Any:
     """``json.dumps`` fallback that summarizes arrays and tensors by shape only,
-    since formatting their data is slow and syncs a GPU tensor to the host."""
-    if isinstance(value, np.generic):
+    since formatting their data is slow and syncs a GPU tensor to the host.
+
+    A scalar, such as a 0-d loss tensor, is rendered as its value instead.
+    """
+    # Imported here, as numpy is not a core Ray dependency.
+    try:
+        import numpy as np
+    except ImportError:
+        np = None
+
+    if np is not None and isinstance(value, np.generic):
         return value.item()
     shape = getattr(value, "shape", None)
     if shape is not None:
-        name = "Array" if isinstance(value, np.ndarray) else type(value).__name__
-        return f"{name}(shape={tuple(shape)})"
+        shape = tuple(shape)
+        if shape == () and hasattr(value, "item"):
+            return value.item()
+        is_ndarray = np is not None and isinstance(value, np.ndarray)
+        name = "Array" if is_ndarray else type(value).__name__
+        return f"{name}(shape={shape})"
     return str(value)
 
 
@@ -50,7 +61,9 @@ def _stringify(value: Any) -> str:
     """Render a tag or field value as a string. Non-strings are JSON encoded, so
     a bool renders as ``"true"``, the spelling a query compares against."""
     if not isinstance(value, str):
-        value = json.dumps(value, default=_json_default)
+        # `default` only applies to values, so a dict key JSON can't encode, such
+        # as a tuple, is skipped rather than failing the whole event.
+        value = json.dumps(value, default=_json_default, skipkeys=True)
     if len(value) > _MAX_FIELD_LENGTH:
         value = value[:_MAX_FIELD_LENGTH] + "...(truncated)"
     return value
@@ -108,14 +121,14 @@ if hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=_reset_handler_lock_after_fork)
 
 
-def _get_handler(
-    logs_dir: str, max_bytes: int, backup_count: int
-) -> _RaisingRotatingFileHandler:
-    """Return this process's annotation file handler for ``logs_dir``.
+def _write_line(line: str, logs_dir: str, max_bytes: int, backup_count: int) -> None:
+    """Write ``line`` to this process's annotation file in ``logs_dir``.
 
     The handler is replaced, and its file closed, when the logs dir changes (the
     process moved to a new Ray session) or the pid changes (the process forked,
-    and the child must not write into, and rotate, its parent's file).
+    and the child must not write into, and rotate, its parent's file). The write
+    happens under the same lock, so no thread writes to a handler another thread
+    has closed.
 
     Every process writes its own file, because several processes rotating one
     shared file clobber one another's backups and lose lines.
@@ -123,24 +136,23 @@ def _get_handler(
     global _handler
     pid = os.getpid()
     with _handler_lock:
+        handler = None
         if _handler is not None:
             cached_pid, cached_logs_dir, handler = _handler
-            if cached_pid == pid and cached_logs_dir == logs_dir:
-                return handler
-            handler.close()
-            _handler = None
+            if cached_pid != pid or cached_logs_dir != logs_dir:
+                handler.close()
+                handler = _handler = None
 
-        os.makedirs(logs_dir, exist_ok=True)
-        handler = _RaisingRotatingFileHandler(
-            os.path.join(logs_dir, f"{ANNOTATION_FILE_PREFIX}_{pid}.log"),
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            # Events carry user-supplied text, which the platform default
-            # encoding cannot always write under a `C`/`POSIX` locale.
-            encoding="utf-8",
-        )
-        _handler = (pid, logs_dir, handler)
-        return handler
+        if handler is None:
+            os.makedirs(logs_dir, exist_ok=True)
+            handler = _RaisingRotatingFileHandler(
+                os.path.join(logs_dir, f"{ANNOTATION_FILE_PREFIX}_{pid}.log"),
+                maxBytes=max_bytes,
+                backupCount=backup_count,
+            )
+            _handler = (pid, logs_dir, handler)
+
+        handler.handle(logging.makeLogRecord({"msg": line}))
 
 
 class Annotation:
@@ -216,12 +228,12 @@ class Annotation:
                 )
             )
             # Rotate with the same limits as the other files in the logs dir.
-            handler = _get_handler(
+            _write_line(
+                line,
                 _global_node.get_logs_dir_path(),
                 _global_node.max_bytes,
                 _global_node.backup_count,
             )
-            handler.handle(logging.makeLogRecord({"msg": line}))
         except Exception:
             if log_once(f"ray_annotation_failed_{self._source}_{event}"):
                 logger.warning(

@@ -98,17 +98,15 @@ def captured_annotations(monkeypatch):
 
     records = []
 
-    class _RecordingHandler:
-        def handle(self, record):
-            records.append(json.loads(record.getMessage()))
-
     monkeypatch.setattr(
         worker_mod,
         "_global_node",
         MagicMock(session_name="session_test", get_logs_dir_path=lambda: ""),
     )
     monkeypatch.setattr(
-        annotation_mod, "_get_handler", lambda *args: _RecordingHandler()
+        annotation_mod,
+        "_write_line",
+        lambda line, *args: records.append(json.loads(line)),
     )
     yield records
 

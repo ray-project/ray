@@ -506,7 +506,10 @@ class TrainContext:
                 return
 
             # Annotated once every rank has reached the barrier, so a report that
-            # is skipped or raises before it is never annotated.
+            # is skipped or raises before it is never annotated. This is
+            # deliberately before the checkpoint upload and validation below: the
+            # annotation marks when the report was made, not that it succeeded,
+            # so a failed upload still shows up at the time the user reported.
             if self.get_world_rank() == 0:
                 self.annotation.annotate(
                     event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
