@@ -28,7 +28,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
@@ -1414,16 +1416,18 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
             self._decisions[request.headers["x-request-id"]] = replica_id
             return {"application": app_name, "replica_id": replica_id}
 
-        @router_api.post("/v1/chat/completions")
-        async def chat(self, request: Request):
+        @router_api.post("/internal/route")
+        async def route(self, request: Request):
+            method = request.headers[SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
+            request_target = request.headers[SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+            path = request_target.partition("?")[0]
+            if method == "GET" and path == "/v1/models":
+                return await self._decide("control", request)
+
             model = (await request.json()).get("model")
             if model not in ("model-a", "model-b"):
                 return JSONResponse({"error": "unknown model"}, status_code=404)
             return await self._decide(model, request)
-
-        @router_api.get("/v1/models")
-        async def models(self, request: Request):
-            return await self._decide("control", request)
 
         def get_decisions(self):
             return self._decisions

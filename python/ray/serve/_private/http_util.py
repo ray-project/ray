@@ -8,7 +8,6 @@ import socket
 from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass
-from urllib.parse import unquote
 from typing import (
     Any,
     AsyncGenerator,
@@ -52,15 +51,12 @@ from ray.serve._private.constants import (
     SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_ID_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
-    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_LOGGER_NAME,
-    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.proxy_request_response import ResponseStatus
 from ray.serve._private.utils import (
-    _is_router_application_class,
     call_function_from_import_path,
     generate_request_id,
     serve_encoders,
@@ -73,38 +69,6 @@ from ray.serve.exceptions import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-class _RouterApplicationASGIApp:
-    """Present HAProxy's internal routing request as the original client request.
-
-    HAProxy uses ``POST /internal/route`` as its control protocol so routing
-    responses can always contain a body. This wrapper restores the original
-    method, path, and query string in the ASGI scope, allowing the router
-    application to expose only its normal client-facing routes.
-    """
-
-    def __init__(self, app: ASGIApp):
-        self._app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if (
-            scope["type"] == "http"
-            and scope["method"] == "POST"
-            and scope["path"] == "/internal/route"
-        ):
-            headers = MutableHeaders(scope=scope)
-            method = headers.get(SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER)
-            request_target = headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
-            if method and request_target and request_target.startswith("/"):
-                path, _, query = request_target.partition("?")
-                scope = dict(scope)
-                scope["method"] = method.upper()
-                scope["path"] = unquote(path)
-                scope["raw_path"] = path.encode("latin-1")
-                scope["query_string"] = query.encode("latin-1")
-
-        await self._app(scope, receive, send)
 
 
 @dataclass(frozen=True)
@@ -655,8 +619,6 @@ class ASGIAppReplicaWrapper:
         self._set_asgi_app(app)
 
     def _set_asgi_app(self, app: ASGIApp) -> None:
-        if _is_router_application_class(type(self)):
-            app = _RouterApplicationASGIApp(app)
         self._asgi_app = app
 
         # Use uvicorn's lifespan handling code to properly deal with
