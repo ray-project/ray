@@ -658,7 +658,6 @@ def test_image_cache_eviction(tmp_path):
 def test_image_cache_eviction_keeps_a_free_space_floor(tmp_path, monkeypatch):
     """Under no size cap, eviction still frees the disk down to the floor,
     oldest first, and never takes an image in use."""
-    import os
     import time
 
     from ray.experimental.sandbox._internal import image_utils

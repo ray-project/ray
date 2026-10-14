@@ -286,7 +286,15 @@ def test_image_cache_min_free_bytes_default_and_env(tmp_path, monkeypatch):
     assert image_cache_min_free_bytes(str(tmp_path)) == 0
 
     monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", "5G")
-    assert image_cache_min_free_bytes(str(tmp_path)) == tenth
+    with patch(
+        "ray.experimental.sandbox._internal.image_utils.logger.warning"
+    ) as warning:
+        assert image_cache_min_free_bytes(str(tmp_path)) == tenth
+    warning.assert_called_once_with(
+        "Ignoring %s=%r: expected an integer number of bytes.",
+        "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES",
+        "5G",
+    )
 
 
 def test_image_cache_max_bytes_default_and_env(tmp_path, monkeypatch):
