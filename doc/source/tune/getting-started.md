@@ -32,7 +32,7 @@ First, import the dependencies. The PyTorch and torchvision modules help you cre
 :end-before: __tutorial_imports_end__
 ```
 
-Next, define a simple PyTorch model to train. If you're not familiar with PyTorch, the simplest way to define a model is to implement a `nn.Module`. Set up the model in `__init__`, and then implement the `forward` pass. This example uses a small convolutional neural network with one 2D convolutional layer, a fully connected layer, and a softmax function.
+Next, define a simple PyTorch model to train. If you're not familiar with PyTorch, the simplest way to define a model is to implement an `nn.Module`. Set up the model in `__init__`, and then implement the `forward` pass. This example uses a small convolutional neural network with one 2D convolutional layer, a fully connected layer, and a softmax function.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -86,9 +86,9 @@ Tune automatically runs trials in parallel across all available cores and GPUs o
 
 ## Stop trials early with Asynchronous Successive Halving
 
-Next, add early stopping to the optimization process with {ref}`ASHA <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
+Next, add early stopping to the optimization process with {ref}`Asynchronous Successive Halving (ASHA) <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
 
-At a high level, ASHA stops less promising trials and allocates more time and resources to more promising ones. Because the optimization process becomes more efficient, you can afford to **increase the search space by 5x** by adjusting the `num_samples` parameter.
+At a high level, ASHA stops less promising trials and allocates more time and resources to more promising ones. Because the optimization process becomes more efficient, you can afford to increase the search space by 5x by adjusting the `num_samples` parameter.
 
 Tune implements ASHA as a trial scheduler, `ASHAScheduler`. Trial schedulers can stop bad trials early, pause trials, clone trials, and alter the hyperparameters of a running trial. For details on the available schedulers and library integrations, see {ref}`Tune trial schedulers <tune-schedulers>`.
 
@@ -120,9 +120,9 @@ $ tensorboard --logdir {logdir}
 
 ## Use search algorithms in Tune
 
-In addition to {ref}`trial schedulers <tune-schedulers>`, you can further optimize your hyperparameters with an intelligent search technique such as Bayesian optimization. To do this, you can use a Tune {ref}`search algorithm <tune-search-alg>`. Search algorithms use optimization algorithms to navigate the given hyperparameter space intelligently.
+In addition to trial schedulers, you can further optimize your hyperparameters with an intelligent search technique such as Bayesian optimization. To do this, you can use a Tune {ref}`search algorithm <tune-search-alg>`. Search algorithms use optimization algorithms to navigate the given hyperparameter space intelligently.
 
-Each library has its own way of defining the search space.
+Each search library has its own way of defining the search space. This example uses Hyperopt's `hp` functions with `HyperOptSearch`.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python

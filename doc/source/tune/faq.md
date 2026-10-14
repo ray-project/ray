@@ -22,11 +22,13 @@ What are *hyperparameters*, and how are they different from *model parameters*?
 In supervised learning, you train a model with labeled data so the model can correctly identify new data values. A set of parameters, such as the weights in a linear regression, defines everything about the model. These are model parameters, and the model learns them during training.
 
 ```{image} /images/hyper-model-parameters.png
+:alt: Diagram showing model parameters as a subset of hyperparameters. Hyperparameters, such as model type, architecture, and learning-related parameters, are set before training. Model parameters are learned during training.
 ```
 
 In contrast, hyperparameters define structural details about the kind of model itself, such as whether you're using a linear regression or a classification, what architecture is best for a neural network, how many layers it has, and what kind of filters it uses. You define them before training. The model doesn't learn them.
 
 ```{image} /images/hyper-network-params.png
+:alt: Diagram of a convolutional neural network's layers, noting that the number of layers, the kinds of layers, the strides and filter sizes, and the learning rate are all hyperparameters.
 ```
 
 Other quantities that count as hyperparameters include learning rates and discount rates. For your training process and resulting model to work well, you first need to find the optimal or near-optimal set of hyperparameters.
@@ -46,7 +48,7 @@ Ray Tune offers {ref}`many different search algorithms <tune-search-alg>` and {r
 
 **If your model is small**, you can usually run many different configurations. You can use random search to generate configurations, or grid search over some values. You probably still want {ref}`ASHA for early termination of bad trials <tune-scheduler-hyperband>` if your problem supports early stopping.
 
-**If your model is large**, you can try Bayesian optimization-based search algorithms such as {ref}`BayesOpt <bayesopt>` to get good parameter configurations after few trials. {ref}`Ax <tune-ax>` is similar but more robust to noisy data. These algorithms only work well with a small number of hyperparameters. Alternatively, you can use {ref}`Population Based Training <tune-scheduler-pbt>`, which works well with few trials, for example 8 or even 4. However, Population Based Training outputs a hyperparameter *schedule* rather than one fixed set of hyperparameters.
+**If your model is large**, you can try Bayesian optimization-based search algorithms such as {ref}`BayesOpt <bayesopt>` to get good parameter configurations after few trials. {ref}`Ax <tune-ax>` is similar but more robust to noisy data. These algorithms only work well with a small number of hyperparameters. Alternatively, you can use {ref}`Population Based Training <tune-scheduler-pbt>`, which works well with few trials, for example eight or even four. However, Population Based Training outputs a hyperparameter *schedule* rather than one fixed set of hyperparameters.
 
 **If you have a small number of hyperparameters**, Bayesian optimization methods work well. Try {ref}`BOHB <tune-scheduler-bohb>` or {ref}`Optuna <tune-optuna>` with the {ref}`ASHA <tune-scheduler-hyperband>` scheduler to combine the benefits of Bayesian optimization with early stopping.
 
@@ -93,7 +95,7 @@ For details, see {ref}`custom and conditional search spaces <tune_custom-search>
 ```
 
 ### Conditional grid search
-If you want to grid search over two parameters that depend on each other, this might not work out of the box. For instance, say that *a* should be a value between 5 and 10 and *b* should be a value between 0 and *a*. In this case, you can't use `tune.sample_from` because it doesn't support grid searching.
+If you want to grid search over two parameters that depend on each other, this might not work out of the box. For instance, say that `a` should be a value between 5 and 10 and `b` should be a value between 0 and `a`. In this case, you can't use `tune.sample_from` because it doesn't support grid searching.
 
 Instead, create a list of valid *tuples* with a helper function, as in the following example:
 
@@ -103,7 +105,7 @@ Instead, create a list of valid *tuples* with a helper function, as in the follo
 :end-before: __iter_end__
 ```
 
-Your trainable can then split the values with an assignment such as `a, b = config["ab"]` and use *a* and *b* afterward.
+Your trainable can then split the values with an assignment such as `a, b = config["ab"]` and use `a` and `b` afterward.
 
 ## How does early termination, such as Hyperband or ASHA, work?
 Early termination algorithms look at intermediate reported values, for example what you report to them through `tune.report()` after each training epoch. After a certain number of steps, they remove the worst-performing trials and keep only the best-performing ones. They judge each trial by ranking the trials on the objective metric, for instance accuracy or loss.
@@ -164,11 +166,11 @@ The preceding example shows three things:
 1. You can request fractional GPUs. A value of 0.5 means that half of the GPU's memory is available to the trial. Make sure that your model still fits in the fractional memory.
 1. You can request custom resources that you supplied to Ray when starting the cluster. A trial is scheduled only on a single node that can provide all the resources you requested.
 
-Ray schedules each Ray worker, and therefore each Tune trial, on only one machine. For instance, if you request 2 GPUs for your trial but your cluster consists of 4 machines with 1 GPU each, the trial never gets scheduled.
+Ray schedules each Ray worker, and therefore each Tune trial, on only one machine. For instance, if you request 2 GPUs for your trial but your cluster consists of four machines with one GPU each, the trial never gets scheduled.
 
 Make sure that your Ray cluster has machines that can fulfill your resource requests.
 
-Your trainable might start other remote actors, for instance if you're using distributed training through Ray Train. In that case, you can use {ref}`placement groups <ray-placement-group-doc-ref>` to request additional resources:
+Your trainable might start other remote actors, for instance if you're using distributed training through Ray Train. In that case, you can use placement groups to request additional resources:
 
 ```{literalinclude} doc_code/faq.py
 :dedent:
@@ -213,7 +215,7 @@ Ray Tune expects your trainable functions to accept at most two parameters, `con
 
 This function works similarly to `functools.partial`, but it stores the parameters directly in the Ray object store. That means you can pass even huge objects such as datasets, and Ray stores and retrieves them efficiently on your cluster machines.
 
-{func}`tune.with_parameters() <ray.tune.with_parameters>` also works with class trainables. For more details and examples, see the {func}`tune.with_parameters() <ray.tune.with_parameters>` API reference.
+`tune.with_parameters()` also works with class trainables. For more details and examples, see the {func}`tune.with_parameters() <ray.tune.with_parameters>` API reference.
 
 ## How can I reproduce experiments?
 Reproducing experiments and their results means that you get exactly the same results each time you run an experiment. To achieve this, the conditions have to be exactly the same on every run. For machine learning (ML) training and tuning, this mostly concerns the random number generators that sample values at various points of the training and tuning lifecycle.
@@ -277,23 +279,23 @@ These operations should usually take less than 500 ms to complete. When one cons
 
 The following are the main reasons this problem comes up.
 
-**The trial configuration is large**
+### The trial configuration is large
 
 This happens, for example, when you pass a dataset or other large object through the `config` parameter. In that case, the dataset is serialized and written to disk repeatedly during experiment checkpointing, which takes a long time.
 
 **Solution**: Use {func}`tune.with_parameters <ray.tune.with_parameters>` to pass large objects to function trainables through the object store. For class trainables, you can do this manually with `ray.put()` and `ray.get()`. If you need to pass a class definition, consider passing an indicator, such as a string, and let the trainable select the class. Generally, your configuration dictionary should only contain primitive types, such as numbers or strings.
 
-**The trial result is large**
+### The trial result is large
 
 This happens if you return objects, data, or other large objects through the return value of `step()` in your class trainable or to `tune.report()` in your function trainable. The effect is the same as in the previous case. The results are repeatedly serialized and written to disk, which can take a long time.
 
 **Solution**: Use checkpointing instead, by writing the data to the trainable's current working directory. There are different ways to do that, depending on whether you use the class API or the function API.
 
-**You're training a large number of trials on a cluster, or saving huge checkpoints**
+### You're training many trials on a cluster or saving large checkpoints
 
 **Solution**: You can use {ref}`cloud checkpointing <tune-cloud-checkpointing>` to save logs and checkpoints to a specified `storage_path`. This is the preferred approach. Because all nodes can access the cloud storage, syncing happens automatically. Your results also stay safe, so you won't lose any of your data, even on preemptible instances.
 
-**You're reporting results too often**
+### You're reporting results too often
 
 The search algorithm, trial scheduler, and callbacks, including loggers and the trial syncer, process each result. If you're reporting a large number of results per trial, for example multiple results per second, this can take a long time.
 
@@ -345,7 +347,7 @@ You often want to compute a large object, such as training data or model weights
 Use the `tune.with_parameters()` wrapper function to broadcast large objects to your trainable. Objects passed with this wrapper are stored in the {ref}`Ray object store <objects-in-ray>`, and are automatically fetched and passed to your trainable as a parameter.
 
 :::{tip}
-If the objects are small or already exist in the {ref}`Ray object store <objects-in-ray>`, you don't need `tune.with_parameters()`. You can use [partials](https://docs.python.org/3/library/functools.html#functools.partial) or pass them directly to `config` instead.
+If the objects are small or already exist in the Ray object store, you don't need `tune.with_parameters()`. You can use [partials](https://docs.python.org/3/library/functools.html#functools.partial) or pass them directly to `config` instead.
 :::
 
 ```{literalinclude} doc_code/faq.py
@@ -426,12 +428,12 @@ Ray Tune doesn't officially support multi-tenancy, which means running multiple 
 There are three reasons for this:
 
 1. When multiple Ray Tune jobs run at the same time, they compete for resources. One job could run all its trials at the same time, while the other job waits a long time for the resources to run its first trial.
-1. If starting a new Ray cluster on your infrastructure is easy, there's often no cost benefit to running one large cluster instead of multiple smaller clusters. For instance, running one cluster of 32 instances costs almost the same as running 4 clusters with 8 instances each.
+1. If starting a new Ray cluster on your infrastructure is easy, there's often no cost benefit to running one large cluster instead of multiple smaller clusters. For instance, running one cluster of 32 instances costs almost the same as running four clusters with eight instances each.
 1. Concurrent jobs are harder to debug. If a trial of job A fills the disk, it affects trials from job B on the same node. In practice, it's hard to reason about these conditions from the logs if something goes wrong.
 
 Previously, some internal implementations in Ray Tune assumed that only one job runs at a time. One symptom was trials from job A using parameters specified in job B, which led to unexpected results.
 
-See [this GitHub issue](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976) for more context and a workaround if you run into this issue.
+See [GitHub issue #30091](https://github.com/ray-project/ray/issues/30091#issuecomment-1431676976) for more context and a workaround if you run into this problem.
 
 (tune-iterative-experimentation)=
 

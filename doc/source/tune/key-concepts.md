@@ -13,10 +13,10 @@ myst:
 
 This page walks through the key concepts you need to know to use Ray Tune. For practical tutorials, see the {ref}`user guides <tune-guides>`. Tune has six components that you need to understand.
 
-First, you define the hyperparameters you want to tune in a *search space* and pass them into a *trainable* that specifies the objective you want to tune. Then you select a *search algorithm* to optimize your parameters, and optionally use a *scheduler* to stop searches early and speed up your experiments. You pass your trainable, search algorithm, and scheduler, together with other configuration, into the `Tuner`, which runs your experiments and creates *trials*. The `Tuner` returns a `ResultGrid` that you use to inspect your experiment results. The following figure shows an overview of these components. The next sections cover each one in detail.
+First, you define the hyperparameters you want to tune in a *search space* and pass them into a *trainable* that specifies the objective you want to tune. Then you select a *search algorithm* to optimize your parameters, and optionally use a *scheduler* to stop searches early and speed up your experiments. You pass your trainable, search algorithm, and scheduler, together with other configuration, into the `Tuner`, which runs your experiment and creates *trials*. The `Tuner` returns a `ResultGrid` that you use to inspect your experiment results. The following figure shows an overview of these components. The next sections cover each one in detail.
 
 ```{image} images/tune_flow.png
-:alt: Flow diagram of the Tune components. Search spaces feed into trainables. Trainables, search algorithms, and schedulers feed into trials, which run your experiments. Trials feed into analyses of your results.
+:alt: Flow diagram of the Tune components. Search spaces feed into trainables. Trainables, search algorithms, and schedulers feed into trials, which make up your experiment. Trials feed into analyses of your results.
 ```
 
 (tune_60_seconds_trainables)=
@@ -49,7 +49,7 @@ The following example specifies the objective function with the {ref}`class API 
 :end-before: __class_api_end__
 ```
 
-:::{tip}
+:::{note}
 You can't use `tune.report` within a `Trainable` class.
 :::
 ::::
@@ -61,7 +61,7 @@ For more details, see the {ref}`trainable documentation <trainable-docs>` and th
 
 ## Tune search spaces
 
-To optimize your *hyperparameters*, you have to define a *search space*. A search space defines valid values for your hyperparameters and can specify how these values are sampled, such as from a uniform distribution or a normal distribution.
+To optimize your hyperparameters, you have to define a *search space*. A search space defines valid values for your hyperparameters and can specify how these values are sampled, such as from a uniform distribution or a normal distribution.
 
 Tune offers various functions to define search spaces and sampling methods. For the full explanation of each function, see the {ref}`Tune search space API <tune-search-space>`.
 
@@ -247,11 +247,11 @@ When you use schedulers, you might run into compatibility issues, as the followi
   - {doc}`BOHB example </tune/examples/includes/bohb-example>`
 * - {ref}`Population Based Training <tune-scheduler-pbt>`
   - Yes
-  - Not compatible
+  - No
   - {doc}`PBT example </tune/examples/includes/pbt-function>`
 * - {ref}`Population Based Bandits <tune-scheduler-pb2>`
   - Yes
-  - Not compatible
+  - No
   - {doc}`Basic example </tune/examples/includes/pb2-example>`, {doc}`PPO example </tune/examples/includes/pb2-ppo-example>`
 ```
 
