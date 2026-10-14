@@ -146,8 +146,9 @@ class HudiDatasource(Datasource):
                 size_bytes += file_slice.total_size_bytes()
 
             if self._query_type == HudiQueryType.SNAPSHOT:
-                # `num_records` is estimated from file sizes unless hudi-rs read
-                # the parquet footers, so don't report it as the row count.
+                # hudi-rs 0.5 estimates `num_records` from file size and one
+                # sampled parquet footer (0.4 read every footer).
+                # `Dataset.count()` trusts `num_rows`, so leave it unset.
                 metadata = BlockMetadata(
                     num_rows=None,
                     input_files=input_files,
