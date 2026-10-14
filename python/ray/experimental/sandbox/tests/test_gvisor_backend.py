@@ -366,7 +366,14 @@ def test_build_run_command_has_no_overlay_flag():
     never from a runsc --overlay2 flag."""
     cmd = _run_argv("none")
     assert not any(a.startswith("--overlay2") for a in cmd)
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def _owned_busybox_tar(tar_path: str) -> None:
@@ -529,7 +536,7 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert script.startswith(
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert script.endswith("run --bundle /tmp/rd sb-1")
+    assert script.endswith("run --pid-file /tmp/rd/sandbox.pid --bundle /tmp/rd sb-1")
     for fragment in (
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the sandbox's process group and its ready
@@ -575,7 +582,14 @@ def test_build_run_command_other_modes_unwrapped(network, rootless):
     assert cmd[0] == "runsc"
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
-    assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
+    assert cmd[-6:] == [
+        "run",
+        "--pid-file",
+        "/tmp/rd/sandbox.pid",
+        "--bundle",
+        "/tmp/rd",
+        "sb-1",
+    ]
 
 
 def test_create_sandbox_requires_slirp4netns(monkeypatch):
