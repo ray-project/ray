@@ -230,10 +230,6 @@ slice_handle.shutdown()
 
 ::::
 
-:::{tip}
-In multi-process collective runtimes such as `torch.distributed` with `torch_tpu`, all worker processes on a host open the full local `/dev/vfio/*` mesh and select their device via `LOCAL_RANK`. When launching custom per-device actors outside of {class}`~ray.train.torch.TorchTrainer` or `vllm-torchtpu`, set `RAY_EXPERIMENTAL_NOSET_TPU_VISIBLE_CHIPS=1` in the actor `runtime_env` (or clear `TPU_VISIBLE_CHIPS`, `TPU_CHIPS_PER_HOST_BOUNDS`, and `TPU_HOST_BOUNDS`) before initializing `torch_tpu`.
-:::
-
 ### Reinforcement learning (RL) on TPUs
 
 Reinforcement learning post-training workloads (using frameworks such as [VeRL](https://github.com/volcengine/verl), [SkyRL](https://github.com/NovaSky-AI/SkyRL), or [Tunix](https://github.com/google/tunix)) alternate between rollout generation and policy training. Because each physical TPU chip locks `/dev/vfio` exclusively to a single process and routes ICI collectives across fixed torus meshes, Ray supports two placement architectures for RL on TPUs:
