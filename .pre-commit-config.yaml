@@ -265,6 +265,15 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: check-setup-dev-packages
+        name: Check that python/ray/setup-dev.py links existing packages
+        entry: python ci/lint/check_setup_dev_packages.py
+        language: python
+        # Scans the whole tree, because moving a package breaks the link list
+        # even when the change never touches setup-dev.py.
+        pass_filenames: false
+        always_run: true
+
   - repo: local
     hooks:
       - id: check-cpp-files-inclusion

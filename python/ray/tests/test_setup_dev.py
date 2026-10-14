@@ -1,13 +1,16 @@
 """Tests for ``python/ray/setup-dev.py``, the Python-only development setup.
 
-The script links the packages listed in ``PACKAGES_TO_LINK`` from the source
-tree into the installed Ray package. A stale entry in that list or a broken
-link step leaves developers unable to set up a Python-only environment, which
-is what these tests guard against.
+The script links the packages listed in its ``PACKAGES_TO_LINK`` constant from
+the source tree into the installed Ray package. These tests drive ``do_link``
+with temporary source and install directories, so they never touch the
+checked-out tree or a real Ray installation.
 
 The ``serve``-specific handling of the generated directory is not covered here,
 because it operates on the fixed ``/tmp/ray/_serve`` path that is shared with
-running Ray instances.
+running Ray instances. Whether the ``PACKAGES_TO_LINK`` entries still exist in
+the source tree is checked by ``ci/lint/check_setup_dev_packages.py``, which
+runs in the lint pipeline where the full checkout is available: CI test images
+mask most of the Ray libraries, so a test running under Bazel cannot see them.
 """
 
 import importlib.util
@@ -23,7 +26,6 @@ import ray
 SETUP_DEV_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "setup-dev.py")
 )
-SOURCE_RAY_DIR = os.path.dirname(SETUP_DEV_PATH)
 
 requires_symlinks = pytest.mark.skipif(
     sys.platform == "win32",
@@ -55,18 +57,6 @@ def source_package(tmp_path):
     package_dir.mkdir(parents=True)
     (package_dir / "from_source.py").write_text("")
     return package_dir
-
-
-def test_packages_to_link_exist_in_source_tree(setup_dev):
-    missing = sorted(
-        package
-        for package in setup_dev.PACKAGES_TO_LINK
-        if not os.path.exists(os.path.join(SOURCE_RAY_DIR, package))
-    )
-    assert missing == [], (
-        "python/ray/setup-dev.py links packages that no longer exist in the "
-        f"source tree: {missing}"
-    )
 
 
 def test_do_link_skips_packages_in_skip_list(
