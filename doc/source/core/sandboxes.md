@@ -352,7 +352,9 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 
 :::{note}
 * **Rootless mode:** gVisor's checkpoint and restore mechanism requires `rootless=False` and `SYS_PTRACE` capabilities inside worker containers to dump process memory maps and namespaces.
-* **Node-local storage:** In the current release, restored sandboxes must reside on the same worker node where the checkpoint was captured (e.g. `/tmp/ray` `emptyDir` volume or local NVMe SSD).
+* **Node-local vs. remote/shared storage:**
+  * **Node-local storage (default, ``remote=False``):** When saving to local disk or NVMe SSD (such as ``/tmp/ray``), the checkpoint only resides on that worker VM. ``sandbox.restore()`` automatically pins the restored actor to the same worker node via Ray's ``NodeAffinitySchedulingStrategy``.
+  * **Remote / shared mount (``remote=True``):** When saving to a shared filesystem accessible across all nodes (such as NFS, GCP Filestore, or Cloud Storage FUSE), pass ``remote=True`` to ``base_sb.checkpoint.remote(checkpoint_path, remote=True)``. This allows Ray to schedule restored sandboxes across any VM node in the cluster, enabling horizontal scale-out branching.
 :::
 
 ### Pass custom OCI configurations to gVisor
