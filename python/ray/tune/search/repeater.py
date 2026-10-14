@@ -156,6 +156,10 @@ class Repeater(Searcher):
         1. ``result`` is empty or not provided.
         2. ``result`` is provided but no metric was provided.
 
+        Once every repeat has reported, the wrapped searcher is notified with
+        the mean score. The ``error`` flag of the last repeat to finish is
+        passed on only if no repeat produced a score.
+
         """
         if trial_id not in self._trial_id_to_group:
             logger.error(
@@ -171,9 +175,15 @@ class Repeater(Searcher):
 
         if trial_group.finished_reporting():
             scores = trial_group.scores()
+            mean_score = np.nanmean(scores)
+            # ``error`` describes only the repeat that finished last. Keep it
+            # only if no repeat produced a score, so the mean of the repeats
+            # that succeeded is not discarded by the wrapped searcher.
+            if not np.isnan(mean_score):
+                kwargs.pop("error", None)
             self.searcher.on_trial_complete(
                 trial_group.primary_trial_id,
-                result={self.searcher.metric: np.nanmean(scores)},
+                result={self.searcher.metric: mean_score},
                 **kwargs
             )
 

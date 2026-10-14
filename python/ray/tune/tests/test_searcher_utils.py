@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
@@ -127,6 +128,48 @@ def test_repeater_searcher_finished(num_configs, tmp_path):
             assert results == []
     if trials:
         assert results == [(trials[0].trial_id, {"result": 1})]
+
+
+@pytest.mark.parametrize("errored", [(), (0,), (1,), (2,), (0, 2), (0, 1, 2)])
+def test_repeater_error_flag(errored, tmp_path):
+    """The error flag must not depend on which repeat finishes last."""
+    calls = []
+
+    class TestSuggestion(Searcher):
+        def suggest(self, trial_id):
+            return {"score": 1}
+
+        def on_trial_complete(self, trial_id, result=None, error=False):
+            calls.append((result, error))
+
+    repeat = 3
+    searcher = Repeater(TestSuggestion(metric="result", mode="max"), repeat=repeat)
+    alg = SearchGenerator(searcher)
+    alg.add_configurations(
+        {
+            "test": {
+                "run": MOCK_TRAINABLE_NAME,
+                "num_samples": repeat,
+                "storage_path": str(tmp_path),
+            }
+        }
+    )
+    trials = [alg.next_trial() for _ in range(repeat)]
+    for index, trial in enumerate(trials):
+        if index in errored:
+            alg.on_trial_complete(trial.trial_id, error=True)
+        else:
+            alg.on_trial_complete(trial.trial_id, {"result": index})
+
+    assert len(calls) == 1
+    result, error = calls[0]
+    scores = [index for index in range(repeat) if index not in errored]
+    if scores:
+        assert result == {"result": sum(scores) / len(scores)}
+        assert not error
+    else:
+        assert np.isnan(result["result"])
+        assert error
 
 
 def test_set_get_repeater():
