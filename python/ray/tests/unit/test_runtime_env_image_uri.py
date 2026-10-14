@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import Optional
+from typing import Optional, Sequence
 
 import pytest
 
@@ -26,6 +26,8 @@ def auth_env(monkeypatch, tmp_path):
 def _container_command(
     context: Optional[RuntimeEnvContext] = None,
     runtime_env_dir: Optional[str] = None,
+    working_dir_uri: Optional[str] = None,
+    py_modules_uris: Sequence[str] = (),
 ) -> str:
     context = context or RuntimeEnvContext()
     _modify_context_impl(
@@ -36,6 +38,8 @@ def _container_command(
         logging.getLogger(__name__),
         "/tmp/ray",
         runtime_env_dir,
+        working_dir_uri,
+        py_modules_uris,
     )
     return context.py_executable
 
@@ -107,18 +111,43 @@ def test_mounts_session_dir_and_masks_runtime_resources(auth_env):
     ]
 
 
-def test_mounts_inherited_pythonpath_resources_read_only(auth_env):
-    runtime_env_dir = "/tmp/ray/session_1/runtime_resources"
-    working_dir = f"{runtime_env_dir}/working_dir_files/abc"
-    context = RuntimeEnvContext(
-        env_vars={"PYTHONPATH": f"{working_dir}:/opt/lib:{runtime_env_dir}"}
+def test_mounts_only_own_inherited_resources_read_only(auth_env, tmp_path):
+    runtime_env_dir = tmp_path / "session_1" / "runtime_resources"
+    working_dir = runtime_env_dir / "working_dir_files" / "_ray_pkg_own"
+    py_module = runtime_env_dir / "py_modules_files" / "_ray_pkg_mod"
+    other_job_dir = runtime_env_dir / "working_dir_files" / "_ray_pkg_other"
+    for path in (working_dir, py_module, other_job_dir):
+        path.mkdir(parents=True)
+    # The job controls PYTHONPATH through env_vars, so it must not pick mounts.
+    context = RuntimeEnvContext(env_vars={"PYTHONPATH": str(other_job_dir)})
+
+    command = _container_command(
+        context,
+        str(runtime_env_dir),
+        "gcs://_ray_pkg_own.zip",
+        ["gcs://_ray_pkg_mod.zip", "gcs://_ray_pkg_missing.zip", "local:///opt/mod"],
     )
 
-    command = _container_command(context, runtime_env_dir)
-
     assert f"-v {working_dir}:{working_dir}:ro" in command
-    assert "/opt/lib:/opt/lib" not in command
-    assert f"{runtime_env_dir}:{runtime_env_dir}" not in command
+    assert f"-v {py_module}:{py_module}:ro" in command
+    assert f"{other_job_dir}:{other_job_dir}" not in command
+    assert "_ray_pkg_missing" not in command
+    assert "/opt/mod:" not in command
+
+
+def test_quotes_mount_paths_for_the_shell(auth_env, tmp_path):
+    runtime_env_dir = tmp_path / "ray dir" / "session_1" / "runtime_resources"
+    working_dir = runtime_env_dir / "working_dir_files" / "_ray_pkg_a;b"
+    working_dir.mkdir(parents=True)
+    session_dir = runtime_env_dir.parent
+
+    command = _container_command(
+        runtime_env_dir=str(runtime_env_dir), working_dir_uri="gcs://_ray_pkg_a;b.zip"
+    )
+
+    assert f"-v '{session_dir}:{session_dir}'" in command
+    assert f"--tmpfs '{runtime_env_dir}:notmpcopyup'" in command
+    assert f"-v '{working_dir}:{working_dir}:ro'" in command
 
 
 def test_log_redacts_env_var_values(auth_env, caplog):

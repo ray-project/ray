@@ -1,14 +1,19 @@
 import asyncio
 import logging
 import os
+import shlex
 import tempfile
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
 from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.packaging import (
+    get_local_dir_from_uri,
+    get_local_dir_uri_path,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.redaction import REDACTED_PLACEHOLDER
 
@@ -76,6 +81,8 @@ def _modify_context_impl(
     logger: logging.Logger,
     ray_tmp_dir: str,
     runtime_env_dir: Optional[str] = None,
+    working_dir_uri: Optional[str] = None,
+    py_modules_uris: Sequence[str] = (),
 ):
     context.override_worker_entrypoint = worker_path
 
@@ -87,16 +94,23 @@ def _modify_context_impl(
         session_dir = os.path.dirname(runtime_env_dir)
         mounts = [
             "-v",
-            f"{session_dir}:{session_dir}",
+            shlex.quote(f"{session_dir}:{session_dir}"),
             "--tmpfs",
-            f"{runtime_env_dir}:notmpcopyup",
+            shlex.quote(f"{runtime_env_dir}:notmpcopyup"),
         ]
-        # A job-level working_dir or py_modules inherited by this task reaches
-        # the worker as PYTHONPATH entries under runtime_env_dir.
-        for path in context.env_vars.get("PYTHONPATH", "").split(os.pathsep):
-            path = os.path.abspath(path) if path else ""
-            if path.startswith(runtime_env_dir + os.sep):
-                mounts.extend(["-v", f"{path}:{path}:ro"])
+        # Bind a job-level working_dir or py_modules this task inherited. The
+        # paths come from the task's own URIs, never from PYTHONPATH, which the
+        # job controls through env_vars.
+        inherited = [("working_dir_files", working_dir_uri)]
+        inherited += [("py_modules_files", uri) for uri in py_modules_uris]
+        for subdir, uri in inherited:
+            if not uri or get_local_dir_uri_path(uri) is not None:
+                continue
+            path = str(
+                get_local_dir_from_uri(uri, os.path.join(runtime_env_dir, subdir))
+            )
+            if os.path.isdir(path):
+                mounts.extend(["-v", shlex.quote(f"{path}:{path}:ro")])
     else:
         mounts = ["-v", ray_tmp_dir + ":" + ray_tmp_dir]
 
@@ -227,6 +241,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             logger,
             self._ray_tmp_dir,
             self._runtime_env_dir,
+            runtime_env.working_dir_uri(),
+            runtime_env.py_modules_uris(),
         )
 
 
@@ -280,4 +296,6 @@ class ContainerPlugin(RuntimeEnvPlugin):
             logger,
             self._ray_tmp_dir,
             self._runtime_env_dir,
+            runtime_env.working_dir_uri(),
+            runtime_env.py_modules_uris(),
         )
