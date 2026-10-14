@@ -546,6 +546,7 @@ def _owner_filter(ownership: Dict[str, Tuple[int, int]]):
         ids = ownership.get(os.path.normpath(ti.name))
         ti.uid, ti.gid = ids if ids else (0, 0)
         ti.uname = ti.gname = ""
+        ti.mtime = 0
         return ti
 
     return _filter
@@ -627,6 +628,8 @@ def build_erofs_image(
                 "--tar=f",
                 f"-b{mmap.PAGESIZE}",
                 "-E^inline_data",
+                "-T0",
+                "-U00000000-0000-0000-0000-000000000000",
                 out_path,
                 flat_tar,
             ],

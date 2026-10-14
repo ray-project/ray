@@ -41,6 +41,7 @@ class Sandbox:
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
         restore_from: Path to checkpoint directory if restoring an existing sandbox.
+        remote: If True, allow restore from a remote/shared checkpoint path across VM nodes.
         **kwargs: Additional parameters passed to runtime.
     """
 
@@ -59,6 +60,7 @@ class Sandbox:
         capabilities: Optional[List[str]] = None,
         readonly: Optional[bool] = None,
         restore_from: Optional[str] = None,
+        remote: Optional[bool] = None,
         **kwargs,
     ):
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
@@ -89,6 +91,7 @@ class Sandbox:
                 cpu=cpu,
                 memory=memory,
                 ttl_seconds=ttl_seconds,
+                remote=remote,
                 timeout_seconds=timeout_seconds,
                 **kwargs,
             )
@@ -215,6 +218,7 @@ class Sandbox:
         self,
         checkpoint_path: Optional[str] = None,
         leave_running: bool = True,
+        remote: bool = False,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -223,6 +227,7 @@ class Sandbox:
         Args:
             checkpoint_path: Path where the checkpoint directory will be saved.
             leave_running: If True, keep the sandbox running after checkpointing.
+            remote: If True, mark checkpoint as remote/shared across VM nodes.
             timeout_seconds: Timeout for the checkpoint operation.
             **kwargs: Additional parameters passed to runtime checkpoint.
 
@@ -233,6 +238,7 @@ class Sandbox:
             self.instance_id,
             checkpoint_path=checkpoint_path,
             leave_running=leave_running,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )

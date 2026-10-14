@@ -9,16 +9,19 @@ import time
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.image_utils import ROOTFS_IMAGE
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.checkpoint_utils import (
+    CheckpointPath,
     StagedCheckpoint,
     build_restored_config,
     copy_fs_tree,
     create_manifest,
+    get_current_node_id,
     load_checkpoint_manifest,
 )
 from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
@@ -566,6 +569,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         compression: str = "none",
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
+        remote: bool = False,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -573,6 +577,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
+        node_id = get_current_node_id()
 
         # Step 1: Validate pre-conditions and determine target checkpoint directory path.
         if config.rootless:
@@ -638,9 +643,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 cwd=meta["cwd"],
                 workdir=meta.get("workdir"),
                 leave_running=leave_running,
+                remote=remote,
+                node_id=node_id,
             )
             stage.write_manifest(manifest)
-            stage.harden_permissions(rootless=config.rootless)
+            stage.harden_permissions(rootless=config.rootless, remote=remote)
 
         # Step 6: Atomic swap completed upon exiting context manager.
         # If leave_running is False, terminate the source sandbox after bundle promotion succeeds.
@@ -652,12 +659,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 self._terminate_tree(proc)
             meta["status"] = SandboxStatus.TERMINATED
 
+        ckpt_path_obj = CheckpointPath(
+            checkpoint_path,
+            node_id=node_id,
+            remote=remote,
+            cpu=config.cpu,
+            memory=config.memory,
+        )
+
         return {
-            "checkpoint_path": checkpoint_path,
+            "checkpoint_path": ckpt_path_obj,
             "sandbox_id": sandbox_id,
             "duration_seconds": duration,
             "leave_running": leave_running,
             "image": config.image,
+            "remote": remote,
+            "node_id": node_id,
         }
 
     def restore_sandbox(
@@ -667,6 +684,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         memory: Optional[Union[str, int, float]] = None,
         background: bool = True,
         direct: bool = False,
+        remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -678,6 +696,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         manifest, state_dir = load_checkpoint_manifest(checkpoint_path)
         config = build_restored_config(manifest, cpu=cpu, memory=memory, **kwargs)
+
+        is_remote = (
+            remote if remote is not None else bool(manifest.get("remote", False))
+        )
+        if not is_remote:
+            checkpoint_node_id = manifest.get("node_id")
+            current_node_id = get_current_node_id()
+            if (
+                checkpoint_node_id
+                and current_node_id
+                and checkpoint_node_id != current_node_id
+            ):
+                raise SandboxError(
+                    f"Checkpoint at '{checkpoint_path}' was created as a node-local "
+                    f"checkpoint on node '{checkpoint_node_id}', but restore is running "
+                    f"on a different node '{current_node_id}'. To restore checkpoints "
+                    f"across different VM nodes, create or restore the checkpoint with "
+                    f"remote=True on a shared mount path."
+                )
 
         # Step 2: Verify host runtime environment dependencies (runsc, network helpers).
         if not shutil.which("runsc"):
@@ -709,7 +746,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            self._image_manager.pull_image(
+            image_dir = self._image_manager.pull_image(
                 config.image,
                 timeout_seconds=timeout_seconds,
                 instance_id=sandbox_id,
@@ -828,6 +865,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                             mem_res = resources.setdefault("memory", {})
                             mem_res["limit"] = parsed_mem
 
+                # Update annotations to target node's locally pulled EROFS image
+                if image_dir:
+                    erofs_image_path = os.path.join(image_dir, ROOTFS_IMAGE)
+                    annotations = spec_data.get("annotations")
+                    if (
+                        isinstance(annotations, dict)
+                        and "dev.gvisor.spec.rootfs.source" in annotations
+                        and os.path.isfile(erofs_image_path)
+                    ):
+                        annotations["dev.gvisor.spec.rootfs.source"] = erofs_image_path
+
                 with open(target_config_path, "w", encoding="utf-8") as f:
                     json.dump(spec_data, f, indent=2)
         except Exception as err:
@@ -880,8 +928,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         if status == "running":
                             break
                         elif status in ("stopped", "error"):
+                            stderr_str = ""
+                            if stderr_file is not None:
+                                try:
+                                    stderr_file.seek(0)
+                                    stderr_str = stderr_file.read()
+                                except Exception:
+                                    pass
                             raise SandboxCreationError(
-                                f"Restored gVisor container stopped unexpectedly (status: {status})."
+                                f"Restored gVisor container stopped unexpectedly (status: {status}). Stderr: {stderr_str}"
                             )
                     except Exception as e:
                         if isinstance(e, SandboxCreationError):

@@ -163,6 +163,7 @@ class BaseSandboxBackend(ABC):
         compression: str = "none",
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
+        remote: bool = False,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> Dict[str, Any]:
@@ -176,6 +177,8 @@ class BaseSandboxBackend(ABC):
             compression: Compression level ('none' or 'flate-best-speed').
             exclude_committed_zero_pages: If True, exclude committed zero-filled pages.
             direct: If True, use O_DIRECT for writing checkpoint pages.
+            remote: If True, checkpoint path is on a remote or shared mount accessible
+                across different VM nodes, allowing restoration on any node in the cluster.
             timeout_seconds: Timeout in seconds for the checkpoint operation.
             **kwargs: Backend-specific arguments.
 
@@ -192,6 +195,7 @@ class BaseSandboxBackend(ABC):
         memory: Optional[Union[str, int, float]] = None,
         background: bool = True,
         direct: bool = False,
+        remote: Optional[bool] = None,
         timeout_seconds: float = 30.0,
         **kwargs,
     ) -> str:
@@ -203,6 +207,9 @@ class BaseSandboxBackend(ABC):
             memory: Optional memory allocation override.
             background: If True, restore guest memory asynchronously for sub-10ms start.
             direct: If True, use O_DIRECT for reading checkpoint pages.
+            remote: If True, treat the checkpoint as remote/shared, allowing restoration
+                on a different VM node than where the checkpoint was captured. If None,
+                defaults to the value recorded in the checkpoint manifest.
             timeout_seconds: Timeout in seconds for restore to reach 'running' state.
             **kwargs: Backend-specific arguments.
 

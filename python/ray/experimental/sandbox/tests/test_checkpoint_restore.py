@@ -14,6 +14,7 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
 from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 from ray.experimental.sandbox.runtime import SandboxRuntime
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class TestCheckpointRestore(unittest.TestCase):
@@ -319,6 +320,7 @@ class TestCheckpointRestore(unittest.TestCase):
             sandbox_id="id-123",
             checkpoint_path="/custom",
             leave_running=True,
+            remote=False,
             timeout_seconds=30.0,
         )
 
@@ -815,9 +817,112 @@ class TestCheckpointRestore(unittest.TestCase):
                 cpu=None,
                 memory=None,
                 ttl_seconds=None,
+                remote=None,
                 timeout_seconds=30.0,
             )
 
+    def test_checkpoint_remote_flag(self):
+        sandbox_id, _ = self._create_mock_sandbox(rootless=False)
+        ckpt_dir = os.path.join(self.temp_dir, "remote_ckpt")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            res = self.backend.checkpoint_sandbox(
+                sandbox_id,
+                checkpoint_path=ckpt_dir,
+                leave_running=True,
+                remote=True,
+            )
+            assert res["remote"] is True
+            assert isinstance(res["checkpoint_path"], sandbox_api.CheckpointPath)
+            assert res["checkpoint_path"].remote is True
+
+            with open(os.path.join(ckpt_dir, "manifest.json")) as f:
+                manifest = json.load(f)
+            assert manifest["remote"] is True
+            assert "node_id" in manifest
+
+    def test_restore_remote_flag_allows_cross_node(self):
+        ckpt_dir = os.path.join(self.temp_dir, "cross_node_ckpt")
+        state_dir = os.path.join(ckpt_dir, "state")
+        os.makedirs(state_dir, exist_ok=True)
+        manifest = {
+            "version": "1.0",
+            "image": "busybox:latest",
+            "node_id": "node_A",
+            "remote": False,
+            "config": {
+                "image": "busybox:latest",
+                "rootless": False,
+            },
+        }
+        with open(os.path.join(ckpt_dir, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        # Node mismatch with remote=False should raise SandboxError
+        with patch(
+            "ray.experimental.sandbox.backend.gvisor.get_current_node_id",
+            return_value="node_B",
+        ):
+            with pytest.raises(
+                SandboxError, match="node-local checkpoint on node 'node_A'"
+            ):
+                self.backend.restore_sandbox(ckpt_dir)
+
+            # Node mismatch with remote=True should be allowed
+            with (
+                patch("subprocess.Popen") as mock_popen,
+                patch("subprocess.run") as mock_run,
+                patch("shutil.which", return_value="/usr/bin/runsc"),
+            ):
+                mock_proc = MagicMock()
+                mock_proc.poll.return_value = None
+                mock_proc.pid = 12345
+                mock_popen.return_value = mock_proc
+                mock_run.return_value = MagicMock(
+                    returncode=0, stdout=json.dumps({"status": "running"})
+                )
+
+                restored_id = self.backend.restore_sandbox(ckpt_dir, remote=True)
+                assert restored_id.startswith("ray-sandbox-")
+
+    def test_top_level_restore_scheduling_strategy_local_vs_remote(self):
+        valid_node_id = "a" * 56
+        ckpt_local = sandbox_api.CheckpointPath(
+            os.path.join(self.temp_dir, "ckpt_local"),
+            node_id=valid_node_id,
+            remote=False,
+            cpu=2.0,
+            memory="1Gi",
+        )
+        ckpt_remote = sandbox_api.CheckpointPath(
+            os.path.join(self.temp_dir, "ckpt_remote"),
+            node_id=valid_node_id,
+            remote=True,
+            cpu=2.0,
+            memory="1Gi",
+        )
+
+        with patch.object(sandbox_api.Sandbox, "options") as mock_options:
+            mock_remote = MagicMock()
+            mock_options.return_value = mock_remote
+
+            # Restoring node-local CheckpointPath should attach NodeAffinitySchedulingStrategy
+            sandbox_api.restore(ckpt_local)
+            call_kwargs = mock_options.call_args[1]
+            assert "scheduling_strategy" in call_kwargs
+            strategy = call_kwargs["scheduling_strategy"]
+            assert isinstance(strategy, NodeAffinitySchedulingStrategy)
+            assert strategy.node_id == valid_node_id
+            assert strategy.soft is False
+
+            # Restoring remote CheckpointPath should NOT set scheduling_strategy
+            mock_options.reset_mock()
+            sandbox_api.restore(ckpt_remote)
+            call_kwargs = mock_options.call_args[1]
+            assert "scheduling_strategy" not in call_kwargs
+
 
 if __name__ == "__main__":
+    import sys
+
     sys.exit(pytest.main(["-v", __file__]))
