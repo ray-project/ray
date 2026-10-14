@@ -34,6 +34,9 @@ class SGLangTaskType(TaskType):
     # Generate text.
     GENERATE = "generate"
 
+    # Score items against a query, optionally with embedding overrides.
+    SCORE = "score"
+
 
 TypeVLLMTaskType = Literal[tuple(vLLMTaskType.values())]
 TypeSGLangTaskType = Literal[tuple(SGLangTaskType.values())]

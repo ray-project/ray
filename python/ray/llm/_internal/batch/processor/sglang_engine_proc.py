@@ -2,9 +2,9 @@
 
 import hashlib
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from pydantic import Field, root_validator
+from pydantic import Field, StrictInt, model_validator, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
@@ -29,12 +29,140 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
+from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
 
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
+
+# Stages that don't apply to the score task: there is no chat to template and
+# nothing to detokenize.
+_SCORE_DISABLED_STAGES = ("chat_template_stage", "detokenize_stage")
+
+
+class SGLangScoreOptions(BaseModelExtended):
+    """Options for the SGLang score task."""
+
+    label_token_ids: Optional[List[StrictInt]] = Field(
+        default=None,
+        description="Token IDs whose probabilities form each item's score. "
+        "Required for generative (CausalLM) models.",
+    )
+    apply_softmax: bool = Field(
+        default=False,
+        description="Whether to softmax-normalize the scores over label_token_ids.",
+    )
+    item_first: bool = Field(
+        default=False,
+        description="Whether to put each item before the query instead of after.",
+    )
+    embed_override_token: Optional[str] = Field(
+        default=None,
+        description="Marker text whose positions are replaced by the "
+        "'query_embed_overrides'/'item_embed_overrides' vectors. Must tokenize "
+        "to a single token.",
+    )
+    embed_override_token_id: Optional[StrictInt] = Field(
+        default=None,
+        description="Token ID of the embedding marker. Alternative to "
+        "embed_override_token.",
+    )
+
+    @model_validator(mode="after")
+    def _validate(self) -> "SGLangScoreOptions":
+        if self.label_token_ids is not None and not self.label_token_ids:
+            raise ValueError("'label_token_ids' must not be empty.")
+        if (
+            self.embed_override_token is not None
+            and self.embed_override_token_id is not None
+        ):
+            raise ValueError(
+                "Set only one of 'embed_override_token' and 'embed_override_token_id'."
+            )
+        return self
+
+
+def _validate_score_config(
+    config: "SGLangEngineProcessorConfig", tokenize: bool
+) -> None:
+    """Check score settings that would otherwise fail later on the workers.
+
+    Args:
+        config: The processor config.
+        tokenize: Whether the score tokenize stage is enabled.
+    """
+    options = config.score_options
+    misplaced = sorted(set(config.engine_kwargs) & set(SGLangScoreOptions.model_fields))
+    if misplaced:
+        raise ValueError(f"Move {misplaced} from engine_kwargs to score_options.")
+    if options.item_first and config.engine_kwargs.get("enable_mis"):
+        raise ValueError("'item_first' can't be used with 'enable_mis'.")
+    if options.item_first and tokenize:
+        raise ValueError(
+            "'item_first' isn't supported with the score tokenize stage. Set "
+            "tokenize_stage=False and pass token IDs."
+        )
+
+
+def _validate_label_token_ids(options: SGLangScoreOptions, hf_config: Any) -> None:
+    """Check `label_token_ids` against the model config.
+
+    The engine runs with skip_tokenizer_init, so it doesn't range-check them.
+
+    Args:
+        options: The score options.
+        hf_config: The model's Hugging Face config, or None if unavailable.
+    """
+    architectures = getattr(hf_config, "architectures", None) or []
+    if options.label_token_ids is None:
+        if any(arch.endswith("ForCausalLM") for arch in architectures):
+            raise ValueError(
+                f"score_options.label_token_ids is required for {architectures[0]}."
+            )
+        return
+    vocab_size = getattr(hf_config, "vocab_size", None)
+    if isinstance(vocab_size, int) and vocab_size > 0:
+        out_of_range = [t for t in options.label_token_ids if not 0 <= t < vocab_size]
+        if out_of_range:
+            raise ValueError(
+                f"'label_token_ids' {out_of_range} are outside the model "
+                f"vocabulary (size {vocab_size})."
+            )
+
+
+def _resolve_embed_override_token_id(
+    config: "SGLangEngineProcessorConfig", tokenizer_source: str
+) -> Optional[int]:
+    """Return the embedding marker token ID, resolving the marker text if needed.
+
+    Args:
+        config: The processor config.
+        tokenizer_source: The model source to load the tokenizer from.
+
+    Returns:
+        The marker token ID, or None if embedding overrides aren't configured.
+    """
+    from ray.llm._internal.batch.stages.sglang_score_tokenize_stage import (
+        _MIS_DELIMITER_TOKEN_ID,
+        load_tokenizer,
+        resolve_embed_override_token,
+    )
+
+    options = config.score_options
+    token_id = options.embed_override_token_id
+    if options.embed_override_token is not None:
+        tokenizer = load_tokenizer(
+            tokenizer_source, config.engine_kwargs.get("trust_remote_code", False)
+        )
+        token_id = resolve_embed_override_token(tokenizer, options.embed_override_token)
+    if token_id == _MIS_DELIMITER_TOKEN_ID and config.engine_kwargs.get("enable_mis"):
+        raise ValueError(
+            f"The embedding marker resolves to token ID {token_id}, which "
+            "multi-item scoring uses as its delimiter. Use a different marker."
+        )
+    return token_id
 
 
 class SGLangEngineProcessorConfig(OfflineProcessorConfig):
@@ -49,8 +177,11 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     )
     task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
-        description="The task type to use. If not specified, will use "
-        "'generate' by default.",
+        description="The task type to use: 'generate' (default) or 'score'.",
+    )
+    score_options: SGLangScoreOptions = Field(
+        default_factory=SGLangScoreOptions,
+        description="Options for task_type='score'.",
     )
 
     @root_validator(pre=True)
@@ -109,6 +240,7 @@ def build_sglang_engine_processor(
         ChatTemplateStage,
         DetokenizeStage,
         SGLangEngineStage,
+        SGLangScoreTokenizeStage,
         TokenizeStage,
     )
     from ray.llm._internal.common.utils.download_utils import (
@@ -119,6 +251,16 @@ def build_sglang_engine_processor(
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
     stages = []
+
+    is_score = config.task_type == SGLangTaskType.SCORE
+    if is_score:
+        config = config.model_copy(
+            update={stage: False for stage in _SCORE_DISABLED_STAGES}
+        )
+        _validate_score_config(
+            config,
+            resolve_stage_config(config.tokenize_stage, TokenizerStageConfig).enabled,
+        )
 
     # Prepare processor defaults for merging into stage configs
     trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)
@@ -157,26 +299,46 @@ def build_sglang_engine_processor(
         TokenizerStageConfig,
         processor_defaults,
     )
+    score_options = None
+    if is_score:
+        embed_override_token_id = _resolve_embed_override_token_id(
+            config, tokenize_stage_cfg.model_source or config.model_source
+        )
+        score_options = config.score_options.model_dump(
+            exclude={"embed_override_token"}
+        )
+        score_options["embed_override_token_id"] = embed_override_token_id
+
     if tokenize_stage_cfg.enabled:
+        stage_cls = SGLangScoreTokenizeStage if is_score else TokenizeStage
+        tokenize_kwargs = dict(
+            model=tokenize_stage_cfg.model_source,
+            trust_remote_code=trust_remote_code,
+        )
+        if is_score and config.score_options.embed_override_token is not None:
+            tokenize_kwargs.update(
+                embed_override_token=config.score_options.embed_override_token,
+                embed_override_token_id=score_options["embed_override_token_id"],
+            )
         stages.append(
-            TokenizeStage(
-                fn_constructor_kwargs=dict(
-                    model=tokenize_stage_cfg.model_source,
-                    trust_remote_code=trust_remote_code,
-                ),
+            stage_cls(
+                fn_constructor_kwargs=tokenize_kwargs,
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
         )
 
     # Core stage -- the SGLang engine.
+    engine_stage_kwargs = dict(
+        model=config.model_source,
+        engine_kwargs=config.engine_kwargs,
+        task_type=config.task_type,
+        max_pending_requests=config.max_pending_requests,
+    )
+    if is_score:
+        engine_stage_kwargs["score_options"] = score_options
     stages.append(
         SGLangEngineStage(
-            fn_constructor_kwargs=dict(
-                model=config.model_source,
-                engine_kwargs=config.engine_kwargs,
-                task_type=config.task_type,
-                max_pending_requests=config.max_pending_requests,
-            ),
+            fn_constructor_kwargs=engine_stage_kwargs,
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
                 # The number of running replicas. This is a deprecated field, but
@@ -248,6 +410,9 @@ def build_sglang_engine_processor(
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
+
+    if is_score:
+        _validate_label_token_ids(config.score_options, hf_config)
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
