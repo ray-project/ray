@@ -4,16 +4,15 @@ myst:
     description: "Control Tune logging and output: configure loggers, log to TensorBoard, set console verbosity, and redirect trainable logs to files."
 ---
 
-# Logging and Outputs in Tune
+# Logging and outputs in Tune
 
-By default, Tune logs results for TensorBoard, CSV, and JSON formats. If you need to log something lower level like model weights or gradients, see {ref}`Trainable Logging <trainable-logging>`. You can learn more about logging and customizations here: {ref}`loggers-docstring`.
-
+By default, Ray Tune logs results in TensorBoard, CSV, and JSON formats. To log lower-level data such as model weights or gradients, see {ref}`trainable logging <trainable-logging>`. For more on logging and how to customize it, see {ref}`loggers-docstring`.
 
 (tune-logging)=
 
 ## How to configure logging in Tune?
 
-Tune will log the results of each trial to a sub-folder under a specified local dir, which defaults to `~/ray_results`.
+Tune logs the results of each trial to a subdirectory of a specified local directory, which defaults to `~/ray_results`.
 
 ```python
 # This logs to two different trial folders:
@@ -23,7 +22,7 @@ tuner = tune.Tuner(trainable, run_config=RunConfig(num_samples=2))
 results = tuner.fit()
 ```
 
-You can specify the `storage_path` and `trainable_name`:
+You can specify the `storage_path` and the experiment `name`:
 
 ```python
 # This logs to 2 different trial folders:
@@ -35,26 +34,25 @@ tuner = tune.Tuner(trainable,
 results = tuner.fit()
 ```
 
-
-To learn more about Trials, see its detailed API documentation: {ref}`trial-docstring`.
+For the trial API reference, see {ref}`trial-docstring`.
 
 (tensorboard)=
 
 ## How to log your Tune runs to TensorBoard?
 
-Tune automatically outputs TensorBoard files during `Tuner.fit()`. To visualize learning in tensorboard, install tensorboardX:
+Tune automatically outputs TensorBoard files during `Tuner.fit()`. To visualize learning in TensorBoard, install `tensorboardX`:
 
 ```bash
 $ pip install tensorboardX
 ```
 
-Then, after you run an experiment, you can visualize your experiment with TensorBoard by specifying the output directory of your results.
+After you run an experiment, visualize it in TensorBoard by specifying the output directory of your results:
 
 ```bash
 $ tensorboard --logdir=~/ray_results/my_experiment
 ```
 
-If you are running Ray on a remote multi-user cluster where you do not have sudo access, you can run the following commands to make sure tensorboard is able to write to the tmp directory:
+If you're running Ray on a remote multi-user cluster where you don't have sudo access, you can run the following commands so that TensorBoard can write to the temporary directory:
 
 ```bash
 $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
@@ -63,7 +61,7 @@ $ export TMPDIR=/tmp/$USER; mkdir -p $TMPDIR; tensorboard --logdir=~/ray_results
 ```{image} ../images/ray-tune-tensorboard.png
 ```
 
-If using TensorFlow `2.x`, Tune also automatically generates TensorBoard HParams output, as shown below:
+If you use TensorFlow 2.x, Tune also generates TensorBoard HParams output automatically, as the following example shows:
 
 ```python
 tuner = tune.Tuner(
@@ -79,12 +77,11 @@ results = tuner.fit()
 ```{image} ../../images/tune-hparams.png
 ```
 
-
 (tune-console-output)=
 
 ## How to control console output with Tune?
 
-User-provided fields will be outputted automatically on a best-effort basis. You can use a {ref}`Reporter <tune-reporter-doc>` object to customize the console output.
+Tune outputs the fields you provide automatically, on a best-effort basis. To customize the console output, you can use a {ref}`Reporter <tune-reporter-doc>` object.
 
 ```bash
 == Status ==
@@ -103,14 +100,13 @@ Number of trials: 4 (4 RUNNING)
 +----------------------+----------+---------------------+-----------+--------+--------+----------------+-------+
 ```
 
-
 (tune-log_to_file)=
 
-## How to redirect Trainable logs to files in a Tune run?
+## How to redirect trainable logs to files in a Tune run?
 
-In Tune, Trainables are run as remote actors. By default, Ray collects actors' stdout and stderr and prints them to the head process (see {ref}`ray worker logs <ray-worker-logs>` for more information). Logging that happens within Tune Trainables follows this handling by default. However, if you wish to collect Trainable logs in files for analysis, Tune offers the option `log_to_file` for this. This applies to print statements, `warnings.warn` and `logger.info` etc.
+Tune runs trainables as remote actors. By default, Ray collects the stdout and stderr of actors and prints them to the head process. For more information, see {ref}`worker logs <ray-worker-logs>`. Logging inside trainables follows this default handling. To collect trainable logs in files for analysis instead, use the `log_to_file` option. It applies to print statements, `warnings.warn`, `logger.info`, and similar output.
 
-By passing `log_to_file=True` to `RunConfig`, which is taken in by `Tuner`, stdout and stderr will be logged to `trial_logdir/stdout` and `trial_logdir/stderr`, respectively:
+To log stdout and stderr to `trial_logdir/stdout` and `trial_logdir/stderr`, respectively, pass `log_to_file=True` to the `RunConfig` that you pass to `Tuner`:
 
 ```python
 tuner = tune.Tuner(
@@ -120,7 +116,7 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
-If you would like to specify the output files, you can either pass one filename, where the combined output will be stored, or two filenames, for stdout and stderr, respectively:
+To specify the output files, you can pass either one filename for the combined output, or two filenames for stdout and stderr, respectively:
 
 ```python
 tuner = tune.Tuner(
@@ -135,38 +131,40 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
-The file names are relative to the trial's logdir. You can pass absolute paths, too.
-
-### Caveats
-Logging that happens in distributed training workers (if you happen to use Ray Tune together with Ray Train) is not part of this `log_to_file` configuration.
-
-### Where to find `log_to_file` files?
-If your Tune workload is configured with syncing to head node, then the corresponding `log_to_file` outputs can be located under each trial folder. If your Tune workload is instead configured with syncing to cloud, then the corresponding `log_to_file` outputs are *NOT* synced to cloud and can only be found in the worker nodes that the corresponding trial happens.
+The filenames are relative to the trial directory. You can also pass absolute paths.
 
 :::{note}
-This can cause problems when the trainable is moved across different nodes throughout its lifetime. This can happen with some schedulers or with node failures. We may prioritize enabling this if there are enough user requests. If this impacts your workflow, consider commenting on [this ticket](https://github.com/ray-project/ray/issues/32142).
+If you use Ray Tune with Ray Train, the `log_to_file` configuration doesn't cover logging in the distributed training workers.
 :::
 
+### Where to find `log_to_file` files?
 
-### Leave us feedback on this feature
-We know that logging and observability can be a huge performance boost for your workflow. Let us know what is your preferred way to interact with logging that happens in trainables. Leave you comments in [this ticket](https://github.com/ray-project/ray/issues/32142).
+If you configure your Tune workload to sync to the head node, the `log_to_file` outputs are in each trial directory. If you configure it to sync to the cloud instead, the `log_to_file` outputs aren't synced to the cloud, and you can find them only on the worker nodes where the corresponding trial ran.
+
+:::{note}
+This behavior can cause problems when a trainable moves between nodes during its lifetime, which can happen with some schedulers or with node failures. The Ray project may prioritize enabling this feature if enough users request it. If this affects your workflow, consider commenting on [this ticket](https://github.com/ray-project/ray/issues/32142).
+:::
+
+### Leave feedback on this feature
+
+To share how you prefer to interact with logging in trainables, leave a comment on [this ticket](https://github.com/ray-project/ray/issues/32142).
 
 (trainable-logging)=
 
-## How do you log arbitrary files from a Tune Trainable?
+## How do you log arbitrary files from a Tune trainable?
 
-By default, Tune only logs the *training result dictionaries* and *checkpoints* from your Trainable. However, you may want to save a file that visualizes the model weights or model graph, or use a custom logging library that requires multi-process logging. For example, you may want to do this if you're trying to log images to TensorBoard. We refer to these saved files as **trial artifacts**.
+By default, Tune logs only the *training result dictionaries* and *checkpoints* from your trainable. You may also want to save a file that visualizes the model weights or model graph, or use a custom logging library that requires multi-process logging, for example to log images to TensorBoard. These saved files are *trial artifacts*.
 
 :::{note}
-If {class}`SyncConfig(sync_artifacts=True) <ray.tune.SyncConfig>`, trial artifacts are uploaded periodically from each trial (or from each remote training worker for Ray Train) to the {class}`RunConfig(storage_path) <ray.tune.RunConfig>`.
+If you set {class}`SyncConfig(sync_artifacts=True) <ray.tune.SyncConfig>`, trial artifacts are uploaded periodically from each trial to the {class}`RunConfig(storage_path) <ray.tune.RunConfig>`. With Ray Train, they're uploaded from each remote training worker.
 
 See the {class}`~ray.tune.SyncConfig` API reference for artifact syncing configuration options.
 :::
 
-You can save trial artifacts directly in the trainable, as shown below:
+You can save trial artifacts directly in the trainable, as the following examples show:
 
 :::{tip}
-Make sure that any logging calls or objects stay within scope of the Trainable. You may see pickling or other serialization errors or inconsistent logs otherwise.
+Keep any logging calls or objects within the scope of the trainable. Otherwise, you may see pickling or other serialization errors, or inconsistent logs.
 :::
 
 ::::{tab-set}
@@ -198,7 +196,6 @@ def trainable(config):
         tune.report(results)
 ```
 :::
-
 
 :::{tab-item} Class API
 ```python
@@ -239,13 +236,11 @@ class CustomLogging(tune.Trainable)
 :::
 ::::
 
+In the preceding examples, `logging_library` stands for whatever third-party logging library you use. `logging_library.set_log_path(os.getcwd())` is an imaginary API for demonstration purposes. It shows that you should configure the third-party library to log to the trainable's *working directory*. By default, the working directory of a function trainable or class trainable is the corresponding trial directory once the trainable launches as a remote Ray actor.
 
-In the code snippet above, `logging_library` refers to whatever 3rd party logging library you are using. Note that `logging_library.set_log_path(os.getcwd())` is an imaginary API that we are using for demonstration purposes, and it highlights that the third-party library should be configured to log to the Trainable's *working directory.* By default, the current working directory of both functional and class trainables is set to the corresponding trial directory once it's been launched as a remote Ray actor.
+## How to build custom Tune loggers?
 
-
-## How to Build Custom Tune Loggers?
-
-You can create a custom logger by inheriting the LoggerCallback interface ({ref}`logger-interface`):
+To create a custom logger, subclass the `LoggerCallback` interface, described in {ref}`logger-interface`:
 
 ```python
 from typing import Dict, List
@@ -278,8 +273,7 @@ class CustomLoggerCallback(LoggerCallback):
             del self._trial_files[trial]
 ```
 
-
-You can then pass in your own logger as follows:
+Then pass your logger to `RunConfig` as a callback:
 
 ```python
 from ray import tune
@@ -293,7 +287,6 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
+By default, Ray Tune creates JSON, CSV, and TensorBoardX logger callbacks if you don't pass them yourself. To disable this behavior, set the `TUNE_DISABLE_AUTO_CALLBACK_LOGGERS` environment variable to `"1"`.
 
-Per default, Ray Tune creates JSON, CSV and TensorBoardX logger callbacks if you don't pass them yourself. You can disable this behavior by setting the `TUNE_DISABLE_AUTO_CALLBACK_LOGGERS` environment variable to `"1"`.
-
-An example of creating a custom logger can be found in {doc}`/tune/examples/includes/logging-example`.
+For an example of a custom logger, see {doc}`/tune/examples/includes/logging-example`.
