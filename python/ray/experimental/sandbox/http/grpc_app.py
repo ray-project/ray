@@ -12,8 +12,9 @@ points:
 
 The ingress is the facade's own servicer, ``RaySandboxFacade``: Serve calls
 the method named after each RPC, as a ``grpc.aio`` server does, so every
-call passes the same token check. The facade keeps its exec table in
-memory, so the deployment runs exactly one replica.
+call passes the same token check. The facade keeps no state of its own
+(sandbox hosts keep each exec), so the deployment can run several replicas
+(``num_replicas``).
 
 Requires ``ray[serve]``.
 """
@@ -83,7 +84,7 @@ def _bind(
     deployment = serve.deployment(
         _FacadeIngress,
         name=_DEPLOYMENT_NAME,
-        num_replicas=1,
+        num_replicas=settings.num_replicas,
         max_ongoing_requests=_MAX_ONGOING_REQUESTS,
     )
     return deployment.bind(settings, advertise_url, handle_resolver_factory)
@@ -115,10 +116,5 @@ def build_app(args: Optional[Dict[str, Any]] = None) -> Any:
     args = dict(args or {})
     advertise_url = args.pop("advertise_url", None)
     settings = SandboxAPISettings(**args)
-    if settings.num_replicas != 1:
-        raise ValueError(
-            "the gRPC facade keeps its exec table in memory and runs as one "
-            "replica; remove num_replicas"
-        )
     _require_token_env(settings)
     return _bind(settings, advertise_url)
