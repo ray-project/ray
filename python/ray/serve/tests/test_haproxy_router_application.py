@@ -508,6 +508,14 @@ async def test_router_prefix_is_replaced(router_cluster):
         == "/v1/chat/completions?x=1"
     )
 
+    resp = requests.get(f"{url}/llm?x=1", timeout=10)
+
+    assert resp.status_code == 200, resp.text
+    assert (
+        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+        == "/?x=1"
+    )
+
     # Paths outside the router's prefix are not routed by it.
     assert requests.post(f"{url}/v1/chat/completions", timeout=10).status_code == 404
     assert (
@@ -520,7 +528,7 @@ async def test_router_prefix_is_replaced(router_cluster):
         requests.get(f"{url}/v1/control/v1/models", timeout=10).json()["replica"]
         == "c1"
     )
-    assert len(router.calls) == 1
+    assert len(router.calls) == 2
 
 
 @pytest.mark.asyncio

@@ -125,7 +125,10 @@ local function moved_path(path, from_prefix, to_prefix)
         suffix = path:sub(#from_prefix + 1)
     end
     if to_prefix == "/" then
-        return suffix ~= "" and suffix or "/"
+        if suffix == "" then
+            return "/"
+        end
+        return suffix:sub(1, 1) == "?" and "/" .. suffix or suffix
     end
     return to_prefix .. suffix
 end
