@@ -1,0 +1,48 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-serve-docs-style'
+level: warning
+ignorecase: false
+# Ray Serve generic nouns written in title case. These are the companion to
+# Serve/Terms.yml, split out because a fix here needs judgment, so this rule carries no
+# `action: replace`, and a tool applying swaps from Vale's JSON output skips it.
+#
+# Two kinds of judgment:
+#
+# - Heading and sentence starts. The swaps lowercase the generic noun, but when the
+#   phrase opens a heading or a sentence, its first word keeps its capital, such as
+#   "## Model multiplexing". The swaps are case-sensitive, so a sentence-initial
+#   "Model multiplexing" doesn't match.
+# - "Deployment" and "Application". Write both lowercase in prose for the Serve
+#   concepts, and put the classes in code style, such as `Deployment` and
+#   `Application`. The bare-word keys carry a preceding article because a capitalized
+#   "Deployment" is sometimes the class written without backticks. A human decides
+#   between lowercase and code style.
+#
+# Longer keys come first so a plural or a longer phrase matches before its prefix.
+#
+# `vocab: false` for the same reason as Serve/Terms.yml.
+vocab: false
+swap:
+  'Serve Applications': Serve applications
+  'Serve Application': Serve application
+  'Serve Deployments': Serve deployments
+  'Serve Deployment': Serve deployment
+  'the Deployment': the deployment
+  'a Deployment': a deployment
+  # The controller and proxy are actors Serve runs, named by role. `ServeController`
+  # and `ProxyActor` keep code style.
+  'Serve Controller': Serve controller
+  'the Controller': the controller
+  'The Controller': The controller
+  'HTTP Proxies': HTTP proxies
+  'HTTP Proxy': HTTP proxy
+  # Same treatment as "Ray autoscaler" in KubeRay/Terms.yml.
+  'Serve Autoscaler': Serve autoscaler
+  'Serve Autoscaling': Serve autoscaling
+  'Serve Config Files': Serve config files
+  'Serve Config File': Serve config file
+  'Serve Config file': Serve config file
+  'Serve Config': Serve config
+  'Model Multiplexing': model multiplexing
+  'Dynamic Request Batching': dynamic request batching
