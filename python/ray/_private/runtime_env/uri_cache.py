@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Optional, Set
+from typing import Callable, Dict, Optional, Set
 
 default_logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ class URICache:
         # Maps URIs to the size in bytes of their corresponding disk contents.
         self._used_uris: Set[str] = set()
         self._unused_uris: Set[str] = set()
+        # Maps URIs to the size_bytes that were recorded at add() time.
+        self._sizes: Dict[str, int] = {}
 
         if delete_fn is None:
             self._delete_fn = lambda uri, logger: 0
@@ -79,6 +81,7 @@ class URICache:
             self._unused_uris.remove(uri)
 
         self._used_uris.add(uri)
+        self._sizes[uri] = size_bytes
         self._total_size_bytes += size_bytes
 
         self._evict_if_needed(logger)
@@ -97,10 +100,16 @@ class URICache:
             # TODO(architkulkarni): Evict least recently used URI instead
             arbitrary_unused_uri = next(iter(self._unused_uris))
             self._unused_uris.remove(arbitrary_unused_uri)
-            num_bytes_deleted = self._delete_fn(arbitrary_unused_uri, logger)
-            self._total_size_bytes -= num_bytes_deleted
+            # Call delete_fn to actually remove the path from disk. The
+            # delete_fn may return a different size than what was recorded
+            # at add() time (e.g. files may have grown on disk since then).
+            # Use the stored size for accounting to keep the bookkeeping
+            # consistent and avoid driving _total_size_bytes negative.
+            self._delete_fn(arbitrary_unused_uri, logger)
+            stored_size = self._sizes.pop(arbitrary_unused_uri, 0)
+            self._total_size_bytes = max(0, self._total_size_bytes - stored_size)
             logger.info(
-                f"Deleted URI {arbitrary_unused_uri} with size " f"{num_bytes_deleted}."
+                f"Deleted URI {arbitrary_unused_uri} with size {stored_size}."
             )
 
     def _check_valid(self):
