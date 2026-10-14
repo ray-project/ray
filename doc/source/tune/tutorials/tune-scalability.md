@@ -70,7 +70,7 @@ Some benchmarks change the default settings for maximum throughput, for example,
   - 392.42
 ```
 
-The following sections discuss the results that showed high overhead.
+The following sections discuss some of the results that showed high overhead.
 
 ## Result throughput
 
