@@ -31,12 +31,18 @@ def read_packages_to_link():
     """Return the ``PACKAGES_TO_LINK`` mapping defined in ``setup-dev.py``."""
     with open(SETUP_DEV_PATH, encoding="utf-8") as setup_dev_file:
         tree = ast.parse(setup_dev_file.read(), SETUP_DEV_PATH)
-    for node in ast.walk(tree):
+    for node in tree.body:
         if isinstance(node, ast.Assign) and any(
             isinstance(target, ast.Name) and target.id == PACKAGES_TO_LINK
             for target in node.targets
         ):
-            return ast.literal_eval(node.value)
+            try:
+                return ast.literal_eval(node.value)
+            except (ValueError, TypeError) as exc:
+                raise RuntimeError(
+                    f"Failed to parse {PACKAGES_TO_LINK} in {SETUP_DEV_PATH}. "
+                    f"It must be a static literal dictionary: {exc}"
+                )
     raise RuntimeError(f"{PACKAGES_TO_LINK} is not defined in {SETUP_DEV_PATH}")
 
 

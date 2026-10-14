@@ -144,6 +144,10 @@ def test_do_link_is_idempotent_when_already_linked(
     backup = Path(f"{package_home}.bak")
     shutil.rmtree(backup)
 
+    # Drop the first call's output so the assertion below only covers the
+    # second call.
+    capsys.readouterr()
+
     setup_dev.do_link("example_pkg", force=True, local_path=str(source_package))
 
     assert "already linked to source" in capsys.readouterr().out
