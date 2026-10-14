@@ -140,7 +140,7 @@ Set the `RAY_RUNTIME_ENV_BEARER_TOKEN` environment variable to your bearer token
 export RAY_RUNTIME_ENV_BEARER_TOKEN="your_bearer_token_here"
 ```
 
-Set `RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS` to a comma-separated list of hostnames. Ray sends the token only to these hosts, because whoever submits a job chooses the URIs Ray downloads. If you leave the variable unset, Ray never sends the token. Ray never sends the token over plain `http://`.
+Set `RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS` to a comma-separated list of hostnames. List each hostname without a port or IPv6 brackets, for example `example.com` or `::1`. Ray sends the token only to these hosts, because whoever submits a job chooses the URIs Ray downloads. If you leave the variable unset, Ray never sends the token. Ray never sends the token over plain `http://`.
 
 ```bash
 export RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS="example.com"
