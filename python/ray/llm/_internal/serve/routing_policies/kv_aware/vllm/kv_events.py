@@ -122,20 +122,13 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
 def resolve_kv_event_block_size(vllm_config: Any) -> int:
     """Token span of the KV blocks the engine hashes and publishes.
 
-    Under decode context parallelism (DCP), vLLM shards each attention KV
-    block's token positions across the DCP ranks, so its prefix hashes and
-    ``BlockStored`` events cover ``block_size * decode_context_parallel_size``
-    tokens rather than the per-rank ``cache_config.block_size``. The KV router
-    must index at that span: the selection service drops every event whose
-    block size differs from the registered one, which would leave its index
-    empty and silently reduce KV-aware routing to load-only scoring.
+    The KV router must register this span, or it drops the engine's KV
+    events. Under decode context parallelism (DCP) it is
+    ``block_size * decode_context_parallel_size``, not the per-rank
+    ``cache_config.block_size``.
 
-    Prefer the size the engine reports in
-    ``cache_config.effective_attention_block_size``: the engine core reads it
-    from its full-attention KV cache managers (DCP included) and syncs it back
-    to the frontend config once initialized. Fall back to the DCP-scaled
-    per-rank size when the engine doesn't report one (older vLLM, or no common
-    full-attention block size).
+    Uses the engine-reported ``cache_config.effective_attention_block_size``
+    when available, else ``block_size * decode_context_parallel_size``.
     """
     cache_config = vllm_config.cache_config
     effective_block_size = getattr(cache_config, "effective_attention_block_size", None)

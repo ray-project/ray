@@ -176,6 +176,22 @@ class TestConfigureKvEvents:
             (16, SimpleNamespace(decode_context_parallel_size=1), 16),
             (64, SimpleNamespace(decode_context_parallel_size=8), 512),
             (16, SimpleNamespace(decode_context_parallel_size=2), 32),
+            # PCP shards KV only through DCP (DCP spans the PCP ranks), so
+            # prefill context parallelism alone doesn't scale the block span.
+            (
+                64,
+                SimpleNamespace(
+                    decode_context_parallel_size=2, prefill_context_parallel_size=2
+                ),
+                128,
+            ),
+            (
+                64,
+                SimpleNamespace(
+                    decode_context_parallel_size=1, prefill_context_parallel_size=2
+                ),
+                64,
+            ),
             # Older vLLM configs without the DCP field keep the per-rank size.
             (16, SimpleNamespace(), 16),
         ],
