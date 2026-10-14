@@ -6,53 +6,47 @@ myst:
 
 (tune-fault-tolerance-ref)=
 
-# How to Enable Fault Tolerance in Ray Tune
+# How to enable fault tolerance in Ray Tune
 
-Fault tolerance is an important feature for distributed machine learning experiments that can help mitigate the impact of node failures due to out of memory and out of disk issues.
+In distributed machine learning experiments, fault tolerance can help mitigate the impact of node failures caused by out-of-memory and out-of-disk issues.
 
-With fault tolerance, users can:
-
-- **Save time and resources by preserving training progress** even if a node fails.
-- **Access the cost savings of preemptible spot instance nodes** in the distributed setting.
+Fault tolerance preserves training progress when a node fails, which saves time and resources. In a distributed setting, it also gives you access to the cost savings of preemptible spot instance nodes.
 
 :::{seealso}
-In a *distributed* Tune experiment, a prerequisite to enabling fault tolerance is configuring some form of persistent storage where all trial results and checkpoints can be consolidated. See {ref}`tune-storage-options`.
+Before you enable fault tolerance in a *distributed* Tune experiment, configure persistent storage that consolidates all trial results and checkpoints. See {ref}`tune-storage-options`.
 :::
 
-In this guide, we will cover how to enable different types of fault tolerance offered by Ray Tune.
-
+This guide covers how to enable the different types of fault tolerance that Ray Tune offers.
 
 (tune-experiment-level-fault-tolerance)=
 
-## Experiment-level Fault Tolerance in Tune
+## Experiment-level fault tolerance in Tune
 
 At the experiment level, {meth}`Tuner.restore <ray.tune.Tuner.restore>` resumes a previously interrupted experiment from where it left off.
 
-You should use {meth}`Tuner.restore <ray.tune.Tuner.restore>` in the following cases:
+Use {meth}`Tuner.restore <ray.tune.Tuner.restore>` in the following cases:
 
-1. The driver script that calls {meth}`Tuner.fit() <ray.tune.Tuner.fit>` errors out (e.g., due to the head node running out of memory or out of disk).
-2. The experiment is manually interrupted with `Ctrl+C`.
-3. The entire cluster, and the experiment along with it, crashes due to an ephemeral error such as the network going down or Ray object store memory filling up.
-
-:::{note}
-{meth}`Tuner.restore <ray.tune.Tuner.restore>` is *not* meant for resuming a terminated experiment and modifying hyperparameter search spaces or stopping criteria. Rather, experiment restoration is meant to resume and complete the *exact job* that was previously submitted via {meth}`Tuner.fit <ray.tune.Tuner.fit>`.
-
-For example, consider a Tune experiment configured to run for `10` training iterations, where all trials have already completed. {meth}`Tuner.restore <ray.tune.Tuner.restore>` cannot be used to restore the experiment, change the number of training iterations to `20`, then continue training.
-
-Instead, this should be achieved by starting a *new* experiment and initializing your model weights with a checkpoint from the previous experiment. See {ref}`this FAQ post <tune-iterative-experimentation>` for an example.
-:::
-
+- The driver script that calls {meth}`Tuner.fit() <ray.tune.Tuner.fit>` errors out, for example because the head node runs out of memory or disk.
+- You manually interrupt the experiment with `Ctrl+C`.
+- The entire cluster crashes, taking the experiment with it, because of an ephemeral error such as the network going down or Ray object store memory filling up.
 
 :::{note}
-Bugs in your user-defined training loop cannot be fixed with restoration. Instead, the issue that caused the experiment to crash in the first place should be *ephemeral*, meaning that the retry attempt after restoring can succeed the next time.
+{meth}`Tuner.restore <ray.tune.Tuner.restore>` isn't meant for resuming a terminated experiment with modified hyperparameter search spaces or stopping criteria. Experiment restoration is meant to resume and complete the *exact job* that you previously submitted through {meth}`Tuner.fit <ray.tune.Tuner.fit>`.
+
+For example, consider a Tune experiment configured to run for `10` training iterations, where all trials have already completed. You can't use {meth}`Tuner.restore <ray.tune.Tuner.restore>` to restore the experiment, change the number of training iterations to `20`, and then continue training.
+
+Instead, start a *new* experiment and initialize your model weights with a checkpoint from the previous experiment. For an example, see the {ref}`FAQ entry on iterative experimentation <tune-iterative-experimentation>`.
 :::
 
+:::{note}
+Restoration can't fix bugs in your training loop. For restoration to help, the issue that crashed the experiment needs to be *ephemeral*, so that the retry after restoring can succeed.
+:::
 
 (tune-experiment-restore-example)=
 
-### Restore a Tune Experiment
+### Restore a Tune experiment
 
-Let's say your initial Tune experiment is configured as follows. The actual training loop is just for demonstration purposes: the important detail is that {ref}`saving and loading checkpoints has been implemented in the trainable <tune-trial-checkpoint>`.
+Suppose you configure your initial Tune experiment as follows. The training loop is for demonstration purposes only. The important detail is that the trainable {ref}`saves and loads checkpoints <tune-trial-checkpoint>`.
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -60,7 +54,7 @@ Let's say your initial Tune experiment is configured as follows. The actual trai
 :end-before: __ft_initial_run_end__
 ```
 
-The results and checkpoints of the experiment are saved to `~/ray_results/tune_fault_tolerance_guide`, as configured by {class}`~ray.tune.RunConfig`. If the experiment has been interrupted due to one of the reasons listed above, use this path to resume:
+Tune saves the experiment's results and checkpoints to `~/ray_results/tune_fault_tolerance_guide`, as configured by {class}`~ray.tune.RunConfig`. If the experiment stops for one of the reasons listed earlier, resume it from this path:
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -80,14 +74,13 @@ tuner = tune.Tuner.restore(
 See {ref}`tune-storage-options`.
 :::
 
+### Configure which trials to resume
 
-### Restore Configurations
+You can configure which trials Tune resumes, based on each trial's status when the experiment stopped:
 
-Tune allows configuring which trials should be resumed, based on their status when the experiment was interrupted:
-
-- Unfinished trials left in the `RUNNING` state will be resumed by default.
-- Trials that have `ERRORED` can be resumed or retried from scratch.
-- `TERMINATED` trials *cannot* be resumed.
+- By default, Tune resumes unfinished trials left in the `RUNNING` state.
+- You can resume `ERRORED` trials or retry them from scratch.
+- You *can't* resume `TERMINATED` trials.
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -95,14 +88,13 @@ Tune allows configuring which trials should be resumed, based on their status wh
 :end-before: __ft_restore_options_end__
 ```
 
-
 (tune-experiment-autoresume-example)=
 
 ### Auto-resume
 
-When running in a production setting, one may want a *single script* that (1) launches the initial training run in the beginning and (2) restores the experiment if (1) already happened.
+In a production setting, you might want a *single script* that launches the initial training run, or restores the experiment if the initial run already happened.
 
-Use the {meth}`Tuner.can_restore <ray.tune.Tuner.can_restore>` utility to accomplish this:
+To do this, use the {meth}`Tuner.can_restore <ray.tune.Tuner.can_restore>` utility:
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -110,18 +102,17 @@ Use the {meth}`Tuner.can_restore <ray.tune.Tuner.can_restore>` utility to accomp
 :end-before: __ft_restore_multiplexing_end__
 ```
 
-Running this script the first time will launch the initial training run. Running this script the second time will attempt to resume from the outputs of the first run.
+The first time you run this script, it launches the initial training run. The second time, it attempts to resume from the outputs of the first run.
 
+### Advanced: Restore a Tune experiment that uses Ray object references
 
-### Tune Experiment Restoration with Ray Object References (Advanced)
+Experiment restoration often happens in a different Ray session than the original run. In that case, Ray automatically garbage collects the original object references. If the experiment state includes object references, for example in each trial's configuration dictionary, retrieving those objects doesn't work after restoration, because the objects the references point to no longer exist.
 
-Experiment restoration often happens in a different Ray session than the original run, in which case Ray object references are automatically garbage collected. If object references are saved along with experiment state (e.g., within each trial's config), then attempting to retrieve these objects will not work properly after restoration: the objects these references point to no longer exist.
+To work around this, re-create the objects, put them in the Ray object store, and pass the new object references to Tune.
 
-To work around this, you must re-create these objects, put them in the Ray object store, and then pass the new object references to Tune.
+#### Example: Re-create object references to pre-trained models
 
-#### Example
-
-Let's say we have some large pre-trained model that we want to use in some way in our training loop. For example, this could be a image classification model used to calculate an Inception Score to evaluate the quality of a generative model. We may have multiple models that we want to tune over, where each trial samples one of the models to use.
+Suppose you have a large pre-trained model that you want to use in your training loop. For example, it could be an image classification model that calculates an Inception Score to evaluate the quality of a generative model. You might have multiple models to tune over, where each trial samples one of the models.
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -129,7 +120,7 @@ Let's say we have some large pre-trained model that we want to use in some way i
 :end-before: __ft_restore_objrefs_initial_end__
 ```
 
-To restore, we just need to re-specify the `param_space` via {meth}`Tuner.restore <ray.tune.Tuner.restore>`:
+To restore, re-specify the `param_space` through {meth}`Tuner.restore <ray.tune.Tuner.restore>`:
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -138,9 +129,9 @@ To restore, we just need to re-specify the `param_space` via {meth}`Tuner.restor
 ```
 
 :::{note}
-If you're tuning over {ref}`Ray Data <data>`, you'll also need to re-specify them in the `param_space`. Ray Data can contain object references, so the same problems described above apply.
+If you're tuning over {ref}`Ray Data <data>` datasets, you also need to re-specify them in the `param_space`. Ray Data datasets can contain object references, so the same problems apply.
 
-See below for an example:
+The following example shows how:
 
 ```python
 ds_1 = ray.data.from_items([{"x": i, "y": 2 * i} for i in range(128)])
@@ -156,17 +147,17 @@ tuner = tune.Tuner.restore(..., param_space=param_space)
 
 (tune-trial-level-fault-tolerance)=
 
-## Trial-level Fault Tolerance in Tune
+## Trial-level fault tolerance in Tune
 
-Trial-level fault tolerance deals with individual trial failures in the cluster, which can be caused by:
+Trial-level fault tolerance handles the failure of individual trials in the cluster. Causes of these failures include the following:
 
-- Running with preemptible spot instances.
-- Ephemeral network connection issues.
-- Nodes running out of memory or out of disk space.
+- Preemptible spot instances
+- Ephemeral network connection issues
+- Nodes running out of memory or out of disk space
 
-Ray Tune provides a way to configure failure handling of individual trials with the {class}`~ray.tune.FailureConfig`.
+Configure failure handling for individual trials with {class}`~ray.tune.FailureConfig`.
 
-Assuming that we're using the `trainable` from the previous example that implements trial checkpoint saving and loading, here is how to configure {class}`~ray.tune.FailureConfig`:
+The following example configures {class}`~ray.tune.FailureConfig` for the `trainable` from the previous example, which implements saving and loading trial checkpoints:
 
 ```{literalinclude} /tune/doc_code/fault_tolerance.py
 :language: python
@@ -174,14 +165,13 @@ Assuming that we're using the `trainable` from the previous example that impleme
 :end-before: __ft_trial_failure_end__
 ```
 
-When a trial encounters a runtime error, the above configuration will re-schedule that trial up to `max_failures=3` times.
+With this configuration, when a trial encounters a runtime error, Tune reschedules that trial up to `max_failures=3` times.
 
-Similarly, if a node failure occurs for node `X` (e.g., pre-empted or lost connection), this configuration will reschedule all trials that lived on node `X` up to `3` times.
-
+Similarly, if node `X` fails, for example because it's preempted or loses its connection, Tune reschedules all trials that ran on node `X` up to `3` times.
 
 ## Summary
 
-In this user guide, we covered how to enable experiment-level and trial-level fault tolerance in Ray Tune.
+This guide covered how to enable experiment-level and trial-level fault tolerance in Ray Tune.
 
 See the following resources for more information:
 
