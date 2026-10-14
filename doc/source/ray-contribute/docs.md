@@ -147,7 +147,7 @@ If you take Ray Tune as an example, you can see that our documentation consists 
 - [a project landing page](../tune/index.md),
 - [a getting started guide](../tune/getting-started.md),
 - [a key concepts page](../tune/key-concepts.md),
-- [user guides for key features](../tune/tutorials/overview.md),
+- [user guides for key features](../tune/tutorials/index.md),
 - [practical examples](../tune/examples/index.md),
 - [a detailed FAQ](../tune/faq.md),
 - {doc}`and API references </tune/api/api>`.
@@ -221,7 +221,7 @@ Sometimes you might want to add a completely new document to the Ray documentati
 
 For this to work, you must add the new document explicitly to a parent document's toctree, which determines the structure of the Ray documentation. See [the Sphinx documentation](https://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html#directive-toctree) for more information.
 
-Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](../tune/tutorials/overview.md) as a panel, and the same goes for [all Tune examples](../tune/examples/index.md). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
+Depending on the type of document you're adding, you might also have to make changes to an existing overview page that curates the list of documents in question. For instance, for Ray Tune each user guide is added to the [user guide overview page](../tune/tutorials/index.md) as a panel, and the same goes for [all Tune examples](../tune/examples/index.md). Always check the structure of the Ray sub-project whose documentation you're working on to see how to integrate it within the existing structure. In some cases you may need to choose an image for the panel. Images are in `doc/source/images`.
 
 (creating-notebook-example)=
 
@@ -231,7 +231,7 @@ This section covers authoring a notebook. To publish a finished example and set 
 
 To add a new executable example to the Ray documentation, you can start from our [MyST notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.md) or [Jupyter notebook template](https://github.com/ray-project/ray/blob/master/doc/source/_templates/template.ipynb). You could also download the document you're reading right now and start modifying it. Click the download button at the top of this page to get the `.ipynb` file. All the example notebooks in Ray Tune are automatically tested by our CI system, provided you place them in the [`examples` folder](https://github.com/ray-project/ray/tree/master/doc/source/tune/examples). If you have questions about how to test your notebook when contributing to other Ray sub-projects, ask in [the Ray community Slack](https://www.ray.io/join-slack) or directly on GitHub when opening your pull request.
 
-To work from an existing example, look at the [Ray Tune Hyperopt example (`.ipynb`)](https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/hyperopt_example.ipynb) or the [Ray Serve guide for text classification (`.md`)](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). We recommend that you start with an `.md` file and convert it to an `.ipynb` notebook at the end of the process. We'll walk you through this process below.
+To work from an existing example, look at the [Ray Tune Hyperopt example (`.ipynb`)](https://github.com/ray-project/ray/blob/master/doc/source/tune/examples/hyperopt-example.ipynb) or the [Ray Serve guide for text classification (`.md`)](https://github.com/ray-project/ray/blob/master/doc/source/serve/tutorials/text-classification.md). We recommend that you start with an `.md` file and convert it to an `.ipynb` notebook at the end of the process. We'll walk you through this process below.
 
 What makes these notebooks different from other documents is that they combine code and text in one document, and you can launch them in the browser. We also make sure our CI system tests them before we add them to our documentation. To make this work, notebooks need to define a _kernel specification_ to tell a notebook server how to interpret and run the code. For instance, here's the kernel specification of a Python notebook:
 

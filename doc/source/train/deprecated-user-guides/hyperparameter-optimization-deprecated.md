@@ -115,7 +115,7 @@ There are a couple gotchas about parameter specification when using Tuners with 
 - Parameters that are duplicated in the Trainer and Tuner will be overwritten by the Tuner `param_space`.
 - **Exception:** all arguments of the {class}`ray.tune.RunConfig` and {class}`ray.tune.TuneConfig` are inherently un-tunable.
 
-See {doc}`/tune/tutorials/tune_get_data_in_and_out` for an example.
+See {doc}`/tune/tutorials/tune-get-data-in-and-out` for an example.
 
 ## Advanced Tuning
 
