@@ -242,9 +242,12 @@ class DrainRateTracker:
             )
             self._metrics_pusher = pusher
         else:
+            stopped_pusher = self._metrics_pusher
+            # Set: `sampling` was True, or we'd have returned above.
+            assert stopped_pusher is not None
             # Only signal the stop: clearing the pusher's tasks (`stop_tasks`)
             # would make a sampler that hasn't run yet fail its task lookup.
-            self._metrics_pusher.stop_event.set()
+            stopped_pusher.stop_event.set()
             self._metrics_pusher = None
 
     def _sample(self) -> None:
