@@ -651,7 +651,9 @@ TEST_F(LocalLeaseManagerTest, TestFairShareAcrossMultipleFeasibleClasses) {
   for (const auto &name : {"a", "a", "b", "b", "c", "c"}) {
     auto lease = CreateLease({{kCPU_ResourceLabel, 1}}, name);
     local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-        lease, false, false,
+        lease,
+        false,
+        false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(noop, &reply)},
         internal::WorkStatus::WAITING));
   }
@@ -693,7 +695,9 @@ TEST_F(LocalLeaseManagerTest, TestManySchedulingClassesFairShareActive) {
   for (int i = 0; i < 10; i++) {
     auto lease = CreateLease({{kCPU_ResourceLabel, 1}}, "task_" + std::to_string(i));
     local_lease_manager_->WaitForLeaseArgsRequests(std::make_shared<internal::Work>(
-        lease, false, false,
+        lease,
+        false,
+        false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(noop, &reply)},
         internal::WorkStatus::WAITING));
   }
