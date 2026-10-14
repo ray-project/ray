@@ -144,7 +144,7 @@ doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
 doc/source/data/key-concepts.rst: doc_example
 doc/source/data/working-with-tensors.md: doc_example
 doc/source/core/actors/named-actors.md: doc_example
-doc/source/rllib/api/utils.rst: doc_api doc_example
+doc/source/rllib/api/utils.rst: doc_api
 doc/source/serve/advanced-guides/multi-app-container.md: doc_example
 doc/source/train/getting-started-xgboost.md: doc_example
 doc/source/core/tasks/nested-tasks.md: doc_example

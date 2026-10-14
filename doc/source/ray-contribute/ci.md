@@ -68,7 +68,7 @@ An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/so
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for pages that have their own test target: every Ray Data page, and the Core, RLlib, Serve, and Train pages with a runnable example.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for pages that have their own test target: every Ray Data page, and the Core, RLlib, Serve, and Train pages with a runnable example. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the post-merge build covers them.
 
 A prose-only change also skips most of the lint group. The following lint steps still run:
 
