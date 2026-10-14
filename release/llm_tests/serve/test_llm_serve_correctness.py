@@ -97,6 +97,12 @@ class VllmServer:
             self.shutdown()
             raise
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.shutdown()
+
     def _start_vllm_server(self) -> str:
         """Start vLLM server with specified parallelism parameters."""
         vllm_port = 8001
@@ -172,14 +178,11 @@ def test_llm_serve_correctness(
     print(
         f"Starting vLLM server with tensor_parallel_size={tensor_parallel_size}, pipeline_parallel_size={pipeline_parallel_size}"
     )
-    vllm_server = None
     try:
-        vllm_server = VllmServer(tensor_parallel_size, pipeline_parallel_size)
-        vllm_completion_output = vllm_server.generate_completion(test_prompt)
-        vllm_chat_output = vllm_server.generate_chat_completion(test_message)
+        with VllmServer(tensor_parallel_size, pipeline_parallel_size) as vllm_server:
+            vllm_completion_output = vllm_server.generate_completion(test_prompt)
+            vllm_chat_output = vllm_server.generate_chat_completion(test_message)
     finally:
-        if vllm_server is not None:
-            vllm_server.shutdown()
         wait_for_gpu_memory_to_clear(gpu_clear_threshold_mb)
 
     assert ray_completion_output == vllm_completion_output, (
