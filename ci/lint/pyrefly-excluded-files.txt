@@ -160,6 +160,7 @@ python/ray/data/_internal/utils/transform_pyarrow.py
 python/ray/data/aggregate.py
 python/ray/data/block.py
 python/ray/data/checkpoint/checkpoint_filter.py
+python/ray/data/checkpoint/generated_id.py
 python/ray/data/checkpoint/interfaces.py
 python/ray/data/collate_fn.py
 python/ray/data/context.py

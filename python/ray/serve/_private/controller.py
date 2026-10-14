@@ -29,6 +29,7 @@ from ray.serve._private.common import (
     DeploymentID,
     HandleMetricReport,
     NodeId,
+    ReplicaID,
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
@@ -458,6 +459,18 @@ class ServeController:
         )
         if record_delay is not None:
             record_delay(delay_ms)
+
+    def record_replica_health(
+        self,
+        replica_id: ReplicaID,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ):
+        """Self-health heartbeat from a replica, standing in for a pull probe."""
+        self.deployment_state_manager.record_replica_health(
+            replica_id, checked_at, healthy, consecutive_failures
+        )
 
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
@@ -1556,6 +1569,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_router_fallback=False,
                     ingress_deployment_name="",
                 )
             )
@@ -1733,6 +1747,8 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1747,6 +1763,7 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
                 )
             )

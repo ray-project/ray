@@ -11,6 +11,7 @@ from unittest import mock
 import pytest
 
 import ray
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
@@ -796,8 +797,19 @@ class TestLocalWorkingDir:
 
     def test_relative_path_rejected_on_the_client(self, start_cluster):
         _, address = start_cluster
-        with pytest.raises(ValueError, match="the path must be absolute"):
-            ray.init(address, runtime_env={"working_dir": "local://relative/path"})
+        try:
+            with pytest.raises(ValueError, match="the path must be absolute"):
+                ray.init(address, runtime_env={"working_dir": "local://relative/path"})
+        finally:
+            # `connect` sets the driver's node before it validates the runtime_env,
+            # so the failed `ray.init` leaves the driver attached to the head node
+            # and `Cluster.remove_node` then refuses to tear that node down. Detach
+            # it here. Under RAY_CLIENT_MODE the fixture's own `ray.shutdown` is
+            # redirected to the Ray Client and never clears `worker.node`, so bypass
+            # the hook to reach the real one. This runs in a `finally` so that a
+            # real assertion failure is not masked by the teardown error.
+            with disable_client_hook():
+                ray.shutdown()
 
     @pytest.mark.asyncio
     async def test_directory_is_never_deleted(self, tmpdir, tmp_working_dir):

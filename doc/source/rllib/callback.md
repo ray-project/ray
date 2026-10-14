@@ -113,35 +113,23 @@ Some of the events in the tree happen simultaneously, on different processes thr
 RLlib only invokes callbacks in {py:class}`~ray.rllib.algorithms.algorithm.Algorithm` and {py:class}`~ray.rllib.env.env_runner.EnvRunner` actors. The Ray team is considering expanding callbacks onto {py:class}`~ray.rllib.core.learner.learner.Learner` actors and possibly {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` instances.
 :::
 
-```{eval-rst}
-.. currentmodule:: ray.rllib.callbacks.callbacks
-```
-
 :::{dropdown} Algorithm-bound methods of `RLlibCallback`
 
-```{eval-rst}
-.. autosummary::
-
-    RLlibCallback.on_algorithm_init
-    RLlibCallback.on_evaluate_start
-    RLlibCallback.on_evaluate_end
-    RLlibCallback.on_env_runners_recreated
-    RLlibCallback.on_checkpoint_loaded
-```
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_algorithm_init`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_start`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_evaluate_end`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_env_runners_recreated`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_checkpoint_loaded`
 :::
 
 :::{dropdown} EnvRunner-bound methods of `RLlibCallback`
 
-```{eval-rst}
-.. autosummary::
-
-    RLlibCallback.on_environment_created
-    RLlibCallback.on_episode_created
-    RLlibCallback.on_episode_start
-    RLlibCallback.on_episode_step
-    RLlibCallback.on_episode_end
-    RLlibCallback.on_sample_end
-```
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_environment_created`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_created`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_start`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_step`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_episode_end`
+- {py:meth}`~ray.rllib.callbacks.callbacks.RLlibCallback.on_sample_end`
 :::
 
 ## Chaining callbacks
@@ -259,7 +247,7 @@ link is pointing directly downwards.
 
 This example uses RLlib's {py:class}`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` API to log the custom computations of the injected code. See {ref}`rllib-metric-logger-docs` for more details about the MetricsLogger API.
 
-For a more complex example, see one that [generates and logs a PacMan heatmap image to WandB](https://github.com/ray-project/ray/blob/master/rllib/examples/metrics/custom_metrics_in_env_runners.py).
+For a more complex example, see one that [generates and logs a PacMan heatmap image to WandB](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/metrics/custom_metrics_in_env_runners.py).
 
 ```{testcode}
 

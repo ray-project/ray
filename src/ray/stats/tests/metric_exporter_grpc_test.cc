@@ -23,7 +23,6 @@
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "opencensus/stats/internal/delta_producer.h"
 #include "opencensus/stats/internal/stats_exporter_impl.h"
@@ -42,11 +41,10 @@ using opencensus::stats::MeasureInt64;
 using opencensus::stats::ViewData;
 using opencensus::stats::ViewDescriptor;
 using opencensus::tags::TagKey;
-using ::testing::UnorderedPointwise;
 
-class MockMetricsAgentClient : public rpc::MetricsAgentClient {
+class FakeMetricsAgentClient : public rpc::MetricsAgentClient {
  public:
-  MockMetricsAgentClient() {}
+  FakeMetricsAgentClient() {}
 
   void ReportOCMetrics(
       const rpc::ReportOCMetricsRequest &request,
@@ -97,8 +95,8 @@ TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
   opencensus::stats::StatsExporterImpl::Get()->Export();
 
   const auto view_data = view.GetData();
-  auto mockClient = std::make_shared<MockMetricsAgentClient>();
-  OpenCensusProtoExporter ocProtoExporter(mockClient, WorkerID::Nil(), 1000, 10000);
+  auto fakeClient = std::make_shared<FakeMetricsAgentClient>();
+  OpenCensusProtoExporter ocProtoExporter(fakeClient, WorkerID::Nil(), 1000, 10000);
 
   rpc::ReportOCMetricsRequest proto;
 
@@ -106,9 +104,9 @@ TEST(OpenCensusProtoExporterTest, adds_global_tags_to_grpc) {
       {view_descriptor, view_data},
   });
 
-  ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
+  ASSERT_EQ(fakeClient->CollectedReportOCMetricsRequests().size(), 1);
   std::unordered_map<std::string, std::string> labels;
-  auto metric = mockClient->CollectedReportOCMetricsRequests()[0].metrics()[0];
+  auto metric = fakeClient->CollectedReportOCMetricsRequests()[0].metrics()[0];
   for (int i = 0; i < metric.metric_descriptor().label_keys_size(); i++) {
     labels.emplace(metric.metric_descriptor().label_keys(i).key(),
                    metric.timeseries(0).label_values(i).value());
@@ -163,9 +161,9 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     //
     size_t kBatchSize = 4;
     // Initialize the exporter
-    auto mockClient = std::make_shared<MockMetricsAgentClient>();
+    auto fakeClient = std::make_shared<FakeMetricsAgentClient>();
     OpenCensusProtoExporter ocProtoExporter(
-        mockClient, WorkerID::Nil(), kBatchSize, 10000);
+        fakeClient, WorkerID::Nil(), kBatchSize, 10000);
 
     rpc::ReportOCMetricsRequest proto;
 
@@ -173,7 +171,7 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
         {view_descriptor, view_data},
     });
 
-    ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 1);
+    ASSERT_EQ(fakeClient->CollectedReportOCMetricsRequests().size(), 1);
   }
 
   {
@@ -185,15 +183,15 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_batch_size) {
     //
     size_t kBatchSize = 2;
     // Initialize the exporter
-    auto mockClient = std::make_shared<MockMetricsAgentClient>();
+    auto fakeClient = std::make_shared<FakeMetricsAgentClient>();
     OpenCensusProtoExporter ocProtoExporter(
-        mockClient, WorkerID::Nil(), kBatchSize, 10000);
+        fakeClient, WorkerID::Nil(), kBatchSize, 10000);
 
     rpc::ReportOCMetricsRequest proto;
 
     ocProtoExporter.ExportViewData({{view_descriptor, view_data}});
 
-    ASSERT_THAT(mockClient->CollectedReportOCMetricsRequests().size(), 2);
+    ASSERT_EQ(fakeClient->CollectedReportOCMetricsRequests().size(), 2);
   }
 }
 
@@ -237,9 +235,9 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     size_t kBatchSize = 4;
     size_t maxPayloadSize = 250;
     // Initialize the exporter
-    auto mockClient = std::make_shared<MockMetricsAgentClient>();
+    auto fakeClient = std::make_shared<FakeMetricsAgentClient>();
     OpenCensusProtoExporter ocProtoExporter(
-        mockClient, WorkerID::Nil(), kBatchSize, maxPayloadSize);
+        fakeClient, WorkerID::Nil(), kBatchSize, maxPayloadSize);
 
     rpc::ReportOCMetricsRequest proto;
 
@@ -247,13 +245,13 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
         {view_descriptor, view_data},
     });
 
-    auto requests = mockClient->CollectedReportOCMetricsRequests();
-    ASSERT_THAT(requests.size(), 2);
+    auto requests = fakeClient->CollectedReportOCMetricsRequests();
+    ASSERT_EQ(requests.size(), 2);
     for (int i = 0; i < 2; ++i) {
       // Both batches have to have 1 metric with 2 time-series each
       auto metrics = requests[i].metrics();
-      ASSERT_THAT(metrics.size(), 1);
-      ASSERT_THAT(metrics[0].timeseries().size(), 2);
+      ASSERT_EQ(metrics.size(), 1);
+      ASSERT_EQ(metrics[0].timeseries().size(), 2);
     }
   }
 
@@ -268,9 +266,9 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     size_t kBatchSize = 6;
     size_t maxPayloadSize = 250;  // 50% of the expected target payload size
     // Initialize the exporter
-    auto mockClient = std::make_shared<MockMetricsAgentClient>();
+    auto fakeClient = std::make_shared<FakeMetricsAgentClient>();
     OpenCensusProtoExporter ocProtoExporter(
-        mockClient, WorkerID::Nil(), kBatchSize, maxPayloadSize);
+        fakeClient, WorkerID::Nil(), kBatchSize, maxPayloadSize);
 
     rpc::ReportOCMetricsRequest proto;
 
@@ -280,13 +278,13 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
                                     {view_descriptor, view_data},
                                     {view_descriptor, view_data}});
 
-    auto requests = mockClient->CollectedReportOCMetricsRequests();
-    ASSERT_THAT(requests.size(), 6);
+    auto requests = fakeClient->CollectedReportOCMetricsRequests();
+    ASSERT_EQ(requests.size(), 6);
     for (int i = 0; i < 6; ++i) {
       // Each of the batches have to have 1 metric with 2 time-series each
       auto metrics = requests[i].metrics();
-      // ASSERT_THAT(metrics.size(), 1);
-      ASSERT_THAT(metrics[0].timeseries().size(), 2);
+      // ASSERT_EQ(metrics.size(), 1);
+      ASSERT_EQ(metrics[0].timeseries().size(), 2);
     }
   }
 
@@ -301,9 +299,9 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     size_t kBatchSize = 12;
     size_t maxPayloadSize = 1000;  // 50% of the expected target payload size
     // Initialize the exporter
-    auto mockClient = std::make_shared<MockMetricsAgentClient>();
+    auto fakeClient = std::make_shared<FakeMetricsAgentClient>();
     OpenCensusProtoExporter ocProtoExporter(
-        mockClient, WorkerID::Nil(), kBatchSize, maxPayloadSize);
+        fakeClient, WorkerID::Nil(), kBatchSize, maxPayloadSize);
 
     rpc::ReportOCMetricsRequest proto;
 
@@ -312,12 +310,12 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
     ocProtoExporter.ExportViewData({{view_descriptor, view_data},
                                     {view_descriptor, view_data},
                                     {view_descriptor, view_data}});
-    auto requests = mockClient->CollectedReportOCMetricsRequests();
-    ASSERT_THAT(requests.size(), 1);
-    ASSERT_THAT(requests[0].metrics().size(), 3);
+    auto requests = fakeClient->CollectedReportOCMetricsRequests();
+    ASSERT_EQ(requests.size(), 1);
+    ASSERT_EQ(requests[0].metrics().size(), 3);
     // Batch have to have 3 metric with 4 time-series each
     for (int i = 0; i < 3; ++i) {
-      ASSERT_THAT(requests[0].metrics()[i].timeseries().size(), 4);
+      ASSERT_EQ(requests[0].metrics()[i].timeseries().size(), 4);
     }
   }
 }

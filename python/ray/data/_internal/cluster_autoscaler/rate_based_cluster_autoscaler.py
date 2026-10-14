@@ -2,7 +2,7 @@ import logging
 import math
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 
 from .base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
@@ -59,7 +59,10 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
     allocations and scales the cluster accordingly.
 
     This autoscaler only scales up the cluster. It relies on idle termination to scale
-    down.
+    down. To let idle termination see idle nodes, the last explicit resource request
+    is kept alive for only a bounded grace window once utilization drops below the
+    scale-up threshold; after that an empty request is sent (keeping the requester
+    registration alive) so the cluster autoscaler can release leased resources.
     """
 
     # Default scaling up factor for cluster autoscaling.
@@ -95,6 +98,13 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         "RAY_DATA_AUTOSCALING_REQUEST_EXPIRE_TIME_S", 180
     )
 
+    # When utilization drops below the scale-up threshold, keep renewing the last
+    # explicit request for a short time before releasing it.
+    DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S: float = env_float(
+        "RAY_DATA_LOW_UTIL_REQUEST_RELEASE_DELAY_S",
+        180,
+    )
+
     # Default cluster utilization thresholds to trigger scaling up.
     DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD: ClusterUtil = ClusterUtil(
         cpu=env_float("RAY_DATA_DEFAULT_CLUSTER_SCALING_UP_CPU_UTIL_THRESHOLD", 0.50),
@@ -125,7 +135,9 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         cluster_scaling_up_max_resource_delta: ExecutionResources = DEFAULT_CLUSTER_SCALING_UP_MAX_RESOURCE_DELTA,
         min_gap_between_autoscaling_requests_s: int = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS_S,
         autoscaling_request_expire_time_s: int = AUTOSCALING_REQUEST_EXPIRE_TIME_S,
+        low_util_request_release_delay_s: float = DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S,  # noqa: E501
         label_selector: Optional[Dict[str, str]] = None,
+        get_time: Callable[[], float] = time.monotonic,
     ):
         """Initialize the cluster autoscaler.
 
@@ -153,10 +165,17 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
                 autoscaling requests. This is exposed as a seam for testing.
             autoscaling_request_expire_time_s: The number of seconds before requested
                 resources expire. This is exposed as a seam for testing.
+            low_util_request_release_delay_s: How long the last non-empty explicit
+                request is kept alive, measured from when it was sent, and not from
+                when utilization dropped. After that, an empty request is sent (the
+                requester registration stays alive) so the cluster autoscaler can
+                release leased resources and idle termination can reclaim nodes.
             label_selector: Label selector pinning this requester to a single
                 subcluster. Forwarded to the `DefaultAutoscalingCoordinator` as
                 `subcluster_selector` so node bucketing, remaining-resource
                 eligibility, and bundle stamping are scoped to the subcluster.
+            get_time: A function that returns the current time in seconds. This is
+                exposed as a seam for testing.
         """
         assert all(
             isinstance(op, SupportsClusterAutoscaling) for op in ops
@@ -164,6 +183,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         assert (
             cluster_scaling_up_factor > 1.0
         ), f"cluster_scaling_up_factor must be > 1.0, got {cluster_scaling_up_factor}"
+        assert low_util_request_release_delay_s >= 0
 
         if autoscaling_coordinator is None:
             autoscaling_coordinator = DefaultAutoscalingCoordinator(
@@ -188,9 +208,16 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         )
         self._autoscaling_request_expire_time_s = autoscaling_request_expire_time_s
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
+        self._low_util_request_release_delay_s = low_util_request_release_delay_s
+        self._get_time = get_time
         self._last_request_time = 0.0
         self._requester_id = f"data-{execution_id}"
         self._last_resource_request = []
+        # Track the last non-empty explicit request so low-utilization heartbeats
+        # can keep it alive briefly without keeping explicit autoscaler demand
+        # pinned until dataset completion.
+        self._last_non_empty_resource_request: List[Dict[str, float]] = []
+        self._last_non_empty_request_time: Optional[float] = None
 
         # Log the initialized values.
         logger.debug("=== Rate-Based Autoscaler: Initialized ===")
@@ -206,6 +233,9 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             f"  min_gap_between_requests: {min_gap_between_autoscaling_requests_s}s"
         )
         logger.debug(f"  request_expire_time: {autoscaling_request_expire_time_s}s")
+        logger.debug(
+            f"  low_util_request_release_delay: {low_util_request_release_delay_s}s"
+        )
 
         # Send an empty request to register ourselves as soon as possible,
         # so the first `get_total_resources` call can get the allocated resources.
@@ -254,17 +284,18 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         self._utility_calculator.observe()
 
         # Limit the frequency of autoscaling requests.
-        now = time.monotonic()
+        now = self._get_time()
         if now - self._last_request_time < self._min_gap_between_autoscaling_requests:
             return
 
-        # Check the cluster utilization. If it's low, re-send the previous resource
-        # request.
+        # Check the cluster utilization. If it's low, keep the last non-empty
+        # explicit request only for a bounded grace window, then release it so the
+        # cluster autoscaler can release leased resources.
         utilization = self._utility_calculator.get()
         self._log_cluster_utilization(utilization)
         if self._is_cluster_utilization_low(utilization):
             logger.debug("Cluster utilization is low -- skipping cluster autoscaling. ")
-            self._send_resource_request(self._last_resource_request)
+            self._send_resource_request(None)
             return self._last_resource_request
 
         # Get the current resources allocated to the cluster. This requires an RPC
@@ -586,14 +617,43 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         else:
             logger.debug("Sending empty resource request")
 
-    def _send_resource_request(self, resource_request: List[Dict[str, float]]):
+    def _should_keep_non_empty_request(self, now: float) -> bool:
+        return (
+            self._last_non_empty_request_time is not None
+            and now - self._last_non_empty_request_time
+            < self._low_util_request_release_delay_s
+        )
+
+    def _send_resource_request(
+        self,
+        resource_request: Optional[List[Dict[str, float]]],
+    ):
+        now = self._get_time()
+        update_non_empty_request_state = True
+        if resource_request is None:
+            if self._should_keep_non_empty_request(now):
+                resource_request = self._last_non_empty_resource_request
+                update_non_empty_request_state = False
+            else:
+                # Renew our registration on AutoscalingCoordinator without
+                # keeping explicit autoscaler demand alive.
+                resource_request = []
+
         self._last_resource_request = [r.copy() for r in resource_request]
         self._autoscaling_coordinator.request_resources(
             resources=[r.copy() for r in resource_request],
             expire_after_s=self._autoscaling_request_expire_time_s,
             request_remaining=STANDARD_RESOURCE_TYPES,
         )
-        self._last_request_time = time.monotonic()
+        if resource_request and update_non_empty_request_state:
+            self._last_non_empty_resource_request = [
+                bundle.copy() for bundle in resource_request
+            ]
+            self._last_non_empty_request_time = now
+        elif not resource_request:
+            self._last_non_empty_resource_request = []
+            self._last_non_empty_request_time = None
+        self._last_request_time = now
 
     def on_executor_shutdown(self):
         # Cancel the resource request when the executor is shutting down.

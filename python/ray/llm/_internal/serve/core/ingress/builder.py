@@ -10,7 +10,10 @@ from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
 from ray.llm._internal.common.utils.import_utils import load_class
-from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
+from ray.llm._internal.serve.constants import (
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
+    get_llm_serve_runtime_env,
+)
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.ingress import (
@@ -25,6 +28,7 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.serve._private.constants import RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -105,12 +109,23 @@ def _build_openai_ingress_request_router(
     """
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-    ray_actor_options: Dict[str, Any] = {"num_cpus": 0}
-    if is_kv_aware(llm_config):
-        runtime_env = _get_tokenizing_router_runtime_env(llm_config)
-        if runtime_env is not None:
-            ray_actor_options["runtime_env"] = runtime_env
+    if (
+        llm_config.lora_config is not None
+        and not RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY
+    ):
+        raise ValueError(
+            "LoRA multiplexing with direct streaming requires "
+            "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1."
+        )
 
+    ray_actor_options: Dict[str, Any] = {
+        "num_cpus": 0,
+        "runtime_env": get_llm_serve_runtime_env(
+            _get_tokenizing_router_runtime_env(llm_config)
+            if is_kv_aware(llm_config)
+            else None
+        ),
+    }
     deployment = serve.deployment(
         LLMRouter,
         max_ongoing_requests=1000,
@@ -119,6 +134,9 @@ def _build_openai_ingress_request_router(
     return deployment.bind(
         server=server,
         llm_config=llm_config if is_kv_aware(llm_config) else None,
+        base_model_id=(
+            llm_config.model_id if llm_config.lora_config is not None else None
+        ),
     )
 
 

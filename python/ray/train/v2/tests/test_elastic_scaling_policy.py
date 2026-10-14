@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
+import ray._raylet
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     ReservedResources,
     ResourceDict,
@@ -33,6 +34,8 @@ from ray.train.v2._internal.execution.worker_group import (
 )
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
+
+NODE_ID_KEY = ray._raylet.RAY_NODE_ID_KEY
 
 
 @pytest.fixture(autouse=True)
@@ -137,6 +140,63 @@ def test_non_running_worker_group_decision():
     decision = policy.make_decision_for_non_running_worker_group()
     assert isinstance(decision, ResizeDecision)
     assert decision.num_workers == max_workers
+
+
+@pytest.mark.parametrize(
+    "num_fresh_nodes,expected_num_workers",
+    [
+        pytest.param(8, 8, id="unchanged"),
+        # A node died after the cached view was taken: decide on what's left.
+        pytest.param(5, 5, id="shrank_above_min"),
+        pytest.param(3, None, id="shrank_below_min"),
+    ],
+)
+def test_non_running_decision_pins_to_a_fresh_reservation(
+    num_fresh_nodes, expected_num_workers
+):
+    """The decision's size and its pins both come from one fresh snapshot, so
+    the worker group never waits on workers the reservation no longer has."""
+    resources_per_worker = {"CPU": 8, "GPU": 1}
+    scaling_config = ScalingConfig(
+        num_workers=(4, 64),
+        resources_per_worker=resources_per_worker,
+        use_gpu=True,
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+    _start_scaling_policy(policy)
+    cached = _make_reserved(resources_per_worker, 8)
+    fresh = _make_reserved(resources_per_worker, num_fresh_nodes)
+    policy._autoscaling_coordinator.get_reserved_resources.remote.side_effect = (
+        lambda _, recompute=False: fresh if recompute else cached
+    )
+
+    decision = policy.make_decision_for_non_running_worker_group()
+
+    if expected_num_workers is None:
+        assert isinstance(decision, NoopDecision)
+        return
+    assert isinstance(decision, ResizeDecision)
+    assert decision.num_workers == expected_num_workers
+    assert decision.label_selectors == [{NODE_ID_KEY: node_id} for node_id in fresh]
+
+
+@patch.object(
+    TrainAutoscalingCoordinatorClient, "GET_RESERVED_RESOURCES_INTERVAL_S", 0.0
+)
+def test_decision_pins_are_capped_at_max_workers():
+    """A reservation larger than ``max_workers`` pins exactly ``max_workers``."""
+    resources_per_worker = {"CPU": 1}
+    scaling_config = ScalingConfig(
+        num_workers=(1, 3), resources_per_worker=resources_per_worker
+    )
+    policy = ElasticScalingPolicy(scaling_config)
+    _start_scaling_policy(policy)
+    policy._autoscaling_coordinator._reserved_resources = {"n0": {"CPU": 5}}
+
+    decision = policy.make_decision_for_non_running_worker_group()
+
+    assert decision.num_workers == 3
+    assert decision.label_selectors == [{NODE_ID_KEY: "n0"}] * 3
 
 
 def test_before_controller_abort():
@@ -280,6 +340,7 @@ def test_running_worker_group_decision():
     )
     assert isinstance(decision, ResizeDecision)
     assert decision.num_workers == max_workers
+    assert len(decision.label_selectors) == max_workers
 
 
 def test_monitor_recently_started_worker_group():
