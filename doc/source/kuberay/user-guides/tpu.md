@@ -23,7 +23,7 @@ To create a GKE cluster with TPU node pools and the KubeRay TPU initialization w
 Ray supports both **SPMD (single program, multiple data)** workloads—where all workers run the same program across data or model shards—and **MPMD (multiple program, multiple data)** workloads—where distinct actor groups (such as reinforcement learning rollout and training actors) run different programs concurrently across devices or slices. Depending on your framework, you can schedule workers at two granularities:
 
 - **One process per TPU host (`{"TPU": 4}`):** One Ray task or actor runs on each TPU node and manages all local TPU devices on that host. Frameworks such as JAX, {class}`~ray.train.v2.jax.JaxTrainer`, MaxText, and the JAX `tpu-inference` backend for vLLM use this model.
-- **One process per TPU device (`{"TPU": 1}`):** One Ray task or actor runs on each logical TPU device, matching the one-process-per-GPU model. Frameworks such as PyTorch with `torch_tpu`, {class}`~ray.train.torch.TorchTrainer` with the `tpu_dist` backend, the PyTorch `vllm-torchtpu` backend for vLLM, and per-device MPMD actor groups use this model.
+- **One process per TPU device (`{"TPU": 1}`):** One Ray task or actor runs on each logical TPU device, matching the one-process-per-GPU model. Frameworks such as TorchTPU, {class}`~ray.train.torch.TorchTrainer` with the `tpu_dist` backend, the `vllm-torchtpu` backend for vLLM, and per-device MPMD actor groups use this model.
 
 :::{note}
 On TPU v4, TPU v5e, TPU v5p, and TPU v6e, each physical TPU chip exposes one logical TPU device (`{"TPU": 4}` on a four-chip node). On [TPU7x](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet-architecture), each physical chip contains two compute chiplets that expose two separate logical TPU devices (`8` logical devices on a four-chip `tpu7x-standard-4t` node). For host-level SPMD workloads (one process per host, such as JAX), use the default `{"TPU": 4}` resource count—`RAY_TPU_RESOURCE_PER_CHIP` isn't required. Only set `RAY_TPU_RESOURCE_PER_CHIP=2` and advertise `{"TPU": 8}` in `rayStartParams.resources` on TPU7x when running one process per logical TPU device (`{"TPU": 1}`).
@@ -118,7 +118,7 @@ When you deploy a `RayCluster` on GKE (with KubeRay `v1.6.0+` and [`kuberay-tpu-
 
 - **Slice identity and affinity:** Sets `TPU_WORKER_ID`, `TPU_NAME`, headless service DNS fields (`hostname` and `subdomain`), and `podAffinity` rules so all workers in a replica schedule on the same TPU slice.
 - **Multi-host coordination:** Sets `TPU_WORKER_HOSTNAMES` on TPU v4 through TPU v6e slices, and `TPU_PROCESS_ADDRESSES` and `TPU_PROCESS_PORT` on TPU7x slices.
-- **PyTorch and TorchTPU (`v1.4.0+`):** Sets `TORCH_TPU_TOPOLOGY` and `TORCH_TPU_SLICEBUILDER_ADDRESSES` so `torch_tpu` can initialize across hosts.
+- **TorchTPU (`v1.4.0+`):** Sets `TORCH_TPU_TOPOLOGY` and `TORCH_TPU_SLICEBUILDER_ADDRESSES` so TorchTPU can initialize across hosts.
 - **MegaScale multi-slice (`v1.3.0+`):** Sets `MEGASCALE_SLICE_ID`, `MEGASCALE_COORDINATOR_ADDRESS`, and `MEGASCALE_PORT` when `MEGASCALE_NUM_SLICES` is present.
 - **Ray Dashboard metrics:** Sets `TPU_DEVICE_PLUGIN_HOST_IP` and `TPU_DEVICE_PLUGIN_ADDR` (`<host-ip>:2112`) so the Raylet collects TPU utilization and HBM metrics (see {ref}`System Metrics <system-metrics>`).
 
@@ -245,7 +245,7 @@ The `ray.util.tpu` module also provides helper functions to inspect TPU slice me
 Reinforcement learning post-training workloads (using frameworks such as [VeRL](https://github.com/volcengine/verl), [SkyRL](https://github.com/NovaSky-AI/SkyRL), or [Tunix](https://github.com/google/tunix)) alternate between rollout generation and policy training. Because each physical TPU chip locks `/dev/vfio` exclusively to a single process and routes ICI collectives across fixed torus meshes, Ray supports two placement architectures for RL on TPUs:
 
 - **Colocated RL (shared slice):** Rollout and training run in the same worker process on a single {func}`~ray.util.tpu.slice_placement_group`. Use this when the model, optimizer states, and KV cache fit in slice memory (or with host DRAM offloading) to avoid transferring weights over the network.
-- **Disaggregated RL (separate slices):** Rollout actors (such as [vLLM](https://docs.vllm.ai/)) and learner actors (such as PyTorch `torch_tpu` or JAX) run on separate TPU slices reserved with {func}`~ray.util.tpu.slice_placement_group`. Use this to dedicate full slice HBM to rollout KV caches and transfer updated weights over the data center network (DCN) between steps (see {ref}`Recommended GKE node pool options <kuberay-gke-tpu-cluster-setup>` for multi-NIC DRANET setup).
+- **Disaggregated RL (separate slices):** Rollout actors (such as [vLLM](https://docs.vllm.ai/)) and learner actors (such as TorchTPU or JAX) run on separate TPU slices reserved with {func}`~ray.util.tpu.slice_placement_group`. Use this to dedicate full slice HBM to rollout KV caches and transfer updated weights over the data center network (DCN) between steps (see {ref}`Recommended GKE node pool options <kuberay-gke-tpu-cluster-setup>` for multi-NIC DRANET setup).
 
 The following example reserves two TPU v6e `4x4` slices—one for rollout actors and one for learner actors:
 
@@ -304,7 +304,7 @@ rollout_pg.shutdown()
 learner_pg.shutdown()
 ```
 
-For per-device MPMD RL actors (such as `torch_tpu`), pass `resources_per_bundle={"TPU": 1}` to `slice_placement_group` and schedule one actor (`@ray.remote(resources={"TPU": 1})`) onto each device bundle.
+For per-device MPMD RL actors (such as TorchTPU), pass `resources_per_bundle={"TPU": 1}` to `slice_placement_group` and schedule one actor (`@ray.remote(resources={"TPU": 1})`) onto each device bundle.
 
 ## Multi-host TPU autoscaling
 

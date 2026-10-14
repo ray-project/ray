@@ -7,7 +7,7 @@ myst:
 (serve-llm-tpu)=
 # TPU serving
 
-Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes either the JAX TPU variant of vLLM (`tpu-inference`) or the PyTorch `torch_tpu` variant (`vllm-torchtpu`). For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
+Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes either the JAX TPU variant of vLLM (`tpu-inference`) or the TorchTPU variant (`vllm-torchtpu`). For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 
 ## Topology and placement
 
@@ -60,7 +60,7 @@ This makes the TPU slice an atomic scheduling unit. A replica reserves the compl
 Ray Serve LLM supports two vLLM TPU execution backends:
 
 - **JAX backend (`tpu-inference`):** The `tpu-inference` [Ray executor](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/executors/ray_distributed_executor_v2.py) checks `parallel_config.placement_group`. When Ray Serve LLM provides one, the executor reuses it, selects the TPU bundles, and starts one Ray worker actor per bundle with `PlacementGroupSchedulingStrategy`. With the default topology-aware bundles, one vLLM worker actor maps to one TPU host (`{"TPU": 4}`) and manages all local TPU devices on that host.
-- **PyTorch backend (`vllm-torchtpu`):** When serving with `vllm-torchtpu` (`torch_tpu`), vLLM runs one `RayWorkerWrapper` actor per logical TPU device (`{"TPU": 1}`). Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` and `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env` on `LLMConfig` so that `SlicePlacementGroup` creates one `{"TPU": 1}` bundle per logical TPU device across the reserved slice.
+- **PyTorch backend (`vllm-torchtpu`):** When serving with `vllm-torchtpu` (TorchTPU), vLLM runs one `RayWorkerWrapper` actor per logical TPU device (`{"TPU": 1}`). Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` and `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env` on `LLMConfig` so that `SlicePlacementGroup` creates one `{"TPU": 1}` bundle per logical TPU device across the reserved slice.
 
 :::{note}
 On [TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood), each dual-chiplet physical chip exposes two logical TPU devices (`8` logical devices per four-chip host). For the JAX backend (`tpu-inference`), which runs one worker per host, use the default `{"TPU": 4}` host bundles (`RAY_TPU_RESOURCE_PER_CHIP` isn't required). For `vllm-torchtpu`, which runs one worker per logical TPU device (`{"TPU": 1}`), configure your Ray worker Pods with `RAY_TPU_RESOURCE_PER_CHIP=2` and `resources: {TPU: "8"}` so `SlicePlacementGroup` creates 16 per-device bundles across the two hosts in a `2x2x2` slice.
