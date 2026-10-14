@@ -968,6 +968,8 @@ def _download_blob(
         The file, rewound; a partial one if ``stop`` was set meanwhile.
     """
     blob = tempfile.TemporaryFile(dir=blob_dir)
+    if stop.is_set():
+        return blob
     try:
         req = _registry_request(url, headers, auth_header)
         with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
