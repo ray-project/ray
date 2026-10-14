@@ -1,9 +1,9 @@
 # Configure scale and GPUs
 
-Outside of your training function, create a {class}`~ray.train.ScalingConfig` object to configure:
+Outside your training function, create a {class}`~ray.train.ScalingConfig` object that sets the following two parameters:
 
-1. {class}`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
-2. {class}`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
+- {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
+- {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU or a CPU.
 
 ```{testcode}
 from ray.train import ScalingConfig
@@ -11,11 +11,11 @@ scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 ```
 
 
-For more details, see {ref}`train_scaling_config`.
+For details, see {ref}`train_scaling_config`.
 
 # Configure persistent storage
 
-Create a {class}`~ray.train.RunConfig` object to specify the path where results (including checkpoints and artifacts) will be saved.
+Create a {class}`~ray.train.RunConfig` object to specify the path where Ray Train saves results, including checkpoints and artifacts.
 
 ```{testcode}
 from ray.train import RunConfig
@@ -32,16 +32,16 @@ run_config = RunConfig(storage_path="/mnt/nfs", name="unique_run_name")
 
 
 :::{warning}
-Specifying a *shared storage location* (such as cloud storage or NFS) is *optional* for single-node clusters, but it is **required for multi-node clusters.** Using a local path will {ref}`raise an error <multinode-local-storage-warning>` during checkpointing for multi-node clusters.
+A *shared storage location*, such as cloud storage or NFS, is optional for single-node clusters but required for multi-node clusters. On a multi-node cluster, a local path {ref}`raises an error <multinode-local-storage-warning>` during checkpointing.
 :::
 
 
-For more details, see {ref}`persistent-storage-guide`.
+For details, see {ref}`persistent-storage-guide`.
 
 
 # Launch a training job
 
-Tying this all together, you can now launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
+To launch a distributed training job, pass the training function, scaling configuration, and run configuration to a {class}`~ray.train.torch.TorchTrainer` and call `fit()`.
 
 ```{testcode}
 :hide:
@@ -65,7 +65,7 @@ result = trainer.fit()
 
 # Access training results
 
-After training completes, a {class}`~ray.train.Result` object is returned which contains information about the training run, including the metrics and checkpoints reported during training.
+After training completes, `trainer.fit()` returns a {class}`~ray.train.Result` object with information about the training run, including the metrics and checkpoints reported during training.
 
 ```{testcode}
 result.metrics     # The metrics reported during training.

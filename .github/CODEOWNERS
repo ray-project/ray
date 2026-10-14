@@ -83,7 +83,6 @@
 
 # Ray AIR
 /python/ray/air/ @ray-project/ray-train
-/doc/source/ray-air/ @ray-project/ray-train @ray-project/ray-docs @ray-project/ray-docs-reviewers
 
 # Ray Serve
 /python/ray/serve/ @ray-project/ray-serve
