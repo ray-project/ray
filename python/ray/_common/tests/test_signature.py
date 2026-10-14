@@ -511,5 +511,49 @@ class TestIntegration:
         assert recovered_kwargs == kwargs
 
 
+class TestSignatureCache:
+    """The signature is built once per parameter list, which callers keep and
+    pass on every call."""
+
+    def test_the_signature_is_built_once_per_list(self):
+        def test_func(a, b=2, *, c=3):
+            pass
+
+        params = extract_signature(test_func)
+        with patch(
+            "ray._common.signature.inspect.Signature", wraps=inspect.Signature
+        ) as built:
+            for _ in range(5):
+                assert flatten_args(params, (1,), {"c": 4}) == [DUMMY_TYPE, 1, "c", 4]
+            validate_args(params, (1, 2), {})
+            assert built.call_count <= 1
+
+    def test_each_list_is_checked_against_its_own_signature(self):
+        def one_arg(a):
+            pass
+
+        def two_args(a, b):
+            pass
+
+        one, two = extract_signature(one_arg), extract_signature(two_args)
+        for _ in range(3):
+            validate_args(one, (1,), {})
+            validate_args(two, (1, 2), {})
+            with pytest.raises(TypeError):
+                validate_args(one, (1, 2), {})
+            with pytest.raises(TypeError):
+                validate_args(two, (1,), {})
+
+    def test_more_lists_than_the_cache_holds_are_all_checked_right(self):
+        def test_func(a, b=2):
+            pass
+
+        lists = [extract_signature(test_func) for _ in range(3000)]
+        for params in lists + lists:
+            validate_args(params, (1,), {"b": 3})
+            with pytest.raises(TypeError):
+                validate_args(params, (), {})
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
