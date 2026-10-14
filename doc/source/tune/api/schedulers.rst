@@ -202,8 +202,8 @@ Population Based Training Replay (tune.schedulers.PopulationBasedTrainingReplay)
 --------------------------------------------------------------------------------
 
 Tune includes a utility to replay hyperparameter schedules of Population Based Training runs.
-You just specify an existing experiment directory and the ID of the trial you would
-like to replay. The scheduler accepts only one trial, and it will update its
+You just specify the policy file of the trial you would like to replay.
+The scheduler accepts only one trial, and it will update its
 config according to the obtained schedule.
 
 .. code-block:: python
@@ -212,8 +212,7 @@ config according to the obtained schedule.
     from ray.tune.schedulers import PopulationBasedTrainingReplay
 
     replay = PopulationBasedTrainingReplay(
-        experiment_dir="~/ray_results/pbt_experiment/",
-        trial_id="XXXXX_00001"
+        policy_file="~/ray_results/pbt_experiment/pbt_policy_XXXXX_00001.txt"
     )
     tuner = tune.Tuner(
         train_fn,
@@ -353,7 +352,6 @@ TrialScheduler Interface
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     TrialScheduler.choose_trial_to_run
     TrialScheduler.on_trial_result

@@ -45,6 +45,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_NODE_COMPACTION_DELAY_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
@@ -60,8 +61,12 @@ from ray.serve._private.deployment_state import (
     DeploymentStateManager,
     DeploymentTargetState,
     DeploymentVersion,
+    HealthSource,
+    PushedHealthTracker,
+    ReplicaHealthCheckResponse,
     ReplicaStartupStatus,
     ReplicaStateContainer,
+    _push_freshness_window_s,
 )
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
@@ -72,6 +77,7 @@ from ray.serve._private.test_utils import (
     MockKVStore,
     MockPlacementGroup,
     MockReplicaActorWrapper,
+    MockTimer,
     dead_replicas_context,
     replica_rank_context,
     uninitialized_replicas_context,
@@ -12375,6 +12381,321 @@ class TestRollingUpdateTerminalFailure:
         assert restored.version == target_state.version
         assert restored.rolling_update is True
         assert restored.rolling_update_failed is True
+
+
+class TestPushedHealthEndToEnd:
+    """A push routed by the manager reaches the replica and moves the state machine.
+
+    The push-vs-probe arbitration is covered directly in TestPushedHealthTracker; what
+    these cover is the wiring: record_replica_health finding the right replica, and the
+    reconcile sweep acting on what it finds.
+    """
+
+    def _running_replica(self, dsm, ds):
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+        return ds._replicas.get()[0]
+
+    def test_a_fresh_healthy_push_stands_in_for_the_probe(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        replica = self._running_replica(dsm, ds)
+        replica._actor.health_check_called = False
+
+        dsm.record_replica_health(
+            replica.replica_id, timer.time(), healthy=True, consecutive_failures=0
+        )
+        dsm.update()
+        assert not replica._actor.health_check_called  # no probe was needed
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    def test_enough_unhealthy_pushes_stop_the_replica(
+        self, mock_deployment_state_manager
+    ):
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        replica = self._running_replica(dsm, ds)
+        replica_id = replica.replica_id
+
+        for failures in range(1, REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD):
+            dsm.record_replica_health(
+                replica_id, timer.time(), healthy=False, consecutive_failures=failures
+            )
+            dsm.update()
+            check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+            timer.advance(1)
+
+        dsm.record_replica_health(
+            replica_id,
+            timer.time(),
+            healthy=False,
+            consecutive_failures=REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+        )
+        dsm.update()
+        # The same tick that stops it starts its replacement, to hold num_replicas.
+        check_counts(
+            ds,
+            total=2,
+            by_state=[
+                (ReplicaState.STARTING, 1, None),
+                (ReplicaState.STOPPING, 1, None),
+            ],
+        )
+
+    def test_a_push_for_an_unknown_replica_is_dropped(
+        self, mock_deployment_state_manager
+    ):
+        """No replica owns it, so there is nowhere for it to land and nothing raises."""
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        self._running_replica(dsm, ds)
+        dsm.record_replica_health(
+            ReplicaID("not-a-replica", TEST_DEPLOYMENT_ID),
+            timer.time(),
+            healthy=False,
+            consecutive_failures=1,
+        )
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    def test_a_push_for_an_unknown_deployment_is_dropped(
+        self, mock_deployment_state_manager
+    ):
+        """Routing by the id it carries means an unknown deployment is its own case."""
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(num_replicas=1, version="1")
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        replica = self._running_replica(dsm, ds)
+        gone = DeploymentID(name="deleted", app_name="app")
+        dsm.record_replica_health(
+            ReplicaID(replica.replica_id.unique_id, gone),
+            timer.time(),
+            healthy=False,
+            consecutive_failures=1,
+        )
+        dsm.update()
+        check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+
+class TestPushedHealthTracker:
+    """The push-vs-probe arbitration, driven directly: no Ray, no wrapper, no clock
+    ties to dodge."""
+
+    def _tracker(self):
+        timer = MockTimer(start_time=1000.0)
+        return PushedHealthTracker(timer=timer), timer
+
+    def _resolve(self, t, probe=None, started_at=0.0, failures=0):
+        return t.resolve(
+            probe or ReplicaHealthCheckResponse.NONE,
+            started_at,
+            failures,
+            health_check_period_s=10.0,
+        )
+
+    # -- recording and dedupe -------------------------------------------------
+
+    def test_nothing_recorded_resolves_to_nothing(self):
+        t, _ = self._tracker()
+        r = self._resolve(t)
+        assert r.source is HealthSource.NOTHING
+        assert r.response is ReplicaHealthCheckResponse.NONE
+
+    def test_a_push_resolves_once(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), True, 0)
+        assert self._resolve(t).source is HealthSource.PUSH
+        assert self._resolve(t).source is HealthSource.NOTHING  # consumed
+
+    def test_an_older_push_does_not_replace_a_newer_stash(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 5)
+        t.record(timer.time() - 1, True, 0)  # delayed, older
+        r = self._resolve(t)
+        assert r.response is ReplicaHealthCheckResponse.APP_FAILURE
+
+    def test_a_repeat_of_a_consumed_push_is_not_applied_again(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), True, 0)
+        self._resolve(t)
+        t.record(timer.time(), True, 0)  # same checked_at
+        assert self._resolve(t).source is HealthSource.NOTHING
+
+    # -- freshness ------------------------------------------------------------
+
+    def test_a_stale_push_is_dropped(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), True, 0)
+        timer.advance(_push_freshness_window_s(10.0) + 1)
+        assert self._resolve(t).source is HealthSource.NOTHING
+
+    def test_a_fresh_push_defers_the_probe_and_a_stale_one_does_not(self):
+        t, timer = self._tracker()
+        assert not t.should_defer_probe(10.0)  # nothing in hand
+        t.record(timer.time(), True, 0)
+        assert t.should_defer_probe(10.0)  # stashed, not yet consumed
+        self._resolve(t)
+        assert t.should_defer_probe(10.0)  # applied
+        timer.advance(_push_freshness_window_s(10.0) + 1)
+        assert not t.should_defer_probe(10.0)
+
+    # -- probe against push ---------------------------------------------------
+
+    def test_a_probe_that_resolves_wins_its_own_tick(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 1)
+        r = self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
+        assert r.source is HealthSource.PROBE
+        # ...and the push it beat is still in hand for the next tick.
+        assert self._resolve(t).source is HealthSource.PUSH
+
+    def test_a_probe_started_before_an_applied_push_is_superseded(self):
+        t, timer = self._tracker()
+        probe_started = timer.time()
+        timer.advance(1)
+        t.record(timer.time(), True, 0)
+        self._resolve(t)  # the push is applied
+        r = self._resolve(t, ReplicaHealthCheckResponse.APP_FAILURE, probe_started)
+        assert r.source is HealthSource.SUPERSEDED_PROBE
+        assert r.response is ReplicaHealthCheckResponse.NONE
+
+    def test_an_actor_crash_is_never_superseded(self):
+        t, timer = self._tracker()
+        probe_started = timer.time()
+        timer.advance(1)
+        t.record(timer.time(), True, 0)
+        self._resolve(t)
+        r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_CRASHED, probe_started)
+        assert r.response is ReplicaHealthCheckResponse.ACTOR_CRASHED
+
+    def test_a_push_older_than_an_applied_probe_is_dropped(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 2)  # arrives first, before any probe resolves
+        timer.advance(5)
+        # A probe started after it resolves first, so the push is older information.
+        self._resolve(t, ReplicaHealthCheckResponse.SUCCEEDED, timer.time())
+        assert self._resolve(t).source is HealthSource.NOTHING
+
+    # -- mirroring the replica's failure count --------------------------------
+
+    def test_the_first_pushed_failure_is_copied(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 1)
+        assert self._resolve(t).consecutive_failures == 1
+
+    def test_the_same_count_arriving_again_is_still_that_count(self):
+        """Replicas heartbeat twice per period but advance the count once, so the
+        second heartbeat of a period repeats it."""
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 1)
+        assert self._resolve(t, failures=0).consecutive_failures == 1
+        timer.advance(1)
+        t.record(timer.time(), False, 1)  # same count, second heartbeat
+        assert self._resolve(t, failures=1).consecutive_failures == 1
+
+    def test_a_push_stream_starting_mid_run_does_not_lower_the_count(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 1)
+        # The controller already probed two failures.
+        assert self._resolve(t, failures=2).consecutive_failures == 2
+
+    def test_recovery_lets_the_next_failure_count_again(self):
+        t, timer = self._tracker()
+        t.record(timer.time(), False, 1)
+        assert self._resolve(t, failures=0).consecutive_failures == 1
+        timer.advance(1)
+        t.record(timer.time(), True, 0)  # recovers
+        assert self._resolve(t, failures=1).source is HealthSource.PUSH
+        timer.advance(1)
+        t.record(timer.time(), False, 1)  # fails again, count restarts
+        assert self._resolve(t, failures=0).consecutive_failures == 1
+
+
+class TestPushedHealthWrapper:
+    """What ActorReplicaWrapper.check_health does with a resolved push: the probe
+    gate, the failure chain and the metrics flag.
+
+    Driven against a real wrapper because conftest patches ActorReplicaWrapper out of
+    mock_deployment_state_manager, so no end-to-end test reaches this code. The
+    arbitration itself is covered in TestPushedHealthTracker.
+    """
+
+    def _wrapper(self):
+        timer = MockTimer(start_time=1000.0)
+        wrapper = ActorReplicaWrapper(
+            version=deployment_version("1"),
+            replica_id=ReplicaID(
+                "abc123",
+                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+            ),
+        )
+        wrapper._actor_handle = Mock()
+        wrapper._actor_handle.check_health.remote.return_value = "probe_ref"
+        wrapper._pushed_health_tracker = PushedHealthTracker(timer=timer)
+        return wrapper, timer
+
+    def test_a_fresh_push_stops_a_probe_from_starting(self):
+        bare, _ = self._wrapper()
+        assert bare.check_health() is True
+        # The control: with nothing in hand the cadence arms a probe, so the
+        # assertion below is about the push and not about a gate that never fires.
+        bare._actor_handle.check_health.remote.assert_called_once()
+
+        wrapper, timer = self._wrapper()
+        wrapper.record_pushed_health(timer.time(), True, 0)
+        assert wrapper.check_health() is True
+        wrapper._actor_handle.check_health.remote.assert_not_called()
+        assert wrapper._probe_ref is None
+
+    def test_a_pushed_count_reaching_the_threshold_marks_the_replica_unhealthy(self):
+        wrapper, timer = self._wrapper()
+        threshold = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        wrapper.record_pushed_health(timer.time(), False, threshold - 1)
+        assert wrapper.check_health() is True
+        assert wrapper._consecutive_health_check_failures == threshold - 1
+
+        timer.advance(1)
+        wrapper.record_pushed_health(timer.time(), False, threshold)
+        assert wrapper.check_health() is False
+        assert wrapper._consecutive_health_check_failures == threshold
+
+    def test_a_pushed_verdict_sets_the_health_check_metrics(self):
+        wrapper, timer = self._wrapper()
+        wrapper.record_pushed_health(timer.time(), False, 1)
+        assert wrapper.check_health() is True  # under the threshold, still counted
+        assert wrapper.last_health_check_failed is True
+        assert wrapper.last_health_check_latency_ms is None  # no controller round trip
+
+        timer.advance(1)
+        wrapper.record_pushed_health(timer.time(), True, 0)
+        assert wrapper.check_health() is True
+        assert wrapper.last_health_check_failed is False
+
+
+def test_the_push_window_stays_under_the_probe_cadence():
+    """A crash is invisible until the window expires and a probe is armed, so the
+    window has to stay under the cadence it replaces or push detects crashes later
+    than pull probing did. Absolute values, so a change here has to be deliberate."""
+    for period in (2.0, 10.0, 30.0):
+        assert ds_mod._push_freshness_window_s(period) < period
+    assert ds_mod._push_freshness_window_s(10.0) == 7.5
+    assert ds_mod._push_freshness_window_s(0.5) == 1.0  # the floor still applies
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ Ray prints all stdout emitted from the ``print`` method to the driver with a ``(
 
 It's often useful to distinguish between log messages from different Actors. For example, if you have a large number of worker Actors, you may want to easily see the index of the Actor that logged a particular message. Define the `__repr__ <https://docs.python.org/3/library/functions.html#repr>`__ method for the Actor class to replace the Actor name with the Actor repr. For example:
 
-```{literalinclude} /ray-core/doc_code/actor-repr.py
+```{literalinclude} /core/doc_code/actor-repr.py
 ```
 
 The resulting output follows:
@@ -230,7 +230,7 @@ Configure the following environment variables on the driver process **before imp
 
 When using [tqdm](https://tqdm.github.io) in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
-```{literalinclude} /ray-core/doc_code/tqdm.py
+```{literalinclude} /core/doc_code/tqdm.py
 ```
 
 This tqdm implementation works as follows:

@@ -49,6 +49,11 @@ class DreamerModel(nn.Module):
              world_model: The WorldModel component.
              actor: The ActorNetwork component.
              critic: The CriticNetwork component.
+             use_curiosity: Whether to compute additional intrinsic rewards through
+                a disagreement-nets ensemble. Note that curiosity is not implemented
+                yet for the PyTorch version of DreamerV3.
+             intrinsic_rewards_scale: The factor to multiply intrinsic rewards with
+                before adding them to the extrinsic (environment) rewards.
         """
         super().__init__()
 
@@ -64,7 +69,12 @@ class DreamerModel(nn.Module):
         if self.use_curiosity:
             raise NotImplementedError
 
-    def forward_inference(self, observations, previous_states, is_first):
+    def forward_inference(
+        self,
+        observations: "torch.Tensor",
+        previous_states: dict,
+        is_first: "torch.Tensor",
+    ):
         """Performs a (non-exploring) action computation step given obs and states.
 
         Note that all input data should not have a time rank (only a batch dimension).
@@ -78,6 +88,11 @@ class DreamerModel(nn.Module):
             is_first: Batch of is_first flags. These should be True if a new episode
                 has been started at the current timestep (meaning `observations` is the
                 reset observation from the environment).
+
+        Returns:
+            A tuple consisting of the computed (greedy) actions of shape (B, ...) and
+            a dict with the new `h`-, `z`-, and `a`-states to be used as
+            `previous_states` in the next call.
         """
         # Perform one step in the world model (starting from `previous_state` and
         # using the observations to yield a current (posterior) state).
@@ -95,7 +110,12 @@ class DreamerModel(nn.Module):
         actions = distr.mode
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    def forward_exploration(self, observations, previous_states, is_first):
+    def forward_exploration(
+        self,
+        observations: "torch.Tensor",
+        previous_states: dict,
+        is_first: "torch.Tensor",
+    ):
         """Performs an exploratory action computation step given obs and states.
 
         Note that all input data should not have a time rank (only a batch dimension).
@@ -109,6 +129,11 @@ class DreamerModel(nn.Module):
             is_first: Batch of is_first flags. These should be True if a new episode
                 has been started at the current timestep (meaning `observations` is the
                 reset observation from the environment).
+
+        Returns:
+            A tuple consisting of the sampled (exploratory) actions of shape (B, ...)
+            and a dict with the new `h`-, `z`-, and `a`-states to be used as
+            `previous_states` in the next call.
         """
         # Perform one step in the world model (starting from `previous_state` and
         # using the observations to yield a current (posterior) state).
@@ -121,7 +146,12 @@ class DreamerModel(nn.Module):
         actions = self.actor(h=states["h"], z=states["z"])
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
-    def forward_train(self, observations, actions, is_first):
+    def forward_train(
+        self,
+        observations: "torch.Tensor",
+        actions: "torch.Tensor",
+        is_first: "torch.Tensor",
+    ) -> dict:
         """Performs a training forward pass given observations and actions.
 
         Note that all input data must have a time rank (batch-major: [B, T, ...]).
@@ -142,6 +172,12 @@ class DreamerModel(nn.Module):
                 - in each batch row at T=0 (first timestep of each of the B batch
                 rows), regardless of whether the actual env had an episode boundary
                 there or not.
+
+        Returns:
+            The world model's forward-train output dict (with the time axis folded
+            into the batch axis), containing the reconstructed observations, the
+            predicted rewards and continue flags, as well as all h-states and
+            posterior/prior z-states. See `WorldModel.forward_train` for details.
         """
         return self.world_model.forward_train(
             observations=observations,
@@ -170,7 +206,13 @@ class DreamerModel(nn.Module):
         states["a"] = torch.zeros((action_dim,), dtype=torch.float32)
         return states
 
-    def dream_trajectory(self, start_states, start_is_terminated, timesteps_H, gamma):
+    def dream_trajectory(
+        self,
+        start_states: dict,
+        start_is_terminated: "torch.Tensor",
+        timesteps_H: int,
+        gamma: float,
+    ) -> dict:
         """Dreams trajectories of length H from batch of h- and z-states.
 
         Note that incoming data will have the shapes (BxT, ...), where the original
@@ -189,6 +231,13 @@ class DreamerModel(nn.Module):
                 (given by the actual environment).
             timesteps_H: The number of timesteps to dream for.
             gamma: The discount factor gamma.
+
+        Returns:
+            A dict with the time-major (H+1, BxT, ...) dreamed data: the h-states and
+            prior z-states, the dreamed actions and their distribution parameters, the
+            predicted rewards and continue flags, the (EMA and non-EMA) critic outputs,
+            and the per-timestep loss weights for the actor- and critic losses. If
+            `use_curiosity` is True, the intrinsic rewards are added as well.
         """
         # Dreamed actions (one-hot encoded for discrete actions).
         a_dreamed_t0_to_H = []
@@ -362,14 +411,14 @@ class DreamerModel(nn.Module):
     def dream_trajectory_with_burn_in(
         self,
         *,
-        start_states,
+        start_states: dict,
         timesteps_burn_in: int,
         timesteps_H: int,
-        observations,  # [B, >=timesteps_burn_in]
-        actions,  # [B, timesteps_burn_in (+timesteps_H)?]
+        observations: "torch.Tensor",  # [B, >=timesteps_burn_in]
+        actions: "torch.Tensor",  # [B, timesteps_burn_in (+timesteps_H)?]
         use_sampled_actions_in_dream: bool = False,
         use_random_actions_in_dream: bool = False,
-    ):
+    ) -> dict:
         """Dreams trajectory from N initial observations and initial states.
 
         Note: This is only used for reporting and debugging, not for actual world-model
@@ -398,6 +447,14 @@ class DreamerModel(nn.Module):
             use_random_actions_in_dream: Whether to use randomly sampled actions in the
                 dream. Note that this does not apply to the burn-in phase, during which
                 we will always use the actions given in the `actions` argument.
+
+        Returns:
+            A dict with the time-major (`timesteps_H`+1, B, ...) dreamed data: the
+            h-states and prior z-states, the decoded (reconstructed) observations, the
+            predicted rewards and continue flags, plus the used actions under the
+            "actions_dreamed_t0_to_H_BxT", "actions_sampled_t0_to_H_BxT", or
+            "actions_random_t0_to_H_BxT" key (and their int versions, if the action
+            space is Discrete).
         """
         assert not (use_sampled_actions_in_dream and use_random_actions_in_dream)
 

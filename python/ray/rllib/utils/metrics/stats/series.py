@@ -36,6 +36,8 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
 
         Args:
             window: The window size to reduce over.
+            *args: Positional arguments forwarded to `StatsBase.__init__`.
+            **kwargs: Keyword arguments forwarded to `StatsBase.__init__`.
         """
         super().__init__(*args, **kwargs)
 
@@ -217,7 +219,7 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         else:
             return reduced_values
 
-    def running_reduce(self, value_1, value_2) -> List[Any]:
+    def running_reduce(self, value_1: Any, value_2: Any) -> List[Any]:
         """Reduces two values through a reduce function.
 
         If values are PyTorch tensors, reduction happens on GPU.
@@ -240,7 +242,9 @@ class SeriesStats(StatsBase, metaclass=ABCMeta):
         # Otherwise use numpy reduction
         return [self._np_reduce_fn([value_1, value_2])]
 
-    def window_reduce(self, values=None) -> List[Any]:
+    def window_reduce(
+        self, values: Optional[Union[List[Any], "deque[Any]"]] = None
+    ) -> List[Any]:
         """Reduces the internal values list according to the constructor settings.
 
         If values are PyTorch GPU tensors, reduction happens on GPU and result
