@@ -46,6 +46,12 @@ class OrcFileReader(FileReader):
     def _iter_fragment_tables(
         self, fragment: pds.Fragment, scanner_kwargs: dict
     ) -> Iterator[pa.Table]:
+        """Read one ORC fragment and apply its path-derived partition values.
+
+        PyArrow reads physical columns and evaluates data predicates. Partition
+        values are synthesized from the path, then any residual predicate is
+        evaluated on the resulting table.
+        """
         if self._partition_parser is None:
             yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
             return
@@ -103,17 +109,17 @@ class OrcFileReader(FileReader):
 
         # The shared kwargs are also used by concurrent fragment reads.
         scan_kwargs = dict(scanner_kwargs)
-        scan_kwargs["columns"] = required_columns
 
         if not partition_matches:
             return
 
         required_names = set(required_columns)
-        # Partition fields come from the path, including when a same-named
-        # field is stored in the file. Do not decode those physical columns.
+        # Partition fields come from the path, so only read physical columns.
         scan_kwargs["columns"] = [
             name for name in required_columns if name not in partitions
         ]
+        # Start from the full predicate in scanner_kwargs. After splitting,
+        # only the data part belongs in PyArrow; other parts are handled separately.
         if data_predicate is not self._predicate:
             scan_kwargs["filter"] = (
                 data_predicate.to_pyarrow() if data_predicate is not None else None
@@ -128,6 +134,9 @@ class OrcFileReader(FileReader):
         )
         raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
         scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
+        residual_filter = (
+            residual_predicate.to_pyarrow() if residual_predicate is not None else None
+        )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])
             for name, value in partitions.items():
@@ -136,8 +145,8 @@ class OrcFileReader(FileReader):
                         name,
                         self._broadcast_partition_value(name, value, table.num_rows),
                     )
-            if residual_predicate is not None:
-                table = table.filter(residual_predicate.to_pyarrow())
+            if residual_filter is not None:
+                table = table.filter(residual_filter)
             yield table
 
     @override
