@@ -185,8 +185,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            shutil.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
-            # The next reclaim deletes the bundle.
             if owner_file:
                 owner_file.close()
             raise SandboxCreationError(
@@ -211,6 +211,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 disk=config.disk,
             )
         except Exception:
+            shutil.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
             owner_file.close()
             raise
@@ -672,20 +673,27 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return owner_file
 
     def _maybe_reclaim_unowned_bundles(self) -> None:
-        """Run ``_reclaim_unowned_bundles`` at most once a minute per process."""
+        """Start ``_reclaim_unowned_bundles`` in the background, at most once a
+        minute per process.
+
+        A create never waits for it: with many dead owners, or a wedged runsc,
+        a pass can take a while.
+        """
         global _last_reclaim
-        if not _reclaim_lock.acquire(blocking=False):
-            return
-        try:
+        with _reclaim_lock:
             now = time.monotonic()
             if now - _last_reclaim < _RECLAIM_INTERVAL_SECONDS:
                 return
             _last_reclaim = now
+        threading.Thread(
+            target=self._reclaim_in_background, name="sandbox-reclaim", daemon=True
+        ).start()
+
+    def _reclaim_in_background(self) -> None:
+        try:
             self._reclaim_unowned_bundles()
         except Exception:
             logger.exception("Failed to reclaim sandboxes whose owner is gone")
-        finally:
-            _reclaim_lock.release()
 
     def _reclaim_unowned_bundles(self) -> List[str]:
         """Delete what sandboxes whose owner is gone left on this node.

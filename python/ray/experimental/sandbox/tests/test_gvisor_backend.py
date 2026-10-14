@@ -1,5 +1,6 @@
 import contextlib
 import ctypes
+import errno
 import json
 import os
 import signal
@@ -876,8 +877,12 @@ class _RecordingImageManager:
 @pytest.fixture
 def private_bundles(tmp_path, monkeypatch):
     """Point the backend at an empty bundle directory, with a fake runsc that
-    logs its arguments to ``runsc.log`` in the returned directory."""
+    logs its arguments to ``runsc.log`` in the returned directory. Creates
+    start no background reclaim, so only the test reclaims there."""
     monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path / "sandbox"))
+    monkeypatch.setattr(
+        GVisorSandboxBackend, "_maybe_reclaim_unowned_bundles", lambda self: None
+    )
     runsc = tmp_path / "runsc"
     runsc.write_text('#!/bin/sh\necho "$@" >> "$(dirname "$0")/runsc.log"\n')
     runsc.chmod(0o755)
@@ -949,13 +954,46 @@ def test_reclaim_never_runs_a_command_from_the_owner_file(private_bundles):
     )
 
 
-def test_failed_create_leaves_nothing_after_a_reclaim(private_bundles):
-    """A create that fails before its sandbox starts gives up its bundle."""
+@pytest.mark.parametrize("failure", ["pull", "owner file"])
+def test_failed_create_leaves_no_bundle(private_bundles, monkeypatch, failure):
+    """A create that fails before its sandbox starts deletes its bundle, even
+    one without an owner file for a reclaim to find."""
     backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
-    with pytest.raises(SandboxCreationError, match="pull failed"):
+    if failure == "owner file":
+
+        def no_space(*args):
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+        monkeypatch.setattr(backend, "_own_bundle", no_space)
+    with pytest.raises(SandboxCreationError):
         backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
-    backend._reclaim_unowned_bundles()
     assert os.listdir(gvisor._RAY_SANDBOX_DIR) == []
+
+
+def test_reclaim_runs_in_the_background(monkeypatch):
+    """A create starts a reclaim pass without waiting for it, at most once a
+    minute per process."""
+    started, release = threading.Event(), threading.Event()
+    passes = []
+
+    def slow_reclaim(self):
+        passes.append(self)
+        started.set()
+        release.wait(10)
+        return []
+
+    monkeypatch.setattr(GVisorSandboxBackend, "_reclaim_unowned_bundles", slow_reclaim)
+    monkeypatch.setattr(gvisor, "_last_reclaim", float("-inf"))
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    start = time.monotonic()
+    backend._maybe_reclaim_unowned_bundles()
+    backend._maybe_reclaim_unowned_bundles()
+    try:
+        assert time.monotonic() - start < 1
+        assert started.wait(5)
+        assert len(passes) == 1
+    finally:
+        release.set()
 
 
 # Creates a sandbox, prints what the test needs to find it, and waits.
