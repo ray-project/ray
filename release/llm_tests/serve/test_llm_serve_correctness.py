@@ -90,8 +90,8 @@ class VllmServer:
         self.pipeline_parallel_size = pipeline_parallel_size
         self.model_id = model_id
         self.vllm_url = self._start_vllm_server()
+        self.openai_client = create_openai_client(self.vllm_url)
         try:
-            self.openai_client = create_openai_client(self.vllm_url)
             wait_for_server_ready(self.vllm_url, model_id=self.model_id, timeout=240)
         except BaseException:
             self.shutdown()
@@ -131,9 +131,6 @@ class VllmServer:
         except subprocess.TimeoutExpired:
             self.process.kill()
             self.process.wait()
-        finally:
-            if hasattr(self, "openai_client"):
-                self.openai_client.close()
 
 
 @pytest.mark.parametrize(
@@ -159,14 +156,14 @@ def test_llm_serve_correctness(
     gpu_clear_threshold_mb = baseline_gpu_mb + _GPU_MEMORY_CLEAR_TOLERANCE_MB
     try:
         ray_url = start_ray_serve(tensor_parallel_size, pipeline_parallel_size)
-        with create_openai_client(ray_url) as ray_client:
-            wait_for_server_ready(ray_url, model_id=RAY_MODEL_ID, timeout=240)
-            ray_completion_output = generate_completion(
-                ray_client, RAY_MODEL_ID, test_prompt
-            )
-            ray_chat_output = generate_chat_completion(
-                ray_client, RAY_MODEL_ID, test_message
-            )
+        ray_client = create_openai_client(ray_url)
+        wait_for_server_ready(ray_url, model_id=RAY_MODEL_ID, timeout=240)
+        ray_completion_output = generate_completion(
+            ray_client, RAY_MODEL_ID, test_prompt
+        )
+        ray_chat_output = generate_chat_completion(
+            ray_client, RAY_MODEL_ID, test_message
+        )
     finally:
         serve.shutdown()
         # Shutdown can return before GPU memory is released.
