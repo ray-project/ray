@@ -836,9 +836,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if not op.incremental_resource_usage().satisfies_limit(budget):
             return False
 
-        if not self._is_task_submission_blocked_on_output_budget(op, budget):
+        # With no estimate yet (no output observed), require at least one byte so
+        # an exhausted budget still blocks. A real estimate of 0 is kept as is.
+        expected_output_bytes = op.metrics.obj_store_mem_max_pending_output_per_task
+        if expected_output_bytes is None:
+            expected_output_bytes = 1
+        if budget.object_store_memory >= expected_output_bytes:
             return True
 
+        # Object-store budget can't hold another task's outputs.
+        #
         # NOTE: Returning True below also stops ``OutputBackpressureGuard.should_unblock``
         #       from relaxing the upstream op's output backpressure. That guard unblocks
         #       an op when a downstream op can't submit new tasks; here this op still can
@@ -860,23 +867,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             and op.num_active_tasks() == 0
             and self._topology[op].total_enqueued_input_blocks() > 0
         )
-
-    @staticmethod
-    def _is_task_submission_blocked_on_output_budget(
-        op: PhysicalOperator, budget: ExecutionResources
-    ) -> bool:
-        """Whether the task-output estimate exceeds the remaining budget.
-
-        With no estimate yet (no output observed), require at least one byte of
-        budget so an exhausted budget still blocks. A real estimate of ``0`` is
-        kept as is.
-        """
-        expected_pending_output_bytes = (
-            op.metrics.obj_store_mem_max_pending_output_per_task
-        )
-        if expected_pending_output_bytes is None:
-            expected_pending_output_bytes = 1
-        return budget.object_store_memory < expected_pending_output_bytes
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)
