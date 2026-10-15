@@ -119,7 +119,7 @@
 					"type": "string"
 				},
 				"runtime_env": {
-					"type": "array"
+					"type": "object"
 				}
 			},
 			"required": [],

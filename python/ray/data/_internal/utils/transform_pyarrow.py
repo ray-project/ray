@@ -9,6 +9,11 @@ def _is_pa_extension_type(pa_type: "pyarrow.lib.DataType") -> bool:
     return isinstance(pa_type, pyarrow.BaseExtensionType)
 
 
+def _is_multi_chunk_extension_column(column: "pyarrow.ChunkedArray") -> bool:
+    """Return whether a column needs multi-chunk extension-array handling."""
+    return column.num_chunks > 1 and _is_pa_extension_type(column.type)
+
+
 def _is_native_tensor_type(t: "pyarrow.BaseExtentionType") -> bool:
     """Whether the provided Arrow Table column is an native Tensor array"""
     from ray.data.extensions import FixedShapeTensorType

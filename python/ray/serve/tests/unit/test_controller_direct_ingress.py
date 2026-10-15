@@ -184,6 +184,9 @@ class FakeDeploymentStateManager:
             actor_name=replica_info.replica_id.unique_id,
         )
 
+    def get_deployment(self, id: DeploymentID):
+        return None
+
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
         if id not in self.running_replica_infos:
             return None
@@ -781,8 +784,10 @@ def test_get_target_groups_only_includes_ingress_deployments(
     )
 
 
+@pytest.mark.parametrize("has_running_router_replicas", [False, True])
 def test_get_target_groups_populates_ingress_request_router_targets(
     direct_ingress_controller: FakeDirectIngressController,
+    has_running_router_replicas,
 ):
     app_name = "app1"
     route_prefix = "/app1"
@@ -820,7 +825,9 @@ def test_get_target_groups_populates_ingress_request_router_targets(
     direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
         running_replica_infos={
             ingress_deployment_id: [ingress_replica_info],
-            router_deployment_id: [router_replica_info],
+            router_deployment_id: [router_replica_info]
+            if has_running_router_replicas
+            else [],
         },
     )
 
@@ -844,6 +851,8 @@ def test_get_target_groups_populates_ingress_request_router_targets(
                     name="ingress_replica",
                 )
             ],
+            ingress_deployment_name=ingress_deployment_id.name,
+            ingress_router_fallback=True,
             ingress_request_router_targets=[
                 Target(
                     ip="10.0.0.2",
@@ -851,7 +860,9 @@ def test_get_target_groups_populates_ingress_request_router_targets(
                     instance_id="",
                     name="router_replica",
                 )
-            ],
+            ]
+            if has_running_router_replicas
+            else [],
         )
     ]
 

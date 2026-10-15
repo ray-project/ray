@@ -51,7 +51,7 @@ py_library(
 
 py_test(
     name = "test_air_usage",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_air_usage.py"],
     # NOTE: This tests Train V1 telemetry.
     env = _AIR_TEST_ENV_TRAIN_V1,

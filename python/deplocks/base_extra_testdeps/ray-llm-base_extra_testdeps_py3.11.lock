@@ -167,9 +167,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.105 \
-    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
-    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
+anyscale==0.26.110 \
+    --hash=sha256:8216a4ac067afa874a6cc0bcabb4430cff48d061339ba5ef4e20f6d6ff4a4906 \
+    --hash=sha256:8472baef910d872dd8724115fe8fde433894a558985b55cfb8b68647cbf684dd
     # via -r docker/base-extra/requirements.in
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \
@@ -1480,9 +1480,14 @@ grpcio==1.80.0 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   ray
+grpcio-reflection==1.80.0 \
+    --hash=sha256:a7d0b77961b1c722400b1509968f1ad3a64e9d78280d4cf5b88b6cfe5b41eb61 \
+    --hash=sha256:e9c76aabc4324279945b70bc76a3d41bc4f9396bffcf1cfc1011a571c2c56221
+    # via ray
 grpcio-status==1.80.0 \
     --hash=sha256:4b56990363af50dbf2c2ebb80f1967185c07d87aa25aa2bea45ddb75fc181dbe \
     --hash=sha256:df73802a4c89a3ea88aa2aff971e886fccce162bc2e6511408b3d67a144381cd
@@ -2842,6 +2847,7 @@ protobuf==6.33.6 \
     #   google-cloud-secret-manager
     #   googleapis-common-protos
     #   grpc-google-iam-v1
+    #   grpcio-reflection
     #   grpcio-status
     #   grpcio-tools
     #   opentelemetry-proto

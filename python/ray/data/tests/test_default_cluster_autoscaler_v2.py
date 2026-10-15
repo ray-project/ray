@@ -6,7 +6,10 @@ import pytest
 import ray
 from ray.core.generated import autoscaler_pb2
 from ray.data._internal import cluster_autoscaler as ca_pkg
-from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+from ray.data._internal.cluster_autoscaler import (
+    CLUSTER_AUTOSCALER_ENV_KEY,
+    create_cluster_autoscaler,
+)
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
@@ -881,6 +884,40 @@ class TestClusterAutoscaling:
         spec_b = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.93 * GiB))
         assert spec_a == spec_b
 
+    @pytest.mark.parametrize(
+        "mem",
+        [0, 1000, int(0.5 * GiB), int(14.87 * GiB), int(14.93 * GiB), 32 * GiB],
+    )
+    def test_spec_never_exceeds_node_memory(self, mem):
+        """A spec must never claim more memory than the node it came from.
+
+        The bundles built from a spec are requested from the autoscaler as-is.
+        A bundle larger than its source node doesn't fit on that node type, so
+        the autoscaler can never satisfy it.
+        """
+        spec = _NodeResourceSpec.of(cpu=8, gpu=0, mem=mem)
+        assert spec.mem <= mem
+        assert spec.to_bundle()["memory"] <= mem
+
+    def test_bundles_fit_on_the_nodes_they_were_derived_from(self):
+        """Bundles derived from live nodes are schedulable on those nodes."""
+        node_resources = {"CPU": 8, "memory": int(14.93 * GiB)}
+        node_table = [{"Resources": node_resources, "Alive": True}]
+
+        with (
+            patch("ray.nodes", return_value=node_table),
+            patch(
+                "ray._private.state.state.get_cluster_config",
+                return_value=None,
+            ),
+        ):
+            specs = _get_node_resource_spec_and_count()
+
+        assert len(specs) == 1
+        bundle = next(iter(specs)).to_bundle()
+        for resource, amount in bundle.items():
+            assert amount <= node_resources.get(resource, 0), (bundle, node_resources)
+
     def test_debug_log_when_autoscaling_disabled(self, propagate_logs, caplog):
         """Test that autoscaling log is at DEBUG level when autoscaling is disabled."""
         fake_coordinator = FakeAutoscalingCoordinator()
@@ -935,6 +972,8 @@ def test_v2_autoscaler_passes_label_selector_to_coordinator(monkeypatch):
 def test_create_cluster_autoscaler_forwards_label_selector(monkeypatch):
     """The factory reads ``label_selector`` from ``execution_options`` and
     forwards it to ``DefaultClusterAutoscalerV2``."""
+    monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, "V2")
+
     captured = {}
 
     class _StubV2:

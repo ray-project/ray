@@ -1,6 +1,7 @@
+import math
 import textwrap
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
@@ -20,18 +21,26 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
 HIGH_MEMORY_PERIODIC_WARNING = """
-Operator '{op_name}' uses {memory_per_task} of memory per task on average, but Ray
-only requests {initial_memory_request} per task at the start of the pipeline.
+Operator '{op_name}' uses {memory_per_task} of memory per worker on average (up to
+{max_memory}), but Ray only requests {initial_memory_request} per worker at the start
+of the pipeline.
 
-To avoid out-of-memory errors, consider setting `memory={memory_per_task}` in the
-appropriate function or method call. (This might be unnecessary if the number of
-concurrent tasks is low.)
+To avoid out-of-memory errors, consider setting `memory={recommended_memory_bytes}`
+({recommended_memory}) in the appropriate function or method call. (This might be
+unnecessary if the number of concurrent workers is low.)
 
 To change the frequency of this warning, set
 `DataContext.get_current().issue_detectors_config.high_memory_detector_config.detection_time_interval_s`,
 or disable the warning by setting value to -1. (current value:
 {detection_time_interval_s})
 """  # noqa: E501
+
+HIGH_MEMORY_FINAL_WARNING = """
+Operator '{op_name}' used up to {max_memory} of memory per worker. The configured
+logical memory was {memory_configuration}. To avoid out-of-memory errors, set
+`memory={recommended_memory_bytes}` ({recommended_memory}) in the appropriate
+function or method call.
+"""
 
 
 @dataclass
@@ -50,12 +59,12 @@ class HighMemoryIssueDetector(IssueDetector):
         self._detector_cfg = config
         self._operators = operators
 
-        self._initial_memory_requests: Dict[MapOperator, int] = {}
+        self._initial_memory_requests: Dict[MapOperator, Optional[int]] = {}
         for op in operators:
             if isinstance(op, MapOperator):
-                self._initial_memory_requests[op] = (
-                    op._get_dynamic_ray_remote_args().get("memory") or 0
-                )
+                self._initial_memory_requests[
+                    op
+                ] = op._get_dynamic_ray_remote_args().get("memory")
 
     @classmethod
     def from_executor(cls, executor: "StreamingExecutor") -> "HighMemoryIssueDetector":
@@ -75,7 +84,7 @@ class HighMemoryIssueDetector(IssueDetector):
             config=ctx.issue_detectors_config.high_memory_detector_config,
         )
 
-    def detect(self) -> List[Issue]:
+    def detect_periodic(self) -> List[Issue]:
         issues = []
         for op in self._operators:
             if not isinstance(op, MapOperator):
@@ -89,15 +98,19 @@ class HighMemoryIssueDetector(IssueDetector):
             safe_memory_per_task = get_safe_default_logical_memory(remote_args)
 
             if (
-                max_uss_bytes.mean > self._initial_memory_requests[op]
+                max_uss_bytes.mean > (self._initial_memory_requests[op] or 0)
                 and max_uss_bytes.mean >= safe_memory_per_task
             ):
+                recommended_memory = _get_recommended_memory(max_uss_bytes.max)
                 message = HIGH_MEMORY_PERIODIC_WARNING.format(
                     op_name=op.name,
                     memory_per_task=memory_string(max_uss_bytes.mean),
+                    max_memory=memory_string(max_uss_bytes.max),
                     initial_memory_request=memory_string(
-                        self._initial_memory_requests[op]
+                        self._initial_memory_requests[op] or 0
                     ),
+                    recommended_memory=memory_string(recommended_memory),
+                    recommended_memory_bytes=recommended_memory,
                     detection_time_interval_s=self.detection_time_interval_s(),
                 )
                 issues.append(
@@ -111,8 +124,49 @@ class HighMemoryIssueDetector(IssueDetector):
 
         return issues
 
+    def detect_final(self) -> List[Issue]:
+        issues = []
+        for op, memory_request in self._initial_memory_requests.items():
+            issue = self._detect_issue_from_final_metrics(op, memory_request)
+            if issue is not None:
+                issues.append(issue)
+        return issues
+
+    def _detect_issue_from_final_metrics(
+        self, op: MapOperator, memory_request: Optional[int]
+    ) -> Optional[Issue]:
+        if memory_request is None:
+            return None
+
+        max_uss_bytes = op.metrics.max_uss_bytes.max
+        if max_uss_bytes is None:
+            return None
+
+        recommended_memory = _get_recommended_memory(max_uss_bytes)
+        if recommended_memory <= memory_request:
+            return None
+
+        message = HIGH_MEMORY_FINAL_WARNING.format(
+            op_name=op.name,
+            max_memory=memory_string(max_uss_bytes),
+            memory_configuration=memory_string(memory_request),
+            recommended_memory=memory_string(recommended_memory),
+            recommended_memory_bytes=recommended_memory,
+        )
+        return Issue(
+            dataset_name=self._dataset_id,
+            operator_id=op.id,
+            issue_type=IssueType.HIGH_MEMORY,
+            message=_format_message(message),
+        )
+
     def detection_time_interval_s(self) -> float:
         return self._detector_cfg.detection_time_interval_s
+
+
+def _get_recommended_memory(memory_usage: float) -> int:
+    # Add 25% headroom to the observed memory usage.
+    return math.ceil(5 * memory_usage / 4)
 
 
 def _format_message(message: str) -> str:

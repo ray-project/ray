@@ -373,11 +373,34 @@ class FailureConfig(FailureConfigV1):
             reserved for real failures). Will recover from the latest checkpoint
             if present. Setting to -1 leads to infinite preemption retries;
             setting to 0 disables them. Defaults to -1.
+        relax_collectives_on_preemption: Whether Ray Train's own preemption and
+            checkpoint collectives may complete without the workers on a
+            preempted node, so healthy workers can commit a just-in-time
+            checkpoint instead of being stranded. This covers
+            ``ray.train.report()`` and ``ray.train.get_preemption_info()``,
+            which normally require every rank to finish, so if a worker is
+            killed before it finishes then the rest would be stranded. Enable it when
+            a checkpoint upload may take longer than the preemption drain
+            window; it is unnecessary when a training step plus a checkpoint
+            fits comfortably inside that window, since the preempted workers are
+            then still alive to take part in the collectives themselves. Has no
+            effect when rank 0 is among the preempted ranks, since rank 0 is the
+            sole writer of the broadcast payload. Defaults to False.
+        preemption_grace_s: How long the surviving workers may keep running past
+            the preemption deadline, in seconds. Ray Train otherwise tears them
+            down the moment the deadline passes, which cuts off whatever they
+            were doing. This is most usefully when the upload of a just-in-time
+            checkpoint takes longer than the drain window itself. Pair it with
+            ``relax_collectives_on_preemption`` so the survivors can also commit
+            without the workers that have already gone. Defaults to 0.0, which
+            restarts as soon as the preemption deadline passes.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
     controller_failure_limit: int = -1
     max_preemption_failures: int = -1
+    relax_collectives_on_preemption: bool = False
+    preemption_grace_s: float = 0.0
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
