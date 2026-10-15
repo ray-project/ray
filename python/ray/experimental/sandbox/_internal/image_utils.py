@@ -1,5 +1,6 @@
 import errno
 import fcntl
+import hashlib
 import io
 import json
 import logging
@@ -174,13 +175,21 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     return registry, repo, tag
 
 
+# Keeps a cache entry's name, and the ``.lock`` and ``.tmp.<uuid>`` names
+# derived from it, well under the 255-byte limit on a file name.
+_CACHE_NAME_READABLE_CHARS = 128
+
+
 def image_cache_name(image: str) -> str:
     """Name of an image's entry in the image cache.
 
     A registry reference is normalized first, so every spelling of one image
     (``python:3.12-slim``, ``library/python:3.12-slim``,
     ``docker.io/library/python:3.12-slim``) shares one entry instead of each
-    pulling and building its own.
+    pulling and building its own. The name is the normalized reference made
+    safe for a file name, then a hash of the reference: the first part turns
+    ``/``, ``:`` and ``@`` all into ``_``, so ``repo@sha256:<hex>`` and a tag
+    named ``sha256_<hex>`` differ only in the hash.
 
     Args:
         image: Container image reference or path to a local tar archive.
@@ -200,7 +209,9 @@ def image_cache_name(image: str) -> str:
     if registry == "registry-1.docker.io":
         registry = "docker.io"
     separator = "@" if "@" in image else ":"
-    return sanitize_image_name(f"{registry}/{repo}{separator}{reference}")
+    ref = f"{registry}/{repo}{separator}{reference}"
+    ref_hash = hashlib.sha256(ref.encode("utf-8")).hexdigest()[:16]
+    return f"{sanitize_image_name(ref)[:_CACHE_NAME_READABLE_CHARS]}-{ref_hash}"
 
 
 def get_platform_arch() -> str:
