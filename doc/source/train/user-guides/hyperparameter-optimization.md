@@ -9,7 +9,7 @@ myst:
 # Hyperparameter tuning with Ray Tune
 
 :::{important}
-This guide shows how to integrate Ray Train and Ray Tune to tune hyperparameters for distributed training runs with Ray Train V2. Ray Train V2 is available starting in Ray 2.43 when you set the environment variable `RAY_TRAIN_V2_ENABLED=1`. This guide assumes that you've set this environment variable.
+This guide shows how to integrate Ray Train and Ray Tune to tune hyperparameters for distributed training runs with Ray Train V2. Ray Train V2 is the default starting in Ray 2.51. In Ray 2.43 through 2.50, enable it by setting the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 
 For information about the deprecation and migration, see {ref}`train-tune-deprecation`.
 :::
@@ -117,7 +117,7 @@ One way to place the Train driver on safe nodes is to set custom resources on ce
 
 Ray Train and Ray Tune both provide utilities to upload and track checkpoints through the {func}`ray.train.report <ray.train.report>` and {func}`ray.tune.report <ray.tune.report>` APIs. For details, see the {ref}`train-checkpointing` user guide.
 
-If the Ray Train workers report checkpoints, you don't need to save another Ray Tune checkpoint at the Train driver level, because the driver doesn't hold any extra training state. The Ray Train driver process already snapshots its status periodically to the configured `storage_path`. The next section on fault tolerance describes this further.
+If the Ray Train workers report checkpoints, you don't need to save another Ray Tune checkpoint at the Train driver level, because the driver doesn't hold any extra training state. The Ray Train driver process already snapshots its status periodically to the configured `storage_path`. For details, see {ref}`train-job-driver-fault-tolerance`.
 
 To access the checkpoints from the Tuner output, append the checkpoint path as a metric. The provided {class}`~ray.tune.integration.ray_train.TuneReportCallback` does this. It propagates reported Ray Train results to Ray Tune, where the checkpoint path is attached as a separate metric.
 
@@ -185,7 +185,7 @@ This API change decouples the responsibilities of Ray Train and Ray Tune, and it
 
 To migrate from the `Tuner(trainer)` API to the function-based pattern, do the following:
 
-1. Enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
+1. If you use Ray 2.50 or earlier, enable the environment variable `RAY_TRAIN_V2_ENABLED=1`.
 1. Replace `Tuner(trainer)` with a function-based approach that launches Ray Train inside a Tune trial.
 1. Move your training logic into a driver function that Tune calls with different hyperparameters.
 
