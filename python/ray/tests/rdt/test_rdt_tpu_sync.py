@@ -761,3 +761,7 @@ def test_tpu_sync_hardware_e2e(tpu_sync_ray_cluster):
     finally:
         ray.kill(src)
         ray.kill(dst)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))
