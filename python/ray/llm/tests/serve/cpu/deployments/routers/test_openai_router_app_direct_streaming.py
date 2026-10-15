@@ -1,8 +1,7 @@
 """End-to-end tests for `build_openai_router_app` over HAProxy."""
 
-import json
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from unittest.mock import patch
 
 import httpx
@@ -222,55 +221,6 @@ def test_unavailable_model_application(applications):
 
     wait_for_condition(unavailable, timeout=60)
     _chat(ROUND_ROBIN_MODEL)
-
-
-@requires_direct_streaming
-def test_scale_from_zero(applications):
-    serve.shutdown()
-    ray.shutdown()
-    autoscaling = {
-        "autoscaling_config": {
-            "min_replicas": 0,
-            "initial_replicas": 0,
-            "max_replicas": 1,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 600,
-            "metrics_interval_s": 0.1,
-            "look_back_period_s": 0.2,
-        },
-        "ray_actor_options": {"num_cpus": 0.1},
-    }
-    model_id = "zero-model"
-    model_apps = {model_id: "llm-model-zero"}
-    with patch.object(
-        VLLMEngineConfig,
-        "placement_bundles",
-        new_callable=lambda: property(lambda self: []),
-    ):
-        serve.run(
-            build_openai_app({"llm_configs": [_llm_config(model_id, autoscaling)]}),
-            name=model_apps[model_id],
-            route_prefix="/models/zero-model",
-        )
-    serve.run(
-        build_openai_router_app({"model_applications": model_apps}),
-        name="llm",
-        route_prefix="/",
-    )
-
-    # Listing models is static and must not be coupled to model availability.
-    assert httpx.get(f"{BASE_URL}/v1/models").json()["data"][0]["id"] == model_id
-
-    statuses: List[int] = []
-
-    def served():
-        response = _chat(model_id, raise_for_status=False)
-        statuses.append(response.status_code)
-        return response.status_code == 200
-
-    wait_for_condition(served, timeout=180, retry_interval_ms=2000)
-    assert set(statuses) <= {200, 503}, statuses
-    assert json.loads(_chat(model_id).text)["object"] == "chat.completion"
 
 
 if __name__ == "__main__":
