@@ -9,16 +9,16 @@ myst:
 # Detect NCCL hangs
 
 :::{note}
-Ray Train added the NCCL hang detector in Ray 2.60. It's experimental and off by default. Ray 2.60 captures stack traces and the NCCL RAS report and history on a hang; the nvidia-smi snapshots and PyTorch Flight Recorder dumps described in {ref}`train-nccl-hang-diagnostics` are available from Ray 2.61.
+Ray Train added the NCCL hang detector in Ray 2.60. It's experimental and off by default. Ray 2.60 captures stack traces and the NCCL RAS report and history on a hang. The `nvidia-smi` snapshots and PyTorch Flight Recorder dumps described in {ref}`train-nccl-hang-diagnostics` are available from Ray 2.61.
 :::
 
-A distributed training job hangs when the ranks of a NCCL communicator disagree about which collective comes next. For example, if one rank takes a code path that skips an `all_reduce`, calls an extra one, or launches a collective with a different shape, then every other rank will wait for it. As a result, the job will make no progress, and the only signal is the PyTorch NCCL watchdog, which aborts the process group after `TorchConfig(timeout_s)`, 30 minutes by default. By then the processes are gone, so you can't see where each rank was stuck, and you have to rerun the job with manual monitoring to find out.
+A distributed training job hangs when the ranks of a NCCL communicator disagree about which collective comes next. For example, if one rank takes a code path that skips an `all_reduce`, calls an extra one, or launches a collective with a different shape, then every other rank waits for it. As a result, the job makes no progress, and the only signal is the PyTorch NCCL watchdog, which aborts the process group after `TorchConfig(timeout_s)`, 30 minutes by default. By then the processes are gone, so you can't see where each rank was stuck, and you have to rerun the job with manual monitoring to find out.
 
 The NCCL hang detector watches the collective counts of every rank and acts while the ranks are still alive. When a communicator's ranks disagree and none of them makes progress for a configurable duration, the detector logs a warning, captures diagnostics from every worker, and optionally fails the run so that the {ref}`failure policy <train-fault-tolerance>` restarts it.
 
 This guide shows how to enable the detector, what it does during a hang, how to read the diagnostics it captures, and which hangs it can't detect.
 
-## How the detector works
+## How does the detector work?
 
 NCCL ships a Reliability, Availability, and Serviceability (RAS) subsystem that runs a monitoring thread inside every NCCL process. The threads form a mesh across the ranks of a job and track, for each communicator, how many collectives of each type every rank has launched. The `ncclras` command-line client queries that mesh from any one rank and returns the state of every rank it can reach.
 
@@ -27,13 +27,13 @@ The detector runs on the Ray Train controller and polls `ncclras` on one of the 
 - Its ranks report different launch counts for at least one collective type, and every rank is still running.
 - No rank advanced any collective count since the previous poll.
 
-Any progress on any rank resets that communicator, and each communicator is tracked on its own, so a stuck sub-group is confirmed even while the world communicator is healthy.
+Any progress on any rank resets that communicator. The detector tracks each communicator on its own, so it confirms a stuck sub-group even while the world communicator is healthy.
 
 ## Requirements
 
-- **NCCL 2.28 or later, with `ncclras` on the `PATH` of the training workers.** RAS exists from NCCL 2.24, but the detector parses the JSON output that `ncclras -f json` added in 2.28. If the binary is missing or doesn't support `-f`, the detector logs one warning and disables itself for the rest of the run. Training continues unaffected.
-- **PyTorch with the NCCL backend.** The detector reads the NCCL process groups that `torch.distributed` creates. It doesn't apply to Gloo, XLA, or JAX backends.
-- **`py-spy` on the workers, for native stack traces.** Detection works without it, but the stack traces it captures on a hang are Python-only. See {ref}`train-nccl-hang-diagnostics` for what each diagnostic needs.
+- NCCL 2.28 or later, with `ncclras` on the `PATH` of the training workers. RAS exists from NCCL 2.24, but the detector parses the JSON output that `ncclras -f json` added in 2.28. If the binary is missing or doesn't support `-f`, the detector logs one warning and disables itself for the rest of the run. Training continues unaffected.
+- PyTorch with the NCCL backend. The detector reads the NCCL process groups that `torch.distributed` creates. It doesn't apply to Gloo, XLA, or JAX backends.
+- `py-spy` on the workers, for native stack traces. Detection works without it, but the stack traces it captures on a hang are Python-only. See {ref}`train-nccl-hang-diagnostics` for what each diagnostic needs.
 
 ## Enable the detector
 
@@ -57,11 +57,11 @@ Set `RAY_TRAIN_NCCL_RAS_ACTION=fail` to raise a {class}`~ray.train.NCCLHangError
 :end-before: __fail_end__
 ```
 
-:::{warning}
+:::{caution}
 The detector only has value if it confirms a hang before the PyTorch watchdog aborts the job. Keep `RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S` well below `TorchConfig(timeout_s)`. With the defaults of 600 seconds and 1800 seconds, the detector confirms and has captured its diagnostics about 20 minutes before the watchdog fires. If you lower `timeout_s` below the confirm duration, PyTorch aborts the ranks first, and the detector only ever logs suspicions.
 :::
 
-## Configuration
+## Configure the detector
 
 The detector reads the `RAY_TRAIN_*` variables once on the driver, when the trainer constructs it, and validates them eagerly. An invalid value raises a `ValueError` when you construct the trainer.
 
@@ -93,13 +93,13 @@ The detector reads the `RAY_TRAIN_*` variables once on the driver, when the trai
 
 The time from the first frozen poll to a confirmed hang is at least the confirm duration and usually a little more. The first frozen poll needs a previous report to compare against, and the controller only acts on a report at its next health check, which runs every few seconds.
 
-## What happens during a hang
+## What happens during a hang?
 
 The detector escalates in three stages, all logged on the Ray Train controller:
 
 1. **Suspected.** When a communicator has been frozen for about 60 seconds, the detector logs a `WARNING` naming the communicator and, in `fail` mode, how long until it raises. It keeps monitoring, because a transient stall looks the same at this point.
 1. **Still suspected.** About every 120 seconds, it logs a `WARNING` listing every still-frozen communicator and how long each one has stalled, followed by the human-readable `ncclras` report at `INFO` level. The report lists every rank, its status, and its collective counts per communicator, so you can see which ranks fell behind.
-1. **Confirmed.** When a communicator stays frozen for the full confirm duration, the detector logs the `ncclras` report, captures the diagnostics described in the next section, and then either logs a summary (`observe`) or raises {class}`~ray.train.NCCLHangError` (`fail`). The summary lists where each diagnostic was uploaded.
+1. **Confirmed.** When a communicator stays frozen for the full confirm duration, the detector logs the `ncclras` report, captures the diagnostics described in the next section, and then either logs a summary in `observe` mode or raises {class}`~ray.train.NCCLHangError` in `fail` mode. The summary lists where each diagnostic was uploaded.
 
 If a suspected communicator resumes progress at any stage, the detector logs that it recovered and resets its streak.
 
@@ -107,7 +107,7 @@ If a suspected communicator resumes progress at any stage, the detector logs tha
 
 ## Diagnostics
 
-On a confirmed hang, the detector captures four diagnostics while the ranks are still alive and uploads them to the run's {ref}`storage path <persistent-storage-guide>` under `<storage_path>/<name>/hang_detector/`. Each tool writes into its own sub-directory, and a tool that isn't available on a rank writes a one-line file saying why, so a gap is never silent:
+On a confirmed hang, the detector captures four diagnostics while the ranks are still alive and uploads them to the run's {ref}`storage path <persistent-storage-guide>` under `<storage_path>/<name>/hang_detector/`. Each tool writes into its own subdirectory, and a tool that isn't available on a rank writes a one-line file saying why, so a gap is never silent:
 
 ```text
 <storage_path>/<name>/hang_detector/
@@ -124,7 +124,7 @@ On a confirmed hang, the detector captures four diagnostics while the ranks are 
     └── rank_<i>.json
 ```
 
-Stack traces, the RAS report and history, and nvidia-smi snapshots are on by default. Flight Recorder dumps are opt-in, because they need a buffer armed before training starts. 
+Stack traces, the RAS report and history, and `nvidia-smi` snapshots are on by default. Flight Recorder dumps are opt-in, because they need a buffer armed before training starts.
 
 ### Stack traces
 
@@ -136,7 +136,7 @@ It needs `py-spy` installed on the workers, and the `SYS_PTRACE` capability if t
 
 The detector writes the human-readable `ncclras -f text` report at confirmation time to `nccl_ras/ncclras_report.txt`, and the JSON report from each poll leading up to the hang to `nccl_ras/ncclras_<timestamp>.json`. The history covers the whole confirm window plus a short margin before it, so you can see when each rank's counts stopped advancing and which collective type diverged first. This diagnostic needs nothing beyond `ncclras` itself.
 
-### nvidia-smi snapshots
+### `nvidia-smi` snapshots
 
 The detector runs `nvidia-smi -q` on one worker per node and writes the output to `nvidia_smi/node_<ip>.log`: power, temperature, clocks, utilization, and ECC state of every GPU on that node at the moment of the hang. It needs `nvidia-smi` on the nodes, which the NVIDIA driver installs.
 
@@ -148,19 +148,18 @@ PyTorch's Flight Recorder keeps a ring buffer of the most recent collectives on 
 
 To capture Flight Recorder dumps, set `TORCH_FR_BUFFER_SIZE` on the driver before you construct the trainer, as in the preceding `fail` mode example. Ray Train propagates it to the workers, and PyTorch arms the buffer when it creates the process group. The detector can't switch the buffer on retroactively in a hung process, so if you set it after the run starts, the dump holds no collectives.
 
-Weigh the following before you turn it on:
+Flight Recorder shows the exact collective in flight on each rank with its arguments. You can see a shape or dtype mismatch, and a rank that issued an extra or a different collective, without reproducing the hang.
 
-- **Pros:** Shows the exact collective in flight on each rank with its arguments, so you can see a shape or dtype mismatch, and a rank that issued an extra or a different collective, without reproducing the hang.
-- **Cons:** Every rank keeps the buffer in host memory and records every collective, which adds a small per-collective overhead on the critical path. A buffer that's too small for the number of collectives per step rolls over before the hang and loses the earlier context. A few thousand entries is a reasonable starting point for most training loops.
+Weigh that against its cost before you turn it on. Every rank keeps the buffer in host memory and records every collective, which adds a small per-collective overhead on the critical path. A buffer that's too small for the number of collectives per step rolls over before the hang and loses the earlier context. A few thousand entries is a reasonable starting point for most training loops.
 
 ### Read the diagnostics
 
 Work through the diagnostics in this order. Each one narrows down what the previous one found:
 
-1. **Find the communicator and the ranks that fell behind in `nccl_ras/ncclras_report.txt`.** The report lists every rank, its status, and its collective counts per communicator. The ranks with the lowest counts on the mismatched communicator stopped launching first. Then open the `ncclras_<timestamp>.json` history to see when the counts diverged, and whether they drifted apart slowly, which points at a straggler, or stopped at once, which points at a divergent code path.
-1. **Find where each rank is stuck in `stack_traces/rank_<i>.log`.** Compare the main thread across ranks. The ranks that are blocked inside a NCCL kernel or a `torch.distributed` call are waiting. The rank whose main thread is somewhere else, such as a data loader, a checkpoint upload, or a branch that only some ranks take, is usually the one that skipped the collective.
-1. **Check the collective's arguments in `flight_recorder/rank_<i>.json`, if you armed it.** Compare the last entry of each rank. Matching sequence numbers with different shapes or dtypes is a mismatch. A rank whose last entry has a higher sequence number than its peers launched an extra collective. A file that holds only a `dump_error` key says why the rank couldn't produce a dump.
-1. **Rule hardware out with `nvidia_smi/node_<ip>.log`.** A GPU with pending ECC errors, a throttled clock, or zero utilization while its peers are busy points at the device rather than the code.
+1. Find the communicator and the ranks that fell behind in `nccl_ras/ncclras_report.txt`. The report lists every rank, its status, and its collective counts per communicator. The ranks with the lowest counts on the mismatched communicator stopped launching first. Then open the `ncclras_<timestamp>.json` history to see when the counts diverged, and whether they drifted apart slowly, which points at a straggler, or stopped at once, which points at a divergent code path.
+1. Find where each rank is stuck in `stack_traces/rank_<i>.log`. Compare the main thread across ranks. The ranks that are blocked inside a NCCL kernel or a `torch.distributed` call are waiting. The rank whose main thread is somewhere else, such as a data loader, a checkpoint upload, or a branch that only some ranks take, is usually the one that skipped the collective.
+1. Check the collective's arguments in `flight_recorder/rank_<i>.json`, if you armed it. Compare the last entry of each rank. Matching sequence numbers with different shapes or dtypes is a mismatch. A rank whose last entry has a higher sequence number than its peers launched an extra collective. A file that holds only a `dump_error` key says why the rank couldn't produce a dump.
+1. Rule hardware out with `nvidia_smi/node_<ip>.log`. A GPU with pending ECC errors, a throttled clock, or zero utilization while its peers are busy points at the device rather than the code.
 
 The ranks in the `ncclras` report are NCCL communicator ranks. For the world communicator they match the Ray Train world ranks in the file names. For a sub-group, such as a tensor-parallel or pipeline-parallel group, they're the rank's position within that group.
 
@@ -174,6 +173,6 @@ The detector catches hangs where ranks disagree about launch counts. It doesn't 
 
 The detector can also report a false positive:
 
-- **A legitimately idle, skewed communicator.** A communicator that sits with mismatched counts and no progress for the whole confirm window looks like a hang. A pipeline-parallel send/receive group waiting on a slow stage can do this. In `fail` mode, that fails the run. This false-positive mode is the reason the detector defaults to `observe`. If your workload has communicators that idle for long periods, raise `RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S` above that idle time or stay in `observe` mode.
+- **A legitimately idle, skewed communicator.** A communicator that sits with mismatched counts and no progress for the whole confirm window looks like a hang. A pipeline-parallel send and receive group waiting on a slow stage can do this. In `fail` mode, that fails the run. This false-positive mode is the reason the detector defaults to `observe`. If your workload has communicators that idle for long periods, raise `RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S` above that idle time or stay in `observe` mode.
 
 The `NCCLHangError` doesn't attribute the hang to a specific rank. The `ncclras` report and the diagnostics in the preceding section are the way to find it.
