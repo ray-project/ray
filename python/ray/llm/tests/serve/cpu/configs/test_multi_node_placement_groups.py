@@ -14,7 +14,8 @@ def get_llm_config_with_placement_group(
     pipeline_parallel_size: int = 1,
     placement_group_config: Dict[str, Any] = None,
     runtime_env: Dict[str, Any] = None,
-    extra_engine_kwargs: Dict[str, Any] = None,
+    prefill_context_parallel_size: int = 1,
+    decode_context_parallel_size: int = 1,
 ) -> LLMConfig:
     """Create LLMConfig with specified parallelism parameters and placement group config."""
     return LLMConfig(
@@ -31,8 +32,9 @@ def get_llm_config_with_placement_group(
         engine_kwargs=dict(
             tensor_parallel_size=tensor_parallel_size,
             pipeline_parallel_size=pipeline_parallel_size,
+            prefill_context_parallel_size=prefill_context_parallel_size,
+            decode_context_parallel_size=decode_context_parallel_size,
             distributed_executor_backend="ray",
-            **(extra_engine_kwargs or {}),
         ),
         placement_group_config=placement_group_config,
         runtime_env=runtime_env,
@@ -116,10 +118,8 @@ def test_llm_serve_default_placement_bundles_include_pcp(
     llm_config = get_llm_config_with_placement_group(
         tensor_parallel_size=tp_size,
         pipeline_parallel_size=pp_size,
-        extra_engine_kwargs=dict(
-            prefill_context_parallel_size=pcp_size,
-            decode_context_parallel_size=dcp_size,
-        ),
+        prefill_context_parallel_size=pcp_size,
+        decode_context_parallel_size=dcp_size,
     )
 
     assert llm_config.get_engine_config().num_devices == expected_devices
