@@ -8,7 +8,7 @@ myst:
 
 # RayJob Batch Inference Example
 
-This example demonstrates how to use the RayJob custom resource to run a batch inference job for an image classification workload on a Ray cluster. See [Image Classification Batch Inference with HuggingFace Vision Transformer](https://docs.ray.io/en/latest/data/examples/huggingface_vit_batch_prediction.html) for a full explanation of the code.
+This example demonstrates how to use the RayJob custom resource to run a batch inference job for an image classification workload on a Ray cluster. See [Image Classification Batch Inference with HuggingFace Vision Transformer](../../data/examples/huggingface_vit_batch_prediction.ipynb) for a full explanation of the code.
 
 ## Prerequisites
 
