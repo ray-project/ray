@@ -193,6 +193,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
             coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+            small_shuffle_chunk_size=(
+                DataContext.get_current().small_shuffle_chunk_size
+            ),
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -208,17 +211,30 @@ class ParquetDatasourceV2(FileDataSourceV2):
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )
         split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+        # A row-group shuffle feeds runs from many files interleaved; per-file
+        # heavy bins would split them back apart, so pack everything shared.
+        isolate_heavy_files = not self._is_row_group_shuffle()
         logger.debug(
             "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s)",
+            "split_coalesced=%s, isolate_heavy_files=%s)",
             max_bin_bytes,
             max_shared_open_bins,
             split_coalesced,
+            isolate_heavy_files,
         )
         return OnlineBinPacker(
             max_bin_bytes=max_bin_bytes,
             max_shared_open_bins=max_shared_open_bins,
             split_coalesced=split_coalesced,
+            isolate_heavy_files=isolate_heavy_files,
+        )
+
+    def _is_row_group_shuffle(self) -> bool:
+        from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+        return (
+            isinstance(self._shuffle, FileShuffleConfig)
+            and self._shuffle.small_chunks_shuffle
         )
 
     @override
