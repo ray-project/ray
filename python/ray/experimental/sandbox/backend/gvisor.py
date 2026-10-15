@@ -769,9 +769,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 except (OSError, subprocess.TimeoutExpired):
                     pass
-            shutil.rmtree(root_dir, ignore_errors=True)
+            # The owner file goes last: a pass that's cut short, say with the
+            # process that runs it, leaves it, and a later pass finishes.
+            with os.scandir(root_dir) as entries:
+                for entry in entries:
+                    if entry.name == _OWNER_FILE:
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        shutil.rmtree(entry.path, ignore_errors=True)
+                    else:
+                        try:
+                            os.unlink(entry.path)
+                        except OSError:
+                            pass
             if isinstance(owner.get("image"), str):
                 self._image_manager.release_image(owner["image"], sandbox_id)
+            shutil.rmtree(root_dir, ignore_errors=True)
         return True
 
     def _resolve_path(self, root_dir: str, relative_or_abs_path: str) -> str:
