@@ -1175,10 +1175,19 @@ def test_deployment_to_schema_to_deployment():
 
     deployment = schema_to_deployment(deployment_to_schema(f))
     deployment = deployment.options(
-        func_or_class="ray.serve.tests.test_schema.global_f"
+        func_or_class="ray.serve.tests.test_schema.global_f",
+        max_surge_percent=40,
     )
 
     assert deployment.num_replicas == 3
+    assert deployment._deployment_config.max_surge_percent == 40
+    assert deployment_to_schema(deployment).max_surge_percent == 40
+    assert (
+        schema_to_deployment(
+            deployment_to_schema(deployment)
+        )._deployment_config.max_surge_percent
+        == 40
+    )
     assert (
         deployment.ray_actor_options["runtime_env"]["working_dir"]
         == TEST_MODULE_PINNED_URI
