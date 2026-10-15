@@ -38,7 +38,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_METHOD_HEADER,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
+    SERVE_INGRESS_ROUTER_REQUEST_QUERY_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.haproxy import (
@@ -1102,7 +1104,7 @@ def _create_replica_server(port: int, replica_id_header: str):
     async def health():
         return {"status": "OK"}
 
-    @app.api_route("/{path:path}", methods=["GET", "POST"])
+    @app.api_route("/{path:path}", methods=["GET", "POST", "PUT"])
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
         for name, value in req.headers.items():
@@ -1129,8 +1131,10 @@ def _create_router_server(
     captured = {
         "bodies": [],
         "headers": [],
+        "request_methods": [],
         "request_ids": [],
         "request_paths": [],
+        "request_queries": [],
         "model_ids": [],
     }
 
@@ -1139,9 +1143,15 @@ def _create_router_server(
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
         captured["headers"].append(dict(req.headers))
+        captured["request_methods"].append(
+            req.headers.get(SERVE_INGRESS_ROUTER_REQUEST_METHOD_HEADER)
+        )
         captured["request_ids"].append(req.headers.get("x-request-id", ""))
         captured["request_paths"].append(
             req.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
+        )
+        captured["request_queries"].append(
+            req.headers.get(SERVE_INGRESS_ROUTER_REQUEST_QUERY_HEADER)
         )
         captured["model_ids"].append(req.headers.get(SERVE_MULTIPLEXED_MODEL_ID, ""))
         response = {"replica_id": replica_id_to_return}
@@ -1161,8 +1171,10 @@ def _create_router_server(
     # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
     captured["headers"].clear()
+    captured["request_methods"].clear()
     captured["request_ids"].clear()
     captured["request_paths"].clear()
+    captured["request_queries"].clear()
     captured["model_ids"].clear()
     return server, thread, captured
 
@@ -1292,14 +1304,16 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 haproxy_api_cleanup,
             )
 
-            # POST goes through the router. Router returns B's actor name,
+            # PUT goes through the router. Router returns B's actor name,
             # so the request must land on replica B regardless of LB ordering.
             payload = {"prompt": "hello"}
-            resp = requests.post(
+            resp = requests.put(
                 f"http://127.0.0.1:{haproxy_port}/v1/messages?trace=1",
                 json=payload,
                 headers={
-                    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/chat/completions"
+                    SERVE_INGRESS_ROUTER_REQUEST_METHOD_HEADER: "DELETE",
+                    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/chat/completions",
+                    SERVE_INGRESS_ROUTER_REQUEST_QUERY_HEADER: "spoofed=true",
                 },
                 timeout=5,
             )
@@ -1311,7 +1325,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             assert router_captured["request_ids"][0]
             # The actual path, without the query, identifies the API even if
             # the client supplies a conflicting router-owned header.
+            assert router_captured["request_methods"] == ["PUT"]
             assert router_captured["request_paths"] == ["/v1/messages"]
+            assert router_captured["request_queries"] == ["trace=1"]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.
