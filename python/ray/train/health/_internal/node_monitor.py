@@ -18,18 +18,16 @@ class NodeMonitorStatus:
     """The latest results of ``NodeProbe``\\ s on one node.
 
     Attributes:
-        probe_results: ``{probe name: ProbeResult}``.
-        probe_errors: ``{probe name: exception}`` for the probes whose last poll
-            raised. The monitor itself answered.
-        error: Set by ``NodeMonitorGroup`` when the monitor itself could not
-            answer: Ray's ``RayActorError`` if it died, or a ``TimeoutError`` if
-            it has not answered for longer than the health-check timeout. Its
-            probes' results are then unknown.
+        probe_results: ``{probe name: ProbeResult}``, the latest result of each
+            probe. A failed poll's result carries its ``error``.
+        monitor_error: Set by ``NodeMonitorGroup`` when the monitor itself could
+            not answer: Ray's ``RayActorError`` if it died, or a ``TimeoutError``
+            if it has not answered for longer than the health-check timeout.
+            Its probes' results are then unknown.
     """
 
     probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
-    probe_errors: Dict[str, Exception] = field(default_factory=dict)
-    error: Optional[Exception] = None
+    monitor_error: Optional[Exception] = None
 
 
 class NodeMonitor:
@@ -46,12 +44,12 @@ class NodeMonitor:
     def __init__(self, probes: List[ScheduledProbe]):
         self._lock = threading.Lock()
         self._latest: Dict[str, ProbeResult] = {}
-        self._errors: Dict[str, Exception] = {}
         for scheduled_probe in probes:
+            name = scheduled_probe.probe.probe_name()
             threading.Thread(
                 target=self._sample,
                 args=(scheduled_probe,),
-                name=f"NodeMonitor-{scheduled_probe.probe.probe_name()}",
+                name=f"NodeMonitor-{name}-{scheduled_probe.poll_interval_s:g}s",
                 daemon=True,
             ).start()
 
@@ -59,12 +57,10 @@ class NodeMonitor:
         """Get the latest sample of every probe.
 
         Returns:
-            The latest samples, and the probes whose last poll raised.
+            The latest sample of every probe.
         """
         with self._lock:
-            return NodeMonitorStatus(
-                probe_results=dict(self._latest), probe_errors=dict(self._errors)
-            )
+            return NodeMonitorStatus(probe_results=dict(self._latest))
 
     def poll_probes(self, probes: List[NodeProbe]) -> NodeMonitorStatus:
         """Poll probes on demand.
@@ -73,38 +69,31 @@ class NodeMonitor:
             probes: The probes to poll.
 
         Returns:
-            The probes' results, and the probes that raised.
+            The result of each probe.
         """
-        status = NodeMonitorStatus()
-        for probe in probes:
-            try:
-                status.probe_results[probe.probe_name()] = self._poll(probe)
-            except Exception as e:
-                status.probe_errors[probe.probe_name()] = e
-        return status
+        return NodeMonitorStatus(
+            probe_results={probe.probe_name(): self._poll(probe) for probe in probes}
+        )
 
     def _sample(self, scheduled_probe: ScheduledProbe) -> None:
         """Poll the probe every ``poll_interval_s`` until the monitor is
         killed."""
         probe = scheduled_probe.probe
-        name = probe.probe_name()
         while True:
-            try:
-                result = self._poll(probe)
-            except Exception as e:
-                with self._lock:
-                    self._errors[name] = e
-            else:
-                with self._lock:
-                    self._latest[name] = result
-                    self._errors.pop(name, None)
+            result = self._poll(probe)
+            with self._lock:
+                self._latest[probe.probe_name()] = result
             time.sleep(scheduled_probe.poll_interval_s)
 
     @staticmethod
     def _poll(probe: NodeProbe) -> ProbeResult:
         """Poll a probe. A result without a ``timestamp_s`` is stamped with the
-        time the probe returned."""
-        result = probe.poll()
+        time the probe returned, and a poll that raises returns a result with
+        the ``error``."""
+        try:
+            result = probe.poll()
+        except Exception as e:
+            return ProbeResult(timestamp_s=time.time(), error=e)
         if result.timestamp_s is None:
             result = replace(result, timestamp_s=time.time())
         return result

@@ -36,18 +36,19 @@ class NodeMonitorGroupPollStatus:
     @property
     def errors(self) -> Dict[NodeIdStr, Exception]:
         return {
-            node_id: node_monitor_status.error
+            node_id: node_monitor_status.monitor_error
             for node_id, node_monitor_status in self.node_monitor_statuses.items()
-            if node_monitor_status.error is not None
+            if node_monitor_status.monitor_error is not None
         }
 
 
 class NodeMonitorGroup:
-    """One ``NodeMonitor`` actor on each of a set of nodes.
+    """One ``NodeMonitor`` actor on each of a set of nodes. Each monitor samples
+    the scheduled probes it starts with. For on-demand probes, use
+    ``poll_probes_async()``.
 
     Args:
-        probes: The ``NodeProbe``\\ s every monitor samples, each with its poll
-            interval.
+        probes: The ``ScheduledProbe``\\ s every monitor samples.
         health_check_timeout_s: The time in seconds a monitor's
             ``poll_status()`` may stay unanswered before it is reported as an
             error.
@@ -145,7 +146,7 @@ class NodeMonitorGroup:
                     f"The NodeMonitor on node {node_id} has not answered a poll "
                     f"for {elapsed_s:.1f} seconds."
                 )
-            node_monitor_statuses[node_id] = NodeMonitorStatus(error=error)
+            node_monitor_statuses[node_id] = NodeMonitorStatus(monitor_error=error)
 
         for done_poll in done_polls:
             node_id = poll_task_to_node[done_poll]
@@ -154,7 +155,7 @@ class NodeMonitorGroup:
                 node_monitor_statuses[node_id] = ray.get(done_poll)
             except Exception as e:
                 logger.warning("Polling the NodeMonitor on node %s failed.", node_id)
-                node_monitor_statuses[node_id] = NodeMonitorStatus(error=e)
+                node_monitor_statuses[node_id] = NodeMonitorStatus(monitor_error=e)
 
         return node_monitor_statuses
 

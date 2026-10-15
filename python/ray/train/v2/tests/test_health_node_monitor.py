@@ -66,13 +66,14 @@ def test_each_probe_is_sampled_on_its_own_interval():
 
 def test_a_failing_probe_is_reported_and_the_others_keep_sampling():
     monitor = NodeMonitor([ScheduledProbe(Broken(), poll_interval_s=10.0), _temp()])
-    status = _wait_for(
-        lambda: "Broken" in monitor.poll_status().probe_errors
-        and "Temp" in monitor.poll_status().probe_results
-        and monitor.poll_status()
+    results = _wait_for(
+        lambda: len(monitor.poll_status().probe_results) == 2
+        and monitor.poll_status().probe_results
     )
-    assert isinstance(status.probe_errors["Broken"], RuntimeError)
-    assert status.probe_results["Temp"].metrics == {"temp_c": 60.0}
+    assert isinstance(results["Broken"].error, RuntimeError)
+    assert results["Broken"].timestamp_s is not None
+    assert results["Temp"].metrics == {"temp_c": 60.0}
+    assert results["Temp"].error is None
 
 
 def test_poll_status_does_not_wait_for_a_slow_probe():
@@ -137,12 +138,12 @@ def test_an_unresponsive_monitor_is_reported_after_the_health_check_timeout(
     # The default timeout keeps a monitor that never answers from blocking.
     started = time.monotonic()
     first = group.poll_status().node_monitor_statuses["n1"]
-    assert first.error is None
+    assert first.monitor_error is None
     assert time.monotonic() - started < 3
 
     time.sleep(2.5)
     second = group.poll_status(timeout=0.2).node_monitor_statuses["n1"]
-    assert isinstance(second.error, TimeoutError)
+    assert isinstance(second.monitor_error, TimeoutError)
 
 
 def test_a_dead_monitor_is_reported(ray_start_4_cpus):
@@ -172,7 +173,7 @@ def test_poll_probes_async_polls_probes_once_on_every_node_or_on_some(
     pid = status.probe_results["Pid"]
     assert pid.metrics["pid"] != os.getpid()
     assert pid.timestamp_s is not None
-    assert isinstance(status.probe_errors["Broken"], RuntimeError)
+    assert isinstance(status.probe_results["Broken"].error, RuntimeError)
 
     refs = group.poll_probes_async([Pid()], node_ids=[node_id])
     assert ray.get(refs[node_id]).probe_results["Pid"].metrics == pid.metrics
