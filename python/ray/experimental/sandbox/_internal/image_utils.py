@@ -937,7 +937,7 @@ def pull_and_extract_container_image(
     # sandboxes starting on a node at once don't queue on one another. Pulls
     # and eviction take the lock exclusively, so neither runs while a user
     # registers here.
-    with open(lock_path, "w", encoding="utf-8") as f_lock:
+    with open(lock_path, "a", encoding="utf-8") as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_SH)
             # A stale tree of an earlier cache format (see
@@ -956,7 +956,7 @@ def pull_and_extract_container_image(
             except Exception:
                 pass
 
-    with open(lock_path, "w", encoding="utf-8") as f_lock:
+    with open(lock_path, "a", encoding="utf-8") as f_lock:
         try:
             fcntl.flock(f_lock, fcntl.LOCK_EX)
             if _cached():
