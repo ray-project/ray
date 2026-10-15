@@ -36,7 +36,8 @@ echo "--- Keeping the modules a CPU doctest() target covers"
 # The files CPU doctest() targets run. The docstringbuild image is CPU-only,
 # and an example no doctest() target runs isn't held to running here either.
 labels="$(mktemp)"
-trap 'rm -f "${labels}"' EXIT
+log="$(mktemp)"
+trap 'rm -f "${labels}" "${log}"' EXIT
 bazel query --output=label \
   'labels(data, attr(tags, "\bcpu\b", attr(tags, "\bdoctest\b", tests(//python/ray/...))))' \
   > "${labels}"
@@ -56,7 +57,27 @@ bazel run //ci/ray_ci:test_in_docker -- "//${source_dir}/..." none \
 
 echo "--- Running the docstring examples"
 # A login shell loads the image's Python environment, as the java tests step does.
+status=0
 docker run -i --rm --shm-size=2.5gb \
   "${RAYCI_WORK_REPO}:${RAYCI_BUILD_ID}-${build_name}" \
   /bin/bash -iecuo pipefail \
-  "python ci/ray_ci/doc/run_docstring_examples.py ${files//$'\n'/ }"
+  "python ci/ray_ci/doc/run_docstring_examples.py ${files//$'\n'/ }" \
+  | tee "${log}" || status=$?
+
+# Repeat the examples skipped for an omitted library, so they're visible
+# without reading the full log. The step's container can't reach
+# buildkite-agent to annotate the build. On a pass, they go in a "+++" section,
+# which Buildkite opens expanded. On a failure, Buildkite expands the last
+# section, so they stay in the examples section and the failures stay in view.
+skips="$(grep '^SKIP .*needs ' "${log}" || true)"
+if [[ -n "${skips}" ]]; then
+  header="Docstring examples skipped: the ${build_name} image omits a library they need"
+  if [[ "${status}" -eq 0 ]]; then
+    echo "+++ ${header}"
+  else
+    echo "${header}"
+  fi
+  echo "They run in their library's doctest() target instead."
+  echo "${skips}"
+fi
+exit "${status}"

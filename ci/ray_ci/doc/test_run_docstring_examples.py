@@ -343,6 +343,17 @@ def test_missing_library_follows_the_exception_chain(nothing_installed):
     assert missing_library(error) == "tensorflow"
 
 
+def test_missing_library_stops_at_raise_from_none(nothing_installed):
+    try:
+        try:
+            raise ModuleNotFoundError("No module named 'torch'", name="torch")
+        except ImportError:
+            raise ImportError("an unrelated import failure") from None
+    except ImportError as e:
+        error = e
+    assert missing_library(error) is None
+
+
 def test_missing_library_from_a_bare_import_error_message(nothing_installed):
     error = ImportError(
         "PyTorch was specified as the framework to use (via "

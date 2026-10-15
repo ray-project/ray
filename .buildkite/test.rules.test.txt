@@ -252,6 +252,7 @@ python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api deplock_check
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api deplock_check
 # The docstring examples lock and its input feed only the label-gated
 # docstringbuild image, so they run just the lock check.
+python/deplocks/docs/docstring_examples_base_depset_py3.10.lock: deplock_check
 python/deplocks/docs/docstring_examples_depset_py3.10.lock: deplock_check
 python/requirements/doc/docstring-examples-requirements.txt: deplock_check
 # Its image definition runs nothing: only the label-gated step consumes it.

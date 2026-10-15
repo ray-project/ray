@@ -65,7 +65,9 @@ depsets:
   # The "docstring-only" label's examples environment: ray[all] plus what the
   # modules holding >>> examples import, without torch or TensorFlow, so the
   # image stays small to pull. Examples that need torch or TensorFlow are
-  # skipped there and still run in each library's doctest() target. Same
+  # skipped there and run in each library's doctest() target instead: in
+  # premerge for libraries whose suites the label doesn't skip, and postmerge
+  # for Ray Data. Same
   # constraints as doctest_depset, so shared packages resolve to the same
   # versions.
   - name: docstring_examples_base_depset_${PYTHON_SHORT}

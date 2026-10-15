@@ -25,9 +25,10 @@ steps:
   # (ci/ray_ci/doc/run_docstring_examples.sh). It runs only modules a CPU
   # doctest() target covers, in the docstringbuild image, which leaves out
   # torch and TensorFlow; examples that need them are reported as skipped and
-  # still run in their library's doctest() target. The label's scope guard
-  # (lint: validate docstring-only scope) fails the build unless the PR changes
-  # nothing but docstrings and comments.
+  # run in their library's doctest() target instead: in premerge for libraries
+  # whose suites the label doesn't skip, and postmerge for Ray Data. The
+  # label's scope guard (lint: validate docstring-only scope) fails the build
+  # unless the PR changes nothing but docstrings and comments.
   #
   # Tagged with every library tag a python/ray/ change can emit, so a labeled
   # PR selects it whatever it touches. Until rayci can gate step selection on

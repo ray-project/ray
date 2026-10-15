@@ -26,7 +26,10 @@ The examples image leaves out heavy libraries such as torch and TensorFlow
 (see OMITTED_LIBRARIES). A docstring that fails only because one of them isn't
 installed is reported as skipped, with the library named, rather than failed,
 and so is every docstring in a module that can't be imported without one. Those
-examples still run in their library's doctest() target. Any other import
+examples run in their library's doctest() target instead: in premerge for
+libraries whose suites the label doesn't skip, and postmerge for Ray Data. The
+step prints the skipped examples in an expanded section of the job log. Any
+other import
 failure fails the run, so a typo in an import isn't hidden. The standard
 library's doctest module supplies the `>>>` parser and the output comparison;
 there's no doctest runner, pytest collection, or Bazel doctest target.
@@ -89,7 +92,9 @@ OMITTED_LIBRARIES = {
     "lightning": (),
     "pytorch_lightning": (),
     # The Azure node provider needs azure-cli-core to import, and its only
-    # runnable example is a single private import.
+    # runnable example is a single private import. "azure" is a namespace
+    # package, so if any azure-* distribution reaches the image, _installed
+    # reports it as installed and the provider module fails rather than skips.
     "azure": (),
 }
 
@@ -116,6 +121,11 @@ def missing_library(error: BaseException) -> Optional[str]:
     Ray Data re-raises it as an ImportError with install advice. Falls back to
     the message for a bare ImportError. Either way, a library that's installed
     never matches, so a full image can't skip anything.
+
+    The chain stops at `raise ... from None`. An implicit context can't be
+    told apart from Ray Data's re-raise, though, so a different ImportError
+    raised while handling a missing omitted library is skipped rather than
+    failed. That's rare, and it errs toward skipping.
     """
     seen = set()
     current = error
@@ -125,7 +135,12 @@ def missing_library(error: BaseException) -> Optional[str]:
             top = current.name.split(".")[0]
             if top in OMITTED_LIBRARIES and not _installed(top):
                 return top
-        current = current.__cause__ or current.__context__
+        if current.__cause__ is not None:
+            current = current.__cause__
+        elif current.__suppress_context__:
+            current = None
+        else:
+            current = current.__context__
     if isinstance(error, ImportError):
         message = str(error).lower()
         for library, aliases in OMITTED_LIBRARIES.items():
