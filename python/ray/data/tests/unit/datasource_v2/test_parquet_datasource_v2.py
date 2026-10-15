@@ -155,10 +155,11 @@ def test_infer_schema_unifies_across_footer_batches(tmp_path):
     paths = []
     for i in range(_SCHEMA_READ_BATCH_SIZE + 1):
         path = str(tmp_path / f"f{i:03d}.parquet")
-        values = {"a": [i]}
         if i == _SCHEMA_READ_BATCH_SIZE:
-            values["late"] = ["value"]
-        _write_parquet(path, pa.table(values))
+            table = pa.table({"a": [i], "late": ["value"]})
+        else:
+            table = pa.table({"a": [i]})
+        _write_parquet(path, table)
         paths.append(path)
 
     datasource = ParquetDatasourceV2([str(tmp_path)])

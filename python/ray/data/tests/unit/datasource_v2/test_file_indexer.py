@@ -14,6 +14,7 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
 )
@@ -676,7 +677,7 @@ def test_prelisted_files_apply_only_later_partition_pruner():
     def fail_initial_filter(_):
         raise AssertionError("the initial filter already ran during discovery")
 
-    class KeepOnly:
+    class KeepOnly(FilePruner):
         def should_include(self, path):
             return path == "keep.parquet"
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 from functools import partial
-from typing import List
+from typing import List, cast
 
 import numpy as np
 import pyarrow as pa
@@ -46,6 +46,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators import ListFiles
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,8 @@ def _create_input_data_buffer(
             metadata = BlockAccessor.for_block(block).get_metadata(
                 input_files=None, block_exec_stats=None
             )
-            entries.append(BlockEntry(ray.put(block), metadata))
+            prelisted_block_ref = cast(ObjectRef[Block], ray.put(block))
+            entries.append(BlockEntry(prelisted_block_ref, metadata))
         if not entries:
             return InputDataBuffer(data_context, input_data=[])
         return InputDataBuffer(

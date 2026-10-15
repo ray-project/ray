@@ -9,6 +9,7 @@ integration tests rather than under ``tests/unit/``.
 
 import logging
 from dataclasses import dataclass
+from typing import cast
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -696,11 +697,8 @@ def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ct
     from ray.data.expressions import col
 
     for i in range(17):
-        data = {"id": [i]}
         if i == 16:
-            data["new_feature"] = ["latest"]
-        table = pa.table(data)
-        if i == 16:
+            table = pa.table({"id": [i], "new_feature": ["latest"]})
             table = table.cast(
                 pa.schema(
                     [
@@ -709,6 +707,8 @@ def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ct
                     ]
                 )
             )
+        else:
+            table = pa.table({"id": [i]})
         _write(tmp_path / f"f{i:02d}.parquet", table)
 
     restore_ctx.use_datasource_v2 = True
@@ -719,6 +719,7 @@ def test_merge_schema_discovers_column_after_default_sample(tmp_path, restore_ct
     assert "new_feature" in merged.schema().names
     list_files = merged._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
     assert sum(len(block) for block in list_files.prelisted_file_infos) == 17
 
     rows = sorted(merged.take_all(), key=lambda row: row["id"])
@@ -834,6 +835,8 @@ def test_merge_schema_prelisted_blocks_feed_one_listing_task(
     ds = ray.data.read_parquet(str(tmp_path), merge_schema=True)
     list_files = ds._logical_plan.dag.input_dependencies[0]
 
+    assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
     assert len(list_files.prelisted_file_infos) == 2
     rows = sorted(ds.take_all(), key=lambda row: row["id"])
     assert rows[0]["later"] is None
@@ -858,7 +861,7 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
         manifest = original_sample_files(*args, **kwargs)
         if kwargs.get("max_files") is None:
             discovered_file_info_tables.append(
-                manifest.as_block().select(["__path", "__file_size"])
+                cast(pa.Table, manifest.as_block()).select(["__path", "__file_size"])
             )
         return manifest
 
@@ -867,6 +870,8 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True)
     list_files = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
     blocks = list_files.prelisted_file_infos
     source = discovered_file_info_tables[0]
 
@@ -911,6 +916,8 @@ def test_merge_schema_prelisted_listing_skips_checkpointed_row_group(
     restore_ctx.use_datasource_v2 = True
     ds = ray.data.read_parquet(str(path), merge_schema=True)
     list_files = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
     context = TaskContext(
         task_idx=0,
         op_name="ListFiles",
@@ -927,6 +934,7 @@ def test_merge_schema_prelisted_listing_skips_checkpointed_row_group(
             preserve_order=True,
         )
     )
+    assert isinstance(ds._logical_plan.dag, ReadFiles)
     reader = ds._logical_plan.dag.scanner.create_reader()
     rows = [
         row
@@ -958,6 +966,8 @@ def test_merge_schema_file_shuffle_spans_prelisted_blocks(
         shuffle=FileShuffleConfig(seed=42, reseed_after_execution=False),
     )
     list_files = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
     assert len(list_files.prelisted_file_infos) == 4
 
     assert [row["id"] for row in ds.take_all()] == np.random.default_rng(
@@ -1068,6 +1078,7 @@ def test_merge_schema_arrow_null_fills_new_extension_column(
     )
     id_is_null = []
     for batch in ds.iter_batches(batch_format="pyarrow"):
+        batch = cast(pa.Table, batch)
         id_is_null.extend(
             zip(
                 batch.column("id").to_pylist(),

@@ -1875,6 +1875,9 @@ def read_parquet(
         reader warns before footer merging. Retained path and size metadata adds
         O(files) data to serialized lineage.
 
+        Follow-up work for distributed planning-time footer reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
         atomic snapshot, and replacing a file at the same path is outside this
