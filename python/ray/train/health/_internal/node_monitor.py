@@ -1,12 +1,9 @@
-import logging
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, NamedTuple, Optional, Union
+from typing import Dict, List, NamedTuple, Optional
 
 from ray.train.health.probe import NodeProbe, ProbeResult
-
-logger = logging.getLogger(__name__)
 
 
 class ScheduledProbe(NamedTuple):
@@ -69,47 +66,21 @@ class NodeMonitor:
                 probe_results=dict(self._latest), probe_errors=dict(self._errors)
             )
 
-    def run_once(self, probes: List[NodeProbe], timeout_s: float) -> NodeMonitorStatus:
-        """Poll each probe once, each in its own thread, and wait up to
-        ``timeout_s`` for them.
+    def poll_probes(self, probes: List[NodeProbe]) -> NodeMonitorStatus:
+        """Poll probes on demand.
 
         Args:
             probes: The probes to poll.
-            timeout_s: Timeout in seconds to wait for them.
 
         Returns:
-            The results of the probes that finished, and an error for each of
-            the others.
+            The probes' results, and the probes that raised.
         """
-        outcomes: List[Optional[Union[ProbeResult, Exception]]] = [None] * len(probes)
-
-        def run(i: int) -> None:
-            try:
-                outcomes[i] = self._poll(probes[i])
-            except Exception as e:
-                outcomes[i] = e
-
-        threads = [
-            threading.Thread(target=run, args=(i,), daemon=True)
-            for i in range(len(probes))
-        ]
-        for thread in threads:
-            thread.start()
-        deadline = time.monotonic() + timeout_s
-        for thread in threads:
-            thread.join(max(deadline - time.monotonic(), 0))
-
         status = NodeMonitorStatus()
-        for probe, outcome in zip(probes, list(outcomes)):
-            name = probe.probe_name()
-            if outcome is None:
-                status.probe_errors[name] = TimeoutError(
-                    f"Node probe {name} did not finish within {timeout_s} seconds."
-                )
-            elif isinstance(outcome, Exception):
-                status.probe_errors[name] = outcome
-            else:
-                status.probe_results[name] = outcome
+        for probe in probes:
+            try:
+                status.probe_results[probe.probe_name()] = self._poll(probe)
+            except Exception as e:
+                status.probe_errors[probe.probe_name()] = e
         return status
 
     def _sample(self, scheduled_probe: ScheduledProbe) -> None:
@@ -122,10 +93,7 @@ class NodeMonitor:
                 result = self._poll(probe)
             except Exception as e:
                 with self._lock:
-                    first_failure = name not in self._errors
                     self._errors[name] = e
-                if first_failure:
-                    logger.warning("Node probe %s failed.", name, exc_info=True)
             else:
                 with self._lock:
                     self._latest[name] = result
