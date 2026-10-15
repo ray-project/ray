@@ -1599,15 +1599,12 @@ def read_bigquery(
         The maximum query response size is 10GB.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
-            ds = ray.data.read_bigquery(
-                project_id="my_project",
-                query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
-            )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
+        >>> ds = ray.data.read_bigquery(
+        ...     project_id="my_project",
+        ...     query="SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
+        ... )
 
     Args:
         project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
@@ -1746,26 +1743,19 @@ def read_parquet(
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
 
-        .. testcode::
-
-            from ray.data.expressions import col, lit
-
-            # Create a Dataset by reading a Parquet file, with column selection and
-            # row filtering pushed down to the file scan.
-            ds = (
-                ray.data.read_parquet(
-                    "s3://anonymous@ray-example-data/iris.parquet",
-                )
-                .filter(expr=col("sepal.length") > lit(5.0))
-                .select_columns(["sepal.length", "variety"])
-            )
-
-            ds.show(2)
-
-        .. testoutput::
-
-            {'sepal.length': 5.1, 'variety': 'Setosa'}
-            {'sepal.length': 5.4, 'variety': 'Setosa'}
+        >>> from ray.data.expressions import col, lit
+        >>> # Create a Dataset by reading a Parquet file, with column selection and
+        >>> # row filtering pushed down to the file scan.
+        >>> ds = (
+        ...     ray.data.read_parquet(
+        ...         "s3://anonymous@ray-example-data/iris.parquet",
+        ...     )
+        ...     .filter(expr=col("sepal.length") > lit(5.0))
+        ...     .select_columns(["sepal.length", "variety"])
+        ... )
+        >>> ds.show(2)
+        {'sepal.length': 5.1, 'variety': 'Setosa'}
+        {'sepal.length': 5.4, 'variety': 'Setosa'}
 
         For further arguments you can pass to PyArrow as a keyword argument, see the
         `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
@@ -4331,50 +4321,44 @@ def read_sql(
         executed in a single task.
 
     Examples:
-
         For examples of reading from larger databases like MySQL and PostgreSQL, see
         :ref:`Read SQL databases <reading_sql>`.
 
-        .. testcode::
-
-            import sqlite3
-
-            import ray
-
-            # Create a simple database
-            connection = sqlite3.connect("example.db")
-            connection.execute("CREATE TABLE movie(title, year, score)")
-            connection.execute(
-                \"\"\"
-                INSERT INTO movie VALUES
-                    ('Monty Python and the Holy Grail', 1975, 8.2),
-                    ("Monty Python Live at the Hollywood Bowl", 1982, 7.9),
-                    ("Monty Python's Life of Brian", 1979, 8.0),
-                    ("Rocky II", 1979, 7.3)
-                \"\"\"
-            )
-            connection.commit()
-            connection.close()
-
-            def create_connection():
-                return sqlite3.connect("example.db")
-
-            # Get all movies
-            ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
-            # Get movies after the year 1980
-            ds = ray.data.read_sql(
-                "SELECT title, score FROM movie WHERE year >= 1980", create_connection
-            )
-            # Get the number of movies per year
-            ds = ray.data.read_sql(
-                "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
-            )
-
-        .. testcode::
-            :hide:
-
-            import os
-            os.remove("example.db")
+        >>> import os
+        >>> import sqlite3
+        >>> import tempfile
+        >>> import ray
+        >>> # Create a simple database
+        >>> db_dir = tempfile.TemporaryDirectory()
+        >>> db_path = os.path.join(db_dir.name, "example.db")
+        >>> connection = sqlite3.connect(db_path)
+        >>> _ = connection.execute("CREATE TABLE movie(title, year, score)")
+        >>> _ = connection.execute(
+        ...     \"\"\"
+        ...     INSERT INTO movie VALUES
+        ...         ('Monty Python and the Holy Grail', 1975, 8.2),
+        ...         ("Monty Python Live at the Hollywood Bowl", 1982, 7.9),
+        ...         ("Monty Python's Life of Brian", 1979, 8.0),
+        ...         ("Rocky II", 1979, 7.3)
+        ...     \"\"\"
+        ... )
+        >>> connection.commit()
+        >>> connection.close()
+        >>> def create_connection():
+        ...     return sqlite3.connect(db_path)
+        >>> # Get all movies
+        >>> ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        >>> ds.count()
+        4
+        >>> # Get movies after the year 1980
+        >>> ds = ray.data.read_sql(
+        ...     "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+        ... )
+        >>> # Get the number of movies per year
+        >>> ds = ray.data.read_sql(
+        ...     "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+        ... )
+        >>> db_dir.cleanup()
 
     Args:
         sql: The SQL query to execute.
@@ -4474,21 +4458,16 @@ def read_snowflake(
 ) -> Dataset:
     """Read data from a Snowflake data set.
 
-    Example:
-
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            connection_parameters = dict(
-                user=...,
-                account="ABCDEFG-ABC12345",
-                password=...,
-                database="SNOWFLAKE_SAMPLE_DATA",
-                schema="TPCDS_SF100TCL"
-            )
-            ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
+    Examples:
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> connection_parameters = dict(
+        ...     user=...,
+        ...     account="ABCDEFG-ABC12345",
+        ...     password=...,
+        ...     database="SNOWFLAKE_SAMPLE_DATA",
+        ...     schema="TPCDS_SF100TCL"
+        ... )
+        >>> ds = ray.data.read_snowflake("SELECT * FROM CUSTOMERS", connection_parameters)
 
     Args:
         sql: The SQL query to execute.
@@ -4603,47 +4582,35 @@ def read_databricks_tables(
         `Databricks statement execution API <https://docs.databricks.com/api/statement-execution/v1/execute-statement>`_.
 
     Examples:
-
         Read using environment variables:
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            ds = ray.data.read_databricks_tables(
-                warehouse_id='...',
-                catalog='catalog_1',
-                schema='db_1',
-                query='select id from table_1 limit 750000',
-            )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> ds = ray.data.read_databricks_tables(
+        ...     warehouse_id='...',
+        ...     catalog='catalog_1',
+        ...     schema='db_1',
+        ...     query='select id from table_1 limit 750000',
+        ... )
 
         Read using a custom credential provider:
 
-        .. testcode::
-            :skipif: True
-
-            from ray.data._internal.datasource.databricks_credentials import (
-                DatabricksCredentialProvider,
-            )
-
-            class MyCredentialProvider(DatabricksCredentialProvider):
-                def get_token(self) -> str:
-                    return "my-token"  # Fetch token from custom source
-
-                def get_host(self) -> str:
-                    return "my-host.databricks.com"
-
-                def invalidate(self) -> None:
-                    pass  # Clear cached credentials if applicable
-
-            ds = ray.data.read_databricks_tables(
-                warehouse_id='...',
-                catalog='catalog_1',
-                schema='db_1',
-                query='select id from table_1 limit 750000',
-                credential_provider=MyCredentialProvider(),
-            )
+        >>> from ray.data._internal.datasource.databricks_credentials import (
+        ...     DatabricksCredentialProvider,
+        ... )
+        >>> class MyCredentialProvider(DatabricksCredentialProvider):
+        ...     def get_token(self) -> str:
+        ...         return "my-token"  # Fetch token from custom source
+        ...     def get_host(self) -> str:
+        ...         return "my-host.databricks.com"
+        ...     def invalidate(self) -> None:
+        ...         pass  # Clear cached credentials if applicable
+        >>> ds = ray.data.read_databricks_tables(
+        ...     warehouse_id='...',
+        ...     catalog='catalog_1',
+        ...     schema='db_1',
+        ...     query='select id from table_1 limit 750000',
+        ...     credential_provider=MyCredentialProvider(),
+        ... )
 
     Args:
         warehouse_id: The ID of the Databricks warehouse. The query statement is
@@ -5428,17 +5395,12 @@ def read_delta_sharing_tables(
     a valid delta_share profile in the working directory.
 
     Examples:
-
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            ds = ray.data.read_delta_sharing_tables(
-                url=f"your-profile.json#your-share-name.your-schema-name.your-table-name",
-                limit=100000,
-                version=1,
-            )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> ds = ray.data.read_delta_sharing_tables(
+        ...     url="your-profile.json#your-share-name.your-schema-name.your-table-name",
+        ...     limit=100000,
+        ...     version=1,
+        ... )
 
     Args:
         url: A URL under the format
@@ -6574,46 +6536,36 @@ def read_kafka(
     have one read task for each partition.
 
     Examples:
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> # Read from a single topic with offset range
+        >>> ds = ray.data.read_kafka(
+        ...     topics="my-topic",
+        ...     bootstrap_servers="localhost:9092",
+        ...     start_offset=0,
+        ...     end_offset=1000,
+        ... )
+        >>> # Read from a topic using datetime range
+        >>> from datetime import datetime
+        >>> ds = ray.data.read_kafka(
+        ...     topics="my-topic",
+        ...     bootstrap_servers="localhost:9092",
+        ...     start_offset=datetime(2025, 1, 1),
+        ...     end_offset=datetime(2025, 1, 2),
+        ... )
 
-        .. testcode::
-            :skipif: True
-
-            import ray
-
-            # Read from a single topic with offset range
-            ds = ray.data.read_kafka(
-                topics="my-topic",
-                bootstrap_servers="localhost:9092",
-                start_offset=0,
-                end_offset=1000,
-            )
-
-            # Read from a topic using datetime range
-            from datetime import datetime
-            ds = ray.data.read_kafka(
-                topics="my-topic",
-                bootstrap_servers="localhost:9092",
-                start_offset=datetime(2025, 1, 1),
-                end_offset=datetime(2025, 1, 2),
-            )
-
-        .. testcode::
-            :skipif: True
-
-            # Read using per-partition start offsets; partition 2 falls back
-            # to "earliest" because it is not listed
-            ds = ray.data.read_kafka(
-                topics="my-topic",
-                bootstrap_servers="localhost:9092",
-                start_offset={
-                    "my-topic": {
-                        0: 1500,
-                        1: "earliest",
-                    }
-                },
-                end_offset="latest",
-            )
-
+        >>> # Read using per-partition start offsets; partition 2 falls back
+        >>> # to "earliest" because it is not listed
+        >>> ds = ray.data.read_kafka(
+        ...     topics="my-topic",
+        ...     bootstrap_servers="localhost:9092",
+        ...     start_offset={
+        ...         "my-topic": {
+        ...             0: 1500,
+        ...             1: "earliest",
+        ...         }
+        ...     },
+        ...     end_offset="latest",
+        ... )
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
