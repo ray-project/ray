@@ -27,12 +27,6 @@ INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
 )
 
-MISSING_INGRESS_REQUEST_ROUTER_ERROR = (
-    "An ingress deployment with a custom "
-    "`request_router_config.request_router_class` requires an ingress request "
-    "router under HAProxy, but none was built."
-)
-
 
 class IDDict(dict, Generic[K, V]):
     """Dictionary that uses id() for keys instead of hash().
