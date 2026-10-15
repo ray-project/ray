@@ -4,11 +4,13 @@ import math
 import os
 import re
 from dataclasses import asdict
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ray
+from ray._common.utils import env_bool
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
+    GrafanaAnnotation,
     Panel,
     PanelTemplate,
 )
@@ -40,6 +42,35 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_URL"
+
+GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR = "RAY_GRAFANA_ANNOTATIONS_ENABLED"
+# The label a log collector attaches to the annotation log stream. This is the
+# contract between Ray and the collector config, so changing it breaks it.
+ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
+
+# Each annotation line is an `AnnotationEvent` serialized to JSON. Every query
+# lifts the fields it filters on into a label of its own, rather than letting
+# the parser flatten the whole record: the query then carries no labels it does
+# not use, and does not depend on a collector adding no top-level fields of its
+# own (such as Vector's `file` and `host`) that could collide with them.
+#
+# These are the fields every annotation record carries; an event-specific query
+# adds its own `| json` stage for its tags and fields.
+ANNOTATION_COMMON_LABELS = (
+    'annotation_source="annotation_source", '
+    'session_name="session_name", '
+    'event="event", '
+    'message="message", '
+    'severity="severity"'
+)
+
+# Datasource template variable the annotation queries resolve through. Grafana
+# binds it to the first Loki datasource, as the metric panels find Prometheus.
+ANNOTATION_DATASOURCE_VARIABLE = "annotation_datasource"
+ANNOTATION_DATASOURCE = {
+    "type": "loki",
+    "uid": f"${{{ANNOTATION_DATASOURCE_VARIABLE}}}",
+}
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
@@ -177,23 +208,98 @@ def generate_data_llm_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(data_llm_dashboard_config)
 
 
-def generate_train_grafana_dashboard() -> Tuple[str, str]:
+def generate_train_grafana_dashboard(
+    session_name: Optional[str] = None,
+) -> Tuple[str, str]:
     """
     Generates the dashboard output for the train dashboard and returns
     both the content and the uid.
 
+    Args:
+        session_name: Session of the cluster generating the dashboard. The
+            annotation layers are scoped to it, and are omitted without it. See
+            :func:`generate_annotation`.
+
     Returns:
       Tuple with format content, uid
     """
-    return _generate_grafana_dashboard(train_dashboard_config)
+    return _generate_grafana_dashboard(train_dashboard_config, session_name)
 
 
-def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
+def generate_annotation_variable() -> dict:
+    """Build the datasource template variable the annotation queries use."""
+    return {
+        "name": ANNOTATION_DATASOURCE_VARIABLE,
+        "type": "datasource",
+        "description": (
+            "Loki datasource that dashboard annotations are queried from. "
+            "Ray does not provision this datasource."
+        ),
+        "datasource": None,
+        "query": ANNOTATION_DATASOURCE["type"],
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": False,
+        "multi": False,
+        "current": {"selected": False},
+    }
+
+
+def generate_annotation(annotation: GrafanaAnnotation, session_name: str) -> dict:
+    """Expand a ``GrafanaAnnotation`` into the full Grafana annotation JSON.
+
+    Prepends the preamble common to every annotation query: the stream selector,
+    a line pre-filter, a ``| json`` stage for the fields every record carries,
+    and filters on the source and session.
+
+    ``session_name`` is a literal rather than the ``SessionName`` variable, so a
+    viewer widening that variable to ``All`` can't pull other clusters' events
+    off a shared log backend.
+
+    Args:
+        annotation: The annotation to expand.
+        session_name: Session of the cluster generating the dashboard.
+
+    Returns:
+        The entry to append to the dashboard's ``annotations.list``.
+    """
+    expr = (
+        f"{ANNOTATION_STREAM_SELECTOR} |= {json.dumps(annotation.source)} "
+        f"| json {ANNOTATION_COMMON_LABELS} "
+        f"| annotation_source={json.dumps(annotation.source)} "
+        f"| session_name={json.dumps(session_name)} "
+        f"{annotation.expr}"
+    )
+
+    return {
+        "datasource": dict(ANNOTATION_DATASOURCE),
+        "enable": annotation.enable,
+        "hide": annotation.hide,
+        "iconColor": annotation.icon_color,
+        "name": annotation.name,
+        "expr": expr,
+        "queryType": annotation.query_type,
+        "tagKeys": annotation.tag_keys,
+        "target": {
+            "datasource": dict(ANNOTATION_DATASOURCE),
+            "expr": expr,
+            "queryType": annotation.query_type,
+            "refId": annotation.ref_id,
+        },
+    }
+
+
+def _generate_grafana_dashboard(
+    dashboard_config: DashboardConfig, session_name: Optional[str] = None
+) -> Tuple[str, str]:
     """Render the Grafana dashboard JSON for the given config.
 
     Args:
         dashboard_config: Configuration describing the panels and base
             template JSON file to use for rendering.
+        session_name: Session of the cluster generating the dashboard. Only
+            needed for a dashboard carrying annotations, which are scoped to it
+            and are omitted without it; see :func:`generate_annotation`.
 
     Returns:
       Tuple with format dashboard_content, uid
@@ -206,6 +312,26 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
         open(os.path.join(os.path.dirname(__file__), "dashboards", base_file_name))
     )
     base_json["panels"] = panels
+
+    # Append config-defined annotations to the base JSON's built-in annotation list,
+    # along with the template variable the annotation queries resolve through.
+    #
+    # Annotations are scoped to a single session, so a caller that does not know
+    # which one this is gets none: rendering them unscoped would pull every
+    # cluster's events off a shared log backend.
+    if (
+        dashboard_config.annotations
+        and session_name
+        and env_bool(GRAFANA_ANNOTATIONS_ENABLED_ENV_VAR, True)
+    ):
+        annotations = base_json.setdefault("annotations", {})
+        annotations.setdefault("list", []).extend(
+            generate_annotation(annotation, session_name)
+            for annotation in dashboard_config.annotations
+        )
+        templating = base_json.setdefault("templating", {})
+        templating.setdefault("list", []).append(generate_annotation_variable())
+
     # Update variables to use global_filters
     global_filters_str = ",".join(global_filters)
     variables = base_json.get("templating", {}).get("list", [])

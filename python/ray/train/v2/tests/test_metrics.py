@@ -357,6 +357,28 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
     )
 
 
+def test_controller_annotations(mock_gauge, captured_annotations):
+    """Controller state changes are annotated alongside the state metrics."""
+    callback = ControllerMetricsCallback()
+    callback.after_controller_start(train_run_context=create_dummy_run_context())
+    callback.after_controller_state_update(
+        TrainControllerState(TrainControllerStateType.INITIALIZING),
+        TrainControllerState(TrainControllerStateType.RUNNING),
+    )
+
+    # The state metric is recorded either way.
+    assert (
+        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+            TrainControllerStateType.RUNNING
+        )
+        == 1
+    )
+
+    # One annotation for the controller starting, one for the transition.
+    assert len(captured_annotations) == 2
+    assert captured_annotations[1]["message"] == "Controller: INITIALIZING → RUNNING"
+
+
 if __name__ == "__main__":
     import sys
 
