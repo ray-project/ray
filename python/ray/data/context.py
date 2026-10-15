@@ -256,6 +256,15 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
     "AWS Error SERVICE_UNAVAILABLE",
+    # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
+    # (e.g. an empty IMDS response under load) as ACCESS_DENIED on the
+    # bucket-existence check that `create_dir` runs before a write, e.g.
+    # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
+    # Deliberately not the bare "AWS Error ACCESS_DENIED": a genuine per-object
+    # denial (HeadObject) on a read must still fail fast so the credentials hint
+    # in `_handle_read_os_error` is shown promptly instead of after ~3 minutes
+    # of retries.
+    "AWS Error ACCESS_DENIED during HeadBucket operation",
 )
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
@@ -699,13 +708,10 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
-            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
-            driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
-            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
-            V2). Parquet is the only reader migrated to V2 so far; the others
-            read through V1 for now regardless of this flag.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
+            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
+            Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
+            (``0`` for V1, ``1`` for V2).
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -898,7 +904,7 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
+        use_disk_based_hash_shuffle: Whether ``repartition()`` with keys or shuffle,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
             disk-based (file-transport) shuffle instead of the object
             store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
@@ -1028,7 +1034,7 @@ class DataContext:
     # to perform aggregations on partitions produced during hash-shuffling
     #
     # When unset defaults to the smaller of
-    #   - Total # of CPUs available in the cluster * 2
+    #   - Total # of CPUs available in the cluster (at least 1)
     #   - DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS (128 by default)
     max_hash_shuffle_aggregators: Optional[int] = None
 

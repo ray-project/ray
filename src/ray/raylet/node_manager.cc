@@ -2219,9 +2219,14 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
       HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
-    // If the worker is exiting, don't add it to our pool. The worker will cleanup
-    // and terminate itself.
-    if (!request.worker_exiting()) {
+    RAY_CHECK(!worker->GetGrantedLeaseId().IsNil());
+    if (request.worker_exiting()) {
+      // The worker will not return to the pool, and one that hangs in shutdown
+      // never triggers DisconnectClient, so release the lease (and its pinned
+      // args) here instead of deferring.
+      CleanupLease(worker);
+    } else {
+      // Cleans up the lease and returns the worker to the pool.
       HandleWorkerAvailable(worker);
     }
   }
@@ -3064,9 +3069,19 @@ void NodeManager::RecordMetrics() {
 void NodeManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
   if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+    const NodeID node_id = NodeID::FromBinary(message->node_id());
+    // Resource sync and node liveness notifications can arrive out of order.
+    // SetNodeLabels/ResourceCreateUpdated below can recreate a removed node, so
+    // reject late resource views before mutating any resource-manager state.
+    // Do not require IsNodeAlive(): a new node's resource view may arrive before
+    // its ALIVE notification. Only an explicitly observed DEAD is terminal.
+    if (failed_nodes_cache_.contains(node_id)) {
+      RAY_LOG(DEBUG).WithField(node_id)
+          << "Ignoring resource view from a node already marked dead.";
+      return;
+    }
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
     // Set node labels when node added.
     auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
     cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(

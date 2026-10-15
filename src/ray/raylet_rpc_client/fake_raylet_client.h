@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <functional>
 #include <limits>
 #include <list>
 #include <memory>
@@ -292,7 +293,12 @@ class FakeRayletClient : public RayletClientInterface {
 
   void IsLocalWorkerDead(
       const WorkerID &worker_id,
-      const ClientCallback<IsLocalWorkerDeadReply> &callback) override {}
+      const ClientCallback<IsLocalWorkerDeadReply> &callback) override {
+    num_is_local_worker_dead_requests += 1;
+    if (is_local_worker_dead_hook) {
+      is_local_worker_dead_hook(worker_id, callback);
+    }
+  }
 
   std::shared_ptr<grpc::Channel> GetChannel() const override { return nullptr; }
 
@@ -349,6 +355,10 @@ class FakeRayletClient : public RayletClientInterface {
   std::vector<int> free_local_objects_batches;
   std::list<ClientCallback<FreeLocalObjectsReply>> free_local_objects_callbacks = {};
   int num_release_unused_bundles_requested = 0;
+  int num_is_local_worker_dead_requests = 0;
+  // Optional hook to drive IsLocalWorkerDead callbacks; no-op by default.
+  std::function<void(const WorkerID &, const ClientCallback<IsLocalWorkerDeadReply> &)>
+      is_local_worker_dead_hook;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;
   absl::flat_hash_map<std::string, double> last_resize_local_resource_instances_request;

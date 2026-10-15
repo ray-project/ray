@@ -33,6 +33,22 @@ class FilePartitioner(ABC):
 
     Implementations must be deterministic to ensure consistent partitioning across
     retries.
+
+    ``RoundRobinPartitioner`` and ``OnlineBinPacker`` in ``common/`` are two
+    packing strategies that work on any manifest, however its sizes were
+    obtained: round robin deals whole files into buckets up to a size target;
+    the bin packer keeps a pool of open bins and splits files at read-unit
+    boundaries when the rows carry chunk metadata.
+
+    Implement this class when neither grouping fits, for example one read
+    task per hive partition. Your implementation should:
+
+        1. Buffer rows in :meth:`add_input` and group them deterministically.
+        2. Report a finished group through :meth:`has_partition` and hand it
+           out from :meth:`next_partition`.
+        3. Flush any remaining rows in :meth:`finalize`.
+        4. Return ``True`` from :attr:`requires_global_input` if it must see
+           every file before grouping.
     """
 
     @property

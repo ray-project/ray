@@ -215,11 +215,11 @@ import pyarrow as pa
 
 def udf(table: pa.Table):
     import polars as pl
-    df = polars.from_pyarrow(table)
-    df.summary()
+    df = pl.from_arrow(table)
+    df.describe()
     return df.to_arrow()
 
-ds.map_batches(udf, batch_format="pyarrow")
+ds.map_batches(udf, batch_format="pyarrow").materialize()
 ```
 
 
@@ -419,7 +419,7 @@ import pandas as pd
 import ray
 
 def normalize_features(group: pd.DataFrame) -> pd.DataFrame:
-    target = group.drop("target")
+    target = group.pop("target")
     group = (group - group.min()) / group.std()
     group["target"] = target
     return group
@@ -429,6 +429,7 @@ ds = (
     .groupby("target")
     .map_groups(normalize_features)
 )
+ds.materialize()
 ```
 :::
 ::::

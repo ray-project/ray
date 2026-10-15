@@ -736,6 +736,7 @@ class DeploymentScheduler:
         replica_id = scheduling_request.replica_id
         deployment_id = replica_id.deployment_id
         placement_group = None
+        per_replica_pg = None
 
         scheduling_strategy: Any = default_scheduling_strategy
 
@@ -765,7 +766,7 @@ class DeploymentScheduler:
                 else "PACK"
             )
             try:
-                pg = self._create_placement_group_fn(
+                per_replica_pg = self._create_placement_group_fn(
                     CreatePlacementGroupRequest(
                         bundles=scheduling_request.placement_group_bundles,
                         strategy=placement_group_strategy,
@@ -789,7 +790,7 @@ class DeploymentScheduler:
             # validates that actor resources fit in bundle 0, and
             # required_resources assumes this pin.
             scheduling_strategy = PlacementGroupSchedulingStrategy(
-                placement_group=pg,
+                placement_group=per_replica_pg,
                 placement_group_bundle_index=0,
                 placement_group_capture_child_tasks=True,
             )
@@ -831,6 +832,16 @@ class DeploymentScheduler:
             # We add a defensive exception here, so the controller can
             # make progress even if the actor options are misconfigured.
             logger.exception(f"Failed to create an actor for {replica_id}.")
+            # Remove the per replica PG so it doesn't leak resources.
+            # Gang PGs are not removed here.
+            if per_replica_pg is not None:
+                try:
+                    ray.util.remove_placement_group(per_replica_pg)
+                except Exception:
+                    logger.exception(
+                        f"Failed to clean up placement group for {replica_id} "
+                        "after actor creation failure."
+                    )
             scheduling_request.status = (
                 ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
             )

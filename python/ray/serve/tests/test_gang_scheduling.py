@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import threading
@@ -889,15 +890,25 @@ class TestGangFailureRecovery:
         ray.init(num_cpus=1)
         serve.start()
         target_replica_collector = Accumulator.remote()
+        target_signal = SignalActor.remote()
 
         @serve.deployment(
             num_replicas=4,
             ray_actor_options={"num_cpus": 0.1},
             health_check_period_s=1,
-            health_check_timeout_s=1,
             gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         )
         class HealthFailureDeployment:
+            async def __init__(self):
+                self._should_fail = False
+                self._watcher = asyncio.create_task(self._wait_for_target())
+
+            async def _wait_for_target(self):
+                await target_signal.wait.remote()
+                targets = await target_replica_collector.get.remote()
+                my_id = serve.get_replica_context().replica_id.unique_id
+                self._should_fail = my_id in targets
+
             def __call__(self):
                 ctx = serve.get_replica_context()
                 gc = ctx.gang_context
@@ -907,14 +918,9 @@ class TestGangFailureRecovery:
                 }
 
             def check_health(self):
-                targets = ray.get(target_replica_collector.get.remote())
-                if not targets:
-                    return
-                target_id = targets[-1]
                 # Only 1 replica fails; its sibling stays healthy.
                 # The gang-aware cleanup must stop the sibling too.
-                ctx = serve.get_replica_context()
-                if ctx.replica_id.unique_id == target_id:
+                if self._should_fail:
                     raise RuntimeError("Intentional health check failure.")
 
         app_name = "gang_health_failure_app"
@@ -952,6 +958,7 @@ class TestGangFailureRecovery:
 
         # Trigger failure for only 1 replica in the target gang.
         ray.get(target_replica_collector.add.remote(target_ctx["replica_id"]))
+        ray.get(target_signal.send.remote())
 
         client = serve.context._get_global_client()
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)

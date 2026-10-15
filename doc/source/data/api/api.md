@@ -1,6 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "API reference index for Ray Data, covering loading and saving data, Dataset, DataIterator, expressions, aggregations, preprocessors, configuration, and the LLM API."
+---
+
 (data-api)=
 
 # Ray Data API
+
+The Ray Data API reference documents Ray Data's public Python API. Each page below covers one group of APIs.
 
 ```{toctree}
 :maxdepth: 2
