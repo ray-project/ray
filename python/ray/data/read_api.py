@@ -1822,11 +1822,11 @@ def read_parquet(
             column overwrites a same-named file column. For an unpartitioned
             file, ``include_paths="source_file"`` preserves an existing
             ``'path'`` column and stores file paths in ``'source_file'``. A
-            custom name other than ``'path'`` that matches a path-derived
-            partition column raises ``ValueError``. Using ``'row_hash'`` when
-            ``include_row_hash=True``, or reusing a checkpoint's generated ID
-            column name, also raises ``ValueError``. To downselect
-            to fewer columns, use :meth:`~ray.data.Dataset.select_columns` and
+            custom name other than ``'path'`` raises ``ValueError`` if it
+            matches a path-derived partition column, ``'row_hash'`` when
+            ``include_row_hash=True``, or an enabled checkpoint generated ID
+            column. To downselect to fewer columns, use
+            :meth:`~ray.data.Dataset.select_columns` and
             include the chosen path column name explicitly to retain it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
             The hash is a uint64 computed from the source file path and the row's
