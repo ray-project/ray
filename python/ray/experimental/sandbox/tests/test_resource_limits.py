@@ -6,7 +6,6 @@ import signal
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -128,29 +127,6 @@ def test_memory_limit_contains_oom_and_preserves_worker(network, request):
         runtime.delete(next_sid)
 
 
-@pytest.mark.skipif(
-    not os.environ.get("RAY_SANDBOX_EXCLUSIVE_CGROUP_PATH"),
-    reason="Set RAY_SANDBOX_EXCLUSIVE_CGROUP_PATH to a provisioned exclusive partition",
-)
-def test_exclusive_cpu_is_visible_and_cannot_escape(ensure_slirp4netns):
-    runtime, sid = _create("public", cpu=1, cpu_isolation="exclusive", memory="512Mi")
-    try:
-        assert runtime.exec(sid, ["nproc"]).stdout.strip() == "1"
-        # Asking for all CPUs cannot expand the host cgroup's allowed set.
-        result = runtime.exec(
-            sid,
-            [
-                "python3",
-                "-c",
-                "import os; os.sched_setaffinity(0, range(4096)); print(len(os.sched_getaffinity(0)))",
-            ],
-        )
-        assert result.exit_code == 0
-        assert result.stdout.strip() == "1"
-    finally:
-        runtime.delete(sid)
-
-
 def test_fractional_cpu_quota_is_exact():
     runtime, sid = _create("none", cpu=0.25, memory="512Mi")
     try:
@@ -241,38 +217,6 @@ os._exit(0)
         ["runsc", "--root", "/tmp/runsc", "state", sid], capture_output=True
     )
     assert state.returncode != 0, "runsc still has the orphan's container state"
-
-
-@pytest.mark.skipif(
-    not os.environ.get("RAY_SANDBOX_EXCLUSIVE_CGROUP_PATH"),
-    reason="An exclusive cgroup partition is required",
-)
-def test_concurrent_allocators_cannot_reserve_the_same_cores():
-    from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
-
-    manager = SandboxCgroupManager()
-    count = len(manager._cores(manager.exclusive))
-
-    def allocate(index):
-        independent = SandboxCgroupManager()
-        try:
-            return independent.allocate(
-                f"ray-sandbox-{index:012x}", count, 0, "exclusive"
-            )
-        except RuntimeError as exc:
-            assert "Not enough exclusive" in str(exc)
-            return None
-
-    leases = []
-    try:
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            leases = [
-                lease for lease in pool.map(allocate, [1, 2, 3]) if lease is not None
-            ]
-        assert len(leases) == 1
-    finally:
-        for lease in leases:
-            lease.release()
 
 
 if __name__ == "__main__":

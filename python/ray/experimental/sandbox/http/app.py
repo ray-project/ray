@@ -311,10 +311,6 @@ def create_app(
             actor_options["memory"] = memory_request_mb * 1024 * 1024
         if resources is not None and resources.custom:
             actor_options["resources"] = dict(resources.custom)
-        if resources is not None and resources.cpu_isolation == "exclusive":
-            actor_options.setdefault("resources", {})[
-                "sandbox_exclusive_cores"
-            ] = resources.cpu_limit
 
         capabilities = (
             request.capabilities
@@ -333,7 +329,6 @@ def create_app(
             "readonly": request.readonly,
             "capabilities": capabilities,
             "cpu_limit": cpu_limit,
-            "cpu_isolation": resources.cpu_isolation if resources else "shared",
             "memory_limit_mb": memory_limit_mb,
             "image_pull_timeout_seconds": request.image_pull_timeout_seconds,
             "start_timeout_seconds": request.start_timeout_seconds,

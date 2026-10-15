@@ -40,7 +40,6 @@ class Sandbox:
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
-        cpu_isolation: "shared" or "exclusive"; see SandboxConfig.
         **kwargs: Additional parameters passed to runtime.
     """
 
@@ -58,7 +57,6 @@ class Sandbox:
         dns: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
-        cpu_isolation: str = "shared",
         **kwargs,
     ):
         env = env or {}
@@ -88,7 +86,6 @@ class Sandbox:
             dns=dns,
             capabilities=capabilities,
             readonly=readonly,
-            cpu_isolation=cpu_isolation,
             **kwargs,
         )
 

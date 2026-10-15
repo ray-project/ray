@@ -6,11 +6,10 @@ against. Changing a field here is a contract change; update the snapshot test
 in ``tests/test_http_schemas.py`` deliberately when you do.
 """
 
-import os
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # Re-exported so the wire contract documents its default in one place; the
 # canonical definition (and rationale) lives in the core sandbox config.
@@ -48,7 +47,6 @@ class ResourceSpec(BaseModel):
 
     cpu_request: Optional[float] = Field(default=None, gt=0)
     cpu_limit: Optional[float] = Field(default=None, gt=0)
-    cpu_isolation: Literal["shared", "exclusive"] = "shared"
     memory_request_mb: Optional[int] = Field(default=None, gt=0)
     memory_limit_mb: Optional[int] = Field(default=None, gt=0)
     custom: Optional[Dict[str, float]] = Field(
@@ -58,18 +56,6 @@ class ResourceSpec(BaseModel):
             'actor, e.g. {"gvisor": 1} to pin sandboxes to runsc-equipped nodes.'
         ),
     )
-
-    @model_validator(mode="after")
-    def _validate_cpu_isolation(self):
-        if self.cpu_isolation == "exclusive" and (
-            self.cpu_limit is None
-            or not self.cpu_limit.is_integer()
-            or self.cpu_limit <= 0
-        ):
-            raise ValueError(
-                "exclusive CPU isolation requires a positive integer cpu_limit"
-            )
-        return self
 
 
 @PublicAPI(stability="alpha")
@@ -263,15 +249,6 @@ class SandboxAPISettings(BaseModel):
     namespace: str = Field(
         default="ray_sandbox_api",
         description="Ray namespace holding the detached per-sandbox actors.",
-    )
-    cpu_isolation: Literal["shared", "exclusive"] = Field(
-        default_factory=lambda: os.environ.get("RAY_SANDBOX_CPU_ISOLATION", "shared"),
-        validate_default=True,
-        description=(
-            "CPU isolation for the sandboxes the gRPC facade creates, whose "
-            "wire contract has no field for it. Defaults to "
-            "RAY_SANDBOX_CPU_ISOLATION, else 'shared'."
-        ),
     )
     token_env_var: str = Field(
         default="RAY_SANDBOX_API_TOKEN",

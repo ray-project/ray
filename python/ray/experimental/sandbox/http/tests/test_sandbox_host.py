@@ -136,14 +136,6 @@ def test_unsupported_limits_fail_before_image_pull() -> None:
     assert not runtime.create_calls
 
 
-def test_exclusive_isolation_reaches_runtime() -> None:
-    runtime = FakeSandboxRuntime()
-    host = _make_host(runtime, spec_overrides={"cpu_isolation": "exclusive"})
-    asyncio.run(host.boot())
-    assert runtime.resource_checks[0]["cpu_isolation"] == "exclusive"
-    assert runtime.create_calls[0]["cpu_isolation"] == "exclusive"
-
-
 def test_memory_oom_is_reported_without_killing_host() -> None:
     runtime = FakeSandboxRuntime()
     host = _make_host(runtime)

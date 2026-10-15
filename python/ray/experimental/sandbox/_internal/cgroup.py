@@ -1,10 +1,9 @@
-"""Node-local sandbox cgroups and physical-core leases.
+"""Node-local sandbox cgroups and their leases.
 
-Node provisioning delegates the shared subtree and, optionally, an exclusive
-cpuset partition. All workers using an exclusive partition share a file lock
-and durable leases. A reaper runs outside the sandbox cgroups, independently
-of the workers that own them. This module's CLI uses only the standard library
-so the reaper doesn't need to initialize Ray.
+Node provisioning delegates a cgroup v2 subtree. The workers on a node share a
+file lock and durable leases. A reaper runs outside the sandbox cgroups,
+independently of the workers that own them. This module's CLI uses only the
+standard library so the reaper doesn't need to initialize Ray.
 """
 
 import argparse
@@ -120,33 +119,28 @@ def _write_record(record_path: Path, record: Dict) -> None:
     temporary.replace(record_path)
 
 
-def _destroy(cgroup: Path) -> None:
-    """Kill every process in a sandbox cgroup, then remove the cgroup."""
-    if not cgroup.exists():
-        return
-    # cgroup.kill handles concurrent forks and descendants. Callers keep
-    # the lease if killing or removing the cgroup fails.
-    if (cgroup / "cgroup.kill").exists():
-        try:
-            _write(cgroup / "cgroup.kill", "1")
-        except OSError:
-            # A failed allocation may have no kill permission, but it
-            # hasn't launched a workload. rmdir still refuses a cgroup
-            # populated by a concurrent process, preserving its lease.
-            if "populated 1" in _read(cgroup / "cgroup.events"):
-                raise
-    elif "populated 1" in _read(cgroup / "cgroup.events"):
-        raise RuntimeError(f"Cannot kill populated sandbox cgroup: {cgroup}")
-    deadline = time.monotonic() + 5
-    while "populated 1" in _read(cgroup / "cgroup.events"):
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"Sandbox cgroup is still populated: {cgroup}")
-        time.sleep(0.02)
-    cgroup.rmdir()
-
-
 def _remove(record_path: Path, record: Dict) -> None:
-    _destroy(Path(record["path"]))
+    cgroup = Path(record["path"])
+    if cgroup.exists():
+        # cgroup.kill handles concurrent forks and descendants. Don't free
+        # the lease if killing or removing the cgroup fails.
+        if (cgroup / "cgroup.kill").exists():
+            try:
+                _write(cgroup / "cgroup.kill", "1")
+            except OSError:
+                # A failed allocation may have no kill permission, but it
+                # hasn't launched a workload. rmdir still refuses a cgroup
+                # populated by a concurrent process, preserving its lease.
+                if "populated 1" in _read(cgroup / "cgroup.events"):
+                    raise
+        elif "populated 1" in _read(cgroup / "cgroup.events"):
+            raise RuntimeError(f"Cannot kill populated sandbox cgroup: {cgroup}")
+        deadline = time.monotonic() + 5
+        while "populated 1" in _read(cgroup / "cgroup.events"):
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"Sandbox cgroup is still populated: {cgroup}")
+            time.sleep(0.02)
+        cgroup.rmdir()
     record_path.unlink(missing_ok=True)
 
 
@@ -155,9 +149,8 @@ def _reconcile(state_dir: Path) -> None:
         try:
             _reconcile_lease(record_path, record)
         except (OSError, RuntimeError) as err:
-            # Keep the lease, and any cores it reserves, for a later pass.
-            # One lease that can't be checked or removed mustn't fail every
-            # allocation on the node.
+            # Keep the lease for a later pass. One lease that can't be
+            # checked or removed mustn't fail every allocation on the node.
             logger.warning("Failed to reclaim sandbox lease %s: %s", record_path, err)
 
 
@@ -212,40 +205,18 @@ def _clean_up_orphan(record: Dict) -> None:
                 pass
 
 
-def _partition_invalid(pool: Path, reserved_cpus: List[int]) -> bool:
-    if _read(pool / "cpuset.cpus.partition") not in ("root", "isolated"):
-        return True
-    if not set(reserved_cpus) <= _cpus(_read(pool / "cpuset.cpus.effective")):
-        return True
-    try:
-        # CPU hotplug can bring a sibling online outside the pool
-        # without invalidating the kernel's partition flag.
-        SandboxCgroupManager._cores(pool)
-    except (OSError, RuntimeError):
-        return True
-    return False
-
-
 def _reconcile_lease(record_path: Path, record: Dict) -> None:
-    cgroup = Path(record["path"])
     if not _owner_alive(record):
         # Nobody else will delete the sandbox's files, whether or not its
         # cgroup still exists.
         _remove(record_path, record)
         _clean_up_orphan(record)
-        return
-    if cgroup.exists() and not (
-        record["reserved_cpus"]
-        and _partition_invalid(cgroup.parent, record["reserved_cpus"])
-    ):
-        return
-    # An invalid partition no longer isolates the sandbox, so stop it. A
-    # cgroup that's gone holds no workload. Either way, free the CPUs but
-    # keep the lease: the owner deletes the sandbox's files, and if it dies
-    # first, the lease is how the reaper finds them.
-    _destroy(cgroup)
-    if record["reserved_cpus"] or record["affinity"]:
-        _write_record(record_path, {**record, "reserved_cpus": [], "affinity": []})
+    elif record["affinity"] and not Path(record["path"]).exists():
+        # A cgroup that's gone holds no workload, so its CPUs stop counting
+        # when sandboxes are spread. Keep the lease: the owner deletes the
+        # sandbox's files, and if it dies first, the lease is how the reaper
+        # finds them.
+        _write_record(record_path, {**record, "affinity": []})
 
 
 def _reap(state_dir: Path, detach: bool = False) -> None:
@@ -309,7 +280,7 @@ def _shared_affinity(cpu: float, pool: Set[int], leases: List[Dict]) -> List[int
 
 
 class SandboxCgroup:
-    """An enforced sandbox budget and optional exclusive-core allocation."""
+    """An enforced sandbox budget."""
 
     def __init__(
         self,
@@ -329,16 +300,8 @@ class SandboxCgroup:
         return [sys.executable, "-S", str(launcher), str(self.path), *cpus, *command]
 
     def verify(self, pid: int) -> None:
-        if "cpuset.cpus" in self.limits and _read(
-            self.path.parent / "cpuset.cpus.partition"
-        ) not in ("root", "isolated"):
-            raise RuntimeError("Sandbox exclusive cpuset partition is no longer valid")
-        if "cpuset.cpus" in self.limits:
-            SandboxCgroupManager._cores(self.path.parent)
         for name, value in self.limits.items():
             actual = _read(self.path / name)
-            if name == "cpuset.cpus":
-                actual = _cpu_list(_cpus(_read(self.path / "cpuset.cpus.effective")))
             if actual != value:
                 raise RuntimeError(f"Sandbox {name} is {actual!r}, expected {value!r}")
         if str(pid) not in _read(self.path / "cgroup.procs").splitlines():
@@ -362,66 +325,41 @@ class SandboxCgroup:
 class SandboxCgroupManager:
     """Coordinate resource ownership across sandbox workers on one node.
 
-    The delegated paths must be mounted at the same locations in workers
+    The delegated path must be mounted at the same location in workers
     sharing a node, and the state directory must be shared by those workers.
-    The exclusive subtree must already be a valid cpuset partition whose
-    CPUs contain every online SMT sibling of each physical core.
     """
 
     def __init__(
         self,
         shared_path: Optional[str] = None,
-        exclusive_path: Optional[str] = None,
         state_path: Optional[str] = None,
     ):
         shared_path = shared_path or os.environ.get("RAY_SANDBOX_CGROUP_PATH")
-        exclusive_path = exclusive_path or os.environ.get(
-            "RAY_SANDBOX_EXCLUSIVE_CGROUP_PATH"
-        )
         self.shared = Path(shared_path).resolve() if shared_path else None
-        self.exclusive = Path(exclusive_path).resolve() if exclusive_path else None
-        identity = str(self.exclusive or self.shared)
-        digest = hashlib.sha256(identity.encode()).hexdigest()[:16]
+        digest = hashlib.sha256(str(self.shared).encode()).hexdigest()[:16]
         state_root = state_path or os.environ.get(
             "RAY_SANDBOX_CGROUP_STATE_DIR", "/tmp/ray/sandbox/cgroup-state"
         )
         self.state_dir = Path(state_root) / digest
 
-    def check(self, cpu: float, memory: int, isolation: str) -> None:
-        root = self.exclusive if isolation == "exclusive" else self.shared
-        setting = (
-            "RAY_SANDBOX_EXCLUSIVE_CGROUP_PATH"
-            if isolation == "exclusive"
-            else "RAY_SANDBOX_CGROUP_PATH"
-        )
+    def check(self, cpu: float, memory: int) -> None:
+        root = self.shared
         if sys.platform != "linux" or root is None:
             raise RuntimeError(
-                f"Sandbox resource enforcement requires Linux and a delegated "
-                f"cgroup v2 subtree. Set {setting} on the worker node."
+                "Sandbox resource enforcement requires Linux and a delegated "
+                "cgroup v2 subtree. Set RAY_SANDBOX_CGROUP_PATH on the worker node."
             )
         if not _is_cgroup2(root):
-            raise RuntimeError(f"{setting}={root} isn't on a cgroup v2 filesystem")
+            raise RuntimeError(
+                f"RAY_SANDBOX_CGROUP_PATH={root} isn't on a cgroup v2 filesystem"
+            )
         if not (root / "cgroup.kill").exists():
             raise RuntimeError("Sandbox enforcement requires cgroup.kill support")
         if not os.access(root, os.W_OK | os.X_OK):
             raise RuntimeError(f"Sandbox cgroup subtree {root} isn't writable")
-        if (
-            self.shared is not None
-            and self.exclusive is not None
-            and (
-                self.shared == self.exclusive
-                or self.exclusive in self.shared.parents
-                or self.shared in self.exclusive.parents
-            )
-        ):
-            raise RuntimeError(
-                "Shared and exclusive sandbox pools must be disjoint subtrees"
-            )
         required = {"cpu"} if cpu > 0 else set()
         if memory > 0:
             required.add("memory")
-        if isolation == "exclusive":
-            required.add("cpuset")
         enabled = set(_read(root / "cgroup.subtree_control").split())
         if not required <= enabled:
             raise RuntimeError(
@@ -430,51 +368,22 @@ class SandboxCgroupManager:
             )
         if _read(root / "cgroup.procs"):
             raise RuntimeError(f"Delegated sandbox parent {root} contains processes")
-        if isolation == "exclusive":
-            if _read(root / "cpuset.cpus.partition") not in ("root", "isolated"):
-                raise RuntimeError(f"{root} isn't a valid exclusive cpuset partition")
-            self._cores(root)
-
-    @staticmethod
-    def _cores(root: Path) -> List[Set[int]]:
-        available = _cpus(_read(root / "cpuset.cpus.effective"))
-        online = _cpus(_read(Path("/sys/devices/system/cpu/online")))
-        cores = set()
-        for cpu in sorted(available):
-            siblings = (
-                _cpus(
-                    _read(
-                        Path(
-                            f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list"
-                        )
-                    )
-                )
-                & online
-            )
-            if not siblings or not siblings <= available:
-                raise RuntimeError(
-                    f"Exclusive partition {root} omits online SMT siblings of CPU {cpu}"
-                )
-            cores.add(tuple(sorted(siblings)))
-        return [set(core) for core in sorted(cores)]
 
     def allocate(
         self,
         sandbox_id: str,
         cpu: float,
         memory: int,
-        isolation: str,
         cleanup: Optional[Dict] = None,
     ) -> SandboxCgroup:
         if not _SANDBOX_ID.fullmatch(sandbox_id):
             raise ValueError(f"Invalid sandbox ID: {sandbox_id}")
-        self.check(cpu, memory, isolation)
-        root = self.exclusive if isolation == "exclusive" else self.shared
+        self.check(cpu, memory)
+        root = self.shared
         self.state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         with _locked(self.state_dir):
             _reconcile(self.state_dir)
-            leases = list(_records(self.state_dir))
-            reserved = set()
+            leases = [record for _, record in _records(self.state_dir)]
             limits = {}
             if cpu > 0:
                 limits["cpu.max"] = f"{int(cpu * _PERIOD_US)} {_PERIOD_US}"
@@ -486,31 +395,8 @@ class SandboxCgroupManager:
                         "memory.oom.group": "1",
                     }
                 )
-            if isolation == "exclusive":
-                owned = {Path(record["path"]).name for _, record in leases}
-                foreign = {
-                    child.name for child in root.iterdir() if child.is_dir()
-                } - owned
-                if foreign:
-                    raise RuntimeError(
-                        f"Unmanaged cgroups in exclusive pool: {foreign}"
-                    )
-                used = {core for _, r in leases for core in r["reserved_cpus"]}
-                cores = [core for core in self._cores(root) if not core & used]
-                if len(cores) < int(cpu):
-                    raise RuntimeError(
-                        f"Not enough exclusive physical cores for {cpu} CPUs"
-                    )
-                selected = cores[: int(cpu)]
-                reserved = set().union(*selected)
-                # Reserve every sibling but expose only one hardware thread
-                # per physical core. nproc agrees with the integer CPU budget.
-                limits["cpuset.mems"] = _read(root / "cpuset.mems.effective")
-                limits["cpuset.cpus"] = _cpu_list({min(core) for core in selected})
             affinity = (
-                _shared_affinity(cpu, _pool_cpus(root), [r for _, r in leases])
-                if isolation == "shared" and cpu > 0
-                else []
+                _shared_affinity(cpu, _pool_cpus(root), leases) if cpu > 0 else []
             )
             path = root / sandbox_id
             record_path = self.state_dir / f"{sandbox_id}.json"
@@ -521,7 +407,6 @@ class SandboxCgroupManager:
                 "owner_pid": os.getpid(),
                 "owner_starttime": _process_identity(os.getpid()),
                 "boot_id": _boot_id(),
-                "reserved_cpus": sorted(reserved),
                 "affinity": affinity,
                 # What the reaper deletes after killing an orphan: the
                 # sandbox's runsc state, and paths named after the sandbox.

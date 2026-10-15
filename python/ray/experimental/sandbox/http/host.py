@@ -84,7 +84,6 @@ class SandboxSpec(_SandboxSpecBase, total=False):
     readonly: bool
     capabilities: Optional[List[str]]
     cpu_limit: Optional[float]
-    cpu_isolation: str
     memory_limit_mb: Optional[int]
     image_pull_timeout_seconds: float
     start_timeout_seconds: float
@@ -233,7 +232,6 @@ class SandboxHost:
                     if self._spec.get("memory_limit_mb") is not None
                     else 0
                 ),
-                cpu_isolation=self._spec.get("cpu_isolation", "shared"),
             )
 
             self._set_status("pulling")
@@ -275,7 +273,6 @@ class SandboxHost:
                     # may use idle CPU on its node (a request only sizes the
                     # hosting actor's reservation).
                     cpu=float(cpu_limit) if cpu_limit is not None else 0.0,
-                    cpu_isolation=self._spec.get("cpu_isolation", "shared"),
                     memory=f"{memory_limit_mb}Mi" if memory_limit_mb is not None else 0,
                     env=dict(self._spec.get("env") or {}),
                     workdir=self._spec.get("workdir"),

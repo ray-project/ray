@@ -85,10 +85,6 @@ class SandboxConfig:
     Attributes:
         image: Container image for the sandbox environment.
         cpu: Number of CPU cores allocated to the sandbox.
-        cpu_isolation: "shared" (default) enforces a CPU bandwidth limit.
-            "exclusive" reserves whole physical cores, including their SMT
-            siblings, and requires a positive integer CPU limit and a
-            node-provisioned exclusive cgroup v2 partition.
         memory: Amount of memory allocated to the sandbox (e.g. "1Gi", "512Mi").
         env: Environment variables to inject into the sandbox.
         workdir: Working directory for commands (the process cwd). None
@@ -153,7 +149,6 @@ class SandboxConfig:
         default=None, repr=False, compare=False
     )
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
-    cpu_isolation: str = "shared"
 
     def __post_init__(self):
         self.cpu = 0.0 if self.cpu is None else float(self.cpu)
@@ -164,12 +159,6 @@ class SandboxConfig:
         memory_bytes = parse_memory_bytes(self.memory)
         if memory_bytes is not None and memory_bytes < 0:
             raise ValueError("memory must be non-negative")
-        if self.cpu_isolation not in ("shared", "exclusive"):
-            raise ValueError("cpu_isolation must be 'shared' or 'exclusive'")
-        if self.cpu_isolation == "exclusive" and (
-            self.cpu <= 0 or not self.cpu.is_integer()
-        ):
-            raise ValueError("exclusive CPU isolation requires a positive integer cpu")
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
             raise ValueError("A valid container image name must be specified.")
         if self.network not in VALID_NETWORK_MODES:

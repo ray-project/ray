@@ -647,18 +647,8 @@ class _ControlServicer(ModalClientServicer):
         memory_request_mb = resources.memory_mb or None
         memory_limit_mb = resources.memory_mb_max or None
 
-        if settings.cpu_isolation == "exclusive" and (
-            cpu_limit is None or not cpu_limit.is_integer()
-        ):
-            raise _RpcError(
-                StatusCode.INVALID_ARGUMENT,
-                "exclusive CPU isolation requires a positive integer CPU limit",
-            )
-
         num_cpus = cpu_request or cpu_limit or settings.default_actor_num_cpus
         actor_options: Dict[str, Any] = {"num_cpus": num_cpus}
-        if settings.cpu_isolation == "exclusive":
-            actor_options["resources"] = {"sandbox_exclusive_cores": cpu_limit}
         request_mb = memory_request_mb or memory_limit_mb
         if request_mb is not None:
             actor_options["memory"] = request_mb * 1024 * 1024
@@ -680,7 +670,6 @@ class _ControlServicer(ModalClientServicer):
             "readonly": False,
             "capabilities": list(settings.default_capabilities),
             "cpu_limit": cpu_limit,
-            "cpu_isolation": settings.cpu_isolation,
             "memory_limit_mb": memory_limit_mb,
             "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
             "start_timeout_seconds": _START_TIMEOUT_SECONDS,

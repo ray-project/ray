@@ -447,7 +447,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
-* **Resource quotas**: Ray configures a host cgroup v2 for each limited sandbox. CPU bandwidth and memory limits apply to the sandbox runtime and its helpers. CPU quotas cap consumption; exclusive CPU placement reserves execution capacity.
+* **Resource quotas**: Ray configures a host cgroup v2 for each limited sandbox. CPU bandwidth and memory limits apply to the sandbox runtime and its helpers.
 
 ### Enforce resource limits
 
@@ -457,16 +457,10 @@ Every positive `cpu` or `memory` limit requires this configuration. Without it, 
 
 Ray owns the cgroup, so `--ignore-cgroups` disables runsc's own cgroup management without disabling Ray's limits. `RAY_SANDBOX_IGNORE_CGROUPS=1` can't bypass a requested limit. Passing zero means no limit; passing `cpu=None` to the sandbox actor derives a limit from its assigned Ray CPU resources.
 
-For timeout-sensitive tasks, provision a separate exclusive cpuset partition and set `RAY_SANDBOX_EXCLUSIVE_CGROUP_PATH`. The partition must contain every online simultaneous multithreading (SMT) sibling of each selected physical core. Node administration must establish the partition and exclude other workloads from it; partition ownership isn't delegatable. Keep the shared subtree outside the exclusive partition. Advertise its physical-core count as the custom Ray resource `sandbox_exclusive_cores` on the nodes that own it.
-
-Set `cpu_isolation="exclusive"` with a positive integer CPU limit. Ray reserves every SMT sibling of each selected core and exposes one hardware thread per physical core, so a one-CPU sandbox reports `nproc=1`. Shared and fractional sandboxes use the shared pool. The helper and HTTP API reserve `sandbox_exclusive_cores` automatically; when constructing a `Sandbox` actor directly, reserve that custom resource in its actor options. Ray rejects an exclusive allocation when the node has no available whole cores.
-
-The node allocator serializes leases across worker processes with a file lock. Set `RAY_SANDBOX_CGROUP_STATE_DIR` to a shared node-local directory if workers don't share `/tmp/ray/sandbox/cgroup-state`. Workers must share the same PID namespace and cgroup mount paths. A reaper outside the sandbox budgets kills orphaned workloads, deletes their runsc state, bundles, and image pins, and then releases their leases. It detaches from the worker that starts it, so it survives that worker's exit. Allocation also reconciles stale leases. Invalidating the exclusive partition stops the sandboxes on it and frees their cores.
-
-For clients of the gRPC facade, set `cpu_isolation: exclusive` in the facade's Serve application `args`. A facade started from the command line reads `RAY_SANDBOX_CPU_ISOLATION=exclusive` instead. The wire contract doesn't change, and an exclusive facade rejects creates without a positive integer CPU limit.
+The node allocator serializes leases across worker processes with a file lock. Set `RAY_SANDBOX_CGROUP_STATE_DIR` to a shared node-local directory if workers don't share `/tmp/ray/sandbox/cgroup-state`. Workers must share the same PID namespace and cgroup mount paths. A reaper outside the sandbox budgets kills orphaned workloads, deletes their runsc state, bundles, and image pins, and then releases their leases. It detaches from the worker that starts it, so it survives that worker's exit. Allocation also reconciles stale leases.
 
 :::{note}
-Exclusive cores remove competition on the same core. Shared caches, memory bandwidth, and host scheduling still affect completion time. Resource limits don't guarantee a wall-clock deadline.
+A CPU limit caps what a sandbox uses but doesn't reserve CPU time for it. Other work on the node still affects how long a task takes, so resource limits don't guarantee a wall-clock deadline.
 :::
 
 ## HTTP API service
@@ -496,7 +490,7 @@ Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..
 Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
-* **Resources**: `resources` separates cluster reservations from enforced sandbox budgets. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become host cgroup caps on provisioned nodes; creation fails if the node can't enforce them. Requests default to the limits. Set `resources.cpu_isolation="exclusive"` to reserve whole physical cores.
+* **Resources**: `resources` separates cluster reservations from enforced sandbox budgets. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become host cgroup caps on provisioned nodes; creation fails if the node can't enforce them. Requests default to the limits.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
 * **Network modes**: These are the Python API's modes, which Ray validates: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
 

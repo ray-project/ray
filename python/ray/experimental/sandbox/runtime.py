@@ -50,25 +50,18 @@ class SandboxRuntime:
         self,
         cpu: float = 0.0,
         memory: Union[str, int, float] = 0,
-        cpu_isolation: str = "shared",
     ) -> None:
         """Reject unsupported resource limits before downloading an image.
 
         Args:
             cpu: CPU limit to enforce. Zero means no limit.
             memory: Memory limit to enforce, such as "512Mi". Zero means no limit.
-            cpu_isolation: "shared" or "exclusive"; see SandboxConfig.
         """
         try:
-            config = SandboxConfig(
-                image="resource-preflight",
-                cpu=cpu,
-                memory=memory,
-                cpu_isolation=cpu_isolation,
-            )
+            config = SandboxConfig(image="resource-preflight", cpu=cpu, memory=memory)
             memory_bytes = parse_memory_bytes(config.memory) or 0
             if config.cpu > 0 or memory_bytes > 0:
-                SandboxCgroupManager().check(config.cpu, memory_bytes, cpu_isolation)
+                SandboxCgroupManager().check(config.cpu, memory_bytes)
         except Exception as err:
             raise SandboxCreationError(
                 f"Cannot enforce sandbox resources: {err}"
@@ -102,7 +95,6 @@ class SandboxRuntime:
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
         _ignore_cgroups: bool = False,
-        cpu_isolation: str = "shared",
         **kwargs,
     ) -> str:
         """Provision the sandbox instance and return unique instance ID.
@@ -138,7 +130,6 @@ class SandboxRuntime:
                 spec dict before it is written; may mutate in place or return a new dict. Must be
                 cloudpickle-serializable. No stability guarantees. Accepts a transform function.
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
-            cpu_isolation: "shared" or "exclusive"; see SandboxConfig.
             **kwargs: Additional parameters.
 
         Returns:
@@ -159,7 +150,6 @@ class SandboxRuntime:
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
             _ignore_cgroups=_ignore_cgroups,
-            cpu_isolation=cpu_isolation,
             **kwargs,
         )
         instance_id = self._backend.create_sandbox(cfg)

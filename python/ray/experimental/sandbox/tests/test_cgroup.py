@@ -22,38 +22,27 @@ _POPEN = subprocess.Popen
 
 @pytest.fixture
 def manager(tmp_path, monkeypatch):
-    shared, exclusive = tmp_path / "shared", tmp_path / "exclusive"
-    for root in (shared, exclusive):
-        root.mkdir()
-        (root / "cgroup.subtree_control").write_text("cpu memory cpuset")
-        (root / "cgroup.procs").write_text("")
-        (root / "cgroup.kill").write_text("")
-        (root / "cpuset.cpus.effective").write_text("0-3")
-        (root / "cpuset.mems.effective").write_text("0")
-        (root / "cpuset.cpus.partition").write_text("root")
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "cgroup.subtree_control").write_text("cpu memory")
+    (shared / "cgroup.procs").write_text("")
+    (shared / "cgroup.kill").write_text("")
+    (shared / "cpuset.cpus.effective").write_text("0-3")
     monkeypatch.setattr(cgroup, "_is_cgroup2", lambda _: True)
     monkeypatch.setattr(cgroup.sys, "platform", "linux")
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "12345")
     monkeypatch.setattr(cgroup, "_boot_id", lambda: "boot-1")
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: None)
-    monkeypatch.setattr(
-        cgroup.SandboxCgroupManager,
-        "_cores",
-        staticmethod(lambda _: [{0, 2}, {1, 3}]),
-    )
     original_mkdir = Path.mkdir
 
     def mkdir(path, *args, **kwargs):
         original_mkdir(path, *args, **kwargs)
-        if path.parent in (shared, exclusive):
+        if path.parent == shared:
             for name in (
                 "cpu.max",
                 "memory.max",
                 "memory.swap.max",
                 "memory.oom.group",
-                "cpuset.cpus",
-                "cpuset.cpus.effective",
-                "cpuset.mems",
                 "cgroup.kill",
                 "cgroup.procs",
                 "cgroup.events",
@@ -73,14 +62,12 @@ def manager(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "rmdir", rmdir)
     return cgroup.SandboxCgroupManager(
-        str(shared), str(exclusive), str(tmp_path / "state")
+        shared_path=str(shared), state_path=str(tmp_path / "state")
     )
 
 
 def test_fractional_cpu_and_memory_are_enforced_together(manager):
-    lease = manager.allocate(
-        "ray-sandbox-000000000001", 0.25, 512 * 1024**2, "shared"
-    )
+    lease = manager.allocate("ray-sandbox-000000000001", 0.25, 512 * 1024**2)
     assert (lease.path / "cpu.max").read_text() == "25000 100000"
     assert (lease.path / "memory.max").read_text() == str(512 * 1024**2)
     assert (lease.path / "memory.swap.max").read_text() == "0"
@@ -92,15 +79,19 @@ def test_fractional_cpu_and_memory_are_enforced_together(manager):
 
 
 def test_shared_sandboxes_run_on_a_spread_cpu_subset(manager):
-    first = manager.allocate("ray-sandbox-000000000001", 1, 0, "shared")
-    second = manager.allocate("ray-sandbox-000000000002", 0.5, 0, "shared")
-    third = manager.allocate("ray-sandbox-000000000003", 1.5, 0, "shared")
+    first = manager.allocate("ray-sandbox-000000000001", 1, 0)
+    # A second manager models an independent worker process on the same node.
+    other_worker = cgroup.SandboxCgroupManager(
+        shared_path=str(manager.shared), state_path=str(manager.state_dir.parent)
+    )
+    second = other_worker.allocate("ray-sandbox-000000000002", 0.5, 0)
+    third = manager.allocate("ray-sandbox-000000000003", 1.5, 0)
     # At least two CPUs each, least-used first.
     assert (first.affinity, second.affinity, third.affinity) == ([0, 1], [2, 3], [0, 1])
     assert first.wrap(["runsc"])[4:] == ["--cpus", "0,1", "runsc"]
     # A budget the size of the pool, or no CPU limit, stays unrestricted.
-    whole = manager.allocate("ray-sandbox-000000000004", 4, 0, "shared")
-    memory_only = manager.allocate("ray-sandbox-000000000005", 0, 1 << 30, "shared")
+    whole = manager.allocate("ray-sandbox-000000000004", 4, 0)
+    memory_only = manager.allocate("ray-sandbox-000000000005", 0, 1 << 30)
     assert whole.affinity == memory_only.affinity == []
     assert whole.wrap(["runsc"])[4:] == ["runsc"]
 
@@ -132,31 +123,13 @@ def test_launcher_joins_the_cgroup_and_restricts_cpus(tmp_path):
     assert (tmp_path / "cgroup.procs").read_text() == pid.strip()
 
 
-def test_workers_reserve_all_smt_siblings_and_do_not_overlap(manager):
-    first = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
-    # A second manager models an independent worker process on the same node.
-    second_manager = cgroup.SandboxCgroupManager(
-        str(manager.shared), str(manager.exclusive), str(manager.state_dir.parent)
-    )
-    second = second_manager.allocate("ray-sandbox-000000000002", 1, 0, "exclusive")
-    assert (first.path / "cpuset.cpus").read_text() == "0"
-    assert (second.path / "cpuset.cpus").read_text() == "1"
-    records = [r for _, r in cgroup._records(manager.state_dir)]
-    assert records[0]["reserved_cpus"] == [0, 2]
-    assert records[1]["reserved_cpus"] == [1, 3]
-    with pytest.raises(RuntimeError, match="Not enough exclusive"):
-        manager.allocate("ray-sandbox-000000000003", 1, 0, "exclusive")
-    first.release()
-    third = manager.allocate("ray-sandbox-000000000003", 1, 0, "exclusive")
-    assert (third.path / "cpuset.cpus").read_text() == "0"
-
-
-def test_reconcile_kills_orphan_before_reusing_its_cores(manager, monkeypatch):
-    first = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
+def test_reconcile_kills_orphan_before_reusing_its_cpus(manager, monkeypatch):
+    first = manager.allocate("ray-sandbox-000000000001", 1, 0)
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "reused-pid")
-    second = manager.allocate("ray-sandbox-000000000002", 2, 0, "exclusive")
+    second = manager.allocate("ray-sandbox-000000000002", 1, 0)
     assert not first.path.exists()
-    assert (second.path / "cpuset.cpus").read_text() == "0,1"
+    # The orphan's CPUs no longer count as used.
+    assert second.affinity == first.affinity == [0, 1]
 
 
 @pytest.fixture
@@ -188,7 +161,7 @@ def test_reconcile_deletes_an_orphans_runsc_state_and_files(
         "rootless": True,
         "remove": [str(bundle), str(pin)],
     }
-    manager.allocate(sandbox_id, 1, 0, "shared", cleanup=cleanup)
+    manager.allocate(sandbox_id, 1, 0, cleanup=cleanup)
     monkeypatch.setattr(subprocess, "Popen", _POPEN)
     # A live owner keeps everything.
     with cgroup._locked(manager.state_dir):
@@ -229,7 +202,7 @@ def test_planted_lease_runs_no_command_and_deletes_only_its_sandbox(
         "runsc_root": str(shared_root),
         "remove": [str(victim), str(victims)],
     }
-    manager.allocate(sandbox_id, 1, 0, "shared", cleanup=cleanup)
+    manager.allocate(sandbox_id, 1, 0, cleanup=cleanup)
     monkeypatch.setattr(subprocess, "Popen", _POPEN)
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
     cgroup._reconcile(manager.state_dir)
@@ -290,20 +263,20 @@ def test_failed_setup_releases_allocation(manager, monkeypatch):
 
     monkeypatch.setattr(cgroup, "_write", fail)
     with pytest.raises(PermissionError):
-        manager.allocate("ray-sandbox-000000000001", 1, 512, "exclusive")
+        manager.allocate("ray-sandbox-000000000001", 1, 512)
     assert not list(cgroup._records(manager.state_dir))
-    assert not (manager.exclusive / "ray-sandbox-000000000001").exists()
+    assert not (manager.shared / "ray-sandbox-000000000001").exists()
 
 
 def test_missing_cgroup_kill_fails_before_allocating(manager):
     (manager.shared / "cgroup.kill").unlink()
     with pytest.raises(RuntimeError, match="requires cgroup.kill"):
-        manager.allocate("ray-sandbox-000000000001", 1, 0, "shared")
+        manager.allocate("ray-sandbox-000000000001", 1, 0)
     assert not manager.state_dir.exists()
 
 
-def test_failed_kill_keeps_core_lease(manager, monkeypatch):
-    lease = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
+def test_failed_kill_keeps_the_lease(manager, monkeypatch):
+    lease = manager.allocate("ray-sandbox-000000000001", 1, 0)
     (lease.path / "cgroup.events").write_text("populated 1")
     monkeypatch.setattr(
         cgroup, "_write", lambda *a: (_ for _ in ()).throw(PermissionError())
@@ -313,11 +286,11 @@ def test_failed_kill_keeps_core_lease(manager, monkeypatch):
     assert len(list(cgroup._records(manager.state_dir))) == 1
 
 
-def test_unremovable_orphan_keeps_its_cores_without_blocking_others(
+def test_unremovable_orphan_keeps_its_lease_without_blocking_others(
     manager, monkeypatch
 ):
-    stuck = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
-    orphan = manager.allocate("ray-sandbox-000000000002", 1, 0, "exclusive")
+    stuck = manager.allocate("ray-sandbox-000000000001", 1, 0)
+    orphan = manager.allocate("ray-sandbox-000000000002", 1, 0)
     (stuck.path / "cgroup.events").write_text("populated 1")
     write = cgroup._write
 
@@ -328,17 +301,16 @@ def test_unremovable_orphan_keeps_its_cores_without_blocking_others(
 
     monkeypatch.setattr(cgroup, "_write", fail)
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "reused-pid")
-    # Both owners died. Only the other orphan's core can be reclaimed.
-    third = manager.allocate("ray-sandbox-000000000003", 1, 0, "exclusive")
-    assert (third.path / "cpuset.cpus").read_text() == "1"
+    # Both owners died. Only the other orphan can be reclaimed, and the
+    # stuck one still holds its CPUs.
+    third = manager.allocate("ray-sandbox-000000000003", 1, 0)
     assert not orphan.path.exists()
     assert stuck.path.exists()
-    with pytest.raises(RuntimeError, match="Not enough exclusive"):
-        manager.allocate("ray-sandbox-000000000004", 1, 0, "exclusive")
+    assert third.affinity == [2, 3]
 
 
 def test_verify_rejects_changed_limits_and_wrong_process(manager):
-    lease = manager.allocate("ray-sandbox-000000000001", 1, 0, "shared")
+    lease = manager.allocate("ray-sandbox-000000000001", 1, 0)
     with pytest.raises(RuntimeError, match="isn't in"):
         lease.verify(321)
     (lease.path / "cpu.max").write_text("max 100000")
@@ -346,51 +318,25 @@ def test_verify_rejects_changed_limits_and_wrong_process(manager):
         lease.verify(321)
 
 
-def test_exclusive_pool_must_be_valid_and_managed(manager):
-    (manager.exclusive / "cpuset.cpus.partition").write_text("root invalid (parent)")
-    with pytest.raises(RuntimeError, match="isn't a valid exclusive"):
-        manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
-    (manager.exclusive / "cpuset.cpus.partition").write_text("root")
-    # An unrelated process may use every CPU allowed by its parent.
-    (manager.exclusive / "unmanaged").mkdir()
-    with pytest.raises(RuntimeError, match="Unmanaged cgroups"):
-        manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
-
-
-def test_invalidated_partition_terminates_existing_lease(
+def test_live_owner_keeps_its_lease_after_its_cgroup_is_gone(
     manager, monkeypatch, tmp_path
 ):
     bundle = tmp_path / "ray-sandbox-000000000001"
     bundle.mkdir()
     lease = manager.allocate(
-        "ray-sandbox-000000000001", 1, 0, "exclusive", cleanup={"remove": [str(bundle)]}
+        "ray-sandbox-000000000001", 1, 0, cleanup={"remove": [str(bundle)]}
     )
-    (manager.exclusive / "cpuset.cpus.partition").write_text("root invalid (hotplug)")
+    lease.path.rmdir()
     cgroup._reconcile(manager.state_dir)
-    # The sandbox stops, but its live owner still deletes its files.
-    assert not lease.path.exists()
+    # The owner still deletes the sandbox's files, and its CPUs are free.
     assert bundle.exists()
-    # Its core is free once the partition is valid again.
-    (manager.exclusive / "cpuset.cpus.partition").write_text("root")
-    other = manager.allocate("ray-sandbox-000000000002", 2, 0, "exclusive")
-    assert (other.path / "cpuset.cpus").read_text() == "0,1"
+    ((_, record),) = cgroup._records(manager.state_dir)
+    assert record["affinity"] == []
     # An owner that dies without deleting the sandbox leaves the files to
     # the reaper.
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
     cgroup._reconcile(manager.state_dir)
     assert not bundle.exists()
-
-
-def test_live_owner_keeps_its_lease_but_not_its_cores_when_its_cgroup_is_gone(
-    manager,
-):
-    lease = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
-    lease.path.rmdir()
-    cgroup._reconcile(manager.state_dir)
-    ((_, record),) = cgroup._records(manager.state_dir)
-    assert record["reserved_cpus"] == []
-    # Both cores are free again.
-    manager.allocate("ray-sandbox-000000000002", 2, 0, "exclusive")
 
 
 def test_dead_owner_files_are_deleted_after_its_cgroup_is_gone(
@@ -401,7 +347,7 @@ def test_dead_owner_files_are_deleted_after_its_cgroup_is_gone(
     bundle = tmp_path / "ray-sandbox-000000000001"
     bundle.mkdir()
     lease = manager.allocate(
-        "ray-sandbox-000000000001", 1, 0, "shared", cleanup={"remove": [str(bundle)]}
+        "ray-sandbox-000000000001", 1, 0, cleanup={"remove": [str(bundle)]}
     )
     lease.path.rmdir()
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
@@ -416,7 +362,7 @@ def test_reboot_ends_ownership_even_for_a_matching_pid_and_start_time(
     bundle = tmp_path / "ray-sandbox-000000000001"
     bundle.mkdir()
     lease = manager.allocate(
-        "ray-sandbox-000000000001", 1, 0, "shared", cleanup={"remove": [str(bundle)]}
+        "ray-sandbox-000000000001", 1, 0, cleanup={"remove": [str(bundle)]}
     )
     # No cgroup survives a reboot, but the bundle can, in a persistent /tmp.
     lease.path.rmdir()
@@ -426,10 +372,10 @@ def test_reboot_ends_ownership_even_for_a_matching_pid_and_start_time(
     assert not list(cgroup._records(manager.state_dir))
 
 
-@pytest.mark.parametrize("cpu", [0, 0.25, -1, float("inf"), float("nan")])
-def test_exclusive_cpu_requires_positive_integer(cpu):
+@pytest.mark.parametrize("cpu", [-1, float("inf"), float("nan"), 0.005])
+def test_cpu_limit_must_be_a_valid_quota(cpu):
     with pytest.raises(ValueError):
-        SandboxConfig("busybox", cpu=cpu, cpu_isolation="exclusive")
+        SandboxConfig("busybox", cpu=cpu)
 
 
 def test_backend_rejects_unenforceable_limits_before_image_pull(monkeypatch):

@@ -11,7 +11,6 @@ from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
-    SandboxConfig,
     parse_memory_bytes,
 )
 from ray.experimental.sandbox.exceptions import (
@@ -46,7 +45,6 @@ def create(
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
-    cpu_isolation: str = "shared",
     **kwargs,
 ) -> ActorHandle:
     """Create a remote sandbox environment managed by a Ray actor.
@@ -83,7 +81,6 @@ def create(
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
-        cpu_isolation: "shared" or "exclusive"; see SandboxConfig.
         **kwargs: Additional options.
 
     Returns:
@@ -98,10 +95,7 @@ def create(
         if parsed_mem is not None and parsed_mem > 0:
             actor_opts["memory"] = parsed_mem
     if resources:
-        actor_opts["resources"] = dict(resources)
-    if cpu_isolation == "exclusive":
-        config = SandboxConfig(image=image, cpu=cpu, cpu_isolation=cpu_isolation)
-        actor_opts.setdefault("resources", {})["sandbox_exclusive_cores"] = config.cpu
+        actor_opts["resources"] = resources
 
     return Sandbox.options(**actor_opts).remote(
         image=image,
@@ -116,7 +110,6 @@ def create(
         dns=dns,
         capabilities=capabilities,
         readonly=readonly,
-        cpu_isolation=cpu_isolation,
         **kwargs,
     )
 

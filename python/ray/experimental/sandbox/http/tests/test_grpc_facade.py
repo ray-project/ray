@@ -558,55 +558,6 @@ def test_network_allowlist_is_refused() -> None:
     assert asyncio.run(scenario()) == 0
 
 
-@pytest.mark.parametrize("milli_cpu_limit", [0, 250, 2000])
-def test_exclusive_cpu_policy_preserves_wire_contract(milli_cpu_limit):
-    from ray.experimental.sandbox.http.schemas import SandboxAPISettings
-
-    port = next(_next_port)
-
-    async def scenario():
-        resolver = FakeResolver()
-        async with _Facade(
-            resolver, port, SandboxAPISettings(cpu_isolation="exclusive")
-        ):
-            channel, control, _ = _channel(port)
-            try:
-                app = await control.AppGetOrCreate(
-                    api_pb2.AppGetOrCreateRequest(app_name="exclusive-test")
-                )
-                image = await control.ImageGetOrCreate(
-                    api_pb2.ImageGetOrCreateRequest(
-                        image=api_pb2.Image(dockerfile_commands=["FROM ubuntu:24.04"])
-                    )
-                )
-                request = api_pb2.SandboxCreateRequest(
-                    app_id=app.app_id,
-                    definition=api_pb2.Sandbox(
-                        image_id=image.image_id,
-                        resources=api_pb2.Resources(milli_cpu_max=milli_cpu_limit),
-                    ),
-                )
-                if milli_cpu_limit < 1000:
-                    with pytest.raises(grpc.aio.AioRpcError) as failed:
-                        await control.SandboxCreate(request)
-                    assert failed.value.code() == StatusCode.INVALID_ARGUMENT
-                    assert not resolver.create_options
-                else:
-                    response = await control.SandboxCreate(request)
-                    await _wait_running(control, response.sandbox_id)
-                    assert resolver.create_options[0]["resources"] == {
-                        "sandbox_exclusive_cores": 2
-                    }
-                    assert (
-                        resolver.runtimes[0].create_calls[0]["cpu_isolation"]
-                        == "exclusive"
-                    )
-            finally:
-                await channel.close()
-
-    asyncio.run(scenario())
-
-
 def test_set_network_access_is_refused() -> None:
     """Network policy is fixed at creation; a change request fails loudly
     instead of being acknowledged and ignored."""
