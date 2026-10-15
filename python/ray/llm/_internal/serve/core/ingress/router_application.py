@@ -43,8 +43,6 @@ logger = get_logger(__name__)
 
 # Below HAProxy's decision timeout, so clients get an OpenAI-shaped 503.
 CHOOSE_REPLICA_TIMEOUT_S = 0.8 * RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
-# Pick-only waits silently with no replicas; then reserve, which registers demand.
-PICK_ONLY_TIMEOUT_S = 0.5
 # Backoff for resolving a model application that is not deployed yet.
 HANDLE_RETRY_INITIAL_S = 0.5
 HANDLE_RETRY_MAX_S = 5.0
@@ -373,27 +371,14 @@ class RouterApplication:
         routing_payload: Optional[SimpleNamespace],
         timeout_s: float,
     ) -> str:
-        """Pick a replica without dispatching; HAProxy sends the request.
-
-        Pick-only registers no autoscaling demand, so if it finds no replica
-        quickly, wait on the reserving path, which lets the model scale from zero.
-        """
+        """Pick a replica without dispatching; HAProxy sends the request."""
         route_args = (routing_payload,) if routing_payload is not None else ()
-        deadline_s = time.monotonic() + timeout_s
 
-        async def pick(**kwargs) -> str:
-            async with handle.choose_replica(*route_args, **kwargs) as selection:
+        async def pick() -> str:
+            async with handle.choose_replica(*route_args, _reserve=False) as selection:
                 return selection._replica.replica_id.to_full_id_str()
 
-        try:
-            return await asyncio.wait_for(
-                pick(_reserve=False),
-                timeout=min(PICK_ONLY_TIMEOUT_S, max(0, deadline_s - time.monotonic())),
-            )
-        except asyncio.TimeoutError:
-            return await pick(
-                _selection_timeout_s=max(0, deadline_s - time.monotonic())
-            )
+        return await asyncio.wait_for(pick(), timeout=timeout_s)
 
     @classmethod
     def get_deployment_options(cls) -> Dict[str, Any]:

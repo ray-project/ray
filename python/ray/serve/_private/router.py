@@ -274,7 +274,6 @@ class RouterMetricsManager:
             if not is_retry and self.should_send_scaled_to_zero_optimized_push(
                 curr_num_replicas=num_curr_replicas
             ):
-                self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
             yield
@@ -329,7 +328,6 @@ class RouterMetricsManager:
             # least one queued request on this router, then immediately
             # push handle metric to the controller.
             if self.should_send_scaled_to_zero_optimized_push(curr_num_replicas):
-                self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
             # Record number of queued + ongoing requests at regular
@@ -1284,75 +1282,67 @@ class AsyncioRouter:
         if not self._deployment_available:
             raise DeploymentUnavailableError(self.deployment_id)
 
-        # Internal options for callers that forward traffic out of band.
+        # Internal opt-out for pick-only callers (e.g. ingress router that
+        # forwards traffic out-of-band via HAProxy). Skips the replica-side
+        # reserve_slot RPC and the rejection-retry loop; the configured
+        # RequestRouter still drives ordering.
         reserve = request_kwargs.pop("_reserve", True)
-        selection_timeout_s = request_kwargs.pop("_selection_timeout_s", None)
 
-        async def select_replica():
-            await self._request_router_initialized.wait()
+        await self._request_router_initialized.wait()
 
-            with self._metrics_manager.wrap_request_assignment(request_meta):
-                pr = PendingRequest(
-                    args=list(request_args),
-                    kwargs=request_kwargs,
-                    metadata=request_meta,
+        with self._metrics_manager.wrap_request_assignment(request_meta):
+            pr = PendingRequest(
+                args=list(request_args),
+                kwargs=request_kwargs,
+                metadata=request_meta,
+            )
+            try:
+                await self._resolve_args_with_metrics(pr)
+            except ActorDiedError as e:
+                raise self._make_upstream_crash_error(e)
+            if reserve:
+                replica, slot_token = await self._pick_and_reserve_replica(pr)
+            else:
+                # Policies can return no candidates temporarily (e.g. while
+                # waiting for multiplexed model metadata). Reuse their selection
+                # retry loop with the same PendingRequest, without probing or
+                # reserving capacity on replicas. Close the generator to clean up
+                # its backoff accounting on success and cancellation.
+                candidates = self._active_request_router._choose_replicas_with_backoff(
+                    pr
                 )
                 try:
-                    await self._resolve_args_with_metrics(pr)
-                except ActorDiedError as e:
-                    raise self._make_upstream_crash_error(e)
-                if reserve:
-                    replica, slot_token = await self._pick_and_reserve_replica(pr)
-                else:
-                    # Policies can return no candidates temporarily (e.g. while
-                    # waiting for multiplexed model metadata). Reuse their selection
-                    # retry loop with the same PendingRequest, without probing or
-                    # reserving capacity on replicas. Close the generator to clean up
-                    # its backoff accounting on success and cancellation.
-                    candidates = (
-                        self._active_request_router._choose_replicas_with_backoff(pr)
+                    replica = (await candidates.__anext__())[0]
+                finally:
+                    await candidates.aclose()
+                slot_token = None
+                # Pick-only callers send the request themselves (e.g. the
+                # direct-streaming LLM ingress router through HAProxy), so this
+                # pick is the routing decision. Report it so stateful policies
+                # (e.g. PrefixCacheAffinityRouter) can update their state.
+                try:
+                    self._active_request_router.on_request_routed(
+                        pr, replica.replica_id, None
                     )
-                    try:
-                        replica = (await candidates.__anext__())[0]
-                    finally:
-                        await candidates.aclose()
-                    slot_token = None
-                    # Pick-only callers send the request themselves (e.g. the
-                    # direct-streaming LLM ingress router through HAProxy), so this
-                    # pick is the routing decision. Report it so stateful policies
-                    # (e.g. PrefixCacheAffinityRouter) can update their state.
-                    try:
-                        self._active_request_router.on_request_routed(
-                            pr, replica.replica_id, None
-                        )
-                    except Exception:
-                        logger.warning(
-                            "on_request_routed failed for pick-only selection; continuing.",
-                            exc_info=True,
-                        )
+                except Exception:
+                    logger.warning(
+                        "on_request_routed failed for pick-only selection; continuing.",
+                        exc_info=True,
+                    )
 
-            return replica, slot_token
-
-        if selection_timeout_s is None:
-            replica, slot_token = await select_replica()
-        else:
-            replica, slot_token = await asyncio.wait_for(
-                select_replica(), timeout=selection_timeout_s
+            selection = ReplicaSelection(
+                replica_id=replica.replica_id.unique_id,
+                node_ip=replica._replica_info.node_ip,  # type: ignore[arg-type]
+                port=replica._replica_info.port,
+                node_id=replica.node_id,
+                availability_zone=replica.availability_zone,
+                replica_metadata=replica.replica_metadata,
+                _replica=replica,
+                _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
+                _request_metadata=request_meta,
+                _method_name=request_meta.call_method,
+                _slot_token=slot_token,
             )
-
-        selection = ReplicaSelection(
-            replica_id=replica.replica_id.unique_id,
-            node_ip=replica._replica_info.node_ip,  # type: ignore[arg-type]
-            port=replica._replica_info.port,
-            node_id=replica.node_id,
-            availability_zone=replica.availability_zone,
-            replica_metadata=replica.replica_metadata,
-            _replica=replica,
-            _deployment_id=None,  # Injected by DeploymentHandle for dispatch-time validation.
-            _request_metadata=request_meta,
-            _method_name=request_meta.call_method,
-            _slot_token=slot_token,
-        )
 
         if not reserve:
             yield selection
