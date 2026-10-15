@@ -34,6 +34,7 @@ def manager(tmp_path, monkeypatch):
     monkeypatch.setattr(cgroup, "_is_cgroup2", lambda _: True)
     monkeypatch.setattr(cgroup.sys, "platform", "linux")
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "12345")
+    monkeypatch.setattr(cgroup, "_boot_id", lambda: "boot-1")
     monkeypatch.setattr(subprocess, "Popen", lambda *a, **kw: None)
     monkeypatch.setattr(
         cgroup.SandboxCgroupManager,
@@ -305,17 +306,72 @@ def test_exclusive_pool_must_be_valid_and_managed(manager):
         manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
 
 
-def test_invalidated_partition_terminates_existing_lease(manager):
-    lease = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
+def test_invalidated_partition_terminates_existing_lease(
+    manager, monkeypatch, tmp_path
+):
+    bundle = tmp_path / "ray-sandbox-000000000001"
+    bundle.mkdir()
+    lease = manager.allocate(
+        "ray-sandbox-000000000001", 1, 0, "exclusive", cleanup={"remove": [str(bundle)]}
+    )
     (manager.exclusive / "cpuset.cpus.partition").write_text("root invalid (hotplug)")
     cgroup._reconcile(manager.state_dir)
+    # The sandbox stops, but its live owner still deletes its files.
     assert not lease.path.exists()
+    assert bundle.exists()
+    # Its core is free once the partition is valid again.
+    (manager.exclusive / "cpuset.cpus.partition").write_text("root")
+    other = manager.allocate("ray-sandbox-000000000002", 2, 0, "exclusive")
+    assert (other.path / "cpuset.cpus").read_text() == "0,1"
+    # An owner that dies without deleting the sandbox leaves the files to
+    # the reaper.
+    monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
+    cgroup._reconcile(manager.state_dir)
+    assert not bundle.exists()
 
 
-def test_missing_cgroup_is_reconciled_even_when_owner_is_alive(manager):
+def test_live_owner_keeps_its_lease_but_not_its_cores_when_its_cgroup_is_gone(
+    manager,
+):
     lease = manager.allocate("ray-sandbox-000000000001", 1, 0, "exclusive")
     lease.path.rmdir()
     cgroup._reconcile(manager.state_dir)
+    ((_, record),) = cgroup._records(manager.state_dir)
+    assert record["reserved_cpus"] == []
+    # Both cores are free again.
+    manager.allocate("ray-sandbox-000000000002", 2, 0, "exclusive")
+
+
+def test_dead_owner_files_are_deleted_after_its_cgroup_is_gone(
+    manager, monkeypatch, tmp_path
+):
+    """The owner can die after release() removed its cgroup but before it
+    deleted the bundle."""
+    bundle = tmp_path / "ray-sandbox-000000000001"
+    bundle.mkdir()
+    lease = manager.allocate(
+        "ray-sandbox-000000000001", 1, 0, "shared", cleanup={"remove": [str(bundle)]}
+    )
+    lease.path.rmdir()
+    monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
+    cgroup._reconcile(manager.state_dir)
+    assert not bundle.exists()
+    assert not list(cgroup._records(manager.state_dir))
+
+
+def test_reboot_ends_ownership_even_for_a_matching_pid_and_start_time(
+    manager, monkeypatch, tmp_path
+):
+    bundle = tmp_path / "ray-sandbox-000000000001"
+    bundle.mkdir()
+    lease = manager.allocate(
+        "ray-sandbox-000000000001", 1, 0, "shared", cleanup={"remove": [str(bundle)]}
+    )
+    # No cgroup survives a reboot, but the bundle can, in a persistent /tmp.
+    lease.path.rmdir()
+    monkeypatch.setattr(cgroup, "_boot_id", lambda: "boot-2")
+    cgroup._reconcile(manager.state_dir)
+    assert not bundle.exists()
     assert not list(cgroup._records(manager.state_dir))
 
 

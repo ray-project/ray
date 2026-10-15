@@ -83,6 +83,19 @@ def _process_identity(pid: int) -> Optional[str]:
         return None
 
 
+def _boot_id() -> str:
+    return _read(Path("/proc/sys/kernel/random/boot_id"))
+
+
+def _owner_alive(record: Dict) -> bool:
+    # Start times count from boot, so after a reboot another process can
+    # have the owner's PID and start time.
+    return (
+        record["boot_id"] == _boot_id()
+        and _process_identity(record["owner_pid"]) == record["owner_starttime"]
+    )
+
+
 @contextmanager
 def _locked(state_dir: Path):
     with (state_dir / "lock").open("a+") as lock:
@@ -100,28 +113,39 @@ def _records(state_dir: Path):
         yield path, record
 
 
+def _write_record(record_path: Path, record: Dict) -> None:
+    temporary = record_path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(record))
+    temporary.replace(record_path)
+
+
+def _destroy(cgroup: Path) -> None:
+    """Kill every process in a sandbox cgroup, then remove the cgroup."""
+    if not cgroup.exists():
+        return
+    # cgroup.kill handles concurrent forks and descendants. Callers keep
+    # the lease if killing or removing the cgroup fails.
+    if (cgroup / "cgroup.kill").exists():
+        try:
+            _write(cgroup / "cgroup.kill", "1")
+        except OSError:
+            # A failed allocation may have no kill permission, but it
+            # hasn't launched a workload. rmdir still refuses a cgroup
+            # populated by a concurrent process, preserving its lease.
+            if "populated 1" in _read(cgroup / "cgroup.events"):
+                raise
+    elif "populated 1" in _read(cgroup / "cgroup.events"):
+        raise RuntimeError(f"Cannot kill populated sandbox cgroup: {cgroup}")
+    deadline = time.monotonic() + 5
+    while "populated 1" in _read(cgroup / "cgroup.events"):
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"Sandbox cgroup is still populated: {cgroup}")
+        time.sleep(0.02)
+    cgroup.rmdir()
+
+
 def _remove(record_path: Path, record: Dict) -> None:
-    cgroup = Path(record["path"])
-    if cgroup.exists():
-        # cgroup.kill handles concurrent forks and descendants. Don't free
-        # the lease if killing or removing the cgroup fails.
-        if (cgroup / "cgroup.kill").exists():
-            try:
-                _write(cgroup / "cgroup.kill", "1")
-            except OSError:
-                # A failed allocation may have no kill permission, but it
-                # hasn't launched a workload. rmdir still refuses a cgroup
-                # populated by a concurrent process, preserving its lease.
-                if "populated 1" in _read(cgroup / "cgroup.events"):
-                    raise
-        elif "populated 1" in _read(cgroup / "cgroup.events"):
-            raise RuntimeError(f"Cannot kill populated sandbox cgroup: {cgroup}")
-        deadline = time.monotonic() + 5
-        while "populated 1" in _read(cgroup / "cgroup.events"):
-            if time.monotonic() >= deadline:
-                raise RuntimeError(f"Sandbox cgroup is still populated: {cgroup}")
-            time.sleep(0.02)
-        cgroup.rmdir()
+    _destroy(Path(record["path"]))
     record_path.unlink(missing_ok=True)
 
 
@@ -165,32 +189,40 @@ def _clean_up_orphan(record: Dict) -> None:
                 pass
 
 
+def _partition_invalid(pool: Path, reserved_cpus: List[int]) -> bool:
+    if _read(pool / "cpuset.cpus.partition") not in ("root", "isolated"):
+        return True
+    if not set(reserved_cpus) <= _cpus(_read(pool / "cpuset.cpus.effective")):
+        return True
+    try:
+        # CPU hotplug can bring a sibling online outside the pool
+        # without invalidating the kernel's partition flag.
+        SandboxCgroupManager._cores(pool)
+    except (OSError, RuntimeError):
+        return True
+    return False
+
+
 def _reconcile_lease(record_path: Path, record: Dict) -> None:
-    if not Path(record["path"]).exists():
-        # Cgroups don't survive a node reboot. A reused owner identity
-        # mustn't retain a lease for a cgroup that no longer exists.
-        record_path.unlink(missing_ok=True)
-        return
-    invalid_partition = False
-    if record["reserved_cpus"]:
-        pool = Path(record["path"]).parent
-        invalid_partition = _read(pool / "cpuset.cpus.partition") not in (
-            "root",
-            "isolated",
-        ) or not set(record["reserved_cpus"]) <= _cpus(
-            _read(pool / "cpuset.cpus.effective")
-        )
-        try:
-            # CPU hotplug can bring a sibling online outside the pool
-            # without invalidating the kernel's partition flag.
-            SandboxCgroupManager._cores(pool)
-        except (OSError, RuntimeError):
-            invalid_partition = True
-    owner_gone = _process_identity(record["owner_pid"]) != record["owner_starttime"]
-    if invalid_partition or owner_gone:
+    cgroup = Path(record["path"])
+    if not _owner_alive(record):
+        # Nobody else will delete the sandbox's files, whether or not its
+        # cgroup still exists.
         _remove(record_path, record)
-        if owner_gone:
-            _clean_up_orphan(record)
+        _clean_up_orphan(record)
+        return
+    if cgroup.exists() and not (
+        record["reserved_cpus"]
+        and _partition_invalid(cgroup.parent, record["reserved_cpus"])
+    ):
+        return
+    # An invalid partition no longer isolates the sandbox, so stop it. A
+    # cgroup that's gone holds no workload. Either way, free the CPUs but
+    # keep the lease: the owner deletes the sandbox's files, and if it dies
+    # first, the lease is how the reaper finds them.
+    _destroy(cgroup)
+    if record["reserved_cpus"] or record["affinity"]:
+        _write_record(record_path, {**record, "reserved_cpus": [], "affinity": []})
 
 
 def _reap(state_dir: Path, detach: bool = False) -> None:
@@ -465,6 +497,7 @@ class SandboxCgroupManager:
                 "path": str(path),
                 "owner_pid": os.getpid(),
                 "owner_starttime": _process_identity(os.getpid()),
+                "boot_id": _boot_id(),
                 "reserved_cpus": sorted(reserved),
                 "affinity": affinity,
                 # What the reaper deletes after killing an orphan: the
@@ -475,9 +508,7 @@ class SandboxCgroupManager:
                 raise RuntimeError("Cannot identify sandbox owner process")
             # Record ownership before mkdir so an interrupted allocation can
             # always be reconciled, including a worker killed during startup.
-            temporary = record_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(record))
-            temporary.replace(record_path)
+            _write_record(record_path, record)
             cgroup = SandboxCgroup(path, self.state_dir, limits, affinity)
             try:
                 path.mkdir()
