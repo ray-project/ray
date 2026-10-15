@@ -3975,6 +3975,8 @@ def read_hive(
     Configure authentication, transport, and TLS certificate verification in
     ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
     Kerberos credentials on those nodes.
+    The real-server integration test covers ``PLAIN`` with HiveServer2 in
+    server mode ``NONE``. It doesn't cover ``NOSASL`` or ``GSSAPI``.
 
     .. note::
 
@@ -3982,6 +3984,9 @@ def read_hive(
         needs it on the driver before the read worker executes the query.
         See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
         for optional schema inference from the same query execution.
+        Table reads select every column. If a table has unsupported column
+        types, use ``query`` to select supported columns and provide a matching
+        schema.
 
         Each Dataset execution runs at most one HiveServer2 data query in one
         Ray task. Ray doesn't retry failed reads. With the default error
@@ -4012,6 +4017,8 @@ def read_hive(
         .. testcode::
             :skipif: True
 
+            import os
+
             import pyarrow as pa
             import ray
 
@@ -4021,7 +4028,9 @@ def read_hive(
                 return connect(
                     host="hive.example.com",
                     port=10000,
-                    auth_mechanism="NOSASL",
+                    auth_mechanism="PLAIN",
+                    user="reader",
+                    password=os.environ["HIVE_NONE_PLACEHOLDER"],
                     retries=1,
                 )
 
