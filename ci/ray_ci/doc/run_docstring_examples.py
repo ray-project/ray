@@ -18,7 +18,14 @@ passes when it raises an exception whose type and message match.
 
 Examples marked `# doctest: +SKIP` are skipped, and a docstring with
 `# doctest: +SKIP_EXAMPLE` on any example is skipped whole, matching the
-render-only convention in bazel/default_doctest_pytest_plugin.py. The standard
+render-only convention in bazel/default_doctest_pytest_plugin.py.
+
+The examples image leaves out heavy libraries such as torch and TensorFlow
+(see OMITTED_LIBRARIES). A docstring that fails only because one of them isn't
+installed is reported as skipped, with the library named, rather than failed,
+and so is every docstring in a module that can't be imported without one. Those
+examples still run in their library's doctest() target. Any other import
+failure fails the run, so a typo in an import isn't hidden. The standard
 library's doctest module supplies the `>>>` parser and the output comparison;
 there's no doctest runner, pytest collection, or Bazel doctest target.
 
@@ -39,10 +46,12 @@ the library's image.
 
 import argparse
 import ast
+import collections
 import contextlib
 import dataclasses
 import doctest
 import importlib
+import importlib.util
 import io
 import os
 import re
@@ -58,6 +67,69 @@ _EXCLUDED_DIRS = re.compile(r"(^|/)(tests|examples)/")
 # Ray's doctest targets run pytest without a config file, so pytest's default
 # doctest_optionflags of ELLIPSIS applies. Match it.
 DEFAULT_OPTIONFLAGS = doctest.ELLIPSIS
+
+# Libraries the examples image, ci/docker/docstring.build.Dockerfile, leaves
+# out, keyed by top-level module name. Each value lists other names an error
+# message may use for the library, such as RLlib's "PyTorch was specified as
+# the framework", which raises a bare ImportError with no module name.
+OMITTED_LIBRARIES = {
+    "torch": ("pytorch",),
+    "torchvision": (),
+    "torchaudio": (),
+    "tensorflow": (),
+    "tensorflow_datasets": (),
+    "keras": (),
+    "jax": (),
+    "transformers": (),
+    "lightning": (),
+    "pytorch_lightning": (),
+    # The Azure node provider needs azure-cli-core to import, and its only
+    # runnable example is a single private import.
+    "azure": (),
+}
+
+
+class MissingLibrary(Exception):
+    """An example needs a library in OMITTED_LIBRARIES that isn't installed."""
+
+    def __init__(self, library: str):
+        super().__init__(library)
+        self.library = library
+
+
+def _installed(module: str) -> bool:
+    try:
+        return importlib.util.find_spec(module) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def missing_library(error: BaseException) -> Optional[str]:
+    """Return the omitted, uninstalled library an import error reports, if any.
+
+    Follows the exception chain for a ModuleNotFoundError's module name, since
+    Ray Data re-raises it as an ImportError with install advice. Falls back to
+    the message for a bare ImportError. Either way, a library that's installed
+    never matches, so a full image can't skip anything.
+    """
+    seen = set()
+    current = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, ImportError) and current.name:
+            top = current.name.split(".")[0]
+            if top in OMITTED_LIBRARIES and not _installed(top):
+                return top
+        current = current.__cause__ or current.__context__
+    if isinstance(error, ImportError):
+        message = str(error).lower()
+        for library, aliases in OMITTED_LIBRARIES.items():
+            names = (library, *aliases)
+            if not _installed(library) and any(
+                re.search(rf"\b{re.escape(name)}\b", message) for name in names
+            ):
+                return library
+    return None
 
 
 @dataclasses.dataclass
@@ -122,7 +194,11 @@ def _exception_message(e: BaseException) -> str:
 def run_docstring(
     docstring: DocstringExamples, module_globals: Dict, filename: str
 ) -> Optional[str]:
-    """Run one docstring's examples in order. Return a report on failure."""
+    """Run one docstring's examples in order. Return a report on failure.
+
+    Raises MissingLibrary when an example fails only because a library in
+    OMITTED_LIBRARIES isn't installed.
+    """
     checker = doctest.OutputChecker()
     namespace = dict(module_globals)
     for example in docstring.examples:
@@ -148,6 +224,9 @@ def run_docstring(
                     f"{location}\n{example.source}Expected exception:\n"
                     f"    {example.exc_msg}Got:\n    {got}"
                 )
+            library = missing_library(e)
+            if library is not None:
+                raise MissingLibrary(library) from e
             return f"{location}\n{example.source}{traceback.format_exc()}"
         if example.exc_msg is not None:
             return (
@@ -236,29 +315,58 @@ def main() -> int:
 
     failures = []
     ran = skipped = 0
+    # Docstrings skipped for a missing library, by library.
+    needs = collections.Counter()
     for path in files:
         with open(path, encoding="utf-8") as f:
             docstrings = extract(f.read(), path)
         if not docstrings:
             print(f"{path}: no >>> examples")
             continue
-        module = importlib.import_module(module_name(path))
+        runnable = [d for d in docstrings if not is_skipped(d)]
+        try:
+            module = importlib.import_module(module_name(path))
+        except Exception as e:  # noqa: BLE001 - report any import failure.
+            library = missing_library(e)
+            if library is None:
+                failures.append(
+                    f"{path}: importing {module_name(path)} failed\n"
+                    f"{traceback.format_exc()}"
+                )
+                print(f"FAIL {path} (import)")
+            else:
+                needs[library] += len(runnable)
+                print(f"SKIP {path} (module needs {library})")
+            skipped += len(docstrings) - len(runnable)
+            continue
         for docstring in docstrings:
             if is_skipped(docstring):
                 skipped += 1
                 print(f"SKIP {path}:{docstring.qualname} (+SKIP_EXAMPLE)")
                 continue
+            try:
+                failure = run_docstring(docstring, vars(module), path)
+            except MissingLibrary as e:
+                needs[e.library] += 1
+                print(f"SKIP {path}:{docstring.qualname} (needs {e.library})")
+                continue
             ran += 1
-            failure = run_docstring(docstring, vars(module), path)
             status = "FAIL" if failure else "PASS"
             print(f"{status} {path}:{docstring.qualname}")
             if failure:
                 failures.append(failure)
         _shutdown_ray()
 
+    missing = ""
+    if needs:
+        detail = ", ".join(f"{n} need {lib}" for lib, n in sorted(needs.items()))
+        missing = (
+            f", {sum(needs.values())} skipped for a library this image omits "
+            f"({detail})"
+        )
     print(
-        f"\n{ran} docstring(s) run, {len(failures)} failed, {skipped} skipped, "
-        f"in {len(files)} file(s)."
+        f"\n{ran} docstring(s) run, {len(failures)} failed, {skipped} skipped"
+        f"{missing}, in {len(files)} file(s)."
     )
     for failure in failures:
         print("\n" + failure)
