@@ -155,6 +155,8 @@ class ObjectManager : public ObjectManagerInterface,
       RestoreSpilledObjectCallback restore_spilled_object,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+      std::function<bool(const ObjectID &object_id, const rpc::Address &owner_address)>
+          pin_and_report_moved_object,
       const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
       std::unique_ptr<ObjectStoreRunner> object_store_internal,
       std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
@@ -458,6 +460,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// This returns the empty string if the object was not spilled locally.
   std::function<std::string(const ObjectID &)> get_spilled_object_url_;
 
+  /// Pins a received object as the primary copy of a move and reports the new
+  /// primary to the owner. Returns false if the object is no longer in the store.
+  /// Called on the main service.
+  std::function<bool(const ObjectID &, const rpc::Address &)>
+      pin_and_report_moved_object_;
+
   /// Pull manager retry timer .
   boost::asio::deadline_timer pull_retry_timer_;
 
@@ -497,6 +505,11 @@ class ObjectManager : public ObjectManagerInterface,
   /// create the object in plasma. This is usually due to out-of-memory in
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
+
+  /// Received moves pinned as the primary copy, and received moves whose pin
+  /// failed (the object left the store before it could be pinned).
+  size_t num_moved_objects_pinned_ = 0;
+  size_t num_moved_objects_pin_failed_ = 0;
 
   ray::stats::Gauge object_store_available_memory_gauge_{
       GetObjectStoreAvailableMemoryGaugeMetric()};

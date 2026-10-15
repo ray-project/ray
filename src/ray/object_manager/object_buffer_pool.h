@@ -123,11 +123,21 @@ class ObjectBufferPool {
   /// \param object_id The ObjectID.
   /// \param chunk_index The index of the chunk.
   /// \param data The data to write into the chunk.
-  void WriteChunk(const ObjectID &object_id,
+  /// \param defer_release If true and this chunk seals the object, the plasma
+  /// store reference taken when the object was created, and the object's
+  /// CreateBufferState entry, are kept after the seal until ReleaseObject is
+  /// called. The store cannot evict the object while the reference is held.
+  /// \return True iff this call sealed the object.
+  bool WriteChunk(const ObjectID &object_id,
                   uint64_t data_size,
                   uint64_t metadata_size,
                   uint64_t chunk_index,
-                  const std::string &data) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+                  const std::string &data,
+                  bool defer_release) ABSL_LOCKS_EXCLUDED(pool_mutex_);
+
+  /// Drop the plasma store reference and the CreateBufferState entry of an object
+  /// sealed with defer_release. Called once per such seal.
+  void ReleaseObject(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(pool_mutex_);
 
   /// Free a list of objects from object store.
   ///
@@ -137,6 +147,8 @@ class ObjectBufferPool {
 
   /// Abort the create operation associated with an object. This destroys the buffer
   /// state, including create operations in progress for all chunks of the object.
+  /// No-op on an object sealed with defer_release: ReleaseObject drops its store
+  /// reference and CreateBufferState entry.
   void AbortCreate(const ObjectID &object_id) ABSL_LOCKS_EXCLUDED(pool_mutex_);
 
   /// Returns debug string for class.
@@ -194,6 +206,9 @@ class ObjectBufferPool {
     uint64_t num_seals_remaining_;
     /// The number of inflight copy operations.
     uint64_t num_inflight_copies_ = 0;
+    /// Set once the object is sealed in the store. A sealed entry only exists when
+    /// WriteChunk kept the store reference (defer_release), until ReleaseObject.
+    bool sealed_ = false;
   };
 
   /// Returned when GetChunk or CreateChunk fails.
