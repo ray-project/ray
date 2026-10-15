@@ -7043,7 +7043,7 @@ class Dataset:
     ) -> Iterable[TorchBatchType]:
         """Return an iterable over batches of data represented as Torch tensors.
 
-        This iterable yields batches of type ``Dict[str, torch.Tensor]``.
+        The iterable yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
         your data to Torch tensors.
 
