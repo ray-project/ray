@@ -286,6 +286,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
 
+  /// Return, for each dependency in GetDependencies() order, whether this task
+  /// consumes it (TaskArg.is_move).
+  std::vector<bool> GetDependencyIsMove() const;
+
   std::string GetDebuggerBreakpoint() const;
 
   /// Return the depth of this task. The depth of a graph, is the number of
