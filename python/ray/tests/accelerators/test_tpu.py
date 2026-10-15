@@ -704,6 +704,57 @@ def test_tpu_worker_visible_devices_and_chips(shutdown_only):
             ray.kill(w)
 
 
+def test_tpu_task_env_restored_on_reused_worker(shutdown_only):
+    """A reused worker restores every TPU env var a normal task changed, not just
+    TPU_VISIBLE_CHIPS, so the next task sees the container's original values
+    (for example the chip/host bounds the GKE device plugin injects).
+    """
+    ray.init(num_cpus=1, resources={"TPU": 4})
+    tracked_env_vars = (
+        tpu.TPU_VISIBLE_CHIPS_ENV_VAR,
+        tpu.TPU_VISIBLE_DEVICES_ENV_VAR,
+        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR,
+        tpu.TPU_HOST_BOUNDS_ENV_VAR,
+    )
+    container_env = {
+        tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+        tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+    }
+
+    def snapshot_env():
+        return {
+            "pid": os.getpid(),
+            **{var: os.environ.get(var) for var in tracked_env_vars},
+        }
+
+    tpu_task = ray.remote(
+        resources={"TPU": 1}, runtime_env={"env_vars": container_env}
+    )(snapshot_env)
+    cpu_task = ray.remote(runtime_env={"env_vars": container_env})(snapshot_env)
+
+    tpu_env = ray.get(tpu_task.remote())
+    assert tpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] in {"0", "1", "2", "3"}
+    assert (
+        tpu_env[tpu.TPU_VISIBLE_DEVICES_ENV_VAR]
+        == tpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR]
+    )
+    assert tpu_env[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] == "1,1,1"
+    assert tpu_env[tpu.TPU_HOST_BOUNDS_ENV_VAR] == "1,1,1"
+
+    # Idle workers are reused most-recently-released first, so the CPU task
+    # normally lands on the TPU task's process; retry in case it does not.
+    for _ in range(10):
+        cpu_env = ray.get(cpu_task.remote())
+        if cpu_env["pid"] == tpu_env["pid"]:
+            break
+    else:
+        pytest.fail("CPU task never reused the TPU task's worker process.")
+    assert cpu_env[tpu.TPU_VISIBLE_CHIPS_ENV_VAR] is None
+    assert cpu_env[tpu.TPU_VISIBLE_DEVICES_ENV_VAR] is None
+    assert cpu_env[tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] == "2,2,1"
+    assert cpu_env[tpu.TPU_HOST_BOUNDS_ENV_VAR] == "2,2,1"
+
+
 def test_get_current_process_visible_accelerator_ids(monkeypatch):
     """Test get_current_process_visible_accelerator_ids with default and opt-in settings."""
     monkeypatch.delenv(tpu.TPU_VISIBLE_CHIPS_ENV_VAR, raising=False)

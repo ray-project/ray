@@ -807,12 +807,10 @@ class TPUAcceleratorManager(AcceleratorManager):
 
         See: https://github.com/google/jax/issues/14977 for an example/more details.
 
-        TPU_VISIBLE_CHIPS has whole-chip granularity, whereas TPU_VISIBLE_DEVICES
-        tracks the uncollapsed logical device IDs assigned by Ray. Frameworks
-        that bind one process per logical device (TorchTPU) read
-        TPU_VISIBLE_DEVICES directly; frameworks that claim every visible chip
-        (JAX) read TPU_VISIBLE_CHIPS and need whole-chip allocations to avoid
-        contending for the same chip.
+        TPU_VISIBLE_CHIPS masks physical chips, while TPU_VISIBLE_DEVICES
+        tracks the logical device IDs assigned by Ray. Per-device frameworks
+        (TorchTPU) read TPU_VISIBLE_DEVICES; whole-chip frameworks (JAX) read
+        TPU_VISIBLE_CHIPS and require whole-chip allocations.
 
         Args:
             visible_tpu_chips: List of str representing TPU chips, or device IDs
@@ -821,8 +819,8 @@ class TPUAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_TPU_VISIBLE_CHIPS_ENV_VAR, False):
             return
 
-        # TPU_VISIBLE_CHIPS masks physical chips, whereas TPU_VISIBLE_DEVICES
-        # indexes logical devices (which differ when RAY_TPU_RESOURCE_PER_CHIP > 1).
+        # TPU_VISIBLE_CHIPS masks physical chips, but Ray assigns one ID per
+        # logical device when RAY_TPU_RESOURCE_PER_CHIP > 1, so collapse them.
         resource_per_chip = get_tpu_resource_per_chip()
         physical_chips = sorted(
             {int(device_id) // resource_per_chip for device_id in visible_tpu_chips}
