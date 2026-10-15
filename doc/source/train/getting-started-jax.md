@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Distribute JAX training across GPUs and TPUs with JaxTrainer: SPMD execution, ScalingConfig topology for TPU PodSlices, and CUDA setup."
+    description: "Distribute JAX training across GPUs and TPUs with JaxTrainer: SPMD execution, ScalingConfig topology for TPU slices, and CUDA setup."
 ---
 
 (train-jax)=
@@ -25,7 +25,7 @@ JAX and the {class}`~ray.train.v2.jax.JaxTrainer` support accelerators such as G
 
 Tensor Processing Units (TPUs) are custom accelerators that Google designed for machine learning workloads. Unlike general-purpose CPUs or parallel-processing GPUs, TPUs specialize in the large matrix and tensor computations of deep learning, which makes them efficient for that work.
 
-The primary advantage of TPUs is performance at scale. Google designed them to connect into large, multi-host configurations called "PodSlices" through a high-speed inter-chip interconnect (ICI). This design makes TPUs well suited to training large models that don't fit on a single node.
+The primary advantage of TPUs is performance at scale. Google designed them to connect into large, multi-host configurations called "Pod slices" through a high-speed inter-chip interconnect (ICI). This design makes TPUs well suited to training large models that don't fit on a single node.
 
 To learn more about configuring TPUs with KubeRay, see {ref}`kuberay-tpu`.
 
@@ -62,7 +62,7 @@ tpu_scaling_config = ScalingConfig(num_workers=4, use_tpu=True, topology="4x4", 
 
 ### GPU scaling configuration
 
-For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. By default, this configuration requests one GPU per worker. Key fields include the following:
+For GPU training, use {class}`~ray.train.ScalingConfig` to define your GPU configuration. Each worker is one Ray Train process. When you set `use_gpu=True` without `resources_per_worker`, Ray Train requests one GPU per worker. Key fields include the following:
 
 * {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
 * {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU.
@@ -100,9 +100,9 @@ trainer = JaxTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the training function, the Python code that runs on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs or GPUs.
-1. {class}`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
+- `train_func` is the training function, the Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs or GPUs.
+- {class}`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
 
 Compare a JAX training script with and without Ray Train.
 

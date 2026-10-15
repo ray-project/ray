@@ -10,7 +10,7 @@ myst:
 
 This guide explores a specific scenario in KubeRay's RayService API where a Ray worker Pod remains in an unready state due to the absence of a Ray Serve replica.
 
-To better understand this section, you should be familiar with the following Ray Serve components: the [Ray Serve replica and ProxyActor](https://docs.ray.io/en/latest/serve/architecture.html#high-level-view).
+To better understand this section, you should be familiar with the following Ray Serve components: the [Ray Serve replica and ProxyActor](../../serve/architecture.md#high-level-view).
 
 ProxyActor is responsible for forwarding incoming requests to the corresponding Ray Serve replicas. Hence, if a head or worker Pod without a running ProxyActor receives requests, those requests will fail. KubeRay's readiness probe fails, rendering the Pods unready and preventing ProxyActor from sending requests to them.
 
@@ -38,7 +38,7 @@ Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService Y
   * `num_replicas`: Controls the number of replicas, that handle requests to this deployment, to run. Initialize to 1 to ensure the overall number of the Ray Serve replicas is 1.
   * `max_replicas_per_node`: Controls the maximum number of replicas on a single pod.  
 
-See [Ray Serve Documentation](https://docs.ray.io/en/master/serve/configure-serve-deployment.html) for more details.
+See [Ray Serve Documentation](../../serve/configure-serve-deployment.md) for more details.
 ```yaml
 serveConfigV2: |
   applications:
