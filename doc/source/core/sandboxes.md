@@ -349,6 +349,8 @@ An actor that creates sandboxes with `SandboxRuntime` gets the same preference f
 import ray
 from ray.experimental.sandbox import SandboxRuntime, image_scheduling_strategy
 
+ray.init()
+
 @ray.remote
 class Rollout:
     def __init__(self, image: str):
