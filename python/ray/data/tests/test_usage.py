@@ -80,21 +80,12 @@ def test_round_trip_payload_shape(reset_collector, mock_record, executor):
     ]
     assert entry["workload"]["plan_str"] == "MapBatches\n+- ReadRange\n"
     assert "pyarrow" in entry["env"]
-    # Values are None in this hermetic run (no cluster / Prometheus / scheduling
-    # steps); the delta math is covered by test_compute_delta, the query path by
-    # the query_prometheus_counter tests, and the memory / object-lost fields by
+    # Everything else is None in this hermetic run (no cluster / Prometheus /
+    # scheduling steps) and None fields are omitted from the payload. The delta
+    # math is covered by test_compute_delta, the query path by the
+    # query_prometheus_counter tests, and the memory / object-lost fields by
     # test_memory_and_object_lost_stats_in_payload.
-    assert set(entry["performance"]) == {
-        "bytes_spilled",
-        "node_deaths",
-        "oom_kills",
-        "unexpected_worker_kills",
-        "object_reconstruction_attempts",
-        "task_retries",
-        "object_store_memory_bytes",
-        "task_max_uss_bytes",
-        "num_object_lost_task_failures",
-    }
+    assert entry["performance"] == {"num_object_lost_task_failures": 0}
     # No issues detected in this run; the key is present and empty.
     assert entry["detected_issues"] == []
 
@@ -421,15 +412,21 @@ def test_query_prometheus_counter_sums_results(monkeypatch):
     assert util.query_prometheus_counter("q") == 7
 
 
+def test_query_prometheus_counter_no_series_is_zero(monkeypatch):
+    """A counter's series only exists after its first event, so a successful
+    query with no matching series counts as zero events, letting a counter
+    that first appears mid-execution still produce a delta."""
+    resp = MagicMock(status_code=200, json=lambda: {"data": {"result": []}})
+    monkeypatch.setattr(util.requests, "get", lambda *a, **k: resp)
+    assert util.query_prometheus_counter("q") == 0
+    assert util.compute_delta(util.query_prometheus_counter("q"), 1) == 1
+
+
 @pytest.mark.parametrize(
     "get_fn",
     [
         # Non-200 response.
         lambda *a, **k: MagicMock(status_code=500),
-        # 200 but no series matched.
-        lambda *a, **k: MagicMock(
-            status_code=200, json=lambda: {"data": {"result": []}}
-        ),
         # Prometheus unreachable
         MagicMock(side_effect=util.requests.ConnectionError("no prometheus")),
         # 200 but malformed response body
