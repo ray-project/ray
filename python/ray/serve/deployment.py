@@ -256,6 +256,8 @@ class Deployment:
         gang_scheduling_config: Default[
             Union[Dict, GangSchedulingConfig, None]
         ] = DEFAULT.VALUE,
+        prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
+        prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
@@ -406,6 +408,12 @@ class Deployment:
         if gang_scheduling_config is not DEFAULT.VALUE:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
 
+        if prefer_local_node_routing is not DEFAULT.VALUE:
+            new_deployment_config.prefer_local_node_routing = prefer_local_node_routing
+
+        if prefer_local_az_routing is not DEFAULT.VALUE:
+            new_deployment_config.prefer_local_az_routing = prefer_local_az_routing
+
         if deployment_actors is not DEFAULT.VALUE:
             new_deployment_config.deployment_actors = deployment_actors
 
@@ -515,6 +523,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
         "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
+        "prefer_local_node_routing": d._deployment_config.prefer_local_node_routing,
+        "prefer_local_az_routing": d._deployment_config.prefer_local_az_routing,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -580,6 +590,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
         rolling_update_percentage=s.rolling_update_percentage,
+        prefer_local_node_routing=s.prefer_local_node_routing,
+        prefer_local_az_routing=s.prefer_local_az_routing,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
