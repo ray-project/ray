@@ -376,23 +376,20 @@ inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
 
 class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  HttpRuntimeEnvAgentClient(
-      instrumented_io_context &io_context,
-      const std::string &address,
-      int port,
-      std::function<std::shared_ptr<boost::asio::deadline_timer>(
-          std::function<void()>, uint32_t delay_ms)> delay_executor,
-      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      ClockInterface &clock,
-      uint32_t agent_register_timeout_ms,
-      uint32_t agent_manager_retry_interval_ms,
-      uint32_t session_pool_size = 10)
+  HttpRuntimeEnvAgentClient(instrumented_io_context &io_context,
+                            const std::string &address,
+                            int port,
+                            std::function<std::shared_ptr<boost::asio::deadline_timer>(
+                                std::function<void()>, uint32_t delay_ms)> delay_executor,
+                            ClockInterface &clock,
+                            uint32_t agent_register_timeout_ms,
+                            uint32_t agent_manager_retry_interval_ms,
+                            uint32_t session_pool_size = 10)
       : connection_pool_(
             io_context, address, absl::StrFormat("%d", port), session_pool_size),
         address_(address),
         port_str_(absl::StrFormat("%d", port)),
         delay_executor_(delay_executor),
-        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         clock_(clock),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
@@ -404,23 +401,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   template <typename T>
   using TryInvokeOnce = std::function<void(SuccCallback<T>, FailCallback)>;
 
-  void ExitImmediately() {
-    RAY_LOG(ERROR)
-        << "The raylet exited immediately because the runtime env agent timed out when "
-           "Raylet try to connect to it. This can happen because the runtime env agent "
-           "was never started, or is listening to the wrong port. Read the log `cat "
-           "/tmp/ray/session_latest/logs/runtime_env_agent.log`. You can find the log "
-           "file structure here "
-           "https://docs.ray.io/en/master/ray-observability/user-guides/"
-           "configure-logging.html#logging-directory-structure.\n";
-    rpc::NodeDeathInfo node_death_info;
-    node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-    node_death_info.set_reason_message("Raylet could not connect to Runtime Env Agent");
-    shutdown_raylet_gracefully_(node_death_info);
-    // If the process is not terminated within 10 seconds, forcefully kill itself.
-    delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
-  }
-
   /// @brief Invokes `try_invoke_once`. If it fails with a network error, retries every
   /// after `agent_manager_retry_interval_ms` up until `deadline` passed. After which,
   /// fail_callback is called with the NotFound error from `try_invoke_once`.
@@ -429,8 +409,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   /// which cases we did not receive a well-formed HTTP response. Application errors
   /// returned by the server are not retried.
   ///
-  /// If the retries took so long and exceeded deadline, Raylet exits immediately. Note
-  /// the check happens after `try_invoke_once` returns. This means if you have a
+  /// If the retries took so long and exceeded deadline, the request fails. Note the
+  /// check happens after `try_invoke_once` returns. This means if you have a
   /// successful but very long connection (e.g. runtime env agent is busy downloading
   /// from s3), you are safe.
   ///
@@ -449,10 +429,14 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
       } else if (clock_.SteadyNowMillis() > deadline_ms) {
-        RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
-                       << "ms. Status: " << status << ", address: " << this->address_
-                       << ", port: " << this->port_str_ << ", exiting immediately...";
-        ExitImmediately();
+        RAY_LOG(ERROR)
+            << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
+            << "ms. Status: " << status << ", address: " << this->address_
+            << ", port: " << this->port_str_
+            << ". A raylet cannot start without a runtime env agent, and it fate shares "
+               "with the agent process, so reaching this means the agent is up but "
+               "this raylet could not reach it. Failing this request.";
+        fail_callback(status);
       } else {
         RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
                       << ", the server may be still starting or is already failed. "
@@ -621,7 +605,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
-  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   ClockInterface &clock_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
@@ -634,7 +617,6 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
@@ -642,7 +624,6 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
                                                      address,
                                                      port,
                                                      delay_executor,
-                                                     shutdown_raylet_gracefully,
                                                      clock,
                                                      agent_register_timeout_ms,
                                                      agent_manager_retry_interval_ms);
