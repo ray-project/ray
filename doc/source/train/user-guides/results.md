@@ -36,7 +36,7 @@ Use {attr}`Result.checkpoint <ray.train.Result>` to retrieve the last checkpoint
 
 Sometimes you want an earlier checkpoint. For example, if your loss increases with more training because of overfitting, you might want to retrieve the checkpoint with the lowest loss.
 
-Use {meth}`Result.get_best_checkpoint <ray.train.Result.get_best_checkpoint>` to retrieve the checkpoint that ranks best by a metric that you attached to it.
+Use {meth}`Result.get_best_checkpoint <ray.train.Result.get_best_checkpoint>` to retrieve the checkpoint that ranks best by a metric that you attached to it. This method is an alpha API.
 
 ```{literalinclude} ../doc_code/key_concepts.py
 :language: python
@@ -53,10 +53,6 @@ Use {attr}`Result.best_checkpoints <ray.train.Result>` to retrieve a list of all
 :start-after: __result_best_checkpoint_start__
 :end-before: __result_best_checkpoint_end__
 ```
-
-:::{seealso}
-For more information on checkpointing, see {ref}`train-checkpointing`.
-:::
 
 ## View the metrics attached to checkpoints
 
@@ -76,7 +72,7 @@ Use {attr}`Result.metrics <ray.train.Result>` to retrieve the metrics attached t
 :end-before: __result_metrics_end__
 ```
 
-### Dataframe of the metrics of all checkpoints
+### DataFrame of all checkpoint metrics
 
 Use {attr}`Result.metrics_dataframe <ray.train.Result>` to retrieve a pandas DataFrame of the metrics attached to every saved checkpoint. Each row corresponds to a checkpoint.
 
@@ -102,9 +98,9 @@ Use {attr}`Result.return_value <ray.train.Result>` to retrieve any data that wor
 
 ## Access the storage location
 
-Ray Train stores checkpoints and the metrics attached to them on the {ref}`persistent storage <train-log-dir>` that you configure with the {ref}`storage_path <train-log-dir>` of the {class}`~ray.train.RunConfig`.
+Ray Train stores checkpoints and the metrics attached to them on the {ref}`persistent storage <train-log-dir>` that you configure with the `storage_path` argument of {class}`~ray.train.RunConfig`.
 
-Use {attr}`Result.path <ray.train.Result>` to retrieve the storage location of the training run. It's a nested subdirectory of the `storage_path`, usually of the form `TrainerName_date-string/TrainerName_id_00000_0_...`.
+Use {attr}`Result.path <ray.train.Result>` to retrieve the storage location of the training run. It's a subdirectory of the `storage_path`, named after the `name` argument of the `RunConfig`. If you don't set `name`, Ray Train uses `ray_train_run-<date>`.
 
 The result also contains a {class}`pyarrow.fs.FileSystem` that you can use to access the storage location. The file system is useful when the path is on cloud storage.
 
@@ -126,7 +122,7 @@ To retrieve the checkpoints and metrics of a training run later, restore the res
 
 ## Catch errors
 
-If training fails, `trainer.fit()` raises a {class}`~ray.train.TrainingFailedError` instead of returning a {class}`~ray.train.Result` object. When a worker fails, the error is a {class}`~ray.train.WorkerGroupError`, which maps each failed worker's rank to the exception that it raised.
+If training fails, `trainer.fit()` raises a {class}`~ray.train.TrainingFailedError` instead of returning a {class}`~ray.train.Result` object. When a worker fails, the error is a {class}`~ray.train.WorkerGroupError`. Its `worker_failures` attribute maps each failed worker's rank to the exception that the worker raised.
 
 ```{literalinclude} ../doc_code/key_concepts.py
 :language: python
@@ -134,4 +130,4 @@ If training fails, `trainer.fit()` raises a {class}`~ray.train.TrainingFailedErr
 :end-before: __result_error_end__
 ```
 
-The checkpoints that you saved before the failure remain on persistent storage. To retrieve them, {ref}`restore the result from the storage location <accessing-storage-location>`.
+The checkpoints that you saved before the failure remain on persistent storage. Because `trainer.fit()` doesn't return a `Result`, build the storage location from the `storage_path` and `name` arguments of your `RunConfig`, `<storage_path>/<name>`, and pass it to {meth}`Result.from_path <ray.train.Result.from_path>`. To make the location predictable, set `name` explicitly.
