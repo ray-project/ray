@@ -153,8 +153,11 @@ class CoreWorkerTest : public ::testing::Test {
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
         [](const NodeID &) { return false; },
-        [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
-          core_worker_->FreeObjectOnNodesAsync(object_id, locations);
+        [this](const ObjectID &object_id,
+               const absl::flat_hash_set<NodeID> &locations,
+               int64_t object_size,
+               bool urgent) {
+          core_worker_->FreeObjectOnNodesAsync(object_id, locations, object_size, urgent);
         },
         fake_owned_object_count_gauge_,
         fake_owned_object_size_gauge_,
@@ -971,8 +974,9 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
   rpc::Address addr;
   addr.set_ip_address("127.0.0.1");
   auto is_node_dead = [](const NodeID &) { return false; };
-  auto free_object_on_nodes_async = [](const ObjectID &,
-                                       const absl::flat_hash_set<NodeID> &) {};
+  std::function<void(const ObjectID &, const absl::flat_hash_set<NodeID> &, int64_t, bool)>
+      free_object_on_nodes_async =
+          [](const ObjectID &, const absl::flat_hash_set<NodeID> &, int64_t, bool) {};
   ReferenceCounter ref_counter(addr,
                                /*object_info_publisher=*/nullptr,
                                /*object_info_subscriber=*/nullptr,

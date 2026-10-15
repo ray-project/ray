@@ -1590,6 +1590,19 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   void FreeObjectOnNodesAsync(const ObjectID &object_id,
                               const absl::flat_hash_set<NodeID> &locations);
 
+  /// Queue a free of the object's copies on each node. A node's queue is sent once
+  /// it holds kFreeLocalObjectsFlushCount objects or kFreeLocalObjectsFlushBytes
+  /// bytes, or on the next periodic flush. An urgent free is sent right away.
+  ///
+  /// \param object_id The object whose copies should be freed.
+  /// \param locations All nodes that hold a copy of the object.
+  /// \param object_size The object's size in bytes, or -1 if unknown.
+  /// \param urgent Whether to send without waiting for a batch.
+  void FreeObjectOnNodesAsync(const ObjectID &object_id,
+                              const absl::flat_hash_set<NodeID> &locations,
+                              int64_t object_size,
+                              bool urgent);
+
  private:
   /// Resolve a raylet RPC client by node id. Should be used to only get a temporary RPC
   /// client, since the retryable GRPC client relies on clients going out of scope to
@@ -1605,6 +1618,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// it.
   /// \param node_id The node whose buffered FreeLocalObjects requests to flush.
   void SendFreeLocalObjectsBatchIfNeeded(const NodeID &node_id);
+
+  void FlushAllFreeLocalObjects();
 
   static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
                                            const std::shared_ptr<nlohmann::json> &parent);
@@ -2105,9 +2120,13 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// former is held when FreeObjectOnNodesAsync is called), so keep this a leaf:
   /// never call back into ReferenceCounter while holding it.
   absl::Mutex free_batch_mu_;
-  /// node id -> FIFO queue of object ids waiting to be freed on that node.
-  absl::flat_hash_map<NodeID, std::deque<ObjectID>> free_pending_
-      ABSL_GUARDED_BY(free_batch_mu_);
+  struct PendingFrees {
+    std::deque<std::pair<ObjectID, int64_t>> objects;
+    int64_t bytes = 0;
+    bool urgent = false;
+  };
+  absl::flat_hash_map<NodeID, PendingFrees> free_pending_ ABSL_GUARDED_BY(free_batch_mu_);
+  absl::flat_hash_set<NodeID> free_flush_posted_ ABSL_GUARDED_BY(free_batch_mu_);
   /// Nodes with a FreeLocalObjects RPC currently in flight (backpressure).
   absl::flat_hash_set<NodeID> free_in_flight_ ABSL_GUARDED_BY(free_batch_mu_);
 

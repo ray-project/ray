@@ -396,8 +396,12 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
       /*free_object_on_nodes_async=*/
-      [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
-        GetCoreWorker()->FreeObjectOnNodesAsync(object_id, locations);
+      [this](const ObjectID &object_id,
+             const absl::flat_hash_set<NodeID> &locations,
+             int64_t object_size,
+             bool urgent) {
+        GetCoreWorker()->FreeObjectOnNodesAsync(
+            object_id, locations, object_size, urgent);
       },
       *owned_objects_counter_,
       *owned_objects_size_counter_,
