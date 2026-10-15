@@ -131,6 +131,31 @@ def _namespace_ids(pid: int) -> Optional[List[Tuple[int, int]]]:
     return [(st.st_dev, st.st_ino) for st in stats]
 
 
+def _holder_namespace_ids(root_dir: str) -> Optional[List[Tuple[int, int]]]:
+    """Identify the namespaces of the holder named in ``root_dir``'s netns.pid.
+
+    Called right after the sandbox starts, while that holder runs its
+    network. A holder never shares this process's user or network
+    namespace, so a pid that does isn't the holder.
+
+    Args:
+        root_dir: The sandbox's per-instance directory.
+
+    Returns:
+        The holder's namespaces, as ``_namespace_ids`` gives them, or None.
+    """
+    try:
+        with open(os.path.join(root_dir, "netns.pid"), encoding="utf-8") as f:
+            pid = f.read().strip()
+    except OSError:
+        return None
+    ids = _namespace_ids(int(pid)) if pid.isdigit() else None
+    own = _namespace_ids(os.getpid())
+    if ids is None or own is None or any(a == b for a, b in zip(ids, own)):
+        return None
+    return ids
+
+
 def _open_holder_namespaces(
     root_dir: str, expected: Optional[List[Tuple[int, int]]]
 ) -> Optional[List[int]]:
@@ -439,12 +464,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._image_manager.release_image(config.image, sandbox_id)
             raise
 
-        # The namespaces set_egress_allowlist must find behind netns.pid.
-        # Read from proc, not the holder: proc has exec'd through nsenter into
-        # them (it is `runsc run` now), and as our unreaped child its pid
-        # can't have been reused.
+        # The namespaces set_egress_allowlist must find behind netns.pid,
+        # read while the holder is known to run the sandbox's network.
         netns_ids = (
-            _namespace_ids(proc.pid) if config.cidr_allowlist is not None else None
+            _holder_namespace_ids(root_dir)
+            if config.cidr_allowlist is not None
+            else None
         )
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
