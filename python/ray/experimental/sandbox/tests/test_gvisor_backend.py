@@ -1,5 +1,6 @@
 import os
 import socket
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -838,6 +839,62 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_a_missing_sleep_hidden_by_a_user_path_is_explained_as_such():
+    """A PATH in the sandbox's env replaces the image's, so the image's own
+    sleep is not found -- which the hint used to blame on the image."""
+    from ray.experimental.sandbox.backend.gvisor import _startup_failure_hint
+
+    stderr = 'error finding executable "sleep" in PATH'
+    assert "distroless" in _startup_failure_hint(stderr)
+    hint = _startup_failure_hint(stderr, {"PATH": "/nonexistent"})
+    assert "PATH='/nonexistent'" in hint and "distroless" not in hint
+    assert _startup_failure_hint("something else", {"PATH": "/x"}) == ""
+
+
+def test_a_delete_that_fails_part_way_still_frees_the_sandbox_and_can_be_retried(
+    monkeypatch, tmp_path
+):
+    """The sandbox used to be forgotten before it was deleted: a failed
+    `runsc kill` skipped the process-group kill that actually frees it, and a
+    retry then found nothing to delete and reported success."""
+    from ray.experimental.sandbox.backend import gvisor
+
+    backend = GVisorSandboxBackend()
+    # The `runsc run` group: what the process-group kill takes down.
+    proc = subprocess.Popen(["sleep", "30"], start_new_session=True)
+    root_dir = tmp_path / "root"
+    root_dir.mkdir()
+    backend._sandbox_metadata["sb"] = {
+        "root_dir": str(root_dir),
+        "config": GVisorSandboxConfig(image="busybox:latest"),
+        "proc": proc,
+    }
+    runs = []
+
+    def run_failing_once(args, **kwargs):
+        runs.append(args)
+        if len(runs) == 1:
+            raise OSError("fork failed")
+        return subprocess.CompletedProcess(args, 1)
+
+    monkeypatch.setattr(gvisor.subprocess, "run", run_failing_once)
+    try:
+        with pytest.raises(OSError, match="fork failed"):
+            backend.delete_sandbox("sb")
+        assert proc.poll() is not None, "the group kill was skipped"
+        # Still known, and its files left alone while it may still run.
+        assert "sb" in backend._sandbox_metadata
+        assert root_dir.exists()
+
+        backend.delete_sandbox("sb")
+        assert "sb" not in backend._sandbox_metadata
+        assert not root_dir.exists()
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
 
 
 if __name__ == "__main__":
