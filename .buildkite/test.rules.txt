@@ -68,12 +68,13 @@ doc/source/ray-more-libs/api/
 ;
 
 # Prose under doc/source/ that Sphinx never renders as a page: autosummary
-# templates, include fragments, and the READMEs beside build inputs and starter
-# templates. No per-file doctest target names any of them, so they stay skipped
-# rather than matching the doc_example rule below.
+# templates, include fragments, and prose beside the build inputs in the
+# `doc`-routed doc_code/ directories below. No per-file doctest target names any
+# of them, so they stay skipped rather than matching the doc_example rule below.
 doc/source/_*.md
 doc/source/_*.rst
-doc/source/templates/*.md
+doc/source/cluster/doc_code/*.md
+doc/source/ray-contribute/doc_code/*.md
 # pass
 ;
 
