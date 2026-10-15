@@ -22,7 +22,6 @@ from ray._common.test_utils import (
 )
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
-from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
@@ -1342,9 +1341,8 @@ def test_serve_run_supports_custom_ingress_request_router(ray_shutdown):
     assert replica_ids[0] == replica_ids[2]
 
 
-def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
-    """A config override that sets a custom router on the ingress fails to deploy
-    under HAProxy."""
+def test_deploy_config_supports_custom_ingress_request_router(ray_shutdown):
+    """A config override can set a custom router on the ingress under HAProxy."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()
@@ -1370,13 +1368,15 @@ def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
     )
     client.deploy_apps(config)
 
-    def deploy_failed():
+    def deploy_running():
         status = serve.status().applications["app"]
-        assert status.status == "DEPLOY_FAILED"
-        assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in status.message
+        assert status.status == "RUNNING", status.message
         return True
 
-    wait_for_condition(deploy_failed)
+    wait_for_condition(deploy_running)
+    response = requests.get("http://localhost:8003")
+    assert response.status_code == 200
+    assert response.text == "hello_from_custom_request_router"
 
 
 if __name__ == "__main__":

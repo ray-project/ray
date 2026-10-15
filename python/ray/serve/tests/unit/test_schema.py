@@ -19,6 +19,7 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    RequestRouterConfig,
     gRPCOptions,
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
@@ -1412,6 +1413,26 @@ def test_get_app_code_version_includes_deployment_actors():
         ServeApplicationSchema.model_validate(reordered_actors)
     )
     assert added_version != reordered_version
+
+
+def test_get_app_code_version_includes_request_router_config_model():
+    base_config = ServeApplicationSchema(
+        import_path="module.graph",
+        deployments=[DeploymentSchema(name="dep1")],
+    )
+    router_config = ServeApplicationSchema(
+        import_path="module.graph",
+        deployments=[
+            DeploymentSchema(
+                name="dep1",
+                request_router_config=RequestRouterConfig(
+                    request_router_kwargs={"key": "value"}
+                ),
+            )
+        ],
+    )
+
+    assert get_app_code_version(base_config) != get_app_code_version(router_config)
 
 
 def test_serve_instance_details_is_json_serializable():

@@ -14,7 +14,7 @@ from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import (
-    CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    MISSING_INGRESS_REQUEST_ROUTER_ERROR,
     BuiltApplication,
     build_app,
 )
@@ -773,13 +773,19 @@ class ApplicationState:
                 for deployment in config.deployments
                 if isinstance(deployment.autoscaling_config, dict)
             }
-            deployment_to_request_router_cls = {
-                deployment.name: deployment.request_router_config.get(
-                    "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
-                )
-                for deployment in config.deployments
-                if isinstance(deployment.request_router_config, dict)
-            }
+            deployment_to_request_router_cls = {}
+            for deployment in config.deployments:
+                request_router_config = deployment.request_router_config
+                if isinstance(request_router_config, dict):
+                    deployment_to_request_router_cls[
+                        deployment.name
+                    ] = request_router_config.get(
+                        "request_router_class", DEFAULT_REQUEST_ROUTER_PATH
+                    )
+                elif isinstance(request_router_config, RequestRouterConfig):
+                    deployment_to_request_router_cls[deployment.name] = cast(
+                        str, request_router_config.request_router_class
+                    )
             deployment_to_deployment_actor_classes: Dict[str, Dict[str, str]] = {}
             for deployment in config.deployments:
                 actors = getattr(deployment, "deployment_actors", None)
@@ -1742,6 +1748,7 @@ def build_serve_application(
             app,
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
+            request_router_class_overrides=deployment_to_request_router_cls,
         )
         built_app.validate_single_fastapi_ingress()
 
@@ -2080,6 +2087,6 @@ def override_deployment_info(
         for info in deployment_infos.values():
             request_router_config = info.deployment_config.request_router_config
             if info.ingress and not request_router_config.is_default_request_router():
-                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
+                raise RayServeException(MISSING_INGRESS_REQUEST_ROUTER_ERROR)
 
     return deployment_infos

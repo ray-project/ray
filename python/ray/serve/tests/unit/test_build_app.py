@@ -11,6 +11,7 @@ from ray.serve._private.build_app import (
 )
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import DEFAULT_REQUEST_ROUTER_PATH
 from ray.serve.config import RequestRouterConfig
 from ray.serve.deployment import Application, Deployment
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
@@ -805,15 +806,35 @@ def test_callable_uses_multiplexing_does_not_initialize_handles():
 
 
 @pytest.mark.parametrize(
-    "haproxy_enabled, request_router_class, expect_ingress_router",
+    (
+        "haproxy_enabled,request_router_class,request_router_class_override,"
+        "expect_ingress_router"
+    ),
     [
-        (True, RoundRobinRouter, True),
-        (False, RoundRobinRouter, False),
-        (True, None, False),
+        (True, RoundRobinRouter, None, True),
+        (False, RoundRobinRouter, None, False),
+        (True, None, None, False),
+        (True, RoundRobinRouter, DEFAULT_REQUEST_ROUTER_PATH, False),
+        (
+            True,
+            None,
+            "ray.serve.experimental.round_robin_router.RoundRobinRouter",
+            True,
+        ),
+        (
+            False,
+            None,
+            "ray.serve.experimental.round_robin_router.RoundRobinRouter",
+            False,
+        ),
     ],
 )
 def test_build_app_adds_custom_ingress_request_router_under_haproxy(
-    monkeypatch, haproxy_enabled, request_router_class, expect_ingress_router
+    monkeypatch,
+    haproxy_enabled,
+    request_router_class,
+    request_router_class_override,
+    expect_ingress_router,
 ):
     monkeypatch.setattr(
         "ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", haproxy_enabled
@@ -835,6 +856,11 @@ def test_build_app_adds_custom_ingress_request_router_under_haproxy(
         app,
         name="default",
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        request_router_class_overrides=(
+            {"Ingress": request_router_class_override}
+            if request_router_class_override is not None
+            else None
+        ),
     )
 
     if expect_ingress_router:

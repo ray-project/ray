@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import (
+    DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
 )
@@ -26,11 +27,10 @@ INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
 )
 
-CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR = (
-    "A custom `request_router_config.request_router_class` is not supported on "
-    "the ingress deployment when configured through a deployment override under "
-    "HAProxy. Configure it on the deployment definition so Serve can attach an "
-    "ingress request router."
+MISSING_INGRESS_REQUEST_ROUTER_ERROR = (
+    "An ingress deployment with a custom "
+    "`request_router_config.request_router_class` requires an ingress request "
+    "router under HAProxy, but none was built."
 )
 
 
@@ -119,6 +119,7 @@ def build_app(
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
     external_scaler_enabled: bool = False,
+    request_router_class_overrides: Optional[Dict[str, str]] = None,
 ) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
@@ -155,13 +156,27 @@ def build_app(
         make_deployment_handle=make_deployment_handle,
     )
 
+    ingress_deployment_name = deployment_names[app]
+    if (
+        request_router_class_overrides is not None
+        and ingress_deployment_name in request_router_class_overrides
+    ):
+        has_custom_ingress_request_router = (
+            request_router_class_overrides[ingress_deployment_name]
+            != DEFAULT_REQUEST_ROUTER_PATH
+        )
+    else:
+        has_custom_ingress_request_router = _has_custom_request_router(
+            app._bound_deployment
+        )
+
     # Route HAProxy ingress selection through the deployment's Serve router.
     if (
         ingress_request_router is None
         and RAY_SERVE_ENABLE_HA_PROXY
         and (
             _callable_uses_multiplexing(app._bound_deployment.func_or_class)
-            or _has_custom_request_router(app._bound_deployment)
+            or has_custom_ingress_request_router
         )
     ):
         from ray.serve._private.ingress_request_router import (
@@ -207,7 +222,7 @@ def build_app(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,  # type: ignore[arg-type]
-        ingress_deployment_name=deployment_names[app],
+        ingress_deployment_name=ingress_deployment_name,
         deployments=deployments,
         deployment_handles={
             deployment_names[app]: handle
