@@ -884,6 +884,10 @@ int main(int argc, char *argv[]) {
           }
           return result;
         },
+        /*pin_and_report_moved_object=*/
+        [&](const ray::ObjectID &object_id, const ray::rpc::Address &owner_address) {
+          return node_manager->PinAndReportMovedObject(object_id, owner_address);
+        },
         std::make_shared<plasma::PlasmaClient>(),
         std::move(object_store_runner),
         [&](const std::string &address,
