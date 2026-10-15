@@ -263,6 +263,9 @@ message ObjectLocationUpdate {
   // by the same worker. If the outer ObjectID is still in scope, then the
   // owner can add the dynamically created ObjectID to its ref count.
   optional bytes generator_id = 4;
+  // When it's set, the node that now holds the primary copy of a moved object
+  // (a consume_once argument pulled by the consumer's node).
+  optional bytes primary_moved_to_node_id = 5;
 }
 
 message GetObjectLocationsOwnerRequest {

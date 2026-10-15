@@ -68,7 +68,10 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
                                 std::vector<std::unique_ptr<RayObject>> &&objects,
                                 const rpc::Address &owner_address,
                                 const ObjectID &generator_id = ObjectID::Nil()) override {
+    pinned_objects.insert(pinned_objects.end(), object_ids.begin(), object_ids.end());
   }
+
+  std::vector<ObjectID> pinned_objects;
 
   // NOOP
   void SpillObjectUptoMaxThroughput() override {}
@@ -795,6 +798,31 @@ TEST_F(NodeManagerTest, TestPinningAnObjectPendingDeletionFails) {
 
   EXPECT_EQ(failed_pin_reply.successes_size(), 1);
   EXPECT_FALSE(failed_pin_reply.successes(0));
+}
+
+TEST_F(NodeManagerTest, TestPinAndReportMovedObject) {
+  rpc::Address owner_addr;
+  owner_addr.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_addr.set_node_id(NodeID::FromRandom().Binary());
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  ObjectID id = ObjectID::FromRandom();
+
+  // The object is not in the store: nothing is pinned or reported.
+  EXPECT_FALSE(node_manager_->PinAndReportMovedObject(id, owner_addr));
+  EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
+  EXPECT_TRUE(fake_object_directory_->primary_moved_objects.empty());
+
+  RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+      id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  EXPECT_TRUE(node_manager_->PinAndReportMovedObject(id, owner_addr));
+  EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{id});
+  EXPECT_EQ(fake_object_directory_->primary_moved_objects, std::vector<ObjectID>{id});
+
+  // The object is pending deletion: the pin is refused.
+  objects_pending_deletion_->emplace(id);
+  EXPECT_FALSE(node_manager_->PinAndReportMovedObject(id, owner_addr));
+  EXPECT_EQ(local_object_manager_->pinned_objects.size(), 1u);
+  EXPECT_EQ(fake_object_directory_->primary_moved_objects.size(), 1u);
 }
 
 TEST_F(NodeManagerTest, TestConsumeSyncMessage) {
