@@ -68,9 +68,6 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/api/version":
-            self._send_json(200, {"version": "3.0.0", "ray_version": "3.0.0.dev0"})
-            return
         if self.path == "/api/jobs/":
             with self.state.lock:
                 items = [

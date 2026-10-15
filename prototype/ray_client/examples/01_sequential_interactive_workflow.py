@@ -1,12 +1,11 @@
 """Example 1: Sequential interactive workflow (`main_1` -> `main_2`).
 
-Demonstrates the primary pattern from the Ray 3.0 planning doc:
-running self-contained functions as cluster drivers and passing JSON state
-between steps through the client.
+Demonstrates running self-contained functions as cluster drivers and passing
+JSON state between steps through the client.
 """
 
-import os
 import sys
+from typing import Optional
 
 import ray_client
 
@@ -37,7 +36,7 @@ def main_2(step1_output: dict, threshold: float) -> dict:
     return {"kept_ids": [r["id"] for r in kept], "count": len(kept)}
 
 
-def run_demo(address: str) -> dict:
+def run_demo(address: Optional[str] = None) -> dict:
     sample = [{"id": f"item-{i}", "x": float(i + 1)} for i in range(6)]
     job_result_1 = ray_client.run_function_as_driver(main_1, sample, address=address)
     assert job_result_1.status() == "SUCCEEDED"
@@ -51,10 +50,6 @@ def run_demo(address: str) -> dict:
 
 
 if __name__ == "__main__":
-    cluster_addr = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else os.environ.get("RAY_JOB_ADDRESS", "http://127.0.0.1:8265")
-    )
+    cluster_addr = sys.argv[1] if len(sys.argv) > 1 else None
     output = run_demo(cluster_addr)
     print("Workflow output:", output)

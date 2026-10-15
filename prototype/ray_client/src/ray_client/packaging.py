@@ -1,6 +1,6 @@
 """Function source extraction, JSON validation, and deterministic zip packaging.
 
-Design constraints from the Ray 3.0 Ray Client specification:
+Design constraints:
   * Zero `ray` or `cloudpickle` dependency on the client.
   * Only two things cross the client-cluster boundary: files (via `runtime_env`
     `working_dir`) and JSON data.

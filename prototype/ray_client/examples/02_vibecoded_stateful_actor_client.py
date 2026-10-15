@@ -1,12 +1,11 @@
-"""Example 2: Vibe-coded stateful actor client built on `RayClient`.
+"""Example 2: Stateful detached actor client built on `RayClient`.
 
 Shows how users can wrap `RayClient` in ~30 lines to create, invoke, and tear
 down a named detached actor across separate `run_function_as_driver` calls.
 """
 
-import os
 import sys
-from typing import Any
+from typing import Any, Optional
 
 from ray_client import RayClient
 
@@ -14,7 +13,9 @@ from ray_client import RayClient
 class DetachedCounterClient:
     """Thin custom client managing a named detached Ray actor."""
 
-    def __init__(self, address: str, actor_name: str = "shared_counter"):
+    def __init__(
+        self, address: Optional[str] = None, actor_name: str = "shared_counter"
+    ):
         self.client = RayClient(address=address)
         self.actor_name = actor_name
 
@@ -70,7 +71,7 @@ class DetachedCounterClient:
         ).result()
 
 
-def run_demo(address: str) -> Any:
+def run_demo(address: Optional[str] = None) -> Any:
     counter = DetachedCounterClient(address=address)
     counter.start(initial=10)
     v1 = counter.add(5)
@@ -80,9 +81,5 @@ def run_demo(address: str) -> Any:
 
 
 if __name__ == "__main__":
-    cluster_addr = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else os.environ.get("RAY_JOB_ADDRESS", "http://127.0.0.1:8265")
-    )
+    cluster_addr = sys.argv[1] if len(sys.argv) > 1 else None
     print("Actor client output:", run_demo(cluster_addr))

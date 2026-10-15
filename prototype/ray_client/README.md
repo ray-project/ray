@@ -1,20 +1,24 @@
-# `ray_client` — Lightweight REST-Only Ray Client (`run_function_as_driver`)
+# `ray_client` — Lightweight HTTP Ray Client (`run_function_as_driver`)
 
-A minimal, forkable reference implementation of the Ray 3.0 Client built on top of the existing Ray Job Submission REST API (`/api/packages/` and `/api/jobs/`).
+`ray_client` runs a Python function as an in-cluster driver job over the Ray Job Submission HTTP API (`/api/packages/` and `/api/jobs/`).
 
 ## Design Principles
 
-1. **Zero `ray` or `cloudpickle` Dependency**: Requires only `requests`. Runs on any Python version or environment (laptop notebooks, CI runners, web services) without matching the cluster's Python or Ray version.
-2. **Run a Function, Not Imported Files**: Extracts the AST source of the target Python `def` function and executes it as a real in-cluster driver process, so Ray libraries (`ray.data`, `ray.train`, `@ray.remote` tasks/actors) work natively without importing the caller's surrounding module on the cluster.
-3. **Strict JSON & File Sync Boundary**: Only files (`working_dir` zip packages) and JSON data cross the client-cluster boundary.
-4. **Forkable & Standalone Repo Ready**: Self-contained in 5 files under `prototype/ray_client/src/ray_client/` so it can be split into its own repository (`git subtree split --prefix=prototype/ray_client`) or forked by users to vibe-code custom clients.
+`ray_client` separates client-side job submission from in-cluster Ray execution:
+
+- Requires only `requests` and the Python standard library, so the client runs from any Python >= 3.9 environment without installing `ray` or `cloudpickle` or matching the cluster's Python version.
+- Extracts the AST source of the target `def` function and executes it as an in-cluster driver script, so Ray libraries (`ray.data`, `ray.train`, and `@ray.remote` tasks and actors) run natively inside the cluster without importing the caller's surrounding module.
+- Restricts the client-cluster boundary to files (`runtime_env["working_dir"]` zip archives) and JSON data (arguments, referenced module-level constants, and return values).
+- Fits in five small source files under `src/ray_client/`, making it straightforward to extract into a standalone repository (`git subtree split --prefix=prototype/ray_client`) or fork for custom workflows.
 
 ## Rules for Driver Functions
 
-- Write a plain, undecorated `def` (sync or `async`) in a `.py` file or notebook cell. Its exact source is extracted and executed on the cluster.
-- Put `import` statements for anything other than `ray` inside the function (or in a module under `working_dir`); the client machine does not need those packages.
-- Arguments, referenced module-level constants, and the return value must be JSON. Return summaries or storage URIs rather than large arrays.
-- Ray is already initialized in a shared namespace (`"ray_client"` by default) when the function runs; calling `ray.init()` again is a no-op. Named detached actors created by one call are visible to the next via `ray.get_actor(name)`.
+Driver functions passed to `run_function_as_driver` must follow four rules:
+
+- Define a plain, undecorated `def` or `async def` function in a `.py` file or notebook cell. The client extracts the function source and runs it on the cluster.
+- Place `import` statements for packages other than `ray` inside the function body or in a module under `runtime_env["working_dir"]`. The client environment does not need those packages installed.
+- Pass JSON-serializable arguments, referenced module-level constants, and return values. Return summaries or storage URIs rather than large arrays.
+- Assume Ray is already initialized in a shared namespace (`"ray_client"` by default) when the function starts; calling `ray.init()` inside the function is a no-op. Named detached actors created in one call remain accessible to subsequent calls via `ray.get_actor(name)`.
 
 ## Quickstart
 
@@ -50,18 +54,13 @@ job_result_2 = ray_client.run_function_as_driver(
 print(job_result_2.result())  # 60
 ```
 
-## Layout
+## Package Layout
 
-The public API is one function (`run_function_as_driver`), two classes (`RayClient`, `JobResult`), and four exceptions. Internally the package is split into a transport-agnostic packaging layer and the HTTP transport, so a fork can keep the former and swap the latter (for example, submitting the same package as a KubeRay `RayJob` instead of through the Jobs REST API).
+The public API exports one function (`run_function_as_driver`), two classes (`RayClient` and `JobResult`), and four exceptions. Internally, the package separates transport-agnostic archive construction from the HTTP client so forks can swap the transport layer (for example, submitting the generated package as a KubeRay `RayJob` resource):
 
-- `src/ray_client/client.py`: `RayClient` (`run_function_as_driver`, `get_job`, `list_jobs`, and `request` as the single HTTP seam to override), `JobResult` (`result`, `logs`, `status`, `done`, `wait`, `stop`, `delete`), and top-level `run_function_as_driver`.
-- `src/ray_client/packaging.py`: Transport-agnostic layer. `build_driver_package` turns `(fn, args, kwargs, working_dir)` into a deterministic zip plus a base64 JSON payload; `parse_logs_and_result` turns raw driver logs back into `(user_logs, output, error)`.
-- `src/ray_client/_driver_runner.py`: The cluster-side entrypoint shipped with every job. Fork this file to change how the driver initializes Ray, loads inputs, or reports results.
-- `src/ray_client/exceptions.py`: `RayClientError`, `RayClientSerializationError`, `RayJobExecutionError`, and `RayJobTimeoutError`.
-- `examples/`:
-  - `01_sequential_interactive_workflow.py`
-  - `02_vibecoded_stateful_actor_client.py`
-  - `03_vibecoded_multicluster_sharding_client.py`
-- `tests/`:
-  - `test_unit.py`: Offline unit & mock HTTP server tests (zero `ray` dependency).
-  - `test_integration_live_cluster.py`: Live Ray cluster end-to-end tests.
+- `src/ray_client/client.py`: Implements `RayClient` (`run_function_as_driver`, `get_job`, `list_jobs`, and `request` as the single HTTP override point), `JobResult` (`result`, `logs`, `status`, `done`, `wait`, `stop`, and `delete`), and the module-level `run_function_as_driver` helper.
+- `src/ray_client/packaging.py`: Implements the transport-agnostic packaging layer. `build_driver_package` converts `(fn, args, kwargs, working_dir)` into a deterministic zip archive and base64 JSON payload; `parse_logs_and_result` splits raw driver logs into user logs, return values, and structured error metadata.
+- `src/ray_client/_driver_runner.py`: Implements the cluster-side entrypoint packaged with every job. Edit this file in a fork to customize how the driver initializes Ray, loads inputs, or writes results.
+- `src/ray_client/exceptions.py`: Defines `RayClientError`, `RayClientSerializationError`, `RayJobExecutionError`, and `RayJobTimeoutError`.
+- `examples/`: Contains runnable examples for sequential driver workflows (`01_sequential_interactive_workflow.py`), stateful detached actor wrappers (`02_vibecoded_stateful_actor_client.py`), and multi-cluster job sharding (`03_vibecoded_multicluster_sharding_client.py`).
+- `tests/`: Contains offline unit and mock HTTP server tests (`test_unit.py`) and live cluster end-to-end tests (`test_integration_live_cluster.py`).
