@@ -17,6 +17,7 @@ Why Head Node Memory Grows
 - The Ray dashboard provides a web interface for cluster monitoring and debugging. For more details, see :ref:`observability-getting-started`.
 - The Ray dashboard caches cluster events in memory for display and debugging purposes. The ``RAY_DASHBOARD_MAX_EVENTS_TO_CACHE`` environment variable controls the cache size. For implementation details, see the `event caching code <https://github.com/ray-project/ray/blob/814768317813afca2f0af740f58d024b059ae7d7/python/ray/dashboard/modules/event/event_head.py#L35>`_.  
 - The dashboard processes and stores logs and metadata from jobs and workers, which accumulate over time in long-running clusters.  
+- When you enable :ref:`task event storage on the Ray API server <task-events-on-api-server>`, the Ray API server holds task events in memory instead of the GCS. This setting moves the memory from the GCS process to the Ray API server process, both of which run on the head node, so it reduces GCS memory rather than total head node memory.
   
 Mitigation Strategies  
 ---------------------  

@@ -274,6 +274,35 @@ HTTP publishing is configured via environment variables:
 - **RAY_DASHBOARD_AGGREGATOR_AGENT_EXPOSABLE_EVENT_TYPES**: Comma-separated list of event types to expose. Set it to ``ALL`` to expose every event type. ``ALL`` is supported in Ray 2.54.0 and later.
 - **RAY_DASHBOARD_AGGREGATOR_AGENT_PUBLISH_EVENTS_TO_EXTERNAL_HTTP_SERVICE**: Enable/disable flag (default: True)
 
+.. _task-events-implementation:
+
+Task events on the Ray API server
+---------------------------------
+
+Starting in Ray 2.58, Ray can route task events to a dedicated module on the Ray API server instead of storing them in the GCS. This path is off by default. For the environment variables that turn it on, see :ref:`task-events-on-api-server`.
+
+RayTaskEventRecorder
+~~~~~~~~~~~~~~~~~~~~
+
+``RayTaskEventRecorder`` is a task-aware recorder that shares a base class with ``RayEventRecorder``. The core worker records to it when both ``enable_ray_event`` and ``enable_ray_task_event_recorder`` are true, and while it's active the core worker task event buffer stops sending to the aggregator agent. Compared to the generic recorder, it:
+
+- Buffers status events and profile events separately, each with its own size limit
+- Reports the task attempts it drops to the aggregator agent, so consumers know the data is incomplete
+- Drops later events for an attempt it already dropped, so an attempt is never partly reported
+
+TaskEventsHead
+~~~~~~~~~~~~~~
+
+``TaskEventsHead`` is a dashboard subprocess module that Ray loads only when ``enable_task_events_to_dashboard_head`` is true. It replicates what ``GcsTaskManager`` does in the GCS:
+
+- **Ingestion**: Receives events from the aggregator agent at ``POST /api/task_events`` and converts each ``RayEvent`` into a ``TaskEvents`` message
+- **Storage**: Keeps task events in memory, keyed by task attempt, under the same ``RAY_task_events_*`` limits the GCS uses
+- **Eviction**: Evicts finished tasks first, then actor tasks, then everything else, oldest first within each group
+- **Reconciliation**: Subscribes to the GCS for worker death and job completion, and marks the affected task attempts failed
+- **Queries**: Serves ``POST /api/task_events/query``, which backs ``ray list tasks`` and ``ray.timeline()``
+
+Because the store is in memory, restarting the Ray API server drops the task events it holds.
+
 Creating New Event Types
 -------------------------
 
