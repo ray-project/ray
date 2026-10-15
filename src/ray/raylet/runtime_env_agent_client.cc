@@ -409,8 +409,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   /// which cases we did not receive a well-formed HTTP response. Application errors
   /// returned by the server are not retried.
   ///
-  /// If the retries took so long and exceeded deadline, Raylet exits immediately. Note
-  /// the check happens after `try_invoke_once` returns. This means if you have a
+  /// If the retries took so long and exceeded deadline, the request fails. Note the
+  /// check happens after `try_invoke_once` returns. This means if you have a
   /// successful but very long connection (e.g. runtime env agent is busy downloading
   /// from s3), you are safe.
   ///
