@@ -1,5 +1,6 @@
 import contextlib
 import ctypes
+import json
 import os
 import signal
 import socket
@@ -21,7 +22,7 @@ from ray.experimental.sandbox._internal.image_utils import (
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import (
     GVisorSandboxBackend,
-    _exec_process_tree,
+    _exec_processes,
 )
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
@@ -314,33 +315,35 @@ def test_disk_caps_a_readonly_sandbox_with_a_workdir():
         runtime.delete(instance_id)
 
 
-_PS_TABLE = """\
-UID       PID       PPID      PGID      C         TTY       STIME     TIME      CMD
-0         1         0         1         0         ?         20:15     0s        sleep
-0         2         0         2         0         ?         20:15     0s        sh
-0         3         2         2         0         ?         20:15     0s        sleep
-0         4         3         4         0         ?         20:15     0s        python3
-0         5         1         2         0         ?         20:15     0s        node
-0         6         0         6         0         ?         20:15     0s        sh
-0         7         6         6         0         ?         20:15     0s        sleep
-"""
+def _procfs_dump(*procs):
+    """What ``runsc trace procfs`` prints for (pid, ppid, pgid, sid) tuples."""
+    lines = ["PROCFS DUMP"]
+    for pid, ppid, pgid, sid in procs:
+        status, stat = {"pid": pid, "ppid": ppid}, {"pgid": pgid, "sid": sid}
+        lines += ["", json.dumps({"status": status, "stat": stat})]
+    return "\n".join(lines) + "\n"
 
 
-def test_exec_process_tree_follows_children_and_the_command_group():
-    # 3 is a child, 4 a grandchild in a group of its own, and 5 a reparented
-    # child that kept the group. 6 and 7 belong to another command.
-    assert _exec_process_tree(_PS_TABLE, 2) == {2, 3, 4, 5}
-    assert _exec_process_tree(_PS_TABLE, 6) == {6, 7}
-
-
-def test_exec_process_tree_without_a_usable_table():
-    without_pgid = "\n".join(
-        " ".join(line.split()[:3] + line.split()[4:]) for line in _PS_TABLE.splitlines()
+def test_exec_processes_follows_the_session_and_children():
+    dump = _procfs_dump(
+        (1, 0, 1, 1),  # The sandbox's init.
+        (2, 0, 2, 2),  # The command, a session leader.
+        (3, 2, 2, 2),  # Its child,
+        (4, 3, 4, 2),  # a grandchild in a group of its own,
+        (5, 1, 2, 2),  # and reparented children, in the command's group
+        (6, 1, 6, 2),  # or in a group of their own.
+        (7, 3, 7, 7),  # A child that called setsid(), and its child.
+        (8, 7, 7, 7),
+        (9, 1, 9, 9),  # A daemon: it called setsid() and its parent exited.
+        (10, 0, 10, 10),  # Another command and its child.
+        (11, 10, 10, 10),
+        (13, 1, 13, 12),  # The reparented child of a command that exited.
     )
-    # Without PGID only parentage counts, so the reparented 5 is missed.
-    assert _exec_process_tree(without_pgid, 2) == {2, 3, 4}
-    assert _exec_process_tree("", 2) == {2}
-    assert _exec_process_tree("runsc: container not found", 2) == {2}
+    assert _exec_processes(dump, 2) == [2, 3, 4, 5, 6, 7, 8]
+    assert _exec_processes(dump, 10) == [10, 11]
+    assert _exec_processes(dump, 12) == [13]
+    assert _exec_processes("PROCFS DUMP\n", 2) == []
+    assert _exec_processes("loading sandbox: not found", 2) == []
 
 
 def test_exec_timeout_kills_the_command_and_its_children():
@@ -357,6 +360,25 @@ def test_exec_timeout_kills_the_command_and_its_children():
         assert "sleep 30" not in runtime.exec(instance_id, "ps").stdout
         # The sandbox is still usable.
         assert runtime.exec(instance_id, "echo ok").stdout == "ok\n"
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_background_jobs_that_outlive_the_shell():
+    """A background job holding the output pipes outlives the shell that
+    started it, so the exec times out. The job is reparented to PID 1, and
+    GNU timeout also moves to a process group of its own, but both stay in
+    the command's session, and the timeout kills them."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="python:3.10-slim")
+    try:
+        for command in ["sleep 1000 & exit", "timeout 1001 sleep 1001 & exit"]:
+            with pytest.raises(SandboxTimeoutError):
+                runtime.exec(instance_id, command, timeout=1)
+        # The image has no ps. A killed process left as a zombie has an
+        # empty cmdline.
+        cmdlines = runtime.exec(instance_id, r"cat /proc/[0-9]*/cmdline | tr '\0' ' '")
+        assert "sleep 100" not in cmdlines.stdout
     finally:
         runtime.delete(instance_id)
 
