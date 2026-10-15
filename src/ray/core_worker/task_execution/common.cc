@@ -26,8 +26,10 @@ ActorTaskExecutionArgWaiter::ActorTaskExecutionArgWaiter(
     : async_wait_for_args_(std::move(async_wait_for_args)) {}
 
 void ActorTaskExecutionArgWaiter::BeginArgsFetch(
-    const std::vector<rpc::ObjectReference> &args, const TaskAttempt &task_attempt) {
-  async_wait_for_args_(args, task_attempt.first, task_attempt.second);
+    const std::vector<rpc::ObjectReference> &args,
+    const std::vector<bool> &is_move,
+    const TaskAttempt &task_attempt) {
+  async_wait_for_args_(args, is_move, task_attempt.first, task_attempt.second);
 }
 
 void ActorTaskExecutionArgWaiter::OnArgsReady(const TaskAttempt &task_attempt,
