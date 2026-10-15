@@ -593,20 +593,10 @@ class NixlTensorTransport(TensorTransportManager):
             # Nixl agent reuse is enabled.
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
                 cached_version = self._remote_agents.get(remote_name)
-                if cached_version is not None:
-                    # If the remote agent metadata version is different from the cached one,
-                    # it means there was memory deregistered. We need to remove the remote agent
-                    # before adding it, because `nixlRemoteSection` currently does not support
-                    # updating descriptor list in such a case (there is potential memory overlap).
-                    if remote_agent_meta_version > cached_version:
-                        with self._agent_guard.write(remote_name, self._wait_done):
-                            # A writer queued ahead of us may have refreshed it already.
-                            agents = self._remote_agents
-                            if agents.get(remote_name, -1) < remote_agent_meta_version:
-                                nixl_agent.remove_remote_agent(remote_name)
-                                agents[remote_name] = remote_agent_meta_version
-                    self._remote_agents.move_to_end(remote_name)
-                elif len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE:
+                if (
+                    cached_version is None
+                    and len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE
+                ):
                     evicted_agent_name, evicted_version = self._remote_agents.popitem(
                         last=False
                     )
@@ -622,7 +612,23 @@ class NixlTensorTransport(TensorTransportManager):
                         )
                         raise
 
-                self._remote_agents.setdefault(remote_name, remote_agent_meta_version)
+                if cached_version is not None:
+                    if remote_agent_meta_version > cached_version:
+                        # If the remote agent metadata version is newer than the cached one,
+                        # it means there was memory deregistered. We need to remove the remote agent
+                        # before adding it, because `nixlRemoteSection` currently does not support
+                        # updating descriptor list in such a case (there is potential memory overlap).
+                        # Add and cache update happen under the lock, so a cached version always
+                        # means the agent holds it.
+                        with self._agent_guard.write(remote_name, self._wait_done):
+                            agents = self._remote_agents
+                            current = agents.get(remote_name)
+                            if current is not None and current < remote_agent_meta_version:
+                                nixl_agent.remove_remote_agent(remote_name)
+                                nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+                                agents[remote_name] = remote_agent_meta_version
+                    if remote_name in self._remote_agents:
+                        self._remote_agents.move_to_end(remote_name)
 
             reader_key = self._agent_guard.acquire_read(remote_name)
             # While we hold a reader the version can't change. Don't re-add metadata
@@ -630,6 +636,11 @@ class NixlTensorTransport(TensorTransportManager):
             cached_now = self._remote_agents.get(remote_name, remote_agent_meta_version)
             if cached_now <= remote_agent_meta_version:
                 nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+                if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
+                    # Published only after the add, so a cached version means it is there.
+                    self._remote_agents.setdefault(
+                        remote_name, remote_agent_meta_version
+                    )
 
             xfer_handle = nixl_agent.initialize_xfer(
                 "READ",
