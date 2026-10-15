@@ -858,6 +858,66 @@ def test_read_parquet_v2_drops_nested_fields_outside_inferred_schema(
     assert rows[-1]["nested"] == {"a": 16}
 
 
+def test_read_parquet_v2_fallback_preserves_int96_timestamp_coercion(
+    tmp_path, restore_ctx
+):
+    from datetime import datetime
+
+    target_schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field("nested", pa.struct([pa.field("x", pa.int64())])),
+            pa.field("timestamp", pa.timestamp("ms")),
+        ]
+    )
+    expanded_schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field(
+                "nested",
+                pa.struct([pa.field("x", pa.int64()), pa.field("extra", pa.string())]),
+            ),
+            pa.field("timestamp", pa.timestamp("ms")),
+        ]
+    )
+    timestamp = datetime(1500, 1, 1)
+    for i in range(2):
+        if i == 1:
+            table = pa.Table.from_pylist(
+                [
+                    {
+                        "id": i,
+                        "nested": {"x": i, "extra": "late"},
+                        "timestamp": timestamp,
+                    }
+                ],
+                schema=expanded_schema,
+            )
+        else:
+            table = pa.Table.from_pylist(
+                [{"id": i, "nested": {"x": i}, "timestamp": timestamp}],
+                schema=target_schema,
+            )
+        pq.write_table(
+            table,
+            str(tmp_path / f"f{i}.parquet"),
+            use_deprecated_int96_timestamps=True,
+        )
+
+    restore_ctx.use_datasource_v2 = True
+    with pytest.warns(DeprecationWarning, match="`dataset_kwargs`"):
+        ds = ray.data.read_parquet(
+            [str(tmp_path / "f0.parquet"), str(tmp_path / "f1.parquet")],
+            schema=target_schema,
+            dataset_kwargs={"coerce_int96_timestamp_unit": "ms"},
+        )
+
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    assert len(rows) == 2
+    assert rows[-1]["nested"] == {"x": 1}
+    assert rows[-1]["timestamp"] == timestamp
+
+
 def test_merge_schema_fails_on_incompatible_file_outside_sample(tmp_path, restore_ctx):
     for i in range(16):
         _write(tmp_path / f"f{i:02d}.parquet", pa.table({"id": [i]}))

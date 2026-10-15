@@ -504,6 +504,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         pf = pq.ParquetFile(
             fragment.path,
             filesystem=fragment.filesystem,  # pyrefly: ignore[unexpected-keyword]
+            coerce_int96_timestamp_unit=self._parquet_format_kwargs.get(
+                "coerce_int96_timestamp_unit"
+            ),
         )
 
         # Scope the safe batch-size calculation to the columns actually being
