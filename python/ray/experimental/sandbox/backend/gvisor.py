@@ -217,7 +217,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 res = None
                 if os.path.exists(pid_file):
                     state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                    res = subprocess.run(state_args, capture_output=True, text=True)
+                    try:
+                        # A wedged runsc mustn't hold the create past its
+                        # deadline, which the check below then enforces.
+                        res = subprocess.run(
+                            state_args,
+                            capture_output=True,
+                            text=True,
+                            timeout=max(1.0, timeout - (time.time() - start_time)),
+                        )
+                    except subprocess.TimeoutExpired:
+                        res = None
                     delay = _STATE_POLL_SECONDS
                 if res is not None and res.returncode == 0:
                     try:
