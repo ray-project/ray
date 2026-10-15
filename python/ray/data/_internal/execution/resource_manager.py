@@ -836,11 +836,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if not op.incremental_resource_usage().satisfies_limit(budget):
             return False
 
-        # With no estimate yet (no output observed), require at least one byte so
-        # an exhausted budget still blocks. A real estimate of 0 is kept as is.
-        expected_output_bytes = op.metrics.obj_store_mem_max_pending_output_per_task
-        if expected_output_bytes is None:
-            expected_output_bytes = 1
+        # The estimate is None until the op's first output, so admit the task then.
+        expected_output_bytes = (
+            op.metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
         if budget.object_store_memory >= expected_output_bytes:
             return True
 
