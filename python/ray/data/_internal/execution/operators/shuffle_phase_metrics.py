@@ -1,18 +1,3 @@
-"""Per-phase metrics bookkeeping shared by all shuffle-family operators.
-
-A shuffle-family operator (GPU shuffle and GPU aggregate, the shuffle v2
-map/reduce/sampling operators) runs one or more internal *phases*, each with
-its own task lifecycle, progress bar and block stats. ``ShuffleOperatorMetrics``
-owns one ``ShufflePhaseMetrics`` per phase and derives every operator-facing
-view from them: ``get_stats()``, ``_extra_metrics()``, ``get_phase_metrics()``,
-the sub-progress bar wiring and the output estimates.
-
-Operators record events on a phase at the same call sites where they would
-otherwise touch an ``OpRuntimeMetrics`` directly. The phase records the event
-on its own metrics and, where it belongs to the operator as a whole, forwards
-it to the operator's base metrics so the operator-level series stays complete.
-"""
-
 import typing
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -42,14 +27,12 @@ class PhaseSpec:
     """Static description of one phase of a shuffle-family operator.
 
     Attributes:
-        name: Key used in stats, extra metrics and Prometheus tags
-            (e.g. ``"shuffle"``, ``"finalize"``).
+        name: Key used in stats, extra metrics and Prometheus tags.
         progress_bar_name: Display name of the phase's sub-progress bar.
-        is_output_phase: Whether this phase's outputs are the operator's
-            outputs. Exactly one phase per operator must be the output phase;
-            only its output events are forwarded to the operator-level metrics.
-        total_num_tasks: Total number of tasks the phase will run, if known
-            upfront (e.g. the number of partitions). Used for output estimates.
+        is_output_phase: Whether this phase produces the operator's outputs.
+            Exactly one phase per operator must be the output phase.
+        total_num_tasks: Number of tasks the phase will run, if known upfront.
+            Used for output estimates.
     """
 
     name: str
@@ -61,22 +44,19 @@ class PhaseSpec:
 class ShufflePhaseMetrics:
     """Metrics, block stats and progress bar for one phase of an operator.
 
-    Task lifecycle events (``on_task_submitted`` / ``on_task_finished``) are
-    always forwarded to the operator-level metrics. Phases number their tasks
-    independently (shuffle task 0 and partition 0 both exist), so the
-    forwarded key is ``local_index * num_phases + phase_ordinal``, which is
-    unique across phases without any shared state. Output events are forwarded
-    only from the output phase. When a phase is aliased to the operator's own
-    metrics object (single-phase operators) nothing is forwarded.
+    Only the output phase forwards its events to the operator-level metrics,
+    so the operator's averages and task durations describe one kind of task.
+    A single-phase operator aliases its phase to the operator's metrics and
+    forwards nothing.
     """
 
     def __init__(
         self,
         spec: PhaseSpec,
+        *,
         metrics: OpRuntimeMetrics,
         op_metrics: OpRuntimeMetrics,
-        phase_ordinal: int,
-        num_phases: int,
+        forward: bool,
     ):
         self.spec = spec
         self.metrics = metrics
@@ -86,9 +66,7 @@ class ShufflePhaseMetrics:
         self.total_num_tasks = spec.total_num_tasks
 
         self._op_metrics = op_metrics
-        self._forward = metrics is not op_metrics
-        self._phase_ordinal = phase_ordinal
-        self._num_phases = num_phases
+        self._forward = forward
         self._bar: Optional["BaseProgressBar"] = None
 
     @property
@@ -99,13 +77,6 @@ class ShufflePhaseMetrics:
     def is_output_phase(self) -> bool:
         return self.spec.is_output_phase
 
-    def _op_task_index(self, task_index: int) -> int:
-        return task_index * self._num_phases + self._phase_ordinal
-
-    # ------------------------------------------------------------------
-    # Task lifecycle
-    # ------------------------------------------------------------------
-
     def on_task_submitted(
         self,
         task_index: int,
@@ -114,16 +85,12 @@ class ShufflePhaseMetrics:
     ) -> None:
         self.metrics.on_task_submitted(task_index, inputs, task_id=task_id)
         if self._forward:
-            self._op_metrics.on_task_submitted(
-                self._op_task_index(task_index), inputs, task_id=task_id
-            )
+            self._op_metrics.on_task_submitted(task_index, inputs, task_id=task_id)
 
     def on_task_output(self, task_index: int, output: RefBundle) -> None:
         self.metrics.on_task_output_generated(task_index, output)
-        if self._forward and self.is_output_phase:
-            self._op_metrics.on_task_output_generated(
-                self._op_task_index(task_index), output
-            )
+        if self._forward:
+            self._op_metrics.on_task_output_generated(task_index, output)
 
     def on_task_finished(
         self,
@@ -140,29 +107,24 @@ class ShufflePhaseMetrics:
         )
         if self._forward:
             self._op_metrics.on_task_finished(
-                self._op_task_index(task_index),
+                task_index,
                 exception,
                 task_exec_stats=task_exec_stats,
                 task_exec_driver_stats=task_exec_driver_stats,
             )
 
-    # ------------------------------------------------------------------
-    # Output queue
-    # ------------------------------------------------------------------
-
     def on_output_queued(self, output: RefBundle) -> None:
         self.metrics.on_output_queued(output)
-        if self._forward and self.is_output_phase:
+        if self._forward:
             self._op_metrics.on_output_queued(output)
 
     def on_output_dequeued(self, output: RefBundle) -> None:
         self.metrics.on_output_dequeued(output)
-        if self._forward and self.is_output_phase:
+        if self._forward:
             self._op_metrics.on_output_dequeued(output)
-
-    # ------------------------------------------------------------------
-    # Stats, progress and estimates
-    # ------------------------------------------------------------------
+            # A dequeue only happens inside ``get_next``, which records the take
+            # on the operator but cannot see a separate phase object.
+            self.metrics.on_output_taken(output)
 
     def record_block_stats(self, *metadata: BlockMetadata) -> None:
         self.block_stats.extend(m.to_stats() for m in metadata)
@@ -177,15 +139,10 @@ class ShufflePhaseMetrics:
     def estimate_totals(
         self, num_tasks_submitted: int, upstream_op_num_outputs: int
     ) -> Tuple[int, int]:
-        """Estimate this phase's total output bundles and rows.
-
-        When the phase knows its task count, the estimate is
-        ``total tasks * average outputs per finished task``. This bypasses
-        ``estimate_total_num_of_blocks``, whose guard needs a non-zero average
-        number of *input* blocks per task; finalize tasks are submitted with an
-        empty input bundle, so that average is 0 and the helper would return 0.
-        """
+        """Estimate this phase's total output bundles and rows."""
         if self.total_num_tasks is not None:
+            # ``estimate_total_num_of_blocks`` returns 0 when tasks have empty
+            # input bundles, as finalize tasks do, so scale by task count instead.
             outputs_per_task = self.metrics.average_num_outputs_per_task
             rows_per_task = self.metrics.average_rows_outputs_per_task
             if not outputs_per_task or rows_per_task is None:
@@ -203,27 +160,18 @@ class ShufflePhaseMetrics:
         return num_bundles, num_rows
 
     def as_dict(self) -> Dict[str, Any]:
-        return {**self.metrics.as_dict(), **self.custom}
+        # Resource usage belongs to the whole operator, not to one phase.
+        return {
+            **self.metrics.as_dict(include_resource_usage=False),
+            **self.custom,
+        }
 
 
 class ShuffleOperatorMetrics:
-    """The per-operator collection of phases.
+    """The phases of one operator, and the operator-level views built from them.
 
-    Holds one ``ShufflePhaseMetrics`` per ``PhaseSpec`` and computes every
-    operator-facing view from them on demand, so there is a single copy of each
-    fact. Operators delegate their ``PhysicalOperator`` methods to this object:
-
-    - ``get_stats()``            -> ``stats()``
-    - ``_extra_metrics()``       -> ``extra_metrics()``
-    - ``get_phase_metrics()``    -> ``phase_metrics()``
-    - ``num_outputs_total()``    -> ``estimated_num_output_bundles``
-    - ``num_output_rows_total()``-> ``estimated_output_num_rows``
-    - ``get_sub_progress_bar_names()`` / ``set_sub_progress_bar()``
-                                 -> ``progress_bar_names()`` / ``set_progress_bar()``
-
-    A single-phase operator's phase is aliased to the operator's own metrics
-    object, so its stats keep the plain operator name and nothing is exported a
-    second time under a phase tag.
+    Operators delegate to this object for managing and aggregating the metrics of
+    their constituent phases.
     """
 
     def __init__(
@@ -236,10 +184,9 @@ class ShuffleOperatorMetrics:
 
         Args:
             op: The owning operator.
-            op_metrics: The operator's own metrics object (``self._metrics``).
-                Passed explicitly rather than read via ``op.metrics`` because
-                that property calls ``op._extra_metrics()``, which delegates
-                back here before construction has finished.
+            op_metrics: The operator's ``self._metrics``, passed explicitly
+                because ``op.metrics`` calls ``_extra_metrics()``, which
+                delegates back here.
             specs: One spec per phase, in progress bar order.
         """
         if not specs:
@@ -258,15 +205,15 @@ class ShuffleOperatorMetrics:
         self._estimated_output_num_rows: Optional[int] = None
 
         self._aliased = len(specs) == 1
-        self.phases: Dict[str, ShufflePhaseMetrics] = {}
-        for ordinal, spec in enumerate(specs):
-            self.phases[spec.name] = ShufflePhaseMetrics(
+        self.phases: Dict[str, ShufflePhaseMetrics] = {
+            spec.name: ShufflePhaseMetrics(
                 spec,
                 metrics=op_metrics if self._aliased else OpRuntimeMetrics(op),
                 op_metrics=op_metrics,
-                phase_ordinal=ordinal,
-                num_phases=len(specs),
+                forward=not self._aliased and spec.is_output_phase,
             )
+            for spec in specs
+        }
         self._phases_by_bar_name = {
             phase.spec.progress_bar_name: phase for phase in self.phases.values()
         }
@@ -275,24 +222,15 @@ class ShuffleOperatorMetrics:
     def output_phase(self) -> ShufflePhaseMetrics:
         return next(p for p in self.phases.values() if p.is_output_phase)
 
-    # ------------------------------------------------------------------
-    # Operator-facing views
-    # ------------------------------------------------------------------
-
     def stats(self) -> StatsDict:
-        """Block stats keyed by phase name.
-
-        ``DatasetStatsBuilder.build_multioperator`` prefixes each key with the
-        operator name when there is more than one, and ignores the key when
-        there is exactly one, so bare phase names render as
-        ``<op name>Shuffle`` / ``<op name>Finalize``.
-        """
+        # With several keys the stats builder prefixes each with the operator
+        # name, so bare phase names render as ``<op>Shuffle`` / ``<op>Finalize``.
         return {phase.name: phase.block_stats for phase in self.phases.values()}
 
     def extra_metrics(self) -> Dict[str, Any]:
         if self._aliased:
-            # The phase *is* the operator's metrics; nesting it here would nest
-            # the operator's own dict inside itself on every read.
+            # The lone phase is the operator's own metrics; nesting it here
+            # would put the operator's dict inside itself.
             (phase,) = self.phases.values()
             return dict(phase.custom)
         return {phase.name: phase.as_dict() for phase in self.phases.values()}
@@ -310,18 +248,9 @@ class ShuffleOperatorMetrics:
         if phase is not None:
             phase.set_progress_bar(bar)
 
-    # ------------------------------------------------------------------
-    # Output estimates
-    # ------------------------------------------------------------------
-
     def update_output_estimates(
         self, phase: ShufflePhaseMetrics, num_tasks_submitted: int
     ) -> None:
-        """Re-estimate the operator's total output from ``phase``'s progress.
-
-        Replaces the inline ``estimate_total_num_of_blocks`` block that each
-        shuffle operator used to carry.
-        """
         bundles, rows = phase.estimate_totals(
             num_tasks_submitted, self._op.upstream_op_num_outputs()
         )

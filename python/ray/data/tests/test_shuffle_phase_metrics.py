@@ -64,7 +64,12 @@ def _make_bundle(num_rows: int = 10, size_bytes: int = 100) -> RefBundle:
         exec_stats=BlockExecStats(wall_time_s=0, block_ser_time_s=0),
     )
     return RefBundle(
-        [BlockEntry(ray.ObjectRef.from_random(), metadata)],
+        (
+            BlockEntry(
+                ray.ObjectRef.from_random(),  # pyrefly: ignore[bad-argument-type]
+                metadata,
+            ),
+        ),
         owns_blocks=False,
         schema=None,
     )
@@ -103,53 +108,28 @@ def test_phase_spec_validation(specs: List[PhaseSpec]):
         ShuffleOperatorMetrics(op, OpRuntimeMetrics(op), specs)
 
 
-def test_task_lifecycle_forwards_to_operator_metrics():
+def test_only_output_phase_forwards_task_events():
     _, op_metrics, som = _make_two_phase()
     shuffle, finalize = som.phases["shuffle"], som.phases["finalize"]
 
-    # Both phases use local index 0; the operator-level dict must not collide.
     shuffle.on_task_submitted(0, _make_bundle())
-    finalize.on_task_submitted(0, _make_bundle())
     assert shuffle.metrics.num_tasks_running == 1
+    assert op_metrics.num_tasks_running == 0
+    # Same local index on the output phase lands on the operator unchanged.
+    finalize.on_task_submitted(0, _make_bundle())
     assert finalize.metrics.num_tasks_running == 1
-    assert op_metrics.num_tasks_running == 2
-    shuffle.on_task_submitted(1, _make_bundle())
-    _finish(shuffle, 1)
+    assert list(op_metrics._running_tasks) == [0]
 
     _finish(shuffle, 0)
     _finish(finalize, 0)
-    assert shuffle.metrics.num_tasks_finished == 2
+    assert shuffle.metrics.num_tasks_finished == 1
     assert finalize.metrics.num_tasks_finished == 1
-    assert op_metrics.num_tasks_submitted == 3
-    assert op_metrics.num_tasks_finished == 3
-    assert op_metrics.num_tasks_running == 0
+    assert op_metrics.num_tasks_submitted == op_metrics.num_tasks_finished == 1
+    # The hanging-task threshold is built from output-phase durations only.
+    assert op_metrics.op_task_duration_stats.num_samples == 1
     assert op_metrics._running_tasks == {}
     assert shuffle.metrics._running_tasks == {}
     assert finalize.metrics._running_tasks == {}
-
-
-@pytest.mark.parametrize("num_phases", [2, 3])
-def test_forwarded_keys_are_unique_across_phases(num_phases: int):
-    op = _make_op()
-    op_metrics = OpRuntimeMetrics(op)
-    specs = [PhaseSpec(f"p{i}", f"P{i}") for i in range(num_phases - 1)]
-    specs.append(PhaseSpec("out", "Out", is_output_phase=True))
-    som = ShuffleOperatorMetrics(op, op_metrics, specs)
-
-    # Every phase submits the same local indices; the operator-level table
-    # must still hold one entry per submit.
-    local_indices = range(5)
-    for phase in som.phases.values():
-        for i in local_indices:
-            phase.on_task_submitted(i, _make_bundle())
-    # key = local index * num_phases + phase ordinal
-    assert set(op_metrics._running_tasks) == set(range(num_phases * len(local_indices)))
-
-    for phase in som.phases.values():
-        for i in local_indices:
-            _finish(phase, i)
-    assert op_metrics._running_tasks == {}
-    assert op_metrics.num_tasks_finished == num_phases * len(local_indices)
 
 
 def test_output_events_forward_only_from_output_phase():
@@ -208,7 +188,7 @@ def test_output_estimates_with_known_task_count_and_empty_inputs():
     assert som.estimated_output_num_rows is None
 
     # Two of four finalize tasks done, each producing one 10-row bundle.
-    empty = RefBundle([], owns_blocks=False, schema=None)
+    empty = RefBundle((), owns_blocks=False, schema=None)
     for i in range(2):
         finalize.on_task_submitted(i, empty)
         finalize.on_task_output(i, _make_bundle(num_rows=10))
@@ -241,14 +221,15 @@ def test_output_estimates_without_known_task_count_use_helper():
     assert expected_bundles == 8  # 8 upstream outputs / 1 input per task
 
 
-def test_stats_manager_exports_phases_without_double_counting_nodes(
+def test_stats_manager_exports_phases_and_sums_nodes_from_phases(
     restore_data_context,
 ):
     ray.data.DataContext.get_current().enable_per_node_metrics = True
     _, op_metrics, som = _make_two_phase()
-    # Phase events are forwarded into the operator, so both carry node data.
-    op_metrics._per_node_metrics["node-a"].num_tasks_finished = 1
+    # The operator mirrors the output phase; the shuffle phase is phase-only.
+    som.phases["shuffle"].metrics._per_node_metrics["node-a"].num_tasks_finished = 2
     som.phases["finalize"].metrics._per_node_metrics["node-a"].num_tasks_finished = 1
+    op_metrics._per_node_metrics["node-a"].num_tasks_finished = 1
 
     with patch("ray.data._internal.stats.get_or_create_stats_actor") as get_actor:
         _StatsManager.update_execution_metrics(
@@ -256,13 +237,20 @@ def test_stats_manager_exports_phases_without_double_counting_nodes(
             [op_metrics],
             ["Op_0"],
             {},
-            phase_metrics=list(som.phase_metrics().values()),
-            phase_tags=["Op_0/shuffle", "Op_0/finalize"],
+            phase_metrics={"Op_0": som.phase_metrics()},
         )
         (args, _) = get_actor.return_value.update_execution_metrics.remote.call_args
 
     per_node = args[-1]
-    assert per_node["node-a"]["num_tasks_finished"] == 1
+    assert per_node["node-a"]["num_tasks_finished"] == 3
+    # Resource usage is read from the owning operator, so phase dicts omit it.
+    _, dicts, tags, _, _ = args
+    assert tags == ["Op_0", "Op_0/shuffle", "Op_0/finalize"]
+    assert all(k in dicts[0] for k in ("cpu_usage", "gpu_usage", "memory_usage"))
+    for phase_dict in dicts[1:]:
+        assert not any(
+            k in phase_dict for k in ("cpu_usage", "gpu_usage", "memory_usage")
+        )
 
 
 def test_executor_builds_phase_tags():
@@ -273,11 +261,8 @@ def test_executor_builds_phase_tags():
     shuffle_op.get_phase_metrics.return_value = som.phase_metrics()
 
     executor = StreamingExecutor.__new__(StreamingExecutor)
-    executor._topology = {plain: None, shuffle_op: None}
-    phase_metrics, phase_tags = executor._get_phase_metrics_and_tags()
-
-    assert phase_tags == ["Shuffle(k)_1/shuffle", "Shuffle(k)_1/finalize"]
-    assert phase_metrics == list(som.phase_metrics().values())
+    executor._topology = {plain: MagicMock(), shuffle_op: MagicMock()}
+    assert executor._get_phase_metrics() == {"Shuffle(k)_1": som.phase_metrics()}
 
 
 def test_existing_operators_export_no_phase_entries():
@@ -355,14 +340,14 @@ class _PhasedOperator(PhysicalOperator):
             _finish(shuffle, i)
             shuffle.update_progress(increment=rows)
         for r in range(num_ranks):
-            finalize.on_task_submitted(r, RefBundle([], owns_blocks=False, schema=None))
+            finalize.on_task_submitted(r, RefBundle((), owns_blocks=False, schema=None))
             out = _make_bundle(num_rows=rows * num_inputs // num_ranks, size_bytes=100)
             self._queue.append(out)
             finalize.on_task_output(r, out)
             finalize.on_output_queued(out)
             self._phase_metrics.update_output_estimates(finalize, r + 1)
             finalize.update_progress(
-                increment=out.num_rows(), total=self.num_output_rows_total()
+                increment=out.num_rows() or 0, total=self.num_output_rows_total()
             )
             _finish(finalize, r)
 
@@ -383,9 +368,9 @@ def test_two_phase_operator_surfaces():
     while op.has_next():
         op.get_next()
 
-    # Prometheus, operator tag: both phases' tasks, real outputs only.
+    # Prometheus, operator tag: the output phase's tasks and outputs only.
     d = op.metrics.as_dict()
-    assert d["num_tasks_submitted"] == d["num_tasks_finished"] == 12
+    assert d["num_tasks_submitted"] == d["num_tasks_finished"] == 4
     assert d["num_tasks_running"] == 0
     assert d["row_outputs_taken"] == 80
     assert d["bytes_task_outputs_generated"] == 4 * 100  # finalize only
@@ -398,6 +383,9 @@ def test_two_phase_operator_surfaces():
     assert phases["finalize"].num_tasks_finished == 4
     assert phases["shuffle"]._running_tasks == {}
     assert phases["finalize"]._running_tasks == {}
+    # Takes are mirrored on the output phase only (ray_data_output_rows).
+    assert phases["finalize"].row_outputs_taken == 80
+    assert phases["shuffle"].row_outputs_taken == 0
 
     # Extra metrics line: one nested dict per phase, same counts as the tags,
     # plus the phase's custom counters.
@@ -406,6 +394,7 @@ def test_two_phase_operator_surfaces():
     assert d["shuffle"]["num_tasks_finished"] == 8
     assert d["finalize"]["num_tasks_finished"] == 4
     assert d["finalize"]["num_partitions"] == 4
+    assert "cpu_usage" in d and "cpu_usage" not in d["finalize"]
     assert op._phase_metrics.output_phase is op.phases["finalize"]
 
     # ds.stats() table: two rows named <op>Shuffle / <op>Finalize.
@@ -435,13 +424,12 @@ def test_two_phase_operator_surfaces():
             [op.metrics],
             ["Shuffle(k)_1"],
             {},
-            phase_metrics=list(phases.values()),
-            phase_tags=["Shuffle(k)_1/shuffle", "Shuffle(k)_1/finalize"],
+            phase_metrics={"Shuffle(k)_1": phases},
         )
         (args, _) = get_actor.return_value.update_execution_metrics.remote.call_args
     _, dicts, tags, _, _ = args
     assert tags == ["Shuffle(k)_1", "Shuffle(k)_1/shuffle", "Shuffle(k)_1/finalize"]
-    assert [x["num_tasks_finished"] for x in dicts] == [12, 8, 4]
+    assert [x["num_tasks_finished"] for x in dicts] == [4, 8, 4]
 
 
 def test_single_phase_operator_surfaces_unchanged():

@@ -1155,19 +1155,22 @@ class _StatsManager:
         op_metrics: List[OpRuntimeMetrics],
         operator_tags: List[str],
         state: Dict[str, Any],
-        phase_metrics: Optional[List[OpRuntimeMetrics]] = None,
-        phase_tags: Optional[List[str]] = None,
+        phase_metrics: Optional[Dict[str, Dict[str, OpRuntimeMetrics]]] = None,
     ):
-        # Phase metrics are exported as additional tagged series, but excluded
-        # from the per-node sum: phase events are also forwarded into their
-        # operator's metrics, so summing both would double-count every node.
-        per_node_metrics = _StatsManager._aggregate_per_node_metrics(op_metrics)
+        """Push operator metrics, plus per-phase metrics keyed by operator tag
+        then phase name, to the stats actor."""
         op_metrics_dicts = [metric.as_dict() for metric in op_metrics]
         tags = list(operator_tags)
-        if phase_metrics:
-            assert phase_tags is not None and len(phase_tags) == len(phase_metrics)
-            op_metrics_dicts.extend(metric.as_dict() for metric in phase_metrics)
-            tags.extend(phase_tags)
+        per_node_sources = []
+        for metric, tag in zip(op_metrics, operator_tags):
+            phases = (phase_metrics or {}).get(tag)
+            # Only the output phase forwards into the operator, so the phases
+            # together hold the operator's complete per-node data.
+            per_node_sources.extend(phases.values() if phases else [metric])
+            for name, phase in (phases or {}).items():
+                op_metrics_dicts.append(phase.as_dict(include_resource_usage=False))
+                tags.append(f"{tag}/{name}")
+        per_node_metrics = _StatsManager._aggregate_per_node_metrics(per_node_sources)
         args = (
             dataset_tag,
             op_metrics_dicts,
