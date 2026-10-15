@@ -92,6 +92,9 @@ def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
 # the processes it started are killed.
 _EXEC_KILL_GRACE_SECONDS = 5.0
 
+# The most times a timed-out command's processes are listed and killed.
+_EXEC_KILL_ROUNDS = 5
+
 
 def _exec_processes(procfs_dump: str, root_pid: int) -> List[int]:
     """Live PIDs of an exec'd command and of every process it started.
@@ -484,20 +487,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # The command hadn't started yet.
             return
         base_args = self._runsc_base_args(config)
-        pids = [root_pid]
-        try:
-            dump = subprocess.run(
-                base_args + ["trace", "procfs", sandbox_id],
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=10,
-            )
-            if dump.returncode == 0:
-                pids = _exec_processes(dump.stdout, root_pid)
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-        for pid in pids:
+
+        def kill(pid: int) -> None:
             try:
                 subprocess.run(
                     base_args + ["kill", "--pid", str(pid), sandbox_id, "SIGKILL"],
@@ -506,6 +497,27 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 )
             except (OSError, subprocess.TimeoutExpired):
                 pass
+
+        # The command first, so it can't start more processes.
+        kill(root_pid)
+        # A process can start another between a listing and its own kill, so
+        # list again until no process of the command is left.
+        for _ in range(_EXEC_KILL_ROUNDS):
+            try:
+                dump = subprocess.run(
+                    base_args + ["trace", "procfs", sandbox_id],
+                    capture_output=True,
+                    text=True,
+                    errors="replace",
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                return
+            pids = _exec_processes(dump.stdout, root_pid)
+            if not pids:
+                return
+            for pid in pids:
+                kill(pid)
 
     def write_file(
         self,
