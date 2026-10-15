@@ -16,7 +16,9 @@
 
 #include <fcntl.h>
 
+#include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <cstring>
 #include <deque>
 #include <future>
@@ -34,6 +36,7 @@
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/logging.h"
 #include "ray/util/spdlog_fd_sink.h"
 #include "ray/util/spdlog_newliner_sink.h"
 #include "ray/util/thread_utils.h"
@@ -263,7 +266,25 @@ RedirectionFileHandle CreateRedirectionFileHandle(
   auto close_fn = [pipe_ostream, promise]() mutable {
     pipe_ostream->close();
     // Block until destruction finishes.
-    promise->get_future().get();
+    //
+    // The wait must be bounded: the redirected stream is the pipe's write end,
+    // so every child process spawned by the application inherits it, and EOF
+    // only arrives once all of them exit. Waiting unconditionally hangs the
+    // worker at exit whenever a child outlives it (observed as a leaked
+    // `ray::IDLE` process holding its full RSS). After the timeout we give up
+    // and may lose the tail of the redirected log.
+    auto future = promise->get_future();
+    const auto drain_timeout =
+        std::chrono::milliseconds(RayLog::GetRayLogRotationDrainTimeoutMsOrDefault());
+    if (future.wait_for(drain_timeout) != std::future_status::ready) {
+      // Best effort: this runs at teardown, where the redirection handles
+      // can outlive the logging subsystem (they are destroyed from static
+      // storage), so RAY_LOG is not safe here. stderr is either the restored
+      // original stream or the still-draining redirected one.
+      fprintf(stderr,
+              "Timed out waiting for the redirected stream to drain; a child process"
+              " may still be holding it open.\n");
+    }
   };
 
   auto logger = CreateLogger(stream_redirect_opt);
