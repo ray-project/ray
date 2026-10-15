@@ -155,7 +155,6 @@ doc/source/cluster/kubernetes/index.md: doc_example
 # Prose that Sphinx never renders as a page stays skipped.
 doc/source/_includes/_help-links.md:
 doc/source/_templates/autosummary/class.rst:
-doc/source/templates/README.md:
 # Static images under a library doc dir are skipped. The per-library rules
 # match whole directories, so these cases lock in that the leading skip rule
 # wins first.
@@ -178,6 +177,7 @@ doc/source/ray-contribute/doc_code/example_module.py: doc
 # The leading prose-and-image skip still wins inside a `doc`-routed directory,
 # so a README or image under one emits nothing.
 doc/source/cluster/doc_code/README.md:
+doc/source/ray-contribute/doc_code/README.md:
 doc/source/cluster/doc_code/diagram.png:
 # The authoring boilerplate is excluded from the Sphinx build and backs no bazel
 # target, so it emits nothing at all.

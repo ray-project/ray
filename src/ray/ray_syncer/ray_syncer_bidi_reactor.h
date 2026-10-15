@@ -96,12 +96,12 @@ class RaySyncerBidiReactor {
     }
   };
 
-  /// Set rpc completion callback, which is called after rpc read finishes.
-  /// This function is expected to call only once, repeated invocations will check fail.
-  void SetRpcCompletionCallbackForOnce(RpcCompletionCallback on_rpc_completion) {
-    RAY_CHECK(on_rpc_completion);
-    RAY_CHECK(!on_rpc_completion_);
-    on_rpc_completion_ = std::move(on_rpc_completion);
+  /// Set the MessagesReceivedCallback (see common.h). Expected to be called only once;
+  /// repeated invocations will check fail.
+  void SetMessagesReceivedCallbackForOnce(MessagesReceivedCallback on_messages_received) {
+    RAY_CHECK(on_messages_received);
+    RAY_CHECK(!on_messages_received_);
+    on_messages_received_ = std::move(on_messages_received);
   }
 
   /// Return true if it's disconnected.
@@ -117,8 +117,8 @@ class RaySyncerBidiReactor {
   std::string remote_node_id_;
 
  protected:
-  /// Sync message observer, which is a callback on received message response.
-  RpcCompletionCallback on_rpc_completion_;
+  /// See MessagesReceivedCallback in common.h.
+  MessagesReceivedCallback on_messages_received_;
 
   /// Self-owned shared_ptr for lifetime guarding in async callbacks (timer/dispatch). Set
   /// by caller/factory, released in OnDone.
