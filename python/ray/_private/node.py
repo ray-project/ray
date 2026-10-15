@@ -425,7 +425,7 @@ class Node:
             # We retry in a loop in case it takes longer than expected.
             time.sleep(0.1)
             start_time = time.monotonic()
-            raylet_start_wait_time_s = 30
+            raylet_start_wait_time_s = ray_constants.RAY_RAYLET_START_WAIT_TIME_S
             while True:
                 try:
                     # Will raise a RuntimeError if the node info is not available.
@@ -440,7 +440,8 @@ class Node:
                     raise Exception(
                         "The current node timed out during startup. This "
                         "could happen because some of the raylet failed to "
-                        "startup or the GCS has become overloaded."
+                        "startup or the GCS has become overloaded.\n"
+                        + self._get_startup_failure_diagnostics()
                     )
 
         if connect_only:
@@ -1052,6 +1053,41 @@ class Node:
     def get_logs_dir_path(self):
         """Get the path of the log files directory."""
         return self._logs_dir
+
+    def _get_startup_failure_diagnostics(self, max_lines: int = 20) -> str:
+        """Describe local process state after the raylet failed to register.
+
+        Reports whether the raylet is still alive, which agent port files
+        exist, and the tail of the raylet and agent logs, so that startup
+        timeouts show the underlying error instead of only a generic message.
+        """
+        lines = []
+        try:
+            raylet_procs = self.all_processes.get(ray_constants.PROCESS_TYPE_RAYLET, [])
+            for info in raylet_procs:
+                code = info.process.poll()
+                state = "alive" if code is None else f"exited with code {code}"
+                lines.append(f"raylet (pid {info.process.pid}): {state}")
+
+            port_files = sorted(
+                f for f in os.listdir(self._session_dir) if f.endswith(self._node_id)
+            )
+            lines.append(f"port files in session dir: {port_files}")
+
+            for name in sorted(os.listdir(self._logs_dir)):
+                if not name.startswith(
+                    ("raylet", "dashboard_agent", "runtime_env_agent")
+                ):
+                    continue
+                path = os.path.join(self._logs_dir, name)
+                with open(path, errors="replace") as f:
+                    tail = f.readlines()[-max_lines:]
+                if tail:
+                    lines.append(f"--- last {len(tail)} lines of {name} ---")
+                    lines.extend(line.rstrip("\n") for line in tail)
+        except Exception as e:
+            lines.append(f"(failed to collect diagnostics: {e!r})")
+        return "\n".join(lines)
 
     def get_sockets_dir_path(self):
         """Get the path of the sockets directory."""
