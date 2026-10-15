@@ -671,9 +671,12 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
     """
     client = serve_instance
     deployment_id = DeploymentID("FailOnFlag", SERVE_DEFAULT_APP_NAME)
+    applied = Accumulator.options(name="applied-configs").remote()
     v1 = {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 4}}
     v2 = _env_override(
-        {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 8}}, MARKER="v2"
+        {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 8}},
+        MARKER="v2",
+        RECORD_APPLIED_CONFIGS="applied-configs",
     )
     # Of 36 CPUs, 12 for v1 and 16 reserved leave room for one 8-CPU
     # replacement. Stopping a 4-CPU old replica doesn't make room for another.
@@ -691,13 +694,8 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
         }
 
     def applied_user_config(pid: int):
-        """Read the config applied by reconfigure() on the given replica."""
-        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
-        for _ in range(60):
-            seen_pid, user_config = handle.applied_config.remote().result(timeout_s=30)
-            if seen_pid == pid:
-                return user_config
-        raise AssertionError(f"no response from replica {pid}")
+        """The latest config reconfigure() applied on the given replica."""
+        return dict(ray.get(applied.get.remote())).get(pid)
 
     try:
         client.deploy_apps(_rolling_update_config(v1))
@@ -755,6 +753,7 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
         assert not set(configured) & set(initial_pids)
         assert applied_user_config(replaced_pid) == user_config
     finally:
+        ray.kill(applied)
         if reserved is not None:
             ray.util.remove_placement_group(reserved)
 

@@ -7,9 +7,10 @@ and BLOCK_ON_SIGNAL=1 holds requests, until the actor provided by
 serve_instance_with_signal is released. RECORD_FAILED_GANGS names
 an accumulator actor that records constructor failures by gang. A fixed
 max_constructor_retry_count keeps the failure threshold independent of the
-replica count. ranks() returns initial and current (rank, world_size) pairs.
-applied_config() returns the PID and applied user_config. counter() returns
-the PID and the deployment actor's counter value.
+replica count. RECORD_APPLIED_CONFIGS names an accumulator actor that records
+(PID, user_config) on every reconfigure(). ranks() returns initial and current
+(rank, world_size) pairs. counter() returns the PID and the deployment actor's
+counter value.
 """
 import os
 from typing import Any, Dict, Tuple
@@ -38,13 +39,10 @@ class FailOnFlag:
             raise RuntimeError("constructor failure requested by the test")
         self._health_checks = 0
         self._init_rank = _rank_and_world_size()
-        self._user_config = None
 
     def reconfigure(self, user_config: Any):
-        self._user_config = user_config
-
-    def applied_config(self) -> Tuple[int, Any]:
-        return os.getpid(), self._user_config
+        if store_name := os.environ.get("RECORD_APPLIED_CONFIGS"):
+            ray.get(ray.get_actor(store_name).add.remote((os.getpid(), user_config)))
 
     def ranks(self) -> Dict[str, Tuple[int, int]]:
         return {"init": self._init_rank, "current": _rank_and_world_size()}
