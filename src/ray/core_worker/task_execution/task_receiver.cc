@@ -160,6 +160,7 @@ void TaskReceiver::BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request) 
   // attempt number.
   // So no two BeginArgsFetch/MarkReady calls ever collide on the same key.
   waiter_.BeginArgsFetch(dependencies,
+                         task_spec.GetDependencyIsMove(),
                          TaskAttempt{task_spec.TaskId(), task_spec.AttemptNumber()});
 }
 
