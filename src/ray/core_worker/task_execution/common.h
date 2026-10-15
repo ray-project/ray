@@ -128,7 +128,11 @@ class ActorTaskExecutionArgWaiterInterface {
   /// THREAD-SAFE: may be called from any thread (typically the gRPC handler
   /// thread, so the IPC is not blocked behind in-progress work on the task
   /// execution service).
+  ///
+  /// \param is_move Parallel to `args`: whether the task consumes the arg
+  /// (TaskArg.is_move).
   virtual void BeginArgsFetch(const std::vector<rpc::ObjectReference> &args,
+                              const std::vector<bool> &is_move,
                               const TaskAttempt &task_attempt) = 0;
 
   /// Register the callback to invoke when the args for `task_attempt` are ready.
@@ -149,12 +153,14 @@ class ActorTaskExecutionArgWaiter : public ActorTaskExecutionArgWaiterInterface 
   // attempt_number) when the associated arguments are ready.
   using AsyncWaitForArgs =
       std::function<void(const std::vector<rpc::ObjectReference> &args,
+                         const std::vector<bool> &is_move,
                          const TaskID &task_id,
                          int32_t attempt_number)>;
 
   explicit ActorTaskExecutionArgWaiter(AsyncWaitForArgs async_wait_for_args);
 
   void BeginArgsFetch(const std::vector<rpc::ObjectReference> &args,
+                      const std::vector<bool> &is_move,
                       const TaskAttempt &task_attempt) override;
 
   void OnArgsReady(const TaskAttempt &task_attempt,
