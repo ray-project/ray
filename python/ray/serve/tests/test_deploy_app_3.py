@@ -877,7 +877,13 @@ def test_autoscaling_after_a_failed_surge_rollout(serve_instance_with_signal):
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
     requests = [handle.remote() for _ in range(4)]
     try:
-        wait_for_condition(lambda: len(_running_replica_pids(client)) == 4, timeout=60)
+        # Metrics can briefly overshoot while requests move from the handle to
+        # the replicas, so wait for the target to settle at four.
+        wait_for_condition(
+            lambda: _deployment_details(client).target_num_replicas == 4
+            and _replica_states() == {"RUNNING": 4},
+            timeout=60,
+        )
         old_pids = _running_replica_pids(client)
 
         client.deploy_apps(
