@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -106,6 +106,63 @@ _SLIRP4NETNS_FLAGS = [
 # with `nft -f` inside the sandbox's network namespace.
 _EGRESS_RULES_FILE = "egress.nft"
 _EGRESS_TABLE = "ray_sandbox_egress"
+
+# The namespaces set_egress_allowlist enters to reload the ruleset.
+_EGRESS_NAMESPACES = ("user", "net")
+
+
+def _namespace_ids(pid: int) -> Optional[List[Tuple[int, int]]]:
+    """Identify the user and network namespaces of a process.
+
+    A namespace's identity is the ``(st_dev, st_ino)`` of its nsfs inode,
+    which stays the same for the namespace's whole life.
+
+    Args:
+        pid: The process.
+
+    Returns:
+        One identity per ``_EGRESS_NAMESPACES`` entry, or None if ``pid`` is
+        gone or its namespaces can't be read.
+    """
+    try:
+        stats = [os.stat(f"/proc/{pid}/ns/{ns}") for ns in _EGRESS_NAMESPACES]
+    except OSError:
+        return None
+    return [(st.st_dev, st.st_ino) for st in stats]
+
+
+def _open_holder_namespaces(
+    root_dir: str, expected: Optional[List[Tuple[int, int]]]
+) -> Optional[List[int]]:
+    """Open the namespaces of the holder named in ``root_dir``'s netns.pid.
+
+    Once the holder exits, its pid can be reused by any process, such as
+    another sandbox's holder. So the namespaces found there must be the
+    ones in ``expected``, and the caller enters them through the returned
+    fds rather than the pid, which could be reused again after this check.
+
+    Args:
+        root_dir: The sandbox's per-instance directory.
+        expected: The sandbox's namespaces, from ``_namespace_ids``.
+
+    Returns:
+        Open fds, one per ``_EGRESS_NAMESPACES`` entry, that the caller
+        closes; or None if the holder is gone or not in those namespaces.
+    """
+    fds: List[int] = []
+    try:
+        with open(os.path.join(root_dir, "netns.pid"), encoding="utf-8") as f:
+            pid = f.read().strip()
+        if pid.isdigit() and expected is not None:
+            for ns in _EGRESS_NAMESPACES:
+                fds.append(os.open(f"/proc/{pid}/ns/{ns}", os.O_RDONLY))
+            if [(st.st_dev, st.st_ino) for st in map(os.fstat, fds)] == expected:
+                return fds
+    except OSError:
+        pass
+    for fd in fds:
+        os.close(fd)
+    return None
 
 
 def _render_egress_ruleset(cidrs: List[str], dns_servers: List[str]) -> str:
@@ -382,6 +439,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._image_manager.release_image(config.image, sandbox_id)
             raise
 
+        # The namespaces set_egress_allowlist must find behind netns.pid.
+        # Read from proc, not the holder: proc has exec'd through nsenter into
+        # them (it is `runsc run` now), and as our unreaped child its pid
+        # can't have been reused.
+        netns_ids = (
+            _namespace_ids(proc.pid) if config.cidr_allowlist is not None else None
+        )
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "workdir": workdir_path,
@@ -397,6 +461,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # Serializes set_egress_allowlist: the ruleset file, the nft
             # load, and egress_allowlist must change together.
             "egress_lock": threading.Lock(),
+            # The sandbox's user and network namespaces (None if unknown,
+            # which makes set_egress_allowlist refuse).
+            "netns_ids": netns_ids,
             # The process group leader whose tree holds the sandbox and,
             # for network="public", the namespace holder and slirp4netns.
             "proc": proc,
@@ -445,9 +512,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         Only a sandbox created with ``cidr_allowlist`` can be changed: its
         ruleset is already in place, so the update is one atomic ``nft -f``
         (flush and reinstall in a single transaction) run inside the
-        sandbox's own network namespace, entered the same way the run
-        command entered it. Flows the new list no longer permits are not
-        reset; they stall from their next packet on.
+        sandbox's own namespaces. They're entered through the holder in
+        netns.pid, but only once its namespaces match the ones recorded at
+        creation, and through fds rather than the reusable pid. Flows the
+        new list no longer permits are not reset; they stall from their
+        next packet on.
 
         Args:
             sandbox_id: Unique string identifier of the sandbox.
@@ -470,20 +539,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
 
-        # `flush ruleset` must only ever run inside the sandbox's namespace:
-        # refuse without the holder pid rather than fall through anywhere.
-        nspid = ""
-        try:
-            with open(os.path.join(root_dir, "netns.pid"), encoding="utf-8") as f:
-                nspid = f.read().strip()
-        except OSError:
-            pass
-        if not nspid.isdigit():
-            raise SandboxError(
-                f"Sandbox '{sandbox_id}' has no network namespace holder; "
-                "cannot update its egress allowlist."
-            )
-
         # One update at a time per sandbox, so two overlapping updates can
         # never leave one list loaded while the other is recorded.
         with meta.setdefault("egress_lock", threading.Lock()):
@@ -493,21 +548,29 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     previous_rules = f.read()
             except OSError:
                 previous_rules = None
-            _write_egress_ruleset(root_dir, normalized, config.dns)
+            # `flush ruleset` must only ever run inside the sandbox's own
+            # namespaces, never wherever a reused holder pid now points.
+            ns_fds = _open_holder_namespaces(root_dir, meta.get("netns_ids"))
+            if ns_fds is None:
+                raise SandboxError(
+                    f"Sandbox '{sandbox_id}' has lost its network namespace "
+                    "holder; cannot update its egress allowlist."
+                )
+            user_fd, net_fd = ns_fds
             try:
+                _write_egress_ruleset(root_dir, normalized, config.dns)
                 proc = subprocess.run(
                     [
                         "nsenter",
                         "--preserve-credentials",
-                        "-U",
-                        "-n",
-                        "-t",
-                        nspid,
+                        f"--user=/proc/self/fd/{user_fd}",
+                        f"--net=/proc/self/fd/{net_fd}",
                         "--",
                         "nft",
                         "-f",
                         rules_path,
                     ],
+                    pass_fds=ns_fds,
                     capture_output=True,
                     timeout=10,
                 )
@@ -518,6 +581,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 )
             except subprocess.TimeoutExpired:
                 failure = "nft did not finish within 10 seconds"
+            finally:
+                for fd in ns_fds:
+                    os.close(fd)
             if failure is not None:
                 # Keep the file describing the ruleset that is actually in force.
                 if previous_rules is not None:
