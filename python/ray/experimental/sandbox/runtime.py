@@ -82,8 +82,7 @@ class _WarmPool:
             self._profiles[key] = (cfg, size)
             self._ready[key] = collections.deque()
             self._booting[key] = 0
-        for key in self._profiles:
-            self.refill(key)
+        self.refill_all()
 
     def take(self, cfg: SandboxConfig) -> Optional[str]:
         """A booted sandbox for ``cfg`` (and a replacement booting), or None."""
@@ -128,6 +127,10 @@ class _WarmPool:
             self._booting[key] += missing
         for _ in range(missing):
             threading.Thread(target=self._boot, args=(key,), daemon=True).start()
+
+    def refill_all(self) -> None:
+        for key in self._profiles:
+            self.refill(key)
 
     def _boot(self, key: tuple) -> None:
         instance_id = None
@@ -484,6 +487,9 @@ class SandboxRuntime:
         while not self._warm.full():
             if time.monotonic() >= deadline:
                 return False
+            # A failed boot pauses refills, and only a create would otherwise
+            # start the next one, so retry here once the pause is over.
+            self._warm.refill_all()
             time.sleep(0.05)
         return True
 

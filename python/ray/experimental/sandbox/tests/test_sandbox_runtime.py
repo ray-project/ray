@@ -7,6 +7,7 @@ shipped behind a green suite.
 
 import dataclasses
 import sys
+import threading
 import time
 
 import pytest
@@ -169,6 +170,34 @@ def test_warm_pool_hands_out_booted_sandboxes():
     assert len(runtime._backend.configs) == 3
     runtime.delete(instance_id)
     assert instance_id not in runtime._exec_env
+
+
+def test_wait_for_warm_pool_retries_a_failed_boot(monkeypatch):
+    """A failed boot pauses refills, and no create comes along to restart
+    them, so the wait retries the boot itself once the pause is over."""
+    from ray.experimental.sandbox.runtime import _WarmPool
+
+    monkeypatch.setattr("ray.experimental.sandbox.runtime._WARM_RETRY_SECONDS", 0.2)
+
+    class _FailsFirstBoot(_CountingBackend):
+        def __init__(self):
+            super().__init__()
+            self.failed = False
+            self.fail_lock = threading.Lock()
+
+        def create_sandbox(self, config):
+            with self.fail_lock:
+                if not self.failed:
+                    self.failed = True
+                    raise RuntimeError("boot failed")
+            return super().create_sandbox(config)
+
+    runtime = SandboxRuntime()
+    runtime._image_manager = _FakeImageManager()
+    runtime._backend = _FailsFirstBoot()
+    runtime._warm = _WarmPool(runtime, [{"image": "img", "size": 2}])
+    assert runtime.wait_for_warm_pool(timeout_seconds=5)
+    assert len(runtime._backend.configs) == 2
 
 
 def test_a_create_no_profile_matches_boots_cold():
