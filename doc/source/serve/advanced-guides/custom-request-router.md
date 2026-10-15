@@ -5,27 +5,20 @@ myst:
 ---
 
 (custom-request-router-guide)=
-# Use Custom Algorithm for Request Routing
+# Use a custom algorithm for request routing
 
 :::{warning}
-This API is in alpha and may change before becoming stable.
+This API is alpha and might change before it becomes stable.
 :::
 
-Different Ray serve applications demand different logics for load balancing. For example, in serving LLMs you might want to have a different policy than balancing number of requests across replicas: e.g. balancing ongoing input tokens, balancing kv-cache utilization, etc. [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) is an abstraction in Ray Serve that allows extension and customization of load-balancing logic for each deployment.
+Different Ray Serve applications need different load-balancing logic. For example, when you serve LLMs, you might want a policy other than balancing the number of requests across replicas, such as balancing ongoing input tokens or KV cache utilization. [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) is a Ray Serve abstraction for extending and customizing the load-balancing logic of each deployment.
 
-This guide shows how to use [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) API to achieve custom load balancing across replicas of a given deployment. It will cover the following:
-- Define a simple uniform request router for load balancing
-- Deploy an app with the uniform request router
-- Utility mixins for request routing
-- Define a complex throughput-aware request router
-- Deploy an app with the throughput-aware request router
-- Experimental: Use the round-robin request router
-- Experimental: Use the consistent-hash request router for session stickiness
-- Experimental: Define a centralized capacity queue request router
+This guide shows how to use the [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) API to customize load balancing across the replicas of a deployment.
 
 
 (simple-uniform-request-router)=
-## Define simple uniform request router
+(define-simple-uniform-request-router)=
+## Define a simple uniform request router
 Create a file `custom_request_router.py` with the following code:
 
 ```{literalinclude} ../doc_code/custom_request_router.py
@@ -33,16 +26,16 @@ Create a file `custom_request_router.py` with the following code:
 :end-before: __end_define_uniform_request_router__
 :language: python
 ```
-This code defines a simple uniform request router that routes requests a random replica to distribute the load evenly regardless of the queue length of each replica or the body of the request. The router is defined as a class that inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) method, which returns the random replica for all incoming requests. The returned type is a list of lists of replicas, where each inner list represents a rank of replicas. The first rank is the most preferred and the last rank is the least preferred. The request will be attempted to be routed to the replica with the shortest request queue in each set of the rank in order until a replica is able to process the request. If none of the replicas are able to process the request, [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) will be called again with a backoff delay until a replica is able to process the request.
+This code defines a simple uniform request router that routes each request to a random replica, which distributes the load evenly regardless of each replica's queue length or the request body. The router is a class that inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) method, which returns a random replica for every incoming request. The return type is a list of lists of replicas, where each inner list represents a rank of replicas. The first rank is the most preferred, and the last rank is the least preferred. Ray Serve goes through the ranks in order and, within each rank, attempts to route the request to the replica with the shortest request queue, until a replica can process the request. If no replica can process the request, Ray Serve calls [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) again after a backoff delay, and repeats until a replica can process the request.
 
 
 :::{note}
-This request router also implements [`on_request_routed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst) which can help you update the state of the request router after a request is routed.
+This request router also implements [`on_request_routed`](../api/doc/ray.serve.request_router.RequestRouter.on_request_routed.rst), which you can use to update the state of the request router after a request is routed.
 :::
 
 (deploy-app-with-uniform-request-router)=
 ## Deploy an app with the uniform request router
-To use a custom request router, you need to pass the `request_router_class` argument to the [`deployment`](../api/doc/ray.serve.deployment_decorator.rst) decorator. Also note that the `request_router_class` can be passed as the already imported class or as the string of import path to the class. Let's deploy a simple app that uses the uniform request router like this:
+To use a custom request router, pass the `request_router_class` argument to the [`deployment`](../api/doc/ray.serve.deployment_decorator.rst) decorator. You can pass `request_router_class` as the imported class or as a string with the import path of the class. The following example deploys a simple app that uses the uniform request router:
 
 ```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_uniform_request_router__
@@ -50,19 +43,19 @@ To use a custom request router, you need to pass the `request_router_class` argu
 :language: python
 ```
 
-As the request is routed, both "UniformRequestRouter routing request" and "on_request_routed callback is called!!" messages will be printed to the console. The response will also be randomly routed to one of the replicas. You can test this by sending more requests and seeing the distribution of the replicas are roughly equal.
+As Ray Serve routes the request, the console prints both the "UniformRequestRouter routing request" and "on_request_routed callback is called!!" messages. The router sends each request to a random replica. To test this, send more requests and check that they're distributed roughly equally across the replicas.
 
 :::{note}
-Currently, the only way to configure the request router is to pass it as an argument to the deployment decorator. This means that you cannot change the request router for an existing deployment handle with running router. If you have a particular usecase where you need to reconfigure a request router on the deployment handle, please open a feature request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues)
+Currently, the only way to configure the request router is to pass it as an argument to the deployment decorator. You can't change the request router for an existing deployment handle with a running router. If your use case requires reconfiguring the request router on a deployment handle, open a feature request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues).
 :::
 
 (utility-mixin)=
 ## Utility mixins for request routing
-Ray Serve provides utility mixins that can be used to extend the functionality of the request router. These mixins can be used to implement common routing policies such as locality-aware routing, multiplexed model support, and FIFO request routing.
+Ray Serve provides utility mixins that extend the request router. Use them to implement common routing policies such as locality-aware routing, multiplexed model support, and first-in, first-out (FIFO) request routing.
 
-- [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst): This mixin implements first in first out (FIFO) request routing. The default behavior for the request router is OOO (out of order) which routes requests to the exact replica which got assigned by the request passed to [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst). This mixin is useful for the routing algorithm that can work independently of the request content, so the requests can be routed as soon as possible in the order they were received. By including this mixin, in your custom request router, the request matching algorithm will be updated to route requests FIFO. There are no additional flags needs to be configured and no additional helper methods provided by this mixin.
-- [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst): This mixin implements locality-aware request routing. It updates the internal states when between replica updates to track the location between replicas in the same node, same zone, and everything else. It offers helpers [`apply_locality_routing`](../api/doc/ray.serve.request_router.LocalityMixin.apply_locality_routing.rst) and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.LocalityMixin.rank_replicas_via_locality.rst) to route and ranks replicas based on their locality to the request, which can be useful for reducing latency and improving performance.
-- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst): When you use model-multiplexing you need to route requests based on knowing which replica has already a hot version of the model. It updates the internal states when between replica updates to track the model loaded on each replica, and size of the model cache on each replica. It offers helpers [`apply_multiplex_routing`](../api/doc/ray.serve.request_router.MultiplexMixin.apply_multiplex_routing.rst) and [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) to route and ranks replicas based on their multiplexed model id of the request.
+- [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst): This mixin implements FIFO request routing. By default, the request router routes requests out of order, sending each request to the exact replica that [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) assigned to it. This mixin is useful for routing algorithms that work independently of the request content, so requests can be routed as soon as possible in the order they arrive. When you include this mixin in your custom request router, the request matching algorithm routes requests in FIFO order. The mixin needs no additional flags and provides no additional helper methods.
+- [`LocalityMixin`](../api/doc/ray.serve.request_router.LocalityMixin.rst): This mixin implements locality-aware request routing. It updates its internal state on replica updates to track which replicas are on the same node, in the same zone, or elsewhere. It offers the helpers [`apply_locality_routing`](../api/doc/ray.serve.request_router.LocalityMixin.apply_locality_routing.rst) and [`rank_replicas_via_locality`](../api/doc/ray.serve.request_router.LocalityMixin.rank_replicas_via_locality.rst) to route and rank replicas by their locality to the request, which can help reduce latency and improve performance.
+- [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst): When you use model multiplexing, you need to route requests based on which replicas already have a hot version of the model. This mixin updates its internal state on replica updates to track the models loaded on each replica and the size of each replica's model cache. It offers the helpers [`apply_multiplex_routing`](../api/doc/ray.serve.request_router.MultiplexMixin.apply_multiplex_routing.rst) and [`rank_replicas_via_multiplex`](../api/doc/ray.serve.request_router.MultiplexMixin.rank_replicas_via_multiplex.rst) to route and rank replicas by the multiplexed model ID of the request.
 
 
 (throughput-aware-request-router)=
@@ -81,7 +74,7 @@ The router returns each replica in its own rank so the base router tries them in
 
 (deploy-app-with-throughput-aware-request-router)=
 ## Deploy an app with the throughput-aware request router
-To use the throughput-aware request router, you can deploy an app like this:
+The following example deploys an app that uses the throughput-aware request router:
 
 ```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_throughput_aware_request_router__
@@ -89,23 +82,23 @@ To use the throughput-aware request router, you can deploy an app like this:
 :language: python
 ```
 
-Similar to the uniform request router, the custom request router can be defined in the `request_router_class` argument of the [`deployment`](../api/doc/ray.serve.deployment_decorator.rst) decorator. The Serve controller pulls statistics from the replica of each deployment by calling record_routing_stats. The `request_routing_stats_period_s` and `request_routing_stats_timeout_s` arguments control the frequency and timeout time of the serve controller pulling information from each replica in its background thread. You can customize the emission of these statistics by overriding `record_routing_stats` in the definition of the deployment class. The custom request router can then get the updated routing stats by looking up the `routing_stats` attribute of the running replicas and use it in the routing policy.
+As with the uniform request router, you set the custom request router in the `request_router_class` argument of the [`deployment`](../api/doc/ray.serve.deployment_decorator.rst) decorator. The Serve controller pulls statistics from the replicas of each deployment by calling `record_routing_stats`. The `request_routing_stats_period_s` and `request_routing_stats_timeout_s` arguments control how often the Serve controller pulls this information from each replica in its background thread, and the timeout for each pull. To customize these statistics, override `record_routing_stats` in the deployment class. The custom request router can then read the updated statistics from the `routing_stats` attribute of the running replicas and use them in its routing policy.
 
 
 (round-robin-request-router)=
 ## Experimental: Use the round-robin request router
 
-`RoundRobinRouter` cycles through replicas in round-robin fashion. If the chosen replica is at capacity, the router falls back to the next replica in order and wraps around the candidate list. Each router instance keeps its own cursor, so with multiple routers (for example, one per Ray Serve proxy) the fan-out is round-robin per router and approximately uniform across replicas in aggregate.
+`RoundRobinRouter` cycles through replicas in round-robin fashion. If the chosen replica is at capacity, the router falls back to the next replica in order and wraps around the candidate list. Each router instance keeps its own cursor. With multiple routers, such as one per Ray Serve proxy, the fan-out is round-robin per router and approximately uniform across replicas in aggregate.
 
-The router mixes in:
+The router mixes in the following two classes:
 
 - [`MultiplexMixin`](../api/doc/ray.serve.request_router.MultiplexMixin.rst) to support model multiplexing.
 - [`FIFOMixin`](../api/doc/ray.serve.request_router.FIFOMixin.rst) so queued requests are routed in arrival order.
 
-For a multiplexed request, the router first round-robins among replicas already hosting the requested model with a cursor scoped to that model. If no host is known or those replicas have already been attempted, it falls back to the replicas with the fewest loaded models; after the matching timeout, it tries those replicas once more and then all replicas.
+For a multiplexed request, the router first round-robins among replicas that already host the requested model, using a cursor scoped to that model. If the router knows no host for the model, or has already tried those replicas, it falls back to the replicas with the fewest loaded models. After the matching timeout, it tries those replicas once more and then all replicas.
 
 ### When to use
-Use the round-robin router when you want a predictable, even distribution across replicas and don't need load-aware or locality-aware decisions. It fits stateless workloads with roughly uniform per-request latency. Unlike the default power-of-two-choices router, the round-robin router doesn't compare replicas by their number of ongoing requests. It only skips a replica once it reaches `max_ongoing_requests`. Therefore, requests can pile up behind a slow replica before it falls back to the next one.
+Use the round-robin router when you want a predictable, even distribution across replicas and don't need load-aware or locality-aware decisions. It fits stateless workloads with roughly uniform per-request latency. Unlike the default power-of-two-choices router, the round-robin router doesn't compare replicas by their number of ongoing requests. It only skips a replica once that replica reaches `max_ongoing_requests`. As a result, requests can pile up behind a slow replica before the router falls back to the next one.
 
 ### Example
 Reference the router by import path through [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst):
@@ -120,18 +113,18 @@ Reference the router by import path through [`RequestRouterConfig`](../api/doc/r
 (consistent-hash-request-router)=
 ## Experimental: Use the consistent-hash request router for session stickiness
 
-`ConsistentHashRouter` pins each session to a specific replica using a consistent-hash ring with virtual nodes. The routing key is the session ID read from the HTTP header named by `RAY_SERVE_SESSION_ID_HEADER_KEY` (default `x-session-id`), so the same session ID consistently maps to the same replica. Requests without that header fall back to a per-request internal ID and spread uniformly across replicas. If the chosen replica rejects (for example, due to backpressure from the number of ongoing request), the router walks up to `num_fallback_replicas` clockwise successors on the ring. If those are also at capacity, the router sleeps with exponential backoff and retries the same primary and fallbacks until one accepts. When the replica set changes, the ring is rebuilt and only keys owned by added or removed replicas are reshuffled.
+`ConsistentHashRouter` pins each session to a specific replica using a consistent-hash ring with virtual nodes. The routing key is the session ID from the HTTP header that `RAY_SERVE_SESSION_ID_HEADER_KEY` names, which defaults to `x-session-id`, so the same session ID consistently maps to the same replica. Requests without that header fall back to a per-request internal ID and spread uniformly across replicas. If the chosen replica rejects the request, for example because of backpressure from its number of ongoing requests, the router walks up to `num_fallback_replicas` clockwise successors on the ring. If those are also at capacity, the router sleeps with exponential backoff and retries the same primary and fallbacks until one accepts. When the replica set changes, the ring is rebuilt, and only keys owned by added or removed replicas are reshuffled.
 
 Two parameters are configurable through [`request_router_kwargs`](../api/doc/ray.serve.config.RequestRouterConfig.rst):
 
-* `num_virtual_nodes` (default `100`): vnodes per replica on the ring. Higher values spread sessions more evenly across replicas.
-* `num_fallback_replicas` (default `2`): clockwise successors tried after the primary rejects. Set to `0` for strict affinity with no fallback.
+* `num_virtual_nodes`: The number of virtual nodes per replica on the ring. Defaults to `100`. Higher values spread sessions more evenly across replicas.
+* `num_fallback_replicas`: The number of clockwise successors the router tries after the primary rejects. Defaults to `2`. Set it to `0` for strict affinity with no fallback.
 
 ### When to use
-Use the consistent-hash router when requests carry session-scoped state worth keeping warm on a single replica, for example in-memory caches keyed by user or KV-cache reuse for LLM chat sessions. Skip it for stateless workloads, since affinity sacrifices queue-aware balancing and a hot session can saturate its assigned replica while others are idle. It does not support model multiplexing, queue-depth, or locality signals, since mixing them in would break consistent hashing's determinism and therefore break affinity.
+Use the consistent-hash router when requests carry session-scoped state worth keeping warm on a single replica, such as in-memory caches keyed by user or KV-cache reuse for LLM chat sessions. Skip it for stateless workloads. Affinity sacrifices queue-aware balancing, and a hot session can saturate its assigned replica while other replicas are idle. The router doesn't support model multiplexing, queue-depth signals, or locality signals, because mixing them in would break the determinism of consistent hashing and, with it, affinity.
 
 ### Example
-Configure the router via [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) and pass tuning parameters through `request_router_kwargs`:
+Configure the router through [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) and pass tuning parameters through `request_router_kwargs`:
 
 ```{literalinclude} ../doc_code/custom_request_router_app.py
 :start-after: __begin_deploy_app_with_consistent_hash_router__
@@ -139,7 +132,7 @@ Configure the router via [`RequestRouterConfig`](../api/doc/ray.serve.config.Req
 :language: python
 ```
 
-If your clients send the session identifier under a different header (for example, `x-correlation-id`), point Ray Serve at it before the cluster starts:
+If your clients send the session identifier under a different header, such as `x-correlation-id`, point Ray Serve at it before the cluster starts:
 
 ```bash
 export RAY_SERVE_SESSION_ID_HEADER_KEY=x-correlation-id
@@ -149,18 +142,18 @@ export RAY_SERVE_SESSION_ID_HEADER_KEY=x-correlation-id
 (capacity-queue-request-router)=
 ## Experimental: Define a centralized capacity queue request router
 
-In the previous examples, the routing decisions are based on the locally visible state of the target replicas from the perspective of the router replica. This view is **eventually consistent** not strongly because the serve controller frequently broadcasts the replica information to the router. Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same replica, causing transient load imbalance or triggering rejections and retries. For some applications this can result in lower throughput. A **centralized** approach avoids this: a single actor tracks per-replica in-flight counts, and every router acquires a *capacity token* before forwarding a request. This way, each token guarantees the target replica has room, eliminating the rejection protocol entirely.
+In the previous examples, each router bases its routing decisions on the state of the target replicas as the router sees it locally. This view is eventually consistent, not strongly consistent, because the Serve controller frequently broadcasts replica information to the router. Under high concurrency with multiple routers, this information can drift from reality and cause several routers to pick the same replica at the same time. The result is transient load imbalance, or rejections and retries, which can lower throughput for some applications. A centralized approach avoids this problem. A single actor tracks per-replica in-flight counts, and every router acquires a *capacity token* before it forwards a request. Each token guarantees that the target replica has room, which eliminates the rejection protocol entirely.
 
-This example demonstrates how we can implement such routing policy. The example has three pieces:
+The following example implements such a routing policy. It has three pieces:
 
-1. An importable **`CapacityQueue`** actor that tracks per-replica capacity and hands out tokens using a least-loaded selection strategy.
-2. An importable **`CapacityQueueRouter`** custom request router that acquires a token before routing and releases it when the request completes. In a real application, we can have multiple replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas. The centralized `CapacityQueue` actor is meant to keep their local information synchronized with reality.
-3. A **deployment** that ties them together using a [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for the queue and a [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) for the router.
+1. An importable `CapacityQueue` actor that tracks per-replica capacity and hands out tokens using a least-loaded selection strategy.
+1. An importable `CapacityQueueRouter` custom request router that acquires a token before routing and releases it when the request completes. In a real application, you can have multiple instances of `CapacityQueueRouter`, each keeping its own view of the replicas' state. The centralized `CapacityQueue` actor exists to keep that local information synchronized with reality.
+1. A deployment that ties them together using a [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for the queue and a [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) for the router.
 
 (deploy-app-with-capacity-queue-router)=
 ### Deploy an app with the capacity queue router
 
-The deployment wires the pieces together: a `DeploymentActorConfig` for the capacity queue and a `RequestRouterConfig` pointing at the custom router:
+The deployment wires the pieces together with a `DeploymentActorConfig` for the capacity queue and a `RequestRouterConfig` that points at the custom router:
 
 ```{literalinclude} ../doc_code/capacity_queue_request_router_app.py
 :start-after: __begin_deploy_app_with_capacity_queue_router__
@@ -168,52 +161,54 @@ The deployment wires the pieces together: a `DeploymentActorConfig` for the capa
 :language: python
 ```
 
-When the app starts:
+When the app starts, the following happens:
 
-1. The Serve controller creates the `CapacityQueue` deployment actor **before** any replicas start. `CapacityQueue` subscribes to replica updates via long poll.
-2. As the controller starts replicas, it sends deployment-target updates. The queue's long-poll callback automatically registers each replica with its `max_ongoing_requests` capacity and unregisters replicas that are removed during scale-down or crash recovery.
-3. The `CapacityQueueRouter` running in each proxy discovers the singleton `CapacityQueue` deployment actor, acquires a token for every incoming request, and routes to the replica identified by the token.
-4. When the request completes, `CapacityQueueRouter.on_request_completed` fires and the token is released back to the queue.
+1. The Serve controller creates the `CapacityQueue` deployment actor before any replicas start. `CapacityQueue` subscribes to replica updates through long poll.
+1. As the controller starts replicas, it sends deployment-target updates. The queue's long-poll callback automatically registers each replica with its `max_ongoing_requests` capacity, and unregisters replicas that are removed during scale-down or crash recovery.
+1. The `CapacityQueueRouter` running in each proxy discovers the singleton `CapacityQueue` deployment actor, acquires a token for every incoming request, and routes to the replica that the token identifies.
+1. When the request completes, `CapacityQueueRouter.on_request_completed` fires and releases the token back to the queue.
 
-Because the queue is a deployment actor, the controller handles its lifecycle automatically — health checks, cleanup on app deletion, and versioning during rolling updates.
+Because the queue is a deployment actor, the controller handles its lifecycle automatically, including health checks, cleanup on app deletion, and versioning during rolling updates.
 
 ### Fault tolerance
 
-The `CapacityQueueRouter` handles failures gracefully:
+The `CapacityQueueRouter` handles four kinds of failure:
 
-- **Queue unavailable** — if the queue actor is dead, not yet discovered, or errors, the router retries with exponential backoff and falls back to power-of-two-choices after `MAX_FAULT_RETRIES` consecutive failures. Requests never raise exceptions due to queue issues.
-- **Capacity exhausted** — when all replicas are at capacity, the router backs off and retries until capacity frees up.
-- **Queue restart** — a restarted queue has no knowledge of pre-crash in-flight counts and may temporarily over-provision. This self-heals: replicas reject excess requests, and the router does not release rejected tokens intentionally, ratcheting up `in_flight` on the queue until it matches reality. `token_ttl_s` (if configured) auto-reclaims any remaining leaked tokens.
-- **Replica death** — the controller sends a long-poll update, the queue unregisters the dead replica, and tokens are only issued for live replicas.
+- **Queue unavailable**: If the queue actor is dead, not yet discovered, or raises errors, the router retries with exponential backoff and falls back to power-of-two-choices after `MAX_FAULT_RETRIES` consecutive failures. Requests never raise exceptions because of queue issues.
+- **Capacity exhausted**: When all replicas are at capacity, the router backs off and retries until capacity frees up.
+- **Queue restart**: A restarted queue has no knowledge of pre-crash in-flight counts and might temporarily over-provision. This condition corrects itself. Replicas reject excess requests, and the router intentionally doesn't release rejected tokens, which ratchets up `in_flight` on the queue until it matches reality. If you configure `token_ttl_s`, it automatically reclaims any remaining leaked tokens.
+- **Replica death**: The controller sends a long-poll update, the queue unregisters the dead replica, and the queue issues tokens only for live replicas.
 
-### Usage
-The centralized capacity queue request router could bring performance benefits particularly in a constrained supply deployment, i.e. `max_ongoing_request=1` or `2`.
+### When to use
+The centralized capacity queue request router might improve performance, particularly in a deployment with constrained supply, where `max_ongoing_requests` is `1` or `2`.
 
 ### Benchmark
 
-#### Benchmark Setup
-- Deployment topology: Client -> `ParentDeployment` -> `ChildDeployment`. Request router selection is applied to both deployments, controlling how parent replicas are selected by the HTTP proxy and how child replicas are selected by parent's `DeploymentHandle`.
-- Scale: small (8 replicas), medium (32 replicas), large (128 replicas), xlarge (512 replicas).
-- Workload: Replica processing latency is drawn from an exponential distribution with mean 1s and capped at 10s.
-- `max_ongoing_request` is set to `2`.
-- Load generation: Applies closed-loop load generation where the load consistently keeps replicas saturated at `max_ongoing_request` concurrency.
-- Warmup: 10s; metrics within the warmup window are discarded entirely.
+The following benchmark measures `CapacityQueueRouter` under normal conditions and under a simulated fault.
 
-#### Benchmark Metrics
-- Throughput: Requests per second, i.e. `num_requests / duration`.
-- Utilization: Measures what fraction of a replica's total processing capacity was consumed by actual work during the experiment. Concretely, `sum(replica_processing_latency_s) / (duration_s * max_ongoing_requests)`. For GPU deployments, utilization serves as an assessment proxy for GPU utilization.
-- Latency: Measures the client-side end-to-end latency, covering the full round-trip -- client -> `ParentDeployment` -> `ChildDeployment` -> `ParentDeployment` -> client.
+#### Benchmark setup
+- Deployment topology: Client -> `ParentDeployment` -> `ChildDeployment`. The benchmark applies the request router selection to both deployments, so it controls how the HTTP proxy selects parent replicas and how the parent's `DeploymentHandle` selects child replicas.
+- Scale: small with 8 replicas, medium with 32, large with 128, and xlarge with 512.
+- Workload: Replica processing latency follows an exponential distribution with a mean of 1 second, capped at 10 seconds.
+- `max_ongoing_requests` is `2`.
+- Load generation: Closed-loop load generation keeps replicas saturated at `max_ongoing_requests` concurrency.
+- Warmup: 10 seconds. The benchmark discards all metrics from the warmup window.
 
-#### Normal Situation
-Under normal (success) situations, `CapacityQueueRouter` yields higher throughput and utilization and lower latency.
+#### Benchmark metrics
+- Throughput: Requests per second, calculated as `num_requests / duration`.
+- Utilization: The fraction of a replica's total processing capacity that actual work consumes during the experiment, calculated as `sum(replica_processing_latency_s) / (duration_s * max_ongoing_requests)`. For GPU deployments, utilization serves as a proxy for GPU utilization.
+- Latency: The client-side end-to-end latency over the full round trip, from the client to `ParentDeployment`, then `ChildDeployment`, then back through `ParentDeployment` to the client.
+
+#### Normal situation
+Under normal conditions without faults, `CapacityQueueRouter` yields higher throughput, higher utilization, and lower latency.
 
 ```{image} ../images/capacity-queue-router-normal.png
 :align: center
 :width: 800px
 ```
 
-#### Fault Situation
-A fault is simulated by killing the `CapacityQueue` router, and upon recovery, `CapacityQueue` converges towards its pre-fault performance.
+#### Fault situation
+The benchmark simulates a fault by killing the `CapacityQueue` router. After recovery, `CapacityQueue` converges toward its pre-fault performance.
 
 ```{image} ../images/capacity-queue-router-fault.png
 :align: center
@@ -221,22 +216,22 @@ A fault is simulated by killing the `CapacityQueue` router, and upon recovery, `
 ```
 
 :::{note}
-If you experience the following error when the `CapacityQueue` actor experiences faults and routing decisions fall back to the power-of-two-choices router, set `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` to a higher value.
+If you see the following error when the `CapacityQueue` actor fails and routing decisions fall back to the power-of-two-choices router, set `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` to a higher value.
 
 > Failed to get queue length from Replica(id='...', deployment='ParentDeployment', app='...') within 0.1s.
 
 :::
 
-:::{warning}
 ## Gotchas and limitations
 
-When you provide a custom router, Ray Serve can fully support it as long as it's simple, self-contained Python code that relies only on the standard library. Once the router becomes more complex, such as depending on other custom modules or packages, you need to ensure those modules are bundled into the Docker image or environment. This is because Ray Serve uses `cloudpickle` to serialize custom routers and it doesn't vendor transitive dependencies—if your router inherits from a superclass in another module or imports custom packages, those must exist in the target environment. Additionally, environment parity matters: differences in Python version, `cloudpickle` version, or library versions can affect deserialization.
+:::{warning}
+When you provide a custom router, Ray Serve can fully support it as long as it's simple, self-contained Python code that relies only on the standard library. If the router is more complex, such as one that depends on other custom modules or packages, make sure you bundle those modules into the Docker image or environment. Ray Serve uses `cloudpickle` to serialize custom routers, and it doesn't vendor transitive dependencies. If your router inherits from a superclass in another module or imports custom packages, those modules and packages must exist in the target environment. Environment parity also matters. Differences in Python version, `cloudpickle` version, or library versions can affect deserialization.
+:::
 
 ### Alternatives for complex routers
 
-When your custom request router has complex dependencies or you want better control over versioning and deployment, you have several alternatives:
+When your custom request router has complex dependencies, or you want better control over versioning and deployment, you have three alternatives:
 
-- **Use built-in routers**: Consider using the routers shipped with Ray Serve—these are well-tested, production-ready, and guaranteed to work across different environments.
+- **Use built-in routers**: Consider using the routers that ship with Ray Serve. They're well tested, production ready, and guaranteed to work across different environments.
 - **Contribute to Ray Serve**: If your router is general-purpose and might benefit others, consider contributing it to Ray Serve as a built-in router by opening a feature request or pull request on the [Ray GitHub repository](https://github.com/ray-project/ray/issues). The recommended location for the implementation is `python/ray/serve/_private/request_router/`.
-- **Ensure dependencies in your environment**: Make sure that the external dependencies are installed in your Docker image or environment.
-:::
+- **Install dependencies in your environment**: Install the external dependencies in your Docker image or environment.

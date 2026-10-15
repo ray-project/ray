@@ -5,7 +5,7 @@ myst:
 ---
 
 (serve-advanced-guides)=
-# Advanced Guides
+# Advanced guides
 
 ```{toctree}
 :hidden:
@@ -29,23 +29,24 @@ deployment-scoped-actors
 multi-node-gpu-troubleshooting
 ```
 
-If you’re new to Ray Serve, start with the [Ray Serve Quickstart](serve-getting-started).
+If you're new to Ray Serve, start with the [Ray Serve Quickstart](serve-getting-started).
 
-Use these advanced guides for more options and configurations:
-- [Pass Arguments to Applications](app-builder-guide)
-- [Advanced Ray Serve Autoscaling](serve-advanced-autoscaling)
-- [Asyncio and Concurrency best practices in Ray Serve](serve-asyncio-best-practices)
-- [Performance Tuning](serve-perf-tuning)
-- [Dynamic Request Batching](serve-performance-batching-requests)
-- [In-Place Updates for Serve](serve-inplace-updates)
-- [Development Workflow](serve-dev-workflow)
-- [gRPC Support](serve-set-up-grpc-service)
-- [Replica Ranks](serve-replica-ranks)
-- [Replica Scheduling](serve-replica-scheduling)
-- [Gang Scheduling](serve-gang-scheduling)
+Use the following advanced guides for more options and configurations:
+
+- [Pass arguments to applications](app-builder-guide)
+- [Advanced Ray Serve autoscaling](serve-advanced-autoscaling)
+- [Concurrency and `asyncio` best practices in Ray Serve](serve-asyncio-best-practices)
+- [Performance tuning](serve-perf-tuning)
+- [Dynamic request batching](serve-performance-batching-requests)
+- [Update applications in place](serve-inplace-updates)
+- [Development workflow](serve-dev-workflow)
+- [Set up a gRPC service](serve-set-up-grpc-service)
+- [Replica ranks](serve-replica-ranks)
+- [Replica scheduling](serve-replica-scheduling)
+- [Gang scheduling](serve-gang-scheduling)
 - [Ray Serve dashboard](dash-serve-view)
 - [Experimental Java API](serve-java-api)
-- [Run Applications in Different Containers](serve-container-runtime-env-guide)
-- [Use Custom Algorithm for Request Routing](custom-request-router)
+- [Run multiple applications in different containers](serve-container-runtime-env-guide)
+- [Use a custom algorithm for request routing](custom-request-router)
 - [Use deployment-scoped actors](serve-deployment-scoped-actors)
-- [Troubleshoot multi-node GPU setups for serving LLMs](multi-node-gpu-troubleshooting)
+- [Troubleshoot multi-node GPU serving on KubeRay](multi-node-gpu-troubleshooting)

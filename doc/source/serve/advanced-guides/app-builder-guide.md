@@ -5,15 +5,16 @@ myst:
 ---
 
 (serve-app-builder-guide)=
-# Pass Arguments to Applications
+# Pass arguments to applications
 
-This section describes how to pass arguments to your applications using an application builder function.
+This page describes how to pass arguments to your applications with an application builder function.
 
-## Defining an application builder
+(defining-an-application-builder)=
+## Define an application builder
 
-When writing an application, there are often parameters that you want to be able to easily change in development or production. For example, you might have a path to trained model weights and want to test out a newly trained model. In Ray Serve, these parameters are typically passed to the constructor of your deployments using `.bind()`. This pattern allows you to configure deployments using ordinary Python code, but it requires modifying the code whenever one of the parameters needs to change.
+An application often has parameters that you want to change in development or production. For example, you might have a path to trained model weights and want to test a newly trained model. In Ray Serve, you typically pass these parameters to the constructors of your deployments with `.bind()`. This pattern configures deployments in ordinary Python code, but you have to modify the code whenever a parameter changes.
 
-To pass arguments without changing the code, define an "application builder" function that takes an arguments dictionary (or [Pydantic object](typed-app-builders)) and returns the built application to be run.
+To pass arguments without changing the code, define an *application builder* function. It takes a dictionary of arguments or a [Pydantic object](typed-app-builders), and returns the built application to run.
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_untyped_builder__
@@ -21,9 +22,10 @@ To pass arguments without changing the code, define an "application builder" fun
 :language: python
 ```
 
-You can use this application builder function as the import path in the `serve run` CLI command or the config file (as shown below). To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
+You can use this application builder function as the import path in the `serve run` CLI command or in the config file, as the following sections show. To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
 
-### Passing arguments via `serve run`
+(passing-arguments-via-serve-run)=
+### Pass arguments through `serve run`
 
 Pass arguments to the application builder from `serve run` using the following syntax:
 
@@ -31,7 +33,7 @@ Pass arguments to the application builder from `serve run` using the following s
 $ serve run hello:app_builder key1=val1 key2=val2
 ```
 
-The arguments are passed to the application builder as a dictionary, in this case `{"key1": "val1", "key2": "val2"}`. For example, to pass a new message to the `HelloWorld` app defined above (with the code saved in `hello.py`):
+The application builder receives the arguments as a dictionary, in this case `{"key1": "val1", "key2": "val2"}`. For example, with the code saved in `hello.py`, run the following command to pass a new message to the `HelloWorld` application defined earlier:
 
 ```bash
 % serve run hello:app_builder message="Hello from CLI"
@@ -44,9 +46,10 @@ The arguments are passed to the application builder as a dictionary, in this cas
 2023-05-16 10:47:36,131 SUCC scripts.py:424 -- Deployed Serve app successfully.
 ```
 
-Notice that the "Hello from CLI" message is printed from within the deployment constructor.
+The deployment constructor prints the "Hello from CLI" message.
 
-### Passing arguments via config file
+(passing-arguments-via-config-file)=
+### Pass arguments through a config file
 
 Pass arguments to the application builder in the config file's `args` field:
 
@@ -58,7 +61,7 @@ applications:
       message: "Hello from config"
 ```
 
-For example, to pass a new message to the `HelloWorld` app defined above (with the code saved in `hello.py` and the config saved in `config.yaml`):
+For example, with the code saved in `hello.py` and the config saved in `config.yaml`, run the following command to pass a new message to the `HelloWorld` application defined earlier:
 
 ```bash
 % serve run config.yaml
@@ -73,16 +76,17 @@ For example, to pass a new message to the `HelloWorld` app defined above (with t
 (ServeReplica:MyApp_HelloWorld pid=57113) Message: Hello from config
 ```
 
-Notice that the "Hello from config" message is printed from within the deployment constructor.
+The deployment constructor prints the "Hello from config" message.
 
 (typed-app-builders)=
-### Typing arguments with Pydantic
+(typing-arguments-with-pydantic)=
+### Type arguments with Pydantic
 
 :::{warning}
-**Pydantic v1 Deprecation Notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for more details.
+**Pydantic v1 deprecation notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for details.
 :::
 
-To avoid writing logic to parse and validate the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) as the single input parameter's type to your application builder function (the parameter must be type annotated). Arguments are passed the same way, but the resulting dictionary is used to construct the Pydantic model using `model.parse_obj(args_dict)`.
+To avoid parsing and validating the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) and use it as the type of your application builder function's single input parameter. The parameter must have a type annotation. You pass arguments the same way, but Ray Serve constructs the Pydantic model from the resulting dictionary with `model.parse_obj(args_dict)`.
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_typed_builder__
@@ -103,9 +107,12 @@ To avoid writing logic to parse and validate the arguments by hand, define a [Py
 
 ## Common patterns
 
-### Multiple parametrized applications using the same builder
+The following sections show common ways to use application builders.
 
-You can use application builders to run multiple applications with the same code but different parameters. For example, multiple applications may share preprocessing and HTTP handling logic but use many different trained model weights. The same application builder `import_path` can take different arguments to define multiple applications as follows:
+(multiple-parametrized-applications-using-the-same-builder)=
+### Run multiple parametrized applications with the same builder
+
+You can use application builders to run multiple applications with the same code but different parameters. For example, multiple applications might share preprocessing and HTTP handling logic but use many different trained model weights. The following config passes different arguments to the same application builder `import_path` to define three applications:
 
 ```yaml
 applications:
@@ -123,9 +130,10 @@ applications:
       model_uri: s3://my_bucket/model_3
 ```
 
-### Configuring multiple composed deployments
+(configuring-multiple-composed-deployments)=
+### Configure multiple composed deployments
 
-You can use the arguments passed to an application builder to configure multiple deployments in a single application. For example a model composition application might take weights to two different models as follows:
+You can use the arguments passed to an application builder to configure multiple deployments in a single application. For example, the following model composition application takes weights for two different models:
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_composed_builder__
