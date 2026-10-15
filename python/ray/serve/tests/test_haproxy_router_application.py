@@ -512,8 +512,7 @@ async def test_router_prefix_is_replaced(router_cluster):
 
     assert resp.status_code == 200, resp.text
     assert (
-        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
-        == "/?x=1"
+        router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER] == "/?x=1"
     )
 
     # Paths outside the router's prefix are not routed by it.
@@ -556,8 +555,7 @@ async def test_forwards_cors_preflight_headers(router_cluster):
     assert call_headers["origin"] == "https://example.com"
     assert call_headers["access-control-request-method"] == "POST"
     assert (
-        call_headers["access-control-request-headers"]
-        == "authorization,content-type"
+        call_headers["access-control-request-headers"] == "authorization,content-type"
     )
 
 
