@@ -95,6 +95,14 @@ _SLIRP4NETNS_FLAGS = [
     "--enable-seccomp",
 ]
 
+# The launch process stays in its owner's process group (see create_sandbox),
+# so a Ctrl-C in a driver's terminal, or a Jupyter kernel interrupt, signals
+# it too. Neither should stop a sandbox, so every launch command starts with
+# this: the shell ignores SIGINT and SIGQUIT, and so do the commands it runs,
+# across exec. runsc keeps SIGINT ignored, but Go installs its own SIGQUIT
+# handler, so a SIGQUIT (Ctrl-\) still ends runsc and its sandbox, cleanly.
+_IGNORE_INTERRUPTS = "trap '' INT QUIT; "
+
 
 def _runsc_args(rootless: bool, ignore_cgroups: bool) -> List[str]:
     """runsc and the global flags that its run/exec/kill/delete share."""
@@ -224,9 +232,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # crashes, the raylet kills the worker's process group. Everything
         # the launch process started dies with it, runsc's sandbox through
         # runsc's parent-death signal and a network="public" sandbox's
-        # helpers through setpriv. The tree shares the stderr log so startup
-        # failures (missing /dev/net/tun, no uplink) surface through the
-        # SandboxCreationError path below.
+        # helpers through setpriv. It ignores SIGINT, so a driver's Ctrl-C
+        # doesn't stop it (see _IGNORE_INTERRUPTS). The tree shares the stderr
+        # log so startup failures (missing /dev/net/tun, no uplink) surface
+        # through the SandboxCreationError path below.
         proc = subprocess.Popen(
             run_args,
             stdin=subprocess.DEVNULL,
@@ -554,7 +563,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _build_run_command(
         self, config: SandboxConfig, root_dir: str, sandbox_id: str
     ) -> List[str]:
-        """Build the full `runsc run` argv, namespace-wrapped for network="public".
+        """Build the launch argv: `runsc run` under a shell that ignores SIGINT
+        and SIGQUIT, namespace-wrapped for network="public".
 
         Pure argv construction (no filesystem side effects) so tests can
         assert the exact command without runsc or slirp4netns installed. The
@@ -586,12 +596,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
             script = (
+                _IGNORE_INTERRUPTS
                 # This shell stays the parent of the holder, slirp4netns and
                 # runsc, and its exit trap kills and reaps the helpers. When it
                 # exec'd runsc instead, the helpers outlived their parent and
                 # became zombies of the pod's init, which often never reaps
                 # them. Killing the holder's sleep (NSPID) lets unshare reap it.
-                "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
+                + "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
                 # setpriv --pdeathsig kills each child with this shell, which
                 # is what Ray kills when the owning worker exits.
                 # The holder pins the namespaces for the sandbox's lifetime;
@@ -622,7 +633,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "wait $!"
             )
             return ["bash", "-c", script]
-        return args
+        # The shell execs runsc, so the launch process is runsc itself.
+        return ["sh", "-c", _IGNORE_INTERRUPTS + 'exec "$@"', "sh", *args]
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
         """Stop a sandbox's launch process, and everything it started, and reap it.

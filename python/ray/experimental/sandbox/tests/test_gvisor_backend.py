@@ -580,8 +580,11 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert cmd[:2] == ["bash", "-c"]
     script = cmd[2]
 
-    # The shell stays the parent of every helper and reaps them as it exits.
+    # The shell, and so everything it starts, ignores a Ctrl-C sent to its
+    # owner's process group. It stays the parent of every helper and reaps
+    # them as it exits.
     assert script.startswith(
+        "trap '' INT QUIT; "
         "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
         "setpriv --pdeathsig KILL -- "
         "unshare --user --map-root-user --net --fork --kill-child "
@@ -629,10 +632,11 @@ def test_build_run_command_public_keeps_rootless_cgroup_tolerance(monkeypatch):
 @pytest.mark.parametrize(
     "network,rootless", [("none", True), ("host", True), ("sandbox", False)]
 )
-def test_build_run_command_other_modes_unwrapped(network, rootless):
-    """Every mode but "public" keeps today's bare runsc invocation."""
+def test_build_run_command_other_modes_exec_runsc(network, rootless):
+    """Every mode but "public" runs runsc itself: a shell makes it ignore a
+    Ctrl-C sent to its owner's process group, then execs it."""
     cmd = _run_argv(network, rootless=rootless)
-    assert cmd[0] == "runsc"
+    assert cmd[:5] == ["sh", "-c", "trap '' INT QUIT; exec \"$@\"", "sh", "runsc"]
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
@@ -998,7 +1002,7 @@ def test_reclaim_runs_in_the_background(monkeypatch):
 
 # Creates a sandbox, prints what the test needs to find it, and waits.
 _OWNER = r"""
-import json, sys, time
+import json, signal, sys, time
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 
@@ -1006,6 +1010,8 @@ backend = GVisorSandboxBackend()
 sandbox_id = backend.create_sandbox(
     GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network=sys.argv[1])
 )
+# Like a Jupyter kernel, the owner survives an interrupt.
+signal.signal(signal.SIGINT, lambda *args: None)
 root_dir = backend._sandbox_metadata[sandbox_id]["root_dir"]
 print(json.dumps({"id": sandbox_id, "root_dir": root_dir}), flush=True)
 time.sleep(600)
@@ -1102,6 +1108,59 @@ def test_netns_owner_group_kill_stops_its_sandbox(ensure_slirp4netns):
 
 def test_netns_reclaim_stops_a_sandbox_whose_owner_died_alone(ensure_slirp4netns):
     _check_owner_death("public", whole_group=False)
+
+
+def _check_owner_interrupt(network: str) -> None:
+    """A Ctrl-C in a driver's terminal, or a Jupyter kernel interrupt, sends
+    SIGINT to the owner's whole process group, and the owner survives it. Its
+    sandbox must keep running, network and all, and still stop when the group
+    gets SIGTERM, which is what the raylet sends a dead worker's group first."""
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(image="busybox:latest", network=network)
+    with _subreaper():
+        owner = subprocess.Popen(
+            [sys.executable, "-c", _OWNER, network],
+            stdout=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            sandbox = json.loads(owner.stdout.readline() or "null")
+            assert sandbox, "the owner failed to create its sandbox"
+            pids = _sandbox_processes(sandbox, network)
+
+            os.killpg(owner.pid, signal.SIGINT)
+            time.sleep(2)
+            assert owner.poll() is None
+            assert _running(pids) == pids
+            command = "echo Example"
+            if network == "public":
+                command = "wget -q -T 15 -O - http://example.com"
+            res = subprocess.run(
+                [*backend._runsc_base_args(config), "exec", sandbox["id"]]
+                + ["sh", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            assert "Example" in res.stdout, res.stderr
+
+            os.killpg(owner.pid, signal.SIGTERM)
+            owner.wait()
+            assert not _wait_until_stopped(pids)
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(owner.pid, signal.SIGKILL)
+            owner.wait()
+            backend._reclaim_unowned_bundles()
+
+
+def test_owner_interrupt_leaves_its_sandbox_running():
+    _check_owner_interrupt("none")
+
+
+def test_netns_owner_interrupt_leaves_its_sandbox_running(ensure_slirp4netns):
+    _check_owner_interrupt("public")
 
 
 _UDP_CLIENT = r"""
