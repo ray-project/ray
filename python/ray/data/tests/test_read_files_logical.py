@@ -8,6 +8,7 @@ constructed.
 """
 
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Optional, Union
 
@@ -212,6 +213,31 @@ def test_apply_predicate_mixed_and_with_unsplittable_residual(tmp_path):
     # The residual carried by the new Filter is exactly the mixed-OR
     # conjunct that couldn't be pushed.
     _assert_pred_equals(result.predicate_expr, mixed_or)
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("country") == "US",
+        col("a") > 1,
+        (col("country") == "US") & (col("a") > 1),
+        (col("country") == "US") | (col("a") > 1),
+    ],
+    ids=["partition", "data", "and", "mixed_or"],
+)
+def test_block_udf_keeps_post_read_predicates_above_the_read(tmp_path, predicate):
+    op = _mk_partitioned_read_files(tmp_path)
+    assert isinstance(op.scanner, ParquetScanner)
+    # An explicit read-stage predicate must survive the post-UDF barrier.
+    scanner, residual = op.scanner.push_filters(col("a") > 0)
+    assert residual is None
+    op = replace(op, scanner=scanner, block_udf=lambda table: table)
+
+    assert op.supports_predicate_pushdown() is False
+    assert op.apply_predicate(predicate) is op
+    assert op.scanner is scanner
+    _assert_pred_equals(scanner.predicate, col("a") > 0)
+    assert scanner.partition_predicate is None
 
 
 if __name__ == "__main__":
