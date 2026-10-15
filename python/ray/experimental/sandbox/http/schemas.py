@@ -113,11 +113,14 @@ class CreateSandboxRequest(BaseModel):
     cidr_allowlist: Optional[List[str]] = Field(
         default=None,
         description=(
-            "Egress allowlist for network='public': only the listed IPv4/IPv6 "
-            "networks are reachable (any protocol), plus UDP/TCP port 53 to "
-            "the dns resolvers. null leaves egress unrestricted; [] allows "
-            "nothing but DNS. Entries are normalized (10.0.1.5/24 becomes "
-            "10.0.1.0/24) and must be IP literals, not host names."
+            "Egress allowlist for network='public': only the listed "
+            "destinations are reachable, plus UDP/TCP port 53 to the dns "
+            "resolvers. An entry is an IPv4/IPv6 address or network, or "
+            "'internet' for every public address, optionally with a TCP/UDP "
+            "port or port range: 10.0.1.5:8000, 10.0.1.0/24:8000-8010, "
+            "[2001:db8::1]:443, internet:443. null leaves egress unrestricted; "
+            "[] allows nothing but DNS. Entries are normalized (10.0.1.5/24 "
+            "becomes 10.0.1.0/24) and must be IP literals, not host names."
         ),
     )
     shell: Optional[str] = Field(

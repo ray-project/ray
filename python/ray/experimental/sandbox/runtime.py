@@ -302,7 +302,7 @@ class SandboxRuntime:
 
         Args:
             instance_id: Unique identifier of the sandbox instance.
-            cidrs: The new allowlist (IPv4/IPv6 addresses or networks).
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
         """
         self._backend.set_egress_allowlist(instance_id, cidrs)
 
