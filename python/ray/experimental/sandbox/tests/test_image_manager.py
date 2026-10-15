@@ -73,6 +73,30 @@ def test_image_manager_pull_and_paths(tmp_path):
         assert tar.extractfile("./test.txt").read() == b"hello from image manager"
 
 
+def test_release_finds_the_pin_after_its_archive_is_deleted(tmp_path, monkeypatch):
+    """A relative archive path names the same cache entry once the archive is
+    gone, so the sandbox's release still drops its pin."""
+    from ray.experimental.sandbox._internal.image_utils import (
+        evict_least_recently_used_images,
+    )
+
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES", "0")
+    monkeypatch.chdir(tmp_path)
+    with tarfile.open("app.tar.gz", "w:gz") as tar:
+        info = tarfile.TarInfo("hello.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+    images_dir = str(tmp_path / "images")
+    manager = ImageManager(images_dir=images_dir)
+
+    image_dir = manager.pull_image("app.tar.gz", instance_id="sb-1")
+    os.remove("app.tar.gz")
+    manager.release_image("app.tar.gz", "sb-1")
+
+    evict_least_recently_used_images(images_dir, max_bytes=0)
+    assert not os.path.exists(image_dir)
+
+
 def test_image_manager_config_parsing(tmp_path):
     images_dir = str(tmp_path / "images")
     mgr = ImageManager(images_dir=images_dir)

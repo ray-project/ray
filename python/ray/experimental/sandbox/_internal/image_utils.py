@@ -191,6 +191,9 @@ def image_cache_name(image: str) -> str:
     ``/``, ``:`` and ``@`` all into ``_``, so ``repo@sha256:<hex>`` and a tag
     named ``sha256_<hex>`` differ only in the hash.
 
+    The name depends on the string alone, not on which files exist, so the
+    pin a pull takes and its later release always agree on it.
+
     Args:
         image: Container image reference or path to a local tar archive.
 
@@ -200,7 +203,6 @@ def image_cache_name(image: str) -> str:
     if (
         not isinstance(image, str)
         or not image.strip()
-        or os.path.isfile(image)
         or image.endswith(".tar")
         or image.startswith(("/", "./", "../"))
     ):
