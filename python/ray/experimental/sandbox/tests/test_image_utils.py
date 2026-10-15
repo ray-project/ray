@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import http.server
 import io
@@ -8,8 +9,10 @@ import re
 import sys
 import tarfile
 import threading
+import time
 import urllib.error
 import urllib.parse
+import zlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -966,6 +969,190 @@ def test_dir_size_counts_hard_links_once(tmp_path):
         os.link(bin_dir / "busybox", bin_dir / name)
     (tree / "other").write_bytes(b"y" * 10)
     assert image_utils._dir_size_bytes(str(tree)) == 1010
+
+
+def _gz_layer(*files) -> bytes:
+    """A gzipped layer holding ``(name, data)`` files."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for name, data in files:
+            _add_member(tar, name, data)
+    return buf.getvalue()
+
+
+def _send(handler, body: bytes) -> None:
+    handler.send_response(200)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+@contextlib.contextmanager
+def _serve_image(monkeypatch, layers, serve_blob=None):
+    """Serve an image made of ``layers`` as Docker Hub's mirror.
+
+    ``serve_blob(index, handler, blob)`` answers the request for layer
+    ``index``; by default the blob goes out whole. Yields the image to pull.
+    """
+    digests = [f"sha256:{hashlib.sha256(blob).hexdigest()}" for blob in layers]
+    manifest = json.dumps(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+            "layers": [
+                {
+                    "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
+                    "digest": digest,
+                    "size": len(blob),
+                }
+                for digest, blob in zip(digests, layers)
+            ],
+        }
+    ).encode()
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if "/manifests/" in self.path:
+                _send(self, manifest)
+            elif "/blobs/" in self.path:
+                index = digests.index(self.path.rsplit("/", 1)[1])
+                (serve_blob or (lambda i, h, b: _send(h, b)))(
+                    index, self, layers[index]
+                )
+            else:
+                self.send_error(404)
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv(
+        "RAY_SANDBOX_REGISTRY_MIRROR", f"http://127.0.0.1:{server.server_port}"
+    )
+    try:
+        yield "busybox:latest"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_layers_download_in_parallel_and_apply_in_order(tmp_path, monkeypatch):
+    """Three layers download at once, and the layers apply in manifest order
+    even when later ones arrive first."""
+    layers = [
+        _gz_layer(("f", b"1"), ("g", b"g")),
+        _gz_layer(("f", b"2")),
+        _gz_layer((".wh.g", b"")),
+        _gz_layer(("h", b"h")),
+        _gz_layer(("f", b"5")),
+    ]
+    first_three = threading.Barrier(3, timeout=5)
+
+    def serve_blob(index, handler, blob):
+        if index < 3:
+            # Breaks, and fails the pull, unless all three run at once.
+            first_three.wait()
+        if index == 0:
+            time.sleep(0.5)
+        _send(handler, blob)
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        image_utils._extract_image_layers(
+            image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+        )
+    assert (rootfs / "f").read_bytes() == b"5"
+    assert not (rootfs / "g").exists()
+    assert (rootfs / "h").read_bytes() == b"h"
+
+
+def test_failed_layer_fails_the_pull_and_stops_other_downloads(tmp_path, monkeypatch):
+    """A layer that can't be fetched fails the pull at once, and a download
+    still running stops instead of finishing in the background."""
+    layers = [_gz_layer(("a", b"a")), _gz_layer(("b", b"b")), os.urandom(200_000)]
+    hung_up = threading.Event()
+
+    def serve_blob(index, handler, blob):
+        if index == 1:
+            handler.send_error(500)
+            return
+        if index == 2:
+            # About 20 s at this pace.
+            handler.send_response(200)
+            handler.send_header("Content-Length", str(len(blob)))
+            handler.end_headers()
+            try:
+                for i in range(0, len(blob), 1024):
+                    handler.wfile.write(blob[i : i + 1024])
+                    handler.wfile.flush()
+                    time.sleep(0.1)
+            except OSError:
+                hung_up.set()
+            return
+        _send(handler, blob)
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    start = time.monotonic()
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        with pytest.raises(SandboxCreationError, match="500"):
+            image_utils._extract_image_layers(
+                image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+            )
+        assert time.monotonic() - start < 5
+        assert hung_up.wait(5)
+
+
+def test_a_layer_cut_short_fails_the_pull(tmp_path, monkeypatch):
+    """A layer whose download ends early fails the pull, even when the part
+    that arrived ends on a member boundary and so reads as a whole archive."""
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        _add_member(tar, "a", b"a")
+        boundary = tar.offset
+        _add_member(tar, "b", b"b")
+    raw = archive.getvalue()
+    # A full flush ends the compressed prefix exactly where member "b" starts.
+    gz = zlib.compressobj(wbits=31)
+    head = gz.compress(raw[:boundary]) + gz.flush(zlib.Z_FULL_FLUSH)
+    layer = head + gz.compress(raw[boundary:]) + gz.flush()
+
+    def serve_blob(index, handler, blob):
+        # Promise the whole layer, send the prefix, and close the connection.
+        handler.send_response(200)
+        handler.send_header("Content-Length", str(len(blob)))
+        handler.end_headers()
+        handler.wfile.write(blob[: len(head)])
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, [layer], serve_blob) as image:
+        with pytest.raises(SandboxCreationError):
+            image_utils._extract_image_layers(
+                image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+            )
+
+
+def test_extract_tar_layer_reads_a_layer_once(tmp_path):
+    """A compressed layer is decompressed in one pass, not read twice."""
+    blob = _gz_layer(("a", os.urandom(1 << 20)), ("b", os.urandom(1 << 20)))
+
+    class CountingReader(io.BytesIO):
+        bytes_read = 0
+
+        def read(self, size=-1):
+            data = super().read(size)
+            self.bytes_read += len(data)
+            return data
+
+    reader = CountingReader(blob)
+    extract_tar_layer(reader, str(tmp_path))
+    assert (tmp_path / "b").stat().st_size == 1 << 20
+    assert reader.bytes_read <= len(blob)
 
 
 if __name__ == "__main__":
