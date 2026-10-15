@@ -3,6 +3,7 @@ import ctypes
 import errno
 import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -950,6 +951,35 @@ def test_reclaim_never_runs_a_command_from_the_owner_file(private_bundles):
     assert (private_bundles / "runsc.log").read_text().splitlines()[0] == (
         "--root /tmp/runsc kill ray-sandbox-00000000000d SIGKILL"
     )
+
+
+def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch):
+    """A reclaim pass runs in a daemon thread, so it can be cut short, say with
+    the process that runs it. Everything but the owner file goes first, so a
+    later pass still finds the bundle and finishes."""
+    root = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000e")
+    (root / "workdir").mkdir(parents=True)
+    (root / "workdir" / "file").write_text("data")
+    (root / "overlay").write_bytes(b"\0" * 1024)
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    config = GVisorSandboxConfig(image="busybox:latest")
+    backend._own_bundle(config, str(root)).close()
+    rmtree = shutil.rmtree
+
+    def cut_short(path, *args, **kwargs):
+        if Path(path) == root:
+            raise RuntimeError("the pass was cut short")
+        rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", cut_short)
+    assert backend._reclaim_unowned_bundles() == []
+    assert os.listdir(root) == [".owner"]
+
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000e"]
+    assert not root.exists()
+    assert ("busybox:latest", "ray-sandbox-00000000000e") in images.released
 
 
 @pytest.mark.parametrize("failure", ["pull", "owner file"])
