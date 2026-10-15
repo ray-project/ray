@@ -79,7 +79,7 @@ How this method runs depends on the value of `RAY_SERVE_RUN_SYNC_IN_THREADPOOL`:
 - With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1`, which is the default, Serve offloads `__call__` to a thread pool so the event loop stays responsive.
 - With `RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0`, `__call__` runs directly on the user event loop and blocks it for 1 second.
 
-(fastapi-ingress-serveingress)=
+(fastapi-ingress-serve-ingress)=
 ### FastAPI ingress with `@serve.ingress`
 
 When you use a FastAPI ingress, FastAPI controls how endpoints run:
@@ -404,10 +404,10 @@ The following example shows a non-blocking version:
 
 When you stream responses, follow these guidelines:
 
-- Write `async def` generators that use `await` between yields.
+- Prefer `async def` generators that use `await` between yields.
 - Avoid long CPU-bound loops between yields. Offload them if you need them.
 
-(offloading-patterns-io-cpu)=
+(offloading-patterns-i-o-cpu)=
 ## Offloading patterns for I/O and CPU work
 
 This section summarizes common offloading patterns you can use inside `async` handlers.
@@ -447,5 +447,5 @@ This pattern uses multiple Ray workers and processes and bypasses the GIL limita
 
 - Use `async def` for I/O-bound and streaming work so the event loop can stay responsive.
 - Use `max_ongoing_requests` to bound concurrency per replica, but remember that blocking `def` handlers can still serialize work if they run on the event loop.
-- Consider enabling `RAY_SERVE_RUN_SYNC_IN_THREADPOOL` once your code is thread-safe, and be aware of the sync-in-thread-pool warning.
+- Keep `RAY_SERVE_RUN_SYNC_IN_THREADPOOL` at its default of `1` only if your code is thread-safe. If you set it to `0`, Serve warns when it calls a sync method directly on the event loop.
 - For CPU-heavy workloads, scale replicas or use GIL-releasing native code for real parallelism.

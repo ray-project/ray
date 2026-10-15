@@ -371,7 +371,7 @@ Running the same Locust load test again generates the following results:
 | Number of `HeavyLoad` and `LightLoad` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_replicas.png" alt="heavy" width="600"/> |
 | Number of `Driver` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="driver" width="600"/> |
 
-With up to six `Driver` deployments to receive and distribute the incoming requests, the `HeavyLoad` deployment scales up to more than 90 replicas, and `LightLoad` scales up to 47 replicas. This configuration helps keep application latency consistent as the traffic load increases.
+With up to six `Driver` replicas to receive and distribute the incoming requests, the `HeavyLoad` deployment scales up to more than 90 replicas, and `LightLoad` scales up to 47 replicas. This configuration helps keep application latency consistent as the traffic load increases.
 
 | Improved P50 latency | Improved RPS |
 | ---------------- | ------------ |

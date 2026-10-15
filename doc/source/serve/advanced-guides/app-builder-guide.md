@@ -86,7 +86,7 @@ The deployment constructor prints the "Hello from config" message.
 **Pydantic v1 deprecation notice:** Pydantic v1 is deprecated and Ray will drop support for it in version 2.56. If you're using Pydantic v1, upgrade to Pydantic v2 by running `pip install -U pydantic`. See [GitHub issue #58876](https://github.com/ray-project/ray/issues/58876) for details.
 :::
 
-To avoid parsing and validating the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) and use it as the type of your application builder function's single input parameter. The parameter must have a type annotation. You pass arguments the same way, but Ray Serve constructs the Pydantic model from the resulting dictionary with `model.parse_obj(args_dict)`.
+To avoid parsing and validating the arguments by hand, define a [Pydantic model](https://pydantic-docs.helpmanual.io/usage/models/) and use it as the type of your application builder function's single input parameter. The parameter must have a type annotation. You pass arguments the same way, but Ray Serve constructs the Pydantic model from the resulting dictionary with `model.model_validate(args_dict)`.
 
 ```{literalinclude} ../doc_code/app_builder.py
 :start-after: __begin_typed_builder__

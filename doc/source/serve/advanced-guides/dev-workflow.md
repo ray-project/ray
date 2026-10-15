@@ -10,7 +10,7 @@ myst:
 
 This page describes the recommended workflow for developing Ray Serve applications. If you're ready to go to production, see the [Production Guide](serve-in-production).
 
-(local-development-using-serverun)=
+(local-development-using-serve-run)=
 ## Develop locally with `serve.run`
 
 You can call `serve.run` in a Python script to run and test your application locally, then send requests programmatically through a handle rather than over HTTP.
