@@ -4,7 +4,7 @@ import logging
 import time
 from collections import deque
 from dataclasses import dataclass
-from functools import wraps
+from functools import partial, wraps
 from inspect import Parameter, isasyncgenfunction, iscoroutinefunction
 from typing import (
     Any,
@@ -155,7 +155,8 @@ class _BatchQueue:
         handle_batch_func: Optional[Callable] = None,
         batch_size_fn: Optional[Callable[[List], int]] = None,
         semaphore: Optional[asyncio.Semaphore] = None,
-        on_idle: Optional[Callable[[], None]] = None,
+        on_idle: Optional[Callable[["_BatchQueue"], None]] = None,
+        queue_length_fn: Optional[Callable[[], int]] = None,
     ) -> None:
         """Async queue that accepts individual items and returns batches.
 
@@ -181,6 +182,12 @@ class _BatchQueue:
                 representing the batch size. This is useful for batching based
                 on custom metrics such as total nodes in graphs, total tokens
                 in sequences, etc.
+            semaphore: optional semaphore shared with other queues to limit
+                concurrent batches across them. If None, a new one is created.
+            on_idle: optional callback invoked with this queue when it has no
+                queued, pending, or running requests.
+            queue_length_fn: optional function returning the value to report
+                for the queue length metric. If None, uses this queue's size.
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
         self.max_batch_size = max_batch_size
@@ -189,9 +196,10 @@ class _BatchQueue:
         self.batch_size_fn = batch_size_fn
         self.semaphore = semaphore or asyncio.Semaphore(max_concurrent_batches)
         self._on_idle = on_idle
+        self._queue_length_fn = queue_length_fn or self.queue.qsize
         self.requests_available_event = asyncio.Event()
         self.tasks: Set[asyncio.Task] = set()
-        self._pending_batch_count = 0
+        # Batch being assembled or waiting on the semaphore.
         self._current_batch: List[_SingleRequest] = []
 
         # Used for observability.
@@ -294,112 +302,104 @@ class _BatchQueue:
         """
 
         batch = []
-        try:
-            first_item = await self.queue.get()  # Block until first item arrives
-            batch.append(first_item)
-            self._current_batch = batch
+        self._current_batch = batch
+        first_item = await self.queue.get()  # Block until first item arrives
 
-            # Cache current max_batch_size and batch_wait_timeout_s for this batch.
-            max_batch_size = self.max_batch_size
-            batch_wait_timeout_s = self.batch_wait_timeout_s
+        # Cache current max_batch_size and batch_wait_timeout_s for this batch.
+        max_batch_size = self.max_batch_size
+        batch_wait_timeout_s = self.batch_wait_timeout_s
 
-            # Check if first item alone exceeds max_batch_size (only with batch_size_fn)
-            if self.batch_size_fn is not None:
-                first_item_size = self._compute_batch_size([first_item])
-                if first_item_size > max_batch_size:
-                    exc = RuntimeError(
-                        "Size of item is greater than max_batch_size. "
-                        "Please increase the max_batch_size or check the "
-                        "implementation of the batch_size_fn."
-                    )
-                    # Set exception on the future so the caller receives it
-                    first_item.future.set_exception(exc)
-                    return [], 0
-
-            # Wait self.timeout_s seconds for new queue arrivals.
-            batch_start_time = time.time()
-            while True:
-                # Record queue length metric.
-                self._batch_queue_length_gauge.set(
-                    self.queue.qsize(), tags={"function_name": self._function_name}
+        # Check if first item alone exceeds max_batch_size (only with batch_size_fn)
+        if self.batch_size_fn is not None:
+            first_item_size = self._compute_batch_size([first_item])
+            if first_item_size > max_batch_size:
+                exc = RuntimeError(
+                    "Size of item is greater than max_batch_size. "
+                    "Please increase the max_batch_size or check the "
+                    "implementation of the batch_size_fn."
                 )
+                # Set exception on the future so the caller receives it
+                first_item.future.set_exception(exc)
+                return [], 0
 
-                remaining_batch_time_s = max(
-                    batch_wait_timeout_s - (time.time() - batch_start_time), 0
-                )
-                try:
-                    # Wait for new arrivals.
-                    await asyncio.wait_for(
-                        self.requests_available_event.wait(), remaining_batch_time_s
-                    )
-                except asyncio.TimeoutError:
-                    pass
+        batch.append(first_item)
 
-                # Custom batch size function logic
-                if self.batch_size_fn is not None:
-                    # Add all new arrivals to the batch.
-                    # Track items we need to put back if they don't fit
-                    deferred_item = None
-                    while not self.queue.empty():
-                        next_item = self.queue.get_nowait()
-                        # Temporarily add to check size
-                        batch.append(next_item)
-                        new_size = self._compute_batch_size(batch)
-
-                        if new_size > max_batch_size:
-                            # Would exceed limit, remove it and save for later
-                            batch.pop()
-                            deferred_item = next_item
-                            break
-                        # Size is OK, keep it in the batch (already added above)
-
-                    # Put deferred item back in queue for next batch
-                    if deferred_item is not None:
-                        # NOTE: The deferred item goes to the back of the queue
-                        # (FIFO), so newer requests may be processed before it.
-                        # Consider using asyncio.PriorityQueue if strict ordering
-                        # is required.
-                        self.queue.put_nowait(deferred_item)
-                        # Compute final batch size before breaking (batch is now
-                        # valid after popping the deferred item).
-                        current_batch_size = self._compute_batch_size(batch)
-                        # break the loop early because the deferred item is too
-                        # large to fit in the batch
-                        break
-                else:
-                    # Default behavior: use original len() check logic
-                    while len(batch) < max_batch_size and not self.queue.empty():
-                        batch.append(self.queue.get_nowait())
-
-                # Only clear the put event if the queue is empty. If it's not empty
-                # we can start constructing a new batch immediately in the next loop.
-                # The code that puts items into the queue runs on the same event loop
-                # as this code, so there's no race condition between the time we
-                # get objects in the queue (and clear the event) and when objects
-                # get added to the queue.
-                if self.queue.empty():
-                    self.requests_available_event.clear()
-
-                current_batch_size = self._compute_batch_size(batch)
-                if (
-                    time.time() - batch_start_time >= batch_wait_timeout_s
-                    or current_batch_size >= max_batch_size
-                ):
-                    break
-
-            # Record batch wait time metric (time spent waiting for batch to fill).
-            batch_wait_time_ms = (time.time() - batch_start_time) * 1000
-            self._batch_wait_time_histogram.observe(
-                batch_wait_time_ms, tags={"function_name": self._function_name}
+        # Wait self.timeout_s seconds for new queue arrivals.
+        batch_start_time = time.time()
+        while True:
+            # Record queue length metric.
+            self._batch_queue_length_gauge.set(
+                self._queue_length_fn(), tags={"function_name": self._function_name}
             )
 
-            return batch, current_batch_size
-        except asyncio.CancelledError as e:
-            for request in batch:
-                _set_exception_if_not_done(request.future, e)
-            raise
-        finally:
-            self._current_batch = []
+            remaining_batch_time_s = max(
+                batch_wait_timeout_s - (time.time() - batch_start_time), 0
+            )
+            try:
+                # Wait for new arrivals.
+                await asyncio.wait_for(
+                    self.requests_available_event.wait(), remaining_batch_time_s
+                )
+            except asyncio.TimeoutError:
+                pass
+
+            # Custom batch size function logic
+            if self.batch_size_fn is not None:
+                # Add all new arrivals to the batch.
+                # Track items we need to put back if they don't fit
+                deferred_item = None
+                while not self.queue.empty():
+                    next_item = self.queue.get_nowait()
+                    # Temporarily add to check size
+                    batch.append(next_item)
+                    new_size = self._compute_batch_size(batch)
+
+                    if new_size > max_batch_size:
+                        # Would exceed limit, remove it and save for later
+                        batch.pop()
+                        deferred_item = next_item
+                        break
+                    # Size is OK, keep it in the batch (already added above)
+
+                # Put deferred item back in queue for next batch
+                if deferred_item is not None:
+                    # NOTE: The deferred item goes to the back of the queue (FIFO),
+                    # so newer requests may be processed before it. Consider using
+                    # asyncio.PriorityQueue if strict ordering is required.
+                    self.queue.put_nowait(deferred_item)
+                    # Compute final batch size before breaking (batch is now valid
+                    # after popping the deferred item).
+                    current_batch_size = self._compute_batch_size(batch)
+                    # break the loop early because the deferred item is too large to fit in the batch
+                    break
+            else:
+                # Default behavior: use original len() check logic
+                while len(batch) < max_batch_size and not self.queue.empty():
+                    batch.append(self.queue.get_nowait())
+
+            # Only clear the put event if the queue is empty. If it's not empty
+            # we can start constructing a new batch immediately in the next loop.
+            # The code that puts items into the queue runs on the same event loop
+            # as this code, so there's no race condition between the time we
+            # get objects in the queue (and clear the event) and when objects
+            # get added to the queue.
+            if self.queue.empty():
+                self.requests_available_event.clear()
+
+            current_batch_size = self._compute_batch_size(batch)
+            if (
+                time.time() - batch_start_time >= batch_wait_timeout_s
+                or current_batch_size >= max_batch_size
+            ):
+                break
+
+        # Record batch wait time metric (time spent waiting for batch to fill).
+        batch_wait_time_ms = (time.time() - batch_start_time) * 1000
+        self._batch_wait_time_histogram.observe(
+            batch_wait_time_ms, tags={"function_name": self._function_name}
+        )
+
+        return batch, current_batch_size
 
     def _validate_results(
         self, results: Iterable[Any], input_batch_length: int
@@ -485,27 +485,31 @@ class _BatchQueue:
         # So we unset the request context so the current context is not inherited by the task, _process_batch.
         serve.context._unset_request_context()
         while not self._loop.is_closed():
-            batch, _ = await self.wait_for_batch()
-
-            self._pending_batch_count += 1
             try:
+                batch, _ = await self.wait_for_batch()
+                # NOTE: this semaphore caps the number of concurrent batches specified by `max_concurrent_batches`
                 await self.semaphore.acquire()
             except asyncio.CancelledError as e:
-                for request in batch:
+                for request in self._current_batch:
                     _set_exception_if_not_done(request.future, e)
-                self._pending_batch_count -= 1
                 raise
+            finally:
+                self._current_batch = []
 
             promise = self._process_batch_inner(func, batch)
             task = asyncio.create_task(promise)
             self.tasks.add(task)
             self.curr_iteration_start_times[task] = time.time()
-            self._pending_batch_count -= 1
             task.add_done_callback(self._handle_completed_task)
 
     async def _process_batch_inner(
         self, func: Callable, batch: List[_SingleRequest]
     ) -> None:
+        """Processes a single batch.
+
+        The caller acquires a semaphore permit before creating this task, and
+        _handle_completed_task releases it when the task finishes.
+        """
         # Remove requests that have been cancelled from the batch. If
         # all requests have been cancelled, simply return and wait for
         # the next batch.
@@ -589,7 +593,7 @@ class _BatchQueue:
         finally:
             self.semaphore.release()
             if self._on_idle is not None and self.is_idle():
-                self._on_idle()
+                self._on_idle(self)
 
     @staticmethod
     def _log_if_exception(exception_maybe: Optional[BaseException]) -> None:
@@ -600,15 +604,11 @@ class _BatchQueue:
                 logger.exception("Task failed unexpectedly")
 
     def is_idle(self) -> bool:
-        return (
-            self.queue.empty()
-            and self._pending_batch_count == 0
-            and len(self.tasks) == 0
-            and len(self.curr_iteration_start_times) == 0
-            and len(self._current_batch) == 0
-        )
+        """Returns whether there are no queued, pending, or running requests."""
+        return self.queue.empty() and not self._current_batch and not self.tasks
 
     def shutdown(self) -> None:
+        """Requests cancellation of the background batch-processing task."""
         if self._handle_batch_task is None or self._handle_batch_task.done():
             return
 
@@ -663,47 +663,45 @@ class _LazyBatchQueueWrapper:
         """Returns the _BatchQueue for a multiplexed model ID."""
         queue_key = multiplexed_model_id or ""
         if queue_key not in self._queues:
-            queue: Optional[_BatchQueue] = None
-
-            def remove_queue_if_idle() -> None:
-                self._remove_queue_if_idle(queue_key, queue)
-
-            queue = _BatchQueue(
+            self._queues[queue_key] = _BatchQueue(
                 self.max_batch_size,
                 self.batch_wait_timeout_s,
                 self.max_concurrent_batches,
                 self.handle_batch_func,
                 self.batch_size_fn,
-                self.semaphore,
-                remove_queue_if_idle,
+                semaphore=self.semaphore,
+                # The default queue is kept for the lifetime of the wrapper.
+                on_idle=partial(self._remove_idle_queue, queue_key)
+                if queue_key
+                else None,
+                queue_length_fn=self._total_queue_length,
             )
-            self._queues[queue_key] = queue
         return self._queues[queue_key]
 
-    def _remove_queue_if_idle(
-        self, queue_key: str, queue: Optional[_BatchQueue]
-    ) -> None:
-        if queue_key == "" or queue is None:
-            return
+    def _remove_idle_queue(self, queue_key: str, queue: _BatchQueue) -> None:
+        if self._queues.get(queue_key) is queue:
+            del self._queues[queue_key]
+            queue.shutdown()
 
-        if self._queues.get(queue_key) is not queue or not queue.is_idle():
-            return
-
-        queue.shutdown()
-        del self._queues[queue_key]
+    def _total_queue_length(self) -> int:
+        return sum(queue.queue.qsize() for queue in self._queues.values())
 
     def set_max_batch_size(self, new_max_batch_size: int) -> None:
         """Updates queue's max_batch_size."""
 
         self.max_batch_size = new_max_batch_size
 
-        for queue in self._queues.values():
+        # Snapshot to avoid iterating a dictionary that queue creation or
+        # cleanup can mutate concurrently.
+        for queue in list(self._queues.values()):
             queue.set_max_batch_size(new_max_batch_size)
 
     def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
         self.batch_wait_timeout_s = new_batch_wait_timeout_s
 
-        for queue in self._queues.values():
+        # Snapshot to avoid iterating a dictionary that queue creation or
+        # cleanup can mutate concurrently.
+        for queue in list(self._queues.values()):
             queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
     def get_max_batch_size(self) -> int:
@@ -720,23 +718,23 @@ class _LazyBatchQueueWrapper:
         return _RuntimeSummaryStatistics(start_times)
 
     async def _is_batching_task_alive(self) -> bool:
-        """Gets whether default _BatchQueue's background task is alive.
+        """Gets whether every _BatchQueue's background task is alive.
 
-        Returns False if the batch handler doesn't use a default _BatchQueue.
+        Initializes the default _BatchQueue if no queues exist yet.
         """
 
         if not self._queues:
             _ = self.queue
 
-        return any(
-            hasattr(queue, "_handle_batch_task") and not queue._handle_batch_task.done()
+        return all(
+            queue._handle_batch_task is not None and not queue._handle_batch_task.done()
             for queue in self._queues.values()
         )
 
     async def _get_handling_task_stack(self) -> Optional[str]:
-        """Gets the stack for the default _BatchQueue's background task.
+        """Gets the stacks for the _BatchQueues' background tasks.
 
-        Returns empty string if the batch handler doesn't use a default _BatchQueue.
+        Returns None if no _BatchQueue has a background task.
         """
 
         if not self._queues:
@@ -744,7 +742,7 @@ class _LazyBatchQueueWrapper:
 
         stack_traces = []
         for queue in self._queues.values():
-            if hasattr(queue, "_handle_batch_task"):
+            if queue._handle_batch_task is not None:
                 str_buffer = io.StringIO()
                 queue._handle_batch_task.print_stack(file=str_buffer)
                 stack_traces.append(str_buffer.getvalue())
@@ -1006,8 +1004,6 @@ def batch(
                         "keyword. `batch_size_fn` cannot size `**kwargs` or `*args` "
                         "with more than one value."
                     )
-
-            batch_queue = lazy_batch_queue_wrapper.queue
 
             future = get_or_create_event_loop().create_future()
             request_context = serve.context._get_serve_request_context()

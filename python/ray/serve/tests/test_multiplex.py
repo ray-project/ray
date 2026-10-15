@@ -764,7 +764,7 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
     handle = serve.run(ConcurrentBatchedModel.bind())
 
     # Send concurrent requests with different model IDs.
-    # These will be processed by separate per-model queues concurrently.
+    # These will be split into separate sub-batches and processed concurrently.
     refs = []
     model_ids = ["model_a", "model_b", "model_c"]
     requests_per_model = 3
@@ -777,12 +777,12 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
                 )
             )
 
-    # Wait for all model-specific batches to be at the barrier.
+    # Wait for all sub-batches to be at the barrier
     wait_for_condition(
         lambda: ray.get(signal_barrier.cur_num_waiters.remote()) == len(model_ids)
     )
 
-    # Release all batches to read their model_id.
+    # Release all sub-batches to read their model_id
     ray.get(signal_barrier.send.remote())
 
     # Collect results
@@ -794,8 +794,8 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
         expected_model = model_ids[i // requests_per_model]
         assert result.startswith(f"{expected_model}:"), (
             f"Expected result to start with '{expected_model}:', got '{result}'. "
-            "This indicates context isolation failure - a model queue batch read "
-            "another model queue batch's model_id."
+            "This indicates context isolation failure - a sub-batch read another "
+            "sub-batch's model_id because they share the same context."
         )
 
     # Verify model ID readings
@@ -804,13 +804,13 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
     # Count how many different model_ids were read
     read_model_ids = {r["model_id"] for r in readings}
 
-    # With the bug: all batches read the same model_id (only 1 unique)
-    # With the fix: each model queue batch reads its own model_id (3 unique)
+    # With the bug: all sub-batches read the same model_id (only 1 unique)
+    # With the fix: each sub-batch reads its own model_id (3 unique)
     assert len(read_model_ids) == len(model_ids), (
         f"Expected {len(model_ids)} different model_ids to be read, but got "
         f"{len(read_model_ids)}: {read_model_ids}. "
-        f"This indicates context isolation failure - multiple model queue batches "
-        f"read the same model_id. "
+        f"This indicates context isolation failure - multiple sub-batches "
+        f"read the same model_id because they share context. "
         f"Full readings: {readings}"
     )
 
