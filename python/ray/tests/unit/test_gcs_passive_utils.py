@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import ray._private.ray_constants as ray_constants
+import ray.experimental.internal_kv as internal_kv
 from ray._private.gcs_passive_utils import (
     PassiveLatch,
     _async_is_gcs_leader,
@@ -15,7 +16,12 @@ from ray._private.gcs_passive_utils import (
     put_kv_passive_safe,
     wait_until_gcs_leader,
 )
-from ray.exceptions import GcsPassiveError, RpcError
+from ray.exceptions import (
+    AuthenticationError,
+    GcsPassiveError,
+    GetTimeoutError,
+    RpcError,
+)
 from ray.tests.unit.passive_test_utils import (
     count_logged as _count_logged,
     passive_gcs_rejection as _passive_error,
@@ -180,6 +186,15 @@ async def test_async_is_gcs_leader_with_check_alive(monkeypatch):
     client.async_check_alive.side_effect = RpcError("timeout during failover")
     client.is_gcs_leader_local.return_value = True
     assert await _async_is_gcs_leader(client) is True
+
+    # CheckAlive raises GetTimeoutError -> falls back to cached local leadership
+    client.async_check_alive.side_effect = GetTimeoutError("timeout")
+    assert await _async_is_gcs_leader(client) is True
+
+    # Unexpected exceptions (e.g. AuthenticationError) are not swallowed
+    client.async_check_alive.side_effect = AuthenticationError("bad auth")
+    with pytest.raises(AuthenticationError):
+        await _async_is_gcs_leader(client)
 
     # Flag off: returns True immediately without calling check_alive
     monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", False)
@@ -385,8 +400,6 @@ async def test_kv_passive_safe_errors_and_flag_off(monkeypatch):
 
 
 def test_put_kv_passive_safe_client_resolution():
-    import ray.experimental.internal_kv as internal_kv
-
     # Fallback to internal_kv global client
     mock_client = MagicMock()
     internal_kv._initialize_internal_kv(mock_client)
@@ -401,10 +414,6 @@ def test_put_kv_passive_safe_client_resolution():
     # Uninitialized raises
     with pytest.raises(RuntimeError, match="No gcs_client provided"):
         put_kv_passive_safe(None, b"k", b"v")
-
-
-if __name__ == "__main__":
-    sys.exit(pytest.main(["-vv", __file__]))
 
 
 if __name__ == "__main__":

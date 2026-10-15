@@ -16,6 +16,7 @@ from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.gcs_passive_utils import (
     PassiveLatch,
+    _async_is_gcs_leader,
     async_put_kv_passive_safe,
     is_refused_by_passive_gcs,
 )
@@ -234,7 +235,8 @@ class DashboardHead:
             )
             and await self._put_address(
                 b"webui:url",
-                self._dashboard_address,
+                # Match services.start_api_server(), which writes "" when no HTTP server runs.
+                self._dashboard_address if self.serve_frontend else "",
                 ray_constants.KV_NAMESPACE_DASHBOARD,
             )
             and await self._insert_session_name()
@@ -659,6 +661,9 @@ class DashboardHead:
             self._dashboard_address,
             ray_constants.KV_NAMESPACE_DASHBOARD,
         )
+        # Prime the leadership cache before starting modules (e.g., UsageStatsHead)
+        # that read is_gcs_leader_local() immediately on startup.
+        await _async_is_gcs_leader(self.gcs_client)
 
         concurrent_tasks = [
             self._gcs_check_alive(),
