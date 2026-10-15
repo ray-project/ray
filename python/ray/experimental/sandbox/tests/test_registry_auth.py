@@ -326,7 +326,7 @@ def test_registry_token_goes_to_the_registry_as_is(start_registry, docker_config
     assert registry.authorizations("/token") == []
 
 
-def test_public_registry_pull_runs_no_credential_helper(
+def test_unchallenged_pull_runs_no_credential_helper(
     start_registry, docker_config, install_helper, fake_mkfs_erofs, tmp_path
 ):
     registry = start_registry(None)
@@ -378,17 +378,20 @@ def test_basic_challenge_without_credentials_names_the_docker_config(
         ("garbled", "echo 'not json'", "docker-credential-garbled answered"),
     ],
 )
+# A bearer registry, like Docker Hub, challenges pulls of public images too.
+@pytest.mark.parametrize("auth", ["basic", "bearer"])
 def test_failing_credential_helper_fails_the_pull(
     start_registry,
     docker_config,
     fake_mkfs_erofs,
     tmp_path,
     monkeypatch,
+    auth,
     helper,
     script,
     error,
 ):
-    registry = start_registry("basic")
+    registry = start_registry(auth)
     if script:
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()

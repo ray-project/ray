@@ -197,9 +197,10 @@ def get_registry_auth_headers(
     An anonymous manifest request shows whether, and how, the registry wants
     callers to authenticate. Only a challenge sends Ray to the node's Docker
     config for the registry's credentials (see
-    ``docker_config.registry_credentials``), so pulls of public images never
-    run a credential helper. A ``Basic`` challenge, Amazon ECR's, takes the
-    credentials on every request; a ``Bearer`` challenge trades them, or
+    ``docker_config.registry_credentials``), so a pull that draws no
+    challenge runs no credential helper. Docker Hub and GHCR challenge every
+    pull, even of a public image. A ``Basic`` challenge, Amazon ECR's, takes
+    the credentials on every request; a ``Bearer`` challenge trades them, or
     nothing for a public repository, for a token from the realm it names.
 
     Args:

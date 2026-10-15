@@ -343,7 +343,7 @@ Ray pulls a private image with the credentials that the node's Docker configurat
 2. **`credsStore`** names the helper for every registry that `credHelpers` doesn't list.
 3. **`auths`** holds static credentials, in the format that `docker login` writes and that a Kubernetes `kubernetes.io/dockerconfigjson` Secret stores. Mount such a Secret's `.dockerconfigjson` key as `config.json`.
 
-Ray reads the file only when a registry asks a pull to authenticate, so public images pull as before. It handles both the token authentication that Docker Hub, GHCR, and Artifact Registry use and the HTTP basic authentication that Amazon ECR uses.
+Ray reads the file only when a registry asks a pull to authenticate. It handles both the token authentication that Docker Hub, GHCR, and Artifact Registry use and the HTTP basic authentication that Amazon ECR uses. Docker Hub and GHCR ask every pull to authenticate, including pulls of public images. So when the file holds credentials for them, Ray uses those for public images too, and if their credential helper fails, so do those pulls, as with `docker pull`.
 
 The credentials stay out of sandboxes. The Ray worker that pulls an image holds them in memory for the pull and sends them only to the registry and to the token service that the registry names, not to the object storage that serves the image's layers. Ray never writes them to the image cache or its logs, and a sandbox's processes see only the image's files and the environment variables that you pass. Keep the following in mind:
 
