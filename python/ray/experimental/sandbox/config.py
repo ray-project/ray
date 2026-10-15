@@ -132,8 +132,11 @@ class SandboxConfig:
         disk: Size cap of the writable rootfs overlay (e.g. "10Gi"), in the
             units ``memory`` takes. Writes past it fail with ENOSPC inside
             the sandbox, and the sandbox keeps running. Zero (default) means
-            no cap. Requires ``readonly=False``. In-memory mounts such as
-            /dev/shm count toward the sandbox's memory instead.
+            no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
+            rootfs with an explicit workdir runs on a private writable
+            overlay too, and a cap keeps that workdir inside the overlay
+            instead of a host directory. In-memory mounts such as /dev/shm
+            count toward the sandbox's memory instead.
     """
 
     image: str
@@ -179,11 +182,12 @@ class SandboxConfig:
         disk_bytes = parse_memory_bytes(self.disk) or 0
         if disk_bytes < 0:
             raise ValueError("disk must be non-negative")
-        if disk_bytes > 0 and self.readonly:
-            # A read-only rootfs has no overlay to cap, and its writable
-            # workdir is a host directory.
+        if disk_bytes > 0 and self.readonly and not self.workdir:
+            # Only a read-only rootfs without a workdir has no overlay to cap
+            # (see ImageManager.create_oci_spec).
             raise ValueError(
-                "disk caps the writable rootfs; it requires readonly=False"
+                "disk caps the writable rootfs; it requires readonly=False or "
+                "a workdir"
             )
 
 

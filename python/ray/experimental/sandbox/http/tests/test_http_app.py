@@ -155,7 +155,15 @@ def test_create_passes_the_disk_limit_to_the_runtime(
     with _client(fake_resolver) as client:
         info = _create_sandbox(client, resources={"disk_limit_mb": 10240})
         _wait_running(client, info["sandbox_id"])
-        # A read-only rootfs has nothing for the cap to bound.
+        # A readonly rootfs with a workdir runs on a private writable overlay.
+        info = _create_sandbox(
+            client,
+            readonly=True,
+            workdir="/workspace",
+            resources={"disk_limit_mb": 512},
+        )
+        _wait_running(client, info["sandbox_id"])
+        # Without a workdir, a read-only rootfs has nothing for the cap to bound.
         response = client.post(
             f"{BASE}/sandboxes",
             json={
@@ -165,10 +173,12 @@ def test_create_passes_the_disk_limit_to_the_runtime(
             },
         )
         assert response.status_code == 422
-        assert "readonly" in response.text
+        assert "readonly=false or a workdir" in response.text
 
-    (runtime,) = fake_resolver.runtimes
-    assert runtime.create_calls[0]["disk"] == "10240Mi"
+    assert [r.create_calls[0]["disk"] for r in fake_resolver.runtimes] == [
+        "10240Mi",
+        "512Mi",
+    ]
 
 
 def test_create_defaults_request_to_limit(fake_resolver: FakeResolver) -> None:

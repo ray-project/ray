@@ -319,6 +319,27 @@ def test_create_oci_spec_caps_the_writable_overlay(tmp_path, readonly, disk, opt
     assert spec["annotations"].get("dev.gvisor.spec.rootfs.options") == options
 
 
+def test_create_oci_spec_keeps_a_capped_workdir_in_the_overlay(tmp_path):
+    """readonly + workdir runs on a private writable overlay. With a cap the
+    workdir isn't bind-mounted, since a host directory would escape it."""
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = str(tmp_path / "scratch")
+    os.makedirs(workdir_path)
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/workspace",
+        workdir_path=workdir_path,
+        readonly=True,
+        disk="64Mi",
+    )
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.options"] == "size=67108864"
+    assert not any(m["destination"] == "/workspace" for m in spec["mounts"])
+    assert spec["process"]["cwd"] == "/workspace"
+
+
 class _StubImageManager(ImageManager):
     """ImageManager that skips pulling so spec construction is testable offline."""
 

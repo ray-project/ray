@@ -54,7 +54,7 @@ class ResourceSpec(BaseModel):
         gt=0,
         description=(
             "Size cap of the sandbox's writable rootfs, in MiB. Writes past it "
-            "fail with ENOSPC. Requires readonly=false."
+            "fail with ENOSPC. Requires readonly=false or a workdir."
         ),
     )
     custom: Optional[Dict[str, float]] = Field(
@@ -152,10 +152,16 @@ class CreateSandboxRequest(BaseModel):
 
     @model_validator(mode="after")
     def _validate_disk_limit(self) -> "CreateSandboxRequest":
-        if self.resources and self.resources.disk_limit_mb and self.readonly:
+        # The same rule as SandboxConfig's, answered with a 422 up front.
+        if (
+            self.resources
+            and self.resources.disk_limit_mb
+            and self.readonly
+            and not self.workdir
+        ):
             raise ValueError(
                 "resources.disk_limit_mb caps the writable rootfs; it requires "
-                "readonly=false"
+                "readonly=false or a workdir"
             )
         return self
 

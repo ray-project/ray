@@ -98,7 +98,8 @@ class SandboxRuntime:
             _ignore_cgroups: PRIVATE — testing only. If True, passes --ignore-cgroups to runsc.
             disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past
                 it fail with ENOSPC. Zero means no cap. Requires
-                ``readonly=False``.
+                ``readonly=False`` or a ``workdir``; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
             **kwargs: Additional parameters.
 
         Returns:

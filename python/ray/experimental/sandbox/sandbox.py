@@ -42,7 +42,8 @@ class Sandbox:
             not interfere with each other or modify the base image.
         disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
             fail with ENOSPC. Zero (default) means no cap. Requires
-            ``readonly=False``.
+            ``readonly=False`` or a ``workdir``; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         **kwargs: Additional parameters passed to runtime.
     """
 

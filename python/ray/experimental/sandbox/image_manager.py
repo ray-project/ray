@@ -179,7 +179,8 @@ class BaseImageManager(ABC):
                 Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
             disk: Size cap of the writable rootfs overlay; None or zero
-                means no cap.
+                means no cap. A capped overlay also holds the workdir, so
+                ``workdir_path`` is then not mounted.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -410,7 +411,8 @@ class ImageManager(BaseImageManager):
                 Defaults to a directory inside the image cache.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
             disk: Size cap of the writable rootfs overlay; None or zero
-                means no cap.
+                means no cap. A capped overlay also holds the workdir, so
+                ``workdir_path`` is then not mounted.
 
         Returns:
             Dictionary matching the OCI runtime-spec schema (config.json).
@@ -457,6 +459,9 @@ class ImageManager(BaseImageManager):
                 # so writes past it fail with ENOSPC. The --overlay2 flag's
                 # size doesn't apply to a rootfs that annotations configure.
                 annotations["dev.gvisor.spec.rootfs.options"] = f"size={disk_bytes}"
+                # A bind-mounted host workdir would take writes past the cap,
+                # so the workdir stays in the overlay (runsc creates it).
+                workdir_path = None
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
 

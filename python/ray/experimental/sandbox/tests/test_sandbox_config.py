@@ -99,9 +99,12 @@ def test_sandbox_network_requires_rootful():
 def test_disk_requires_a_writable_rootfs():
     config = SandboxConfig(image="python:3.10-slim", readonly=False, disk="10Gi")
     assert config.disk == "10Gi"
+    # A readonly rootfs with a workdir runs on a private writable overlay.
+    config = SandboxConfig(image="python:3.10-slim", workdir="/workspace", disk="1Gi")
+    assert config.disk == "1Gi"
     # No cap is fine either way.
     assert SandboxConfig(image="python:3.10-slim").disk == 0
-    with pytest.raises(ValueError, match="readonly=False"):
+    with pytest.raises(ValueError, match="readonly=False or a workdir"):
         SandboxConfig(image="python:3.10-slim", disk="10Gi")
     with pytest.raises(ValueError, match="non-negative"):
         SandboxConfig(image="python:3.10-slim", readonly=False, disk=-1)

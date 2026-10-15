@@ -278,6 +278,27 @@ def test_disk_caps_the_writable_overlay():
         runtime.delete(instance_id)
 
 
+def test_disk_caps_a_readonly_sandbox_with_a_workdir():
+    """readonly + workdir runs on a private writable overlay. The cap bounds
+    it, and the workdir is inside it rather than a directory on the node."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace", disk="64Mi"
+    )
+    try:
+        result = runtime.exec(
+            instance_id, "dd if=/dev/zero of=/workspace/fill bs=1M count=128"
+        )
+        assert result.exit_code != 0
+        assert "No space left on device" in result.stderr
+        # The rest of the rootfs shares the cap.
+        result = runtime.exec(instance_id, "dd if=/dev/zero of=/fill bs=1M count=8")
+        assert result.exit_code != 0
+        assert "No space left on device" in result.stderr
+    finally:
+        runtime.delete(instance_id)
+
+
 def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
     """readonly + explicit workdir currently runs on a private writable
     overlay: the workdir works, and rootfs writes land in the overlay and are
