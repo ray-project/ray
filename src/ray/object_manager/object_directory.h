@@ -115,6 +115,16 @@ class IObjectDirectory {
                                    const ObjectID &generator_id,
                                    const bool spilled_to_local_storage) = 0;
 
+  /// Report to the owner that the primary copy of a moved object is now pinned on
+  /// this node.
+  ///
+  /// \param object_id The moved object.
+  /// \param node_id The node id corresponding to this node.
+  /// \param owner_address The address of the owner of the object.
+  virtual void ReportObjectPrimaryMoved(const ObjectID &object_id,
+                                        const NodeID &node_id,
+                                        const rpc::Address &owner_address) = 0;
+
   /// Record metrics.
   virtual void RecordMetrics(uint64_t duration_ms) = 0;
 
