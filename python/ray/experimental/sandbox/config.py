@@ -120,8 +120,8 @@ def normalize_cidr_allowlist(cidrs: Iterable[str]) -> List[str]:
         cidrs: The entries to validate.
 
     Returns:
-        The canonical ``str(ipaddress.ip_network(...))`` of each entry, in
-        the original order.
+        Each entry in canonical form (``10.0.1.5/32:8000``,
+        ``[2001:db8::1/128]:443``, ``internet``), in the original order.
 
     Raises:
         ValueError: If an entry is not an IP address or network.
@@ -246,14 +246,18 @@ class SandboxConfig:
             overrides the host file for "host". Only valid with those modes.
         cidr_allowlist: Egress allowlist for network="public". None
             (default) leaves egress unrestricted; a list restricts every
-            protocol to destinations inside the listed IPv4/IPv6 networks,
-            enforced by an nftables ruleset in the sandbox's private network
-            namespace that code inside the sandbox cannot see or change. The
-            one exception: UDP and TCP port 53 to the resolvers in ``dns``
-            stays open so names still resolve. ``[]`` allows nothing but
-            DNS. Entries are normalized (``10.0.1.5/24`` -> ``10.0.1.0/24``)
-            and rejected if they are not IP literals. Requires the ``nft``
-            binary on the node. Only valid with network="public".
+            protocol to the listed destinations, enforced by an nftables
+            ruleset in the sandbox's private network namespace that code
+            inside the sandbox cannot see or change. An entry is an IPv4 or
+            IPv6 address or network, or ``internet`` for every public
+            address, optionally with a TCP and UDP port or port range
+            (``10.0.1.5:8000``, ``[2001:db8::1]:443``, ``internet:443``); see
+            ``parse_cidr_allowlist_entry``. The one exception: UDP and TCP
+            port 53 to the resolvers in ``dns`` stays open so names still
+            resolve. ``[]`` allows nothing but DNS. Entries are normalized
+            (``10.0.1.5/24`` -> ``10.0.1.0/24``), and host names are
+            rejected. Requires the ``nft`` binary on the node. Only valid
+            with network="public".
         capabilities: Linux capabilities for the container process. None
             (default) keeps the runtime default (what ``runsc spec`` emits);
             otherwise the bounding/effective/permitted sets are written
