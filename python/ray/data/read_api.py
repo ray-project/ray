@@ -4131,10 +4131,14 @@ def read_sql(
         For examples of reading from larger databases like MySQL and PostgreSQL, see
         :ref:`Read SQL databases <reading_sql>`.
 
+        >>> import os
         >>> import sqlite3
+        >>> import tempfile
         >>> import ray
         >>> # Create a simple database
-        >>> connection = sqlite3.connect("example.db")
+        >>> db_dir = tempfile.TemporaryDirectory()
+        >>> db_path = os.path.join(db_dir.name, "example.db")
+        >>> connection = sqlite3.connect(db_path)
         >>> _ = connection.execute("CREATE TABLE movie(title, year, score)")
         >>> _ = connection.execute(
         ...     \"\"\"
@@ -4148,9 +4152,11 @@ def read_sql(
         >>> connection.commit()
         >>> connection.close()
         >>> def create_connection():
-        ...     return sqlite3.connect("example.db")
+        ...     return sqlite3.connect(db_path)
         >>> # Get all movies
         >>> ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
+        >>> ds.count()
+        4
         >>> # Get movies after the year 1980
         >>> ds = ray.data.read_sql(
         ...     "SELECT title, score FROM movie WHERE year >= 1980", create_connection
@@ -4159,9 +4165,7 @@ def read_sql(
         >>> ds = ray.data.read_sql(
         ...     "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         ... )
-        >>> # Clean up the example database
-        >>> import os
-        >>> os.remove("example.db")
+        >>> db_dir.cleanup()
 
     Args:
         sql: The SQL query to execute.
