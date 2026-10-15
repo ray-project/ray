@@ -167,6 +167,7 @@ from ray.includes.libcoreworker cimport (
     CActorWideGeneratorBackpressureWaiter,
     CActorTaskBackpressureMetadata,
     CReaderRefInfo,
+    CMoveState,
 )
 from ray.includes.stream_redirection cimport (
     CStreamRedirectionOptions,
@@ -712,16 +713,44 @@ def raise_sys_exit_with_custom_error_message(
     raise e
 
 
-cdef CRayStatus check_no_consume_once_args(args):
-    """Return InvalidArgument if any ObjectRef arg was created with _consume_once=True.
+cdef find_consume_once_arg(args, c_bool moved_only):
+    """Return the hex ID of the first ObjectRef arg created with _consume_once=True.
 
-    Other args are serialized into new objects, which are never consume-once.
+    With moved_only, only looks for MOVED args. Else looks for both MOVABLE and MOVED.
+    Returns None if there is no such arg.
     """
-    cdef c_vector[CObjectID] arg_ids
+    cdef:
+        c_vector[CObjectID] arg_ids
+        c_vector[optional[CMoveState]] move_states
+        CMoveState move_state
+        size_t i
     for arg in args:
-        if isinstance(arg, ObjectRef):
+        # Only ObjectRef args are checked here. A consume-once ref nested inside
+        # another arg (for eg: [ref], {"k": ref} etc.) is rejected by the serializer.
+        if isinstance(arg, ObjectRef) and not (<ObjectRef>arg).native().IsNil():
             arg_ids.push_back((<ObjectRef>arg).native())
-    return CCoreWorkerProcess.GetCoreWorker().CheckNoConsumeOnceArgs(arg_ids)
+    if arg_ids.empty():
+        return None
+    move_states = CCoreWorkerProcess.GetCoreWorker().GetMoveStates(arg_ids)
+    # The states are checked after the lock is released. That's safe because the move
+    # state only moves forward: NOT_MOVABLE never changes, and MOVABLE only becomes
+    # MOVED. So whether an arg is consume-once can't change, and a MOVED arg stays
+    # MOVED. A MOVABLE read can be stale, but it is still correct at this point since
+    # SubmitActorTask will catch it later.
+    for i in range(arg_ids.size()):
+        if not move_states[i].has_value():
+            # At this point, objectId is not Nil, therefore move state should not
+            # have null value. This might be a bug somewhere in ReferenceCounter.
+            # The object isn't MOVED/MOVABLE anyway, so letting it pass.
+            logger.warning(
+                f"No reference found for task argument {arg_ids[i].Hex().decode()} "
+                "while checking for consume-once arguments.")
+            continue
+        move_state = move_states[i].value()
+        if move_state == CMoveState.MOVED or (
+                not moved_only and move_state == CMoveState.MOVABLE):
+            return arg_ids[i].Hex().decode()
+    return None
 
 
 cdef prepare_args_and_increment_put_refs(
@@ -3980,10 +4009,10 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string call_site
 
-        status = check_no_consume_once_args(args)
-        if not status.ok():
+        consume_once_arg = find_consume_once_arg(args, moved_only=False)
+        if consume_once_arg is not None:
             raise ValueError(
-                f"{status.message().decode()} "
+                f"Object {consume_once_arg} was created with _consume_once=True. "
                 "It can't be passed as an argument to a task.")
 
         self.python_scheduling_strategy_to_c(
@@ -4089,10 +4118,10 @@ cdef class CoreWorker:
             c_vector[CFallbackOption] c_fallback_strategy
             c_string call_site
 
-        status = check_no_consume_once_args(args)
-        if not status.ok():
+        consume_once_arg = find_consume_once_arg(args, moved_only=False)
+        if consume_once_arg is not None:
             raise ValueError(
-                f"{status.message().decode()} "
+                f"Object {consume_once_arg} was created with _consume_once=True. "
                 "It can't be passed as an argument to an actor constructor.")
 
         self.python_scheduling_strategy_to_c(
@@ -4276,6 +4305,14 @@ cdef class CoreWorker:
             c_string c_tensor_transport_str
             CTaskOptions task_options
 
+        # Fails fast before args are serialized. SubmitActorTask commits the move
+        # and checks again, atomically.
+        consume_once_arg = find_consume_once_arg(args, moved_only=True)
+        if consume_once_arg is not None:
+            raise ValueError(
+                f"Object {consume_once_arg} was created with _consume_once=True and "
+                "was already passed to an actor task.")
+
         if tensor_transport is not None:
             c_tensor_transport_str = tensor_transport.encode("utf-8")
             c_tensor_transport.emplace(move(c_tensor_transport_str))
@@ -4353,6 +4390,8 @@ cdef class CoreWorker:
                         f" {(dereference(actor_handle).MaxPendingCalls())}"
                         " tasks are queued on the actor. This limit can be adjusted"
                         " with the `max_pending_calls` actor option.")
+                elif status.IsInvalidArgument():
+                    raise ValueError(status.message().decode())
                 else:
                     raise Exception(f"Failed to submit task to actor {actor_id} "
                                     f"due to {status.message()}")
@@ -4667,6 +4706,23 @@ cdef class CoreWorker:
                 c_object_id, &c_owner_address)
         check_status(op_status)
         return c_owner_address.SerializeAsString()
+
+    def get_move_state(self, ObjectRef object_ref):
+        """Return the move state of an ObjectRef in this worker's reference table.
+
+        Returns "NOT_MOVABLE", "MOVABLE" or "MOVED", or None if this worker has no
+        reference to the object.
+        """
+        cdef:
+            optional[CMoveState] move_state = (
+                CCoreWorkerProcess.GetCoreWorker().GetMoveState(object_ref.native()))
+        if not move_state.has_value():
+            return None
+        if move_state.value() == CMoveState.MOVABLE:
+            return "MOVABLE"
+        if move_state.value() == CMoveState.MOVED:
+            return "MOVED"
+        return "NOT_MOVABLE"
 
     def serialize_object_ref(self, ObjectRef object_ref):
         cdef:
