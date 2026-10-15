@@ -333,6 +333,20 @@ def test_exec_timeout_kills_background_jobs_that_outlive_the_shell():
         runtime.delete(instance_id)
 
 
+def test_exec_timeout_kills_a_setsid_child_of_the_command():
+    """A child that left the command's session with setsid() is found only
+    through its parent, so the processes are listed before any is killed."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="python:3.10-slim")
+    try:
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(instance_id, "setsid sleep 1002 & sleep 1000", timeout=1)
+        cmdlines = runtime.exec(instance_id, r"cat /proc/[0-9]*/cmdline | tr '\0' ' '")
+        assert "sleep 100" not in cmdlines.stdout
+    finally:
+        runtime.delete(instance_id)
+
+
 def test_exec_timeout_kills_processes_started_during_the_kill():
     """A child that keeps starting processes starts more between the listing
     of the command's processes and its own kill. Those are killed too."""
