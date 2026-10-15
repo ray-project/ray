@@ -1,31 +1,18 @@
 """Routing overhead benchmark for PrefixCacheAffinityRouter.
 
-Measures how much routing costs with PrefixCacheAffinityRouter, separate from
-any model work: the replicas reply immediately, so routing is the only cost.
+Replicas reply immediately, so only routing takes time. At each concurrency
+level, closed-loop clients send prompts that share a few system prompts.
 
-Methodology:
-- NUM_REPLICAS replicas behind PrefixCacheAffinityRouter with its defaults.
-- Requests carry ~1 KiB prompts that share one of NUM_SYSTEM_PROMPTS system
-  prompts, so the router's prefix tree has matches to find.
-- Closed-loop load: at each concurrency level, that many clients send requests
-  back to back for DURATION_S, after a WARMUP_S warmup.
-- Two paths, each on a fresh deployment:
-  - handle: ``handle.remote()``, as Serve LLM's OpenAI ingress calls LLMServer.
-  - direct: ``handle.choose_replica(..., _reserve=False)``, as the
-    direct-streaming LLMRouter picks a replica for HAProxy to forward to.
+Paths:
+- handle: ``handle.remote()``, as the OpenAI ingress calls LLMServer.
+- direct: ``handle.choose_replica(..., _reserve=False)``, as direct streaming
+  picks a replica.
 
-Measures per path and concurrency:
-- Throughput (requests or picks per second)
-- p50 and p99 latency
-- p99 router event loop stall: how much a 1 ms sleep on the event loop that
-  routes every DeploymentHandle in the process oversleeps. Blocking calls on
-  that loop delay all routing in the process.
+Metrics: throughput, p50/p99 latency, and p99 router loop stall (how late a
+1 ms sleep on the router's event loop wakes up).
 
-Usage (CI):
-    python prefix_router_overhead_benchmark.py
-
-Usage (manual):
-    python prefix_router_overhead_benchmark.py --smoke-test -o /tmp/results.json
+Usage:
+    python prefix_router_overhead_benchmark.py [--smoke-test] [-o OUTPUT]
 """
 
 import asyncio
@@ -68,7 +55,7 @@ WARMUP_CONCURRENCY = 4
 WARMUP_S = 2.0
 DURATION_S = 5.0
 HEARTBEAT_S = 0.001
-# Serve LLM's default max_ongoing_requests: replicas never reject requests.
+# Serve LLM's default.
 MAX_ONGOING_REQUESTS = int(1e9)
 
 
@@ -134,8 +121,7 @@ async def run_level(
             await asyncio.sleep(HEARTBEAT_S)
             stalls.append(time.perf_counter() - start - HEARTBEAT_S)
 
-    # The loop that routes every DeploymentHandle in this process. It exists once
-    # the first request has been sent, which the warmup does.
+    # Routes all handles in this process. The warmup creates it.
     router_loop = SingletonThreadRouter._asyncio_loop
     beat = None
     if router_loop is not None:
@@ -180,7 +166,6 @@ def to_perf_metrics(
     path: str, concurrency: int, level: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
     prefix = f"{path}_c{concurrency}"
-    # THROUGHPUT metrics are better when higher, LATENCY metrics when lower.
     metrics = [
         ("throughput_rps", level["throughput_rps"], "THROUGHPUT"),
         ("p50_latency_ms", level["latency_p50_ms"], "LATENCY"),
@@ -224,7 +209,7 @@ def run_benchmark(
                 levels[path][str(c)] = level
                 perf_metrics += to_perf_metrics(path, c, level)
         finally:
-            # Also removes the router's prefix tree, so each path starts empty.
+            # So each path starts with an empty prefix tree.
             serve.shutdown()
     return {"perf_metrics": perf_metrics, "levels": levels}
 
