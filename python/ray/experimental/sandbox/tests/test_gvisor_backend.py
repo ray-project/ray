@@ -160,6 +160,25 @@ def test_gvisor_backend_invalid_image():
         backend.create_sandbox(config)
 
 
+def test_create_times_out_when_runsc_state_hangs(monkeypatch):
+    """A `runsc state` call that never returns can't hold a create past its
+    deadline: the create times out as it would for a slow boot."""
+    real_run = subprocess.run
+
+    def run(args, *rest, **kwargs):
+        if "state" in args:
+            raise subprocess.TimeoutExpired(args, kwargs.get("timeout"))
+        return real_run(args, *rest, **kwargs)
+
+    monkeypatch.setattr("ray.experimental.sandbox.backend.gvisor.subprocess.run", run)
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", timeout_seconds=2
+    )
+    with pytest.raises(SandboxTimeoutError):
+        backend.create_sandbox(config)
+
+
 def test_gvisor_backend_container_image_overlay_isolation():
     backend = GVisorSandboxBackend()
     cfg1 = GVisorSandboxConfig(
