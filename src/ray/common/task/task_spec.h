@@ -185,6 +185,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// executor.
   std::optional<std::string> ArgTensorTransport(size_t arg_index) const;
 
+  /// Return true if this task consumes the argument at the given index, which was
+  /// created with consume_once.
+  bool ArgIsMove(size_t arg_index) const;
+
   ObjectID ReturnId(size_t return_index) const;
 
   bool ReturnsDynamic() const;
