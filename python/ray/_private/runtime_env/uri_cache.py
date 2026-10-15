@@ -108,9 +108,7 @@ class URICache:
             self._delete_fn(arbitrary_unused_uri, logger)
             stored_size = self._sizes.pop(arbitrary_unused_uri, 0)
             self._total_size_bytes = max(0, self._total_size_bytes - stored_size)
-            logger.info(
-                f"Deleted URI {arbitrary_unused_uri} with size {stored_size}."
-            )
+            logger.info(f"Deleted URI {arbitrary_unused_uri} with size {stored_size}.")
 
     def _check_valid(self):
         """(Debug mode only) Check "used" and "unused" sets are disjoint."""
