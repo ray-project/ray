@@ -501,16 +501,21 @@ def test_lookup_without_a_config_file_and_with_a_broken_one(docker_config):
     "config",
     [
         ["not", "an", "object"],
+        {"credHelpers": ["b.example"]},
         {"auths": ["a.example"]},
         {"auths": {"a.example": "user:secret"}},
         {"auths": {"a.example": {"auth": 12345}}},
+        {"auths": {"a.example": {"auth": "not-base64"}}},
+        {"auths": {"a.example": {"auth": _b64("secret-without-a-user")}}},
+        # http.client's error for this header value would quote the token.
+        {"auths": {"a.example": {"registrytoken": "secret\n"}}},
     ],
 )
 def test_lookup_refuses_a_malformed_config(docker_config, config):
-    """A field of the wrong type fails the lookup with the file's path, as the
-    Docker CLI refuses such a file, and the message carries no secret."""
+    """A malformed field fails the lookup with the file's path, and the
+    message carries no secret."""
     path = docker_config(config)
-    with pytest.raises(SandboxCreationError, match="is malformed") as err:
+    with pytest.raises(SandboxCreationError, match="malformed") as err:
         registry_credentials("a.example", timeout=10)
     assert str(path) in str(err.value)
     assert "secret" not in str(err.value)

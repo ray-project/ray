@@ -108,7 +108,7 @@ def registry_credentials(
         # A registry listed in credHelpers, even with an empty helper, never
         # falls back to credsStore.
         helpers = config.get("credHelpers") or {}
-        helper = helpers[key] if key in helpers else config.get("credsStore")
+        helper = helpers.get(key, config.get("credsStore"))
         if helper:
             return _helper_credentials(helper, key, timeout)
 
@@ -122,8 +122,8 @@ def registry_credentials(
             )
         return _auths_credentials(entry, key, path) if entry else None
     except (AttributeError, TypeError) as err:
-        # A field of the wrong type, as the Docker CLI also refuses. The
-        # message names types, not values, so it carries no secret.
+        # A field of the wrong type. The message names types, not values, so
+        # it carries no secret.
         raise SandboxCreationError(
             f"The Docker config file {path} is malformed: {err}"
         ) from None
@@ -172,22 +172,37 @@ def _helper_credentials(
 def _auths_credentials(
     entry: Dict[str, Any], server: str, path: str
 ) -> Optional[RegistryCredentials]:
-    """Credentials from an ``auths`` entry, as ``docker login`` writes them."""
+    """Credentials from an ``auths`` entry, as ``docker login`` writes them.
+
+    A malformed field fails the lookup with an error that names the field but
+    not its value, which may be a secret.
+    """
     username = entry.get("username", "")
     password = entry.get("password", "")
     if entry.get("auth"):
         try:
             decoded = base64.b64decode(entry["auth"]).decode("utf-8")
         except ValueError:
+            decoded = ""
+        # Base64 of ``username:password``, as the Docker CLI requires.
+        username, colon, password = decoded.partition(":")
+        if not colon or not username:
             raise SandboxCreationError(
                 f"The auths entry for {server} in {path} has a malformed auth field"
-            ) from None
-        username, _, password = decoded.partition(":")
+            )
+    registry_token = entry.get("registrytoken", "")
+    if "\r" in registry_token or "\n" in registry_token:
+        # The token goes into a header as is, and http.client's error for a
+        # line break in a header quotes the whole value.
+        raise SandboxCreationError(
+            f"The auths entry for {server} in {path} has a malformed "
+            "registrytoken field"
+        )
     creds = RegistryCredentials(
         username=username,
         password=password.strip("\x00"),
         identity_token=entry.get("identitytoken", ""),
-        registry_token=entry.get("registrytoken", ""),
+        registry_token=registry_token,
     )
     # An empty entry is a placeholder, like those ``docker login`` writes
     # beside a credsStore.
