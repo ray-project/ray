@@ -20,6 +20,7 @@ from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.expressions import col
 
 
 def _write_orc(path, table):
@@ -61,12 +62,16 @@ def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
-def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
+@pytest.mark.parametrize("root_first", [False, True])
+def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_first):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     file_path = partition_dir / "data.orc"
     _write_orc(file_path, pa.table({"id": [1]}))
-    sample = _manifest_of([file_path])
+    root = tmp_path / "root.orc"
+    _write_orc(root, pa.table({"id": [0]}))
+    paths = [root, file_path] if root_first else [file_path, root]
+    sample = _manifest_of(paths)
     datasource = OrcDatasourceV2(
         [str(tmp_path)],
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
@@ -75,6 +80,9 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
 
     resolved = datasource.resolve_partitioning(sample)
 
+    assert datasource._partitioning is not None
+    assert datasource._partitioning.field_names is None
+    assert resolved is not datasource._partitioning
     assert resolved is not None
     assert resolved.field_names == ["year"]
     assert isinstance(datasource._get_file_indexer(), NonSamplingFileIndexer)
@@ -128,6 +136,42 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
     ]
     assert rows[0]["path"].endswith("year=2023/data.orc")
     assert rows[1]["path"].endswith("year=2024/data.orc")
+
+
+@pytest.mark.parametrize("root_first", [False, True])
+def test_orc_partition_pruning_uses_logical_schema(tmp_path, root_first):
+    root = tmp_path / "root.orc"
+    matching_dir = tmp_path / "year=2024"
+    other_dir = tmp_path / "year=2023"
+    matching_dir.mkdir()
+    other_dir.mkdir()
+    matching = matching_dir / "data.orc"
+    other = other_dir / "data.orc"
+    _write_orc(root, pa.table({"id": [0, 1], "year": [2024, 2023]}))
+    _write_orc(matching, pa.table({"id": [2]}))
+    _write_orc(other, pa.table({"id": [3]}))
+    paths = [root, matching, other] if root_first else [matching, other, root]
+    manifest = _manifest_of(paths)
+    datasource = OrcDatasourceV2(
+        [str(tmp_path)],
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+    )
+    scanner = datasource.create_scanner(
+        datasource.infer_schema(manifest),
+        partitioning=datasource.resolve_partitioning(manifest),
+    ).prune_partitions(col("year") == 2024)
+    pruner = scanner.pushed_partition_pruner()
+    assert pruner is not None
+    assert pruner.should_include(str(root))
+    assert pruner.should_include(str(matching))
+    assert not pruner.should_include(str(other))
+    pruned = scanner.prune_input_split(manifest)
+    assert set(pruned.paths.tolist()) == {str(root), str(matching)}
+    rows = pa.concat_tables(list(scanner.create_reader().read(pruned))).to_pylist()
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": 0, "year": 2024},
+        {"id": 2, "year": 2024},
+    ]
 
 
 def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
