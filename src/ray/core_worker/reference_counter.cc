@@ -955,7 +955,8 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       RAY_LOG(INFO).WithField(object_id)
           << "Updating primary location for object to node " << node_id
           << ", but it already has a primary location " << *it->second.pinned_at_node_id_
-          << ". This should only happen during reconstruction";
+          << ". This should only happen during reconstruction or when the object "
+             "was moved to a consumer";
     }
     // Only the owner tracks the location.
     RAY_CHECK(it->second.owned_by_us_);
