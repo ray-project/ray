@@ -32,6 +32,11 @@ if __name__ == '__main__':
 """
 
 
+def _cpu_seconds(cgroup):
+    stat = dict(line.split() for line in (cgroup / "cpu.stat").read_text().splitlines())
+    return int(stat["usage_usec"]) / 1e6
+
+
 def _create(network, **kwargs):
     runtime = SandboxRuntime()
     sid = runtime.create(
@@ -53,18 +58,18 @@ def test_busy_workers_cannot_exceed_cpu_bandwidth(network, request):
     try:
         runtime.write_file(sid, "/tmp/burn.py", _BURN)
         cgroup = runtime.backend._sandbox_metadata[sid]["cgroup"].path
-        before = dict(
-            line.split() for line in (cgroup / "cpu.stat").read_text().splitlines()
-        )
+        # A new sandbox's first run is slow enough to hide the slowdown on a
+        # fast CPU, so time a second one.
+        burn = ["python3", "/tmp/burn.py"]
+        assert runtime.exec(sid, [*burn, "1"], timeout=120).exit_code == 0
+        one = runtime.exec(sid, [*burn, "1"], timeout=120)
+        before = _cpu_seconds(cgroup)
         start = time.monotonic()
-        one = runtime.exec(sid, ["python3", "/tmp/burn.py", "1"], timeout=120)
-        four = runtime.exec(sid, ["python3", "/tmp/burn.py", "4"], timeout=120)
+        four = runtime.exec(sid, [*burn, "4"], timeout=120)
         elapsed = time.monotonic() - start
-        after = dict(
-            line.split() for line in (cgroup / "cpu.stat").read_text().splitlines()
-        )
         assert one.exit_code == four.exit_code == 0
-        assert int(after["usage_usec"]) - int(before["usage_usec"]) <= elapsed * 1.15e6
+        # The sandbox runs on two CPUs, but four busy workers share one.
+        assert _cpu_seconds(cgroup) - before <= elapsed * 1.15
         assert (
             json.loads(four.stdout)["seconds"] > json.loads(one.stdout)["seconds"] * 2.5
         )
@@ -151,18 +156,13 @@ def test_fractional_cpu_quota_is_exact():
     try:
         runtime.write_file(sid, "/tmp/burn.py", _BURN)
         cgroup = runtime.backend._sandbox_metadata[sid]["cgroup"].path
-        before = dict(
-            line.split() for line in (cgroup / "cpu.stat").read_text().splitlines()
-        )
+        before = _cpu_seconds(cgroup)
         started = time.monotonic()
         result = runtime.exec(sid, ["python3", "/tmp/burn.py", "1"], timeout=120)
         elapsed = time.monotonic() - started
-        after = dict(
-            line.split() for line in (cgroup / "cpu.stat").read_text().splitlines()
-        )
         assert result.exit_code == 0
         assert (cgroup / "cpu.max").read_text().strip() == "25000 100000"
-        assert int(after["usage_usec"]) - int(before["usage_usec"]) <= elapsed * 0.35e6
+        assert _cpu_seconds(cgroup) - before <= elapsed * 0.35
     finally:
         runtime.delete(sid)
 
