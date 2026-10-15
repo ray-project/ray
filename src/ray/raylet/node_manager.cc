@@ -1726,7 +1726,7 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncWait(client, refs);
+    AsyncWait(client, refs, /*is_move=*/{});
   }
 
   if (message->num_required_objects() == 0) {
@@ -1793,7 +1793,11 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
-  AsyncWait(client, refs);
+  std::vector<bool> is_move;
+  if (message->is_move() != nullptr) {
+    is_move.assign(message->is_move()->begin(), message->is_move()->end());
+  }
+  AsyncWait(client, refs, is_move);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -2396,7 +2400,8 @@ void NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
 }
 
 void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                            const std::vector<rpc::ObjectReference> &object_refs) {
+                            const std::vector<rpc::ObjectReference> &object_refs,
+                            const std::vector<bool> &is_move) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
@@ -2407,7 +2412,8 @@ void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
 
   // Start an async request to get or wait for the objects.
   // The objects will be fetched locally unless the get or wait request is canceled.
-  lease_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
+  lease_dependency_manager_.StartOrUpdateWaitRequest(
+      worker->WorkerId(), object_refs, is_move);
 }
 
 void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client,

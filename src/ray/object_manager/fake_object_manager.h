@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "ray/object_manager/object_manager_interface.h"
 
 namespace ray {
@@ -35,6 +36,14 @@ class FakeObjectManager : public ObjectManagerInterface {
 
   void CancelPull(uint64_t request_id) override {
     cancel_pull_calls.push_back(request_id);
+  }
+
+  void MarkMovePull(const ObjectID &object_id) override {
+    move_pull_object_ids.insert(object_id);
+  }
+
+  bool IsMovePull(const ObjectID &object_id) const override {
+    return move_pull_object_ids.contains(object_id);
   }
 
   void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override {
@@ -100,6 +109,7 @@ class FakeObjectManager : public ObjectManagerInterface {
   // Programmable state / recorded calls.
   uint64_t next_pull_request_id = 1;
   std::vector<std::vector<rpc::ObjectReference>> pull_calls;
+  absl::flat_hash_set<ObjectID> move_pull_object_ids;
   std::vector<uint64_t> cancel_pull_calls;
   std::vector<ObjectID> mark_object_failed_calls;
   std::vector<ObjectID> freed_objects;
