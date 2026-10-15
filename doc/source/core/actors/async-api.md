@@ -1,30 +1,32 @@
 ---
 myst:
   html_meta:
-    description: "Concurrency for Ray actors: async actors built on asyncio, threaded actors, ObjectRefs as futures, and setting max concurrency."
+    description: "Concurrency for Ray actors: async actors built on asyncio, threaded actors, object refs as futures, and setting max concurrency."
 ---
 
-# AsyncIO / Concurrency for Actors
+# `asyncio` and concurrency for actors
 
-Within a single actor process, it is possible to execute concurrent threads.
+A single actor process can run concurrent threads.
 
 Ray offers two types of concurrency within an actor:
 
-> * {ref}`async execution <async-actors>`
-> * {ref}`threading <threaded-actors>`
+- {ref}`async execution <async-actors>`
+- {ref}`threading <threaded-actors>`
 
 
-Keep in mind that the Python's [Global Interpreter Lock (GIL)](https://wiki.python.org/moin/GlobalInterpreterLock) will only allow one thread of Python code running at once.
+Keep in mind that Python's [Global Interpreter Lock (GIL)](https://wiki.python.org/moin/GlobalInterpreterLock) runs only one thread of Python code at a time.
 
-This means if you are just parallelizing Python code, you won't get true parallelism. If you call Numpy, Cython, Tensorflow, or PyTorch code, these libraries will release the GIL when calling into C/C++ functions.
+As a result, parallelizing pure Python code doesn't give you true parallelism. If you call NumPy, Cython, TensorFlow, or PyTorch code, these libraries release the GIL when they call into C or C++ functions.
 
-**Neither the** {ref}`threaded-actors` nor {ref}`async-actors` **model will allow you to bypass the GIL.**
+:::{note}
+Neither the {ref}`threaded actor <threaded-actors>` nor the {ref}`async actor <async-actors>` model bypasses the GIL.
+:::
 
 (async-actors)=
 
-## AsyncIO for Actors
+## `asyncio` for actors
 
-Since Python 3.5, it is possible to write concurrent code using the `async/await` [syntax](https://docs.python.org/3/library/asyncio.html). Ray natively integrates with asyncio. You can use Ray alongside popular async frameworks like aiohttp, aioredis, etc.
+Python 3.5 and later support writing concurrent code with the `async/await` [syntax](https://docs.python.org/3/library/asyncio.html). Ray integrates natively with `asyncio`, so you can use Ray alongside popular async frameworks such as aiohttp and aioredis.
 
 ```{testcode}
 import ray
@@ -88,8 +90,9 @@ time.sleep(1)
 ...
 ```
 
-### ObjectRefs as asyncio.Futures
-ObjectRefs can be translated to asyncio.Futures. This feature make it possible to `await` on ray futures in existing concurrent applications.
+(objectrefs-as-asynciofutures)=
+### Object refs as `asyncio.Future` objects
+You can use object refs as `asyncio.Future` objects, which means you can `await` Ray futures in existing concurrent applications.
 
 Instead of:
 
@@ -104,7 +107,7 @@ ray.get(some_task.remote())
 ray.wait([some_task.remote()])
 ```
 
-you can wait on the ref with Python 3.9 and Python 3.10:
+you can await the object ref in Python 3.9 and 3.10:
 
 ```{testcode}
 import ray
@@ -121,7 +124,7 @@ async def await_obj_ref():
 asyncio.run(await_obj_ref())
 ```
 
-or the Future object directly with Python 3.11+:
+or await the `Future` object directly in Python 3.11 and later:
 
 ```{testcode}
 import asyncio
@@ -138,12 +141,12 @@ asyncio.run(convert_to_asyncio_future())
 ```
 
 
-See the [asyncio doc](https://docs.python.org/3/library/asyncio-task.html) for more `asyncio` patterns including timeouts and `asyncio.gather`.
+See the [asyncio documentation](https://docs.python.org/3/library/asyncio-task.html) for more `asyncio` patterns, including timeouts and `asyncio.gather`.
 
 (async-ref-to-futures)=
-
-### ObjectRefs as concurrent.futures.Futures
-ObjectRefs can also be wrapped into `concurrent.futures.Future` objects. This is useful for interfacing with existing `concurrent.futures` APIs:
+(objectrefs-as-concurrentfuturesfutures)=
+### Object refs as `concurrent.futures.Future` objects
+You can also wrap object refs in `concurrent.futures.Future` objects to work with existing `concurrent.futures` APIs:
 
 ```{testcode}
 import concurrent
@@ -162,9 +165,10 @@ for fut in concurrent.futures.as_completed(futs):
 1
 ```
 
-### Defining an Async Actor
+(defining-an-async-actor)=
+### Define an async actor
 
-By using `async` method definitions, Ray will automatically detect whether an actor support `async` calls or not.
+Ray automatically detects whether an actor supports `async` calls from its `async` method definitions.
 
 ```{testcode}
 import ray
@@ -209,13 +213,14 @@ ray.get([actor.run_task.remote() for _ in range(5)])
 (AsyncActor pid=3456) Finished task
 ```
 
-Under the hood, Ray runs all of the methods inside a single python event loop. Please note that running blocking `ray.get` or `ray.wait` inside async actor method is not allowed, because `ray.get` will block the execution of the event loop.
+Ray runs all of the methods inside a single Python event loop. Don't run blocking `ray.get` or `ray.wait` calls inside an async actor method, because `ray.get` blocks the event loop.
 
-In async actors, only one task can be running at any point in time (though tasks can be multiplexed). There will be only one thread in AsyncActor! See {ref}`threaded-actors` if you want a threadpool.
+An async actor runs only one task at any point in time, though Ray can multiplex tasks on it. An async actor has only one thread. If you want a thread pool, see {ref}`threaded-actors`.
 
-### Setting concurrency in Async Actors
+(setting-concurrency-in-async-actors)=
+### Set concurrency in async actors
 
-You can set the number of "concurrent" task running at once using the `max_concurrency` flag. By default, 1000 tasks can be running concurrently.
+Use the `max_concurrency` flag to set how many "concurrent" tasks run at once. By default, 1000 tasks can run concurrently.
 
 ```{testcode}
 import asyncio
@@ -270,16 +275,16 @@ ray.get([actor.run_task.remote() for _ in range(8)])
 
 (threaded-actors)=
 
-## Threaded Actors
+## Threaded actors
 
-Sometimes, asyncio is not an ideal solution for your actor. For example, you may have one method that performs some computation heavy task while blocking the event loop, not giving up control via `await`. This would hurt the performance of an Async Actor because Async Actors can only execute 1 task at a time and rely on `await` to context switch.
+Sometimes `asyncio` isn't the right fit for your actor. For example, you might have a method that performs a computation-heavy task and blocks the event loop without giving up control through `await`. This hurts the performance of an async actor, because async actors can only run one task at a time and rely on `await` to switch context.
 
 
-Instead, you can use the `max_concurrency` Actor options without any async methods, allowing you to achieve threaded concurrency (like a thread pool).
+Instead, use the `max_concurrency` actor option without any async methods to get threaded concurrency, similar to a thread pool.
 
 
 :::{warning}
-When there is at least one `async def` method in actor definition, Ray will recognize the actor as AsyncActor instead of ThreadedActor.
+If an actor definition has at least one `async def` method, Ray recognizes the actor as an async actor instead of a threaded actor.
 :::
 
 
@@ -300,11 +305,11 @@ ray.get([a.task_1.remote(), a.task_2.remote()])
 (ThreadedActor pid=4822) I'm running in another thread!
 ```
 
-Each invocation of the threaded actor will be running in a thread pool. The size of the threadpool is limited by the `max_concurrency` value.
+Each invocation of a threaded actor runs in a thread pool. The `max_concurrency` value limits the size of the thread pool.
 
-## AsyncIO for Remote Tasks
+## `asyncio` for remote tasks
 
-We don't support asyncio for remote tasks. The following snippet will fail:
+Ray doesn't support `asyncio` for remote tasks. The following snippet fails:
 
 ```{testcode}
 :skipif: True
@@ -314,7 +319,7 @@ async def f():
     pass
 ```
 
-Instead, you can wrap the `async` function with a wrapper to run the task synchronously:
+Instead, wrap the `async` function in a wrapper that runs the task synchronously:
 
 ```{testcode}
 async def f():

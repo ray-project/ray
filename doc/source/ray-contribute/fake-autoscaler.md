@@ -68,12 +68,7 @@ To programmatically create a fake multi-node autoscaling cluster and connect to 
 :end-before: __example_end__
 ```
 
-Python documentation:
-
-```{eval-rst}
-.. autoclass:: ray.cluster_utils.AutoscalingCluster
-    :members:
-```
+For the Python API, see {py:class}`ray.cluster_utils.AutoscalingCluster`.
 
 ## Features and limitations of `fake_multinode`
 
@@ -138,12 +133,7 @@ $ docker exec -it fake_docker_ffffffffffffffffffffffffffffffffffffffffffffffffff
 
 You use this utility to write tests that use multi-node behavior. Use the `DockerCluster` class to set up a Docker Compose cluster in a temporary directory, start the monitoring process, wait for the cluster to come up, connect to it, and update the configuration.
 
-See the API documentation and example test cases for how to use this utility.
-
-```{eval-rst}
-.. autoclass:: ray.autoscaler._private.fake_multi_node.test_utils.DockerCluster
-    :members:
-```
+See the [`DockerCluster` source](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/_private/fake_multi_node/test_utils.py) and example test cases for how to use this utility.
 
 ## Features and limitations of `fake_multinode_docker`
 

@@ -8,19 +8,18 @@ myst:
 
 Develop RLlib locally without compiling Ray by using the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py). The script sets up symlinks between the `ray/rllib` directory in your local git clone and the matching directory bundled with the pip-installed `ray` package. Every change you make in your clone's source files then appears immediately in your installed `ray`.
 
-If you installed Ray from source using [these instructions](https://docs.ray.io/en/master/ray-overview/installation.html), don't use the script. Those steps should already have created the necessary symlinks.
+If you installed Ray from source using [these instructions](../ray-overview/installation.md), don't use the script. Those steps should already have created the necessary symlinks.
 
-When you use the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py), keep your git branch in sync with the installed Ray binaries. Stay up to date on [master](https://github.com/ray-project/ray) and install the latest [wheel](https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies).
+When you use the [setup-dev.py script](https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py), keep your git branch in sync with the installed Ray binaries. Stay up to date on [master](https://github.com/ray-project/ray) and install the latest [wheel](../ray-overview/installation.md#daily-releases-nightlies).
 
 ```bash
 # Clone your fork onto your local machine, e.g.:
 git clone https://github.com/[your username]/ray.git
 cd ray
-# Only enter 'Y' at the first question on linking RLlib.
-# This leads to the most stable behavior and you won't have to re-install ray as often.
-# If you anticipate making changes to e.g. Tune or Train quite often, consider also symlinking Ray Tune or Train here
-# (say 'Y' when asked by the script about creating the Tune or Train symlinks).
-python python/ray/setup-dev.py
+# Link only RLlib. This leads to the most stable behavior and you won't have to re-install Ray as often.
+python python/ray/setup-dev.py --allow rllib
+# If you anticipate making changes to Tune or Train often, link them too:
+# python python/ray/setup-dev.py --allow rllib tune train
 ```
 
 ## Contributing to RLlib
@@ -54,22 +53,11 @@ The [GitHub issues page](https://github.com/ray-project/ray/issues) tracks new f
 
 ### API decorators in the codebase
 
-Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new API stack, or `@OldAPIStack` on the old API stack, have the following API compatibility guarantees:
+Objects and methods annotated with `@PublicAPI` or `@DeveloperAPI` on the new API stack, or `@OldAPIStack` on the old API stack, have the API compatibility guarantees that each decorator's reference describes:
 
-```{eval-rst}
-.. autofunction:: ray.util.annotations.PublicAPI
-    :noindex:
-```
-
-```{eval-rst}
-.. autofunction:: ray.util.annotations.DeveloperAPI
-    :noindex:
-```
-
-```{eval-rst}
-.. autofunction:: ray.rllib.utils.annotations.OldAPIStack
-    :noindex:
-```
+- {py:func}`~ray.util.annotations.PublicAPI`
+- {py:func}`~ray.util.annotations.DeveloperAPI`
+- {py:func}`~ray.rllib.utils.annotations.OldAPIStack`
 
 ## Benchmarks
 
@@ -79,11 +67,7 @@ The [rl-experiments repo](https://github.com/ray-project/rl-experiments) holds m
 
 ### Finding memory leaks in workers
 
-Keeping the memory usage of long-running workers stable can be challenging. Use the `MemoryTrackingCallbacks` class to track worker memory usage.
-
-```{eval-rst}
-.. autoclass:: ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks
-```
+Keeping the memory usage of long-running workers stable can be challenging. Use the {py:class}`~ray.rllib.callbacks.callbacks.MemoryTrackingCallbacks` class to track worker memory usage.
 
 The callback adds the 20 objects with the highest memory usage in the workers as custom metrics. Monitor these with TensorBoard or other metrics integrations such as Weights & Biases:
 

@@ -77,7 +77,6 @@ steps:
         - "3.13"
         - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -105,7 +104,6 @@ steps:
         - "3.13"
         - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -336,7 +334,6 @@ steps:
         - "3.13"
         - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -369,7 +366,6 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{array.python}}
         --platform cpu
-        --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
         --platform cu12.3.2-cudnn9
@@ -432,7 +428,6 @@ steps:
         - "3.13"
         - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -465,7 +460,6 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{array.python}}
         --platform cpu
-        --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
         --platform cu12.3.2-cudnn9
@@ -621,7 +615,6 @@ steps:
     job_env: forge-aarch64
 
   - label: ":llm: llm: wheel-aarch64 tests"
-    if: '!(build.pull_request.labels includes "docs-go")'
     tags:
       - llm
       - linux_wheels

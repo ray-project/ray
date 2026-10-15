@@ -476,6 +476,9 @@ class ListFiles(LogicalOperator, SourceOperator):
     # Original user-supplied paths. Lineage-tracking pins this to the
     # caller's intent rather than the resolved absolute paths.
     source_paths: List[str]
+    # Path and size blocks discovered during full schema inference. When set,
+    # execution processes this candidate set instead of walking ``paths`` again.
+    prelisted_file_infos: Optional[List["pa.Table"]] = None
     file_partitioner: Optional["FilePartitioner"] = None
     file_extensions: Optional[List[str]] = None
     partition_filter: Optional["PathPartitionFilter"] = None
