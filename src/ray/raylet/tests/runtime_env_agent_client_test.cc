@@ -223,7 +223,6 @@ delay_after(instrumented_io_context &ioc) {
   };
 }
 
-auto dummy_shutdown_raylet_gracefully = [](const rpc::NodeDeathInfo &) {};
 Clock clock;
 
 TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
@@ -260,7 +259,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            dummy_shutdown_raylet_gracefully,
                                             clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
@@ -315,7 +313,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            dummy_shutdown_raylet_gracefully,
                                             clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
@@ -375,7 +372,6 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
-      dummy_shutdown_raylet_gracefully,
       clock,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
@@ -437,7 +433,6 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            dummy_shutdown_raylet_gracefully,
                                             clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
@@ -497,7 +492,6 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            dummy_shutdown_raylet_gracefully,
                                             clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
@@ -542,7 +536,6 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            dummy_shutdown_raylet_gracefully,
                                             clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
@@ -592,7 +585,6 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
-      dummy_shutdown_raylet_gracefully,
       clock,
       /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
@@ -692,7 +684,6 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            dummy_shutdown_raylet_gracefully,
                                             clock,
                                             /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
@@ -726,17 +717,15 @@ TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingRaylet) {
   // Nothing listens here, so every connect fails as it does on an exhausted port range.
   int port = GetFreePort();
   instrumented_io_context ioc;
-  bool raylet_shutdown = false;
 
-  auto client = raylet::RuntimeEnvAgentClient::Create(
-      ioc,
-      "127.0.0.1",
-      port,
-      delay_after(ioc),
-      [&](const rpc::NodeDeathInfo &) { raylet_shutdown = true; },
-      clock,
-      /*agent_register_timeout_ms=*/0,
-      /*agent_manager_retry_interval_ms=*/1);
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            clock,
+                                            /*agent_register_timeout_ms=*/0,
+                                            /*agent_manager_retry_interval_ms=*/1);
 
   size_t called_times = 0;
   client->GetOrCreateRuntimeEnv(JobID::FromInt(123),
@@ -752,7 +741,6 @@ TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingRaylet) {
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
-  ASSERT_FALSE(raylet_shutdown);
 }
 
 // Replies OK to /delete_runtime_env_if_possible, and keeps the connection open so the
@@ -778,7 +766,6 @@ std::unique_ptr<raylet::RuntimeEnvAgentClient> MakeClient(instrumented_io_contex
                                                "127.0.0.1",
                                                port,
                                                delay_after(ioc),
-                                               dummy_shutdown_raylet_gracefully,
                                                clock,
                                                /*agent_register_timeout_ms=*/10000,
                                                /*agent_manager_retry_interval_ms=*/100);

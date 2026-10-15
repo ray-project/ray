@@ -333,7 +333,6 @@ NodeManager::NodeManager(
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      shutdown_raylet_gracefully_,
       clock_);
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));

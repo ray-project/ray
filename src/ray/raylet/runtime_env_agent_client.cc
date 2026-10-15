@@ -376,23 +376,20 @@ inline constexpr std::string_view HTTP_PATH_DELETE_RUNTIME_ENV_IF_POSSIBLE =
 
 class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  HttpRuntimeEnvAgentClient(
-      instrumented_io_context &io_context,
-      const std::string &address,
-      int port,
-      std::function<std::shared_ptr<boost::asio::deadline_timer>(
-          std::function<void()>, uint32_t delay_ms)> delay_executor,
-      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      ClockInterface &clock,
-      uint32_t agent_register_timeout_ms,
-      uint32_t agent_manager_retry_interval_ms,
-      uint32_t session_pool_size = 10)
+  HttpRuntimeEnvAgentClient(instrumented_io_context &io_context,
+                            const std::string &address,
+                            int port,
+                            std::function<std::shared_ptr<boost::asio::deadline_timer>(
+                                std::function<void()>, uint32_t delay_ms)> delay_executor,
+                            ClockInterface &clock,
+                            uint32_t agent_register_timeout_ms,
+                            uint32_t agent_manager_retry_interval_ms,
+                            uint32_t session_pool_size = 10)
       : connection_pool_(
             io_context, address, absl::StrFormat("%d", port), session_pool_size),
         address_(address),
         port_str_(absl::StrFormat("%d", port)),
         delay_executor_(delay_executor),
-        shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         clock_(clock),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
@@ -608,7 +605,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
-  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   ClockInterface &clock_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
@@ -621,7 +617,6 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
-    std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
@@ -629,7 +624,6 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
                                                      address,
                                                      port,
                                                      delay_executor,
-                                                     shutdown_raylet_gracefully,
                                                      clock,
                                                      agent_register_timeout_ms,
                                                      agent_manager_retry_interval_ms);
