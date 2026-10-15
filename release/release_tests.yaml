@@ -2904,6 +2904,30 @@
     # NIXL currently only works on T4's for <100mb tensors so not enabling.
     script: python experimental/rdt_single_node_microbenchmark.py
 
+# Exercises the cu133 image's cupy-cuda13x swap on real GPUs: the NCCL tensor
+# transport goes through cupy.cuda.nccl. There is no cu133 torch wheel index,
+# so torch comes from the cu130 depset (CUDA 13.x minor-version compatible).
+# Runs on two 1-GPU nodes to stay cheap, so transfers are cross-node.
+- name: rdt_T4_2x1_microbenchmark_cu133
+  python: "3.12"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: gpu-cu133
+      python_depset: gpu_cu130_py3.12.lock
+    cluster_compute: experimental/compute_t4_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/rdt_single_node_microbenchmark.py
+    wait_for_nodes:
+      num_nodes: 2
+
 - name: rdt_single_node_A100_microbenchmark
   python: "3.12"
   group: core-daily-test
