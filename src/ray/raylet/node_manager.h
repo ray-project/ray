@@ -308,6 +308,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
+  /// Pin a received moved object as its primary copy and report the new primary
+  /// to the owner.
+  ///
+  /// \param object_id The moved object, sealed in the local store.
+  /// \param owner_address The address of the object's owner.
+  /// \return False if the object is not in the store, is pending deletion, or its
+  /// owner is known to be dead; the object is then left unpinned.
+  bool PinAndReportMovedObject(const ObjectID &object_id,
+                               const rpc::Address &owner_address);
+
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
