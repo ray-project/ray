@@ -6,8 +6,10 @@ import ci.ray_ci.doc.run_docstring_examples as runner
 from ci.ray_ci.doc.run_docstring_examples import (
     _EXCLUDED_DIRS,
     MissingLibrary,
+    covered_files,
     extract,
     is_skipped,
+    label_path,
     main,
     missing_library,
     module_name,
@@ -245,6 +247,64 @@ def test_runs_do_not_leak_names_between_docstrings(docstrings, module_globals):
 )
 def test_module_name(path, name):
     assert module_name(path) == name
+
+
+@pytest.mark.parametrize(
+    "label,path",
+    [
+        ("//python/ray/data:aggregate.py", "python/ray/data/aggregate.py"),
+        (
+            "//python/ray/_private:accelerators/amd_gpu.py",
+            "python/ray/_private/accelerators/amd_gpu.py",
+        ),
+        ("//:setup.py", "setup.py"),
+    ],
+)
+def test_label_path(label, path):
+    assert label_path(label) == path
+
+
+def test_covered_files_keeps_only_files_a_label_lists():
+    labels = [
+        "//bazel:default_doctest_pytest_plugin.py\n",
+        "//python/ray/data:dataset.py\n",
+        "//python/ray/util:actor_pool.py\n",
+        "\n",
+    ]
+    kept, dropped = covered_files(
+        [
+            "python/ray/data/dataset.py",
+            "python/ray/util/iter.py",
+            "python/ray/util/actor_pool.py",
+        ],
+        labels,
+    )
+    assert kept == ["python/ray/data/dataset.py", "python/ray/util/actor_pool.py"]
+    assert dropped == ["python/ray/util/iter.py"]
+
+
+def test_list_changed_with_doctest_labels(tmp_path, monkeypatch, capsys):
+    labels = tmp_path / "labels.txt"
+    labels.write_text("//python/ray/data:dataset.py\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_docstring_examples.py",
+            "--doctest-labels",
+            str(labels),
+            "--list-changed",
+            "python/ray/data/dataset.py",
+            "python/ray/util/iter.py",
+        ],
+    )
+    assert main() == 0
+    captured = capsys.readouterr()
+    # stdout stays a plain file list for run_docstring_examples.sh.
+    assert captured.out == "python/ray/data/dataset.py\n"
+    assert "python/ray/util/iter.py: no CPU doctest() target covers it" in (
+        captured.err
+    )
 
 
 def test_tests_and_examples_are_excluded():

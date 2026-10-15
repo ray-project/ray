@@ -1,27 +1,27 @@
 #!/bin/bash
 #
-# Run the >>> docstring examples in only the library modules a pull request
-# changed, in the library's own CI image with the PR's Ray installed. Used by
-# the "docstring-only" label's per-library steps, such as
-# "data: docstring examples" in .buildkite/data.rayci.yml.
+# Run the >>> docstring examples in only the modules a pull request changed,
+# across every library, in the docstringbuild image with the PR's Ray installed.
+# Used by the "docstring-only" label's "doc: docstring examples" step in
+# .buildkite/others.rayci.yml.
 #
-# Usage: run_docstring_examples.sh <source dir> <team> <build name> <python version>
+# Usage: run_docstring_examples.sh <build name> <python version>
 #
-# Lists the changed modules on the CI host, then builds the library's test image
-# with test_in_docker --build-only, the same Ray install every library test step
-# uses, and runs ci/ray_ci/doc/run_docstring_examples.py on those modules in it.
-# Exits 0 without building an image when no module changed.
+# Lists the changed modules under python/ray on the CI host, keeps the ones a
+# CPU doctest() target covers, then builds the image with the PR's Ray via
+# test_in_docker --build-only, the same Ray install every library test step
+# uses, and runs ci/ray_ci/doc/run_docstring_examples.py on those modules in
+# it. Exits 0 without building an image when no covered module changed.
 
 set -euo pipefail
 
-if [[ $# -ne 4 ]]; then
-  echo "Usage: $0 <source dir> <team> <build name> <python version>"
+if [[ $# -ne 2 ]]; then
+  echo "Usage: $0 <build name> <python version>"
   exit 2
 fi
-source_dir="${1%/}"
-team="$2"
-build_name="$3"
-python_version="$4"
+build_name="$1"
+python_version="$2"
+source_dir="python/ray"
 
 echo "--- Listing the changed modules under ${source_dir}"
 files="$(python ci/ray_ci/doc/run_docstring_examples.py \
@@ -31,10 +31,27 @@ if [[ -z "${files}" ]]; then
   echo "No modules changed under ${source_dir}; no docstring examples to run."
   exit 0
 fi
+
+echo "--- Keeping the modules a CPU doctest() target covers"
+# The files CPU doctest() targets run. The docstringbuild image is CPU-only,
+# and an example no doctest() target runs isn't held to running here either.
+labels="$(mktemp)"
+trap 'rm -f "${labels}"' EXIT
+bazel query --output=label \
+  'labels(data, attr(tags, "\bcpu\b", attr(tags, "\bdoctest\b", tests(//python/ray/...))))' \
+  > "${labels}"
+# shellcheck disable=SC2086 # Word splitting is intended: one file per word.
+files="$(python ci/ray_ci/doc/run_docstring_examples.py \
+  --doctest-labels "${labels}" --list-changed ${files})"
+
+if [[ -z "${files}" ]]; then
+  echo "No changed module is covered by a CPU doctest() target; nothing to run."
+  exit 0
+fi
 echo "${files}"
 
 echo "--- Building the ${build_name} image with this PR's Ray"
-bazel run //ci/ray_ci:test_in_docker -- "//${source_dir}/..." "${team}" \
+bazel run //ci/ray_ci:test_in_docker -- "//${source_dir}/..." none \
   --build-only --build-name "${build_name}" --python-version "${python_version}"
 
 echo "--- Running the docstring examples"

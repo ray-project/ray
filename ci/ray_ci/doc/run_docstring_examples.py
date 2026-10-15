@@ -1,8 +1,10 @@
 """Run the `>>>` docstring examples in the files a pull request changed.
 
-Used by the "docstring-only" label's per-library steps, such as
-"data: docstring examples" in .buildkite/data.rayci.yml. It runs only the
-examples in the changed files, not a library's whole doctest target.
+Used by the "docstring-only" label's "doc: docstring examples" step in
+.buildkite/others.rayci.yml, for every library. It runs only the examples in
+the changed files, not a library's whole doctest target, and only in files
+that a CPU doctest() target covers, so it never runs an example CI doesn't
+already run.
 
 For each changed module, it imports the module, extracts the `>>>` examples
 from every docstring in the file (module, classes, functions, and methods), and
@@ -30,18 +32,21 @@ library's doctest module supplies the `>>>` parser and the output comparison;
 there's no doctest runner, pytest collection, or Bazel doctest target.
 
 Usage:
-  python ci/ray_ci/doc/run_docstring_examples.py --source-dir python/ray/data
+  python ci/ray_ci/doc/run_docstring_examples.py --source-dir python/ray
   python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
-  python ci/ray_ci/doc/run_docstring_examples.py --source-dir python/ray/data \
-      --list-changed
+  python ci/ray_ci/doc/run_docstring_examples.py --source-dir python/ray \
+      --list-changed --doctest-labels labels.txt
 
 Without explicit files, it fetches the pull request's base branch from origin
 and takes the modified .py files under --source-dir, excluding tests/ and
 examples/. --base diffs against a ref you name instead, such as
 upstream/master in a clone where origin is a fork.
---list-changed prints that list and exits, for ci/ray_ci/doc/
+--doctest-labels keeps only the files listed in a file of Bazel labels, one
+per line, such as the output of the `bazel query` in run_docstring_examples.sh
+for the files CPU doctest() targets cover, and names the files it drops.
+--list-changed prints the list and exits, for ci/ray_ci/doc/
 run_docstring_examples.sh, which lists files on the CI host and runs them in
-the library's image.
+the docstringbuild image.
 """
 
 import argparse
@@ -58,7 +63,7 @@ import re
 import subprocess
 import sys
 import traceback
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 SKIP_EXAMPLE = doctest.register_optionflag("SKIP_EXAMPLE")
 
@@ -241,6 +246,20 @@ def run_docstring(
     return None
 
 
+def label_path(label: str) -> str:
+    """Map a Bazel file label such as //python/ray/data:aggregate.py to a path."""
+    package, _, name = label.lstrip("/").partition(":")
+    return f"{package}/{name}" if package else name
+
+
+def covered_files(files: List[str], labels: List[str]) -> Tuple[List[str], List[str]]:
+    """Split files into those a label covers and those none does."""
+    covered = {label_path(label.strip()) for label in labels if label.strip()}
+    kept = [path for path in files if path in covered]
+    dropped = [path for path in files if path not in covered]
+    return kept, dropped
+
+
 def module_name(path: str) -> str:
     """Map python/ray/data/aggregate.py to ray.data.aggregate."""
     parts = path[len("python/") :] if path.startswith("python/") else path
@@ -299,6 +318,11 @@ def main() -> int:
         help="With --source-dir, diff HEAD against this ref instead of fetching "
         "the base branch from origin.",
     )
+    parser.add_argument(
+        "--doctest-labels",
+        help="A file of Bazel file labels, one per line. Keep only the files "
+        "it lists.",
+    )
     args = parser.parse_args()
 
     files = args.files
@@ -306,6 +330,14 @@ def main() -> int:
         if not args.source_dir:
             parser.error("pass files or --source-dir")
         files = changed_files(args.source_dir, args.base)
+    if args.doctest_labels:
+        with open(args.doctest_labels, encoding="utf-8") as f:
+            files, dropped = covered_files(files, f.readlines())
+        for path in dropped:
+            # stderr, so --list-changed output stays a plain file list.
+            print(
+                f"{path}: no CPU doctest() target covers it; not run", file=sys.stderr
+            )
     if args.list_changed:
         print("\n".join(files))
         return 0
