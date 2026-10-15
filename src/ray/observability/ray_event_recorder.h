@@ -15,13 +15,11 @@
 #pragma once
 
 #include <boost/circular_buffer.hpp>
+#include <memory>
+#include <string_view>
+#include <vector>
 
-#include "absl/synchronization/mutex.h"
-#include "ray/asio/periodical_runner_interface.h"
-#include "ray/observability/metric_interface.h"
-#include "ray/observability/ray_event_interface.h"
-#include "ray/observability/ray_event_recorder_interface.h"
-#include "ray/rpc/event_aggregator_client.h"
+#include "ray/observability/ray_event_recorder_base.h"
 
 namespace ray {
 namespace observability {
@@ -33,7 +31,7 @@ namespace observability {
 // aggregator periodically.
 //
 // This class is thread safe.
-class RayEventRecorder : public RayEventRecorderInterface {
+class RayEventRecorder : public RayEventRecorderBase {
  public:
   RayEventRecorder(rpc::EventAggregatorClient &event_aggregator_client,
                    std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
@@ -42,52 +40,17 @@ class RayEventRecorder : public RayEventRecorderInterface {
                    ray::observability::MetricInterface &dropped_events_counter,
                    const NodeID &node_id);
 
-  // Start exporting events to the event aggregator by periodically sending events to
-  // the event aggregator. This should be called only once. Subsequent calls will be
-  // ignored.
-  void StartExportingEvents() override;
-
-  // Stop exporting events and perform a final flush to ensure all buffered events
-  // are sent before shutdown. This should be called during graceful shutdown.
-  void StopExportingEvents() override;
-
   // Add a vector of data to the internal buffer. Data in the buffer will be sent to
   // the event aggregator periodically.
   void AddEvents(std::vector<std::unique_ptr<RayEventInterface>> &&data_list) override;
 
  private:
-  using RayEventKey = std::pair<std::string, rpc::events::RayEvent::EventType>;
+  void ExportEvents() override;
 
-  rpc::EventAggregatorClient &event_aggregator_client_;
-  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
-  // Lock for thread safety when modifying the buffer.
-  absl::Mutex mutex_;
-
-  // Maximum number of events to store in the buffer (configurable at runtime)
-  size_t max_buffer_size_;
-  std::string_view metric_source_;
   // Bounded queue to store events before sending to the event aggregator.
   // When the queue is full, old events are dropped to make room for new ones.
   boost::circular_buffer<std::unique_ptr<RayEventInterface>> buffer_
       ABSL_GUARDED_BY(mutex_);
-  ray::observability::MetricInterface &dropped_events_counter_;
-  // Flag to track if exporting has been started
-  bool exporting_started_ ABSL_GUARDED_BY(mutex_) = false;
-  // Flag to track if the recorder is enabled and accepting new events.
-  // Set to false during shutdown to prevent event loss.
-  bool enabled_ ABSL_GUARDED_BY(mutex_) = true;
-  // Node ID to be set on all events
-  const NodeID node_id_;
-
-  // Flag to track if there's an in-flight gRPC call
-  std::atomic<bool> grpc_in_progress_ = false;
-  // Mutex and condition variable for waiting on gRPC completion during shutdown
-  absl::Mutex grpc_completion_mutex_;
-  absl::CondVar grpc_completion_cv_;
-
-  // Export events to the event aggregator. This is called periodically by the
-  // PeriodicalRunner.
-  void ExportEvents();
 };
 
 }  // namespace observability

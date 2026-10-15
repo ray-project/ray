@@ -14,7 +14,7 @@ level API nav has ~3k stub pages; rendering those into every page would bloat ea
      ``_static/api-nav-loader.js`` and highlights the current page client-side.
 
 The API reference pages keep their *original* locations (``data/api/``, ``train/api/``,
-``rllib/package_ref/``, ...); they are pulled into the APIs tab purely by
+``rllib/api/``, ...); they are pulled into the APIs tab purely by
 ``apis/index``'s toctree, with no URL change. "Is this an API page?" is therefore
 answered by membership in those known source directories (``API_PATH_PREFIXES``) -- a
 stateless check, so it works under parallel writing (no reliance on cross-process
@@ -26,9 +26,13 @@ import os
 import re
 
 import bs4
-from pydata_sphinx_theme.toctree import add_collapse_checkboxes
 from sphinx.environment.adapters.toctree import global_toctree_for_doc
 from sphinx.util import logging as sphinx_logging
+
+# Reuse the in-repo copy rather than importing from ``pydata_sphinx_theme.toctree``:
+# that symbol isn't part of the theme's public API, so importing it directly makes
+# the docs build fragile across theme upgrades. See the docstring on the vendored copy.
+from custom_directives import add_collapse_checkboxes
 
 logger = sphinx_logging.getLogger(__name__)
 
@@ -47,8 +51,9 @@ API_PATH_PREFIXES = (
     "train/api/",
     "tune/api/",
     "serve/api/",
-    "ray-core/api/",
-    "rllib/package_ref/",
+    "core/api/",
+    "rllib/api/",
+    "ray-more-libs/api/",
 )
 
 # Captured in the main process at env-updated and consumed in the main process at

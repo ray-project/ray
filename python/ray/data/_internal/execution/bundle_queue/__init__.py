@@ -4,7 +4,13 @@ from .base import (
     BaseBundleQueue,
     QueueWithRemoval,
 )
-from .bundler import EstimateSize, ExactMultipleSize, RebundleQueue
+from .bundler import (
+    EstimateBytes,
+    EstimateSize,
+    ExactMultipleSize,
+    PendingBundleState,
+    RebundleQueue,
+)
 from .fifo import FIFOBundleQueue
 from .hash_link import HashLinkedQueue
 from .reordering import ReorderingBundleQueue
@@ -20,10 +26,12 @@ __all__ = [
     "create_bundle_queue",
     "HashLinkedQueue",
     "RebundleQueue",
+    "EstimateBytes",
     "EstimateSize",
     "ReorderingBundleQueue",
     "FIFOBundleQueue",
     "ExactMultipleSize",
+    "PendingBundleState",
     "QueueWithRemoval",
     "ThreadSafeBundleQueue",
 ]

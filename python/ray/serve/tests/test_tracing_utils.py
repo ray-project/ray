@@ -21,13 +21,16 @@ from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
 )
 from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import (
+    get_application_url,
+    wait_for_haproxy_routing_to_replica,
+)
 from ray.serve._private.tracing_utils import (
-    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     TRACE_STACK,
     _append_trace_stack,
     _load_span_processors,
@@ -39,6 +42,7 @@ from ray.serve._private.tracing_utils import (
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.grpc_util import gRPCInputStream
+from ray.serve.schema import TracingConfig
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.utils import get_trace_context
 from ray.tests.conftest import *  # noqa
@@ -92,8 +96,7 @@ def test_disable_tracing_exporter():
         component_type=ServeComponentType.REPLICA,
         component_name="component_name",
         component_id="component_id",
-        tracing_exporter_import_path="",
-        tracing_sampling_ratio=1.0,
+        tracing_config=TracingConfig(enabled=False),
     )
 
     assert is_tracing_setup_successful is False
@@ -168,7 +171,7 @@ def test_missing_dependencies():
                 component_type=ServeComponentType.REPLICA,
                 component_name="component_name",
                 component_id="component_id",
-                tracing_sampling_ratio=1.0,
+                tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
             )
 
 
@@ -229,8 +232,11 @@ def test_custom_tracing_exporter(use_custom_tracing_exporter):
         "component_name",
         "component_id",
         ServeComponentType.REPLICA,
-        custom_tracing_exporter_path,
-        tracing_sampling_ratio=1.0,
+        tracing_config=TracingConfig(
+            enabled=True,
+            exporter_import_path=custom_tracing_exporter_path,
+            sampling_ratio=1.0,
+        ),
     )
 
     # Validate that tracing is setup successfully
@@ -250,8 +256,11 @@ def test_tracing_sampler(use_custom_tracing_exporter):
         "component_name",
         "component_id",
         ServeComponentType.REPLICA,
-        custom_tracing_exporter_path,
-        tracing_sampling_ratio,
+        tracing_config=TracingConfig(
+            enabled=True,
+            exporter_import_path=custom_tracing_exporter_path,
+            sampling_ratio=tracing_sampling_ratio,
+        ),
     )
 
     # Validate that tracing is setup successfully
@@ -374,11 +383,12 @@ def test_tracing_e2e(
             )
         )
         serve.run(BasicModel.bind())
+        wait_for_haproxy_routing_to_replica()
 
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
-            tracing_sampling_ratio=1.0,
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -396,10 +406,11 @@ def test_tracing_e2e(
             )
         )
         serve.run(StreamingModel.bind())
+        wait_for_haproxy_routing_to_replica()
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
-            tracing_sampling_ratio=1.0,
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -438,7 +449,7 @@ def test_tracing_e2e(
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
-            tracing_sampling_ratio=1.0,
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -462,14 +473,13 @@ def test_tracing_e2e(
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # We don't currently trace HAProxy.
-        assert len(files) == 2
-    else:
-        assert len(files) == 3
+    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
+    # written by the fallback ProxyActor on startup but holds no request spans
+    # under direct ingress.
+    assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    proxy_filename = None
     upstream_filename = None
     for file in files:
         if "replica" in file:
@@ -579,7 +589,7 @@ def test_tracing_e2e_with_errors(
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
-            tracing_sampling_ratio=1.0,
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -603,7 +613,7 @@ def test_tracing_e2e_with_errors(
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
-            tracing_sampling_ratio=1.0,
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -636,7 +646,7 @@ def test_tracing_e2e_with_errors(
         setup_tracing(
             component_name="upstream_app",
             component_id="345",
-            tracing_sampling_ratio=1.0,
+            tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -662,14 +672,13 @@ def test_tracing_e2e_with_errors(
     spans_dir = os.path.join(serve_logs_dir, "spans")
     files = os.listdir(spans_dir)
 
-    if RAY_SERVE_ENABLE_HA_PROXY:
-        # We don't currently trace HAProxy.
-        assert len(files) == 2
-    else:
-        assert len(files) == 3  # proxy, replica, and upstream spans
+    # proxy, replica, and upstream span files. Under HAProxy the proxy file is
+    # written by the fallback ProxyActor on startup but holds no request spans
+    # under direct ingress.
+    assert len(files) == 3
 
     replica_filename = None
-    proxy_filename = None or RAY_SERVE_ENABLE_HA_PROXY
+    proxy_filename = None
     upstream_filename = None
     for file in files:
         if "replica" in file:
@@ -964,7 +973,7 @@ def test_batched_span_attached_to_first_request_trace():
     setup_tracing(
         component_name="upstream_app",
         component_id="batching_test_upstream_multi",
-        tracing_sampling_ratio=1.0,
+        tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
     )
 
     tracer = trace.get_tracer("test_tracing_batching_multi")
@@ -1095,7 +1104,7 @@ def test_grpc_streaming_tracing_attributes(serve_and_ray_shutdown, method_name):
     setup_tracing(
         component_name="upstream_app",
         component_id="345",
-        tracing_sampling_ratio=1.0,
+        tracing_config=TracingConfig(enabled=True, sampling_ratio=1.0),
     )
 
     tracer = trace.get_tracer("test_tracing")

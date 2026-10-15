@@ -21,8 +21,8 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
         "//src/ray/object_manager:object_buffer_pool",
+        "//src/ray/object_manager/plasma:fake_plasma_client",
     ],
 )
 
@@ -93,6 +93,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/object_manager/plasma:plasma_store_server_lib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -104,9 +105,13 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//:ray_mock",
+        "//src/ray/gcs_rpc_client:fake_gcs_client",
         "//src/ray/object_manager",
+        "//src/ray/object_manager:fake_object_directory",
         "//src/ray/object_manager/plasma:fake_plasma_client",
         "//src/ray/object_manager_rpc_client:fake_object_manager_client",
+        "//src/ray/util:filesystem",
+        "//src/ray/util:path_utils",
+        "@boost//:endian",
     ],
 )

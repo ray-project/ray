@@ -139,6 +139,7 @@ void LocalDependencyResolver::ResolveDependencies(
       std::vector<ObjectID> inlined_dependency_ids;
       std::vector<ObjectID> contained_ids;
       {
+        RAY_LOG(DEBUG).WithField(obj_id) << "Object dependency resolved";
         absl::MutexLock lock(&mu_);
 
         auto it = pending_tasks_.find(task_id);
@@ -176,8 +177,12 @@ void LocalDependencyResolver::ResolveDependencies(
     // first avoids flooding the I/O context with callbacks.
     auto existing = in_memory_store_.GetIfExists(obj_id);
     if (existing != nullptr) {
+      RAY_LOG(DEBUG).WithField(obj_id) << "Object already exists in in-memory store, "
+                                          "resolving dependency synchronously";
       resolve_object_dependency(std::move(existing));
     } else {
+      RAY_LOG(DEBUG).WithField(obj_id) << "Object does not exist in in-memory store, "
+                                          "resolving dependency asynchronously";
       in_memory_store_.GetAsync(obj_id, std::move(resolve_object_dependency));
     }
   }

@@ -12,6 +12,7 @@ import ray
 import ray.cluster_utils
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import (
+    get_gpu_visible_devices_env_var,
     run_string_as_driver_nonblocking,
     wait_for_pid_to_exit,
 )
@@ -23,25 +24,33 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def save_gpu_ids_shutdown_only():
+    gpu_env_var = get_gpu_visible_devices_env_var()
     # Record the curent value of this environment variable so that we can
     # reset it after the test.
-    original_gpu_ids = os.environ.get("CUDA_VISIBLE_DEVICES", None)
+    original_gpu_ids = os.environ.get(gpu_env_var) if gpu_env_var else None
 
-    yield None
+    yield gpu_env_var
 
     # The code after the yield will run as teardown code.
     ray.shutdown()
     # Reset the environment variable.
-    if original_gpu_ids is not None:
-        os.environ["CUDA_VISIBLE_DEVICES"] = original_gpu_ids
-    else:
-        del os.environ["CUDA_VISIBLE_DEVICES"]
+    if gpu_env_var:
+        if original_gpu_ids is not None:
+            os.environ[gpu_env_var] = original_gpu_ids
+        else:
+            os.environ.pop(gpu_env_var, None)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",
+)
 def test_specific_gpus(save_gpu_ids_shutdown_only):
+    gpu_env_var = save_gpu_ids_shutdown_only
+
     allowed_gpu_ids = [4, 5, 6]
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
+    os.environ[gpu_env_var] = ",".join([str(i) for i in allowed_gpu_ids])
     ray.init(num_gpus=3)
 
     @ray.remote(num_gpus=1)

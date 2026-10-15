@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Recommended Ray Serve development loop: iterate locally with serve.run, send HTTP requests, use local testing mode, then test on a cluster."
+---
+
 (serve-dev-workflow)=
 
 # Development Workflow
@@ -36,7 +42,7 @@ We can add the code below to deploy and test Serve locally.
 
 ## Local Development with HTTP requests
 
-You can use the `serve run` CLI command to run and test your application locally using HTTP to send requests (similar to how you might use the `uvicorn` command if you're familiar with [Uvicorn](https://www.uvicorn.org/)).
+You can use the `serve run` CLI command to run and test your application locally using HTTP to send requests (similar to how you might use the `uvicorn` command if you're familiar with [Uvicorn](https://uvicorn.dev/)).
 
 Recall our example above:
 

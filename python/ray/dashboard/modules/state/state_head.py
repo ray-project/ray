@@ -12,7 +12,11 @@ from aiohttp.web import Response
 import ray
 from ray import ActorID
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    RAY_DASHBOARD_REDACT_RUNTIME_ENV,
+    env_bool,
+    env_integer,
+)
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
@@ -20,6 +24,11 @@ from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST_ENV_NAME,
 )
 from ray.dashboard.modules.log.log_manager import LogsManager
+from ray.dashboard.optional_utils import rest_response
+from ray.dashboard.runtime_env_redaction import (
+    redact_state_rows,
+    should_redact_runtime_env,
+)
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
     do_reply,
@@ -108,11 +117,15 @@ class StateHead(SubprocessModule, RateLimitedModule):
     async def list_jobs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_JOBS, "1")
         try:
-            result = await self._state_api.list_jobs(option=options_from_req(req))
+            result = asdict(
+                await self._state_api.list_jobs(option=options_from_req(req))
+            )
+            if should_redact_runtime_env(req):
+                result["result"] = redact_state_rows(result["result"])
             return do_reply(
                 status_code=HTTPStatusCode.OK,
                 error_message="",
-                result=asdict(result),
+                result=result,
             )
         except DataSourceUnavailable as e:
             return do_reply(
@@ -158,6 +171,17 @@ class StateHead(SubprocessModule, RateLimitedModule):
     async def list_runtime_envs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_RUNTIME_ENVS, "1")
         return await handle_list_api(self._state_api.list_runtime_envs, req)
+
+    @routes.get("/api/v0/runtime_env_redaction")
+    async def runtime_env_redaction(
+        self, req: aiohttp.web.Request
+    ) -> aiohttp.web.Response:
+        """Report whether `runtime_env` secrets are redacted for browser clients."""
+        return rest_response(
+            status_code=HTTPStatusCode.OK,
+            message="",
+            redaction_enabled=RAY_DASHBOARD_REDACT_RUNTIME_ENV,
+        )
 
     @routes.get("/api/v0/logs")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -273,7 +297,10 @@ class StateHead(SubprocessModule, RateLimitedModule):
             await response.prepare(req)
             await response.write(first_chunk)
         except StopAsyncIteration:
-            pass
+            # Empty log stream (e.g. task log byte range has zero length:
+            # start_offset == end_offset). We must still prepare the response before
+            # write_eof(), otherwise aiohttp raises AssertionError.
+            await response.prepare(req)
         except asyncio.CancelledError:
             # This happens when the client side closes the connection.
             # Force close the connection and do no-op.
@@ -332,23 +359,29 @@ class StateHead(SubprocessModule, RateLimitedModule):
             headers = None
         return Response(text=result, content_type="application/json", headers=headers)
 
-    @routes.get("/api/v0/delay/{delay_s}")
-    async def delayed_response(self, req: aiohttp.web.Request):
-        """Testing only. Response after a specified delay."""
-        delay = int(req.match_info.get("delay_s", 10))
-        await asyncio.sleep(delay)
-        return do_reply(
-            status_code=HTTPStatusCode.OK,
-            error_message="",
-            result={},
-            partial_failure_warning=None,
-        )
+    # Testing only.
+    if env_bool("RAY_DASHBOARD_MODULE_TEST", False):
+
+        @routes.get("/api/v0/delay/{delay_s}")
+        async def delayed_response(self, req: aiohttp.web.Request):
+            """Response after a specified delay."""
+            delay = int(req.match_info.get("delay_s", 10))
+            await asyncio.sleep(delay)
+            return do_reply(
+                status_code=HTTPStatusCode.OK,
+                error_message="",
+                result={},
+                partial_failure_warning=None,
+            )
 
     async def run(self):
         await SubprocessModule.run(self)
         gcs_channel = self.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self.gcs_client
+            gcs_channel,
+            self.gcs_client,
+            dashboard_socket_dir=self._config.socket_dir,
+            dashboard_session_name=self._config.session_name,
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,

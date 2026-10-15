@@ -188,6 +188,7 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] cluster_id The cluster ID for authentication.
   /// \param[in] auth_token The authentication token for token-based authentication.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] server_metrics The server's metric objects.
   /// \param[in] preprocess_function If not nullptr, it will be called before handling
   /// request.
   ServerCallImpl(const ServerCallFactory &factory,
@@ -198,6 +199,7 @@ class ServerCallImpl : public ServerCall {
                  const ClusterID &cluster_id,
                  std::shared_ptr<const AuthenticationToken> auth_token,
                  bool record_metrics,
+                 GrpcServerMetrics &server_metrics,
                  std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -209,12 +211,13 @@ class ServerCallImpl : public ServerCall {
         cluster_id_(cluster_id),
         auth_token_(auth_token),
         start_time_(0),
-        record_metrics_(record_metrics) {
+        record_metrics_(record_metrics),
+        server_metrics_(server_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
-      grpc_server_req_new_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_new.Record(1.0, {{"Method", call_name_}});
     }
   }
 
@@ -259,7 +262,7 @@ class ServerCallImpl : public ServerCall {
 
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_handling.Record(1.0, {{"Method", call_name_}});
     }
     if (!io_service_.stopped()) {
       io_service_.post(
@@ -336,8 +339,8 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() override {
     if (record_metrics_) {
-      grpc_server_req_finished_counter_.Record(1.0, {{"Method", call_name_}});
-      grpc_server_req_succeeded_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_finished.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_succeeded.Record(1.0, {{"Method", call_name_}});
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -349,8 +352,8 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplyFailed() override {
     if (record_metrics_) {
-      grpc_server_req_finished_counter_.Record(1.0, {{"Method", call_name_}});
-      grpc_server_req_failed_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_finished.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_failed.Record(1.0, {{"Method", call_name_}});
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -392,8 +395,8 @@ class ServerCallImpl : public ServerCall {
     io_service_.stats()->RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      grpc_server_req_process_time_ms_histogram_.Record(
-          (end_time - start_time_) / 1000000.0, {{"Method", call_name_}});
+      server_metrics_.req_process_time_ms.Record((end_time - start_time_) / 1000000.0,
+                                                 {{"Method", call_name_}});
     }
   }
 
@@ -469,17 +472,7 @@ class ServerCallImpl : public ServerCall {
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
 
-  ray::stats::Histogram grpc_server_req_process_time_ms_histogram_{
-      GetGrpcServerReqProcessTimeMsHistogramMetric()};
-  ray::stats::Count grpc_server_req_new_counter_{GetGrpcServerReqNewCounterMetric()};
-  ray::stats::Count grpc_server_req_handling_counter_{
-      GetGrpcServerReqHandlingCounterMetric()};
-  ray::stats::Count grpc_server_req_finished_counter_{
-      GetGrpcServerReqFinishedCounterMetric()};
-  ray::stats::Count grpc_server_req_succeeded_counter_{
-      GetGrpcServerReqSucceededCounterMetric()};
-  ray::stats::Count grpc_server_req_failed_counter_{
-      GetGrpcServerReqFailedCounterMetric()};
+  GrpcServerMetrics &server_metrics_;
 
   template <class T1, class T2, class T3, class T4, ClusterIdAuthType T5, bool T6>
   friend class ServerCallFactoryImpl;
@@ -534,6 +527,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] max_active_rpcs Maximum request number to handle at the same time. -1
   /// means no limit.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] server_metrics The server's metric objects.
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
@@ -545,7 +539,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const ClusterID &cluster_id,
       std::shared_ptr<const AuthenticationToken> auth_token,
       int64_t max_active_rpcs,
-      bool record_metrics)
+      bool record_metrics,
+      GrpcServerMetrics &server_metrics)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -556,7 +551,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cluster_id_(cluster_id),
         auth_token_(auth_token),
         max_active_rpcs_(max_active_rpcs),
-        record_metrics_(record_metrics) {}
+        record_metrics_(record_metrics),
+        server_metrics_(server_metrics) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
@@ -570,7 +566,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
             call_name_,
             cluster_id_,
             auth_token_,
-            record_metrics_);
+            record_metrics_,
+            server_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
@@ -618,6 +615,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
+
+  GrpcServerMetrics &server_metrics_;
 };
 
 }  // namespace rpc

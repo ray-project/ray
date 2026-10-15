@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Core Ray Serve abstractions: deployments, replicas, applications, the ingress deployment, and the DeploymentHandle API for composing deployments."
+---
+
 (serve-key-concepts)=
 
 # Key Concepts

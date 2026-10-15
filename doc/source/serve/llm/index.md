@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Deploy LLMs with Ray Serve LLM: OpenAI-compatible API, multi-model serving, tensor/pipeline parallelism, LoRA, and vLLM/SGLang backends."
+---
+
 (serving-llms)=
 
 # Serving LLMs

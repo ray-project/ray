@@ -19,6 +19,8 @@ memray
 openskill
 orjson
 petastorm
+# Ray Data joins each hash partition with Polars.
+polars
 protobuf
 pyarrow
 pydantic>=2.5.0
@@ -31,7 +33,7 @@ scikit-learn
 scipy
 tblib
 terminado
-tensorboardx==2.6.2.2
+tensorboardx==2.6.5
 tensorflow
 trueskill
 tqdm

@@ -688,7 +688,7 @@ std::string TaskSpecification::CallSiteString() const {
   } else {
     stream << "(deserialize task arg) ";
   }
-  stream << FunctionDescriptor()->CallSiteString();
+  stream << desc->CallSiteString();
   return stream.str();
 }
 

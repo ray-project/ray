@@ -760,6 +760,42 @@ def test_map_operator_no_default_memory_when_disabled(
     assert not op.min_scheduling_resources().memory
 
 
+@pytest.mark.parametrize(
+    "ray_remote_args, expected_num_cpus",
+    [
+        # No resources specified: default to 1 CPU.
+        ({}, 1),
+        # GPU-only: also default to 1 CPU so the scheduler accounts for the CPU work
+        # GPU UDFs do and doesn't overpack CPU tasks onto the GPU node.
+        ({"num_gpus": 1}, 1),
+        ({"num_gpus": 0.5}, 1),
+        # Explicit num_cpus is always respected, including opting out with 0.
+        ({"num_gpus": 1, "num_cpus": 0}, 0),
+        ({"num_gpus": 1, "num_cpus": 2}, 2),
+        ({"num_cpus": 0}, 0),
+    ],
+)
+@pytest.mark.parametrize(
+    "compute_strategy",
+    [ray.data.TaskPoolStrategy(), ray.data.ActorPoolStrategy(size=1)],
+)
+def test_map_operator_default_num_cpus(
+    ray_start_regular_shared, ray_remote_args, expected_num_cpus, compute_strategy
+):
+    data_context = ray.data.DataContext.get_current()
+    op = MapOperator.create(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        compute_strategy=compute_strategy,
+        ray_remote_args=ray_remote_args,
+    )
+
+    assert op._ray_remote_args.get("num_cpus", 0) == expected_num_cpus
+    for key, value in ray_remote_args.items():
+        assert op._ray_remote_args[key] == value
+
+
 if __name__ == "__main__":
     import sys
 

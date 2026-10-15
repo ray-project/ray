@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import platform
+import secrets
 import shutil
 import socket
 import subprocess
@@ -44,6 +45,7 @@ from ray._private.test_utils import (
     redis_replicas,
     redis_sentinel_replicas,
     reset_autoscaler_v2_enabled_cache,
+    rocksdb_gcs_test_enabled,
     setup_tls,
     start_redis_instance,
     start_redis_sentinel_instance,
@@ -469,10 +471,41 @@ def _setup_redis(request, with_sentinel=False):
         kill_processes(processes)
 
 
+@contextmanager
+def _setup_rocksdb_gcs(request):
+    """Configure the env so a Ray cluster started inside the fixture uses
+    the RocksDB GCS backend (REP-64). The DB lives in a tempdir scoped
+    to the fixture; nothing persists beyond the test.
+    """
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        old_storage = os.environ.get("RAY_gcs_storage")
+        old_path = os.environ.get("RAY_gcs_storage_path")
+        os.environ["RAY_gcs_storage"] = "rocksdb"
+        os.environ["RAY_gcs_storage_path"] = tmpdirname
+        try:
+            yield
+        finally:
+            if old_storage is not None:
+                os.environ["RAY_gcs_storage"] = old_storage
+            else:
+                del os.environ["RAY_gcs_storage"]
+            if old_path is not None:
+                os.environ["RAY_gcs_storage_path"] = old_path
+            else:
+                del os.environ["RAY_gcs_storage_path"]
+
+
 @pytest.fixture
 def maybe_setup_external_redis(request):
+    # Dispatches the configured GCS storage backend based on CI env
+    # vars. Despite the historical name, this fixture also handles the
+    # RocksDB GCS backend (REP-64) so existing cluster fixtures pick up
+    # rocksdb-mode behavior automatically when TEST_GCS_ROCKSDB=1.
     if external_redis_test_enabled():
         with _setup_redis(request):
+            yield
+    elif rocksdb_gcs_test_enabled():
+        with _setup_rocksdb_gcs(request):
             yield
     else:
         yield
@@ -482,6 +515,9 @@ def maybe_setup_external_redis(request):
 def maybe_setup_external_redis_shared(request):
     if external_redis_test_enabled():
         with _setup_redis(request):
+            yield
+    elif rocksdb_gcs_test_enabled():
+        with _setup_rocksdb_gcs(request):
             yield
     else:
         yield
@@ -1580,11 +1616,74 @@ def clean_token_sources(cleanup_auth_token_env):
     reset_auth_token_state()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_token_auth_state(tmp_path_factory):
+    """Isolate token-auth state across bazel targets, which share HOME.
+
+    Point the home dir at a per-session temp dir so a default-on cluster's
+    ``~/.ray/auth_token`` is unique to this target. Both Python's ``Path.home()``
+    and the C++ token loader resolve home from ``HOME`` on POSIX and
+    ``USERPROFILE`` on Windows, so redirect both to keep them in sync
+    cross-platform. Bazel runs targets in parallel under a shared home, so
+    mutating the real ``~/.ray/auth_token`` would race across targets and could
+    delete a developer's own token; redirecting the home per session sidesteps
+    that entirely.
+    """
+    isolated_home = str(tmp_path_factory.mktemp("ray_auth_home"))
+    home_vars = ("HOME", "USERPROFILE")
+    original = {var: os.environ.get(var) for var in home_vars}
+    for var in home_vars:
+        os.environ[var] = isolated_home
+    reset_auth_token_state()
+    try:
+        yield
+    finally:
+        # Turn auth off before the home changes: a still-draining Ray thread
+        # reloads the token on its next RPC and CHECK-fails if it's gone.
+        os.environ.pop("RAY_AUTH_MODE", None)
+        reset_auth_token_state()
+        for var, value in original.items():
+            if value is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = value
+        reset_auth_token_state()
+
+
+_TOKEN_AUTH_ENV_VARS = ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+
+
+@pytest.fixture(scope="session")
+def _token_auth_env_baseline():
+    """Snapshot the auth env vars once, so per-test restore has a clean target."""
+    return {k: os.environ.get(k) for k in _TOKEN_AUTH_ENV_VARS}
+
+
+@pytest.fixture(autouse=True)
+def _restore_token_auth_env(_token_auth_env_baseline):
+    """Restore the auth env vars to the session baseline after each test."""
+    yield
+    if ray.is_initialized():
+        return
+    for key, value in _token_auth_env_baseline.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    # Same ordering constraint as ``_isolate_token_auth_state``: auth has to be
+    # off in this process before the token file goes away.
+    reset_auth_token_state()
+
+    default_token = os.path.join(os.path.expanduser("~"), ".ray", "auth_token")
+    if os.path.exists(default_token):
+        os.remove(default_token)
+
+
 @pytest.fixture
 def setup_cluster_with_token_auth(cleanup_auth_token_env):
     """Spin up a Ray cluster with token authentication enabled."""
 
-    test_token = "test_token_12345678901234567890123456789012"
+    test_token = secrets.token_hex(32)
     set_auth_mode("token")
     set_env_auth_token(test_token)
     reset_auth_token_state()

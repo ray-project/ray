@@ -14,6 +14,7 @@
 
 #include "ray/common/scheduling/scheduling_class_util.h"
 
+#include <memory>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -160,12 +161,12 @@ std::string SchedulingClassDescriptor::ResourceSetStr() const {
 absl::Mutex SchedulingClassToIds::mutex_;
 absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
     SchedulingClassToIds::sched_cls_to_id_;
-absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
+absl::flat_hash_map<SchedulingClass, std::shared_ptr<const SchedulingClassDescriptor>>
     SchedulingClassToIds::sched_id_to_cls_;
 int SchedulingClassToIds::next_sched_id_;
 
-SchedulingClassDescriptor &SchedulingClassToIds::GetSchedulingClassDescriptor(
-    SchedulingClass id) {
+std::shared_ptr<const SchedulingClassDescriptor>
+SchedulingClassToIds::GetSchedulingClassDescriptor(SchedulingClass id) {
   absl::MutexLock lock(&mutex_);
   auto it = sched_id_to_cls_.find(id);
   RAY_CHECK(it != sched_id_to_cls_.end()) << "invalid id: " << id;
@@ -186,7 +187,8 @@ SchedulingClass SchedulingClassToIds::GetSchedulingClass(
           << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
+    sched_id_to_cls_.emplace(
+        sched_cls_id, std::make_shared<const SchedulingClassDescriptor>(sched_cls));
   } else {
     sched_cls_id = it->second;
   }

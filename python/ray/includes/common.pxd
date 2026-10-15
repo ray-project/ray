@@ -134,6 +134,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsChannelError()
         c_bool IsChannelTimeoutError()
         c_bool IsUnauthenticated()
+        c_bool IsGcsPassive()
 
         c_string ToString()
         c_string CodeAsString()
@@ -519,7 +520,13 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors,
             optional[int64_t] limit) const
 
+        c_bool IsGcsLeader() const
+
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
+        CRayStatus GetDrainingNodes(
+            int64_t timeout_ms,
+            CGetDrainingNodesReply &reply)
+
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
@@ -805,6 +812,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         const c_string &SerializeAsString() const
 
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
+        const c_string& SerializeAsString() const
+
+    cdef cppclass CGetDrainingNodesReply "ray::rpc::GetDrainingNodesReply":
         const c_string& SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":

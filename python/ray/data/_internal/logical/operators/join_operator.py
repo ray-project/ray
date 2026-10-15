@@ -76,6 +76,11 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             "_input_dependencies",
             [left_input_op, right_input_op],
         )
+        # Mirror the reduce-task remote args onto `ray_remote_args` so fusing a downstream map
+        # into this join's reduce task respects the reduce task's actual args.
+        object.__setattr__(
+            self, "ray_remote_args", dict(self.aggregator_ray_remote_args or {})
+        )
 
     @property
     def num_outputs(self) -> Optional[int]:
@@ -255,4 +260,15 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
         except (pa.ArrowTypeError, pa.ArrowInvalid, pa.ArrowKeyError, ValueError):
             return None
+        except Exception as exc:
+            # Polars is imported lazily, so its exception types can only be
+            # referenced once the package is installed.
+            try:
+                from polars.exceptions import PolarsError
+            except ImportError:
+                pass
+            else:
+                if isinstance(exc, PolarsError):
+                    return None
+            raise
         return joined.schema

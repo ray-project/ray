@@ -1,15 +1,15 @@
 import logging
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import Optional
 
-import ray
+from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+    ReservedResources,
+)
+from ray.train._internal.autoscaling_coordinator_client import _floor_slots
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
     ScalingDecision,
     ScalingPolicy,
-)
-from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
-    AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupPollStatus,
@@ -20,16 +20,9 @@ from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
-        ResourceDict,
-    )
-
 
 class ElasticScalingPolicy(ScalingPolicy):
 
-    # Minimum interval in seconds between querying the AutoscalingCoordinator for allocated resources.
-    GET_ALLOCATED_RESOURCES_INTERVAL_S = 1
     # Minimum interval in seconds between logging warnings about insufficient workers.
     INSUFFICIENT_WORKERS_WARNING_INTERVAL_S = 30
 
@@ -38,30 +31,31 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         self._latest_monitor_time = float("-inf")
         self._latest_insufficient_workers_warning_time = float("-inf")
-        self._latest_allocated_resources_query_time = float("-inf")
-        self._latest_allocated_resources: Optional[List["ResourceDict"]] = None
 
     def _get_num_workers_for_resource_request(self) -> int:
         return self.scaling_config.max_workers
 
-    def _count_possible_workers(
-        self, allocated_resources: List[Dict[str, float]]
-    ) -> int:
+    def _count_possible_workers(self, reserved_resources: ReservedResources) -> int:
         """Count the number of workers that can be started/restarted with the given
         the list of node resources. The returned number is capped at the maximum
         number of workers.
 
-        For GPUs, this divides raw allocated resources by per-worker requirements.
+        Reserved amounts are accumulated one bundle at a time by the coordinator,
+        so for fractional per-worker resources they are not exactly
+        ``n * per_worker``; ``_floor_slots`` absorbs that drift instead of
+        silently dropping a worker (and, if the count falls under
+        ``min_workers``, refusing to start at all).
+
+        For GPUs, this divides raw reserved resources by per-worker requirements.
         For TPUs, an additional check ensures workers align with physically intact
         TPU slices (see ``_get_strict_tpu_worker_count``).
 
         Args:
-            allocated_resources: The resources currently allocated by the AutoscalingCoordinator.
+            reserved_resources: Per-node reserved resources from the AutoscalingCoordinator.
 
         Returns:
             The number of workers that can be started/restarted with the current resources.
         """
-        # TODO: Fractional resources do not work well here.
         single_worker_resources = self.scaling_config._resources_per_worker_not_none
         total_num_workers = 0
 
@@ -69,17 +63,20 @@ class ElasticScalingPolicy(ScalingPolicy):
         if sum(single_worker_resources.values()) == 0:
             return self.scaling_config.max_workers
 
-        for resources in allocated_resources:
+        for resources in reserved_resources.values():
             num_workers = min(
                 [
-                    resources.get(resource, 0.0) // single_worker_resources[resource]
+                    _floor_slots(
+                        resources.get(resource, 0.0),
+                        single_worker_resources[resource],
+                    )
                     for resource in single_worker_resources
                     if single_worker_resources[resource] > 0
                 ]
             )
             total_num_workers += num_workers
 
-        total_num_workers = min(int(total_num_workers), self.scaling_config.max_workers)
+        total_num_workers = min(total_num_workers, self.scaling_config.max_workers)
 
         # Multi-host TPUs are scheduled atomically in interconnected slices defined by a topology.
         if (
@@ -96,7 +93,7 @@ class ElasticScalingPolicy(ScalingPolicy):
     def _get_strict_tpu_worker_count(self, total_num_workers: int) -> int:
         """Calculate the number of workers that can run on intact TPU slices.
 
-        The Autoscaler's allocated resources might overestimate the number of
+        The Autoscaler's reserved resources might overestimate the number of
         schedulable TPU workers because it counts raw resources. TPUs require
         atomic, interconnected slices. This function checks the cluster for
         physically intact slices to prevent scaling onto fractional/broken
@@ -108,7 +105,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         Args:
             total_num_workers: The initial estimate of workers based on raw
-                allocated resources.
+                reserved resources.
 
         Returns:
             The number of workers aligned to fully intact TPU slices.
@@ -121,7 +118,7 @@ class ElasticScalingPolicy(ScalingPolicy):
             workers_per_slice, _ = get_tpu_worker_resources(
                 topology=self.scaling_config.topology,
                 accelerator_type=self.scaling_config.accelerator_type,
-                resources_per_unit=single_worker_resources,
+                resources_per_worker=single_worker_resources,
                 num_slices=1,
             )
 
@@ -156,20 +153,44 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         return 0
 
-    def _get_resize_decision(self, num_workers: int) -> ResizeDecision:
+    def _get_resize_decision(
+        self, num_workers: int, reserved_resources: ReservedResources
+    ) -> Optional[ResizeDecision]:
+        """Build a resize decision pinned to ``reserved_resources``.
+
+        The pins come from the same snapshot that chose ``num_workers``, so the
+        worker group starts on exactly the reservation the decision was based
+        on. Returns ``None`` if that snapshot can't be pinned.
+        """
+        label_selectors = None
+        if self._should_pin_to_reservation():
+            label_selectors = self._get_reserved_label_selectors(
+                reserved_resources, num_workers
+            )
+            if label_selectors is None:
+                return None
         return ResizeDecision(
             num_workers=num_workers,
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
+            label_selectors=label_selectors,
         )
 
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
         self._maybe_send_resource_request()
 
-        allocated_resources = self._get_allocated_resources()
-        if allocated_resources is None:
+        reserved_resources = self._get_reserved_resources()
+        if not reserved_resources:
+            self._maybe_log_waiting_for_reservation(
+                num_reserved=0, num_required=self.scaling_config.min_workers
+            )
             return NoopDecision()
 
-        num_workers = self._count_possible_workers(allocated_resources)
+        num_workers = self._count_possible_workers(reserved_resources)
+        if num_workers >= self.scaling_config.min_workers:
+            # The cached view looks ready. Decide and pin from a fresh view, so
+            # the decision doesn't count a node that just died.
+            reserved_resources = self._get_reserved_resources(recompute=True) or {}
+            num_workers = self._count_possible_workers(reserved_resources)
 
         if num_workers < self.scaling_config.min_workers:
             now = time_monotonic()
@@ -188,12 +209,16 @@ class ElasticScalingPolicy(ScalingPolicy):
                 self._latest_insufficient_workers_warning_time = now
             return NoopDecision()
 
+        decision = self._get_resize_decision(num_workers, reserved_resources)
+        if decision is None:
+            return NoopDecision()
+
         logger.info(
             f"Detected ready resources for {num_workers} workers "
             "in the cluster. "
             "Deciding to start/restart training with this worker group size."
         )
-        return self._get_resize_decision(num_workers)
+        return decision
 
     def make_decision_for_running_worker_group(
         self,
@@ -226,11 +251,12 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         self._latest_monitor_time = now
 
-        allocated_resources = self._get_allocated_resources()
-        if allocated_resources is None:
+        # Fresh view: a resize decision is pinned to this snapshot.
+        reserved_resources = self._get_reserved_resources(recompute=True)
+        if reserved_resources is None:
             return NoopDecision()
 
-        num_workers = self._count_possible_workers(allocated_resources)
+        num_workers = self._count_possible_workers(reserved_resources)
 
         if num_workers == worker_group_state.num_workers:
             logger.info(
@@ -240,11 +266,15 @@ class ElasticScalingPolicy(ScalingPolicy):
             )
             return NoopDecision()
         elif num_workers < self.scaling_config.min_workers:
-            # This covers an edge case where allocated resources decrease to less
+            # This covers an edge case where reserved resources decrease to less
             # than the minimum number of workers.
             # This situation is rare, since cluster downsizing typically involves
             # worker failures. However, this check is still useful to fully
             # avoid entering an invalid state with fewer workers than the minimum.
+            return NoopDecision()
+
+        decision = self._get_resize_decision(num_workers, reserved_resources)
+        if decision is None:
             return NoopDecision()
 
         logger.info(
@@ -252,40 +282,4 @@ class ElasticScalingPolicy(ScalingPolicy):
             "Deciding to resize the worker group from "
             f"{worker_group_state.num_workers} -> {num_workers} workers."
         )
-        return self._get_resize_decision(num_workers)
-
-    # ---------------------------------------------------
-    # Methods for interacting with AutoscalingCoordinator
-    # ---------------------------------------------------
-
-    def _get_allocated_resources(self) -> Optional[List["ResourceDict"]]:
-        """Get allocated resources from AutoscalingCoordinator.
-        Return None if there is an error."""
-        now = time_monotonic()
-        time_since_last_call = now - self._latest_allocated_resources_query_time
-
-        if time_since_last_call < self.GET_ALLOCATED_RESOURCES_INTERVAL_S:
-            return self._latest_allocated_resources
-
-        allocated_resources = None
-        try:
-            allocated_resources = ray.get(
-                self._autoscaling_coordinator.get_allocated_resources.remote(
-                    self._requester_id
-                ),
-                timeout=AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
-            )
-        except Exception:
-            msg = (
-                f"Failed to get allocated resources for {self._requester_id}."
-                " Will not resize the worker group."
-                " If this only happens transiently during network partition or"
-                " CPU being overloaded, it's safe to ignore this error."
-                " If this error persists, file a GitHub issue."
-            )
-            logger.warning(msg, exc_info=True)
-        finally:
-            self._latest_allocated_resources_query_time = time_monotonic()
-            self._latest_allocated_resources = allocated_resources
-
-        return self._latest_allocated_resources
+        return decision

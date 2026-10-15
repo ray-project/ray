@@ -1,11 +1,9 @@
 import http
-import json
 import os
 import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
 
 import grpc
 import httpx
@@ -22,7 +20,6 @@ from ray._common.network_utils import parse_address
 from ray._common.test_utils import (
     PrometheusTimeseries,
     SignalActor,
-    fetch_prometheus_metric_timeseries,
     wait_for_condition,
 )
 from ray.serve._private.constants import (
@@ -32,77 +29,17 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
-    TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
     get_metric_dictionaries,
     get_metric_float,
     ping_grpc_call_method,
     ping_grpc_list_applications,
+    skip_if_haproxy,
 )
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-
-
-def extract_tags(line: str) -> Dict[str, str]:
-    """Extracts any tags from the metrics line."""
-
-    try:
-        tags_string = line.replace("{", "}").split("}")[1]
-    except IndexError:
-        # No tags were found in this line.
-        return {}
-
-    detected_tags = {}
-    for tag_pair in tags_string.split(","):
-        sanitized_pair = tag_pair.replace('"', "")
-        tag, value = sanitized_pair.split("=")
-        detected_tags[tag] = value
-
-    return detected_tags
-
-
-def check_sum_metric_eq(
-    metric_name: str,
-    expected: float,
-    tags: Optional[Dict[str, str]] = None,
-    timeseries: Optional[PrometheusTimeseries] = None,
-) -> bool:
-    if tags is None:
-        tags = {}
-    if timeseries is None:
-        timeseries = PrometheusTimeseries()
-
-    metrics = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
-        timeseries,
-        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-    )
-    metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
-    metric_samples = metrics.get(metric_name, None)
-    if metric_samples is None:
-        metric_sum = 0
-    else:
-        metric_samples = [
-            sample for sample in metric_samples if tags.items() <= sample.labels.items()
-        ]
-        metric_sum = sum(sample.value for sample in metric_samples)
-
-    # Check the metrics sum to the expected number
-    assert float(metric_sum) == float(expected), (
-        f"The following metrics don't sum to {expected}: "
-        f"{json.dumps(metric_samples, indent=4)}\n."
-        f"All metrics: {json.dumps(metrics, indent=4)}"
-    )
-
-    # # For debugging
-    if metric_samples:
-        print(f"The following sum to {expected} for '{metric_name}' and tags {tags}:")
-        for sample in metric_samples:
-            print(sample)
-
-    return True
 
 
 def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
@@ -204,6 +141,10 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
+@skip_if_haproxy(
+    "HAProxy answers unmatched-route 404s itself and counts its health-check "
+    "probes in these metrics"
+)
 def test_proxy_metrics_not_found(metrics_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
@@ -301,6 +242,10 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy returns 502 for a dead backend instead of a replica 500 and counts "
+    "its health-check probes in these metrics"
+)
 def test_proxy_metrics_internal_error(metrics_start_shutdown):
     # This test kills the replica process so metrics are not emitted.
     if RAY_SERVE_ENABLE_DIRECT_INGRESS and not RAY_SERVE_ENABLE_HA_PROXY:
@@ -403,6 +348,10 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_error_count(do_assert=True)
 
 
+@skip_if_haproxy(
+    "HAProxy answers the 404 itself and counts its health-check probes in these "
+    "metrics"
+)
 def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
@@ -465,6 +414,7 @@ def test_proxy_metrics_fields_not_found(metrics_start_shutdown):
     ],
     indirect=True,
 )
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_timeout_metrics(metrics_start_shutdown):
     """Test that HTTP timeout metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -544,6 +494,7 @@ def test_proxy_disconnect_http_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its gRPC health-check probes in these metrics")
 def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     """Test that gRPC disconnect metrics are reported correctly."""
     signal = SignalActor.remote()
@@ -595,6 +546,7 @@ def test_proxy_disconnect_grpc_metrics(metrics_start_shutdown):
     assert num_errors[0]["application"] == "disconnect"
 
 
+@skip_if_haproxy("HAProxy counts its health-check probes in these latency metrics")
 def test_proxy_metrics_fields_internal_error(metrics_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
@@ -736,6 +688,10 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy can't inspect websocket close codes, so it can't classify them as "
+    "HTTP errors and the error-vs-success request counts this test asserts can't hold"
+)
 def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
     """Verify that status codes aisde from 1000 or 1001 are errors."""
 
@@ -1043,6 +999,8 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
 def test_router_queue_len_metric(metrics_start_shutdown):
     """Test that router queue length metric is recorded correctly per replica."""
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        pytest.skip("direct ingress bypasses the proxy router, queue-len gauge stays 0")
     signal = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=10)
@@ -1158,6 +1116,10 @@ def test_multiplexed_metrics(metrics_start_shutdown):
     )
 
 
+@skip_if_haproxy(
+    "HAProxy labels HTTP metrics with the static backend path_prefix, not "
+    "FastAPI route patterns"
+)
 @pytest.mark.parametrize("use_factory_pattern", [False, True])
 def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_pattern):
     """Test that proxy metrics use specific route patterns for FastAPI apps.

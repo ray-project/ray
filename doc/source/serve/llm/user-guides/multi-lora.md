@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve multiple fine-tuned LoRA adapters from a single Ray Serve LLM deployment, with adapter-aware request routing."
+---
+
 # Multi-LoRA deployment
 
 Deploy multiple fine-tuned LoRA adapters efficiently with Ray Serve LLM.
@@ -22,6 +28,16 @@ When a request for a given LoRA adapter arrives, Ray Serve:
 4. If no replica has the adapter loaded, routes the request to a replica according to the default request router logic (for example Power of 2) and loads it there
 
 Ray Serve LLM then caches the adapter for subsequent requests. Ray Serve LLM controls the cache of LoRA adapters on each replica through a Least Recently Used (LRU) mechanism with a max size, which you control with the `max_num_adapters_per_replica` variable.
+
+### Use direct streaming
+
+To use multi-LoRA with direct streaming, enable HAProxy, direct streaming, and request-body forwarding before starting Serve:
+
+```bash
+export RAY_SERVE_ENABLE_HA_PROXY=1
+export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
+```
 
 
 ## Configure Ray Serve LLM with multi-LoRA
@@ -150,5 +166,4 @@ response = client.chat.completions.create(
 ## See also
 
 - {doc}`Quickstart <../quick-start>`
-- [vLLM LoRA documentation](https://docs.vllm.ai/en/stable/models/lora.html)
-
+- [vLLM LoRA documentation](https://docs.vllm.ai/en/stable/features/lora/)

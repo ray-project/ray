@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Run Serve applications in separate containers with Podman-backed runtime environments, including compatibility notes and troubleshooting."
+---
+
 (serve-container-runtime-env-guide)=
 # Run Multiple Applications in Different Containers
 
@@ -33,8 +39,8 @@ Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
 ::::{tab-set}
 :::{tab-item} whisper.Dockerfile
 ```dockerfile
-# Use the latest Ray GPU image, `rayproject/ray:latest-py38-gpu`, so the Whisper model can run on GPUs.
-FROM rayproject/ray:latest-py38-gpu
+# Use a Ray GPU image, `rayproject/ray:2.56.1-py311-gpu`, so the Whisper model can run on GPUs.
+FROM rayproject/ray:2.56.1-py311-gpu
 
 # Install the package `faster_whisper`, which is a dependency for the Whisper model.
 RUN pip install faster_whisper==0.10.0
@@ -49,8 +55,8 @@ ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 :::
 :::{tab-item} resnet.Dockerfile
 ```dockerfile
-# Use the latest Ray CPU image, `rayproject/ray:latest-py38-cpu`.
-FROM rayproject/ray:latest-py38-cpu
+# Use a Ray CPU image, `rayproject/ray:2.56.1-py311-cpu`.
+FROM rayproject/ray:2.56.1-py311-cpu
 
 # Install the packages `torch` and `torchvision`, which are dependencies for the ResNet model.
 RUN pip install torch==2.0.1 torchvision==0.15.2

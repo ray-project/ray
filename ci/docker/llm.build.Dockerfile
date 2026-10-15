@@ -20,8 +20,10 @@ SKIP_PYTHON_PACKAGES=1 ./ci/env/install-dependencies.sh
 PYTHON_CODE="$(python -c "import sys; v=sys.version_info; print(f'py{v.major}{v.minor}')")"
 pip install --no-deps -r python/deplocks/llm/rayllm_test_${PYTHON_CODE}_${RAY_CUDA_CODE}.lock
 
-# Fix RayExecutorV2 GPU collision when multiple engines share a node.
-VLLM_CUDA_VISIBLE_DEVICES_PATCH="$(pwd)/python/requirements/llm/patches/vllm-cuda-visible-devices-patch"
+# Include the CUDA device index in vLLM's compile cache paths so a worker never
+# reloads a torch.compile artifact built for a different physical GPU.
+# TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
+VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/python/requirements/llm/patches/vllm-device-aware-compile-cache.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -44,7 +46,7 @@ PY
 )"
 (
     cd "${VLLM_SITE_PACKAGES}"
-    git apply "${VLLM_CUDA_VISIBLE_DEVICES_PATCH}"
+    git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
 )
 
 EOF

@@ -9,10 +9,18 @@ from starlette.responses import StreamingResponse
 import torch
 
 from ray import serve
+from ray.runtime_env import RuntimeEnv
+
+
+# We need to set these variables for this example.
+HABANA_ENVS = {
+    "PT_HPU_LAZY_MODE": "1",
+    "PT_HPU_ENABLE_LAZY_COLLECTIVES": "1",
+}
 
 
 # Define the Ray Serve deployment
-@serve.deployment(ray_actor_options={"num_cpus": 10, "resources": {"HPU": 1}})
+@serve.deployment(ray_actor_options={"num_cpus": 10, "resources": {"HPU": 1}, "runtime_env": RuntimeEnv(env_vars=HABANA_ENVS)})
 class LlamaModel:
     def __init__(self, model_id_or_path: str):
         from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig
@@ -26,12 +34,11 @@ class LlamaModel:
         self.device = torch.device("hpu")
 
         self.tokenizer = AutoTokenizer.from_pretrained(
-            model_id_or_path, use_fast=False, use_auth_token=""
+            model_id_or_path, use_fast=False
         )
         hf_config = AutoConfig.from_pretrained(
             model_id_or_path,
             torchscript=True,
-            use_auth_token="",
             trust_remote_code=False,
         )
         # Load the model in Gaudi
@@ -40,7 +47,6 @@ class LlamaModel:
             config=hf_config,
             torch_dtype=torch.float32,
             low_cpu_mem_usage=True,
-            use_auth_token="",
         )
         model = model.eval().to(self.device)
 

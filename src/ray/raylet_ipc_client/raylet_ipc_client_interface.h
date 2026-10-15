@@ -192,10 +192,12 @@ class RayletIpcClientInterface {
   /// The core worker will be notified over gRPC when the wait completes.
   ///
   /// \param references The objects to wait for.
-  /// \param tag Value that will be sent to the core worker via gRPC on completion.
+  /// \param task_id, attempt_number Identify the task; sent to the core worker
+  ///   via gRPC on completion.
   /// \return Status.
   virtual Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
-                                      int64_t tag) = 0;
+                                      const TaskID &task_id,
+                                      int32_t attempt_number) = 0;
 
   /// Push an error to the relevant driver.
   ///

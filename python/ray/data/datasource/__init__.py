@@ -1,6 +1,7 @@
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.lerobot_datasource import LeRobotDatasource
 from ray.data._internal.datasource.mcap_datasource import (
     MCAPDatasource,
     TimeRange,
@@ -47,6 +48,7 @@ from ray.data.datasource.partitioning import (
 # Note: HuggingFaceDatasource should NOT be imported here, because
 # we want to only import the Hugging Face datasets library when we use
 # ray.data.from_huggingface() or HuggingFaceDatasource() directly.
+
 __all__ = [
     "BaseFileMetadataProvider",
     "Connection",
@@ -59,6 +61,7 @@ __all__ = [
     "FileShuffleConfig",
     "FileMetadataProvider",
     "FilenameProvider",
+    "LeRobotDatasource",
     "MCAPDatasource",
     "PartitionStyle",
     "PathPartitionFilter",

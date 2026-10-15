@@ -26,12 +26,32 @@ def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> Part
     return _partition
 
 
-def _concat_reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
-    """Concatenate all shards of a partition into a single block.
+def _make_slice_partition_fn(num_partitions: int) -> PartitionFn:
+    """Return a partitioner that assigns balanced contiguous slices in order."""
 
-    Used under the partition = block contract: called once per partition with
-    the full shard list so the output is exactly one block.
-    """
+    def _partition(block: pa.Table) -> Dict[int, pa.Table]:
+        partitions: Dict[int, pa.Table] = {}
+        num_rows = block.num_rows
+        if num_rows == 0:
+            return partitions
+
+        num_slices = min(num_partitions, num_rows)
+        slice_size, remainder = divmod(num_rows, num_slices)
+        row_start = 0
+        for partition_id in range(num_slices):
+            current_slice_size = slice_size + (1 if partition_id < remainder else 0)
+            partitions[partition_id] = block.slice(row_start, current_slice_size)
+            row_start += current_slice_size
+        return partitions
+
+    return _partition
+
+
+def _concat_reduce(
+    partition_id: int, tables_by_input: List[List[pa.Table]]
+) -> Iterable[pa.Table]:
+    """Concatenate all shards of a (single-input) partition into one block."""
+    tables = tables_by_input[0]
     if not tables:
         return
     yield pa.concat_tables(tables) if len(tables) > 1 else tables[0]
@@ -43,7 +63,10 @@ def _sort_reduce(key_columns: List[str]) -> ReduceFn:
     Requires blocking mode because sorting needs all shards before emitting.
     """
 
-    def _reduce(partition_id: int, tables: List[pa.Table]) -> Iterable[pa.Table]:
+    def _reduce(
+        partition_id: int, tables_by_input: List[List[pa.Table]]
+    ) -> Iterable[pa.Table]:
+        tables = tables_by_input[0]
         if not tables:
             return
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]

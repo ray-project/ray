@@ -430,6 +430,8 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         https://pandas.pydata.org/pandas-docs/stable/development/extending.html#compatibility-with-apache-arrow
         for more information.
         """
+        from ray.data._internal.tensor_extensions.arrow import tensor_array_to_numpy
+
         if isinstance(array, pa.ChunkedArray):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
@@ -447,16 +449,28 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 )
             else:
                 # chunk(0) returns pa.Array with zero_copy_only=True by default
-                values = array.chunk(0).to_numpy(zero_copy_only=False)
+                values = tensor_array_to_numpy(array.chunk(0))
         else:
-            values = array.to_numpy(zero_copy_only=False)
+            values = tensor_array_to_numpy(array)
 
         # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
         # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata
         if self.element_shape and all(s is not None for s in self.element_shape):
-            if values.dtype == object:
-                values = np.stack(values)
-            values = values.reshape((-1,) + self.element_shape)
+            # Reshape with the explicit row count rather than -1: an empty column
+            # (num_rows == 0), or per-row tensors with a zero-size dimension (e.g.
+            # element_shape (0,)), make the flat array size 0, and numpy cannot
+            # infer a -1 dimension from a size-0 array ("cannot reshape array of
+            # size 0 into shape (0)"). See
+            # https://github.com/ray-project/ray/issues/64766.
+            num_rows = len(array)
+            if num_rows == 0:
+                # np.stack requires at least one array and reshape is a no-op
+                # here, so build the correctly typed empty buffer directly.
+                values = np.empty((0,) + self.element_shape, dtype=self._dtype)
+            else:
+                if values.dtype == object:
+                    values = np.stack(values)
+                values = values.reshape((num_rows,) + self.element_shape)
 
         return TensorArray(values)
 
@@ -746,7 +760,7 @@ class TensorArray(
             ]
             values = _create_possibly_ragged_ndarray(values)
         elif isinstance(values, TensorArrayElement):
-            values = np.array([np.asarray(values)], copy=False)
+            values = np.asarray([np.asarray(values)])
 
         if isinstance(values, np.ndarray):
             if values.dtype.type is np.object_:

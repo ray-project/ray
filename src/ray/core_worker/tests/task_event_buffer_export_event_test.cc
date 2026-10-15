@@ -16,22 +16,20 @@
 
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/types/optional.h"
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/util/clock.h"
 #include "ray/util/event.h"
 
-using ::testing::_;
-using ::testing::Return;
 using json = nlohmann::json;
 
 namespace ray {
@@ -40,13 +38,26 @@ namespace core {
 
 namespace worker {
 
-class MockEventAggregatorClient : public ray::rpc::EventAggregatorClient {
+// Fake EventAggregatorClient that records requests and
+// stashes callbacks so tests can drive completion; an optional hook lets tests
+// run custom logic on each call.
+class FakeEventAggregatorClient : public ray::rpc::EventAggregatorClient {
  public:
-  MOCK_METHOD(void,
-              AddEvents,
-              (const rpc::events::AddEventsRequest &request,
-               const rpc::ClientCallback<rpc::events::AddEventsReply> &callback),
-              (override));
+  void AddEvents(
+      const rpc::events::AddEventsRequest &request,
+      const rpc::ClientCallback<rpc::events::AddEventsReply> &callback) override {
+    add_events_requests.push_back(request);
+    add_events_callbacks.push_back(callback);
+    if (add_events_hook) {
+      add_events_hook(request, callback);
+    }
+  }
+
+  std::vector<rpc::events::AddEventsRequest> add_events_requests;
+  std::vector<rpc::ClientCallback<rpc::events::AddEventsReply>> add_events_callbacks;
+  std::function<void(const rpc::events::AddEventsRequest &,
+                     const rpc::ClientCallback<rpc::events::AddEventsReply> &)>
+      add_events_hook;
 };
 
 class TaskEventTestWriteExport : public ::testing::Test {
@@ -62,13 +73,14 @@ class TaskEventTestWriteExport : public ::testing::Test {
   "export_task_events_write_batch_size": 1,
   "task_events_max_num_export_status_events_buffer_on_worker": 15,
   "enable_export_api_write": true,
+  "enable_ray_task_event_recorder": false,
   "enable_core_worker_ray_event_to_aggregator": false
 }
   )");
 
     task_event_buffer_ = std::make_unique<TaskEventBufferImpl>(
-        std::make_unique<ray::gcs::MockGcsClient>(),
-        std::make_unique<MockEventAggregatorClient>(),
+        std::make_unique<ray::gcs::FakeGcsClient>(),
+        std::make_unique<FakeEventAggregatorClient>(),
         "test_session_name",
         NodeID::Nil(),
         clock_);

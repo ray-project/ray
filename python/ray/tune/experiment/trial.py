@@ -991,7 +991,14 @@ class Trial:
             generated_dirname = generated_dirname[:MAX_LEN_IDENTIFIER]
             generated_dirname += f"_{date_str()}"
         # This is the file path used by rsync. ['/', '(', ')'] are not allowed.
-        return re.sub("[/()]", "_", generated_dirname)
+        # The rest of the character class are Windows-reserved filename
+        # characters (see
+        # https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file#naming-conventions).
+        # They are stripped on every platform (not just Windows) so that a
+        # single trial directory name is valid regardless of where the
+        # experiment was created and where the results are later read from
+        # (e.g. rsync'd or copied from a Linux driver to a Windows machine).
+        return re.sub(r'[/()<>:"\\|?*]', "_", generated_dirname)
 
     def invalidate_json_state(self):
         self._state_json = None

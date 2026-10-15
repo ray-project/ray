@@ -1,4 +1,5 @@
 # This workload tests repeatedly killing a node and adding a new node.
+import os
 import time
 
 import ray
@@ -44,6 +45,9 @@ def f(*xs):
     return 1
 
 
+# Stop before the 24h job timeout so the test exits cleanly as success.
+MAX_RUNTIME_S = int(os.environ.get("MAX_RUNTIME_S", 22 * 60 * 60))
+
 iteration = 0
 previous_ids = [1 for _ in range(100)]
 start_time = time.time()
@@ -81,3 +85,6 @@ while True:
     )
     previous_time = new_time
     iteration += 1
+    if new_time - start_time > MAX_RUNTIME_S:
+        print(f"Reached max runtime of {MAX_RUNTIME_S}s. Exiting successfully.")
+        break

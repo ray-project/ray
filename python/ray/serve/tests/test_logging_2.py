@@ -11,10 +11,15 @@ from ray._common.test_utils import wait_for_condition
 from ray.serve._private.logging_utils import (
     get_serve_logs_dir,
 )
+from ray.serve._private.test_utils import skip_if_haproxy
 from ray.serve._private.utils import get_component_file_name
 from ray.util.state import list_nodes
 
 
+@skip_if_haproxy(
+    "access logs are emitted by HAProxy via option httplog to "
+    "RAY_SERVE_HAPROXY_LOG_TARGET, not the native Serve proxy log file this reads"
+)
 def test_http_access_log_in_proxy_logs_file(serve_instance):
     name = "deployment_name"
     fastapi_app = FastAPI()

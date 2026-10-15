@@ -3,34 +3,29 @@
 Accumulates per-execution usage data (environment, workload description,
 performance) and flushes it to GCS via ``record_extra_usage_tag``.
 
-The usage payload for each execution is assembled by :class:`UsageCallback`
-this module owns the process-global buffer of recent executions and the builder functions
-collecting usage data.
+The usage payload for each execution is assembled by :class:`UsageCallback`;
+this module owns the builder functions collecting usage data and forwards each
+entry to the cluster-wide :class:`UsageCollectionActor`, which owns the buffer of
+recent executions and is the single writer of the GCS tag.
 """
 
 import hashlib
 import importlib.metadata
-import json
 import logging
 import os
-import threading
-from collections import OrderedDict
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from functools import cache
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
-import ray
-from ray._common.usage.usage_lib import (
-    TagKey,
-    record_extra_usage_tag,
-    usage_stats_enabled,
-)
-from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray._common.usage.usage_lib import usage_stats_enabled
 from ray._private.worker import global_worker
-from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import MapBatches
-from ray.data._internal.usage.util import anonymize_op_name
+from ray.data._internal.usage.actor import get_or_create_usage_collection_actor
+from ray.data._internal.usage.util import (
+    anonymize_op_name,
+    query_prometheus_counter,
+)
 from ray.data.block import VALID_BATCH_FORMATS, _apply_batch_format
 
 if TYPE_CHECKING:
@@ -42,8 +37,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bounded timeout for the GCS get_all_node_info query used to count dead nodes.
-_NODE_INFO_RPC_TIMEOUT_S = 5.0
+# Cumulative cluster-wide counters (Prometheus metric names), scoped to the
+# current session at query time via ``_session_scoped_metric_query``.
+_SPILLED_BYTES_METRIC = "ray_spill_manager_objects_bytes"
+_NODE_FAILURE_METRIC = "ray_node_failure_total"
+_OOM_KILL_METRIC = "ray_memory_manager_worker_eviction_total"
+_UNEXPECTED_WORKER_KILL_METRIC = "ray_node_manager_unexpected_worker_failure_total"
 
 
 @dataclass(frozen=True)
@@ -79,11 +78,22 @@ class WorkloadInfo:
     plan: PlanNode
     plan_str: str
     ops: List[LogicalOp]
+    # ``plan_str`` with each node suffixed by its usage_id, so a detected
+    # issue's operator field can be located in the plan.
+    plan_str_with_ids: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class EnvInfo:
     pyarrow: Optional[str]
+
+
+# Metric names shared by the poller (metric-value keys), the execution callback,
+# and the PipelinePerf fields below. Keep these equal to the field names.
+METRIC_BYTES_SPILLED = "bytes_spilled"
+METRIC_NODE_DEATHS = "node_deaths"
+METRIC_OOM_KILLS = "oom_kills"
+METRIC_UNEXPECTED_WORKER_KILLS = "unexpected_worker_kills"
 
 
 @dataclass(frozen=True)
@@ -102,11 +112,16 @@ class Issue:
     operator: str
 
 
+# Globally unique per-execution id (uuid4 hex), the key for deduplicating
+# executions in the usage buffer.
+ExecutionId = str
+
+
 @dataclass
 class UsageInfo:
     """Per-execution usage payload: the entry buffered and flushed to GCS."""
 
-    id: str
+    id: ExecutionId
     started_at: float
     env: EnvInfo
     workload: WorkloadInfo
@@ -117,26 +132,9 @@ class UsageInfo:
 # A callable that records config information for a logical operator.
 OpConfigFn = Callable[[LogicalOperator], Optional[OpConfig]]
 
-# A callable that returns process-wide environment info. Overridable so
-# subclasses can collect richer env details.
-EnvFn = Callable[[], EnvInfo]
-
 # A callable that returns the anonymized name for a logical operator.
 # Allows subclasses to add custom anonymization logic.
 OpNameFn = Callable[[LogicalOperator], str]
-
-# A callable that samples a cluster metric (spilled bytes, dead node
-# count, ...)
-MetricReader = Callable[[], Optional[int]]
-
-
-# Bounded buffer of recent executions. OrderedDict so eviction picks the
-# oldest-inserted entry
-_MAX_EXECUTIONS_TO_TRACK = 100
-
-# Module state. Mutations are serialized through ``_lock``.
-_executions: "OrderedDict[str, UsageInfo]" = OrderedDict()
-_lock = threading.Lock()
 
 
 def usage_collection_disabled() -> bool:
@@ -148,53 +146,76 @@ def usage_collection_disabled() -> bool:
 
 
 def cluster_spilled_bytes() -> Optional[int]:
-    """Cluster-wide cumulative spilled bytes from Ray core's store_stats.
-
-    Returns None on any failure — usage collection must never break execution.
+    """Cluster-wide cumulative spilled bytes from Prometheus, scoped to this
+    session. None if the query failed.
     """
-    if not ray.is_initialized():
-        return None
-    try:
-        reply = get_memory_info_reply(
-            get_state_from_address(ray.get_runtime_context().gcs_address),
-            timeout_seconds=10.0,
+    return query_prometheus_counter(
+        _session_scoped_metric_query(
+            _SPILLED_BYTES_METRIC, _session_name(), {"State": "Spilled"}
         )
-        return int(reply.store_stats.spilled_bytes_total)
-    except Exception:
-        logger.debug("Failed to read cluster spilled bytes", exc_info=True)
-        return None
+    )
 
 
 def cluster_dead_node_count() -> Optional[int]:
-    """Number of dead nodes in the GCS node table.
-
-    Queries GCS with a bounded timeout and a server-side DEAD state filter.
-    Returns None on any failure.
+    """Cluster-wide cumulative node failures from Prometheus, scoped to this
+    session. None if the query failed.
     """
-    if not ray.is_initialized():
-        return None
-    try:
-        gcs_client = global_worker.gcs_client  # pyrefly: ignore[missing-attribute]
-        dead_nodes = gcs_client.get_all_node_info(
-            timeout=_NODE_INFO_RPC_TIMEOUT_S,
-            state_filter=GcsNodeInfo.GcsNodeState.DEAD,
-        )
-        return len(dead_nodes)
-    except Exception:
-        logger.debug("Failed to read cluster dead node count", exc_info=True)
-        return None
+    return query_prometheus_counter(
+        _session_scoped_metric_query(_NODE_FAILURE_METRIC, _session_name())
+    )
 
 
-def compute_delta(start: Optional[int], end: Optional[int]) -> Optional[int]:
-    """Non-negative delta between two cumulative samples. Returns None if
-    either sample is missing"""
-    if start is None or end is None:
+def _session_name() -> Optional[str]:
+    """This Ray session's name, used to scope Prometheus queries to this
+    cluster. None if Ray isn't connected (before init / after shutdown).
+    """
+    node = global_worker.node
+    if node is None:
         return None
-    return max(0, end - start)
+    return node.session_name
+
+
+def _session_scoped_metric_query(
+    metric: str,
+    session_name: Optional[str],
+    extra_labels: Optional[Dict[str, str]] = None,
+) -> str:
+    """Cluster-wide ``sum`` of a metric counter, scoped to this session via the
+    ``SessionName`` label plus any ``extra_labels``. Falls back to an unscoped
+    sum when the session name is unknown.
+    """
+    labels = dict(extra_labels or {})
+    if session_name:
+        labels["SessionName"] = session_name
+    if labels:
+        matchers = ",".join(f"{k}='{v}'" for k, v in labels.items())
+        selector = f"{metric}{{{matchers}}}"
+    else:
+        selector = metric
+    return f"sum({selector})"
+
+
+def cluster_oom_kills() -> Optional[int]:
+    """Cluster-wide cumulative OOM (memory-manager) worker evictions from
+    Prometheus, scoped to this session. None if the query failed.
+    """
+    return query_prometheus_counter(
+        _session_scoped_metric_query(_OOM_KILL_METRIC, _session_name())
+    )
+
+
+def cluster_unexpected_worker_kills() -> Optional[int]:
+    """Cluster-wide cumulative unexpected (system-error) worker failures from
+    Prometheus, scoped to this session. None if the query failed.
+    """
+    return query_prometheus_counter(
+        _session_scoped_metric_query(_UNEXPECTED_WORKER_KILL_METRIC, _session_name())
+    )
 
 
 def record_usage_info(info: UsageInfo) -> None:
-    """Buffer ``info`` (evicting the oldest entry when full) and flush the whole
+    """Forward ``info`` to the cluster-wide ``UsageCollectionActor``, which
+    buffers it (evicting the oldest entry when full) and flushes the merged
     buffer to GCS via ``record_extra_usage_tag``.
 
     The callback calls this both before execution starts (so attempted
@@ -208,17 +229,14 @@ def record_usage_info(info: UsageInfo) -> None:
     if usage_collection_disabled():
         return
     try:
-        with _lock:
-            if (
-                info.id not in _executions
-                and len(_executions) >= _MAX_EXECUTIONS_TO_TRACK
-            ):
-                _executions.popitem(last=False)
-            _executions[info.id] = info
-            payload = _serialize_locked()
-        record_extra_usage_tag(TagKey.DATA_USAGE, payload)
+        _send_to_usage_actor(info)
     except Exception:
         logger.debug("Failed to record usage info", exc_info=True)
+
+
+def _send_to_usage_actor(info: UsageInfo) -> None:
+    """Fire-and-forget the entry to the actor; never blocks the executor."""
+    get_or_create_usage_collection_actor().record.remote(info)
 
 
 def build_usage_id_map(
@@ -292,11 +310,6 @@ def collect_issues(
     ]
 
 
-def _serialize_locked() -> str:
-    """Serialize current state to JSON. Caller must hold ``_lock``."""
-    return json.dumps({"executions": [asdict(e) for e in _executions.values()]})
-
-
 def collect_env() -> EnvInfo:
     """Process-wide environment info."""
     return EnvInfo(pyarrow=_safe_version("pyarrow"))
@@ -329,9 +342,11 @@ def collect_workload(
     dag = logical_plan.dag
     ordered_logical_ops: List[Tuple[LogicalOperator, str]] = []
     plan = _build_plan(dag, ordered_logical_ops, op_name_fn)
+    usage_id_map = {id(op): usage_id for op, usage_id in ordered_logical_ops}
     return WorkloadInfo(
         plan=plan,
         plan_str=_format_plan_str(dag, op_name_fn),
+        plan_str_with_ids=_format_plan_str(dag, op_name_fn, usage_id_map=usage_id_map),
         ops=_build_ops(ordered_logical_ops, op_config_fn, op_name_fn),
     )
 
@@ -399,27 +414,17 @@ def _format_plan_str(
     op: LogicalOperator,
     op_name_fn: OpNameFn = anonymize_op_name,
     depth: int = 0,
+    usage_id_map: Optional[Dict[int, str]] = None,
 ) -> str:
     """Render the anonymized DAG as an indented tree, using ``op_name_fn`` to
-    avoid leaking UDF / datasource details.
+    avoid leaking UDF / datasource details. When ``usage_id_map`` is given,
+    each node is suffixed with its usage_id.
     """
-    name = op_name_fn(op)
+    name = _logical_op_name_with_id(op, usage_id_map, op_name_fn)
     if depth == 0:
         line = f"{name}\n"
     else:
         line = f"{' ' * ((depth - 1) * 3)}+- {name}\n"
     for child in op.input_dependencies:
-        line += _format_plan_str(child, op_name_fn, depth + 1)
+        line += _format_plan_str(child, op_name_fn, depth + 1, usage_id_map)
     return line
-
-
-def reset_for_testing() -> None:
-    """Reset module state. Tests only."""
-    with _lock:
-        _executions.clear()
-
-
-def get_executions() -> "OrderedDict[str, UsageInfo]":
-    """Get the current executions. Tests only."""
-    with _lock:
-        return _executions.copy()

@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Serve many model variants from a shared replica pool using the serve.multiplexed decorator and serve_multiplexed_model_id request header for per-model routing."
+---
+
 (serve-model-multiplexing)=
 
 # Model Multiplexing

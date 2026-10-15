@@ -1,3 +1,9 @@
+---
+myst:
+  html_meta:
+    description: "Monitor and debug Ray Serve applications using the Ray dashboard, serve status and serve config CLI commands, Ray logging with Loki, and built-in Serve metrics."
+---
+
 (serve-monitoring)=
 
 # Monitor Your Application
@@ -10,7 +16,7 @@ This section helps you debug and monitor your Serve applications by:
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
 
-## Ray Dashboard
+## Ray dashboard
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states. This includes details such as:
 * the number of deployment replicas currently running
@@ -716,7 +722,8 @@ To enable the feature, set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1`.
 | `serve_haproxy_ingress_router_requests_total` | Counter | `application` | Total number of requests processed by the ingress request router, including both successes and failures. |
 | `serve_haproxy_ingress_router_truncations_total` | Counter | `application` | Number of requests whose body was clipped by HAProxy's `tune.bufsize` before being forwarded to the router. The router still gets a prefix plus an `X-Body-Truncated: <have>/<full>` header. Non-zero values indicate a body-aware policy may be missing context; consider raising `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE`. |
 | `serve_haproxy_ingress_router_server_mismatch_total` | Counter | `application` | Number of requests where HAProxy ultimately routed to a different replica than the router returned. This happens when the named replica is `DOWN` and `option redispatch` falls through to load balancing. Non-zero values indicate the router's view of replica health is stale, or replicas are flapping. |
-| `serve_haproxy_ingress_router_failures_total` | Counter | `application`, `reason` | Number of router consultations that failed to pin a replica. Each failure causes HAProxy to return `503` to the client. The `reason` tag is one of `router_unreachable` (socket connect/send/recv failed), `router_non_200` (router returned a non-200 status), `unparseable_replica_id` (router 200 but body didn't contain a string `replica_id`), or `unknown_replica_id` (router returned a `replica_id` not in HAProxy's current replica map). |
+| `serve_haproxy_ingress_router_failures_total` | Counter | `application`, `reason` | Number of requests for which the router did not select a usable replica. Fallback may still serve the request. The `reason` tag is `router_unavailable` (no router replica), `router_unreachable` (router request failed or timed out), `router_non_200_<class>` (non-200 response grouped by status class or `unknown`), `unparseable_replica_id` (missing or non-string replica ID), or `unknown_replica_id` (selected replica unknown to this proxy). |
+| `serve_haproxy_ingress_router_fallbacks_total` | Counter | `application`, `reason` | Number of fallback attempts after an ingress router failure, grouped by the same `reason` values. A fallback attempt may still fail. |
 
 ### HAProxy config reload metrics
 
@@ -734,12 +741,7 @@ These metrics track replica health, restarts, and lifecycle timing.
 These lifecycle **histograms** use `deployment` and `application` labels only—no `replica` label—so Prometheus cardinality stays manageable at scale.
 :::
 
-By default, controller-emitted replica lifecycle metrics include source
-identifiers such as `replica` where applicable. For large deployments, set
-`RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those
-source-level high-cardinality tags while retaining `deployment` and `application`.
-This setting doesn't affect replica-emitted metrics such as
-`ray_serve_deployment_replica_starts_total`.
+By default, controller-emitted replica lifecycle metrics include source identifiers such as `replica` where applicable. For large deployments, set `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` to drop those source-level high-cardinality tags while retaining `deployment` and `application`. This setting doesn't affect replica-emitted metrics such as `ray_serve_deployment_replica_starts_total`.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
@@ -756,11 +758,7 @@ This setting doesn't affect replica-emitted metrics such as
 
 These metrics provide visibility into autoscaling behavior and help debug scaling issues.
 
-The autoscaling delay metrics `ray_serve_autoscaling_replica_metrics_delay_ms`
-and `ray_serve_autoscaling_handle_metrics_delay_ms` are **histograms** labeled
-only by `deployment` and `application`. Prometheus aggregates the per-replica
-and per-handle observations server-side, so no source-level tag is emitted and
-cardinality stays bounded at scale.
+The autoscaling delay metrics `ray_serve_autoscaling_replica_metrics_delay_ms` and `ray_serve_autoscaling_handle_metrics_delay_ms` are **histograms** labeled only by `deployment` and `application`. Prometheus aggregates the per-replica and per-handle observations server-side, so no source-level tag is emitted and cardinality stays bounded at scale.
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
@@ -771,7 +769,6 @@ cardinality stays bounded at scale.
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
 | `ray_serve_autoscaling_replica_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_handle_metrics_delay_ms` | Histogram | `deployment`, `application` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |
-| `ray_serve_autoscaling_async_inference_task_queue_metrics_delay_ms` | Gauge | `deployment`, `application` | Time taken for async inference task queue metrics (from QueueMonitor) to reach the controller in milliseconds. |
 | `ray_serve_record_autoscaling_stats_failed_total` | Counter | `application`, `deployment`, `replica`, `exception_name` | Total number of failed attempts to collect autoscaling metrics on replica from user defined function. Non-zero values indicate error in user code. |
 | `ray_serve_user_autoscaling_stats_latency_ms` | Histogram | `application`, `deployment`, `replica` | Histogram of time taken to execute the user-defined autoscaling stats function in milliseconds. |
 
@@ -900,4 +897,4 @@ Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexib
 
 [Arize](https://docs.arize.com/arize/) is a machine learning observability platform which can help you to monitor real-time model performance, root cause model failures/performance degradation using explainability & slice analysis and surface drift, data quality, data consistency issues etc.
 
-To integrate with Arize, add Arize client code directly into your Serve deployment code. ([Example code](https://docs.arize.com/arize/integrations/integrations/anyscale-ray-serve))
+To integrate with Arize, add Arize client code directly into your Serve deployment code.

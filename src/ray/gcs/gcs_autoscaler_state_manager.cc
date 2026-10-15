@@ -259,7 +259,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       }
     }
 
-    // Populate locality_requirement if this PG uses topology-aware scheduling.
+    // Populate locality_requirement if this PG uses a topology strategy.
     const auto &topology_strategy = pg_data.topology_strategy();
     if (!topology_strategy.empty()) {
       const auto &[topology_label_key, _strategy] = *topology_strategy.begin();

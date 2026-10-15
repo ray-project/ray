@@ -15,6 +15,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2.api.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -142,6 +143,52 @@ def get_context() -> TrainContext:
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     return get_train_fn_utils().get_context()
+
+
+@PublicAPI(stability="alpha")
+@requires_train_worker(raise_in_tune_session=True)
+def get_preemption_info() -> Optional["PreemptionInfo"]:
+    """Return the imminent preemption info for the current worker, or ``None``.
+
+    Returns ``None`` until a node hosting one of the workers is being preempted
+    (e.g. a spot instance reclaim). The recommended reaction is to save a
+    just-in-time checkpoint and keep training: when the node is actually
+    preempted, Ray Train restarts the run and resumes it from the latest
+    checkpoint, retrying against ``FailureConfig.max_preemption_failures``.
+    A run that returns cleanly always finishes, whether or not a preemption
+    is in progress.
+
+    .. warning::
+
+        All workers must call `ray.train.get_preemption_info` the same number of
+        times so that Ray Train can agree on a single value across all workers.
+        This method acts as a barrier across all workers, so be sure that every
+        worker reaches this method.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray.train
+
+            def train_func(config):
+                saved_on_preemption = False
+                for step in range(config["total_steps"]):
+                    # ... normal training step (with your usual periodic
+                    # checkpointing) ...
+
+                    preemption_info = ray.train.get_preemption_info()
+                    if preemption_info is not None and not saved_on_preemption:
+                        ray.train.report(metrics, checkpoint=checkpoint)
+                        saved_on_preemption = True
+
+    Returns:
+        A :class:`~ray.train.PreemptionInfo` with the affected node ids / world
+        ranks and the reclaim deadline, or ``None`` if no preemption has been
+        detected.
+    """
+    return get_train_fn_utils().get_preemption_info()
 
 
 @PublicAPI(stability="stable")

@@ -16,7 +16,7 @@ Ray programs can be tricky to test due to the nature of parallel programs. We've
 
 By default, `ray.init()` detects the number of CPUs and GPUs on your local machine/cluster.
 
-However, your testing environment may have a significantly lower number of resources. For example, the TravisCI build environment only has [two cores](https://docs.travis-ci.com/user/reference/overview/).
+However, your testing environment may have significantly fewer resources. For example, a continuous integration (CI) environment often has far fewer cores available than your development machine.
 
 If tests are written to depend on `ray.init()`, they may be implicitly written in a way that relies on a larger multi-core machine.
 
