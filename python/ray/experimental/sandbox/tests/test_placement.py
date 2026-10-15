@@ -4,7 +4,6 @@ import pytest
 
 import ray
 import ray.experimental.sandbox as sandbox_module
-from ray._common.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.experimental.sandbox import placement
 from ray.experimental.sandbox.placement import image_scheduling_strategy
@@ -143,32 +142,15 @@ def test_actors_of_one_image_share_its_node_until_it_is_full(two_sandbox_nodes):
         def node_id(self):
             return ray.get_runtime_context().get_node_id()
 
-    @ray.remote(num_cpus=0)
-    class Probe:
-        def node_id(self):
-            return ray.get_runtime_context().get_node_id()
-
     strategy = image_scheduling_strategy(
         "python:3.12-slim", num_cpus=0, resources={"sandbox": 1}
     )
     assert strategy.node_id in two_sandbox_nodes
-
-    def scheduler_knows_the_image_node():
-        # Raylets learn of new nodes after the GCS does, and until the
-        # driver's raylet knows the image's node, a soft affinity to it falls
-        # back to the default policy. A probe reserves nothing, so it leaves
-        # the node's resources to the hosts.
-        probe = Probe.options(scheduling_strategy=strategy).remote()
-        try:
-            return ray.get(probe.node_id.remote(), timeout=30) == strategy.node_id
-        finally:
-            ray.kill(probe)
-
-    wait_for_condition(scheduler_knows_the_image_node, timeout=60)
     hosts = [Host.options(scheduling_strategy=strategy).remote() for _ in range(3)]
     nodes = ray.get([host.node_id.remote() for host in hosts], timeout=60)
     # Two hosts fit on the image's node. The third goes to the other node
-    # rather than waiting for room.
+    # rather than waiting for room. Which host is third depends on the order
+    # their creations reach the node, so only the counts are checked.
     assert nodes.count(strategy.node_id) == 2
     assert set(nodes) == set(two_sandbox_nodes)
 
