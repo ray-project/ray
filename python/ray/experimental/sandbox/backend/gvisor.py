@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Set, Union
+from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -93,43 +93,43 @@ def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
 _EXEC_KILL_GRACE_SECONDS = 5.0
 
 
-def _exec_process_tree(ps_table: str, root_pid: int) -> Set[int]:
-    """PIDs of an exec'd command and of every process it started.
+def _exec_processes(procfs_dump: str, root_pid: int) -> List[int]:
+    """Live PIDs of an exec'd command and of every process it started.
 
-    runsc exec makes the command a process group leader. A child stays in
-    that group after its parent exits and it's reparented, and a child that
-    moved to a group of its own is still found through its parent.
+    runsc exec makes the command a session leader. The processes it starts
+    stay in its session when they move to a process group of their own, or
+    are reparented because their parent exited. A process that left the
+    session with setsid() is still found through its parent while the
+    parent lives.
 
     Args:
-        ps_table: The table that ``runsc ps <container-id>`` prints.
+        procfs_dump: What ``runsc trace procfs <sandbox-id>`` prints: a
+            header, then a JSON object per process. Zombies aren't listed.
         root_pid: The command's PID inside the sandbox.
 
     Returns:
-        The PIDs to kill, ``root_pid`` included.
+        The PIDs in ascending order, which usually puts parents first.
     """
-    lines = ps_table.splitlines()
-    header = lines[0].split() if lines else []
-    if "PID" not in header or "PPID" not in header:
-        return {root_pid}
-    pid_col, ppid_col = header.index("PID"), header.index("PPID")
-    pgid_col = header.index("PGID") if "PGID" in header else None
-    rows = []
-    for line in lines[1:]:
-        fields = line.split()
+    children: Dict[int, List[int]] = {}
+    pending = []
+    for line in procfs_dump.splitlines():
         try:
-            pgid = int(fields[pgid_col]) if pgid_col is not None else None
-            rows.append((int(fields[pid_col]), int(fields[ppid_col]), pgid))
-        except (IndexError, ValueError):
+            entry = json.loads(line)
+            pid, ppid = entry["status"]["pid"], entry["status"]["ppid"]
+            sid = entry["stat"]["sid"]
+        except (ValueError, KeyError, TypeError):
+            # The header and the blank lines between objects.
             continue
-    tree = {root_pid}
-    grew = True
-    while grew:
-        grew = False
-        for pid, ppid, pgid in rows:
-            if pid not in tree and (ppid in tree or pgid == root_pid):
-                tree.add(pid)
-                grew = True
-    return tree
+        children.setdefault(ppid, []).append(pid)
+        if sid == root_pid:
+            pending.append(pid)
+    found = set()
+    while pending:
+        pid = pending.pop()
+        if pid not in found:
+            found.add(pid)
+            pending.extend(children.get(pid, []))
+    return sorted(found)
 
 
 class GVisorSandboxBackend(BaseSandboxBackend):
@@ -472,8 +472,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _kill_exec(self, config: SandboxConfig, sandbox_id: str, pid_file: str) -> None:
         """SIGKILL an exec'd command and every process it started.
 
-        ``runsc kill --pgid`` signals only the group's leader, so each process
-        of the command's tree is killed by PID.
+        The processes come from ``runsc trace procfs``, the only runsc
+        command that reports sessions. ``runsc ps`` has no session column,
+        and its PGID column and ``runsc kill --pgid`` arrived in April 2026
+        and cover one process group, so each process is killed by PID.
         """
         try:
             with open(pid_file, encoding="utf-8") as f:
@@ -482,18 +484,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # The command hadn't started yet.
             return
         base_args = self._runsc_base_args(config)
+        pids = [root_pid]
         try:
-            ps = subprocess.run(
-                base_args + ["ps", sandbox_id],
+            dump = subprocess.run(
+                base_args + ["trace", "procfs", sandbox_id],
                 capture_output=True,
                 text=True,
                 errors="replace",
                 timeout=10,
             )
-            tree = _exec_process_tree(ps.stdout, root_pid)
+            if dump.returncode == 0:
+                pids = _exec_processes(dump.stdout, root_pid)
         except (OSError, subprocess.TimeoutExpired):
-            tree = {root_pid}
-        for pid in tree:
+            pass
+        for pid in pids:
             try:
                 subprocess.run(
                     base_args + ["kill", "--pid", str(pid), sandbox_id, "SIGKILL"],
