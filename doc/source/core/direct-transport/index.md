@@ -313,15 +313,15 @@ print(ray.get(receiver.consume_into_target.remote([put_ref])))
 
 #### Configuration and environment variables
 
-* `RAY_TPU_SYNC_MANAGER_ADDRESS`: Optional `host:port` of an external `WeightSynchronizerManager` server. If unset, Ray automatically launches a cluster-wide `WeightSynchronizerManager` coordinator actor (`max_restarts=0`) with transfer plan caching enabled; this auto-created coordinator is fate-shared with active transfers and fails fast with `RayDirectTransportError` if the coordinator dies. When `RAY_TPU_SYNC_MANAGER_ADDRESS` points to an external manager, retired work units aren't removed from the external manager (and Ray logs a one-time warning when the first slot is retired).
-* `RAY_TPU_SYNC_PARALLELISM`: Optional positive integer controlling the number of parallel TCP transfer streams per `WeightSynchronizer` (defaults to `4`).
+* `RAY_TPU_SYNC_MANAGER_ADDRESS`: Optional `host:port` of an external `WeightSynchronizerManager` server. If unset, Ray automatically launches a cluster-wide `WeightSynchronizerManager` coordinator actor (`max_restarts=0`) with soft node affinity toward a TPU node and transfer plan caching enabled. Coordinator failure is fail-fast and requires restarting the actors or job using `TPU_SYNC`.
+* `RAY_TPU_SYNC_PARALLELISM`: Optional positive integer controlling the number of parallel TCP transfer streams per `WeightSynchronizer` (defaults to `1`).
 * `RAY_TPU_SYNC_BIND_IP`: Optional IP address for binding `WeightSynchronizer` listener sockets.
 * `RAY_TPU_SYNC_CONTROL_IP`: Optional IP address override advertised for control-plane RPC endpoints.
 
 :::{note}
-* **`set_target_for_ref` staging buffers**: When receiving into caller-supplied `target_buffers` via `set_target_for_ref`, `TPU_SYNC` receives H2D DMA into internal `torch.empty` TPU staging buffers and copies into `target_buffers` only after the transfer completes. This prevents timed-out or aborted transfers from corrupting caller buffers in place, at the cost of temporary 2x HBM capacity for the transferred tensors and a device-to-device copy on completion.
-* **Transfer cancellation and timeouts**: `abort_transport()` immediately unblocks the waiting Python caller and prevents writes into caller-supplied `target_buffers`. Because `tpu-sync` doesn't expose a C++ transfer cancellation API, an already-started C++ transfer holds its internal staging slot and daemon worker thread until `wait_for_transfer_completion` returns (and leaks that slot and thread if the C++ transfer hangs indefinitely).
-* **0-D scalar tensors**: Because TPU PJRT requires at least a 1-D base storage buffer for `WeightSynchronizer`, 0-D scalar TPU tensors are cloned into 1-D storage (`t.reshape(1).clone()`) when the RDT object is created and reshaped back to `()` on the receiver. Consequently, in-place modifications to a 0-D scalar tensor after task return or `ray.put` aren't visible to receivers.
+* **`set_target_for_ref` in-place receive**: When receiving into caller-supplied `target_buffers` via `set_target_for_ref`, `TPU_SYNC` receives H2D DMA directly into `target_buffers` in place for tensors with at least one dimension (avoiding extra HBM staging copies).
+* **0-D scalar tensors**: Because TPU PJRT requires at least a 1-D base storage buffer for `WeightSynchronizer`, 0-D scalar TPU tensors are cloned into 1-D storage (`t.reshape(1).clone()`) when the RDT object is created and reshaped (or copied into `target_buffers`) on the receiver. Consequently, in-place modifications to a 0-D scalar tensor after task return or `ray.put` aren't visible to receivers.
+* **Transfer timeouts and failure handling**: Because `tpu-sync` doesn't expose a C++ transfer cancellation API (`can_abort_transport()` is `False`), if a transfer times out (`RAY_rdt_fetch_fail_timeout_milliseconds`) or fails, Ray terminates the involved actors to prevent hung transfers or corrupted in-place buffers.
 :::
 
 
