@@ -1075,6 +1075,14 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const std::string &call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
+  /**
+   * Check that none of the given objects was created with `consume_once=True`.
+   *
+   * @param arg_ids IDs of a task's by-reference arguments.
+   * @return InvalidArgument naming the first consume-once object, OK otherwise.
+   **/
+  Status CheckNoConsumeOnceArgs(const std::vector<ObjectID> &arg_ids) const;
+
   /// Create an actor.
   ///
   /// NOTE: RAY CHECK fails if an actor handle with the same actor id has already been
