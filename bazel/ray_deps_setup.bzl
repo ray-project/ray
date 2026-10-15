@@ -139,7 +139,7 @@ def ray_deps_setup():
         strip_prefix = "upb-455cfdb8ae60a1763e6d924e36851c6897a781bb",
         url = "https://github.com/protocolbuffers/upb/archive/455cfdb8ae60a1763e6d924e36851c6897a781bb.tar.gz",
         patches = [
-            "//thirdparty/patches:upb-disallow-dylib-without-dynamic-linker.patch",
+            "@io_ray//thirdparty/patches:upb-disallow-dylib-without-dynamic-linker.patch",
         ],
         patch_args = ["-p1"],
     )
