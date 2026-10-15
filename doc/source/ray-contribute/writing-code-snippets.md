@@ -370,4 +370,4 @@ The same example can fail different ways at different times. An `IndentationErro
 
 Let the intent guide whether to skip. Skipping with `# doctest: +SKIP` or `:skipif: True` is right for an example that depends on an external system, but it's the wrong response to a breaking-change detector. Skipping there hides a real break from users.
 
-The same reasoning applies to the [`docs-go` label](ci.md#skipping-example-tests-with-the-docs-go-label), which skips the per-library example steps for a whole PR. It's a convenience for a prose change that doesn't touch the examples, not a way past a red example test.
+Doc edits don't run example tests by default, so a green PR isn't evidence that a changed example still runs. When you change an example, add the [`docs-example-test` label](ci.md#running-the-tests-for-your-doc-changes) to run its tests before you merge.

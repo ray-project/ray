@@ -190,9 +190,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.108 \
-    --hash=sha256:5da444cf9f8b043b57617fde7bd5b868d67074204e8725acaa47d7bc045bf91a \
-    --hash=sha256:f03656dabd59926aa30bc6292b0cec9794e8330d80266739a9c77f5166176724
+anyscale==0.26.110 \
+    --hash=sha256:8216a4ac067afa874a6cc0bcabb4430cff48d061339ba5ef4e20f6d6ff4a4906 \
+    --hash=sha256:8472baef910d872dd8724115fe8fde433894a558985b55cfb8b68647cbf684dd
     # via -r docker/base-extra/requirements.in
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \
