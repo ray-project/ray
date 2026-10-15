@@ -345,9 +345,11 @@ def extract_tar_layer(
         tar_fileobj = tar_input
 
     dir_mtimes = []
-    # Stream mode reads the layer once. getmembers() would decompress it a
-    # second time, since extractfile() rewinds a compressed stream.
-    with tarfile.open(fileobj=tar_fileobj, mode="r|*") as tar:
+    # Iterating reads the layer once; getmembers() first would decompress it
+    # twice, since extractfile() then rewinds a compressed stream. Not stream
+    # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
+    # short on a member boundary would extract without an error.
+    with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
         for member in tar:
             name = member.name.lstrip("/")
 

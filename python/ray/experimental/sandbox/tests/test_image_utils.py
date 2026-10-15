@@ -10,6 +10,7 @@ import tarfile
 import threading
 import time
 import urllib.error
+import zlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -978,6 +979,36 @@ def test_failed_layer_fails_the_pull_and_stops_other_downloads(tmp_path, monkeyp
             )
         assert time.monotonic() - start < 5
         assert hung_up.wait(5)
+
+
+def test_a_layer_cut_short_fails_the_pull(tmp_path, monkeypatch):
+    """A layer whose download ends early fails the pull, even when the part
+    that arrived ends on a member boundary and so reads as a whole archive."""
+    archive = io.BytesIO()
+    with tarfile.open(fileobj=archive, mode="w") as tar:
+        _add_member(tar, "a", b"a")
+        boundary = tar.offset
+        _add_member(tar, "b", b"b")
+    raw = archive.getvalue()
+    # A full flush ends the compressed prefix exactly where member "b" starts.
+    gz = zlib.compressobj(wbits=31)
+    head = gz.compress(raw[:boundary]) + gz.flush(zlib.Z_FULL_FLUSH)
+    layer = head + gz.compress(raw[boundary:]) + gz.flush()
+
+    def serve_blob(index, handler, blob):
+        # Promise the whole layer, send the prefix, and close the connection.
+        handler.send_response(200)
+        handler.send_header("Content-Length", str(len(blob)))
+        handler.end_headers()
+        handler.wfile.write(blob[: len(head)])
+
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    with _serve_image(monkeypatch, [layer], serve_blob) as image:
+        with pytest.raises(SandboxCreationError):
+            image_utils._extract_image_layers(
+                image, str(rootfs), str(tmp_path), 30, str(tmp_path)
+            )
 
 
 def test_extract_tar_layer_reads_a_layer_once(tmp_path):
