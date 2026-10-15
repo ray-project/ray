@@ -47,9 +47,9 @@ result = trainer.fit()
 
 The code has three key components:
 
-1. `train_func`: Python code that runs on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig`: Defines the number of distributed training workers and GPU usage.
-1. {class}`~ray.train.torch.TorchTrainer`: Launches and manages the distributed training job.
+- `train_func`: Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig`: Defines the number of distributed training workers and GPU usage.
+- {class}`~ray.train.torch.TorchTrainer`: Launches and manages the distributed training job.
 
 (code-comparison-hugging-face-transformers-vs-ray-train-integration)=
 
@@ -260,7 +260,7 @@ Report metrics and checkpoints to Ray Train to integrate with Ray Tune and suppo
 
 ### Prepare a Transformers `Trainer`
 
-Pass your Transformers `Trainer` to {meth}`~ray.train.huggingface.transformers.prepare_trainer` to validate its configurations and integrate it with Ray Data:
+Pass your Transformers `Trainer` to {meth}`~ray.train.huggingface.transformers.prepare_trainer` to integrate it with Ray Data:
 
 
 ```diff
