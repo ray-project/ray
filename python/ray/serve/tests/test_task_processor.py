@@ -2,8 +2,10 @@ import json
 import os
 import sys
 import tempfile
+import time
 from collections import defaultdict
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,7 +18,29 @@ from ray.serve.task_consumer import (
     task_consumer,
     task_handler,
 )
+from ray.serve.task_processor import CeleryTaskProcessorAdapter
 from ray.tests.conftest import external_redis  # noqa: F401
+
+
+@pytest.mark.parametrize("worker_stops", [False, True])
+def test_stop_consumer_only_clears_stopped_worker_thread(worker_stops):
+    adapter = CeleryTaskProcessorAdapter.__new__(CeleryTaskProcessorAdapter)
+    adapter._app = MagicMock()
+    adapter._worker_hostname = "test-worker"
+    adapter._worker_thread = MagicMock()
+    adapter._worker_thread.is_alive.side_effect = [True, not worker_stops]
+
+    worker_thread = adapter._worker_thread
+    adapter.stop_consumer(timeout=123.0)
+
+    adapter._app.control.broadcast.assert_called_once_with(
+        "shutdown", destination=["celery@test-worker"]
+    )
+    worker_thread.join.assert_called_once_with(timeout=123.0)
+    if worker_stops:
+        assert adapter._worker_thread is None
+    else:
+        assert adapter._worker_thread is worker_thread
 
 
 @ray.remote
@@ -151,6 +175,44 @@ def _get_task_counts_by_routing_key(queue_path):
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
 class TestTaskConsumerWithRayServe:
     """Test task consumer integration with Ray Serve."""
+
+    def test_graceful_shutdown_waits_for_task_beyond_adapter_default(
+        self, serve_instance, create_processor_config
+    ):
+        processor_config = create_processor_config()
+        tracker = ProcessedTasksTracker.remote()
+        signal = SignalActor.remote()
+
+        @serve.deployment(
+            max_ongoing_requests=1,
+            graceful_shutdown_wait_loop_s=0.1,
+            graceful_shutdown_timeout_s=60,
+        )
+        @task_consumer(task_processor_config=processor_config)
+        class Consumer:
+            @task_handler(name="process_request")
+            def process_request(self, data):
+                ray.get(signal.wait.remote())
+                ray.get(tracker.add_task.remote(data))
+
+        app_name = "shutdown-budget-test"
+        serve.run(Consumer.bind(), name=app_name)
+        ray.get(send_request_to_queue.remote(processor_config, "completed"))
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
+
+        try:
+            serve.delete(app_name, _blocking=False)
+            # The old adapter timeout was 10 seconds. Keep the task blocked
+            # beyond it, while staying within the deployment's shutdown budget.
+            time.sleep(15)
+            ray.get(signal.send.remote())
+            wait_for_condition(
+                lambda: app_name not in serve.status().applications, timeout=60
+            )
+            assert ray.get(tracker.get_count.remote()) == 1
+        finally:
+            ray.get(signal.send.remote())
+            serve.delete(app_name)
 
     def test_task_consumer_as_serve_deployment(
         self, temp_queue_directory, serve_instance, create_processor_config
