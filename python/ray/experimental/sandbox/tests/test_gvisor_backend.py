@@ -3,6 +3,7 @@ import ctypes
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -603,6 +604,32 @@ def test_create_sandbox_requires_netns_binaries(monkeypatch, binary):
     with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(_public_config())
     assert binary in str(err.value)
+
+
+def test_terminate_tree_kills_the_group_only_before_reaping_it(monkeypatch):
+    """Once the launch process is reaped, its pid, which is the group id, can
+    go to an unrelated process group. A launch process that exits on its own
+    leaves an empty group, so teardown kills the group only for one that
+    hangs, and before it reaps that one."""
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor._TREE_EXIT_GRACE_SECONDS", 0.2
+    )
+    exits = subprocess.Popen(["true"], start_new_session=True)
+    hangs = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    killed = []
+    killpg = os.killpg
+
+    def recording_killpg(pgid, sig):
+        # A return code means the Popen has reaped the group's leader.
+        killed.append((pgid, (exits if pgid == exits.pid else hangs).returncode))
+        killpg(pgid, sig)
+
+    monkeypatch.setattr(os, "killpg", recording_killpg)
+    backend = GVisorSandboxBackend()
+    backend._terminate_tree(exits)
+    backend._terminate_tree(hangs)
+    assert killed == [(hangs.pid, None)]
+    assert (exits.returncode, hangs.returncode) == (0, -signal.SIGKILL)
 
 
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):

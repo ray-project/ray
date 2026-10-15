@@ -236,9 +236,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
                 time.sleep(0.1)
         except Exception:
-            # Delete runsc's container state, then kill the whole group:
-            # under slirp4netns, a bare proc.kill() would orphan the namespace
-            # holder and slirp4netns.
+            # Delete runsc's container state, then stop the launch process
+            # and everything it started.
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
@@ -279,9 +278,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             self._delete_container_state(config, sandbox_id)
 
-            # Always take the whole group: after `runsc run` exits, the
-            # namespace holder and slirp4netns (network="public") are still alive
-            # in it.
+            # After `runsc run` exits, a network="public" sandbox's launch
+            # shell still stops and reaps the namespace holder and slirp4netns.
             if proc:
                 self._terminate_tree(proc)
 
@@ -588,23 +586,26 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
-        """SIGKILL the sandbox process group and reap the Popen.
+        """Reap the launch process, and SIGKILL its process group if it hangs.
 
         The run Popen is started with ``start_new_session=True``, so its pid
-        is the group id for the namespace holder, slirp4netns, runsc run, and the
-        sandbox process. Callers stop the container first, so the launch shell
-        of a network="public" sandbox normally exits on its own once it has
-        reaped its helpers. Killing the group before that would orphan them.
+        is the group id for the namespace holder, slirp4netns and runsc run;
+        runsc starts the sandbox and gofer in sessions of their own. Callers
+        stop the container first, so the launch process normally exits on its
+        own and leaves an empty group: the launch shell of a network="public"
+        sandbox reaps its helpers first. Killing the group before that would
+        orphan them.
         """
         try:
             proc.wait(timeout=_TREE_EXIT_GRACE_SECONDS)
         except subprocess.TimeoutExpired:
-            pass
-        try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            if proc.poll() is None:
-                proc.kill()
+            # Only while the launch process is unreaped: once it's reaped,
+            # its pid, the group id, can go to an unrelated process group.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                if proc.poll() is None:
+                    proc.kill()
         try:
             proc.communicate(timeout=2)
         except (subprocess.TimeoutExpired, ValueError):
