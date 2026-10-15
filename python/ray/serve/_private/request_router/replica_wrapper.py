@@ -4,7 +4,7 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set, Tuple, Union
+from typing import Any, Dict, Optional, Set, Tuple, Union, cast
 
 import ray
 from ray._private.grpc_utils import init_grpc_channel
@@ -223,8 +223,7 @@ class RunningReplica:
                 self._actor_handle = JavaActorHandleProxy(actor_handle)
             else:
                 self._actor_handle = actor_handle
-            assert self._actor_handle is not None
-        return self._actor_handle
+        return cast(Union[ActorHandle, JavaActorHandleProxy], self._actor_handle)
 
     @property
     def _resolved_actor_replica_wrapper(self) -> ActorReplicaWrapper:
@@ -233,8 +232,7 @@ class RunningReplica:
             self._actor_replica_wrapper = ActorReplicaWrapper(
                 self._resolved_actor_handle
             )
-        assert self._actor_replica_wrapper is not None
-        return self._actor_replica_wrapper
+        return cast(ActorReplicaWrapper, self._actor_replica_wrapper)
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
         """Update mutable fields from a new RunningReplicaInfo.
