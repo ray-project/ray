@@ -903,6 +903,29 @@ def _file_size_bytes(path: str) -> int:
         return 0
 
 
+def _rename_for_deletion(image_dir: str) -> str:
+    """Atomically rename a cached image's directory to
+    ``.deleting.<random>``, and return the new path to delete.
+
+    A crash midway through deleting it then never leaves a partly deleted
+    image under the image's own name, and the next pull sweeps up what such a
+    crash leaves behind (see ``_remove_stale_deletions``). The new name
+    leaves out the image's, so it stays short whatever the image's name.
+    """
+    images_dir = os.path.dirname(image_dir)
+    renamed = os.path.join(images_dir, f".deleting.{uuid.uuid4().hex}")
+    os.replace(image_dir, renamed)
+    return renamed
+
+
+def _remove_stale_deletions(images_dir: str) -> None:
+    """Finish deleting image directories whose deletion was interrupted (see
+    ``_rename_for_deletion``)."""
+    for name in os.listdir(images_dir):
+        if name.startswith(".deleting."):
+            shutil.rmtree(os.path.join(images_dir, name), ignore_errors=True)
+
+
 def evict_least_recently_used_images(
     images_dir: str,
     max_bytes: Optional[int],
@@ -951,6 +974,11 @@ def evict_least_recently_used_images(
                 except OSError:
                     pass
             continue
+        # sanitize_image_name strips leading dots, so no cached image's name
+        # starts with one. Skip image directories renamed for deletion,
+        # whose names do (see _rename_for_deletion).
+        if name.startswith("."):
+            continue
         marker = os.path.join(path, ".extracted")
         try:
             if not (os.path.isdir(path) and os.path.exists(marker)):
@@ -978,14 +1006,18 @@ def evict_least_recently_used_images(
                 # A pull may have registered a user since the scan.
                 if img_dir is not None and _has_users(img_dir):
                     continue
-                if img_dir is not None:
-                    shutil.rmtree(img_dir, ignore_errors=True)
+                # Another pull may have evicted it since the scan.
+                if img_dir is not None and os.path.isdir(img_dir):
+                    _rename_for_deletion(img_dir)
                 try:
                     os.remove(tar_path)
                 except OSError:
                     pass
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
+        # Delete the image once its lock is free, so a pull of it doesn't wait
+        # for the delete.
+        _remove_stale_deletions(images_dir)
         total -= size
         free = _free_bytes(images_dir)
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
@@ -1022,6 +1054,7 @@ def pull_and_extract_container_image(
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
+    _remove_stale_deletions(images_dir)
     max_cache = image_cache_max_bytes(images_dir)
     min_free = image_cache_min_free_bytes(images_dir)
     if max_cache > 0 or min_free > 0:
@@ -1093,7 +1126,9 @@ def pull_and_extract_container_image(
             # format; sandboxes already running on it keep their pins, and an
             # extracted ``rootfs/`` tree their gofer still serves moves over
             # intact (a rename leaves its open root fd alone) and goes once no
-            # sandbox uses the image.
+            # sandbox uses the image. The old image moves aside and the new one
+            # takes its name before the old one is deleted, so a crash during
+            # the delete leaves the new image in place.
             try:
                 users = os.listdir(os.path.join(target_dir, _USERS_SUBDIR))
             except OSError:
@@ -1102,7 +1137,7 @@ def pull_and_extract_container_image(
             if users and os.path.isdir(old_tree):
                 os.replace(old_tree, tmp_rootfs_dir)
             if os.path.exists(target_dir):
-                shutil.rmtree(target_dir, ignore_errors=True)
+                _rename_for_deletion(target_dir)
             os.replace(tmp_extract_dir, target_dir)
             for user in users:
                 _mark_image_in_use(target_dir, user)
@@ -1113,6 +1148,9 @@ def pull_and_extract_container_image(
                 fcntl.flock(f_lock, fcntl.LOCK_UN)
             except Exception:
                 pass
+            # Delete an image the pull moved aside once the lock is free, so
+            # other pulls of this image don't wait for it.
+            _remove_stale_deletions(images_dir)
 
 
 def _download_blob(
