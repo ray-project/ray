@@ -71,7 +71,12 @@ def agent_logs(caplog, capture_logger):
 @pytest.fixture
 def make_head(monkeypatch, tmp_path):
     def factory(
-        *, leader, minimal=False, tracing_startup_hook=None, gcs_is_passive=False
+        *,
+        leader,
+        minimal=False,
+        serve_frontend=True,
+        tracing_startup_hook=None,
+        gcs_is_passive=False,
     ):
         # Otherwise _setup_metrics binds a real metrics HTTP server.
         monkeypatch.setattr(head_module, "prometheus_client", None)
@@ -94,7 +99,7 @@ def make_head(monkeypatch, tmp_path):
             temp_dir=str(tmp_path),
             session_dir=str(session_dir),
             minimal=minimal,
-            serve_frontend=False,
+            serve_frontend=serve_frontend,
             tracing_startup_hook=tracing_startup_hook,
             gcs_is_passive=gcs_is_passive,
         )
@@ -245,6 +250,22 @@ async def test_head_does_not_overwrite_an_existing_session_name(make_head):
         ray_constants.KV_NAMESPACE_SESSION,
     )
     assert _put_args(head.gcs_client, b"webui:url")[1] is True
+
+
+async def test_head_replays_empty_webui_url_when_frontend_disabled(make_head):
+    """When frontend is disabled, webui:url should be empty string."""
+    head = make_head(leader=False, serve_frontend=False)
+    head._dashboard_address = DASHBOARD_ADDRESS
+    await _register_dashboard_address(head)
+
+    _set_leader(head.gcs_client, True)
+    await _await_registration(head)
+
+    assert _put_args(head.gcs_client, b"webui:url") == (
+        b"",
+        True,
+        ray_constants.KV_NAMESPACE_DASHBOARD,
+    )
 
 
 async def test_head_replaces_the_previous_head_s_cluster_metadata(make_head):

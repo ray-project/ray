@@ -53,7 +53,6 @@ from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.autoscaler_pb2 import AutoscalingState
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.core.generated.usage_pb2 import TagKey
-from ray.exceptions import AuthenticationError
 
 try:
     import prometheus_client
@@ -165,10 +164,10 @@ class AutoscalerMonitor:
             metrics_reporter=self.metric_reporter,
         )
 
-    def _publish_metrics_address(self):
+    def _publish_metrics_address(self) -> bool:
         if self._metrics_address is None:
-            return
-        put_kv_passive_safe(
+            return True
+        return put_kv_passive_safe(
             self.gcs_client,
             b"AutoscalerMetricsAddress",
             self._metrics_address,
@@ -176,18 +175,22 @@ class AutoscalerMonitor:
             latch=self._autoscaler_passive_latch,
         )
 
-    def _resume_after_promotion(self):
+    def _resume_after_promotion(self) -> bool:
         """Take over the key this head could not write while it was passive.
 
         The metrics address names the current leader's endpoint, so every promotion
-        rewrites it. It gets one attempt, as it does at startup.
+        rewrites it. Returns True if already active or takeover succeeded, False if
+        a demotion raced the takeover write.
         """
-        if not self._autoscaler_passive_latch.promoted():
-            return
-        self._publish_metrics_address()
-        # __init__ recorded the autoscaler version before the cluster had a
-        # leader, so its write was dropped.
-        put_recorded_extra_usage_tags(self.gcs_client)
+        if not self._autoscaler_passive_latch.waiting_for_promotion:
+            return True
+        if self._publish_metrics_address():
+            self._autoscaler_passive_latch.promoted()
+            # __init__ recorded the autoscaler version before the cluster had a
+            # leader, so its write was dropped.
+            put_recorded_extra_usage_tags(self.gcs_client)
+            return True
+        return False
 
     @staticmethod
     def _get_session_name(gcs_client: GcsClient) -> Optional[str]:
@@ -222,30 +225,18 @@ class AutoscalerMonitor:
         """Run the monitor loop."""
 
         while True:
-            try:
-                # The cloud provider is not leader-gated, so ask rather than wait
-                # for a refused RPC.
-                if (
-                    ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
-                    and not self.gcs_client.is_gcs_leader()
-                ):
-                    self._autoscaler_passive_latch.note_passive()
+            if (
+                ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
+                and not self.gcs_client.is_gcs_leader()
+            ):
+                self._autoscaler_passive_latch.note_passive()
+            elif self._resume_after_promotion():
+                autoscaling_state = self.autoscaler.update_autoscaling_state()
+                if autoscaling_state:
+                    # report autoscaling state
+                    self._report_autoscaling_state(self.gcs_client, autoscaling_state)
                 else:
-                    self._resume_after_promotion()
-                    autoscaling_state = self.autoscaler.update_autoscaling_state()
-                    if autoscaling_state:
-                        # report autoscaling state
-                        self._report_autoscaling_state(
-                            self.gcs_client, autoscaling_state
-                        )
-                    else:
-                        logger.warning("No autoscaling state to report.")
-            except AuthenticationError:
-                raise
-            except Exception:
-                # Nothing restarts this process, so a failed pass has to be
-                # survivable; the next one runs an update interval later.
-                logger.exception("Monitor: Execution exception. Trying again...")
+                    logger.warning("No autoscaling state to report.")
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

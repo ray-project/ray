@@ -55,7 +55,7 @@ from ray._raylet import (
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
-from ray.exceptions import AuthenticationError, GcsPassiveError
+from ray.exceptions import AuthenticationError
 
 import psutil
 

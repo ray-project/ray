@@ -5,7 +5,7 @@ import logging
 from typing import Any, Optional, Union
 
 from ray._private import ray_constants
-from ray.exceptions import GcsPassiveError
+from ray.exceptions import GcsPassiveError, GetTimeoutError, RpcError
 from ray.experimental.internal_kv import internal_kv_get_gcs_client
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ async def _async_is_gcs_leader(gcs_client: Any, interval: float = 2.0) -> bool:
             res = async_check_alive(node_ids=[], timeout=interval)
             if inspect.isawaitable(res):
                 await res
-        except Exception:
+        except (RpcError, GetTimeoutError):
             # GCS may be unreachable or slow during a failover;
             # fall back to the cached local state, exactly matching sync is_gcs_leader().
             pass

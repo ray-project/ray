@@ -230,10 +230,10 @@ class Monitor:
 
         logger.info("Monitor: Started")
 
-    def _publish_metrics_address(self):
+    def _publish_metrics_address(self) -> bool:
         if self._metrics_address is None:
-            return
-        put_kv_passive_safe(
+            return True
+        return put_kv_passive_safe(
             self.gcs_client,
             b"AutoscalerMetricsAddress",
             self._metrics_address,
@@ -241,25 +241,28 @@ class Monitor:
             latch=self._autoscaler_passive_latch,
         )
 
-    def _clear_previous_autoscaling_error(self):
+    def _clear_previous_autoscaling_error(self) -> bool:
         if not _internal_kv_initialized():
-            return
-        del_kv_passive_safe(
+            return True
+        return del_kv_passive_safe(
             self.gcs_client,
             ray_constants.DEBUG_AUTOSCALING_ERROR,
             latch=self._autoscaler_passive_latch,
         )
 
-    def _resume_after_promotion(self):
+    def _resume_after_promotion(self) -> bool:
         """Take over the keys this head could not write while it was passive.
 
         The metrics address names the current leader's endpoint, so every promotion
-        rewrites it. Both writes get one attempt, as they do at startup.
+        rewrites it. Returns True if already active or takeover succeeded, False if
+        a demotion raced the takeover write.
         """
-        if not self._autoscaler_passive_latch.promoted():
-            return
-        self._publish_metrics_address()
-        self._clear_previous_autoscaling_error()
+        if not self._autoscaler_passive_latch.waiting_for_promotion:
+            return True
+        if self._publish_metrics_address() and self._clear_previous_autoscaling_error():
+            self._autoscaler_passive_latch.promoted()
+            return True
+        return False
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
@@ -418,16 +421,15 @@ class Monitor:
         """Run the monitor loop."""
 
         while True:
-            try:
-                # The cloud provider is not leader-gated, so ask rather than wait
-                # for a refused RPC.
-                if (
-                    ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
-                    and not self.gcs_client.is_gcs_leader()
-                ):
-                    self._autoscaler_passive_latch.note_passive()
-                else:
-                    self._resume_after_promotion()
+            # The cloud provider is not leader-gated, so ask rather than wait
+            # for a refused RPC.
+            if (
+                ray_constants.RAY_ENABLE_GCS_LEADER_ELECTION
+                and not self.gcs_client.is_gcs_leader()
+            ):
+                self._autoscaler_passive_latch.note_passive()
+            elif self._resume_after_promotion():
+                try:
                     gcs_request_start_time = time.time()
                     self.update_load_metrics()
                     gcs_request_time = time.time() - gcs_request_start_time
@@ -496,12 +498,14 @@ class Monitor:
                             as_json,
                             overwrite=True,
                         )
-            except Exception:
-                # By default, do not exit the monitor on failure.
-                if self.retry_on_failure:
-                    logger.exception("Monitor: Execution exception. Trying again...")
-                else:
-                    raise
+                except Exception:
+                    # By default, do not exit the monitor on failure.
+                    if self.retry_on_failure:
+                        logger.exception(
+                            "Monitor: Execution exception. Trying again..."
+                        )
+                    else:
+                        raise
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.

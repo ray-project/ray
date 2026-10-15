@@ -183,6 +183,38 @@ def test_v1_monitor_takes_over_the_active_head_keys_on_promotion(
     assert _count_logged(v1_logs, "Resuming autoscaling") == 1
 
 
+def test_v1_monitor_fails_fast_on_non_passive_error_during_takeover(
+    make_v1_monitor, monkeypatch
+):
+    monitor = make_v1_monitor(leader=False)
+    monitor.autoscaler = None
+    _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
+
+    set_mock_leader(monitor.gcs_client, True)
+    monitor.gcs_client.internal_kv_put.side_effect = RpcError(
+        "network partition", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
+    )
+    with pytest.raises(RpcError):
+        monitor._run()
+
+
+def test_v1_monitor_survives_a_demotion_racing_the_promotion_write(
+    make_v1_monitor, monkeypatch, v1_logs
+):
+    monitor = make_v1_monitor(leader=False)
+    monitor.autoscaler = MagicMock()
+    _run_passes(monitor, monkeypatch, v1_monitor_module, 1)
+
+    monitor.gcs_client.is_gcs_leader.return_value = True
+    passes = _run_passes(monitor, monkeypatch, v1_monitor_module, 2)
+
+    assert len(passes) == 2
+    monitor.gcs_client.get_all_resource_usage.assert_not_called()
+    assert _count_logged(v1_logs, "Resuming autoscaling") == 0
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
+
+
 def test_v1_monitor_handles_repeated_promotions_and_demotions(
     make_v1_monitor, monkeypatch, v1_logs
 ):
@@ -326,20 +358,37 @@ def test_v2_monitor_takes_over_the_metrics_address_on_promotion(
     assert len(usage_writes) >= 1
 
 
+def test_v2_monitor_fails_fast_on_non_passive_error_during_takeover(
+    make_v2_monitor, monkeypatch
+):
+    monitor = make_v2_monitor(leader=False)
+    _run_passes(monitor, monkeypatch, v2_monitor_module, 1)
+    assert monitor._autoscaler_passive_latch.waiting_for_promotion
+
+    monitor.gcs_client.is_gcs_leader.return_value = True
+    monitor.gcs_client.internal_kv_put.side_effect = RpcError(
+        "network partition", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
+    )
+    with pytest.raises(RpcError):
+        monitor._run()
+
+
 def test_v2_monitor_survives_a_demotion_racing_the_promotion_write(
     make_v2_monitor, monkeypatch, v2_logs
 ):
     # Nothing restarts the monitor, so a write refused between the CheckAlive that
-    # said "leader" and the take-over must not be fatal.
+    # said "leader" and the take-over must not be fatal, and must skip scaling.
     monitor = make_v2_monitor(leader=False)
     _run_passes(monitor, monkeypatch, v2_monitor_module, 1)
 
     monitor.gcs_client.is_gcs_leader.return_value = True
     passes = _run_passes(monitor, monkeypatch, v2_monitor_module, 2)
 
-    # Recognized as a demotion rather than a crash, so the next promotion retries.
+    # Recognized as a demotion rather than a crash, so scaling is skipped and the
+    # next promotion retries.
     assert len(passes) == 2
-    assert _count_logged(v2_logs, "Monitor: Execution exception") == 0
+    monitor.autoscaler.update_autoscaling_state.assert_not_called()
+    assert _count_logged(v2_logs, "Resuming autoscaling") == 0
     assert monitor._autoscaler_passive_latch.waiting_for_promotion
 
 
