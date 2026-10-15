@@ -8,7 +8,7 @@ myst:
 
 # Enable Ray platform events on Kubernetes
 
-This guide describes how to enable and use platform events in the Ray dashboard on Kubernetes. Platform events surface Kubernetes lifecycle events for the KubeRay custom resources `RayCluster`, `RayJob`, and `RayService` in the Ray dashboard, alongside your Ray application metrics and logs, so you can correlate cluster behavior with application behavior. Starting in KubeRay v1.8.0, you can also forward Kubernetes node events, such as kernel errors, to the dashboard. See {ref}`kuberay-node-event-forwarder`.
+This guide describes how to enable and use platform events in the Ray dashboard on Kubernetes. Platform events surface Kubernetes lifecycle events for the KubeRay custom resources `RayCluster`, `RayJob`, and `RayService` in the Ray dashboard, alongside your Ray application metrics and logs, so you can correlate cluster behavior with application behavior. Starting in KubeRay v1.8.0, you can also forward Kubernetes node events, such as GPU XID errors and NCCL communication failures, to the dashboard. See {ref}`kuberay-node-event-forwarder`.
 
 ## Prerequisites
 
@@ -256,11 +256,13 @@ Kubernetes stores node events in the `default` or `kube-system` namespace, so th
 
 ### Choose which node events to forward
 
-By default, the operator forwards every `Warning` node event. To change this, set the following Helm values. An empty list matches any value, and an event must match all three filters:
+By default, the Helm chart configures the operator to forward only `Warning` node events. You can customize which events are forwarded using the following Helm values.
 
-* `nodeEventForwarder.types`: Event types, `Warning` or `Normal`. The values are case-sensitive, and the default is `[Warning]`.
+An event is forwarded only if it matches all three filters. An empty list disables the corresponding filter and matches all values:
+
+* `nodeEventForwarder.types`: Event types, `Warning` or `Normal`.  Any other value, including lowercase variants such as warning, prevents the operator from starting.
 * `nodeEventForwarder.reasons`: Event reasons, such as `XIDError`.
-* `nodeEventForwarder.sources`: The event's `source.component` or `reportingComponent`, such as `nvidia-gpu-device-plugin`.
+* `nodeEventForwarder.sources`: The event's `source.component` or `reportingController`, such as `nvidia-gpu-device-plugin`.
 
 ## Troubleshooting
 
