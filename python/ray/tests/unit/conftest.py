@@ -3,6 +3,12 @@ import logging
 import pytest
 
 import ray
+import ray._common.usage.usage_lib as ray_usage_lib
+import ray._private.ray_constants as ray_constants
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.modules.node.node_head as node_head_module
+import ray.experimental.internal_kv as internal_kv
+from ray.tests.unit.passive_test_utils import attach_logger
 
 
 @pytest.fixture(autouse=True)
@@ -26,8 +32,6 @@ def propagate_logs():
 @pytest.fixture
 def capture_logger(caplog):
     """Fixture to attach caplog to module loggers and clean up on teardown."""
-    from ray.tests.unit.passive_test_utils import attach_logger
-
     attached = []
 
     def _attach(logger_name: str, level: int = logging.INFO):
@@ -44,17 +48,12 @@ def capture_logger(caplog):
 @pytest.fixture
 def leader_election_on(monkeypatch):
     """Enable GCS leader election for the test."""
-    import ray._private.ray_constants as ray_constants
-
     monkeypatch.setattr(ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", True)
 
 
 @pytest.fixture
 def fast_registration_poll(monkeypatch):
     """Speed up GCS retry intervals across dashboard modules for fast testing."""
-    import ray.dashboard.consts as dashboard_consts
-    import ray.dashboard.modules.node.node_head as node_head_module
-
     monkeypatch.setattr(dashboard_consts, "GCS_REGISTER_RETRY_INTERVAL_S", 0.01)
     monkeypatch.setattr(node_head_module, "GCS_REGISTER_RETRY_INTERVAL_S", 0.01)
 
@@ -68,9 +67,6 @@ def enable_passive_gcs(leader_election_on, fast_registration_poll):
 @pytest.fixture(autouse=True)
 def reset_internal_kv():
     """Clean up internal_kv and usage_lib global state before and after each unit test."""
-    import ray._common.usage.usage_lib as ray_usage_lib
-    import ray.experimental.internal_kv as internal_kv
-
     ray_usage_lib.reset_global_state()
     yield
     internal_kv._internal_kv_reset()
