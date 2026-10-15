@@ -691,6 +691,7 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11' \
     # via
     #   anyio
     #   celery
+    #   pytest
 farama-notifications==0.0.4 \
     --hash=sha256:13fceff2d14314cf80703c8266462ebf3733c7d165336eee998fc58e545efd18 \
     --hash=sha256:14de931035a41961f7c056361dc7f980762a143d05791ef5794a751a2caf05ae
@@ -1204,6 +1205,12 @@ importlib-metadata==6.11.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   dask
     #   opentelemetry-api
+iniconfig==2.3.0 \
+    --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
+    --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
@@ -1970,6 +1977,7 @@ packaging==25.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   dask
     #   kombu
+    #   pytest
     #   ray
     #   taskiq
     #   tensorboardx
@@ -2156,6 +2164,12 @@ platformdirs==4.9.6 \
     #   python-discovery
     #   textual
     #   virtualenv
+pluggy==1.6.0 \
+    --hash=sha256:7dcc130b76258d33b90f61b658791dede3486c3e6bfb003ee5c9bfb396dd22f3 \
+    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 prometheus-client==0.25.0 \
     --hash=sha256:5e373b75c31afb3c86f1a52fa1ad470c9aace18082d39ec0d2f918d11cc9ba28 \
     --hash=sha256:d5aec89e349a6ec230805d0df882f3807f74fd6c1a2fa86864e3c2279059fed1
@@ -2684,6 +2698,12 @@ pyroaring==1.0.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pyiceberg
+pytest==7.4.4 \
+    --hash=sha256:2cf0005922c6ace4a3e2ec8b4080eb0d9753fdc93107415332f50ce9e7994280 \
+    --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/doc/docstring-examples-requirements.txt
 python-dateutil==2.9.0.post0 \
     --hash=sha256:37dd54208da7e1cd875388217d5e00ebd4179249f90fb72437e91a35459a0ad3 \
     --hash=sha256:a8b2bc7bffae282281c8140a97d3aa9c14da0b136dfe83f850eea9a5f7470427
@@ -3060,6 +3080,12 @@ textual==4.0.0 ; sys_platform != 'win32' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   memray
+tomli==2.0.2 ; python_full_version < '3.11' \
+    --hash=sha256:2ebe24485c53d303f690b0ec092806a085f07af5a5aa1464f3931eec36caaa38 \
+    --hash=sha256:d46d457a85337051c36524bc5349dd91b1877838e2979ac5ced3e710ed8a60ed
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   pytest
 toolz==1.1.0 \
     --hash=sha256:15ccc861ac51c53696de0a5d6d4607f99c210739caf987b5d2054f3efed429d8 \
     --hash=sha256:27a5c770d068c110d9ed9323f24f1543e83b2f300a687b7891c1a6d56b697b5b
