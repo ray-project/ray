@@ -72,8 +72,8 @@ def grid_search(values: Iterable) -> Dict[str, Iterable]:
     Values specified in a grid search are guaranteed to be sampled.
 
     If multiple grid search variables are defined, they are combined with the
-    combinatorial product. This means every possible combination of values will
-    be sampled.
+    combinatorial product. This means every possible combination of values is
+    sampled.
 
     Example:
 
