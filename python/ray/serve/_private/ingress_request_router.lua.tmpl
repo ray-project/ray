@@ -8,9 +8,7 @@
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local FORWARD_BODY = ${FORWARD_BODY}
-local REQUEST_METHOD_HEADER = "${REQUEST_METHOD_HEADER}"
 local REQUEST_PATH_HEADER = "${REQUEST_PATH_HEADER}"
-local REQUEST_QUERY_HEADER = "${REQUEST_QUERY_HEADER}"
 local MODEL_ID_HEADER = "serve_multiplexed_model_id"
 
 -- Headers named by Connection are added dynamically.
@@ -66,16 +64,7 @@ local function request_headers_for_router(headers)
     return table.concat(lines)
 end
 
-local function call_router(
-    router,
-    body,
-    truncated_length,
-    headers,
-    model_id,
-    request_method,
-    request_path,
-    request_query
-)
+local function call_router(router, body, truncated_length, headers, model_id, request_path)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -99,9 +88,7 @@ local function call_router(
         .. "Host: " .. router.host_header .. "\r\n"
         .. "Connection: close\r\n"
         .. "Content-Length: " .. #body .. "\r\n"
-        .. REQUEST_METHOD_HEADER .. ": " .. request_method .. "\r\n"
         .. REQUEST_PATH_HEADER .. ": " .. request_path .. "\r\n"
-        .. REQUEST_QUERY_HEADER .. ": " .. request_query .. "\r\n"
         .. truncation_header
         .. request_headers_for_router(headers)
         .. model_id_header
@@ -199,21 +186,10 @@ local function _route_via_ingress_request_router(txn, app, pool, replica_map)
     local start = _rr_cursor[app] or 0
     _rr_cursor[app] = start + 1
     local response = nil
-    local request_method = txn.sf:method()
     local request_path = txn.sf:path()
-    local request_query = txn.sf:query() or ""
     for i = 0, n - 1 do
         local router = pool[(start + i) % n + 1]
-        response = call_router(
-            router,
-            body,
-            truncated,
-            headers,
-            model_id,
-            request_method,
-            request_path,
-            request_query
-        )
+        response = call_router(router, body, truncated, headers, model_id, request_path)
         if response then
             break
         end

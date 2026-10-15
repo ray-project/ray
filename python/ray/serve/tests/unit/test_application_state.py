@@ -23,6 +23,7 @@ from ray.serve._private.application_state import (
     override_deployment_info,
 )
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -419,6 +420,7 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
             return_value=runtime_context,
         ),
         patch("ray.serve._private.application_state.configure_component_logger"),
+        patch("ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True),
         patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
     ):
         _, deploy_args, error = build_serve_application._function(
@@ -429,7 +431,7 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
             LoggingConfig(),
             None,
             {},
-            {},
+            {"LLMServer": "ray.serve.experimental.round_robin_router.RoundRobinRouter"},
             {},
         )
 
@@ -443,10 +445,23 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
     ]
 
 
-def test_build_serve_application_adds_router_for_ingress_config_override():
-    @serve.deployment
-    class Ingress:
-        pass
+@pytest.mark.parametrize("uses_multiplexing", [False, True])
+def test_build_serve_application_rejects_custom_ingress_router_override(
+    uses_multiplexing,
+):
+    if uses_multiplexing:
+
+        @serve.deployment
+        class Ingress:
+            @serve.multiplexed(max_num_models_per_replica=2)
+            async def load_model(self, model_id: str) -> str:
+                return model_id
+
+    else:
+
+        @serve.deployment
+        class Ingress:
+            pass
 
     runtime_context = Mock()
     runtime_context.runtime_env = {}
@@ -461,7 +476,7 @@ def test_build_serve_application_adds_router_for_ingress_config_override():
             return_value=runtime_context,
         ),
         patch("ray.serve._private.application_state.configure_component_logger"),
-        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
+        patch("ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True),
     ):
         _, deploy_args, error = build_serve_application._function(
             "module.app",
@@ -475,14 +490,8 @@ def test_build_serve_application_adds_router_for_ingress_config_override():
             {},
         )
 
-    assert error is None
-    assert [
-        (args["deployment_name"], args["ingress_request_router"])
-        for args in deploy_args
-    ] == [
-        ("Ingress", False),
-        ("IngressRequestRouter", True),
-    ]
+    assert deploy_args is None
+    assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in error
 
 
 @pytest.fixture

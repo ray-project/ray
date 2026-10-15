@@ -6,7 +6,6 @@ from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import (
-    DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_LOGGER_NAME,
 )
@@ -25,6 +24,13 @@ V = TypeVar("V")
 INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "`ingress_request_router` requires HAProxy. "
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
+)
+
+CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR = (
+    "A custom `request_router_config.request_router_class` is not supported on "
+    "the ingress deployment when HAProxy is enabled because HAProxy bypasses "
+    "that router. To customize ingress replica selection, attach an ingress "
+    "request router deployment that implements `/internal/route`."
 )
 
 
@@ -113,7 +119,6 @@ def build_app(
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
     external_scaler_enabled: bool = False,
-    request_router_class_overrides: Optional[Dict[str, str]] = None,
 ) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
@@ -139,6 +144,17 @@ def build_app(
     if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
         raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
 
+    # Under HAProxy, ingress traffic is load-balanced by HAProxy and bypasses
+    # the ingress deployment's Serve request router, so a custom router there is
+    # silently ignored. An explicitly attached ingress request router is allowed
+    # because it implements the /internal/route API itself.
+    if (
+        RAY_SERVE_ENABLE_HA_PROXY
+        and ingress_request_router is None
+        and _has_custom_request_router(app._bound_deployment)
+    ):
+        raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
+
     handles: IDDict[Application, DeploymentHandle] = IDDict()
     deployment_names: IDDict[Application, str] = IDDict()
     deployments = _build_app_recursive(
@@ -150,34 +166,17 @@ def build_app(
         make_deployment_handle=make_deployment_handle,
     )
 
-    ingress_deployment_name = deployment_names[app]
-    if (
-        request_router_class_overrides is not None
-        and ingress_deployment_name in request_router_class_overrides
-    ):
-        has_custom_ingress_request_router = (
-            request_router_class_overrides[ingress_deployment_name]
-            != DEFAULT_REQUEST_ROUTER_PATH
-        )
-    else:
-        has_custom_ingress_request_router = _has_custom_request_router(
-            app._bound_deployment
-        )
-
-    # Route HAProxy ingress selection through the deployment's Serve router.
+    # Select a replica with the requested model already loaded.
     if (
         ingress_request_router is None
         and RAY_SERVE_ENABLE_HA_PROXY
-        and (
-            _callable_uses_multiplexing(app._bound_deployment.func_or_class)
-            or has_custom_ingress_request_router
-        )
+        and _callable_uses_multiplexing(app._bound_deployment.func_or_class)
     ):
-        from ray.serve._private.ingress_request_router import (
-            IngressRequestRouter,
+        from ray.serve._private.multiplex_ingress_router import (
+            MultiplexedIngressRequestRouter,
         )
 
-        ingress_request_router = IngressRequestRouter.bind(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+        ingress_request_router = MultiplexedIngressRequestRouter.bind(  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
             handles[app]
         )
 
@@ -216,7 +215,7 @@ def build_app(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,  # type: ignore[arg-type]
-        ingress_deployment_name=ingress_deployment_name,
+        ingress_deployment_name=deployment_names[app],
         deployments=deployments,
         deployment_handles={
             deployment_names[app]: handle

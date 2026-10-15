@@ -15,7 +15,6 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve.config import RequestRouterConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema
 
@@ -166,13 +165,11 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         str: A hash of the import path and (application level) runtime env
             representing the code version of the application.
     """
-    request_router_configs = []
-    for deployment in app_config.deployments:
-        request_router_config = deployment.request_router_config
-        if isinstance(request_router_config, dict):
-            request_router_configs.append(request_router_config)
-        elif isinstance(request_router_config, RequestRouterConfig):
-            request_router_configs.append(request_router_config.model_dump())
+    request_router_configs = [
+        deployment.request_router_config
+        for deployment in app_config.deployments
+        if isinstance(deployment.request_router_config, dict)
+    ]
     deployment_autoscaling_policies = [
         deployment_config.autoscaling_config.get("policy", None)
         for deployment_config in app_config.deployments
