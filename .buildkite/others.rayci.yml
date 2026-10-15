@@ -10,6 +10,15 @@ steps:
       PYTHON: "3.10"
     tags: cibase
 
+  # The "docstring-only" label's examples environment, without torch or
+  # TensorFlow. See ci/docker/docstring.build.Dockerfile.
+  - name: docstringbuild
+    wanda: ci/docker/docstring.build.wanda.yaml
+    depends_on: oss-ci-base_test-multipy(python=3.10)
+    env:
+      PYTHON: "3.10"
+    tags: cibase
+
   # Runs //doc:doctest, the catch-all doctest target for documentation prose that
   # no library owns (tagged team:none). The five per-library docs example steps
   # each filter on their own team:<lib>, so this is the only step that reaches it.
