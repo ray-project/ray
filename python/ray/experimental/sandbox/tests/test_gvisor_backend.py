@@ -405,9 +405,12 @@ def test_exec_replaces_output_that_is_not_utf8():
     runtime = SandboxRuntime()
     instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
     try:
-        result = runtime.exec(instance_id, r"printf 'ok \377\376\n'; printf '\377' >&2")
+        result = runtime.exec(
+            instance_id, r"printf 'ok \377\376\r\n'; printf '\377' >&2"
+        )
         assert result.exit_code == 0
-        assert result.stdout == "ok ��\n"
+        # Like the bytes, line endings come back as printed.
+        assert result.stdout == "ok ��\r\n"
         assert result.stderr == "�"
     finally:
         runtime.delete(instance_id)
