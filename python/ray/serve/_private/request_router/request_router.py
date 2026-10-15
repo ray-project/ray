@@ -843,6 +843,32 @@ class RequestRouter(ABC):
         # cleanup in _get_pending_request_matching_multiplexed_model_id() which
         # removes done entries during lookup, amortizing the cleanup cost.
 
+    def _remove_cancelled_pending_request(
+        self, pending_request: PendingRequest
+    ) -> None:
+        """Eagerly remove a cancelled request from pending queues and indices."""
+
+        def remove_by_identity(queue: Deque[PendingRequest]) -> None:
+            for index, queued_request in enumerate(queue):
+                if queued_request is pending_request:
+                    del queue[index]
+                    return
+
+        self._remove_pending_request_from_indices(pending_request)
+        for queue in (
+            self._pending_requests_to_fulfill,
+            self._pending_requests_to_route,
+        ):
+            remove_by_identity(queue)
+
+        model_id = pending_request.metadata.multiplexed_model_id
+        if model_id:
+            model_requests = self._pending_requests_by_model_id.get(model_id)
+            if model_requests is not None:
+                remove_by_identity(model_requests)
+                if not model_requests:
+                    self._pending_requests_by_model_id.pop(model_id, None)
+
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
     ):
@@ -1424,7 +1450,7 @@ class RequestRouter(ABC):
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             self._cancel_routing_task_for_pending_request(pending_request)
-            self._remove_pending_request_from_indices(pending_request)
+            self._remove_cancelled_pending_request(pending_request)
 
             raise e from None
 

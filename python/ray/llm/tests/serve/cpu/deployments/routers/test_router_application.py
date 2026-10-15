@@ -61,6 +61,7 @@ class FakeHandle:
         # Raised by the pick-only (`_reserve=False`) path only.
         self.pick_only_error: Optional[Exception] = None
         self.delay_s = 0.0
+        self.pick_only_delay_s = 0.0
 
     def _init(self):
         self.initialized = True
@@ -81,7 +82,13 @@ class FakeHandle:
             {"args": args, "kwargs": kwargs, "session_id": self.session_id}
         )
         if self.delay_s:
-            await asyncio.sleep(self.delay_s)
+            delay = asyncio.sleep(self.delay_s)
+            if "_selection_timeout_s" in kwargs:
+                await asyncio.wait_for(delay, kwargs["_selection_timeout_s"])
+            else:
+                await delay
+        if kwargs.get("_reserve") is False and self.pick_only_delay_s:
+            await asyncio.sleep(self.pick_only_delay_s)
         if kwargs.get("_reserve") is False and self.pick_only_error is not None:
             raise self.pick_only_error
         if self.error is not None:
@@ -564,6 +571,22 @@ class TestRoutingDecision:
             error = _body(response)["error"]
             assert error["message"] == "messages must not be empty"
             assert error["type"] == "BadRequestError"
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_reserving_path(self, monkeypatch):
+        monkeypatch.setattr(router_application_module, "PICK_ONLY_TIMEOUT_S", 0.05)
+        router, handles, patcher = _new_router()
+        try:
+            handle = FakeHandle("llm-model-a")
+            handle.pick_only_delay_s = 10
+            handles["llm-model-a"] = handle
+
+            decision = await _chat(router, {"model": "model-a"})
+            assert decision["replica_id"] == handle.replica_id
+            assert handle.calls[0]["kwargs"] == {"_reserve": False}
+            assert handle.calls[1]["kwargs"]["_selection_timeout_s"] > 0
         finally:
             patcher.stop()
 
