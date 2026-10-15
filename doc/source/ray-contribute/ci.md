@@ -80,13 +80,23 @@ An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/so
 
 Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for Ray Data pages, which have one test target per page.
 
-A prose-only change also skips most of the lint group. Three lint steps run: a README check, a ban on newly added `.rst` files, since new pages must be MyST Markdown, and a documentation style linter.
+A prose-only change also skips most of the lint group. The lint steps that still run are the ones a Markdown change can fail, such as the ban on newly added `.rst` files, since new pages must be MyST Markdown, and [the doc asset check](#the-doc-asset-check).
 
 The code-oriented lint steps don't run, because a Markdown change can't fail them: `clang_format`, `bazel_buildifier`, `bazel_team`, `copyright_format`, `dashboard_format`, `pytest_format`, `test_coverage`, `semgrep_lint`, `pre_commit`, and pydoclint. This matters more than it sounds: those steps each pay a full repository clone, and `pre_commit` runs every hook with `--all-files`, so its cost is the same on a one-line Markdown edit as on a thousand-file C++ change.
 
 Skipping `pre_commit` costs prose nothing, which is worth knowing if you're wondering where whitespace linting went. `.pre-commit-config.yaml` excludes `doc/source/` globally, so its trailing-whitespace and end-of-file hooks never inspected your prose in the first place, on any PR.
 
 The split lives in `.buildkite/always.rules.txt`, which emits the `lint` tag for every file except prose and images. One non-prose file anywhere in your diff brings the whole lint group back, so a mixed PR loses no coverage. Post-merge builds run everything regardless, since rayci skips rule evaluation outside pull requests.
+
+### The doc asset check
+
+The `lint: doc_assets` step runs `doc/test_doc_assets.py` on every PR. It fails in the following cases:
+
+* **A new notebook.** Any `.ipynb` file under `doc/source/` that isn't on the allowlist fails the check. Write the page as MyST Markdown (`.md`) instead. Show code as `literalinclude` from a tested script, or as `testcode` blocks.
+* **A `doc_code` script that no page shows.** Every `.py` file under a `doc_code/` directory must be pulled into a page with `literalinclude` or `include`. It also passes if a script that a page shows imports it, or if it's a test wrapper that imports or names a file a page includes, such as a script that deploys an included YAML config. If no page needs the script, delete it. If it's a test worth keeping, move it to the library's own test suite. Removing a page's last `literalinclude` of a script fails the check the same way adding an unshown script does.
+* **A stale allowlist entry.** The allowlists in `doc/asset_allowlists/` list the notebooks and unshown scripts that predate the check. When you convert a listed notebook, delete it, or show a listed script on a page, delete its line from the allowlist in the same PR. The check fails until you do, so the lists only shrink.
+
+Don't add lines to either allowlist to get a new file past the check. To run the check locally, use `python doc/test_doc_assets.py`.
 
 ### Running the tests for your doc changes
 

@@ -31,6 +31,11 @@ steps:
       # its lint.sh entry are left in place, so re-enabling is a one-line revert
       # that restores this matrix value.
       - doc_no_new_rst
+      # Fails on a new notebook or doc_code script under doc/source/ that no
+      # page shows. It's here rather than on a doc step because a prose-only
+      # change can fail it: deleting a page's last literalinclude of a script
+      # orphans that script.
+      - doc_assets
       # Links to files on Ray's master branch. A prose change can fail it,
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links
