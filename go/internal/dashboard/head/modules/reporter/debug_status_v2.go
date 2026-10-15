@@ -119,6 +119,12 @@ type v2ResourceDemand struct {
 // parseClusterStatusV2 ports ClusterStatusParser.from_get_cluster_status_reply.
 func parseClusterStatusV2(reply *proto.GetClusterStatusReply) *v2ClusterStatus {
 	cs := &v2ClusterStatus{clusterUsage: map[string][2]float64{}, requestTsS: float64(time.Now().Unix())}
+	// Both ClusterResourceState and AutoscalingState are optional message
+	// fields that the GCS may leave unset; guard against nil dereference and
+	// return an empty status instead (caller degrades gracefully).
+	if reply == nil || reply.ClusterResourceState == nil || reply.AutoscalingState == nil {
+		return cs
+	}
 	state := reply.ClusterResourceState
 	as := reply.AutoscalingState
 

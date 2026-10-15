@@ -169,6 +169,42 @@ class TrainStateActor:
         with self._run_attempts_lock:
             return self._run_attempts
 
+    # --- Go dashboard head cross-language native entry points ---
+    # These thin methods exist only so the Go dashboard head can call the state
+    # actor directly without a wrapper actor. They hold NO conversion logic:
+    # all dict<->pydantic conversion lives in
+    # ray.go.dashboard.cross_language.converter (pure functions). Keep the
+    # bodies as one-line delegations. The converter import is deliberately
+    # local so this module stays importable without the ray-go wheel.
+
+    def get_train_runs_native(self) -> dict:
+        from ray.go.dashboard.cross_language.converter import to_msgpack_native
+
+        # Snapshot the live dict under the lock: the default-enabled
+        # reconciliation thread (and remote create_or_update_train_run calls)
+        # mutate self._runs concurrently, and iterating the live dict outside
+        # the lock can raise "dictionary changed size during iteration".
+        with self._runs_lock:
+            runs = list(self._runs.items())
+        return {run_id: to_msgpack_native(run.dict()) for run_id, run in runs}
+
+    def get_train_run_attempts_native(self) -> dict:
+        from ray.go.dashboard.cross_language.converter import to_msgpack_native
+
+        # Snapshot under the lock (see get_train_runs_native).
+        with self._run_attempts_lock:
+            attempts = {
+                run_id: dict(run_attempts)
+                for run_id, run_attempts in self._run_attempts.items()
+            }
+        return {
+            run_id: {
+                attempt_id: to_msgpack_native(attempt.dict())
+                for attempt_id, attempt in run_attempts.items()
+            }
+            for run_id, run_attempts in attempts.items()
+        }
+
     # ============================
     # Export API
     # ============================

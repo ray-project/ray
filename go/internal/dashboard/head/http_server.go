@@ -163,6 +163,10 @@ func NewHTTPServer(cfg *HeadConfig, mods []HeadModule, metrics *MetricsRegistry)
 	// route; without this explicit GET pattern it would fall through to the
 	// "GET /" catch-all.
 	mux.HandleFunc("GET /api/authenticate", methodNotAllowedHandler)
+	// Same for /report_events (POST-only in event.go): a non-POST request
+	// would otherwise fall through to the "GET /" catch-all and hit
+	// indexHandler, which returns 404. aiohttp returns 405 with Allow: POST.
+	mux.HandleFunc("GET /report_events", methodNotAllowedHandler)
 
 	// Middleware chain (aligned with the Python order plus an access log
 	// mirroring the aiohttp access_log). The withMaxBodySize layer sits first
@@ -176,6 +180,11 @@ func NewHTTPServer(cfg *HeadConfig, mods []HeadModule, metrics *MetricsRegistry)
 	h = withPathClean(h)
 	h = withBrowserPostPutBlock(BrowserPostPutAllowedPaths, h)
 	h = withStaticCache(h)
+	// withRecover must wrap withRuntimeInitialization: an init panic would
+	// otherwise escape to net/http as a silent connection reset with no 500
+	// (and be misreported as 200 by the access log). Closest to aiohttp, where
+	// init_ray_and_catch_exceptions turns any init exception into a 500.
+	h = withRuntimeInitialization(cfg, metrics, h)
 	h = withRecover(log.WithName("dashboard_head"), h)
 	h = withAccessLog(h)
 	// Outermost layer: strip the nosniff header http.Error adds so HTTP error
@@ -497,6 +506,86 @@ func withRecover(logger logr.Logger, next http.Handler) http.Handler {
 				_, _ = w.Write([]byte("500 Internal Server Error\n\nAn unexpected error has occurred."))
 			}
 		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+// runtimeInitPathPrefixes lists the path prefixes whose handlers need the Go
+// runtime initialized (they cross-language call Python actors). Aligned with
+// the Python dashboard's @require_initialized decorator set, which covers
+// serve/flow/train/data: the Go equivalent routes are
+// /api/serve/, /api/flow/, /api/train/ and /api/data/.
+var runtimeInitPathPrefixes = []string{
+	"/api/serve/",
+	"/api/flow/",
+	"/api/train/",
+	"/api/data/",
+	// The Serve scale route (serve.go:213) is the only /api/v1/* route in the
+	// Go head and calls the ServeController actor, so it must initialize the
+	// runtime just like the prefixed routes above (Python's scale_deployment
+	// carries @init_ray_and_catch_exceptions). TestRuntimeInitRouteCoverage
+	// enforces this stays covered.
+	"/api/v1/applications/",
+}
+
+// withRuntimeInitialization lazily initializes the Go runtime before a
+// cross-language module handler runs, mirroring the Python dashboard's
+// @require_initialized decorator (init_ray_and_catch_exceptions in
+// optional_utils.py), which ray.init()s on first use and returns HTTP 500 when
+// the connection fails. Centralizing the lazy init in one middleware avoids
+// duplicating it in every serve/flow/train/data handler. It is a no-op for
+// paths outside the prefixes (state/jobs/version/... never need the runtime).
+// On init failure it surfaces 500 so the process stays alive (the preflight in
+// EnsureInitialized converts a would-be CoreWorkerProcess::QuickExit into a Go
+// error), aligned with the Python decorator's HTTPInternalServerError. Each
+// attempt's outcome is counted on ray_dashboard_runtime_init_attempts_total
+// (success|failure) via the injected metrics, so oncall can correlate 500s
+// with the init path without querying the log.
+func withRuntimeInitialization(cfg *HeadConfig, metrics *MetricsRegistry, next http.Handler) http.Handler {
+	// Capture the init-attempt counter and session name once at build time so a
+	// request that fails to initialize can still count its failure even while
+	// the init path is degraded (mirrors withMetrics' nil-guard).
+	dm := (*DashboardMetrics)(nil)
+	if metrics != nil {
+		dm = metrics.DashboardMetrics()
+	}
+	sessionName := ""
+	if cfg != nil {
+		sessionName = cfg.SessionName
+	}
+	// The prefixes carry a trailing slash, so a bare prefix-like path (e.g.
+	// /api/data without the slash) does not match: such paths are not
+	// registered routes and must fall through to the 404 handler untouched.
+	needsInit := func(path string) bool {
+		for _, p := range runtimeInitPathPrefixes {
+			if strings.HasPrefix(path, p) {
+				return true
+			}
+		}
+		return false
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !needsInit(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Snapshot the attempt count so an outcome is only recorded when this
+		// call actually initialized (or tried to), not on every already-warm
+		// request: the Prometheus total then matches /version's runtime
+		// attempts exactly.
+		before := initAttempts()
+		if err := EnsureInitialized(cfg); err != nil {
+			if dm != nil && initAttempts() > before {
+				dm.recordInitAttempt("failure", sessionName)
+			}
+			log.Log.Error(err, "go runtime initialization failed before cross-language handler",
+				"path", r.URL.Path)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if dm != nil && initAttempts() > before {
+			dm.recordInitAttempt("success", sessionName)
+		}
 		next.ServeHTTP(w, r)
 	})
 }

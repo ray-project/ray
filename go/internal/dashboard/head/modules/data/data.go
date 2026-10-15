@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 // Package data implements the DataHead dashboard module: cross-language calls
 // into the Python Ray Data _StatsActor plus Prometheus metric queries for the
 // datasets REST API. Aligned with the Python DataHead in
@@ -37,25 +36,17 @@ import (
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 )
 
-// Cross-language actor identity constants for the DataStatsActorWrapper, the
-// dashboard's proxy into the real _StatsActor, centralized here so the
-// name/namespace/module/className quadruple lives in one place. Aligned with
-// python/ray/go/dashboard/cross_language/data_wrapper.py.
+// Cross-language actor identity constants for the original Ray Data _StatsActor,
+// which the Go dashboard head connects to directly (no wrapper actor). The
+// name/namespace/module/className quadruple is centralized here. _StatsActor.
+// get_datasets returns a plain dict with no pydantic/Enum values, so Go can
+// call it by its original name with no *_native shim.
 const (
-	statsActorName      = "go_dashboard_stats_wrapper"
+	statsActorName      = "datasets_stats_actor"
 	statsActorNamespace = "_dataset_stats_actor"
-	statsActorModule    = "ray.go.dashboard.cross_language.data_wrapper"
-	statsActorClass     = "DataStatsActorWrapper"
+	statsActorModule    = "ray.data._internal.stats"
+	statsActorClass     = "_StatsActor"
 )
-
-// statsActorResources mirrors the original _StatsActor's num_cpus=0 (from the
-// @ray.remote(num_cpus=0) decorator in python/ray/data/_internal/stats.py), so
-// the wrapper does not consume a CPU quota under the Go default of CPU=1. The
-// _StatsActor also uses a NodeAffinity scheduling strategy pinned to the head
-// node, but the wrapper is a thin proxy so it only inherits the zero-CPU part;
-// max_restarts/max_task_retries stay at the Python default (0). A var (not
-// const) because Go maps are not constant expressions.
-var statsActorResources = map[string]float64{api.ResourceCPU: 0}
 
 // Prometheus environment/config constants aligned with metrics_head.py.
 const (
@@ -171,49 +162,28 @@ func (a *pythonStatsActor) getDatasets(jobID string) (map[string]interface{}, er
 	return api.Get(ref)
 }
 
-// getStatsActorFn returns the DataStatsActorWrapper handle, or an error when
-// no datasets stats actor is running. It is a package-level variable so tests
-// can inject a fake actor.
+// getStatsActorFn returns the original _StatsActor handle (discovered by
+// name/namespace), or nil when no datasets stats actor is running. It is a
+// package-level variable so tests can inject a fake actor.
 //
-// The wrapper is a non-detached dashboard proxy created on first use
-// (Get-first, Create-fallback) and recycled with the dashboard driver. Its
-// constructor binds the real _StatsActor via ray.get_actor, so creation fails
-// when no Ray Data stats actor is running and the handler degrades to empty
-// datasets.
+// The _StatsActor is detached and created by the Ray Data machinery, so Go only
+// discovers it: no wrapper actor is created and no resources need to be
+// inherited. A not-initialized runtime is surfaced so the caller can lazily
+// initialize and retry; absence of the actor means "no data instance running"
+// and the handler degrades.
 var getStatsActorFn = func() (statsActor, error) {
 	handle, err := api.GetPythonActorWithNamespace(
 		statsActorName, statsActorNamespace, statsActorModule, statsActorClass)
-	if err == nil {
-		log.Log.Info("data: got existing stats wrapper")
-		return &pythonStatsActor{handle: handle}, nil
-	}
-	// A not-initialized runtime (e.g. the GCS was not ready when the head
-	// started) is surfaced to the caller so it can lazily initialize and retry;
-	// any other error means no data instance is running and we degrade.
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		return nil, err
-	}
-	{
-		// Only create the wrapper when the real _StatsActor exists
-		// (datasets_stats_actor / _dataset_stats_actor from
-		// ray.data._internal.stats), otherwise the wrapper's __init__ dies
-		// asynchronously and the caller sees a misleading "Actor has died".
-		if _, err := api.GetPythonActorWithNamespace(
-			"datasets_stats_actor", "_dataset_stats_actor",
-			"ray.data._internal.stats", "_StatsActor"); err != nil {
-			if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-				return nil, err
-			}
-			log.Log.Info("data: no real stats actor, degrade", "err", err)
-			return nil, nil
-		}
-		log.Log.Info("data: creating stats wrapper")
-		handle, err = api.RemotePythonActor(statsActorModule, statsActorClass).
-			WithName(statsActorName).WithNamespace(statsActorNamespace).
-			WithResources(statsActorResources).Create()
-		if err != nil {
+	if err != nil {
+		// A not-initialized runtime (e.g. the GCS was not ready when the head
+		// started) is surfaced to the caller so it can lazily initialize and
+		// retry; any other error means no data instance is running and we
+		// degrade.
+		if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
 			return nil, err
 		}
+		log.Log.Info("data: no real stats actor, degrade", "err", err)
+		return nil, nil
 	}
 	return &pythonStatsActor{handle: handle}, nil
 }
@@ -234,20 +204,6 @@ func (h *DataHead) handleDatasets(w http.ResponseWriter, r *http.Request) {
 // flattened, sorted dataset list.
 func (h *DataHead) getDatasetsData(r *http.Request, jobID string) ([]map[string]interface{}, error) {
 	statsActor, err := getStatsActorFn()
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		// The Go runtime failed to initialize at startup (e.g. the GCS was not
-		// ready during `ray start`). Lazily initialize it now, mirroring the
-		// Python dashboard's require_initialized which ray.init()s on the first
-		// request, so the head recovers the cross-language runtime without a
-		// restart. EnsureInitialized is a no-op once initialized and serialized
-		// against concurrent calls. Retry once after a successful init; on
-		// failure surface 503 (aligned with the Python exception handler).
-		if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-			log.Log.Info("data: go runtime not initialized, degrade", "err", initErr)
-			return nil, fmt.Errorf("go runtime not initialized: %w", initErr)
-		}
-		statsActor, err = getStatsActorFn()
-	}
 	if err != nil || statsActor == nil {
 		// No stats actor (Ray Data not running): surface 503, aligned with the
 		// Python handler which returns 503 when the stats actor is unavailable.

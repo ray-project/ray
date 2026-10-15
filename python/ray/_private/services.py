@@ -93,6 +93,68 @@ def _resolve_raygo_executable() -> str:
 # Location of the Go raygo executable for log monitor.
 RAYGO_EXECUTABLE = _resolve_raygo_executable()
 
+# Go processes that require the raygo binary, keyed by the env switch that
+# opts into them. When a switch is on but the binary is missing, the launched
+# process would fail at runtime (e.g. dashboard head never binds 8265, and the
+# pod ends up CrashLooping on its health probe). Fail fast at ray start instead
+# of surfacing as a silent runtime failure.
+_GO_SWITCHES_REQUIRING_RAYGO = (
+    ("RAY_ENABLE_GO_DASHBOARD_HEAD", ray_constants.ENABLE_GO_DASHBOARD_HEAD),
+    ("RAY_ENABLE_GO_SETUP_WORKER", ray_constants.ENABLE_GO_SETUP_WORKER),
+    ("RAY_ENABLE_GO_LOG_MONITOR", ray_constants.ENABLE_GO_LOG_MONITOR),
+    ("RAY_ENABLE_GO_AUTOSCALER_MONITOR", ray_constants.ENABLE_GO_AUTOSCALER_MONITOR),
+    ("RAY_ENABLE_GO_RUNTIME_ENV_AGENT", ray_constants.ENABLE_GO_RUNTIME_ENV_AGENT),
+)
+
+
+def check_raygo_available_for_go_switches() -> None:
+    """Fail fast when a GO switch is on but the raygo binary is missing.
+
+    Called once at the top of the head node's process startup (before GCS,
+    raylet or the dashboard are launched). If any GO switch is enabled but the
+    raygo executable cannot be resolved, the misconfigured deployment would
+    only fail at runtime (dashboard head never binds its port, setup_worker
+    silently fails for every worker). Raising here surfaces the misconfiguration
+    immediately with an actionable message instead.
+    """
+    enabled = [name for name, on in _GO_SWITCHES_REQUIRING_RAYGO if on]
+    if not enabled:
+        return
+    if os.path.exists(RAYGO_EXECUTABLE):
+        return
+    raise RuntimeError(
+        f"GO switches {', '.join(enabled)} are enabled but the raygo executable "
+        f"'{RAYGO_EXECUTABLE}' is missing. GO processes (dashboard head, setup "
+        f"worker, log monitor, autoscaler monitor, runtime env agent) cannot "
+        f"start without it. Install the ray_go wheel (e.g. via the image build "
+        f"argument INCLUDE_GO=1) or unset the GO switches above."
+    )
+
+
+def setup_worker_prefix(
+    setup_worker_path: str, *, python_prefix: Optional[List[str]] = None
+) -> List[str]:
+    """Returns the worker setup prefix shared by all language worker commands.
+
+    With RAY_ENABLE_GO_SETUP_WORKER set, uses the Go implementation
+    (raygo setup_worker); otherwise the Python setup_worker.py.
+
+    Args:
+        setup_worker_path: Path to the Python setup_worker.py script, used only
+            when RAY_ENABLE_GO_SETUP_WORKER is off.
+        python_prefix: Optional Python interpreter prefix (e.g. with memray
+            memory-profiling wrapper). Defaults to sys.executable.
+
+    Returns:
+        The worker setup command prefix shared by all language worker commands.
+    """
+    if ray_constants.ENABLE_GO_SETUP_WORKER:
+        return [RAYGO_EXECUTABLE, ray_constants.RAYGO_AVAILABLE_COMMAND_SETUP_WORKER]
+    if python_prefix is None:
+        python_prefix = [sys.executable]
+    return python_prefix + [setup_worker_path]
+
+
 # Location of the native libraries.
 DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp", "lib")
 
@@ -1869,7 +1931,7 @@ def start_raylet(
         cpp_worker_command = []
 
     go_worker_command = []
-    if ray_constants.ENABLE_GO_SETUP_WORKER:
+    if os.path.exists(RAYGO_EXECUTABLE):
         go_worker_command = build_go_worker_command(
             gcs_address,
             plasma_store_name,
@@ -1880,6 +1942,7 @@ def start_raylet(
             node_ip_address,
             cluster_id,
             log_dir,
+            setup_worker_path,
             metrics_agent_port=metrics_agent_port,
         )
 
@@ -1887,30 +1950,34 @@ def start_raylet(
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = (
-        [
-            sys.executable,
-            setup_worker_path,
-        ]
-        + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
-        + [
-            worker_path,
-            f"--node-ip-address={node_ip_address}",
-            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-            f"--object-store-name={plasma_store_name}",
-            f"--raylet-name={raylet_name}",
-            f"--redis-address={redis_address}",
-            f"--metrics-agent-port={metrics_agent_port}",
-            f"--logging-rotate-bytes={max_bytes}",
-            f"--logging-rotate-backup-count={backup_count}",
-            f"--runtime-env-agent-port={runtime_env_agent_port}",
-            f"--gcs-address={gcs_address}",
-            f"--session-name={session_name}",
-            f"--temp-dir={temp_dir}",
-            f"--webui={webui}",
-            f"--cluster-id={cluster_id}",
-        ]
+    python_worker_prefix = setup_worker_prefix(
+        setup_worker_path,
+        python_prefix=_build_python_executable_command_memory_profileable(
+            ray_constants.PROCESS_TYPE_WORKER, session_dir, unbuffered=False
+        ),
     )
+    if not ray_constants.ENABLE_GO_SETUP_WORKER:
+        # _site_flags are Python interpreter flags; only the Python setup
+        # worker passes them through to the Python worker. The Go setup
+        # worker has no such concept.
+        python_worker_prefix += _site_flags()
+    start_worker_command = python_worker_prefix + [
+        worker_path,
+        f"--node-ip-address={node_ip_address}",
+        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+        f"--object-store-name={plasma_store_name}",
+        f"--raylet-name={raylet_name}",
+        f"--redis-address={redis_address}",
+        f"--metrics-agent-port={metrics_agent_port}",
+        f"--logging-rotate-bytes={max_bytes}",
+        f"--logging-rotate-backup-count={backup_count}",
+        f"--runtime-env-agent-port={runtime_env_agent_port}",
+        f"--gcs-address={gcs_address}",
+        f"--session-name={session_name}",
+        f"--temp-dir={temp_dir}",
+        f"--webui={webui}",
+        f"--cluster-id={cluster_id}",
+    ]
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
@@ -2251,11 +2318,9 @@ def build_java_worker_command(
     pairs.append(("ray.home", RAY_HOME))
     pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
     pairs.append(("ray.session-dir", session_dir))
-    command = (
-        [sys.executable]
-        + [setup_worker_path]
-        + ["-D{}={}".format(*pair) for pair in pairs]
-    )
+    command = setup_worker_prefix(setup_worker_path) + [
+        "-D{}={}".format(*pair) for pair in pairs
+    ]
 
     command += ["RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"]
     command += ["io.ray.runtime.runner.worker.DefaultWorker"]
@@ -2292,9 +2357,7 @@ def build_cpp_worker_command(
         The command string for starting CPP worker.
     """
 
-    command = [
-        sys.executable,
-        setup_worker_path,
+    command = setup_worker_prefix(setup_worker_path) + [
         DEFAULT_WORKER_EXECUTABLE,
         f"--ray_plasma_store_socket_name={plasma_store_name}",
         f"--ray_raylet_socket_name={raylet_name}",
@@ -2321,6 +2384,7 @@ def build_go_worker_command(
     node_ip_address: str,
     cluster_id: str,
     log_dir: str,
+    setup_worker_path: str,
     metrics_agent_port: Optional[int] = None,
 ):
     """This method assembles the command used to start a Go worker.
@@ -2335,29 +2399,42 @@ def build_go_worker_command(
         node_ip_address: The IP address for this node.
         cluster_id: The cluster ID of the Ray cluster.
         log_dir: The path of the log directory.
+        setup_worker_path: The path of the Python setup worker file, used only
+            when RAY_ENABLE_GO_SETUP_WORKER is off (Python implementation).
         metrics_agent_port: The port of the metrics agent. If not None, it is
             passed to the Go worker via --metrics-agent-port.
 
     Returns:
         The command string for starting Go worker.
     """
-    command = [
-        RAYGO_EXECUTABLE,
-        ray_constants.RAYGO_AVAILABLE_COMMAND_SETUP_WORKER,
-        ray_constants.RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER,
-        "--language=GO",
-        "--serialized-runtime-env-context={}",
-        f"--node-ip-address={node_ip_address}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--plasma-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--redis-username={redis_username}",
-        f"--redis-password={redis_password}",
-        f"--gcs-address={gcs_address}",
-        f"--session-dir={session_dir}",
-        f"--cluster-id={cluster_id}",
-        f"--logs-dir={log_dir}",
-    ]
+    # The Go worker entrypoint differs per setup implementation:
+    # - Go setup worker (raygo setup_worker ...): the raygo executable is
+    #   already the running process, so the entrypoint is just the
+    #   "defaultworker" subcommand (os.Args[0] resolves to raygo).
+    # - Python setup worker (setup_worker.py ...): the entrypoint must name
+    #   the raygo executable explicitly (python exec_worker falls through to
+    #   "exec <first arg>" for GO).
+    entrypoint = [ray_constants.RAYGO_AVAILABLE_COMMAND_DEFAULT_WORKER]
+    if not ray_constants.ENABLE_GO_SETUP_WORKER:
+        entrypoint = [RAYGO_EXECUTABLE] + entrypoint
+
+    command = (
+        setup_worker_prefix(setup_worker_path)
+        + entrypoint
+        + [
+            "--language=GO",
+            f"--node-ip-address={node_ip_address}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--plasma-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--redis-username={redis_username}",
+            f"--redis-password={redis_password}",
+            f"--gcs-address={gcs_address}",
+            f"--session-dir={session_dir}",
+            f"--cluster-id={cluster_id}",
+            f"--logs-dir={log_dir}",
+        ]
+    )
 
     # Add placeholder for dynamic options (e.g., --code-search-path)
     # This matches the behavior of Python's start_worker_command

@@ -2008,6 +2008,34 @@ class ServeController:
 
         return self._target_capacity_direction
 
+    # --- Go dashboard head cross-language native entry points ---
+    # These thin methods exist only so the Go dashboard head can call the
+    # controller directly without a wrapper actor. They hold NO conversion
+    # logic: all dict<->pydantic conversion lives in
+    # ray.go.dashboard.cross_language.converter (pure functions). Keep the
+    # bodies as one-line delegations; do not inline schema/validation/
+    # construction here. The converter import is deliberately local so this
+    # module stays importable without the ray-go wheel.
+
+    def get_serve_instance_details_native(self, source=None) -> dict:
+        from ray.go.dashboard.cross_language.converter import to_msgpack_native
+
+        return to_msgpack_native(self.get_serve_instance_details(source))
+
+    def apply_config_native(self, config: dict, deployment_time: float = 0.0) -> None:
+        from ray.go.dashboard.cross_language.converter import parse_serve_deploy_schema
+
+        self.apply_config(parse_serve_deploy_schema(config), deployment_time)
+
+    def update_deployment_replicas_native(
+        self, deployment_id: dict, target_num_replicas: int
+    ) -> None:
+        from ray.go.dashboard.cross_language.converter import parse_deployment_id
+
+        self.update_deployment_replicas(
+            parse_deployment_id(deployment_id), target_num_replicas
+        )
+
 
 def calculate_target_capacity_direction(
     curr_config: Optional[ServeDeploySchema],

@@ -471,7 +471,17 @@ func TestBuildWorkerCommand(t *testing.T) {
 			expectError:       false,
 		},
 		{
-			name:            "CPP language without cpp executable (uses os.Args[0])",
+			// The Python-serialized context has no cpp_executable, so the
+			// worker binary comes from the first passthrough arg.
+			name:              "CPP language without cpp executable (falls back to passthroughArgs[0])",
+			ctx:               RuntimeEnvContext{},
+			passthroughArgs:   []string{"/usr/bin/cpp_worker", "--arg1"},
+			language:          proto.Language_CPP,
+			expectedCmdPrefix: []string{"exec", "/usr/bin/cpp_worker", "--arg1"},
+			expectError:       false,
+		},
+		{
+			name:            "CPP language without cpp executable or passthrough (uses os.Args[0])",
 			ctx:             RuntimeEnvContext{},
 			passthroughArgs: []string{"--arg1"},
 			language:        proto.Language_CPP,

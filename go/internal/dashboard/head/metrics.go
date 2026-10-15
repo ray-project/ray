@@ -56,6 +56,9 @@ type MetricsRegistry struct {
 //   - ray_component_cpu_percentage (Gauge)
 //   - ray_component_uss_mb         (Gauge)
 //
+// and the Go-extension lazy-init counter:
+//   - ray_dashboard_runtime_init_attempts_total (Counter, result=success|failure)
+//
 // The client_golang text encoder does not emit the `_created` series that
 // prometheus_client adds; the CI contract (test_metrics_agent.py
 // _DASHBOARD_METRICS) requires `..._created` names to appear, so
@@ -69,6 +72,11 @@ type DashboardMetrics struct {
 	componentCPU *prometheus.GaugeVec
 	// componentUSS is ray_component_uss_mb.
 	componentUSS *prometheus.GaugeVec
+	// initAttempts is ray_dashboard_runtime_init_attempts_total, a Go-extension
+	// metric (not in the Python DashboardPrometheusMetrics) that records each
+	// lazy runtime init attempt's outcome. Presence-only CI contracts permit
+	// adding series; the required Python names are untouched.
+	initAttempts *prometheus.CounterVec
 
 	registry *prometheus.Registry
 
@@ -134,10 +142,17 @@ func NewMetricsRegistry(cfg *HeadConfig) *MetricsRegistry {
 			},
 			[]string{"ip", "pid", "Version", "Component", "SessionName"},
 		),
+		initAttempts: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "ray_dashboard_runtime_init_attempts_total",
+				Help: "Total number of dashboard head Go runtime lazy init attempts.",
+			},
+			[]string{"result", "Version", "SessionName", "Component"},
+		),
 		registry:   reg,
 		cpuSampler: newCPUSampler(),
 	}
-	reg.MustRegister(m.requestDuration, m.requestCount, m.componentCPU, m.componentUSS)
+	reg.MustRegister(m.requestDuration, m.requestCount, m.componentCPU, m.componentUSS, m.initAttempts)
 	// Append the _created series the CI contract requires but client_golang
 	// does not emit (prometheus_client adds them for every metric).
 	reg.MustRegister(newCreatedCollector(
@@ -149,6 +164,15 @@ func NewMetricsRegistry(cfg *HeadConfig) *MetricsRegistry {
 	))
 	m.recordComponentMetrics(cfg)
 	return &MetricsRegistry{Registry: reg, metrics: m}
+}
+
+// recordInitAttempt increments ray_dashboard_runtime_init_attempts_total for
+// the outcome of a lazy init attempt. It is wired by the middleware on the
+// same code path as the init call, so it stays independent of any package-level
+// state and needs no registry cleanup on a failed NewMetricsRegistry or a
+// metrics server shutdown.
+func (m *DashboardMetrics) recordInitAttempt(result, sessionName string) {
+	m.initAttempts.WithLabelValues(result, version.RayVersion, sessionName, "dashboard").Inc()
 }
 
 // DashboardMetrics returns the registered dashboard metrics so withMetrics can

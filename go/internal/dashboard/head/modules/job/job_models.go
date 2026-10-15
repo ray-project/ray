@@ -18,6 +18,8 @@
 // python/ray/dashboard/modules/job/job_head.py.
 package job
 
+import "github.com/ray-project/ray/go/internal/dashboard/head"
+
 // JobStatus mirrors the Python JobStatus enum (job/common.py). The terminal
 // statuses are STOPPED, SUCCEEDED and FAILED.
 type JobStatus string
@@ -139,6 +141,10 @@ type VersionResponse struct {
 	RayVersion  string `json:"ray_version"`
 	RayCommit   string `json:"ray_commit"`
 	SessionName string `json:"session_name"`
+	// Runtime is a Go-extension additive field exposing the dashboard head's
+	// own runtime init state for oncall. Python has no such field; consumers
+	// reading the original four keys are unaffected.
+	Runtime *head.RuntimeStatus `json:"runtime,omitempty"`
 }
 
 // RayActivityStatus mirrors the Python RayActivityStatus enum.

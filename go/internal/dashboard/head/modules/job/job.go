@@ -111,11 +111,13 @@ func (h *JobHead) RegisterHTTP(mux *http.ServeMux) error {
 
 // handleVersion serves /api/version, aligned with JobHead.get_version.
 func (h *JobHead) handleVersion(w http.ResponseWriter, r *http.Request) {
+	status := head.RuntimeStatusInfo()
 	head.WriteRawJSON(w, http.StatusOK, &VersionResponse{
 		Version:     currentVersion,
 		RayVersion:  version.RayVersion,
 		RayCommit:   version.RayCommit,
 		SessionName: h.cfg.SessionName,
+		Runtime:     &status,
 	})
 }
 

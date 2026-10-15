@@ -92,16 +92,20 @@ func (h *DashboardHead) Run(ctx context.Context) error {
 	}
 
 	// 3. Publish the dashboard address to GCS KV (KV_NAMESPACE_DASHBOARD).
-	// The address carries the http:// scheme so agents can POST /report_events
-	// directly (event_agent.py concatenates it with "/report_events").
-	// Mirror the Python head (head.py): when the HTTP server is bound to the
-	// default 127.0.0.1 the address must stay 127.0.0.1 (agents run on the same
-	// node); otherwise expose the node IP for cross-node reporting.
+	// The value is host:port WITHOUT the http:// scheme, aligned with the
+	// Python head (head.py), which writes build_address(host, port). Consumers
+	// expect the scheme-less form: ray_address_to_api_server_url in
+	// dashboard/utils.py prepends "http://" itself, so a scheme here would
+	// produce "http://http://host:port" and break every ray list/summary/get
+	// state command. Mirror the Python host selection: when the HTTP server is
+	// bound to the default 127.0.0.1 the address must stay 127.0.0.1 (agents
+	// run on the same node); otherwise expose the node IP for cross-node
+	// reporting.
 	kvHost := h.cfg.HTTPHost
 	if h.cfg.HTTPHost != "127.0.0.1" {
 		kvHost = h.cfg.NodeIPAddress
 	}
-	dashboardAddr := fmt.Sprintf("http://%s:%d", kvHost, h.cfg.HTTPPort)
+	dashboardAddr := fmt.Sprintf("%s:%d", kvHost, h.cfg.HTTPPort)
 	if _, err := h.client.InternalKVPut(ctx, "dashboard", "dashboard", []byte(dashboardAddr), true); err != nil {
 		log.Log.Error(err, "failed to write DASHBOARD_ADDRESS")
 	}

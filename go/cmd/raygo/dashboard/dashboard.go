@@ -154,8 +154,8 @@ func runDashboard(ctx context.Context) error {
 	// Apply the logging configuration (level, file output with rotation) and
 	// stdout/stderr redirection, aligned with the Python dashboard's
 	// setup_component_logger + redirect_stdout_stderr_if_needed. This must run
-	// before initGoRuntime so the go runtime and all modules log to the same
-	// configured sink.
+	// before runtime initialization so the go runtime and all modules log to the
+	// same configured sink.
 	if err := setupLogging(cfg); err != nil {
 		return err
 	}
@@ -166,27 +166,18 @@ func runDashboard(ctx context.Context) error {
 	}
 	defer client.Close()
 
-	// Initialize the Go runtime as a driver through the static base.Initialize
-	// path (same as the worker process), so the dashboard head can call Python
-	// actors across languages (e.g. GetPythonActorWithNamespace in the
-	// flow/serve/train/data modules). Mirrors the Python dashboard, which
-	// lazily connects as a driver in the internal dashboard namespace. The
-	// JobID is allocated fresh from GCS (per-process, like Python).
-	// Sockets/ports are auto-filled from GCS in driver mode, so only
-	// GcsAddress and NodeIPAddress are required.
-	//
-	// A failure here is NOT fatal: the Python dashboard starts its HTTP server
-	// and GCS-based modules without a driver connection (it connects lazily),
-	// and during `ray start` the dashboard launches right after GCS/raylet so
-	// the driver's JobID allocation may race GCS readiness. Degrade to running
-	// without the cross-language runtime; the GCS-based modules (state, jobs,
-	// logs, node, ...) still serve, and the flow/serve/train/data modules log
-	// their own errors until GCS is ready.
-	if err := initGoRuntime(cfg); err != nil {
-		log.Log.Error(err, "failed to init go runtime for dashboard head; running without cross-language runtime")
-	} else {
-		defer head.ShutdownRuntime()
-	}
+	// The Go runtime is NOT initialized eagerly at startup. The Python
+	// dashboard starts its HTTP server and GCS-based modules without a driver
+	// connection and connects lazily (ray.init on first request via
+	// require_initialized); initializing eagerly during `ray start` races the
+	// GCS-recovered stale head node (a restarted GCS restores the previous
+	// head's ALIVE node with a stale node_manager_port) and would hit the C++
+	// QuickExit path (GetSystemConfig failure kills the process) before the
+	// HTTP server ever binds 8265. Instead the withRuntimeInitialization
+	// middleware (http_server.go) calls head.EnsureInitialized on the first
+	// cross-language request (serve/flow/train/data path prefixes), which
+	// preflights the raylet endpoint and degrades (rather than dying) while
+	// the GCS-recovered stale node is still ALIVE.
 
 	// Register the implemented dashboard head modules. Minimal mode loads only
 	// the usage_stats module (UsageStatsHead.is_minimal_module()==True in the
@@ -311,19 +302,5 @@ func setupLogging(cfg *head.HeadConfig) error {
 	if err := zap.SetupDefaultLogger(loggerOpts...); err != nil {
 		return fmt.Errorf("failed to setup dashboard logger: %w", err)
 	}
-	return nil
-}
-
-// initGoRuntime initializes the Go runtime as a driver so the dashboard head
-// can call Python actors across languages. It is called once at startup (where
-// a failure degrades to running without the cross-language runtime, matching
-// the Python dashboard's lazy connection), and the same initWithConfig is
-// reused lazily by the cross-language modules via head.EnsureInitialized when
-// the GCS becomes ready.
-func initGoRuntime(cfg *head.HeadConfig) error {
-	if err := head.EnsureInitialized(cfg); err != nil {
-		return err
-	}
-	log.Log.Info("go runtime initialized for dashboard head", "gcs", cfg.GCSAddress, "node", cfg.NodeIPAddress)
 	return nil
 }

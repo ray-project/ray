@@ -160,7 +160,16 @@ func (c *RuntimeEnvContext) buildWorkerCommand(passthroughArgs []string, languag
 		passthroughArgs = append(classPathArgs, passthroughArgs...)
 
 	case proto.Language_CPP:
-		executable = c.buildExecPrefix(c.CppExecutable)
+		cppExecutable := c.CppExecutable
+		// The Python-serialized runtime env context has no cpp_executable field,
+		// so when running a CPP worker through the Go setup worker the executable
+		// must come from the first passthrough arg (the worker binary path). It is
+		// consumed there so it is not exec'd twice.
+		if cppExecutable == "" && len(passthroughArgs) > 0 {
+			cppExecutable = passthroughArgs[0]
+			passthroughArgs = passthroughArgs[1:]
+		}
+		executable = c.buildExecPrefix(cppExecutable)
 
 	case proto.Language_GO:
 		executable = c.buildExecPrefix(c.GoExecutable)

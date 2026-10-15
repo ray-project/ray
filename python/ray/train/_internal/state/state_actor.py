@@ -41,6 +41,23 @@ class TrainStateActor:
         # Retrieve all registered train runs
         return self._run_infos
 
+    # --- Go dashboard head cross-language native entry point ---
+    # This thin method exists only so the Go dashboard head can call the state
+    # actor directly without a wrapper actor. It holds NO conversion logic: all
+    # dict<->pydantic conversion lives in
+    # ray.go.dashboard.cross_language.converter (pure functions). Keep the body
+    # as a one-line delegation. The converter import is deliberately local so
+    # this module stays importable without the ray-go wheel.
+
+    def get_all_train_runs_native(self) -> dict:
+        from ray.go.dashboard.cross_language.converter import to_msgpack_native
+
+        # Snapshot the live dict before iterating: remote register_train_run
+        # calls mutate self._run_infos concurrently, and iterating the live
+        # dict can raise "dictionary changed size during iteration".
+        runs = list(self._run_infos.items())
+        return {run_id: to_msgpack_native(run.dict()) for run_id, run in runs}
+
     # ============================
     # Export API
     # ============================

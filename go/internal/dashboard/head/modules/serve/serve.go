@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 // Package serve implements the ServeHead dashboard module: cross-language
 // calls into the Python ServeController actor for the Serve applications
 // REST API. Aligned with the Python ServeHead in
@@ -37,42 +36,29 @@ import (
 	"google.golang.org/protobuf/encoding/protowire"
 )
 
-// Cross-language actor identity constants for the ServeControllerWrapper, the
-// dashboard's proxy into the real ServeController, centralized here so the
-// name/namespace/module/className quadruple lives in one place. Aligned with
-// python/ray/go/dashboard/cross_language/serve_wrapper.py.
+// Cross-language actor identity constants for the original ServeController,
+// which the Go dashboard head connects to directly (no wrapper actor). The
+// name/namespace/module/className quadruple is centralized here. Aligned with
+// the detached controller created by get_controller_impl in
+// python/ray/serve/_private/default_impl.py (name SERVE_CONTROLLER_NAME,
+// namespace SERVE_NAMESPACE).
 const (
-	// serveControllerName is the ServeControllerWrapper actor name.
-	serveControllerName = "go_dashboard_serve_wrapper"
+	// serveControllerName is SERVE_CONTROLLER_NAME
+	// ("SERVE_CONTROLLER_ACTOR" from ray.serve._private.constants).
+	serveControllerName = "SERVE_CONTROLLER_ACTOR"
 	// serveNamespace is SERVE_NAMESPACE.
 	serveNamespace = "serve"
-	// serveControllerModule is the Python module of the wrapper actor.
-	serveControllerModule = "ray.go.dashboard.cross_language.serve_wrapper"
+	// serveControllerModule is the Python module of the controller class.
+	serveControllerModule = "ray.serve._private.controller"
 	// serveControllerClass is the Python actor class name.
-	serveControllerClass = "ServeControllerWrapper"
+	serveControllerClass = "ServeController"
 )
 
-// Resource/lifecycle constants for the ServeControllerWrapper, aligned with
-// the original ServeController created by get_controller_impl in
-// python/ray/serve/_private/default_impl.py: num_cpus=0, resources={
-// HEAD_NODE_RESOURCE_NAME: 0.001} (where HEAD_NODE_RESOURCE_NAME is
-// "node:__internal_head__"), max_restarts=-1, max_task_retries=-1 and
-// max_concurrency=CONTROLLER_MAX_CONCURRENCY (15000). The wrapper is a thin
-// proxy over the real controller, so it inherits the controller's resource
-// footprint (zero CPU quota, pinned to the head node) rather than the Go
-// default of CPU=1.
-const (
-	// serveControllerMaxRestarts is max_restarts=-1 (unlimited restarts).
-	serveControllerMaxRestarts = -1
-	// serveControllerMaxTaskRetries is max_task_retries=-1 (unlimited retries).
-	serveControllerMaxTaskRetries = -1
-	// serveControllerMaxConcurrency is CONTROLLER_MAX_CONCURRENCY (15000).
-	serveControllerMaxConcurrency = 15000
-)
-
-// serveControllerResources mirrors the controller's resources
+// serveControllerResources mirrors the ServeController's resources
 // {HEAD_NODE_RESOURCE_NAME: 0.001} plus num_cpus=0: the 0.001 head-node
-// resource pins it to the head node and zeroes the CPU quota. A var (not
+// resource pins it to the head node and zeroes the CPU quota. It is used only
+// by the dependency probe (checkServeDepsFn) to schedule the probe worker on
+// the head node, mirroring how the controller itself is scheduled. A var (not
 // const) because Go maps are not constant expressions.
 var serveControllerResources = map[string]float64{
 	"node:__internal_head__": 0.001,
@@ -123,6 +109,13 @@ const (
 // validate_endpoint in python/ray/dashboard/modules/serve/serve_head.py.
 var errServeDependenciesNotInstalled = errors.New("Serve dependencies are not installed. Please run `pip install \"ray[serve]\"`.")
 
+// errServeDepsProbeTimeout is returned when the dependency probe exceeds its
+// timeout. Unlike errServeDependenciesNotInstalled it is deliberately NOT
+// cached: a timed-out probe is not evidence that ray[serve] is missing (a
+// cold-start python worker can be slow to answer), so the next serve request
+// re-probes instead of serving a cached 501 for the process lifetime.
+var errServeDepsProbeTimeout = errors.New("Serve dependency probe timed out. The python worker did not answer in time; the probe is retried on the next request.")
+
 // serveDependencyProbeModule is a ray.serve module whose import fails when the
 // ray[serve] extra is missing. Importing ray.serve._private.utils pulls in
 // ray.serve.schema / ray.serve._private.constants which depend on the optional
@@ -131,6 +124,13 @@ var errServeDependenciesNotInstalled = errors.New("Serve dependencies are not in
 // function is a pure helper with no side effects.
 const serveDependencyProbeModule = "ray.serve._private.utils"
 const serveDependencyProbeFunction = "get_random_string"
+
+// serveDepsProbeTimeout bounds the cross-language dependency probe. The
+// Python validate_endpoint imports ray.serve locally (never blocking); this Go
+// probe schedules a Python worker, which can stall forever when the
+// cross-language runtime cannot schedule one. A finite timeout keeps a stuck
+// probe from holding depsMu and hanging every serve request.
+const serveDepsProbeTimeout = 10 * time.Second
 
 // checkServeDepsFn probes whether ray.serve is importable on a Python worker.
 // It is a package-level variable so tests can inject a fake without loading
@@ -149,16 +149,54 @@ var checkServeDepsFn = func() error {
 	// get_random_string returns a value, and a void call (num_returns=0) yields
 	// a nil object ref that api.Get always fails on ("object reference is nil"),
 	// making every probe misreport dependencies as not installed.
-	ref, err := api.RemotePython[string](serveDependencyProbeModule, serveDependencyProbeFunction, "").Call()
+	//
+	// Pin the probe to the head node with the same resources as the
+	// ServeController (node:__internal_head__: 0.001, CPU: 0). A bare
+	// RemotePython defaults to {CPU: 1}, which can never be satisfied on a
+	// CPU-less head node (KubeRay head groups run without a CPU resource):
+	// the raylet logs "The lease ... requires {CPU: 1} ... cannot provide the
+	// requested resources", so every probe times out after serveDepsProbeTimeout
+	// and every serve request pays a 10s stall before failing — KubeRay can
+	// never read serve application status in time (RayService stuck in
+	// FailedToGetServeDeploymentStatus). Pinning to the
+	// head node mirrors how the controller itself is scheduled.
+	ref, err := api.RemotePython[string](serveDependencyProbeModule, serveDependencyProbeFunction, "").
+		WithResources(serveControllerResources).Call()
 	if err != nil {
 		return err
 	}
-	if _, err := api.Get(ref); err != nil {
-		// The Python worker failed to import ray.serve._private.utils, so the
-		// ray[serve] dependencies are not installed.
-		return errServeDependenciesNotInstalled
+	// Bound the probe with a goroutine + select timeout rather than
+	// GetWithTimeout: the C-level ObjectStoreOperations::Get treats a timeout as
+	// a fatal CHECK failure (crashes the head), so a finite timeout cannot be
+	// passed down. The Python validate_endpoint imports ray.serve locally and
+	// never blocks, but this probe schedules a Python worker; when the
+	// cross-language runtime cannot schedule one the Get would otherwise block
+	// forever, hanging every serve request behind depsMu. A goroutine-level
+	// timeout degrades to the same 501 the Python path returns on ImportError.
+	type probeResult struct {
+		err error
 	}
-	return nil
+	done := make(chan probeResult, 1)
+	go func() {
+		_, err := api.Get(ref)
+		done <- probeResult{err: err}
+	}()
+	select {
+	case res := <-done:
+		if res.err != nil {
+			// The Python worker failed to import ray.serve._private.utils, so
+			// the ray[serve] dependencies are not installed.
+			return errServeDependenciesNotInstalled
+		}
+		return nil
+	case <-time.After(serveDepsProbeTimeout):
+		// The probe never completed; degrade this request with a dedicated
+		// timeout error (500) that is not cached, so the next serve request
+		// re-probes. The abandoned Get goroutine may outlive the request, but
+		// it no longer holds depsMu, so subsequent serve requests are not
+		// blocked.
+		return errServeDepsProbeTimeout
+	}
 }
 
 // ServeHead implements the Serve applications API.
@@ -204,15 +242,21 @@ type VersionResponse struct {
 	RayVersion  string `json:"ray_version"`
 	RayCommit   string `json:"ray_commit"`
 	SessionName string `json:"session_name"`
+	// Runtime is a Go-extension additive field exposing the dashboard head's
+	// own runtime init state for oncall. Python has no such field; consumers
+	// reading the original four keys are unaffected.
+	Runtime *head.RuntimeStatus `json:"runtime,omitempty"`
 }
 
 // handleVersion serves GET /api/ray/version, aligned with ServeHead.get_version.
 func (h *ServeHead) handleVersion(w http.ResponseWriter, r *http.Request) {
+	status := head.RuntimeStatusInfo()
 	head.WriteRawJSON(w, http.StatusOK, &VersionResponse{
 		Version:     currentVersion,
 		RayVersion:  version.RayVersion,
 		RayCommit:   version.RayCommit,
 		SessionName: h.cfg.SessionName,
+		Runtime:     &status,
 	})
 }
 
@@ -249,7 +293,10 @@ func (c *pythonServeController) checkAlive() error {
 }
 
 func (c *pythonServeController) getServeInstanceDetails() (map[string]interface{}, error) {
-	ref, err := api.ActorTask[map[string]interface{}](c.handle, "get_serve_instance_details").Remote()
+	// get_serve_instance_details_native returns the instance details dict with
+	// every Enum already reduced to its msgpack-native value (see the thin
+	// method in python/ray/serve/_private/controller.py).
+	ref, err := api.ActorTask[map[string]interface{}](c.handle, "get_serve_instance_details_native").Remote()
 	if err != nil {
 		return nil, err
 	}
@@ -257,11 +304,11 @@ func (c *pythonServeController) getServeInstanceDetails() (map[string]interface{
 }
 
 func (c *pythonServeController) applyConfig(config map[string]interface{}) error {
-	// apply_config(config, deployment_time=0.0, *, is_full_update=True). The
-	// keyword-only is_full_update defaults to True (aligned with the Python
-	// dashboard default RAY_SERVE_DEPLOY_IS_FULL_UPDATE=1), so only the two
-	// positional args are passed cross-language.
-	ref, err := api.ActorTask[any](c.handle, "apply_config", config, 0.0).Remote()
+	// apply_config_native(config, deployment_time) constructs the
+	// ServeDeploySchema on the Python side (the controller cannot accept a raw
+	// dict cross-language). is_full_update stays at its default True, aligned
+	// with the Python dashboard default RAY_SERVE_DEPLOY_IS_FULL_UPDATE=1.
+	ref, err := api.ActorTask[any](c.handle, "apply_config_native", config, 0.0).Remote()
 	if err != nil {
 		return err
 	}
@@ -272,14 +319,13 @@ func (c *pythonServeController) applyConfig(config map[string]interface{}) error
 }
 
 func (c *pythonServeController) shutdown() error {
-	ref, err := api.ActorTask[any](c.handle, "shutdown").Remote()
+	ref, err := api.ActorTask[any](c.handle, "graceful_shutdown").Remote()
 	if err != nil {
 		return err
 	}
-	// The wrapper's shutdown calls the real controller's graceful_shutdown and
-	// swallows the RayActorError raised when the controller is killed; any
-	// error here is treated as the controller being gone, which is the expected
-	// outcome of a shutdown.
+	// graceful_shutdown kills the controller, so the awaited Get surfaces a
+	// RayActorError; that is the expected outcome of a shutdown and is
+	// swallowed (any other error is also treated as the controller being gone).
 	if _, err := api.Get(ref); err != nil {
 		log.Log.V(1).Info("serve controller shutdown returned error", "err", err)
 	}
@@ -314,7 +360,10 @@ func (c *pythonServeController) listServeStatuses() ([][]byte, error) {
 }
 
 func (c *pythonServeController) updateDeploymentReplicas(deploymentID map[string]interface{}, targetNumReplicas int) error {
-	ref, err := api.ActorTask[any](c.handle, "update_deployment_replicas", deploymentID, targetNumReplicas).Remote()
+	// update_deployment_replicas_native constructs the DeploymentID on the
+	// Python side from the raw dict (see the thin method in
+	// python/ray/serve/_private/controller.py).
+	ref, err := api.ActorTask[any](c.handle, "update_deployment_replicas_native", deploymentID, targetNumReplicas).Remote()
 	if err != nil {
 		return err
 	}
@@ -324,37 +373,20 @@ func (c *pythonServeController) updateDeploymentReplicas(deploymentID map[string
 	return nil
 }
 
-// getServeControllerFn returns the ServeControllerWrapper actor handle, or an
-// error when no serve instance is running. It is a package-level variable so
-// tests can inject a fake controller.
+// getServeControllerFn returns the original ServeController actor handle
+// (discovered by name/namespace), or nil when no serve instance is running. It
+// is a package-level variable so tests can inject a fake controller.
 //
-// The wrapper is a non-detached dashboard proxy: it is created on first use
-// (Get-first, Create-fallback) and recycled with the dashboard driver, so a
-// fresh Create never collides with a leftover actor. Its constructor binds the
-// real ServeController via ray.get_actor, so creation fails (and the caller
-// degrades) when no serve instance is running.
+// The controller is detached and created by the Python serve machinery
+// (get_controller_impl), so Go only discovers it: no wrapper actor is created
+// and no resources need to be inherited. A not-initialized runtime is surfaced
+// so the caller can lazily initialize and retry; absence of the controller
+// means "no serve instance running" -> caller degrades (aligned with
+// ServeHead.get_serve_controller).
 var getServeControllerFn = func() (serveController, error) {
 	handle, err := api.GetPythonActorWithNamespace(
 		serveControllerName, serveNamespace, serveControllerModule, serveControllerClass)
-	if err == nil {
-		log.Log.Info("serve: got existing wrapper")
-		return &pythonServeController{handle: handle}, nil
-	}
-	// A not-initialized runtime (e.g. the GCS was not ready when the head
-	// started) is surfaced to the caller so it can lazily initialize and retry;
-	// any other error means no serve instance is running and we degrade.
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		return nil, err
-	}
-	// No wrapper yet. Only create it when a real ServeController exists,
-	// otherwise the wrapper's __init__ (which binds the controller via
-	// ray.get_actor) dies asynchronously and the cached dead handle surfaces
-	// as a misleading 503. Mirroring ServeHead.get_serve_controller, absence
-	// of the controller means "no serve instance running" -> caller degrades.
-	// SERVE_CONTROLLER_ACTOR is the detached controller name from
-	// ray.serve._private.constants.
-	if _, err := api.GetPythonActorWithNamespace(
-		"SERVE_CONTROLLER_ACTOR", serveNamespace, "ray.serve._private.controller", "ServeController"); err != nil {
+	if err != nil {
 		if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
 			return nil, err
 		}
@@ -363,17 +395,6 @@ var getServeControllerFn = func() (serveController, error) {
 		// the dashboard log on every request when no serve instance is running.
 		log.Log.V(1).Info("serve: no real controller, degrade", "err", err)
 		return nil, nil
-	}
-	log.Log.Info("serve: real controller exists, creating wrapper")
-	handle, err = api.RemotePythonActor(serveControllerModule, serveControllerClass).
-		WithName(serveControllerName).WithNamespace(serveNamespace).
-		WithResources(serveControllerResources).
-		WithMaxRestarts(serveControllerMaxRestarts).
-		WithMaxTaskRetries(serveControllerMaxTaskRetries).
-		WithMaxConcurrency(serveControllerMaxConcurrency).
-		Create()
-	if err != nil {
-		return nil, err
 	}
 	return &pythonServeController{handle: handle}, nil
 }
@@ -394,40 +415,23 @@ func (h *ServeHead) getServeController() (serveController, error) {
 		}
 	}
 	controller, err := getServeControllerFn()
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		// The Go runtime failed to initialize at startup (e.g. the GCS was not
-		// ready during `ray start`). Lazily initialize it now, mirroring the
-		// Python dashboard's require_initialized which ray.init()s on the first
-		// request, so the head recovers the cross-language runtime without a
-		// restart. EnsureInitialized is a no-op once initialized and serialized
-		// against concurrent calls. Retry once after a successful init; on
-		// failure degrade to "no serve instance" so the caller returns the
-		// empty schema instead of a hard error.
-		if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-			log.Log.Info("serve: go runtime not initialized, degrade", "err", initErr)
-			return nil, nil
-		}
-		controller, err = getServeControllerFn()
-	}
 	if err != nil {
 		log.Log.V(1).Info("no serve controller available", "err", err)
 		return nil, nil
 	}
 	if controller == nil {
-		// No serve instance running (getServeControllerFn could not find a
-		// real controller, so it did not create a wrapper). Aligned with
-		// ServeHead.get_serve_controller returning None.
+		// No serve instance running (getServeControllerFn could not find the
+		// real controller). Aligned with ServeHead.get_serve_controller
+		// returning None.
 		return nil, nil
 	}
-	// The wrapper is created asynchronously (RemotePythonActor.Create returns
-	// before the wrapper __init__ binds the real controller), so a freshly
-	// created wrapper whose __init__ failed to find a real controller is
-	// already dead. Validate it before caching so a dead wrapper degrades to
-	// nil (aligned with ServeHead.get_serve_controller returning None when no
-	// serve instance is running) instead of poisoning the cache with a dead
-	// actor that later surfaces as a 503.
+	// Validate the discovered controller with check_alive before caching: a
+	// stale handle pointing at a dead controller degrades to nil (aligned with
+	// ServeHead.get_serve_controller returning None when no serve instance is
+	// running) instead of poisoning the cache with a dead actor that later
+	// surfaces as a 503.
 	if err := controller.checkAlive(); err != nil {
-		log.Log.Info("serve controller wrapper is dead, no serve instance running", "err", err)
+		log.Log.Info("serve controller is dead, no serve instance running", "err", err)
 		return nil, nil
 	}
 	h.controller = controller
@@ -438,8 +442,10 @@ func (h *ServeHead) getServeController() (serveController, error) {
 // installed, aligned with validate_endpoint in
 // python/ray/dashboard/modules/serve/serve_head.py which imports ray.serve
 // before handling any serve request and returns 501 "Serve dependencies are
-// not installed" on ImportError. The result is cached per process like the
-// flow module's dependency check. When the Go runtime cannot be initialized
+// not installed" on ImportError. A positive result is cached per process like
+// the flow module's dependency check; a failed probe is cached too, but a
+// timed-out probe is not (a slow python worker must not degrade serve for the
+// process lifetime). When the Go runtime cannot be initialized
 // (so no Python worker can be scheduled to probe the import), the check
 // degrades to proceeding: the caller still degrades to the empty schema when
 // no serve instance is running.
@@ -454,17 +460,23 @@ func (h *ServeHead) checkServeDependencies() error {
 	}
 	if err := checkServeDepsFn(); err != nil {
 		if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-			if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-				log.Log.Info("serve: go runtime not initialized, skip dependency check", "err", initErr)
-				return nil
-			}
-			err = checkServeDepsFn()
+			// The Go runtime is not available (the withRuntimeInitialization
+			// middleware would normally have initialized it; when a handler is
+			// reached with the runtime still down, e.g. a direct handler test,
+			// the probe cannot run). Skip the dependency check and let the
+			// caller degrade to "no serve instance" (empty schema) instead of
+			// reporting a misleading 501.
+			return nil
 		}
-		if err != nil {
-			h.depsChecked = true
-			h.depsOK = false
-			return errServeDependenciesNotInstalled
+		if errors.Is(err, errServeDepsProbeTimeout) {
+			// A timed-out probe is not evidence that the dependencies are
+			// missing. Leave depsChecked/depsOK untouched so the next serve
+			// request re-probes instead of serving a cached 501 forever.
+			return err
 		}
+		h.depsChecked = true
+		h.depsOK = false
+		return errServeDependenciesNotInstalled
 	}
 	h.depsChecked = true
 	h.depsOK = true
@@ -478,7 +490,14 @@ func (h *ServeHead) handleGetApplications(w http.ResponseWriter, r *http.Request
 	// @validate_endpoint() decorator which runs before get_serve_instance_details
 	// parses the request: a missing ray[serve] install returns 501.
 	if err := h.checkServeDependencies(); err != nil {
-		http.Error(w, err.Error(), http.StatusNotImplemented)
+		if errors.Is(err, errServeDependenciesNotInstalled) {
+			http.Error(w, err.Error(), http.StatusNotImplemented)
+			return
+		}
+		// A timed-out probe (or any other probe failure) is a transient
+		// server-side problem, not "dependencies missing": degrade with 500
+		// and let the next request re-probe.
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	apiTypeStr := r.URL.Query().Get("api_type")
@@ -513,10 +532,11 @@ func (h *ServeHead) handleGetApplications(w http.ResponseWriter, r *http.Request
 }
 
 // serveEmptyInstanceDetails returns ServeInstanceDetails.get_empty_schema_dict()
-// (python/ray/serve/schema.py), representing no Serve instance running.
+// (python/ray/serve/schema.py), representing no Serve instance running. This
+// tree's ServeInstanceDetails has no deploy_mode field (single-app mode was
+// removed upstream), so the mirror carries the four keys of the current schema.
 func serveEmptyInstanceDetails() map[string]interface{} {
 	return map[string]interface{}{
-		"deploy_mode":     "MULTI_APP",
 		"controller_info": map[string]interface{}{},
 		"proxies":         map[string]interface{}{},
 		"applications":    map[string]interface{}{},
@@ -768,7 +788,14 @@ func (h *ServeHead) handlePutApplications(w http.ResponseWriter, r *http.Request
 	// Dependency pre-check, aligned with the Python @validate_endpoint()
 	// decorator on put_all_applications.
 	if err := h.checkServeDependencies(); err != nil {
-		http.Error(w, err.Error(), http.StatusNotImplemented)
+		if errors.Is(err, errServeDependenciesNotInstalled) {
+			http.Error(w, err.Error(), http.StatusNotImplemented)
+			return
+		}
+		// A timed-out probe (or any other probe failure) is a transient
+		// server-side problem, not "dependencies missing": degrade with 500
+		// and let the next request re-probe.
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	body, err := io.ReadAll(r.Body)
@@ -817,7 +844,7 @@ func (h *ServeHead) handlePutApplications(w http.ResponseWriter, r *http.Request
 	}
 	// Record the SERVE_REST_API_VERSION usage tag, aligned with
 	// ServeHead.put_all_applications. The config's http_options/logging_config
-	// are carried inside the deploy config passed to applyConfig (the wrapper
+	// are carried inside the deploy config passed to applyConfig (the controller
 	// parses ServeDeploySchema which includes them); http_options are only
 	// honored on startup, which matches the Python behavior of ignoring them
 	// when Serve is already running.
@@ -889,9 +916,7 @@ func (h *ServeHead) startServeController(ctx context.Context, config map[string]
 			return nil, err
 		}
 		if controller, err := getServeControllerFn(); err != nil {
-			if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-				return nil, err
-			}
+			return nil, err
 		} else if controller != nil {
 			log.Log.Info("serve: controller started cross-language")
 			return controller, nil

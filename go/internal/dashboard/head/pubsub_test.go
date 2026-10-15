@@ -392,6 +392,61 @@ func TestActorSubscriberUpdates(t *testing.T) {
 	}
 }
 
+// TestHandleActorUpdateBackfillsActorIDFromKey verifies the actor update
+// callback backfills the actor id from the pubsub message key_id when the
+// inner ActorTableData.actor_id is empty. The GCS publishes ALIVE/DEAD updates
+// with an empty inner actor id and only the message key carries the id; without
+// the backfill the state transition is dropped (or, in the dashboard cache,
+// keyed by an empty id) and the actor stays stuck in PENDING_CREATION.
+func TestHandleActorUpdateBackfillsActorIDFromKey(t *testing.T) {
+	srv := &mockPubSubServer{publisherID: []byte("publisher-a")}
+	client, stop := startMockPubSub(t, srv)
+	defer stop()
+	defer client.Close()
+
+	actorIDHex := "2b4fbd00000000000000000000000000000000000000000000000000000000"
+	msg := &proto.PubMessage{
+		ChannelType: proto.ChannelType_GCS_ACTOR_CHANNEL,
+		KeyId:       []byte(actorIDHex),
+		SequenceId:  1,
+		InnerMessage: &proto.PubMessage_ActorMessage{
+			ActorMessage: &proto.ActorTableData{
+				State:       proto.ActorTableData_ALIVE,
+				ClassName:   "Counter",
+				NumRestarts: 2,
+			},
+		},
+	}
+	srv.mu.Lock()
+	srv.pollQueue = [][]*proto.PubMessage{{msg}}
+	srv.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sub := NewActorSubscriber(client)
+	ch, errCh := sub.Updates(ctx)
+
+	select {
+	case got := <-ch:
+		if string(got.ActorId) != actorIDHex {
+			t.Fatalf("actor id = %q, want backfilled %q", got.ActorId, actorIDHex)
+		}
+		if got.State != proto.ActorTableData_ALIVE {
+			t.Fatalf("actor state = %v, want ALIVE", got.State)
+		}
+		if got.NumRestarts != 2 {
+			t.Fatalf("num restarts = %d, want 2", got.NumRestarts)
+		}
+		if got.ClassName != "Counter" {
+			t.Fatalf("class name = %q, want Counter", got.ClassName)
+		}
+	case err := <-errCh:
+		t.Fatalf("actor subscriber error: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for actor update")
+	}
+}
+
 // TestPollTransientErrorClassification verifies the error classification used
 // by the updates loop: deadline-exceeded and unavailable poll errors are
 // transient (the loop keeps polling), other errors terminate the loop.

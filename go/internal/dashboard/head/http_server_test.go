@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -124,6 +125,59 @@ func TestWithRecoverCatchesPanic(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("unexpected code: %d", rec.Code)
+	}
+}
+
+// TestWithRecoverProtectsRuntimeInitialization verifies the middleware order
+// itself: withRuntimeInitialization invoked through withRecover (as wired in
+// NewHTTPServer) turns an init panic into a recovered 500 instead of escaping
+// to net/http.
+func TestWithRecoverProtectsRuntimeInitialization(t *testing.T) {
+	resetInitBackoff()
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error { panic("boom in init") }
+	defer func() { initWithConfigFn = orig }()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	initH := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+	var h http.Handler = withRecover(log.Log, initH)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/serve/applications/", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("init panic under recover = %d, want 500", rec.Code)
+	}
+}
+
+// TestFullChainInitPanicReturns500 verifies a panic in the lazy runtime
+// initializer surfaces a real 500 instead of escaping to net/http as a silent
+// connection reset, and that withAccessLog records the truthful status. This
+// is the D4 contract: init runs inside withRecover so the request dies with a
+// 500 + stack trace in the log, never a phantom 200.
+func TestFullChainInitPanicReturns500(t *testing.T) {
+	resetInitBackoff()
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error { panic("boom in init") }
+	defer func() { initWithConfigFn = orig }()
+
+	// Build the production chain shape (metrics not needed for this test;
+	// withRuntimeInitialization sits INSIDE withRecover, outside
+	// withAccessLog) exactly as NewHTTPServer wires it.
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/serve/applications/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	initH := withRuntimeInitialization(&HeadConfig{}, nil, mux)
+	var h http.Handler = withRecover(log.Log, initH)
+	h = withAccessLog(h)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/serve/applications/", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("chain panic = %d, want 500", rec.Code)
+	}
+	if got := rec.Body.String(); !strings.Contains(got, "500 Internal Server Error") {
+		t.Fatalf("500 body = %q, want standard 500 body", got)
 	}
 }
 
@@ -643,6 +697,7 @@ func TestBuiltinRoutesMethodRestricted(t *testing.T) {
 		{"POST", "/favicon.ico", http.StatusMethodNotAllowed},
 		{"POST", "/api/authentication_mode", http.StatusMethodNotAllowed},
 		{"GET", "/api/authenticate", http.StatusMethodNotAllowed},
+		{"GET", "/report_events", http.StatusMethodNotAllowed},
 		{"OPTIONS", "/", http.StatusMethodNotAllowed},
 		{"GET", "/api/authentication_mode", http.StatusOK},
 		{"GET", "/favicon.ico", http.StatusOK},
@@ -659,6 +714,13 @@ func TestBuiltinRoutesMethodRestricted(t *testing.T) {
 	srv.server.Handler.ServeHTTP(rec, httptest.NewRequest("POST", "/timezone", nil))
 	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, "GET") {
 		t.Errorf("Allow header = %q, want GET", allow)
+	}
+	// GET /report_events advertises POST, matching the aiohttp HTTPMethodNotAllowed
+	// Allow header for the POST-only route.
+	rec = httptest.NewRecorder()
+	srv.server.Handler.ServeHTTP(rec, httptest.NewRequest("GET", "/report_events", nil))
+	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, "POST") {
+		t.Errorf("Allow header = %q, want POST", allow)
 	}
 }
 
@@ -815,5 +877,172 @@ func TestStaticHandlerRejectsSymlink(t *testing.T) {
 	}
 	if rec.Body.String() != "secret" {
 		t.Fatalf("served body = %q, want secret", rec.Body.String())
+	}
+}
+
+// TestWithRuntimeInitializationSkipsNonRuntimePath verifies the middleware is
+// a no-op for paths outside the cross-language prefixes (state/jobs/version/..)
+// and the inner handler runs without initializing the runtime.
+func TestWithRuntimeInitializationSkipsNonRuntimePath(t *testing.T) {
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) })
+	h := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/jobs/", nil))
+	if !called {
+		t.Fatal("inner handler not called for non-runtime path")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("non-runtime path = %d, want 200", rec.Code)
+	}
+}
+
+// TestWithRuntimeInitializationRunsInnerOnSuccess verifies a successful lazy
+// init (initWithConfigFn returns nil) lets the request through and the inner
+// handler runs.
+func TestWithRuntimeInitializationRunsInnerOnSuccess(t *testing.T) {
+	resetInitBackoff()
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error { return nil }
+	defer func() { initWithConfigFn = orig }()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) })
+	h := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/serve/applications/", nil))
+	if !called {
+		t.Fatal("inner handler not called after successful init")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("runtime path after init = %d, want 200", rec.Code)
+	}
+}
+
+// TestWithRuntimeInitializationReturns500OnFailure verifies an init failure
+// surfaces HTTP 500 (aligned with the Python init_ray_and_catch_exceptions
+// decorator's HTTPInternalServerError) and the inner handler is NOT run.
+func TestWithRuntimeInitializationReturns500OnFailure(t *testing.T) {
+	resetInitBackoff()
+	sentinel := errors.New("gcs not ready")
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error { return sentinel }
+	defer func() { initWithConfigFn = orig }()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) })
+	h := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/train/v2/runs/v1", nil))
+	if called {
+		t.Fatal("inner handler ran despite init failure")
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("runtime path init failure = %d, want 500", rec.Code)
+	}
+}
+
+// TestWithRuntimeInitializationBarePrefixesStayUnhandled verifies the prefix
+// matching does not fire on prefix-like paths without the trailing slash (e.g.
+// /api/data without /), which are not registered routes and must pass through
+// to the 404 path untouched.
+func TestWithRuntimeInitializationBarePrefixesStayUnhandled(t *testing.T) {
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error { return errors.New("must not init") }
+	defer func() { initWithConfigFn = orig }()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	h := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+
+	for _, path := range []string{"/api/data", "/api/train", "/api/serve", "/api/flow"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("bare prefix %s = %d, want 200 (middleware no-op)", path, rec.Code)
+		}
+	}
+}
+
+// routeNeedsRuntime lists every registered cross-language route whose handler
+// calls Python actors and therefore requires the Go runtime to be initialized
+// before it runs. Keep in sync with the modules' RegisterHTTP; the routes are
+// written as the exact registered patterns so TestRuntimeInitRouteCoverage
+// fails loudly when a future runtime-needing route is added without updating
+// the middleware's prefix whitelist.
+var routeNeedsRuntime = []string{
+	// serve (serve.go RegisterHTTP)
+	"/api/v1/applications/{application_name}/deployments/{deployment_name}/scale",
+	// flow (flow.go RegisterHTTP): jobs + plugins both cross-language.
+	"/api/flow/jobs/",
+	"/api/flow/plugins/",
+	// train (train.go RegisterHTTP)
+	"/api/train/v2/runs/",
+	// data (data.go RegisterHTTP)
+	"/api/data/datasets/",
+}
+
+// TestRuntimeInitRouteCoverage enforces that every registered cross-language
+// route is covered by the withRuntimeInitialization prefix whitelist. This is
+// the guard against the D2 class of regression: the scale route under /api/v1/
+// fell through the middleware (503) because it was not prefixed, and Python's
+// scale_deployment carries @init_ray_and_catch_exceptions.
+func TestRuntimeInitRouteCoverage(t *testing.T) {
+	for _, route := range routeNeedsRuntime {
+		covered := false
+		for _, p := range runtimeInitPathPrefixes {
+			if strings.HasPrefix(route, p) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			t.Errorf("route %s requires runtime but is not covered by runtimeInitPathPrefixes %v", route, runtimeInitPathPrefixes)
+		}
+	}
+}
+
+// TestRuntimeInitRouteCoverageScale verifies the scale route specifically is
+// caught by the middleware prefix, pinning the D2 fix (scale must initialize
+// the runtime like Python's decorated scale_deployment, returning 500 on init
+// failure rather than the pre-fix 503 regression).
+func TestRuntimeInitRouteCoverageScale(t *testing.T) {
+	resetInitBackoff()
+	orig := initWithConfigFn
+	failInit := errors.New("runtime init failed")
+	initWithConfigFn = func(cfg *HeadConfig) error { return failInit }
+	defer func() { initWithConfigFn = orig }()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) })
+	h := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/applications/myapp/deployments/mydep/scale", nil))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("scale with failing init = %d, want 500 (middleware must init the scale route)", rec.Code)
+	}
+}
+
+// TestRuntimeInitRouteCoverageScaleSucceeds verifies that once the scale route
+// is prefixed, a successful init lets the scale request through to its handler.
+func TestRuntimeInitRouteCoverageScaleSucceeds(t *testing.T) {
+	resetInitBackoff()
+	orig := initWithConfigFn
+	initWithConfigFn = func(cfg *HeadConfig) error { return nil }
+	defer func() { initWithConfigFn = orig }()
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) })
+	h := withRuntimeInitialization(&HeadConfig{}, nil, inner)
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/v1/applications/myapp/deployments/mydep/scale", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scale after successful init = %d, want 200", rec.Code)
+	}
+	if !called {
+		t.Fatal("inner handler not called for scale after successful init")
 	}
 }

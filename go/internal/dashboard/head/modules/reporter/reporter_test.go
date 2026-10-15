@@ -339,3 +339,100 @@ func TestWorkerTracebackRequiresIPOrNode(t *testing.T) {
 		t.Fatalf("missing ip/node_id should be 400, got %d", rr.Code)
 	}
 }
+
+func TestParseClusterStatusV2NilReply(t *testing.T) {
+	cs := parseClusterStatusV2(nil)
+	if cs == nil {
+		t.Fatal("parseClusterStatusV2(nil) returned nil")
+	}
+	if len(cs.activeNodes) != 0 || len(cs.idleNodes) != 0 || len(cs.pendingNodes) != 0 {
+		t.Fatalf("nil reply should produce no nodes, got active=%d idle=%d pending=%d", len(cs.activeNodes), len(cs.idleNodes), len(cs.pendingNodes))
+	}
+	if len(cs.clusterUsage) != 0 {
+		t.Fatalf("nil reply should produce empty cluster usage, got %v", cs.clusterUsage)
+	}
+	if cs.requestTsS <= 0 {
+		t.Fatalf("nil reply should keep a non-zero request timestamp, got %v", cs.requestTsS)
+	}
+}
+
+func TestParseClusterStatusV2UnsetOptionalFields(t *testing.T) {
+	// A reply with neither ClusterResourceState nor AutoscalingState set must
+	// not panic (both are optional proto message fields the GCS may omit).
+	cs := parseClusterStatusV2(&proto.GetClusterStatusReply{})
+	if cs == nil {
+		t.Fatal("parseClusterStatusV2(&proto.GetClusterStatusReply{}) returned nil")
+	}
+	if len(cs.activeNodes) != 0 || len(cs.idleNodes) != 0 || len(cs.pendingNodes) != 0 {
+		t.Fatalf("unset fields should produce no nodes, got active=%d idle=%d pending=%d", len(cs.activeNodes), len(cs.idleNodes), len(cs.pendingNodes))
+	}
+	if len(cs.pendingLaunches) != 0 || len(cs.failedLaunches) != 0 {
+		t.Fatalf("unset fields should produce no launches, got pending=%d failed=%d", len(cs.pendingLaunches), len(cs.failedLaunches))
+	}
+}
+
+func TestParseClusterStatusV2PopulatedReply(t *testing.T) {
+	reply := &proto.GetClusterStatusReply{
+		ClusterResourceState: &proto.ClusterResourceState{
+			NodeStates: []*proto.NodeState{
+				{
+					InstanceTypeName:   "m4.large",
+					RayNodeTypeName:    "worker",
+					InstanceId:         "i-1",
+					NodeIpAddress:      "1.1.1.1",
+					NodeId:             []byte{0x01},
+					Status:             proto.NodeStatus_RUNNING,
+					TotalResources:     map[string]float64{"CPU": 4},
+					AvailableResources: map[string]float64{"CPU": 1},
+				},
+				{
+					InstanceTypeName: "m4.large",
+					RayNodeTypeName:  "worker",
+					InstanceId:       "i-2",
+					NodeIpAddress:    "1.1.1.2",
+					NodeId:           []byte{0x02},
+					Status:           proto.NodeStatus_DEAD,
+				},
+			},
+			PendingResourceRequests: []*proto.ResourceRequestByCount{
+				{Count: 2, Request: &proto.ResourceRequest{ResourcesBundle: map[string]float64{"CPU": 1}}},
+			},
+		},
+		AutoscalingState: &proto.AutoscalingState{
+			PendingInstanceRequests: []*proto.PendingInstanceRequest{
+				{RayNodeTypeName: "worker", Count: 1, RequestTs: 1000},
+			},
+			FailedInstanceRequests: []*proto.FailedInstanceRequest{
+				{RayNodeTypeName: "gpu", Count: 1, StartTs: 2000, Reason: "insufficient capacity"},
+			},
+			PendingInstances: []*proto.PendingInstance{
+				{InstanceTypeName: "p3", RayNodeTypeName: "gpu", InstanceId: "i-3", Details: "requested"},
+			},
+		},
+	}
+	cs := parseClusterStatusV2(reply)
+	if cs == nil {
+		t.Fatal("parseClusterStatusV2(populated) returned nil")
+	}
+	if len(cs.activeNodes) != 1 || len(cs.failedNodes) != 1 {
+		t.Fatalf("nodes = active %d failed %d, want 1 each", len(cs.activeNodes), len(cs.failedNodes))
+	}
+	if got := cs.activeNodes[0].resourceUsage; len(got) != 1 || got[0].name != "CPU" || got[0].total != 4 || got[0].used != 3 {
+		t.Fatalf("active node usage = %+v, want CPU used=3 total=4", got)
+	}
+	if cs.clusterUsage["CPU"] != [2]float64{3, 4} {
+		t.Fatalf("clusterUsage CPU = %v, want [3 4]", cs.clusterUsage["CPU"])
+	}
+	if len(cs.pendingLaunches) != 1 || cs.pendingLaunches[0].rayNodeTypeName != "worker" || cs.pendingLaunches[0].count != 1 {
+		t.Fatalf("pendingLaunches = %+v", cs.pendingLaunches)
+	}
+	if len(cs.failedLaunches) != 1 || cs.failedLaunches[0].rayNodeTypeName != "gpu" || cs.failedLaunches[0].details != "insufficient capacity" {
+		t.Fatalf("failedLaunches = %+v", cs.failedLaunches)
+	}
+	if len(cs.pendingNodes) != 1 || cs.pendingNodes[0].instanceID != "i-3" {
+		t.Fatalf("pendingNodes = %+v", cs.pendingNodes)
+	}
+	if len(cs.resourceDemand) != 1 || cs.resourceDemand[0].count != 2 {
+		t.Fatalf("resourceDemand = %+v", cs.resourceDemand)
+	}
+}

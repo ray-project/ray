@@ -1135,3 +1135,49 @@ func TestPurgeDeadNodeStats(t *testing.T) {
 		t.Fatalf("core worker index still holds worker of purged node: %v", ds.coreWorkerStats)
 	}
 }
+
+// TestApplyActorUpdateReplacesInsteadOfMutating pins the copy-on-write cache
+// update: an existing entry is replaced with a new pointer (HTTP handlers may
+// hold and read the previously published pointer without d.mu) whose state
+// columns come from the update while the identity columns are preserved, and
+// the previously published record is never touched.
+func TestApplyActorUpdateReplacesInsteadOfMutating(t *testing.T) {
+	existing := &proto.ActorTableData{
+		ActorId:     []byte{0x01, 0x02},
+		Name:        "actor_a",
+		ClassName:   "MyClass",
+		State:       proto.ActorTableData_DEPENDENCIES_UNREADY,
+		NumRestarts: 3,
+	}
+	id := hex.EncodeToString(existing.ActorId)
+	d := &DataSource{actors: map[string]*proto.ActorTableData{id: existing}}
+
+	update := &proto.ActorTableData{
+		// The GCS publishes ALIVE/DEAD updates with the identity columns empty.
+		ActorId:     append([]byte(nil), existing.ActorId...),
+		State:       proto.ActorTableData_ALIVE,
+		NumRestarts: existing.NumRestarts + 1,
+	}
+	d.applyActorUpdate(update)
+
+	got := d.Actor(id)
+	if got == existing {
+		t.Fatalf("the cached entry was mutated in place instead of replaced")
+	}
+	if got.State != proto.ActorTableData_ALIVE || got.NumRestarts != 4 {
+		t.Fatalf("state columns not updated: state=%v restarts=%d", got.State, got.NumRestarts)
+	}
+	if got.Name != "actor_a" || got.ClassName != "MyClass" {
+		t.Fatalf("identity columns wiped: name=%q class=%q", got.Name, got.ClassName)
+	}
+	if existing.State != proto.ActorTableData_DEPENDENCIES_UNREADY || existing.NumRestarts != 3 {
+		t.Fatalf("the previously published record was mutated: state=%v restarts=%d", existing.State, existing.NumRestarts)
+	}
+
+	// A brand-new actor id is inserted as-is (the insert path of the merge).
+	fresh := &proto.ActorTableData{ActorId: []byte{0x03}, Name: "actor_b", State: proto.ActorTableData_ALIVE}
+	d.applyActorUpdate(fresh)
+	if got := d.Actor(hex.EncodeToString(fresh.ActorId)); got != fresh {
+		t.Fatalf("new entry not inserted: got %+v", got)
+	}
+}

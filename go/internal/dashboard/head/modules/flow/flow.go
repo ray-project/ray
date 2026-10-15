@@ -497,26 +497,17 @@ func (h *FlowHead) checkFlowDependencies() error {
 	}
 	if err := checkFlowDepsFn(h); err != nil {
 		if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-			// The Go runtime failed to initialize at startup (e.g. the GCS was
-			// not ready during `ray start`). Lazily initialize it now and retry
-			// once, mirroring the other cross-language modules. When the runtime
-			// still cannot be initialized the probe cannot run: degrade to
-			// proceeding (the subsequent body validation still applies), which
-			// mirrors the gap between Go and Python noted below.
-			if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-				log.Log.Info("flow: go runtime not initialized, skip dependency check", "err", initErr)
-				return nil
-			}
-			err = checkFlowDepsFn(h)
+			// The Go runtime is not available (the withRuntimeInitialization
+			// middleware would normally have initialized it; when a handler is
+			// reached with the runtime still down, e.g. a direct handler test,
+			// the probe cannot run). Skip the dependency check; the subsequent
+			// body validation still applies, matching the pre-middleware
+			// degrade behavior.
+			return nil
 		}
-		if err != nil {
-			// The probe failed after the runtime was available: treat it as
-			// dependencies-not-installed. Python returns 501 whenever it cannot
-			// import ray.flow.driver.
-			h.depsChecked = true
-			h.depsOK = false
-			return errFlowDependenciesNotInstalled
-		}
+		h.depsChecked = true
+		h.depsOK = false
+		return errFlowDependenciesNotInstalled
 	}
 	h.depsChecked = true
 	h.depsOK = true
@@ -909,9 +900,7 @@ var startFlowControllerFn = func(ctx context.Context, h *FlowHead) (flowControll
 			return nil, err
 		}
 		if controller, err := getFlowControllerFn(); err != nil {
-			if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-				return nil, err
-			}
+			return nil, err
 		} else if controller != nil {
 			log.Log.Info("flow: controller started cross-language")
 			return controller, nil
@@ -944,21 +933,6 @@ func (h *FlowHead) getFlowController() (flowController, error) {
 		}
 	}
 	controller, err := getFlowControllerFn()
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		// The Go runtime failed to initialize at startup (e.g. the GCS was not
-		// ready during `ray start`). Lazily initialize it now, mirroring the
-		// Python dashboard's require_initialized which ray.init()s on the first
-		// request, so the head recovers the cross-language runtime without a
-		// restart. EnsureInitialized is a no-op once initialized and serialized
-		// against concurrent calls. Retry once after a successful init; on
-		// failure degrade to nil so the handler surfaces "FlowController is not
-		// running" instead of a hard error.
-		if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-			log.Log.Info("flow: go runtime not initialized, degrade", "err", initErr)
-			return nil, nil
-		}
-		controller, err = getFlowControllerFn()
-	}
 	if err != nil {
 		log.Log.V(1).Info("no flow controller available", "err", err)
 		return nil, nil

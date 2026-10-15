@@ -437,16 +437,23 @@ func TestVersionEndpoint(t *testing.T) {
 		t.Fatalf("status = %d", rr.Code)
 	}
 	var v struct {
-		Version     string `json:"version"`
-		RayVersion  string `json:"ray_version"`
-		RayCommit   string `json:"ray_commit"`
-		SessionName string `json:"session_name"`
+		Version     string              `json:"version"`
+		RayVersion  string              `json:"ray_version"`
+		RayCommit   string              `json:"ray_commit"`
+		SessionName string              `json:"session_name"`
+		Runtime     *head.RuntimeStatus `json:"runtime"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &v); err != nil {
 		t.Fatal(err)
 	}
 	if v.Version != "4" || v.RayVersion != "3.0.0.dev0" || v.RayCommit == "" || v.SessionName != "sess_abc" {
 		t.Fatalf("version = %+v", v)
+	}
+	if v.Runtime == nil {
+		t.Fatalf("version response missing additive runtime object: %+v", v)
+	}
+	if v.Runtime.Attempts < 0 {
+		t.Fatalf("negative runtime attempt count: %+v", v.Runtime)
 	}
 	// Bare JSON: no result/msg/data wrapper.
 	if strings.Contains(rr.Body.String(), `"result"`) {

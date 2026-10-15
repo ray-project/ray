@@ -1403,6 +1403,82 @@ def test_start_log_monitor_requires_cluster_id_for_go(monkeypatch):
         )
 
 
+def test_check_raygo_raises_when_switch_on_and_binary_missing(monkeypatch):
+    """GO switch on but raygo binary missing must fail fast at startup."""
+    monkeypatch.setattr(
+        ray._private.services,
+        "_GO_SWITCHES_REQUIRING_RAYGO",
+        (("RAY_ENABLE_GO_DASHBOARD_HEAD", True),),
+    )
+    monkeypatch.setattr(ray._private.services, "RAYGO_EXECUTABLE", "/nonexistent/raygo")
+
+    with pytest.raises(RuntimeError, match="RAY_ENABLE_GO_DASHBOARD_HEAD"):
+        ray._private.services.check_raygo_available_for_go_switches()
+
+
+def test_check_raygo_no_raise_when_switch_on_and_binary_present(monkeypatch, tmp_path):
+    """GO switch on and raygo present must not raise."""
+    raygo = tmp_path / "raygo"
+    raygo.write_bytes(b"")
+    monkeypatch.setattr(
+        ray._private.services,
+        "_GO_SWITCHES_REQUIRING_RAYGO",
+        (("RAY_ENABLE_GO_DASHBOARD_HEAD", True),),
+    )
+    monkeypatch.setattr(ray._private.services, "RAYGO_EXECUTABLE", str(raygo))
+
+    ray._private.services.check_raygo_available_for_go_switches()
+
+
+def test_check_raygo_no_raise_when_no_switch_enabled(monkeypatch):
+    """No GO switch enabled must not raise even if the binary is missing."""
+    monkeypatch.setattr(
+        ray._private.services,
+        "_GO_SWITCHES_REQUIRING_RAYGO",
+        (("RAY_ENABLE_GO_DASHBOARD_HEAD", False),),
+    )
+    monkeypatch.setattr(ray._private.services, "RAYGO_EXECUTABLE", "/nonexistent/raygo")
+
+    ray._private.services.check_raygo_available_for_go_switches()
+
+
+def test_check_raygo_error_message_lists_switches_and_fix(monkeypatch):
+    """Error message must name the enabled switches and the fix hint."""
+    monkeypatch.setattr(
+        ray._private.services,
+        "_GO_SWITCHES_REQUIRING_RAYGO",
+        (
+            ("RAY_ENABLE_GO_DASHBOARD_HEAD", True),
+            ("RAY_ENABLE_GO_SETUP_WORKER", True),
+        ),
+    )
+    monkeypatch.setattr(ray._private.services, "RAYGO_EXECUTABLE", "/nonexistent/raygo")
+
+    with pytest.raises(RuntimeError) as exc_info:
+        ray._private.services.check_raygo_available_for_go_switches()
+    message = str(exc_info.value)
+    assert "RAY_ENABLE_GO_DASHBOARD_HEAD" in message
+    assert "RAY_ENABLE_GO_SETUP_WORKER" in message
+    assert "INCLUDE_GO" in message
+
+
+def test_node_head_uses_fully_qualified_services_call():
+    """start_ray_processes must call the check via ray._private.services.
+
+    `import ray._private.services` binds only `ray` in the node module globals,
+    so a bare `services.check_raygo_available_for_go_switches()` would raise
+    NameError at runtime (surfaced as a head CrashLoop). Guard against that.
+    """
+    node_path = os.path.join(os.path.dirname(ray._private.node.__file__), "node.py")
+    with open(node_path) as f:
+        src = f.read()
+    # The head check must use the fully-qualified path, never the bare name.
+    # `import ray._private.services` binds only `ray`, so a bare
+    # `services.check_raygo_available_for_go_switches()` is a NameError.
+    assert "ray._private.services.check_raygo_available_for_go_switches()" in src
+    assert not re.search(r"(^|[^.\w])services\.check_raygo_available", src)
+
+
 if __name__ == "__main__":
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

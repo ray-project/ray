@@ -229,6 +229,12 @@ func TestServeVersion(t *testing.T) {
 	if resp.Version != "4" || resp.RayVersion != "3.0.0.dev0" || resp.RayCommit == "" || resp.SessionName != "session_test" {
 		t.Fatalf("version response = %+v", resp)
 	}
+	if resp.Runtime == nil {
+		t.Fatalf("version response missing additive runtime object: %+v", resp)
+	}
+	if resp.Runtime.Attempts < 0 {
+		t.Fatalf("negative runtime attempt count: %+v", resp.Runtime)
+	}
 }
 
 // TestGetServeControllerNotInitializedDegrade verifies that when the Go
@@ -289,8 +295,16 @@ func TestGetApplicationsNoController(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
-	if resp["deploy_mode"] != "MULTI_APP" {
-		t.Fatalf("deploy_mode = %v", resp["deploy_mode"])
+	// Mirrors this tree's ServeInstanceDetails.get_empty_schema_dict(), which
+	// carries the four keys below and no deploy_mode (single-app mode was
+	// removed upstream).
+	for _, key := range []string{"controller_info", "proxies", "applications"} {
+		if _, ok := resp[key]; !ok {
+			t.Fatalf("empty schema missing key %q: %v", key, resp)
+		}
+	}
+	if _, present := resp["deploy_mode"]; present {
+		t.Fatalf("deploy_mode = %v, want absent (field removed from ServeInstanceDetails upstream)", resp["deploy_mode"])
 	}
 	if resp["target_capacity"] != nil {
 		t.Fatalf("target_capacity = %v, want null", resp["target_capacity"])
@@ -510,6 +524,34 @@ func TestPutApplicationsDependenciesNotInstalled(t *testing.T) {
 	rr := serve(t, h, "PUT", "/api/serve/applications/", `{"applications":[{"name":"app1"}]}`)
 	if rr.Code != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want 501", rr.Code)
+	}
+}
+
+// TestGetApplicationsProbeTimeoutNotCached verifies that a timed-out
+// dependency probe degrades the current request with 500 (not the 501 reserved
+// for genuinely missing dependencies) and is not cached: the next serve
+// request re-probes, so a single slow python worker during cold start cannot
+// degrade serve for the process lifetime.
+func TestGetApplicationsProbeTimeoutNotCached(t *testing.T) {
+	orig := checkServeDepsFn
+	probes := 0
+	checkServeDepsFn = func() error {
+		probes++
+		return errServeDepsProbeTimeout
+	}
+	defer func() { checkServeDepsFn = orig }()
+
+	h := newServeHead()
+	rr := serve(t, h, "GET", "/api/serve/applications/", "")
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	rr = serve(t, h, "GET", "/api/serve/applications/", "")
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 on the retried request", rr.Code)
+	}
+	if probes != 2 {
+		t.Fatalf("probe ran %d times, want 2 (the timeout must not be cached)", probes)
 	}
 }
 

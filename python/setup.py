@@ -171,6 +171,19 @@ if setup_spec.type == SetupType.RAY_CPP:
 if not SKIP_BAZEL_BUILD:
     setup_spec.files_to_include += ["ray/go/cmd/raygo" + exe_suffix]
     setup_spec.files_to_include += ["ray/go/lib/go_runtime.so"]
+    # Cross-language converter sources. These are git-tracked Python files
+    # under ray/go/dashboard that the original actors' *_native thin methods
+    # import locally (and that the Go dashboard head used to instantiate as
+    # wrapper actors); bundle them into the main ray wheel so
+    # importlib.import_module("ray.go.dashboard.cross_language.converter")
+    # works from site-packages. The binary inclusions above do not cover the
+    # converter .py files, so they must be included explicitly.
+    setup_spec.files_to_include += [
+        os.path.join(dirpath, filename)
+        for dirpath, dirnames, filenames in os.walk("ray/go/dashboard")
+        for filename in filenames
+        if filename.endswith(".py") and not filename.startswith("test")
+    ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.

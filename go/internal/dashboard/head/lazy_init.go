@@ -16,7 +16,12 @@ package head
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ray-project/ray/go/internal/gcs/native"
@@ -34,10 +39,68 @@ import (
 // initialized").
 var initOnce sync.Mutex
 
+// attemptCount counts every lazy runtime init attempt since process start
+// (successes and failures), feeding the /api/(ray/)version runtime object. It
+// is incremented on the same code path as the middleware's Prometheus counter,
+// so the two observations stay consistent without sharing state.
+var attemptCount int32
+
+// errNoNodeInfo is the sentinel wrapped (via %w) when GetNodeToConnect returned
+// no node info, so callers/tests can distinguish "node table empty" from other
+// init failures.
+var errNoNodeInfo = errors.New("no node info returned from GCS")
+
 // initWithConfigFn is the actual runtime initializer. It is a package-level
 // variable so tests can inject a fake without linking the C++ gcs_client_bridge
 // (base.Initialize would attempt a real driver-mode GCS handshake).
 var initWithConfigFn = initWithConfig
+
+// withCachedClientFn wraps api.WithCachedClient so tests can drive the GCS
+// client callbacks (GetNodeToConnect, NextJobID) with a fake api.GCSClient
+// instead of a live connection. The real implementation creates a cached
+// native GCS client (via RegisterGCSClientFactory) which would dial a real GCS
+// in tests.
+var withCachedClientFn = api.WithCachedClient
+
+// preflightConnectFn opens a TCP connection to a node_manager_port. It is a
+// package-level variable so tests can inject a fake. The preflight must happen
+// BEFORE base.Initialize: base.Initialize dials the raylet via
+// GenerateRayletAddress and any dial failure (UNAVAILABLE) reaches
+// CoreWorkerProcess::QuickExit, which _Exit(1)s the whole process. Go cannot
+// intercept QuickExit (it happens inside C++ at the process level), so the
+// dashboard would die mid-request instead of degrading. TCP-level reachability
+// is a deterministic proxy for "the raylet's grpc server is up": the raylet
+// starts its node_manager grpc server (NodeManagerService) before it registers
+// with GCS, so a GCS ALIVE node whose port is not yet listening is a stale
+// recovered node (see the GcsNodeManager::Initialize restore path).
+var preflightConnectFn = func(addr string, timeout time.Duration) error {
+	conn, err := net.DialTimeout("tcp", addr, timeout)
+	if err != nil {
+		return err
+	}
+	return conn.Close()
+}
+
+// preflightNodeManager checks that the node_manager_port returned by
+// GetNodeToConnectForDriver actually accepts TCP connections before
+// base.Initialize dials it. Returns nil (no-op) when the port or address is
+// unset, mirroring the caller's "skip preflight" intent. See preflightConnectFn
+// for why this must fail closed rather than letting base.Initialize proceed.
+func preflightNodeManager(nodeIP string, nodeManagerPort int32) error {
+	if nodeManagerPort == 0 || nodeIP == "" {
+		return nil
+	}
+	addr := net.JoinHostPort(nodeIP, strconv.Itoa(int(nodeManagerPort)))
+	if err := preflightConnectFn(addr, 500*time.Millisecond); err != nil {
+		log.Log.Error(err, "node_manager_port unreachable; treating GCS node as stale and degrading",
+			"node_manager_address", nodeIP,
+			"node_manager_port", nodeManagerPort,
+		)
+		return fmt.Errorf("node_manager_port unreachable: %s: %w", addr, err)
+	}
+	log.Log.Info("node_manager_port reachable", "node_manager_address", addr)
+	return nil
+}
 
 // initRetryBackoff is the cool-down after a failed lazy init. Each attempt
 // constructs the C++ CoreWorker, which exits the whole process when the local
@@ -82,6 +145,11 @@ func EnsureInitialized(cfg *HeadConfig) error {
 	if lastInitErr != nil && time.Since(lastInitFailAt) < initRetryBackoff {
 		return lastInitErr
 	}
+	// Count the attempt on the same code path as the middleware's Prometheus
+	// counter so /api/(ray/)version and /metrics stay consistent. A backoff-
+	// cached failure above returns without incrementing, so the middleware's
+	// initAttempts() > before snapshot records no outcome for it.
+	atomic.AddInt32(&attemptCount, 1)
 	if err := initWithConfigFn(cfg); err != nil {
 		lastInitErr = err
 		lastInitFailAt = time.Now()
@@ -90,6 +158,28 @@ func EnsureInitialized(cfg *HeadConfig) error {
 	lastInitErr = nil
 	log.Log.Info("go runtime initialized lazily for dashboard head", "gcs", cfg.GCSAddress, "node", cfg.NodeIPAddress)
 	return nil
+}
+
+// initAttempts returns the number of lazy init attempts since process start,
+// feeding the /api/(ray/)version runtime object. Zero means the head's runtime
+// was already initialized (or never needed lazy init), so no attempt was made.
+func initAttempts() int {
+	return int(atomic.LoadInt32(&attemptCount))
+}
+
+// RuntimeStatus is the additive /api/(ray/)version field exposing the
+// dashboard head's own runtime init state for oncall. Python has no such
+// field; consumers reading the original version keys are unaffected.
+type RuntimeStatus struct {
+	// Initialized reports whether the Go runtime is up right now.
+	Initialized bool `json:"initialized"`
+	// Attempts counts lazy init attempts tried since process start.
+	Attempts int `json:"attempts"`
+}
+
+// RuntimeStatusInfo returns the dashboard head's current runtime init state.
+func RuntimeStatusInfo() RuntimeStatus {
+	return RuntimeStatus{Initialized: api.IsInitialized(), Attempts: initAttempts()}
 }
 
 // initWithConfig initializes the Go runtime as a driver through the static
@@ -139,31 +229,61 @@ func initWithConfig(cfg *HeadConfig) error {
 		ClusterID: ids.NilClusterID(),
 		TimeoutMs: 10000,
 	}
-	if err := api.WithCachedClient(cfg.GCSAddress, gcsOpts, func(client api.GCSClient) error {
+	if err := withCachedClientFn(cfg.GCSAddress, gcsOpts, func(client api.GCSClient) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
 		nodeInfo, err := client.GetNodeToConnect(ctx, initOpts.Network.NodeIPAddress)
 		if err != nil {
-			log.Log.Error(err, "failed to fetch node info from GCS")
-		} else if nodeInfo != nil {
-			if nodeInfo.ObjectStoreSocketName != "" {
-				initOpts.Runtime.StoreSocket = nodeInfo.ObjectStoreSocketName
-			}
-			if nodeInfo.RayletSocketName != "" {
-				initOpts.Runtime.RayletSocket = nodeInfo.RayletSocketName
-			}
-			if nodeInfo.NodeManagerPort != 0 {
-				initOpts.Network.NodeManagerPort = int32(nodeInfo.NodeManagerPort)
-			}
-			if nodeInfo.NodeManagerAddress != "" {
-				initOpts.Network.NodeIPAddress = nodeInfo.NodeManagerAddress
-			}
-			log.Log.Info("fetched node info from GCS for dashboard head",
-				"store_socket", initOpts.Runtime.StoreSocket,
-				"raylet_socket", initOpts.Runtime.RayletSocket,
-				"node_manager_port", initOpts.Network.NodeManagerPort,
-			)
+			// Fail closed: without node information the sockets stay empty and
+			// the node manager port stays 0, and base.Initialize would dial an
+			// empty raylet socket (RAY_LOG(FATAL)) or a port-0 address
+			// (CoreWorkerProcess::QuickExit), killing the whole dashboard.
+			// Surface the error so the request degrades to a 500 (aligned with
+			// Python init_ray_and_catch_exceptions returning
+			// HTTPInternalServerError) and the process stays alive;
+			// EnsureInitialized retries on the next request.
+			return fmt.Errorf("failed to fetch node info from GCS: %w", err)
+		}
+		if nodeInfo == nil {
+			// A nil node (GCS alive but no node registered for this IP yet) has
+			// the same failure mode as an error above: continuing would hand
+			// empty sockets/port-0 to base.Initialize. Fail closed and let the
+			// next request retry.
+			return fmt.Errorf("%w for %s", errNoNodeInfo, initOpts.Network.NodeIPAddress)
+		}
+		if nodeInfo.ObjectStoreSocketName != "" {
+			initOpts.Runtime.StoreSocket = nodeInfo.ObjectStoreSocketName
+		}
+		if nodeInfo.RayletSocketName != "" {
+			initOpts.Runtime.RayletSocket = nodeInfo.RayletSocketName
+		}
+		if nodeInfo.NodeManagerPort != 0 {
+			initOpts.Network.NodeManagerPort = int32(nodeInfo.NodeManagerPort)
+		}
+		if nodeInfo.NodeManagerAddress != "" {
+			initOpts.Network.NodeIPAddress = nodeInfo.NodeManagerAddress
+		}
+		log.Log.Info("fetched node info from GCS for dashboard head",
+			"store_socket", initOpts.Runtime.StoreSocket,
+			"raylet_socket", initOpts.Runtime.RayletSocket,
+			"node_manager_port", initOpts.Network.NodeManagerPort,
+		)
+
+		// Preflight the raylet's node_manager_port before base.Initialize.
+		// GetNodeToConnectForDriver returns the first ALIVE node from GCS
+		// without validating its port. After a GCS restart, GcsNodeManager::
+		// Initialize restores the previous head's ALIVE node with a stale
+		// node_manager_port; base.Initialize would then dial the dead port and
+		// hit CoreWorkerProcess::QuickExit, killing the whole dashboard. A TCP
+		// connect is a deterministic proxy: the raylet runs its node_manager
+		// grpc server before RegisterGcs(), so an ALIVE node whose port refuses
+		// connections is stale. On staleness we degrade (return an error so the
+		// module handler surfaces a 500 and the process stays alive) instead of
+		// dialing a dead port and dying. Setting the port to 0 does NOT help:
+		// NodeManagerPort=0 also QuickExits in GenerateRayletAddress.
+		if err := preflightNodeManager(initOpts.Network.NodeIPAddress, initOpts.Network.NodeManagerPort); err != nil {
+			return err
 		}
 
 		// Reuse the node's cached metrics agent port (ports_by_node.json) so the

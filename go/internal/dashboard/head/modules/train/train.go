@@ -11,7 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
 // Package train implements the TrainHead dashboard module: cross-language
 // calls into the Python Train state actors (V2 and V1) for the Train runs
 // REST API. Aligned with the Python TrainHead in
@@ -35,48 +34,23 @@ import (
 	"github.com/ray-project/ray/go/proto"
 )
 
-// Cross-language actor identity constants for the TrainStateActorWrapper, the
-// dashboard's proxy into the real Train state actors, centralized here so the
-// name/namespace/module/className quadruples live in one place. Aligned with
-// python/ray/go/dashboard/cross_language/train_wrapper.py.
+// Cross-language actor identity constants for the original Train state actors
+// (V1 and V2), which the Go dashboard head connects to directly (no wrapper
+// actor). The name/namespace/module/className quadruples are centralized here.
+// The V1 and V2 modules differ (ray.train vs ray.train.v2) while the class name
+// is the same, so direct discovery distinguishes them by module.
 const (
 	// Train V2
-	trainV2StateActorName      = "go_dashboard_train_v2_wrapper"
+	trainV2StateActorName      = "train_v2_state_actor"
 	trainV2StateActorNamespace = "_train_state_actor"
-	trainV2StateActorModule    = "ray.go.dashboard.cross_language.train_wrapper"
-	trainV2StateActorClass     = "TrainStateActorWrapper"
+	trainV2StateActorModule    = "ray.train.v2._internal.state.state_actor"
+	trainV2StateActorClass     = "TrainStateActor"
 	// Train V1
-	trainV1StateActorName      = "go_dashboard_train_v1_wrapper"
+	trainV1StateActorName      = "train_state_actor"
 	trainV1StateActorNamespace = "_train_state_actor"
-	trainV1StateActorModule    = "ray.go.dashboard.cross_language.train_wrapper"
-	trainV1StateActorClass     = "TrainStateActorWrapper"
+	trainV1StateActorModule    = "ray.train._internal.state.state_actor"
+	trainV1StateActorClass     = "TrainStateActor"
 )
-
-// Resource constants for the TrainStateActorWrappers, aligned with the
-// original Train state actors. Both V1 and V2 live on the head node with zero
-// CPU quota: V2 (get_state_actor in
-// python/ray/train/v2/_internal/state/state_actor.py) uses num_cpus=0,
-// resources={"node:__internal_head__": 0.001}, max_restarts=-1 and
-// max_task_retries=-1; V1 (get_or_create_state_actor in
-// python/ray/train/_internal/state/state_actor.py) uses num_cpus=0 (from the
-// @ray.remote(num_cpus=0) decorator) plus resources={
-// "node:__internal_head__": 0.001} and leaves max_restarts/max_task_retries at
-// the Python default (0). The wrappers inherit the same footprint instead of
-// the Go default of CPU=1.
-const (
-	// trainV2MaxRestarts is the V2 original actor's max_restarts=-1.
-	trainV2MaxRestarts = -1
-	// trainV2MaxTaskRetries is the V2 original actor's max_task_retries=-1.
-	trainV2MaxTaskRetries = -1
-)
-
-// trainStateActorResources is the shared head-node, zero-CPU resource map
-// ({HEAD_NODE_RESOURCE_NAME: 0.001} plus num_cpus=0) used by both V1 and V2. A
-// var (not const) because Go maps are not constant expressions.
-var trainStateActorResources = map[string]float64{
-	"node:__internal_head__": 0.001,
-	api.ResourceCPU:          0,
-}
 
 // actorStatusDead is the ActorStatus.DEAD value (python/ray/train/v2/_internal/
 // state/schema.py). The GCS actor state enum string for a dead actor is "DEAD".
@@ -96,17 +70,17 @@ type TrainHead struct {
 	// physMu guards physicalStats, the per-node physical stats cache (node id ->
 	// reporter JSON) used to enrich worker gpus/processStats, aligned with the
 	// Python DataSource.node_physical_stats.
-	physMu        sync.RWMutex
-	physicalStats map[string]map[string]interface{}
+	physMu         sync.RWMutex
+	physicalStats  map[string]map[string]interface{}
 }
 
 // New creates a TrainHead backed by the given GCS client.
 func New(cfg *head.HeadConfig, client *head.GCSClient) *TrainHead {
 	return &TrainHead{
-		cfg:           cfg,
-		client:        client,
-		info:          job.NewJobInfoStorageClient(client),
-		physicalStats: map[string]map[string]interface{}{},
+		cfg:            cfg,
+		client:         client,
+		info:           job.NewJobInfoStorageClient(client),
+		physicalStats:  map[string]map[string]interface{}{},
 	}
 }
 
@@ -174,7 +148,9 @@ type pythonStateActor struct {
 }
 
 func (a *pythonStateActor) getTrainRuns() (map[string]interface{}, error) {
-	ref, err := api.ActorTask[map[string]interface{}](a.handle, "get_train_runs").Remote()
+	// get_train_runs_native returns every TrainRun as a plain dict (Enum/BaseModel
+	// reduced on the Python side); see the thin method in the V2 state actor.
+	ref, err := api.ActorTask[map[string]interface{}](a.handle, "get_train_runs_native").Remote()
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +158,8 @@ func (a *pythonStateActor) getTrainRuns() (map[string]interface{}, error) {
 }
 
 func (a *pythonStateActor) getTrainRunAttempts() (map[string]interface{}, error) {
-	ref, err := api.ActorTask[map[string]interface{}](a.handle, "get_train_run_attempts").Remote()
+	// get_train_run_attempts_native returns every TrainRunAttempt as a plain dict.
+	ref, err := api.ActorTask[map[string]interface{}](a.handle, "get_train_run_attempts_native").Remote()
 	if err != nil {
 		return nil, err
 	}
@@ -190,68 +167,44 @@ func (a *pythonStateActor) getTrainRunAttempts() (map[string]interface{}, error)
 }
 
 func (a *pythonStateActor) getAllTrainRuns() (map[string]interface{}, error) {
-	ref, err := api.ActorTask[map[string]interface{}](a.handle, "get_all_train_runs").Remote()
+	// get_all_train_runs_native returns every TrainRunInfo as a plain dict.
+	ref, err := api.ActorTask[map[string]interface{}](a.handle, "get_all_train_runs_native").Remote()
 	if err != nil {
 		return nil, err
 	}
 	return api.Get(ref)
 }
 
-// getTrainV2StateActorFn returns the Train V2 wrapper actor handle, or an error
-// when no train instance is running. It is a package-level variable so tests
-// can inject a fake actor.
+// getTrainV2StateActorFn returns the original Train V2 state actor handle
+// (discovered by name/namespace), or nil when no train instance is running. It
+// is a package-level variable so tests can inject a fake actor.
 //
-// The wrapper is a non-detached dashboard proxy created on first use
-// (Get-first, Create-fallback) and recycled with the dashboard driver. It has
-// no constructor arguments: it derives its V2 identity from its own actor name
-// and binds the real Train V2 state actor via ray.get_actor in __init__, so
-// creation fails when no train instance is running.
+// The state actor is detached and created by the Python train machinery, so Go
+// only discovers it: no wrapper actor is created and no resources need to be
+// inherited. A not-initialized runtime is surfaced so the caller can lazily
+// initialize and retry; absence of the actor means "no train instance running"
+// -> caller degrades (aligned with TrainHead.get_train_v2_state_actor).
 var getTrainV2StateActorFn = func() (stateActor, error) {
 	handle, err := api.GetPythonActorWithNamespace(
 		trainV2StateActorName, trainV2StateActorNamespace,
 		trainV2StateActorModule, trainV2StateActorClass)
-	if err == nil {
-		log.Log.Info("train: got existing v2 wrapper")
-		return &pythonStateActor{handle: handle}, nil
-	}
-	// A not-initialized runtime (e.g. the GCS was not ready when the head
-	// started) is surfaced to the caller so it can lazily initialize and retry;
-	// any other error means no train instance is running and we degrade.
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		return nil, err
-	}
-	// No wrapper yet. Only create it when the real Train V2 state actor
-	// exists (train_v2_state_actor / _train_state_actor from
-	// ray.train.v2._internal.state.state_actor), otherwise the wrapper's
-	// __init__ dies asynchronously and the cached dead handle surfaces as
-	// a misleading 503. Aligned with TrainHead.get_train_v2_state_actor
-	// returning None when no train instance is running.
-	if _, err := api.GetPythonActorWithNamespace(
-		"train_v2_state_actor", "_train_state_actor",
-		"ray.train.v2._internal.state.state_actor", "TrainStateActor"); err != nil {
+	if err != nil {
+		// A not-initialized runtime (e.g. the GCS was not ready when the head
+		// started) is surfaced to the caller so it can lazily initialize and
+		// retry; any other error means no train instance is running and we
+		// degrade.
 		if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
 			return nil, err
 		}
 		log.Log.Info("train: no real v2 state actor, degrade", "err", err)
 		return nil, nil
 	}
-	log.Log.Info("train: creating v2 wrapper")
-	handle, err = api.RemotePythonActor(trainV2StateActorModule, trainV2StateActorClass).
-		WithName(trainV2StateActorName).WithNamespace(trainV2StateActorNamespace).
-		WithResources(trainStateActorResources).
-		WithMaxRestarts(trainV2MaxRestarts).
-		WithMaxTaskRetries(trainV2MaxTaskRetries).
-		Create()
-	if err != nil {
-		return nil, err
-	}
 	return &pythonStateActor{handle: handle}, nil
 }
 
-// getTrainV1StateActorFn returns the Train V1 wrapper actor handle, or an error
-// when no train instance is running. It is a package-level variable so tests
-// can inject a fake actor. Like the V2 wrapper it has no constructor arguments
-// and derives its V1 identity from its own actor name.
+// getTrainV1StateActorFn returns the original Train V1 state actor handle
+// (discovered by name/namespace), or nil when no train instance is running. It
+// is a package-level variable so tests can inject a fake actor.
 var getTrainV1StateActorFn = func() (stateActor, error) {
 	handle, err := api.GetPythonActorWithNamespace(
 		trainV1StateActorName, trainV1StateActorNamespace,
@@ -264,26 +217,8 @@ var getTrainV1StateActorFn = func() (stateActor, error) {
 		if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
 			return nil, err
 		}
-		// Only create the wrapper when the real Train V1 state actor exists
-		// (train_state_actor / _train_state_actor from
-		// ray.train._internal.state.state_actor); see getTrainV2StateActorFn.
-		if _, err := api.GetPythonActorWithNamespace(
-			"train_state_actor", "_train_state_actor",
-			"ray.train._internal.state.state_actor", "TrainStateActor"); err != nil {
-			if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-				return nil, err
-			}
-			return nil, nil
-		}
-		// The V1 wrapper aligns with the V1 original actor's resources
-		// (num_cpus=0 + head-node resource); max_restarts/max_task_retries stay
-		// at the Python default (0), matching get_or_create_state_actor.
-		handle, err = api.RemotePythonActor(trainV1StateActorModule, trainV1StateActorClass).
-			WithName(trainV1StateActorName).WithNamespace(trainV1StateActorNamespace).
-			WithResources(trainStateActorResources).Create()
-		if err != nil {
-			return nil, err
-		}
+		log.Log.Info("train: no real v1 state actor, degrade", "err", err)
+		return nil, nil
 	}
 	return &pythonStateActor{handle: handle}, nil
 }
@@ -298,21 +233,6 @@ func (h *TrainHead) getTrainV2StateActor() stateActor {
 		return h.trainV2Actor
 	}
 	actor, err := getTrainV2StateActorFn()
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		// The Go runtime failed to initialize at startup (e.g. the GCS was not
-		// ready during `ray start`). Lazily initialize it now, mirroring the
-		// Python dashboard's require_initialized which ray.init()s on the first
-		// request, so the head recovers the cross-language runtime without a
-		// restart. EnsureInitialized is a no-op once initialized and serialized
-		// against concurrent calls. Retry once after a successful init; on
-		// failure degrade to nil so the handler surfaces "Train state data is
-		// not available".
-		if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-			log.Log.Info("train: go runtime not initialized, degrade", "err", initErr)
-			return nil
-		}
-		actor, err = getTrainV2StateActorFn()
-	}
 	if err != nil {
 		log.Log.Info("no train v2 state actor available", "err", err)
 		return nil
@@ -331,21 +251,6 @@ func (h *TrainHead) getTrainV1StateActor() stateActor {
 		return h.trainV1Actor
 	}
 	actor, err := getTrainV1StateActorFn()
-	if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
-		// The Go runtime failed to initialize at startup (e.g. the GCS was not
-		// ready during `ray start`). Lazily initialize it now, mirroring the
-		// Python dashboard's require_initialized which ray.init()s on the first
-		// request, so the head recovers the cross-language runtime without a
-		// restart. EnsureInitialized is a no-op once initialized and serialized
-		// against concurrent calls. Retry once after a successful init; on
-		// failure degrade to nil so the handler surfaces "Train state data is
-		// not available".
-		if initErr := head.EnsureInitialized(h.cfg); initErr != nil {
-			log.Log.Info("train: go runtime not initialized, degrade", "err", initErr)
-			return nil
-		}
-		actor, err = getTrainV1StateActorFn()
-	}
 	if err != nil {
 		log.Log.V(1).Info("no train v1 state actor available", "err", err)
 		return nil

@@ -1,0 +1,24 @@
+# Bazel targets for the ray-go wheel's Python sources.
+#
+# ray/go/dashboard/cross_language/ holds the cross-language converter that
+# ships in the ray-go wheel; the *_native thin methods on the original actors
+# import it locally. This package runs the unit tests for the converter module.
+
+load("@rules_python//python:defs.bzl", "py_library")
+load("//bazel:python.bzl", "py_test_run_all_subdirectory")
+
+py_library(
+    name = "go_lib",
+    srcs = glob(
+        ["**/*.py"],
+        exclude = ["**/test*.py"],
+    ),
+)
+
+py_test_run_all_subdirectory(
+    size = "small",
+    include = ["dashboard/cross_language/test*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["team:core"],
+)

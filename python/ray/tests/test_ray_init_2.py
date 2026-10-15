@@ -555,6 +555,9 @@ def test_build_go_worker_command_metrics_agent_port():
     exporter agent and reports a connection failure at startup.
     """
     retry_dir = tempfile.mkdtemp()
+    setup_worker_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "workers", "setup_worker.py"
+    )
     try:
         with unittest.mock.patch(
             "ray._private.services.ray_constants.ENABLE_GO_SETUP_WORKER", False
@@ -569,6 +572,7 @@ def test_build_go_worker_command_metrics_agent_port():
                 node_ip_address="127.0.0.1",
                 cluster_id="01000000",
                 log_dir=retry_dir,
+                setup_worker_path=setup_worker_path,
                 metrics_agent_port=43215,
             )
         assert "--metrics-agent-port=43215" in command, command
@@ -588,6 +592,7 @@ def test_build_go_worker_command_metrics_agent_port():
                 node_ip_address="127.0.0.1",
                 cluster_id="01000000",
                 log_dir=retry_dir,
+                setup_worker_path=setup_worker_path,
             )
         assert "--metrics-agent-port=" not in command, command
 
@@ -607,6 +612,7 @@ def test_build_go_worker_command_metrics_agent_port():
                 node_ip_address="127.0.0.1",
                 cluster_id="01000000",
                 log_dir=retry_dir,
+                setup_worker_path=setup_worker_path,
                 metrics_agent_port=0,
             )
         assert "--metrics-agent-port=" not in command, command

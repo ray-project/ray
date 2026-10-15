@@ -238,7 +238,19 @@ func (s *ActorSubscriber) Updates(ctx context.Context) (<-chan *proto.ActorTable
 	errCh := make(chan error, 1)
 	go runUpdates(ctx, s.sub, ch, errCh, func(m *proto.PubMessage) (*proto.ActorTableData, bool) {
 		actor := m.GetActorMessage()
-		return actor, actor != nil
+		if actor == nil {
+			return nil, false
+		}
+		// The GCS publishes the actor id in the pubsub message key_id; the inner
+		// ActorTableData.actor_id is only populated for early lifecycle events
+		// (DEPENDENCIES_UNREADY / PENDING_CREATION) and is empty on later
+		// ALIVE / DEAD updates. Aligned with the Python GcsAioActorSubscriber,
+		// which keys updates by msg.key_id, backfill the actor id from the
+		// message key so the state transition overwrites the cached entry.
+		if len(actor.ActorId) == 0 {
+			actor.ActorId = append([]byte(nil), m.KeyId...)
+		}
+		return actor, true
 	})
 	return ch, errCh
 }

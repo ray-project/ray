@@ -1796,6 +1796,14 @@ class Node:
                     f"but got: {repr(e)}"
                 )
 
+        if self.head:
+            # Fail fast when a GO switch is on but the raygo binary is missing.
+            # Without this, the dashboard head would never bind its port and the
+            # head pod would CrashLoop on its health probe. Only checked on the
+            # head node: worker nodes inherit the same env switches but the head
+            # is where the misconfiguration first manifests.
+            ray._private.services.check_raygo_available_for_go_switches()
+
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
         resource_and_label_spec = self.get_resource_and_label_spec()
