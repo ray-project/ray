@@ -26,6 +26,7 @@ from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import (
     GVisorSandboxBackend,
     _exec_processes,
+    _holder_namespace_ids,
     _namespace_ids,
     _render_egress_ruleset,
     _write_egress_ruleset,
@@ -1066,6 +1067,16 @@ def test_set_egress_allowlist_refuses_a_reused_holder_pid(tmp_path, monkeypatch)
             backend.set_egress_allowlist("sb-1", list(ALLOW_ALL_CIDRS))
         assert rules.read_text() == before
         assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["1.1.1.1/32"]
+
+
+@_needs_proc_ns
+def test_holder_namespace_ids_reject_a_pid_in_the_workers_namespaces(tmp_path):
+    """Creation records the holder's namespaces only if netns.pid names a
+    process outside this one's, so a later update can't be pointed here."""
+    assert _holder_namespace_ids(str(tmp_path)) is None
+    for pid in (str(os.getpid()), "not-a-pid"):
+        (tmp_path / "netns.pid").write_text(f"{pid}\n")
+        assert _holder_namespace_ids(str(tmp_path)) is None
 
 
 @_needs_proc_ns
