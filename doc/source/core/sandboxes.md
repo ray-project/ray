@@ -463,7 +463,7 @@ Set `cpu_isolation="exclusive"` with a positive integer CPU limit. Ray reserves 
 
 The node allocator serializes leases across worker processes with a file lock. Set `RAY_SANDBOX_CGROUP_STATE_DIR` to a shared node-local directory if workers don't share `/tmp/ray/sandbox/cgroup-state`. Workers must share the same PID namespace and cgroup mount paths. A reaper outside the sandbox budgets kills orphaned workloads, deletes their runsc state, bundles, and image pins, and then releases their leases. It detaches from the worker that starts it, so it survives that worker's exit. Allocation also reconciles stale leases. Invalidating the exclusive partition stops the sandboxes on it and frees their cores.
 
-For clients of the gRPC facade, set `RAY_SANDBOX_CPU_ISOLATION=exclusive` in the facade's environment. The existing wire contract stays unchanged. An exclusive facade rejects creates without a positive integer CPU limit.
+For clients of the gRPC facade, set `cpu_isolation: exclusive` in the facade's Serve application `args`. A facade started from the command line reads `RAY_SANDBOX_CPU_ISOLATION=exclusive` instead. The wire contract doesn't change, and an exclusive facade rejects creates without a positive integer CPU limit.
 
 :::{note}
 Exclusive cores remove competition on the same core. Shared caches, memory bandwidth, and host scheduling still affect completion time. Resource limits don't guarantee a wall-clock deadline.

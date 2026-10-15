@@ -267,7 +267,11 @@ class SandboxAPISettings(BaseModel):
     cpu_isolation: Literal["shared", "exclusive"] = Field(
         default_factory=lambda: os.environ.get("RAY_SANDBOX_CPU_ISOLATION", "shared"),
         validate_default=True,
-        description="CPU isolation for the gRPC facade; its wire contract is unchanged.",
+        description=(
+            "CPU isolation for the sandboxes the gRPC facade creates, whose "
+            "wire contract has no field for it. Defaults to "
+            "RAY_SANDBOX_CPU_ISOLATION, else 'shared'."
+        ),
     )
     token_env_var: str = Field(
         default="RAY_SANDBOX_API_TOKEN",
