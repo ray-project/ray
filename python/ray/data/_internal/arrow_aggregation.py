@@ -1,4 +1,4 @@
-from typing import Callable, List, NamedTuple, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -61,6 +61,9 @@ class ArrowAggSpec(NamedTuple):
     # (agg_index, source_col, block) -> block with a derived indicator column
     # appended (e.g. percentages).
     prep: Optional[Callable] = None
+    # Widen integer "sum" inputs to decimal128 when native accumulation may
+    # overflow. Non-integer columns are left alone.
+    widen_integers: bool = False
 
 
 # --- reusable finalizers (multi-line; referenced from AggregateFn specs) ------
@@ -87,6 +90,135 @@ def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
     return pc.if_else(pc.equal(denominator, 0.0), _NULL_FLOAT, pct)  # den 0 -> null
 
 
+# 38 decimal digits covers any sum of int64/uint64 values that can exist in
+# memory: overflowing decimal128 would take on the order of 10**19 maximum-sized
+# inputs. PyArrow's native sum kernel accumulates integers in int64 and wraps.
+_INTEGER_SUM_TYPE = pa.decimal128(38, 0)
+_INT64_MIN = -1 << 63
+_INT64_MAX = (1 << 63) - 1
+_INTEGER_SUM_METADATA_PREFIX = b"ray:integer_sum:"
+
+
+def _integer_value_type(typ: "pa.DataType") -> "pa.DataType":
+    if pa.types.is_dictionary(typ):
+        return typ.value_type
+    return typ
+
+
+def integer_sum_type(typ: "pa.DataType") -> Optional["pa.DataType"]:
+    """Return the native integer sum output type, or None for other inputs."""
+    typ = _integer_value_type(typ)
+    if pa.types.is_unsigned_integer(typ):
+        return pa.uint64()
+    if pa.types.is_signed_integer(typ):
+        return pa.int64()
+    return None
+
+
+def integer_sum_metadata(column_name: str, input_type: "pa.DataType") -> dict:
+    """Record which decimal accumulator came from an integer input.
+
+    Arrow aggregation drops field metadata. Carry this provenance on the
+    partial table's schema so the reducer can distinguish widened integers
+    from original decimal columns, including scale-zero decimal columns.
+    """
+    output_type = integer_sum_type(input_type)
+    if output_type is None:
+        return {}
+    key = _INTEGER_SUM_METADATA_PREFIX + column_name.encode()
+    return {key: str(output_type).encode()}
+
+
+def cast_column_for_exact_sum(column: Union["pa.Array", "pa.ChunkedArray"]):
+    """Cast an integer column to decimal128 so ``sum`` cannot wrap.
+
+    Returns ``None`` when ``column`` is not an integer type. The caller then
+    uses PyArrow's sum kernel unchanged (floats, decimals, booleans).
+    """
+    if integer_sum_type(column.type) is None:
+        return None
+    return pc.cast(column, _INTEGER_SUM_TYPE)
+
+
+def _native_integer_sum_is_safe(column: Union["pa.Array", "pa.ChunkedArray"]) -> bool:
+    """Bound every possible partial integer sum before using a native kernel."""
+    output_type = integer_sum_type(column.type)
+    if output_type is not None and not pa.types.is_dictionary(column.type):
+        # Bound every possible partial sum, including intermediate sums before
+        # cancellation. Ordinary small integers can use the native fast kernel.
+        bounds = pc.min_max(column).as_py()
+        lower, upper = (
+            (0, (1 << 64) - 1)
+            if pa.types.is_unsigned_integer(output_type)
+            else (_INT64_MIN, _INT64_MAX)
+        )
+        if bounds["min"] is None or (
+            bounds["min"] * len(column) >= lower
+            and bounds["max"] * len(column) <= upper
+        ):
+            return True
+    return False
+
+
+def sum_array(column: Union["pa.Array", "pa.ChunkedArray"], *, skip_nulls: bool):
+    """Sum integers exactly, widening only when native accumulation may overflow."""
+    if _native_integer_sum_is_safe(column):
+        return pc.sum(column, skip_nulls=skip_nulls)
+    widened = cast_column_for_exact_sum(column)
+    return pc.sum(column if widened is None else widened, skip_nulls=skip_nulls)
+
+
+def retarget_sum_column(block: "pa.Table", column_name: Optional[str], agg_index: int):
+    """Append a decimal128 copy when an integer sum input may overflow.
+
+    The original column is unchanged, so another aggregation on the same block
+    still sees the source type. Returns ``(block, column_name)`` when the
+    column is missing or not an integer.
+    """
+    if column_name is None or column_name not in block.column_names:
+        return block, column_name
+    if _native_integer_sum_is_safe(block[column_name]):
+        return block, column_name
+    casted = cast_column_for_exact_sum(block[column_name])
+    if casted is None:
+        return block, column_name
+    side = f"__d{agg_index}_sumsrc"
+    while side in block.column_names:
+        side += "_"
+    return block.append_column(side, casted), side
+
+
+def widen_integer_sum_partials(block: "pa.Table") -> "pa.Table":
+    """Normalize integer partials before concat and reduce-side summation.
+
+    A map can safely emit native integer partials while another map emits
+    decimals. Widen only the marked accumulators, keeping decimal source
+    columns and other aggregation components unchanged.
+    """
+    for key in block.schema.metadata or {}:
+        if not key.startswith(_INTEGER_SUM_METADATA_PREFIX):
+            continue
+        name = key[len(_INTEGER_SUM_METADATA_PREFIX) :].decode()
+        index = block.schema.get_field_index(name)
+        # Metadata can outlive a projection, and duplicate names are ambiguous.
+        if index < 0:
+            continue
+        column = block.column(index)
+        if column.type != _INTEGER_SUM_TYPE:
+            widened = pc.cast(column, _INTEGER_SUM_TYPE)
+            block = block.set_column(
+                index, block.schema.field(index).with_type(_INTEGER_SUM_TYPE), widened
+            )
+    return block
+
+
+def _finalize_sum(merged: "pa.Table", component_cols: Tuple[str, ...]):
+    # Integer partials were normalized to decimal128 before reduction. Retain
+    # that type even for small totals so all output partitions share a schema.
+    # Original decimal inputs keep their kernel's type and scale.
+    return merged[component_cols[0]]
+
+
 # --- spec builders (an AggregateFn picks one in its _arrow_agg_spec) ----------
 def sum_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
@@ -97,7 +229,8 @@ def sum_spec() -> ArrowAggSpec:
         merge_specs=lambda input_cols, options: [
             (input_cols[0], "sum", options.value_opts)
         ],
-        finalize=lambda merged, component_cols: merged[component_cols[0]],
+        finalize=_finalize_sum,
+        widen_integers=True,
     )
 
 
@@ -106,9 +239,11 @@ def count_spec() -> ArrowAggSpec:
         components=("count",),
         # global Count() has no target column -> count_all (count rows).
         raw_agg_specs=lambda agg_index, source_col, options: [
-            ([], "count_all")
-            if source_col is None
-            else (source_col, "count", options.count_opts)
+            (
+                ([], "count_all")
+                if source_col is None
+                else (source_col, "count", options.count_opts)
+            )
         ],
         merge_specs=lambda input_cols, options: [
             (input_cols[0], "sum", options.zero_sum_opts)
@@ -144,6 +279,7 @@ def mean_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_mean,
+        widen_integers=True,
     )
 
 
@@ -183,9 +319,11 @@ def zero_pct_spec() -> ArrowAggSpec:
         ),
         raw_agg_specs=lambda agg_index, source_col, options: [
             (f"__d{agg_index}_zero", "sum", options.zero_sum_opts),
-            (source_col, "count", options.count_opts)
-            if options.ignore_nulls
-            else ([], "count_all"),
+            (
+                (source_col, "count", options.count_opts)
+                if options.ignore_nulls
+                else ([], "count_all")
+            ),
         ],
         merge_specs=lambda input_cols, options: [
             (input_cols[0], "sum", options.zero_sum_opts),

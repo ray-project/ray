@@ -634,6 +634,20 @@ py_test(
 )
 
 py_test(
+    name = "test_integer_aggregation_overflow",
+    size = "large",
+    srcs = ["tests/test_integer_aggregation_overflow.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_dataset_iter",
     size = "medium",
     srcs = ["tests/test_dataset_iter.py"],

@@ -4,6 +4,7 @@ import enum
 import math
 import pickle
 import re
+from decimal import Decimal
 from typing import (
     Any,
     Callable,
@@ -67,6 +68,28 @@ SupportsRichComparisonType = TypeVar(
 AggOutputType = TypeVar("AggOutputType")
 
 _AGGREGATION_NAME_PATTERN = re.compile(r"^([^(]+)(?:\(.*\))?$")
+
+# Signed int64 bounds. Sums outside this range cannot be stored in an int64
+# Arrow column; decimal128(38, 0) holds them without wrapping.
+_STORED_SUM_MIN = -1 << 63
+_STORED_SUM_MAX = (1 << 63) - 1
+
+
+def _store_integral_sum(value: Any) -> Any:
+    """Box an integer sum so Arrow can store it without wrapping.
+
+    Values that fit in int64 stay Python ints. Larger integers become
+    Decimals. Arrow can infer a decimal column even when a different group's
+    partial is an in-range int. A bare oversized int makes array construction
+    raise, and the object-extension fallback pickles it.
+
+    Decimal inputs retain their type and scale, including scale-zero inputs.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return value
+    if _STORED_SUM_MIN <= value <= _STORED_SUM_MAX:
+        return value
+    return Decimal(value)
 
 
 @Deprecated(message="AggregateFn is deprecated, please use AggregateFnV2")
@@ -589,8 +612,15 @@ class AsList(VectorizedAggregateFnV2[List, List]):
 
 
 @PublicAPI
-class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
+class Sum(
+    VectorizedAggregateFnV2[Union[int, float, Decimal], Union[int, float, Decimal]]
+):
     """Defines sum aggregation.
+
+    Grouped integer sums use ``decimal128(38, 0)`` columns and return
+    :class:`~decimal.Decimal` values, including for totals that fit in int64.
+    This keeps the output schema consistent across partitions. ``Dataset.sum``
+    returns Python integers for integer inputs.
 
     Example:
 
@@ -631,26 +661,71 @@ class Sum(VectorizedAggregateFnV2[Union[int, float], Union[int, float]]):
             zero_factory=lambda: 0,
         )
 
-    def aggregate_block(self, block: Block) -> Union[int, float]:
-        return BlockAccessor.for_block(block).sum(
-            self._target_col_name, self._ignore_nulls
+    def aggregate_block(self, block: Block) -> Union[int, float, Decimal]:
+        return _store_integral_sum(
+            BlockAccessor.for_block(block).sum(
+                self._target_col_name, self._ignore_nulls
+            )
         )
 
     def combine(
-        self, current_accumulator: Union[int, float], new: Union[int, float]
-    ) -> Union[int, float]:
+        self,
+        current_accumulator: Union[int, float, Decimal],
+        new: Union[int, float, Decimal],
+    ) -> Union[int, float, Decimal]:
         return current_accumulator + new
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        from ray.data._internal.arrow_aggregation import integer_sum_type
+
+        if self._target_col_name is not None:
+            try:
+                input_type = input_schema.field(self._target_col_name).type
+            except (KeyError, ValueError):
+                return None
+            if integer_sum_type(input_type) is not None:
+                # Keyed integer sums use decimal128; keyless sums can retain
+                # native integers. This method has no grouping context, so
+                # conservatively defer the schema to the actual output blocks.
+                return None
         return _agg_output_field(self.name, input_schema, self._target_col_name, pc.sum)
 
     def _arrow_agg_spec(self) -> Optional[ArrowAggSpec]:
         return sum_spec() if isinstance(self._target_col_name, str) else None
 
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
-        return BlockColumnAccessor.for_column(accumulator_col).sum(
-            ignore_nulls=self._ignore_nulls
+        return _store_integral_sum(
+            BlockColumnAccessor.for_column(accumulator_col).sum(
+                ignore_nulls=self._ignore_nulls
+            )
         )
+
+
+def _is_integer_aggregation_input(block: Block, column: str) -> bool:
+    from pandas.api.types import is_integer_dtype
+
+    from ray.data._internal.arrow_aggregation import integer_sum_type
+    from ray.data._internal.pandas_block import PandasBlockSchema
+
+    schema = BlockAccessor.for_block(block).schema()
+    if isinstance(schema, pa.Schema):
+        return integer_sum_type(schema.field(column).type) is not None
+    if isinstance(schema, PandasBlockSchema):
+        return is_integer_dtype(dict(zip(schema.names, schema.types))[column])
+    return False
+
+
+class _IntegerSumInput(AggregateFnV2[bool, bool]):
+    """Record integer input provenance within a global sum's execution."""
+
+    def __init__(self, on: str, name: str):
+        super().__init__(name, on=on, ignore_nulls=True, zero_factory=lambda: True)
+
+    def aggregate_block(self, block: Block) -> bool:
+        return _is_integer_aggregation_input(block, self._target_col_name)
+
+    def combine(self, current_accumulator: bool, new: bool) -> bool:
+        return current_accumulator and new
 
 
 @PublicAPI
@@ -806,7 +881,7 @@ class Max(
 
 
 @PublicAPI
-class Mean(AggregateFnV2[List[Union[int, float]], float]):
+class Mean(AggregateFnV2[List[Union[int, float, Decimal]], Union[float, Decimal]]):
     """Defines mean (average) aggregation.
 
     Example:
@@ -847,13 +922,15 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
             alias_name if alias_name else f"mean({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            # The accumulator is: [current_sum, current_count].
-            # NOTE: We copy the returned list `list([0,0])` as some internal mechanisms
+            # The accumulator is: [current_sum, current_count, integer_input].
+            # NOTE: We copy the returned list as some internal mechanisms
             # might modify accumulators in-place.
-            zero_factory=lambda: list([0, 0]),  # noqa: C410
+            zero_factory=lambda: list([0, 0, 1]),  # noqa: C410
         )
 
-    def aggregate_block(self, block: Block) -> Optional[List[Union[int, float]]]:
+    def aggregate_block(
+        self, block: Block
+    ) -> Optional[List[Union[int, float, Decimal]]]:
         block_acc = BlockAccessor.for_block(block)
         count = block_acc.count(self._target_col_name, self._ignore_nulls)
 
@@ -869,21 +946,48 @@ class Mean(AggregateFnV2[List[Union[int, float]], float]):
             # using Pandas and returning None)
             return sum_
 
-        return [sum_, count]
+        return [
+            _store_integral_sum(sum_),
+            count,
+            int(_is_integer_aggregation_input(block, self._target_col_name)),
+        ]
 
     def combine(
-        self, current_accumulator: List[Union[int, float]], new: List[Union[int, float]]
-    ) -> List[Union[int, float]]:
-        return [current_accumulator[0] + new[0], current_accumulator[1] + new[1]]
+        self,
+        current_accumulator: List[Union[int, float, Decimal]],
+        new: List[Union[int, float, Decimal]],
+    ) -> List[Union[int, float, Decimal]]:
+        integer_input = (
+            len(current_accumulator) > 2
+            and len(new) > 2
+            and bool(current_accumulator[2])
+            and bool(new[2])
+        )
+        if integer_input:
+            # Decimal partials must be added as ints: Python's default Decimal
+            # context can round large totals before positive/negative cancellation.
+            total = _store_integral_sum(int(current_accumulator[0]) + int(new[0]))
+            count = int(current_accumulator[1]) + int(new[1])
+        else:
+            total = current_accumulator[0] + new[0]
+            count = current_accumulator[1] + new[1]
+        return [total, count, int(integer_input)]
 
-    def finalize(self, accumulator: List[Union[int, float]]) -> Optional[float]:
-        # The final accumulator for a group is [total_sum, total_count].
+    def finalize(
+        self, accumulator: List[Union[int, float, Decimal]]
+    ) -> Optional[Union[float, Decimal]]:
+        # The final accumulator also records whether the source was integer.
         if accumulator[1] == 0:
             # If total_count is 0 (e.g., group was empty or all nulls ignored),
             # the mean is undefined. Return NaN
             return np.nan
 
-        return accumulator[0] / accumulator[1]
+        total, count = accumulator[:2]
+        # An integer partial can be stored as Decimal, but its mean stays float.
+        # Original decimal inputs retain the Python fallback's Decimal result.
+        if len(accumulator) > 2 and bool(accumulator[2]):
+            return int(total) / int(count)
+        return total / count
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
         return pa.field(self.name, pa.float64(), nullable=True)
