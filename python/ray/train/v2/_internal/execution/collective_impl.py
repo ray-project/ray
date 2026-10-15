@@ -25,6 +25,7 @@ def barrier() -> None:
             world_size=train_context.get_world_size(),
             data=None,
             caller_method_name="ray.train.collective.barrier",
+            collective_seq=train_context.next_collective_seq(),
         )
     )
 
@@ -33,6 +34,7 @@ def broadcast_from_rank_zero(
     data: Any,
     *,
     caller_method_name: str = "ray.train.collective.broadcast_from_rank_zero",
+    relaxable: bool = False,
 ) -> Any:
     """Broadcast data from the rank 0 worker to all other workers.
 
@@ -56,5 +58,7 @@ def broadcast_from_rank_zero(
             world_size=train_context.get_world_size(),
             data=data,
             caller_method_name=caller_method_name,
+            collective_seq=train_context.next_collective_seq(),
+            relaxable=relaxable,
         )
     )

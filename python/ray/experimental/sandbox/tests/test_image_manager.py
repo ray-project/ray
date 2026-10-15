@@ -7,15 +7,25 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ray.experimental.sandbox._internal.image_utils import DEFAULT_IMAGES_DIR
+from ray.experimental.sandbox._internal.image_utils import (
+    DEFAULT_IMAGES_DIR,
+    ROOTFS_IMAGE,
+)
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import (
     BaseImageManager,
     ImageManager,
     get_default_oci_spec,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+
+@pytest.fixture(autouse=True)
+def _build_images_with_fake_mkfs(fake_mkfs_erofs):
+    """Every pull here builds its image through the fake mkfs.erofs."""
+    yield
 
 
 def test_image_manager_init(tmp_path):
@@ -49,17 +59,18 @@ def test_image_manager_pull_and_paths(tmp_path):
         tar.addfile(ti, io.BytesIO(data))
 
     assert not mgr.is_image_extracted(str(local_tar))
+    with pytest.raises(SandboxCreationError, match="pull it first"):
+        mgr.get_rootfs_image(str(local_tar))
 
     extracted_dir = mgr.pull_image(str(local_tar))
     assert os.path.exists(extracted_dir)
     assert mgr.is_image_extracted(str(local_tar))
 
-    rootfs = mgr.get_rootfs_path(str(local_tar))
-    assert rootfs == os.path.join(extracted_dir, "rootfs")
-    assert (
-        open(os.path.join(rootfs, "test.txt"), "rb").read()
-        == b"hello from image manager"
-    )
+    image = mgr.get_rootfs_image(str(local_tar))
+    assert image == os.path.join(extracted_dir, ROOTFS_IMAGE)
+    # The fake mkfs.erofs leaves the flattened tar as the image.
+    with tarfile.open(image) as tar:
+        assert tar.extractfile("./test.txt").read() == b"hello from image manager"
 
 
 def test_image_manager_config_parsing(tmp_path):
@@ -136,8 +147,17 @@ def test_image_manager_create_oci_spec(tmp_path):
         _oci_spec_transform_fn=lambda s: {**s, "customField": "customValue"},
     )
 
-    assert spec["root"]["path"] == os.path.join(extracted_dir, "rootfs")
-    assert spec["root"]["readonly"] is True
+    # The rootfs is the cached EROFS image, mounted through the gVisor
+    # annotations; root.path only anchors the overlay's backing file.
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.source"] == os.path.join(
+        extracted_dir, ROOTFS_IMAGE
+    )
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.type"] == "erofs"
+    assert spec["root"]["path"] == os.path.join(extracted_dir, "root")
+    # readonly=True with an explicit workdir runs on a private writable
+    # overlay (runsc drops the rootfs overlay for read-only roots).
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.overlay"] == "self"
     assert spec["process"]["cwd"] == "/workspace"
     assert spec["process"]["args"] == ["sleep", "infinity"]
 
@@ -249,9 +269,6 @@ def test_custom_image_manager_subclass(tmp_path):
         def get_image_dir(self, image: str) -> str:
             return self.rootfs_dir
 
-        def get_rootfs_path(self, image: str) -> str:
-            return os.path.join(self.rootfs_dir, "rootfs")
-
         def get_image_config(self, image: str):
             return {"config": {"WorkingDir": "/custom_workdir"}}
 
@@ -286,6 +303,8 @@ class _StubImageManager(ImageManager):
     def __init__(self, tmp_path):
         super().__init__(images_dir=str(tmp_path))
         self._fake_image_dir = str(tmp_path)
+        # What a pull leaves behind, as far as spec construction cares.
+        (tmp_path / ROOTFS_IMAGE).write_bytes(b"erofs")
 
     def pull_image(self, image, timeout_seconds=120.0):
         return self._fake_image_dir
@@ -636,10 +655,77 @@ def test_image_cache_eviction(tmp_path):
     assert partial.exists()  # mid-pull (no marker): protected
 
 
+def test_image_cache_eviction_keeps_a_free_space_floor(tmp_path, monkeypatch):
+    """Under no size cap, eviction still frees the disk down to the floor,
+    oldest first, and never takes an image in use."""
+    import time
+
+    from ray.experimental.sandbox._internal import image_utils
+
+    images = []
+    for i, age in enumerate((5000, 4000, 3000, 2000, 1000)):
+        d = tmp_path / f"img{i}"
+        d.mkdir()
+        (d / "blob").write_bytes(b"x" * 1000)
+        marker = d / ".extracted"
+        marker.write_text("ok")
+        os.utime(marker, (time.time() - age, time.time() - age))
+        images.append(d)
+    image_utils._mark_image_in_use(str(images[1]), "sb-live")
+    # 500 bytes free, plus whatever eviction gives back.
+    monkeypatch.setattr(
+        image_utils,
+        "_free_bytes",
+        lambda path: 500 + 1000 * sum(not d.exists() for d in images),
+    )
+
+    image_utils.evict_least_recently_used_images(
+        str(tmp_path), max_bytes=None, min_free_bytes=2400
+    )
+    assert [d.exists() for d in images] == [False, True, False, True, True]
+
+    # Nothing evictable is left short of the floor; the in-use image stays.
+    image_utils.evict_least_recently_used_images(
+        str(tmp_path), max_bytes=None, min_free_bytes=10**9
+    )
+    assert [d.exists() for d in images] == [False, True, False, False, False]
+
+
+def test_create_oci_spec_requires_cached_image(tmp_path):
+    """Spec construction refuses a cache entry with no image rather than
+    handing runsc a root it cannot mount."""
+    mgr = _StubImageManager(tmp_path)
+    os.remove(tmp_path / ROOTFS_IMAGE)
+    with pytest.raises(SandboxCreationError, match=ROOTFS_IMAGE):
+        mgr.create_oci_spec(image="fake:latest", base_spec=_sample_base_spec())
+
+
+def test_create_oci_spec_erofs_image(tmp_path):
+    """The image mounts through the gVisor annotations with a "self" overlay
+    under a per-sandbox root.path; no tree is touched on the host (the /tmp
+    seeding happened at build time)."""
+    mgr = _StubImageManager(tmp_path)
+    root_path = tmp_path / "bundle" / "rootfs"
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        readonly=False,
+        root_path=str(root_path),
+    )
+    assert spec["annotations"] == {
+        "dev.gvisor.spec.rootfs.source": str(tmp_path / "rootfs.erofs"),
+        "dev.gvisor.spec.rootfs.type": "erofs",
+        "dev.gvisor.spec.rootfs.overlay": "self",
+    }
+    assert spec["root"] == {"path": str(root_path), "readonly": False}
+    assert root_path.is_dir()
+    assert not (tmp_path / "rootfs").exists()
+
+
 def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
     """/etc/hosts is a per-sandbox read-write bind (localhost must resolve),
-    and /tmp stays on the rootfs (readonly sandboxes get an explicit tmpfs
-    so it remains writable)."""
+    and /tmp stays on the rootfs, seeded into the image at build time
+    (readonly sandboxes get an explicit tmpfs so it remains writable)."""
     mgr = _StubImageManager(tmp_path)
     hosts = tmp_path / "hosts"
     hosts.write_text("127.0.0.1\tlocalhost\n")
@@ -654,13 +740,8 @@ def test_oci_spec_docker_parity_hosts_and_tmp(tmp_path):
     assert mounts["/etc/hosts"]["source"] == str(hosts)
     assert "rw" in mounts["/etc/hosts"]["options"]
     assert mounts["/tmp"]["type"] == "tmpfs"
-    # The rootfs /tmp was seeded so runsc keeps it on the rootfs device —
-    # and is world-writable + sticky regardless of how it was extracted.
-    assert (tmp_path / "rootfs" / "tmp" / ".ray-sandbox-keep").exists()
-    import stat
-
-    mode = stat.S_IMODE((tmp_path / "rootfs" / "tmp").stat().st_mode)
-    assert mode == 0o1777
+    # Nothing is seeded on the host: the image carries /tmp already.
+    assert not (tmp_path / "rootfs").exists()
 
     spec = mgr.create_oci_spec(
         image="fake:latest",

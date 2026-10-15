@@ -81,6 +81,7 @@ from ray.data.context import (
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+    from ray.data._internal.execution.lineage_tracker import LineageTracker
     from ray.data._internal.progress.base_progress import BaseProgressBar
 
 logger = logging.getLogger(__name__)
@@ -479,11 +480,13 @@ def _derive_max_shuffle_aggregators(
     # As such we establish that the max number of shuffle
     # aggregators (workers):
     #
-    #   - Should not exceed total # of CPUs (to fully utilize cluster resources
-    #   while avoiding thrashing these due to over-allocation)
+    #   - Should request at least one aggregator so a cluster with no workers
+    #     can scale up
+    #   - Otherwise should not exceed total # of CPUs (to fully utilize cluster
+    #     resources while avoiding thrashing these due to over-allocation)
     #   - Should be capped at fixed size (128 by default)
     return min(
-        math.ceil(total_cluster_resources.cpu),
+        max(1, math.ceil(total_cluster_resources.cpu)),
         data_context.max_hash_shuffle_aggregators
         or DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS,
     )
@@ -678,8 +681,9 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self,
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
+        lineage_tracker: Optional["LineageTracker"] = None,
     ) -> None:
-        super().start(options, block_ref_counter)
+        super().start(options, block_ref_counter, lineage_tracker)
 
     @property
     def shuffle_name(self) -> str:

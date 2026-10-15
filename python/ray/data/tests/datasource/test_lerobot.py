@@ -9,6 +9,9 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.datasource.lerobot_datasource import (
+    LeRobotPerDatasetDatasource,
+)
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -1531,6 +1534,296 @@ def test_read_lerobot_delta_invalid_raises(
         ray.data.read_lerobot(
             lerobot_dataset_no_video, delta_timestamps={"action": [0.05]}
         )
+
+    with pytest.raises(ValueError, match="not dataset features") as exc_info:
+        ray.data.read_lerobot(
+            lerobot_dataset_no_video,
+            delta_timestamps={"acton": [0.0, 0.1]},
+        )
+    assert "acton" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# read_granularity="dataset" (LeRobotPerDatasetDatasource)
+# ---------------------------------------------------------------------------
+
+# Scalar columns present regardless of camera kind; compared row-for-row across
+# granularities (decoded camera tensors are checked separately by shape).
+SCALAR_COLUMNS = [
+    "index",
+    "episode_index",
+    "frame_index",
+    "timestamp",
+    "task",
+    "dataset_index",
+]
+
+
+def _make_datasets(
+    tmp_path,
+    n: int,
+    *,
+    num_episodes: int = 1,
+    frames: int = 4,
+    has_video: bool = False,
+    image_camera: bool = False,
+):
+    """Create ``n`` datasets of ``num_episodes`` episodes each under ``tmp_path``."""
+    return [
+        create_lerobot_dataset(
+            str(tmp_path / f"ds{i}"),
+            num_episodes=num_episodes,
+            frames_per_episode=frames,
+            has_video=has_video,
+            image_camera=image_camera,
+        )
+        for i in range(n)
+    ]
+
+
+def _run_read_tasks(datasource, parallelism: int) -> pa.Table:
+    """Execute a datasource's read tasks in-process (no cluster required)."""
+    tables = [
+        block for task in datasource.get_read_tasks(parallelism) for block in task()
+    ]
+    return pa.concat_tables(tables)
+
+
+def _row_key(row):
+    """Stable cross-granularity row key: ``dataset_index`` is the root's position
+    in the input list in every mode, and ``index`` is preserved per dataset."""
+    return (row["dataset_index"], row["index"])
+
+
+def _assert_rows_match(got, expected, *, has_camera: bool):
+    """Assert two row lists (already sorted by :func:`_row_key`) are equal."""
+    assert len(got) == len(expected)
+    for g, e in zip(got, expected):
+        for col in SCALAR_COLUMNS:
+            assert g[col] == e[col], col
+        assert np.array_equal(g["action"], e["action"])
+        assert np.array_equal(g["state"], e["state"])
+        if has_camera:
+            # Camera frames decode to (H, W, C) uint8 tensors in both modes.
+            assert np.array_equal(g["observation.image"], e["observation.image"])
+
+
+@pytest.mark.parametrize(
+    "has_video, image_camera",
+    [(True, False), (False, False), (False, True)],
+    ids=["video", "no_camera", "image"],
+)
+def test_dataset_granularity_matches_episode(
+    ray_start_regular_shared, tmp_path, has_video, image_camera
+):
+    """Reading N single-episode datasets at ``"dataset"`` granularity yields the
+    same rows as the ``"episode"`` granularity."""
+    roots = _make_datasets(tmp_path, 5, has_video=has_video, image_camera=image_camera)
+
+    ds_dataset = ray.data.read_lerobot(roots, read_granularity="dataset")
+    ds_episode = ray.data.read_lerobot(roots, read_granularity="episode")
+
+    assert set(ds_dataset.schema().names) == set(ds_episode.schema().names)
+
+    got = sorted(ds_dataset.take_all(), key=_row_key)
+    expected = sorted(ds_episode.take_all(), key=_row_key)
+
+    assert len(got) == 5 * 4
+    _assert_rows_match(got, expected, has_camera=has_video or image_camera)
+
+
+@pytest.mark.parametrize("has_video", [True, False], ids=["video", "no_camera"])
+def test_multi_episode_datasets_match_episode_granularity(
+    ray_start_regular_shared, tmp_path, has_video
+):
+    """Datasets with several episodes each are valid input too: within a dataset
+    the base partitioning is the file group, so one task covers several row
+    ranges. Output must still match the ``"episode"`` granularity."""
+    roots = _make_datasets(tmp_path, 2, num_episodes=3, frames=2, has_video=has_video)
+
+    got = sorted(
+        ray.data.read_lerobot(roots, read_granularity="dataset").take_all(),
+        key=_row_key,
+    )
+    expected = sorted(
+        ray.data.read_lerobot(roots, read_granularity="episode").take_all(),
+        key=_row_key,
+    )
+
+    assert len(got) == 2 * 3 * 2
+    _assert_rows_match(got, expected, has_camera=has_video)
+
+
+def test_dataset_index_identifies_source_root(ray_start_regular_shared, tmp_path):
+    roots = _make_datasets(tmp_path, 4, frames=3)
+    rows = ray.data.read_lerobot(roots, read_granularity="dataset").take_all()
+    assert len(rows) == 4 * 3
+    # Each source dataset contributes its 3 frames under its own dataset_index.
+    per_root = {}
+    for r in rows:
+        per_root.setdefault(r["dataset_index"], 0)
+        per_root[r["dataset_index"]] += 1
+    assert per_root == {0: 3, 1: 3, 2: 3, 3: 3}
+
+
+def test_bounded_task_count(tmp_path):
+    """The task count is bounded by ``parallelism`` and capped at #datasets --
+    it does NOT explode to one task per dataset."""
+    roots = _make_datasets(tmp_path, 6)
+    ds = LeRobotPerDatasetDatasource(roots)
+
+    assert len(ds.get_read_tasks(parallelism=2)) == 2
+    assert len(ds.get_read_tasks(parallelism=3)) == 3
+    # More parallelism than datasets is capped at the dataset count.
+    assert len(ds.get_read_tasks(parallelism=100)) == 6
+
+    # The 2-task plan spans all 6 datasets (multiple datasets per task).
+    full = _run_read_tasks(ds, parallelism=2)
+    assert set(full.column("dataset_index").to_pylist()) == set(range(6))
+
+
+def test_deferred_resolution(ray_start_regular_shared, tmp_path):
+    """Only the first root is resolved on the driver; a bad later root is not
+    touched until its read task runs -- unlike ``"file"``/``"episode"`` which
+    resolve every root at construction."""
+    good = create_lerobot_dataset(
+        str(tmp_path / "good"), num_episodes=1, has_video=False
+    )
+    bad = str(tmp_path / "nonexistent")
+
+    # Construction succeeds despite the bad second root (it is never resolved).
+    LeRobotPerDatasetDatasource([good, bad])
+
+    # The failure surfaces only when the task reading the bad root executes.
+    with pytest.raises(Exception):
+        ray.data.read_lerobot([good, bad], read_granularity="dataset").materialize()
+
+    # Contrast: "file" granularity resolves all roots up front, so it raises
+    # at construction time (before any execution).
+    with pytest.raises(Exception):
+        ray.data.read_lerobot([good, bad], read_granularity="file")
+
+
+def test_direct_read_task_rows(tmp_path):
+    """Drive the datasource's read tasks directly: rows, schema, dataset_index."""
+    roots = _make_datasets(tmp_path, 4, frames=3)
+    ds = LeRobotPerDatasetDatasource(roots)
+    full = _run_read_tasks(ds, parallelism=2)
+
+    assert full.num_rows == 4 * 3
+    assert set(full.column("dataset_index").to_pylist()) == {0, 1, 2, 3}
+    assert {"index", "action", "state", "task", "stats"} <= set(full.schema.names)
+
+
+def test_datasource_constructor_basics(tmp_path):
+    """Constructor-level behavior: the properties the datasource reports, and
+    that a single path (not a list) is accepted, mirroring read_lerobot."""
+    roots = _make_datasets(tmp_path, 3)
+    ds = LeRobotPerDatasetDatasource(roots)
+    # None keeps autodetected parallelism bounded (see the class docstring).
+    assert ds.estimate_inmemory_data_size() is None
+    assert ds.get_name() == "LeRobot"
+    # Plain local paths (no ``local://`` scheme) support distributed reads.
+    assert ds.supports_distributed_reads is True
+
+    solo = create_lerobot_dataset(
+        str(tmp_path / "solo"), num_episodes=1, frames_per_episode=3, has_video=False
+    )
+    single = LeRobotPerDatasetDatasource(solo)
+    full = _run_read_tasks(single, parallelism=1)
+    assert full.num_rows == 3
+    assert set(full.column("dataset_index").to_pylist()) == {0}
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"read_granularity": "frame"}, "read_granularity must be one of"),
+        (
+            {"read_granularity": "dataset", "override_num_blocks": 4},
+            "greater than the number of datasets",
+        ),
+        (
+            {"read_granularity": "dataset", "episodes": []},
+            "episodes must be a non-empty list",
+        ),
+    ],
+    ids=["unknown_granularity", "override_num_blocks_over_request", "empty_episodes"],
+)
+def test_invalid_arguments_rejected(ray_start_regular_shared, tmp_path, kwargs, match):
+    """Bad arguments fail loudly instead of silently degrading: an unknown
+    granularity; more output blocks than datasets (a dataset is the atomic unit
+    and is never split across tasks, so we don't deliver fewer blocks than
+    requested); and an empty ``episodes`` list, which would otherwise filter
+    every root down to nothing."""
+    roots = _make_datasets(tmp_path, 3)
+    with pytest.raises(ValueError, match=match):
+        ray.data.read_lerobot(roots, **kwargs)
+
+
+def test_override_num_blocks_at_dataset_count_allowed(
+    ray_start_regular_shared, tmp_path
+):
+    """One block per dataset (override == #datasets) is the boundary case and is
+    allowed."""
+    roots = _make_datasets(tmp_path, 3)
+    ray.data.read_lerobot(roots, read_granularity="dataset", override_num_blocks=3)
+
+
+def test_episodes_pushdown(ray_start_regular_shared, tmp_path):
+    """``episodes=`` is a per-root pushdown in dataset mode: only the requested
+    episodes' rows come back, with their original values preserved."""
+    roots = _make_datasets(tmp_path, 2, num_episodes=3, frames=2)
+
+    rows = ray.data.read_lerobot(
+        roots, read_granularity="dataset", episodes=[0, 2]
+    ).take_all()
+
+    # 2 datasets x 2 requested episodes x 2 frames.
+    assert len(rows) == 8
+    assert {r["episode_index"] for r in rows} == {0, 2}
+    assert {r["dataset_index"] for r in rows} == {0, 1}
+
+
+def test_episodes_absent_from_a_root_is_skipped(ray_start_regular_shared, tmp_path):
+    """A root that has none of the requested episodes contributes no rows instead
+    of raising: dataset mode never resolves every root on the driver, so it can't
+    tell "absent from this root" from "absent everywhere" (the other granularities
+    raise here)."""
+    small = create_lerobot_dataset(
+        str(tmp_path / "small"), num_episodes=1, frames_per_episode=2, has_video=False
+    )
+    big = create_lerobot_dataset(
+        str(tmp_path / "big"), num_episodes=3, frames_per_episode=2, has_video=False
+    )
+
+    # Episode 2 exists only in ``big`` (dataset_index 1).
+    rows = ray.data.read_lerobot(
+        [small, big], read_granularity="dataset", episodes=[2]
+    ).take_all()
+
+    assert len(rows) == 2
+    assert {r["dataset_index"] for r in rows} == {1}
+    assert {r["episode_index"] for r in rows} == {2}
+
+
+def test_delta_timestamps_dataset_mode(ray_start_regular_shared, tmp_path):
+    """delta_timestamps works in dataset mode: each
+    windowed feature gains a leading time dimension plus a ``{key}_is_pad`` mask,
+    and the row count is unchanged."""
+    roots = _make_datasets(tmp_path, 3, frames=4)
+    offsets = [0.0, 0.1]  # two frame steps at fps=10
+    ds = ray.data.read_lerobot(
+        roots, read_granularity="dataset", delta_timestamps={"action": offsets}
+    )
+
+    assert "action_is_pad" in set(ds.schema().names)
+
+    rows = ds.take_all()
+    assert len(rows) == 3 * 4  # windows don't change the row count
+    # The windowed feature gains a leading time dim == number of offsets.
+    assert np.asarray(rows[0]["action"]).shape[0] == len(offsets)
+    assert np.asarray(rows[0]["action_is_pad"]).shape[0] == len(offsets)
 
 
 if __name__ == "__main__":

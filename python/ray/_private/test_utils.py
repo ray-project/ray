@@ -70,6 +70,25 @@ REDIS_EXECUTABLE = os.path.join(
 )
 
 
+def _auth_token_header():
+    from ray._raylet import AuthenticationTokenLoader
+
+    return AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
+
+
+def request_with_auth_token(method, url, **kwargs):
+    """Like ``requests.request`` but attaches the cluster's auth token."""
+    kwargs["headers"] = {**_auth_token_header(), **(kwargs.get("headers") or {})}
+    return requests.request(method, url, **kwargs)
+
+
+def auth_token_grpc_metadata():
+    """gRPC metadata carrying the cluster's auth token, empty when there is none."""
+    return tuple(_auth_token_header().items())
+
+
 def get_gpu_visible_devices_env_var() -> Optional[str]:
     """Name of the visible devices env var for this node's GPU family, or None.
 
@@ -1604,7 +1623,8 @@ class RayletKiller(NodeKillerBase):
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
         try:
             stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+                metadata=auth_token_grpc_metadata(),
             )
         except _InactiveRpcError:
             assert not graceful
@@ -1972,7 +1992,10 @@ def kill_raylet(raylet, graceful=False):
     channel = grpc.insecure_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     try:
-        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+        stub.ShutdownRaylet(
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+            metadata=auth_token_grpc_metadata(),
+        )
     except _InactiveRpcError:
         assert not graceful
 

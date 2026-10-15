@@ -22,6 +22,7 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 from ray.data._internal.execution.operators.join import (
     JoinOperator,
     _make_join_reduce_fn,
+    _with_polars_thread_cap,
 )
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.mix_operator import MixOperator
@@ -141,7 +142,7 @@ def plan_count_op(logical_op, physical_children, data_context):
     )
 
 
-_EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
+_DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 
 def _plan_join_shuffle_v2(
@@ -189,17 +190,19 @@ def _plan_join_shuffle_v2(
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
     reduce_kwargs = {}
-    if data_context.use_external_hash_shuffle:
+    if data_context.use_disk_based_hash_shuffle:
         reduce_kwargs[
             "peak_memory_multiplier"
-        ] = _EXTERNAL_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
     return reduce_cls(
         [left_map, right_map],
         data_context,
         num_partitions=num_partitions,
         reduce_fn=reduce_fn,
         disallow_block_splitting=False,
-        reduce_ray_remote_args=logical_op.aggregator_ray_remote_args,
+        reduce_ray_remote_args=_with_polars_thread_cap(
+            logical_op.aggregator_ray_remote_args
+        ),
         name=f"{prefix}JoinShuffleReduce(num_partitions={num_partitions})",
         **reduce_kwargs,
     )
@@ -299,23 +302,35 @@ class Planner:
 
             callbacks.append(checkpoint_callback)
 
-            if (
-                getattr(checkpoint_config, "has_generated_id_column", False)
-                and data_file_dir is not None
-            ):
-                # The id_column path cleans up pending checkpoints (and their
-                # partially written data files) inside checkpoint load, which
-                # the generated-ID path doesn't plan. Clean here instead so a
-                # retry after a mid-write crash doesn't leave stale output.
-                self._clean_pending_checkpoints(
-                    checkpoint_config, logical_plan.context, data_file_dir, data_file_fs
+            if not checkpoint_config._should_restore:
+                # Skip loading checkpoint data and filtering rows,
+                # but still enable the checkpoint writer.
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer,
+                }
+            elif checkpoint_config.has_generated_id_column:
+                # Restoring from generated row IDs isn't wired up yet, and they
+                # can't go through the numpy-based ID filter that the
+                # ``id_column`` path plans. Until then, only write checkpoints:
+                # a rerun redoes every row. Clean up a crashed run's pending
+                # checkpoints first, which the ``id_column`` path does while
+                # loading its checkpoint.
+                if data_file_dir is not None:
+                    self._clean_pending_checkpoints(
+                        checkpoint_config,
+                        logical_plan.context,
+                        data_file_dir,
+                        data_file_fs,
+                    )
+                self._plan_fns_for_checkpointing = {
+                    Write: plan_write_op_with_checkpoint_writer
+                }
+            else:
+                # Dynamically set the plan functions for checkpointing because they
+                # need to a reference to the checkpoint ref.
+                self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
+                    data_file_dir, data_file_fs
                 )
-
-            # Dynamically set the plan functions for checkpointing because they
-            # need to a reference to the checkpoint ref.
-            self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                checkpoint_config, data_file_dir, data_file_fs
-            )
 
         elif checkpoint_config is not None:
             assert not self._check_supports_checkpointing(logical_plan)
@@ -423,29 +438,17 @@ class Planner:
         data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
     ) -> None:
         """Delete pending checkpoints and their partially written data files."""
-        # Lazy import: ``checkpoint_filter`` participates in an import cycle
-        # with ``ray.data.context``.
+        # Lazy import: ``checkpoint_filter`` imports ``ray.data.context``.
         from ray.data.checkpoint.checkpoint_filter import IdColumnCheckpointManager
 
-        manager_cls = (
-            checkpoint_config.checkpoint_manager_cls or IdColumnCheckpointManager
-        )
-        manager = manager_cls(checkpoint_config, data_context)
+        manager = IdColumnCheckpointManager(checkpoint_config, data_context)
         manager._clean_pending_checkpoints(data_file_dir, data_file_filesystem)
 
     def _get_plan_fns_for_checkpointing(
         self,
-        checkpoint_config: "CheckpointConfig",
         data_file_dir: Optional[str] = None,
         data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
-        if getattr(checkpoint_config, "has_generated_id_column", False):
-            # Generated struct IDs can't go through the numpy-based
-            # checkpoint filter, so only the write side is planned: a rerun
-            # re-reads every row (at-least-once) instead of restoring.
-            # Restore routing for generated IDs is planned via ListFiles once
-            # the row-group skip machinery exists.
-            return {Write: plan_write_op_with_checkpoint_writer}
         plan_fns = {
             Read: partial(
                 plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem

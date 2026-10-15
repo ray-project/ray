@@ -183,6 +183,9 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
     return num_unschedulable_lease_spilled_;
   }
 
+  /// Bytes currently pinned as granted-lease arguments. For tests / debug.
+  size_t GetPinnedLeaseArgumentsBytes() const { return pinned_lease_arguments_bytes_; }
+
   bool IsLeaseQueued(const SchedulingClass &scheduling_class,
                      const LeaseID &lease_id) const override;
 

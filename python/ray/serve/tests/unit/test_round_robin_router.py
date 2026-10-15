@@ -7,14 +7,20 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     RequestMetadata,
 )
-from ray.serve._private.request_router import PendingRequest
+from ray.serve._private.request_router import (
+    PendingRequest,
+    request_router as request_router_module,
+)
 from ray.serve._private.test_utils import (
     FAKE_REPLICA_DEPLOYMENT_ID as DEPLOYMENT_ID,
     FakeRunningReplica,
     MockTimer,
 )
 from ray.serve._private.utils import generate_request_id
-from ray.serve.experimental.round_robin_router import RoundRobinRouter
+from ray.serve.experimental.round_robin_router import (
+    _MAX_ROUND_ROBIN_COUNTER,
+    RoundRobinRouter,
+)
 
 TIMER = MockTimer()
 
@@ -75,7 +81,7 @@ def test_initialize_state_ignores_router_kwargs(router):
 
 
 def test_round_robin_counter_initialized_randomly(router):
-    assert 0 <= router._round_robin_counter < 2**31
+    assert 0 <= router._round_robin_counter < _MAX_ROUND_ROBIN_COUNTER
 
 
 @pytest.mark.asyncio
@@ -100,7 +106,7 @@ async def test_choose_replicas_round_robin_order(router):
 
 
 @pytest.mark.asyncio
-async def test_choose_replicas_ignores_request_metadata(router):
+async def test_prefers_loaded_model(router):
     replicas = [
         FakeRunningReplica("r0", model_ids={"model-a"}),
         FakeRunningReplica("r1"),
@@ -109,18 +115,182 @@ async def test_choose_replicas_ignores_request_metadata(router):
     for replica in replicas:
         replica.set_queue_len_response(0)
     router.update_replicas(replicas)
-    router._round_robin_counter = 0
+    router._multiplexed_round_robin_counters["model-a"] = 0
     await asyncio.sleep(0)
 
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == [["r0"], ["r1"], ["r2"]]
+    ) == [["r0"], ["r2"]]
     assert _ranked_replica_unique_ids(
         await router.choose_replicas(replicas, _make_request(model_id="model-a"))
+    ) == [["r2"], ["r0"]]
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-a"))
+    ) == [["r0"], ["r2"]]
+
+
+@pytest.mark.asyncio
+async def test_round_robins_warm_replicas(router):
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-a"}),
+        FakeRunningReplica("r1", model_ids={"model-a"}),
+        FakeRunningReplica("r2", model_ids={"model-b"}),
+        FakeRunningReplica("r3", model_ids={"model-b"}),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters["model-a"] = 0
+    router._multiplexed_round_robin_counters["model-b"] = 0
+    await asyncio.sleep(0)
+
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-a"))
+    ) == [["r0"], ["r1"]]
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-b"))
+    ) == [["r2"], ["r3"]]
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-a"))
+    ) == [["r1"], ["r0"]]
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-b"))
+    ) == [["r3"], ["r2"]]
+
+
+@pytest.mark.asyncio
+async def test_shared_cursor_for_fallback(router):
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-a"}),
+        FakeRunningReplica("r1", model_ids={"model-b"}),
+        FakeRunningReplica("r2"),
+        FakeRunningReplica("r3"),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._round_robin_counter = 0
+    await asyncio.sleep(0)
+
+    # Models C and D are not loaded. Both fall back to r2 and r3, the replicas
+    # with the fewest loaded models, and use the router's shared cursor.
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-c"))
+    ) == [["r2"], ["r3"]]
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, _make_request(model_id="model-d"))
+    ) == [["r3"], ["r2"]]
+
+
+@pytest.mark.asyncio
+async def test_shared_cursor_for_overlap(router, monkeypatch):
+    current_time = 100.0
+    monkeypatch.setattr(request_router_module.time, "time", lambda: current_time)
+    monkeypatch.setattr(
+        request_router_module,
+        "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S",
+        1.0,
+    )
+
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-a"}),
+        FakeRunningReplica("r1", model_ids={"model-a"}),
+        FakeRunningReplica("r2", model_ids={"model-b", "model-c"}),
+        FakeRunningReplica("r3", model_ids={"model-d", "model-e"}),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters["model-a"] = 4
+    router._round_robin_counter = 0
+    await asyncio.sleep(0)
+
+    request = _make_request(model_id="model-a")
+
+    # The warm and fewest-model tiers both contain r0 and r1.
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, request)
+    ) == [["r0"], ["r1"]]
+
+    # A retry is in the fewest-model tier and must use the shared cursor.
+    current_time = 100.5
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, request)
+    ) == [["r0"], ["r1"]]
+
+
+@pytest.mark.asyncio
+async def test_prunes_stale_cursors(router):
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-a"}),
+        FakeRunningReplica("r1", model_ids={"model-b"}),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters = {
+        "model-a": 1,
+        "model-b": 2,
+    }
+
+    updated_replicas = [
+        FakeRunningReplica("r0", model_ids={"model-b"}),
+        FakeRunningReplica("r1", model_ids={"model-b"}),
+    ]
+    for replica in updated_replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(updated_replicas)
+    await asyncio.sleep(0)
+
+    assert router._multiplexed_round_robin_counters == {"model-b": 2}
+
+
+@pytest.mark.asyncio
+async def test_multiplex_priority_order(router, monkeypatch):
+    current_time = 100.0
+    monkeypatch.setattr(request_router_module.time, "time", lambda: current_time)
+    monkeypatch.setattr(
+        request_router_module,
+        "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S",
+        1.0,
+    )
+
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-a", "model-x"}),
+        FakeRunningReplica("r1", model_ids={"model-a", "model-y"}),
+        FakeRunningReplica("r2", model_ids={"model-a", "model-z"}),
+        FakeRunningReplica("r3"),
+        FakeRunningReplica("r4"),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters["model-a"] = 4
+    router._round_robin_counter = 5
+    await asyncio.sleep(0)
+
+    request = _make_request(model_id="model-a")
+
+    # First try replicas with model A already loaded.
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, request)
     ) == [["r1"], ["r2"], ["r0"]]
+
+    # Before the matching timeout, retries use the fewest-model replicas.
+    current_time = 100.5
     assert _ranked_replica_unique_ids(
-        await router.choose_replicas(replicas, _make_request(model_id="model-a"))
-    ) == [["r2"], ["r0"], ["r1"]]
+        await router.choose_replicas(replicas, request)
+    ) == [["r4"], ["r3"]]
+
+    # After the timeout, try those replicas once more, then all replicas.
+    # The randomly selected matching timeout is in [1, 2] seconds.
+    current_time = 102.5
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, request)
+    ) == [["r3"], ["r4"]]
+    assert _ranked_replica_unique_ids(
+        await router.choose_replicas(replicas, request)
+    ) == [["r2"], ["r3"], ["r4"], ["r0"], ["r1"]]
 
 
 @pytest.mark.parametrize(

@@ -19,7 +19,6 @@
 #include <optional>
 #include <thread>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"

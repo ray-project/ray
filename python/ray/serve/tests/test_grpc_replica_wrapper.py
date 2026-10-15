@@ -202,7 +202,7 @@ async def test_to_object_ref_not_supported(
             await replica_result.to_object_ref_async()
 
         with pytest.raises(RuntimeError, match=err_msg):
-            replica_result.to_object_ref(timeout_s=0.0)
+            replica_result.to_object_ref()
 
 
 @pytest.mark.asyncio
