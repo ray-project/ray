@@ -274,6 +274,7 @@ class RouterMetricsManager:
             if not is_retry and self.should_send_scaled_to_zero_optimized_push(
                 curr_num_replicas=num_curr_replicas
             ):
+                self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
             yield
@@ -328,6 +329,7 @@ class RouterMetricsManager:
             # least one queued request on this router, then immediately
             # push handle metric to the controller.
             if self.should_send_scaled_to_zero_optimized_push(curr_num_replicas):
+                self._add_autoscaling_metrics_point()
                 self.push_autoscaling_metrics_to_controller()
 
             # Record number of queued + ongoing requests at regular
