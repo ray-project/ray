@@ -52,6 +52,7 @@ from ray.serve.config import (
     GangSchedulingConfig,
     RequestRouterConfig,
 )
+from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
 from ray.serve.generated.serve_pb2 import (
@@ -391,24 +392,8 @@ def test_ingress_request_router_rejects_autoscaling_config():
         )
 
 
-def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
-    ingress_api = FastAPI()
-    router_api = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(ingress_api)
-    class LLMServer:
-        pass
-
-    @serve.deployment
-    @serve.ingress(router_api)
-    class IngressRequestRouter:
-        pass
-
-    llm_server = LLMServer.bind()
-    app = llm_server._with_ingress_request_router(
-        IngressRequestRouter.bind(llm_deployment=llm_server)
-    )
+def _build_serve_application_deploy_args(app: Application) -> List[Dict]:
+    """Runs the declarative build task on `app` under HAProxy; returns its deploy args."""
     runtime_context = Mock()
     runtime_context.runtime_env = {}
     runtime_context.get_job_id.return_value = "job-id"
@@ -435,6 +420,28 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
         )
 
     assert error is None
+    return deploy_args
+
+
+def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class LLMServer:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class IngressRequestRouter:
+        pass
+
+    llm_server = LLMServer.bind()
+    app = llm_server._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=llm_server)
+    )
+    deploy_args = _build_serve_application_deploy_args(app)
     assert [
         (args["deployment_name"], args["ingress_request_router"])
         for args in deploy_args
@@ -442,6 +449,78 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
         ("LLMServer", False),
         ("IngressRequestRouter", True),
     ]
+
+
+def test_build_serve_application_puts_router_marker_on_ingress_args():
+    @serve.deployment
+    class Helper:
+        pass
+
+    @serve.deployment
+    @serve._router_application
+    class Router:
+        def __init__(self, helper):
+            pass
+
+    app = Router.bind(Helper.bind())
+    deploy_args = _build_serve_application_deploy_args(app)
+    assert {
+        args["deployment_name"]: args["router_application"] for args in deploy_args
+    } == {"Helper": False, "Router": True}
+
+
+class TestRouterApplicationState:
+    def test_manager_reads_marker_from_ingress_deployment(
+        self, mocked_application_state_manager
+    ):
+        app_state_manager, _, _ = mocked_application_state_manager
+        ingress_params = deployment_params("router", "/")
+        ingress_params["router_application"] = True
+        app_state_manager.deploy_app(
+            "app1",
+            [ingress_params, deployment_params("other")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert app_state_manager.is_router_application("app1")
+        assert not app_state_manager.is_router_application("missing")
+
+    def test_manager_defaults_to_not_router(self, mocked_application_state_manager):
+        app_state_manager, _, _ = mocked_application_state_manager
+        app_state_manager.deploy_app(
+            "app1",
+            [deployment_params("a", "/")],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert not app_state_manager.is_router_application("app1")
+
+    def test_marker_on_non_ingress_deployment_is_ignored(
+        self, mocked_application_state_manager
+    ):
+        """Only the ingress deployment's marker describes the application."""
+        app_state_manager, _, _ = mocked_application_state_manager
+        other_params = deployment_params("other")
+        other_params["router_application"] = True
+        app_state_manager.deploy_app(
+            "app1",
+            [deployment_params("a", "/"), other_params],
+            ApplicationArgsProto(external_scaler_enabled=False),
+        )
+
+        assert not app_state_manager.is_router_application("app1")
+
+    def test_deployment_info_keeps_marker(self):
+        params = deployment_params("router", "/")
+        params["router_application"] = True
+        info = deploy_args_to_deployment_info(**params, app_name="app1")
+
+        assert info.update(route_prefix="/new").router_application
+        assert cloudpickle.loads(cloudpickle.dumps(info)).router_application
+        assert DeploymentInfo.from_proto(info.to_proto()).router_application
+        assert not DeploymentInfo.from_proto(
+            deployment_info("a", "/").to_proto()
+        ).router_application
 
 
 @pytest.fixture
@@ -480,6 +559,64 @@ def test_application_state_clears_stale_ingress_request_router(
         target_config=None,
     )
     assert application_state.ingress_request_router_deployment is None
+
+
+def test_application_state_preserves_router_metadata_during_rebuild(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+    router_params = deployment_params("Router", "/")
+    router_params["router_application"] = True
+    router_info = deploy_args_to_deployment_info(**router_params, app_name="test_app")
+
+    application_state._set_target_state(
+        {"Router": router_info},
+        api_type=APIType.DECLARATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Router"
+    assert application_state.is_router_application
+
+    # The old router continues serving while the replacement build is pending.
+    application_state._set_target_state(
+        None,
+        api_type=APIType.DECLARATIVE,
+        code_version=None,
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Router"
+    assert application_state.is_router_application
+
+    # A completed non-router replacement updates the retained metadata.
+    application_state._set_target_state(
+        {"Ingress": deployment_info("Ingress", "/")},
+        api_type=APIType.DECLARATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.ingress_deployment == "Ingress"
+    assert not application_state.is_router_application
+
+
+def test_application_state_clears_router_metadata_on_delete(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+    router_params = deployment_params("Router", "/")
+    router_params["router_application"] = True
+    router_info = deploy_args_to_deployment_info(**router_params, app_name="test_app")
+    application_state._set_target_state(
+        {"Router": router_info},
+        api_type=APIType.DECLARATIVE,
+        code_version="1",
+        target_config=None,
+    )
+
+    application_state._set_target_state_deleting()
+
+    assert application_state.ingress_deployment is None
+    assert not application_state.is_router_application
 
 
 class TestApplicationStatusInfo:
@@ -1646,7 +1783,9 @@ class TestOverrideDeploymentInfo:
         )
 
     @staticmethod
-    def _make_info(ingress=False, ingress_request_router=False):
+    def _make_info(
+        ingress=False, ingress_request_router=False, router_application=False
+    ):
         return DeploymentInfo(
             route_prefix="/" if ingress else None,
             version="123",
@@ -1656,7 +1795,30 @@ class TestOverrideDeploymentInfo:
             deployer_job_id="",
             ingress=ingress,
             ingress_request_router=ingress_request_router,
+            router_application=router_application,
         )
+
+    @pytest.mark.parametrize("router_application", [False, True])
+    def test_override_null_route_prefix_rejects_router_application(
+        self, router_application
+    ):
+        """A router application routes HTTP, so it cannot drop its route."""
+        infos = {
+            "Ingress": self._make_info(
+                ingress=True, router_application=router_application
+            )
+        }
+        config = ServeApplicationSchema(
+            name="router", import_path="test.import.path", route_prefix=None
+        )
+
+        if router_application:
+            with pytest.raises(RayServeException, match="Application 'router'"):
+                override_deployment_info(infos, config)
+        else:
+            assert override_deployment_info(infos, config)["Ingress"].route_prefix is (
+                None
+            )
 
     def test_override_deployment_config(self, info):
         config = ServeApplicationSchema(
