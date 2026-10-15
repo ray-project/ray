@@ -70,12 +70,14 @@ def test_image_cache_name_normalizes_registry_spellings():
         "docker.io/library/python:3.12-slim",
         "index.docker.io/library/python:3.12-slim",
         "registry-1.docker.io/library/python:3.12-slim",
+        "Docker.io/python:3.12-slim",
     )
     assert {image_cache_name(s) for s in spellings} == {
         "docker.io_library_python_3.12-slim"
     }
     assert image_cache_name("busybox") == image_cache_name("busybox:latest")
     assert image_cache_name("ghcr.io/org/repo:1.0") == "ghcr.io_org_repo_1.0"
+    assert image_cache_name("GHCR.io/org/repo:1.0") == "ghcr.io_org_repo_1.0"
     assert (
         image_cache_name("quay.io/coreos/etcd@sha256:abcd")
         == "quay.io_coreos_etcd_sha256_abcd"
@@ -191,6 +193,14 @@ def test_parse_image_ref():
         "library/ubuntu",
         "sha256:12345",
     )
+    # Host names are case-insensitive; tags are not.
+    assert parse_image_ref("Docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("GHCR.io/org/repo:V1") == ("ghcr.io", "org/repo", "V1")
+    assert parse_image_ref("LocalHost/app") == ("localhost", "app", "latest")
 
 
 def test_get_platform_arch():

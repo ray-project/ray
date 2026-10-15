@@ -136,6 +136,9 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
+    The registry comes back in lowercase, since host names are
+    case-insensitive: ``Docker.io/...`` is a Docker Hub reference too.
+
     Args:
         image_ref: Container image reference string (e.g. 'busybox:latest',
             'python:3.10-slim', 'docker.io/library/python:3.12-slim',
@@ -153,15 +156,16 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
             image_ref, tag = parts[0], parts[1]
 
     parts = image_ref.split("/", 1)
+    host = parts[0].lower()
     if len(parts) == 1:
         registry = "registry-1.docker.io"
         repo = f"library/{parts[0]}"
-    elif "." in parts[0] or ":" in parts[0] or parts[0] == "localhost":
-        if parts[0] in _DOCKER_HUB_REGISTRIES:
+    elif "." in host or ":" in host or host == "localhost":
+        if host in _DOCKER_HUB_REGISTRIES:
             registry = "registry-1.docker.io"
             repo = f"library/{parts[1]}" if "/" not in parts[1] else parts[1]
         else:
-            registry = parts[0]
+            registry = host
             repo = parts[1]
     else:
         registry = "registry-1.docker.io"
