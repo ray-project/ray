@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Optional, Tuple
 
 from starlette.types import Scope
 
@@ -717,8 +717,22 @@ class RunningReplicaInfo:
             ]
         )
 
+    # Process-level cache for actor handles to avoid repeated GCS named-actor
+    # lookups from multiple RunningReplica/Router instances in the same worker
+    # process. Ray's C++ CoreWorker already caches per-process named actor IDs,
+    # but this Python-level cache avoids the Python→C++ boundary overhead and
+    # keeps handles alive as long as there are RunningReplica references.
+    # Key: (actor_name, namespace) -> Value: ActorHandle
+    _actor_handle_cache: ClassVar[Dict[Tuple[str, str], ActorHandle]] = {}
+
     def get_actor_handle(self) -> ActorHandle:
+        cache_key = (self.actor_name, SERVE_NAMESPACE)
+        cached = type(self)._actor_handle_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         actor_handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
+        type(self)._actor_handle_cache[cache_key] = actor_handle
         return actor_handle
 
 
