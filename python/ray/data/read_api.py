@@ -5204,7 +5204,7 @@ def read_delta_sharing_tables(
     Examples:
         >>> import ray  # doctest: +SKIP_EXAMPLE
         >>> ds = ray.data.read_delta_sharing_tables(
-        ...     url=f"your-profile.json#your-share-name.your-schema-name.your-table-name",
+        ...     url="your-profile.json#your-share-name.your-schema-name.your-table-name",
         ...     limit=100000,
         ...     version=1,
         ... )
