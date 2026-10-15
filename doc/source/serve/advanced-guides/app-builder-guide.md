@@ -22,7 +22,7 @@ To pass arguments without changing the code, define an *application builder* fun
 :language: python
 ```
 
-You can use this application builder function as the import path in the `serve run` CLI command or in the config file, as the following sections show. To avoid writing code to handle type conversions and missing arguments, use a [Pydantic object](typed-app-builders) instead.
+You can use this application builder function as the import path in the `serve run` CLI command or in the config file, as the following sections show. To avoid writing code to handle type conversions and missing arguments, use a Pydantic object instead.
 
 (passing-arguments-via-serve-run)=
 ### Pass arguments through `serve run`

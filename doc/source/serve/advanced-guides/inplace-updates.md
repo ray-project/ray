@@ -30,7 +30,7 @@ A lightweight config update modifies running replicas without tearing them down 
 (updating-the-user-config)=
 ## Update the user config
 
-This example uses the text summarization and translation application [from the production guide](production-config-yaml). Both deployments contain a `reconfigure()` method, so you can issue lightweight updates to them by changing the `user_config`.
+This example uses the text summarization and translation application from the [production guide](production-config-yaml). Both deployments contain a `reconfigure()` method, so you can issue lightweight updates to them by changing the `user_config`.
 
 For this example, first stop any previous Ray cluster with the `ray stop` CLI command. Then start a cluster and deploy the application:
 

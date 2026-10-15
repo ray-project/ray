@@ -131,7 +131,7 @@ For more complex dependencies, including files outside the working directory, en
 serve run  --address=ray://<head-node-ip-address>:10001 --runtime-env-json='{"env_vars": {"MY_ENV_VAR": "my-value"}, "working_dir": "./project/src", "pip": ["requests", "chess"]}' local_dev:app
 ```
 
-You can also specify the `runtime_env` in a YAML file. See [serve run](#serve-cli) for details.
+You can also specify the `runtime_env` in a YAML file. See [`serve run`](#serve-cli) for details.
 
 ## What's next?
 

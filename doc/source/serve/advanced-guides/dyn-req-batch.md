@@ -127,7 +127,7 @@ Some inputs within a batch might generate fewer outputs than others. When an inp
 (tips-for-fine-tuning-batching-parameters)=
 ## Tune batching parameters
 
-Ideally, set `max_batch_size` to a power of 2, such as 2, 4, 8, or 16, because CPUs and GPUs are both optimized for data of these shapes. Large batch sizes incur a high memory cost and a latency penalty for the first few requests.
+Ideally, set `max_batch_size` to a power of two, such as 2, 4, 8, or 16, because CPUs and GPUs are both optimized for data of these shapes. Large batch sizes incur a high memory cost and a latency penalty for the first few requests.
 
 When you use `batch_size_fn`, set `max_batch_size` based on your custom metric rather than item count. For example, if you batch by total nodes in graphs, set `max_batch_size` to your GPU's maximum node capacity, such as 10,000 nodes, rather than to a count of graphs.
 

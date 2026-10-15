@@ -13,7 +13,7 @@ This API is alpha and might change before it becomes stable.
 
 Different Ray Serve applications need different load-balancing logic. For example, when you serve LLMs, you might want a policy other than balancing the number of requests across replicas, such as balancing ongoing input tokens or KV cache utilization. [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) is a Ray Serve abstraction for extending and customizing the load-balancing logic of each deployment.
 
-This guide shows how to use the [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst) API to customize load balancing across the replicas of a deployment.
+This guide shows how to use the `RequestRouter` API to customize load balancing across the replicas of a deployment.
 
 
 (simple-uniform-request-router)=
@@ -26,7 +26,7 @@ Create a file `custom_request_router.py` with the following code:
 :end-before: __end_define_uniform_request_router__
 :language: python
 ```
-This code defines a simple uniform request router that routes each request to a random replica, which distributes the load evenly regardless of each replica's queue length or the request body. The router is a class that inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) method, which returns a random replica for every incoming request. The return type is a list of lists of replicas, where each inner list represents a rank of replicas. The first rank is the most preferred, and the last rank is the least preferred. Ray Serve goes through the ranks in order and, within each rank, attempts to route the request to the replica with the shortest request queue, until a replica can process the request. If no replica can process the request, Ray Serve calls [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) again after a backoff delay, and repeats until a replica can process the request.
+This code defines a simple uniform request router that routes each request to a random replica, which distributes the load evenly regardless of each replica's queue length or the request body. The router is a class that inherits from [`RequestRouter`](../api/doc/ray.serve.request_router.RequestRouter.rst). It implements the [`choose_replicas`](../api/doc/ray.serve.request_router.RequestRouter.choose_replicas.rst) method, which returns a random replica for every incoming request. The return type is a list of lists of replicas, where each inner list represents a rank of replicas. The first rank is the most preferred, and the last rank is the least preferred. Ray Serve goes through the ranks in order and, within each rank, attempts to route the request to the replica with the shortest request queue, until a replica can process the request. If no replica can process the request, Ray Serve calls `choose_replicas` again after a backoff delay, and repeats until a replica can process the request.
 
 
 :::{note}
@@ -190,7 +190,7 @@ The following benchmark measures `CapacityQueueRouter` under normal conditions a
 - Deployment topology: Client -> `ParentDeployment` -> `ChildDeployment`. The benchmark applies the request router selection to both deployments, so it controls how the HTTP proxy selects parent replicas and how the parent's `DeploymentHandle` selects child replicas.
 - Scale: small with 8 replicas, medium with 32, large with 128, and xlarge with 512.
 - Workload: Replica processing latency follows an exponential distribution with a mean of 1 second, capped at 10 seconds.
-- `max_ongoing_requests` is `2`.
+- Concurrency limit: `max_ongoing_requests` is `2`.
 - Load generation: Closed-loop load generation keeps replicas saturated at `max_ongoing_requests` concurrency.
 - Warmup: 10 seconds. The benchmark discards all metrics from the warmup window.
 
@@ -203,6 +203,7 @@ The following benchmark measures `CapacityQueueRouter` under normal conditions a
 Under normal conditions without faults, `CapacityQueueRouter` yields higher throughput, higher utilization, and lower latency.
 
 ```{image} ../images/capacity-queue-router-normal.png
+:alt: Charts comparing the power-of-two-choices router and CapacityQueueRouter on throughput, per-replica utilization, and P50 latency at small, medium, large, and xlarge scales
 :align: center
 :width: 800px
 ```
@@ -211,6 +212,7 @@ Under normal conditions without faults, `CapacityQueueRouter` yields higher thro
 The benchmark simulates a fault by killing the `CapacityQueue` router. After recovery, `CapacityQueue` converges toward its pre-fault performance.
 
 ```{image} ../images/capacity-queue-router-fault.png
+:alt: Charts comparing CapacityQueueRouter before, during, and after a simulated fault against the power-of-two-choices router on throughput, utilization, and P50 latency, plus P50 latency over time through the fault
 :align: center
 :width: 800px
 ```

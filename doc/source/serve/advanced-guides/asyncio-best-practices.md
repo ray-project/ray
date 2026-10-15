@@ -63,6 +63,8 @@ The following example shows an asynchronous deployment:
 :language: python
 ```
 
+This handler behaves as follows:
+
 - `async def __call__` runs directly on the replica's user event loop.
 - While this handler awaits `asyncio.sleep`, the loop can start handling other requests.
 
@@ -230,6 +232,8 @@ With an `async def` handler that spends most of its time awaiting I/O, `max_ongo
 :language: python
 ```
 
+This handler behaves as follows:
+
 - Up to 100 requests can be in flight per replica.
 - While one request is waiting, the event loop can work on others.
 
@@ -337,7 +341,7 @@ For most production deployments, keep both separate-loop flags at their default 
 
 ## Batching and streaming semantics
 
-Batching and streaming both rely on the event loop to stay responsive. They don't change where your code runs: batched handlers and streaming handlers still run on the same user event loop as any other handler. Adding batching or streaming on top of blocking code can make the effects of event loop blocking much worse.
+Batching and streaming both rely on the event loop to stay responsive. They don't change where your code runs. Batched handlers and streaming handlers still run on the same user event loop as any other handler. Adding batching or streaming on top of blocking code can make the effects of event loop blocking much worse.
 
 ### Batching
 
