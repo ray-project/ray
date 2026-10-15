@@ -1,3 +1,4 @@
+import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -71,3 +72,7 @@ async def test_routes_with_reconstructed_original_request():
     assert reconstructed.headers["x-client-header"] == "value"
     assert not any(name.startswith("x-serve-router-") for name in reconstructed.headers)
     assert await reconstructed.body() == body
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
