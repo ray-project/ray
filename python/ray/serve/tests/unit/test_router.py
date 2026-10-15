@@ -2404,6 +2404,22 @@ class TestRouterMetricsManager:
 
         # All 3 conditions satisfied, should push metrics
         assert metrics_manager.should_send_scaled_to_zero_optimized_push(0)
+        metrics_manager.dec_num_queued_requests()
+        metrics_manager._add_autoscaling_metrics_point()
+
+        with patch.object(
+            metrics_manager, "push_autoscaling_metrics_to_controller"
+        ) as push:
+            with metrics_manager.wrap_queued_request(
+                is_retry=False, num_curr_replicas=0
+            ):
+                assert (
+                    metrics_manager.metrics_store.get_latest(QUEUED_REQUESTS_KEY) == 1
+                )
+
+        push.assert_called_once_with()
+        assert metrics_manager.num_queued_requests == 0
+        assert metrics_manager.metrics_store.get_latest(QUEUED_REQUESTS_KEY) == 1
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("columnar", [True, False])
