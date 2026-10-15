@@ -257,6 +257,22 @@ void ObjectManager::CancelPull(uint64_t request_id) {
     object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
                                                   object_id);
   }
+  if (!objects_to_cancel.empty()) {
+    absl::MutexLock lock(&move_pull_mutex_);
+    for (const auto &object_id : objects_to_cancel) {
+      move_pull_object_ids_.erase(object_id);
+    }
+  }
+}
+
+void ObjectManager::MarkMovePull(const ObjectID &object_id) {
+  absl::MutexLock lock(&move_pull_mutex_);
+  move_pull_object_ids_.insert(object_id);
+}
+
+bool ObjectManager::IsMovePull(const ObjectID &object_id) const {
+  absl::ReaderMutexLock lock(&move_pull_mutex_);
+  return move_pull_object_ids_.contains(object_id);
 }
 
 void ObjectManager::MarkObjectFailed(const ObjectID &object_id,

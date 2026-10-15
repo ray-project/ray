@@ -213,6 +213,9 @@ TEST(TaskSpecTest, TestArgIsMove) {
   ASSERT_FALSE(task_spec.ArgIsMove(0));
   ASSERT_TRUE(task_spec.ArgIsMove(1));
   ASSERT_FALSE(task_spec.ArgIsMove(2));
+  // One entry per by-ref arg, in GetDependencies() order.
+  ASSERT_EQ(task_spec.GetDependencies().size(), 2);
+  ASSERT_EQ(task_spec.GetDependencyIsMove(), (std::vector<bool>{false, true}));
 }
 
 TEST(TaskSpecTest, TestRootDetachedActorId) {
