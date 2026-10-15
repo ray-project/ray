@@ -31,7 +31,7 @@ Serve scales the number of replicas for a deployment up or down based on the ave
 Always load test your workloads. For example, if your use case is latency sensitive, you can lower `target_ongoing_requests` to maintain high performance. Benchmark your application code and set this number based on an end-to-end latency objective.
 
 :::{note}
-For example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Serve assigns requests to the replicas faster than the replicas can finish processing them. Over time, more and more requests queue up at each replica, and the average number of ongoing requests per replica steadily increases. These queued requests count as ongoing requests. Latency also increases because new requests have to wait for old requests to finish processing. If you set `target_ongoing_requests = 1`, Serve detects more ongoing requests per replica than the target and adds replicas. At three replicas, your system can process 30 QPS with one ongoing request per replica on average.
+For example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 queries per second (QPS). Serve assigns requests to the replicas faster than the replicas can finish processing them. Over time, more and more requests queue up at each replica, and the average number of ongoing requests per replica steadily increases. These queued requests count as ongoing requests. Latency also increases because new requests have to wait for old requests to finish processing. If you set `target_ongoing_requests = 1`, Serve detects more ongoing requests per replica than the target and adds replicas. At three replicas, your system can process 30 QPS with one ongoing request per replica on average.
 :::
 
 #### `max_ongoing_requests` [default=5]
@@ -55,34 +55,34 @@ Proxies also respect a maximum queue limit when they assign requests to replicas
 
 To use autoscaling, define the minimum and maximum number of resources allowed for your system.
 
-* **[`min_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=1]**: The minimum number of replicas for the deployment. To ensure your system can handle a certain level of traffic at all times, set `min_replicas` to a positive number. If you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Setting `min_replicas = 0` causes higher tail latencies. When you start sending traffic, the deployment scales up, and there's a cold start time while Serve waits for replicas to start and serve the request.
+* [`min_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=1]: The minimum number of replicas for the deployment. To ensure your system can handle a certain level of traffic at all times, set `min_replicas` to a positive number. If you anticipate periods of no traffic and want to scale to zero to save cost, set `min_replicas = 0`. Setting `min_replicas = 0` causes higher tail latencies. When you start sending traffic, the deployment scales up, and there's a cold start time while Serve waits for replicas to start and serve the request.
 
-* **[`max_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=1]**: The maximum number of replicas for the deployment. This value should be greater than `min_replicas`. Ray Serve autoscaling relies on the Ray autoscaler to add nodes when the cluster's available resources, such as CPUs and GPUs, aren't enough to support more replicas.
+* [`max_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=1]: The maximum number of replicas for the deployment. This value should be greater than `min_replicas`. Ray Serve autoscaling relies on the Ray autoscaler to add nodes when the cluster's available resources, such as CPUs and GPUs, aren't enough to support more replicas.
 
-* **[`initial_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst)**: The number of replicas that Serve starts initially for the deployment. Defaults to the value of `min_replicas`.
+* [`initial_replicas`](../api/doc/ray.serve.config.AutoscalingConfig.rst): The number of replicas that Serve starts initially for the deployment. Defaults to the value of `min_replicas`.
 
 
 ### Optional: Define how the system reacts to changing traffic
 
 With a steady stream of traffic and appropriately configured `min_replicas` and `max_replicas`, the value you choose for `target_ongoing_requests` essentially fixes the steady state of your system. Before your system reaches steady state, it reacts to traffic shifts. How you want it to react to changes in traffic determines how to set the remaining autoscaling parameters.
 
-* **[`upscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=30s]**: How long Serve waits before scaling up the number of replicas in your deployment. In other words, this parameter controls the frequency of upscale decisions. If the replicas *consistently* serve more requests than desired for `upscale_delay_s` seconds, Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your service is likely to experience bursts of traffic, you can lower `upscale_delay_s` so that your application reacts quickly to increases in traffic.
+* [`upscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=30s]: How long Serve waits before scaling up the number of replicas in your deployment. In other words, this parameter controls the frequency of upscale decisions. If the replicas *consistently* serve more requests than desired for `upscale_delay_s` seconds, Serve scales up the number of replicas based on aggregated ongoing requests metrics. For example, if your service is likely to experience bursts of traffic, you can lower `upscale_delay_s` so that your application reacts quickly to increases in traffic.
 
 For more granular control over when Serve removes replicas, you can set different delays for different downscaling scenarios. This is particularly useful when you want scaling down to zero to behave differently from scaling down to a nonzero number of replicas.
 
-* **[`downscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=600s]**: How long Serve waits before scaling down the number of replicas in your deployment. If the replicas *consistently* serve fewer requests than desired for `downscale_delay_s` seconds, Serve scales down the number of replicas based on aggregated ongoing requests metrics. This delay applies to all downscaling decisions except the optional transition from one replica to zero, which the next parameter covers. For example, if your application initializes slowly, you can increase `downscale_delay_s` to downscale less often and avoid reinitialization costs when the application needs to upscale again.
+* [`downscale_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default=600s]: How long Serve waits before scaling down the number of replicas in your deployment. If the replicas *consistently* serve fewer requests than desired for `downscale_delay_s` seconds, Serve scales down the number of replicas based on aggregated ongoing requests metrics. This delay applies to all downscaling decisions except the optional transition from one replica to zero, which the next parameter covers. For example, if your application initializes slowly, you can increase `downscale_delay_s` to downscale less often and avoid reinitialization costs when the application needs to upscale again.
 
-* **[`downscale_to_zero_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [Optional]**: How long Serve waits before scaling from one replica down to zero. This parameter applies only when `min_replicas = 0`. If you don't set it, the transition from one replica to zero uses the `downscale_delay_s` value. This is useful when you want more conservative scale-to-zero behavior. For example, you might set `downscale_delay_s = 300` for regular downscaling but `downscale_to_zero_delay_s = 1800` to wait 30 minutes before scaling to zero, so brief periods of inactivity don't cause cold starts.
+* [`downscale_to_zero_delay_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [Optional]: How long Serve waits before scaling from one replica down to zero. This parameter applies only when `min_replicas = 0`. If you don't set it, the transition from one replica to zero uses the `downscale_delay_s` value. This is useful when you want more conservative scale-to-zero behavior. For example, you might set `downscale_delay_s = 300` for regular downscaling but `downscale_to_zero_delay_s = 1800` to wait 30 minutes before scaling to zero, so brief periods of inactivity don't cause cold starts.
 
-* **[`upscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: Deprecated. This parameter is renamed to `upscaling_factor`, and a future release will remove it.
+* [`upscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]: Deprecated. This parameter is renamed to `upscaling_factor`, and a future release will remove it.
 
-* **[`downscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: Deprecated. This parameter is renamed to `downscaling_factor`, and a future release will remove it.
+* [`downscale_smoothing_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]: Deprecated. This parameter is renamed to `downscaling_factor`, and a future release will remove it.
 
-* **[`upscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: The multiplicative factor that amplifies or moderates each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscaling_factor` to scale up resources quickly. This parameter acts like a "gain" factor that amplifies the response of the autoscaling algorithm.
+* [`upscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]: The multiplicative factor that amplifies or moderates each upscaling decision. For example, when the application has high traffic volume in a short period of time, you can increase `upscaling_factor` to scale up resources quickly. This parameter acts like a "gain" factor that amplifies the response of the autoscaling algorithm.
 
-* **[`downscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]**: The multiplicative factor that amplifies or moderates each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscaling_factor` to slow the pace of downscaling.
+* [`downscaling_factor`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=1.0]: The multiplicative factor that amplifies or moderates each downscaling decision. For example, if you want your application to be less sensitive to drops in traffic and scale down more conservatively, you can decrease `downscaling_factor` to slow the pace of downscaling.
 
-* **[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=10]**: How often each replica and handle reports its ongoing requests to the autoscaler. A future release will remove this deployment-level config in favor of a cross-application global config.
+* [`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=10]: How often each replica and handle reports its ongoing requests to the autoscaler. A future release will remove this deployment-level config in favor of a cross-application global config.
 
   :::{note}
   If replicas and handles report metrics infrequently, Ray Serve can take longer to notice a change in autoscaling metrics, so scaling can start later even when your delays are short. For example, if you set `upscale_delay_s = 3` but replicas and handles push metrics every 10 seconds, Ray Serve might not see a change until the next push, which can limit scaling up to about once every 10 seconds.
@@ -92,9 +92,9 @@ For more granular control over when Serve removes replicas, you can set differen
   Setting `metrics_interval_s` to an extremely low value, such as `0.1`, causes replicas and handles to push metrics to the controller at high frequency. This can overload the controller on the head node and cause instability. Use the default value of `10` unless you have a specific, well-tested reason to lower it.
   :::
 
-* **[`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=30]**: The window over which Serve calculates the average number of ongoing requests per replica.
+* [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value=30]: The window over which Serve calculates the average number of ongoing requests per replica.
 
-* **[`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value="mean"]**: How Serve aggregates metrics over the `look_back_period_s` time window. The aggregation function determines how Ray Serve combines multiple metric measurements into a single value for autoscaling decisions. Ray Serve supports three values:
+* [`aggregation_function`](../api/doc/ray.serve.config.AutoscalingConfig.rst) [default_value="mean"]: How Serve aggregates metrics over the `look_back_period_s` time window. The aggregation function determines how Ray Serve combines multiple metric measurements into a single value for autoscaling decisions. Ray Serve supports three values:
   - `"mean"`: The default. Uses a time-weighted average of metrics. This average produces smooth scaling behavior that responds to sustained traffic patterns.
   - `"max"`: Uses the highest value the deployment total reached during the window, not the highest value of any one replica. This makes autoscaling more sensitive to spikes.
   - `"min"`: Uses the lowest value the deployment total reached during the window. This scales conservatively. Because an idle stretch inside the window pins the minimum to zero, a deployment that scaled to zero stays there until those samples age out.
@@ -165,7 +165,7 @@ The recording interval and the push interval relate as follows:
 - The push interval is greater than or equal to the recording interval.
 - The recording interval, 10s by default, determines the granularity of the data.
 - The push interval, 10s by default, determines how fresh the controller's data is.
-- With the default values, each push contains one data point: 10s ÷ 10s.
+- With the default values, each push contains one data point, because 10s ÷ 10s = 1.
 
 The push interval and the look-back period relate as follows:
 - [`look_back_period_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst), 30s by default, should be greater than the push interval, 10s by default.
@@ -193,18 +193,18 @@ Several environment variables control autoscaling behavior at a lower level. The
 
 #### Control loop and timeout settings
 
-* **`RAY_SERVE_CONTROL_LOOP_INTERVAL_S`**: How often the Serve controller runs the autoscaling control loop. Your autoscaling policy function executes at this frequency. The default value of 0.1s means policies run approximately 10 times per second.
+* `RAY_SERVE_CONTROL_LOOP_INTERVAL_S`: How often the Serve controller runs the autoscaling control loop. Your autoscaling policy function executes at this frequency. The default value of 0.1s means policies run approximately 10 times per second.
 
-* **`RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S`**: Maximum time allowed for the `record_autoscaling_stats()` method to complete in custom metrics collection. The default is 10.0s. If the method exceeds this timeout, the metrics collection fails and Serve logs a warning.
+* `RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S`: Maximum time allowed for the `record_autoscaling_stats()` method to complete in custom metrics collection. The default is 10.0s. If the method exceeds this timeout, the metrics collection fails and Serve logs a warning.
 
-* **`RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`**: Minimum timeout for handle metrics collection. The default is 10.0s. Serve uses the larger of this value and `2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to decide when to drop stale handle metrics.
+* `RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S`: Minimum timeout for handle metrics collection. The default is 10.0s. Serve uses the larger of this value and `2 * `[`metrics_interval_s`](../api/doc/ray.serve.config.AutoscalingConfig.rst) to decide when to drop stale handle metrics.
 
 
 ## Model composition example
 
 To determine the autoscaling configuration for a multi-model application, you need to understand each deployment's scaling requirements. Deployments differ in latency and level of concurrency, so finding the right autoscaling config for a model composition application requires experimentation.
 
-To build some intuition about multi-model autoscaling, this example composes three deployments into one application:
+To build some intuition about multi-model autoscaling, work through an example that composes three deployments into one application:
 * `HeavyLoad`: A mock 200ms workload with high CPU usage.
 * `LightLoad`: A mock 100ms workload with high CPU usage.
 * `Driver`: A driver deployment that fans out to the `HeavyLoad` and `LightLoad` deployments and aggregates the two outputs.
@@ -283,7 +283,7 @@ Running the same Locust load test from the [ResNet workload](resnet-autoscaling-
 
 | | |
 | ----------------------- | ---------------------- |
-| Number of `HeavyLoad` and `LightLoad` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_replicas.png" alt="comp" width="600" /> |
+| Number of `HeavyLoad` and `LightLoad` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_replicas.png" alt="Number of HeavyLoad and LightLoad replicas during the load test" width="600" /> |
 
 
 As you might expect, autoscaling produces roughly half as many `LightLoad` replicas as `HeavyLoad` replicas. Both deployments receive the same number of requests per second, but `LightLoad` replicas can process twice as many requests per second as `HeavyLoad` replicas, so `LightLoad` should need half as many replicas to handle the same traffic load.
@@ -292,7 +292,7 @@ However, the service latency rises from 230 to 400 ms when the number of Locust 
 
 | P50 latency | QPS |
 | ------- | --- |
-| ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_latency.svg) | ![comp_rps](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_rps.svg) |
+| ![P50 latency during the load test](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_latency.svg) | ![Queries per second during the load test](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_rps.svg) |
 
 To adequately serve the Locust traffic, the number of `HeavyLoad` replicas should roughly match the number of Locust users. However, when the number of Locust users increased to 100, the `HeavyLoad` deployment struggled to reach 100 replicas and reached only 65. The per-deployment latencies reveal the root cause. `HeavyLoad` and `LightLoad` latencies stayed steady at 200ms and 100ms, but `Driver` latencies rose from 230 to 400 ms. This result suggests that the high Locust workload might be overwhelming the `Driver` replica and degrading the performance of its asynchronous event loop.
 
@@ -368,14 +368,14 @@ Running the same Locust load test again generates the following results:
 
 | | |
 | ------------------------------------ | ------------------- |
-| Number of `HeavyLoad` and `LightLoad` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_replicas.png" alt="heavy" width="600"/> |
-| Number of `Driver` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="driver" width="600"/> |
+| Number of `HeavyLoad` and `LightLoad` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_replicas.png" alt="Number of HeavyLoad and LightLoad replicas with an autoscaling Driver" width="600"/> |
+| Number of `Driver` replicas | <img src="https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_driver_replicas.png" alt="Number of Driver replicas during the load test" width="600"/> |
 
 With up to six `Driver` replicas to receive and distribute the incoming requests, the `HeavyLoad` deployment scales up to more than 90 replicas, and `LightLoad` scales up to 47 replicas. This configuration helps keep application latency consistent as the traffic load increases.
 
-| Improved P50 latency | Improved RPS |
+| Improved P50 latency | Improved requests per second |
 | ---------------- | ------------ |
-| ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_latency.svg) | ![comp_latency](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_improved_rps.svg) |
+| ![Improved P50 latency during the load test](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_composition_improved_latency.svg) | ![Improved requests per second during the load test](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/model_comp_improved_rps.svg) |
 
 
 ## Troubleshooting guide
@@ -392,7 +392,7 @@ If the number of replicas in your deployment keeps oscillating even though the t
 
 | `look_back_period_s = 30` | `look_back_period_s = 3` |
 | ------------------------------------------------ | ----------------------------------------------- |
-| ![look-back-before](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/look_back_period_before.png) | ![look-back-after](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/look_back_period_after.png) |
+| ![Replica count with look_back_period_s set to 30](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/look_back_period_before.png) | ![Replica count with look_back_period_s set to 3](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/look_back_period_after.png) |
 
 
 ### High spikes in latency during bursts of traffic
@@ -418,7 +418,7 @@ If your deployments scale down too quickly and you want more conservative downsc
 
 | `downscaling_factor = 1` | `downscaling_factor = 0.5` |
 | ------------------------------------------------ | ----------------------------------------------- |
-| ![downscale-smooth-before](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_before.png) | ![downscale-smooth-after](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_after.png) |
+| ![Replica count with downscaling_factor set to 1](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_before.png) | ![Replica count with downscaling_factor set to 0.5](https://raw.githubusercontent.com/ray-project/images/master/docs/serve/autoscaling-guide/downscale_smoothing_factor_after.png) |
 
 
 (serve-custom-autoscaling-policies)=
@@ -723,7 +723,7 @@ Keep the following behaviors in mind to build reliable scaling logic with the ex
 
 - **Idempotent API calls**: The scaling API is idempotent. You can safely call it multiple times with the same `target_num_replicas` value without side effects, so you can run your scaling logic on a schedule or in response to repeated metric updates.
 
-- **Interaction with serve deploy**: When you upgrade your service with `serve deploy`, the number of replicas you set through the external scaler API stays intact. This behavior matches Ray Serve's built-in autoscaler, where deployment updates don't reset replica counts.
+- **Interaction with** `serve deploy`: When you upgrade your service with `serve deploy`, the number of replicas you set through the external scaling API stays intact. This behavior matches Ray Serve's built-in autoscaler, where deployment updates don't reset replica counts.
 
 - **Query current replica count**: You can get the current number of replicas for any deployment by querying the GET `/applications` API:
 

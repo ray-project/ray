@@ -35,7 +35,7 @@ To address these issues, try the following:
 1. Make sure you're using the right hardware and resources:
    * Are you reserving GPUs for your deployment replicas with `ray_actor_options`, for example, `ray_actor_options={"num_gpus": 1}`?
    * Are you reserving one or more cores for your deployment replicas with `ray_actor_options`, for example, `ray_actor_options={"num_cpus": 2}`?
-   * Are you setting [OMP_NUM_THREADS](serve-omp-num-threads) to increase the performance of your deep learning framework?
+   * Are you setting [`OMP_NUM_THREADS`](serve-omp-num-threads) to increase the performance of your deep learning framework?
 1. Try batching your requests. See [Dynamic request batching](serve-performance-batching-requests).
 1. Consider using `async` methods in your callable. See [Use `async` methods](serve-performance-async-methods).
 1. Set an end-to-end timeout for your HTTP requests. See [Set an end-to-end request timeout](serve-performance-e2e-timeout).
@@ -235,11 +235,7 @@ To turn on throughput-optimized serving while customizing individual options, se
 
 By default, Ray Serve uses a Python-based HTTP and gRPC proxy to route requests to replicas. To improve throughput and lower latency at high request rates, replace it with [HAProxy](https://www.haproxy.org/), a C-based load balancer.
 
-HAProxy mode works as follows:
-
-- By default, an `HAProxyManager` actor runs on each node and translates Serve's routing table into HAProxy configuration reloads.
-- Each ingress replica opens a port, and HAProxy routes traffic directly to replicas, replacing the Python proxy entirely.
-- Live traffic flows through the HAProxy subprocess, not through any Python actor.
+In HAProxy mode, an `HAProxyManager` actor runs on each node by default and translates Serve's routing table into HAProxy configuration reloads. Each ingress replica opens a port, and HAProxy routes traffic directly to replicas, replacing the Python proxy entirely. Live traffic flows through the HAProxy subprocess, not through any Python actor.
 
 #### Prerequisites
 
@@ -254,7 +250,7 @@ Set the `RAY_SERVE_ENABLE_HA_PROXY` environment variable to `1` on all nodes bef
 export RAY_SERVE_ENABLE_HA_PROXY=1
 ```
 
-Set this environment variable on all nodes in the Ray cluster.
+The following tabs show how to set the variable on each type of cluster.
 
 ::::{tab-set}
 
@@ -317,9 +313,10 @@ By default, when one deployment calls another through a `DeploymentHandle`, Serv
 
 #### When not to use gRPC
 
-1. Because gRPC must serialize every payload, don't use it for large payloads of more than about 1 MB. If you turned on gRPC by default, set an individual handle's transport back to actor RPC with `handle.options(_by_reference=True)`, which passes larger objects by reference.
+Avoid gRPC transport in the following cases:
 
-1. When you pass a `DeploymentResponse` from one deployment into another without awaiting it first, gRPC resolves the value at the caller and serializes it over the wire. Actor RPC forwards the underlying `ObjectRef` without materializing the data. If your pipeline chains `DeploymentResponse` objects through multiple deployments with payloads larger than 100 KB, avoid using gRPC for those handles.
+- Because gRPC must serialize every payload, don't use it for large payloads of more than about 1 MB. If you turned on gRPC by default, set an individual handle's transport back to actor RPC with `handle.options(_by_reference=True)`, which passes larger objects by reference.
+- When you pass a `DeploymentResponse` from one deployment into another without awaiting it first, gRPC resolves the value at the caller and serializes it over the wire. Actor RPC forwards the underlying `ObjectRef` without materializing the data. If your pipeline chains `DeploymentResponse` objects through multiple deployments with payloads larger than 100 KB, avoid using gRPC for those handles.
 
 ```{literalinclude} ../doc_code/interdeployment_grpc.py
 :start-after: __start_grpc_override__

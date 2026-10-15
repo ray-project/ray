@@ -33,7 +33,7 @@ This example deploys a Whisper model and a ResNet50 image classification model a
 First, install the required dependencies in the images.
 
 :::{warning}
-The Ray and Python versions in the container *must* exactly match those of the host environment. Python versions must match down to the patch number.
+The Ray and Python versions in the container must exactly match those of the host environment. Python versions must match down to the patch number.
 :::
 
 Save the following to files named `whisper.Dockerfile` and `resnet.Dockerfile`.
@@ -200,11 +200,11 @@ The process in your container receives the following environment variables, in o
 If the raylet runs inside a container, that container needs permission to start new containers. To grant it, start the container that runs the raylet with the `--privileged` flag.
 
 ### Troubleshooting
-* **Permission denied: '/tmp/ray/session_2023-11-28_15-27-22_167972_6026/ports_by_node.json.lock'**
+* `Permission denied: '/tmp/ray/session_2023-11-28_15-27-22_167972_6026/ports_by_node.json.lock'`
   * This error likely occurs because the user inside the Podman container differs from the host user that started the Ray cluster. The host user that started Ray owns the `/tmp/ray` folder, which is volume-mounted into the Podman container. The container starts with the `--userns=keep-id` flag, which maps the host user into the container as itself. So permission issues should only occur if the user inside the container differs from the host user. For example, if the host user is `root` and the container's base image is a standard Ray image, the container starts as the user `ray(1000)` by default, and that user can't access the mounted `/tmp/ray` volume.
-* **ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver**
+* `ERRO[0000] 'overlay' is not supported over overlayfs: backing file system is unsupported for this graph driver`
   * This error should only occur when you run the Ray cluster inside a container. If you see it when the replica actor starts, try volume-mounting `/var/lib/containers` in the container that runs the raylet. To do so, add `-v /var/lib/containers:/var/lib/containers` to the command that starts that Docker container.
-* **cannot clone: Operation not permitted; Error: cannot re-exec process**
+* `cannot clone: Operation not permitted; Error: cannot re-exec process`
   * This error should only occur when you run the Ray cluster inside a container. It means you don't have permission to start a container with Podman. Start the container that runs the raylet with the `--privileged` flag.
-* **Slow or hanging container startup**
+* Slow or hanging container startup
   * The typical cause is the default Podman storage driver, `vfs`, combined with large container images. Podman runs in rootless mode, so its startup sequence modifies the permissions of files in the container, and the `vfs` driver does this slowly. Try configuring Podman to use the `overlay` storage driver instead. You might also need to set `mount_program` to `/usr/bin/fuse-overlayfs` or the equivalent path on your system.

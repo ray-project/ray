@@ -10,7 +10,7 @@ myst:
 
 You can deploy your Serve application to production on a Ray cluster with the Ray Serve CLI. `serve deploy` takes the path to a Serve config file and deploys that file to a Ray cluster over HTTP. The cluster can be a local, single-node cluster, as in this example, or a remote, multi-node cluster that you start with the [Ray Cluster Launcher](cloud-vm-index).
 
-This section shows how to deploy a Serve config file with the CLI, how to update your application with the CLI, and how to deploy to a remote cluster that you start with the Ray Cluster Launcher.
+This page shows how to deploy a Serve config file with the CLI, how to update your application with the CLI, and how to deploy to a remote cluster that you start with the Ray Cluster Launcher.
 
 Start by deploying the [Serve config file](production-config-yaml) for the [Text ML application example](serve-in-production-example):
 

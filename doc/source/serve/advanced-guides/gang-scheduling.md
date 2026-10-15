@@ -160,7 +160,7 @@ To scale to zero, set `min_replicas=0`. The deployment scales up and down in com
 
 The Serve autoscaler handles gang quantization automatically by wrapping the base autoscaling policy in a `GangSchedulingAutoscalingPolicy`.
 
-For example, with `gang_size=4`, if the base autoscaling policy recommends 5 replicas, the `GangSchedulingAutoscalingPolicy` rounds up to 8. If the policy recommends 10 replicas, the gang-aware policy rounds up to 12. Always rounding up makes the output deterministic. The same desired count produces the same replica target regardless of the current replica count, which prevents oscillation between two gang-aligned values.
+For example, with `gang_size=4`, if the base autoscaling policy recommends five replicas, the `GangSchedulingAutoscalingPolicy` rounds up to eight. If the policy recommends 10 replicas, the gang-aware policy rounds up to 12. Always rounding up makes the output deterministic. The same desired count produces the same replica target regardless of the current replica count, which prevents oscillation between two gang-aligned values.
 
 ## Fault tolerance
 
