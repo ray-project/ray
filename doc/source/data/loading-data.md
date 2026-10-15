@@ -1282,8 +1282,9 @@ ds.write_datasink(YourCustomDatasink())
 
 The community maintains the following connectors, which integrate Ray Data with additional data systems:
 
-* [Apache Doris Ray Connector](https://github.com/jiangxt2/ray-doris): Reads and writes data between Ray Data and [Apache Doris](https://doris.apache.org/).
-* [Kinetica Ray Connector](https://github.com/kineticadb/kinetica-ray): Reads and writes data between Ray Data and [Kinetica](https://www.kinetica.com/).
+* [Apache Doris Ray Connector](https://github.com/jiangxt2/ray-doris) - Read and write data between Ray Data and [Apache Doris](https://doris.apache.org/).
+* [ClickHouse Ray Connector](https://github.com/jiangxt2/ray-clickhouse) - Read and write data between Ray Data and [ClickHouse](https://clickhouse.com/).
+* [Kinetica Ray Connector](https://github.com/kineticadb/kinetica-ray) - Read and write data between Ray Data and [Kinetica](https://www.kinetica.com/).
 
 ## Performance considerations
 
