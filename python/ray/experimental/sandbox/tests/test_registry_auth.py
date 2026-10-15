@@ -16,6 +16,7 @@ import shlex
 import sys
 import tarfile
 import threading
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -27,6 +28,7 @@ from ray.experimental.sandbox._internal.docker_config import (
 )
 from ray.experimental.sandbox._internal.image_utils import (
     ROOTFS_IMAGE,
+    _describe_pull_error,
     get_registry_auth_headers,
     pull_and_extract_container_image,
 )
@@ -38,6 +40,7 @@ _TOKEN = "pull-token"
 _REFRESH_TOKEN = "refresh-s3cret"
 _REPO = "team/app"
 _FILE = b"from a private image\n"
+_FORM_TYPE = "application/x-www-form-urlencoded"
 
 
 def _b64(text):
@@ -129,7 +132,9 @@ class _RegistryHandler(BaseHTTPRequestHandler):
         registry.requests.append((self.command, path, authorization, body))
 
         if path == "/token":
-            form = parse_qs(body)
+            # Like an OAuth2 token endpoint, it reads a body only as a form.
+            is_form = self.headers.get("Content-Type") == _FORM_TYPE
+            form = parse_qs(body) if is_form else {}
             if authorization == _basic(_USER, _PASSWORD):
                 self._send(200, json.dumps({"token": _TOKEN}).encode())
             elif form.get("refresh_token") == [_REFRESH_TOKEN]:
@@ -421,6 +426,28 @@ def test_refused_credentials_fail_the_pull_with_the_reason(
         _pull(tmp_path)
 
     assert "stale-token" not in str(info.value)
+
+
+@pytest.mark.parametrize(
+    "body, reasons",
+    [
+        ('{"errors": [{"code": "DENIED", "message": "no"}]}', ": DENIED: no"),
+        ("<html>502 Bad Gateway</html>", ""),
+        ('"denied"', ""),
+        ('{"message": "denied"}', ""),
+        ('{"errors": "denied"}', ""),
+        ('{"errors": ["denied"]}', ""),
+        ('{"errors": [{"code": "DENIED"}]}', ""),
+        ("", ""),
+    ],
+)
+def test_pull_error_adds_only_the_registry_errors(body, reasons):
+    """A registry's errors join the HTTP error; a body of another shape, such
+    as a proxy's HTML page, leaves the HTTP error as it is."""
+    err = urllib.error.HTTPError(
+        "https://r.example/v2/", 403, "Forbidden", {}, io.BytesIO(body.encode())
+    )
+    assert _describe_pull_error(err) == "HTTP Error 403: Forbidden" + reasons
 
 
 def test_lookup_follows_the_docker_cli_precedence(docker_config, install_helper):
