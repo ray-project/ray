@@ -503,11 +503,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             except (OSError, subprocess.TimeoutExpired):
                 pass
 
-        # The command first, so it can't start more processes.
-        kill(root_pid)
-        # A process can start another between a listing and its own kill, so
-        # list again until no process of the command is left.
+        # List before killing anything: a child that left the command's
+        # session with setsid() is found only through its parent, and killing
+        # the parent first would reparent it out of reach. A process can start
+        # another between a listing and its own kill, so list again until no
+        # process of the command is left.
         for _ in range(_EXEC_KILL_ROUNDS):
+            pids = None
             try:
                 dump = subprocess.run(
                     base_args + ["trace", "procfs", sandbox_id],
@@ -516,9 +518,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     errors="replace",
                     timeout=10,
                 )
+                if dump.returncode == 0:
+                    pids = _exec_processes(dump.stdout, root_pid)
             except (OSError, subprocess.TimeoutExpired):
+                pass
+            if pids is None:
+                # Without a listing, stop at least the command itself.
+                kill(root_pid)
                 return
-            pids = _exec_processes(dump.stdout, root_pid)
             if not pids:
                 return
             for pid in pids:
