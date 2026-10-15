@@ -26,10 +26,12 @@ from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import (
     GVisorSandboxBackend,
     _exec_processes,
+    _namespace_ids,
     _render_egress_ruleset,
     _write_egress_ruleset,
 )
 from ray.experimental.sandbox.config import (
+    ALLOW_ALL_CIDRS,
     DEFAULT_PUBLIC_DNS,
     INTERNET_EXCLUDED_IPV4,
     GVisorSandboxConfig,
@@ -948,12 +950,25 @@ def test_set_egress_allowlist_requires_an_existing_allowlist(tmp_path):
     assert not (tmp_path / "egress.nft").exists()
 
 
+# Tests that use this process as a sandbox's namespace holder.
+_needs_proc_ns = pytest.mark.skipif(
+    not os.path.isdir("/proc/self/ns"), reason="needs Linux /proc/<pid>/ns"
+)
+
+
+def _fd_namespace_ids(fds) -> list:
+    return [(os.fstat(fd).st_dev, os.fstat(fd).st_ino) for fd in fds]
+
+
+@_needs_proc_ns
 def test_set_egress_allowlist_reinstalls_ruleset_in_the_namespace(
     tmp_path, monkeypatch
 ):
-    """The update rewrites the ruleset and loads it through the holder's
-    namespaces; a failed load keeps the file describing the rules in force."""
-    (tmp_path / "netns.pid").write_text("4242\n")
+    """The update rewrites the ruleset and loads it through fds of the
+    holder's namespaces, closed afterwards; a failed load keeps the file
+    describing the rules in force."""
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
+    holder_ns = _namespace_ids(os.getpid())
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
@@ -967,6 +982,7 @@ def test_set_egress_allowlist_reinstalls_ruleset_in_the_namespace(
         "root_dir": str(tmp_path),
         "config": cfg,
         "egress_allowlist": ["0.0.0.0/0"],
+        "netns_ids": holder_ns,
     }
 
     class _Completed:
@@ -975,25 +991,33 @@ def test_set_egress_allowlist_reinstalls_ruleset_in_the_namespace(
             self.stderr = stderr
 
     calls = []
+
+    def fake_run(args, pass_fds=(), **kwargs):
+        calls.append((args, list(pass_fds), _fd_namespace_ids(pass_fds)))
+        return _Completed(0)
+
     monkeypatch.setattr(
-        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
-        lambda args, **kwargs: (calls.append(args), _Completed(0))[1],
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
     )
     backend.set_egress_allowlist("sb-1", ["52.0.0.1"])
-    assert calls == [
-        [
-            "nsenter",
-            "--preserve-credentials",
-            "-U",
-            "-n",
-            "-t",
-            "4242",
-            "--",
-            "nft",
-            "-f",
-            str(tmp_path / "egress.nft"),
-        ]
+    ((args, (user_fd, net_fd), passed_ns),) = calls
+    assert args == [
+        "nsenter",
+        "--preserve-credentials",
+        f"--user=/proc/self/fd/{user_fd}",
+        f"--net=/proc/self/fd/{net_fd}",
+        "--",
+        "nft",
+        "-f",
+        str(tmp_path / "egress.nft"),
     ]
+    assert passed_ns == holder_ns
+    for fd in (user_fd, net_fd):
+        # Closed (or reused for something else): no namespace fd leaks.
+        try:
+            assert _fd_namespace_ids([fd])[0] not in holder_ns
+        except OSError:
+            pass
     text = (tmp_path / "egress.nft").read_text()
     assert "ip daddr 52.0.0.1/32 accept" in text
     assert "0.0.0.0/0" not in text
@@ -1010,10 +1034,45 @@ def test_set_egress_allowlist_reinstalls_ruleset_in_the_namespace(
     assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["52.0.0.1/32"]
 
 
+@_needs_proc_ns
+def test_set_egress_allowlist_refuses_a_reused_holder_pid(tmp_path, monkeypatch):
+    """Once the holder exits, its pid can name any process. An update must
+    then be refused before nft runs, whatever that process is."""
+    # A live process outside the sandbox's namespaces: this one.
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest",
+        shell="/bin/sh",
+        network="public",
+        cidr_allowlist=["1.1.1.1"],
+    )
+    rules = Path(_write_egress_ruleset(str(tmp_path), cfg.cidr_allowlist, cfg.dns))
+    before = rules.read_text()
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
+        lambda *args, **kwargs: pytest.fail("nft ran outside the sandbox"),
+    )
+    backend = GVisorSandboxBackend(image_manager=object())
+    # The namespaces recorded at creation, which this process isn't in; then
+    # a sandbox whose namespaces are unknown.
+    for recorded in ([(0, 1), (0, 2)], None):
+        backend._sandbox_metadata["sb-1"] = {
+            "root_dir": str(tmp_path),
+            "config": cfg,
+            "egress_allowlist": ["1.1.1.1/32"],
+            "netns_ids": recorded,
+        }
+        with pytest.raises(SandboxError, match="namespace holder"):
+            backend.set_egress_allowlist("sb-1", list(ALLOW_ALL_CIDRS))
+        assert rules.read_text() == before
+        assert backend._sandbox_metadata["sb-1"]["egress_allowlist"] == ["1.1.1.1/32"]
+
+
+@_needs_proc_ns
 def test_set_egress_allowlist_serializes_concurrent_updates(tmp_path, monkeypatch):
     """Overlapping updates run one at a time, so the ruleset loaded last is
     the list the backend records."""
-    (tmp_path / "netns.pid").write_text("4242\n")
+    (tmp_path / "netns.pid").write_text(f"{os.getpid()}\n")
     cfg = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
@@ -1027,6 +1086,7 @@ def test_set_egress_allowlist_serializes_concurrent_updates(tmp_path, monkeypatc
         "root_dir": str(tmp_path),
         "config": cfg,
         "egress_allowlist": ["0.0.0.0/0"],
+        "netns_ids": _namespace_ids(os.getpid()),
     }
     loaded = []
     inside = [0, 0]  # [current, peak]
@@ -1226,6 +1286,79 @@ def test_netns_egress_allowlist_runtime_update(ensure_nft_egress):
         backend.set_egress_allowlist(sb, [])
         assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
     finally:
+        backend.delete_sandbox(sb)
+
+
+def _nft_ruleset(*nsenter_target: str) -> tuple:
+    """``nft list ruleset`` here, or in the namespaces nsenter's args name."""
+    enter = ["nsenter", "--preserve-credentials", *nsenter_target, "--"]
+    proc = subprocess.run(
+        (enter if nsenter_target else []) + ["nft", "list", "ruleset"],
+        capture_output=True,
+        text=True,
+    )
+    return proc.returncode, proc.stdout
+
+
+def test_netns_egress_allowlist_update_refuses_a_reused_holder_pid(
+    ensure_nft_egress,
+):
+    """Once the namespace holder exits, its pid can name another process. An
+    update must then be refused, leaving that process's ruleset alone, whether
+    it shares the worker's namespaces (the pod's ruleset, for a root worker)
+    or has its own, as another sandbox's holder does. The real holder still
+    takes updates afterwards."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="python:3.10-slim", network="public", cidr_allowlist=["1.1.1.1"]
+        )
+    )
+    pidfile = Path(backend._sandbox_metadata[sb]["root_dir"]) / "netns.pid"
+    holder = pidfile.read_text().strip()
+    worker_peer = subprocess.Popen(["sleep", "300"])
+    other_holder = subprocess.Popen(
+        ["unshare", "--user", "--map-root-user", "--net"]
+        + ["sh", "-c", "echo up; exec sleep 300"],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert other_holder.stdout.readline() == "up\n"
+        rulesets = {
+            "worker's namespaces": (worker_peer.pid, lambda: _nft_ruleset()),
+            "own namespaces": (
+                other_holder.pid,
+                lambda: _nft_ruleset("-U", "-n", "-t", str(other_holder.pid)),
+            ),
+        }
+        outcomes = {}
+        for name, (pid, ruleset) in rulesets.items():
+            before = ruleset()
+            pidfile.write_text(f"{pid}\n")
+            try:
+                # Open egress, so a regression can't cut off the namespace it
+                # lands in.
+                backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
+                refused = False
+            except SandboxError as err:
+                refused = "namespace holder" in str(err)
+            outcomes[name] = {"refused": refused, "untouched": ruleset() == before}
+        assert outcomes == {
+            name: {"refused": True, "untouched": True} for name in rulesets
+        }
+        assert backend._sandbox_metadata[sb]["egress_allowlist"] == ["1.1.1.1/32"]
+        assert "ip daddr 1.1.1.1 accept" in _nft_ruleset("-U", "-n", "-t", holder)[1]
+
+        pidfile.write_text(f"{holder}\n")
+        backend.set_egress_allowlist(sb, ["1.0.0.1"])
+        assert "ip daddr 1.0.0.1 accept" in _nft_ruleset("-U", "-n", "-t", holder)[1]
+        reach = backend.exec_command(sb, _probe("1.0.0.1", 443), timeout=60)
+        assert reach.stdout.strip() == "open", reach.stderr
+    finally:
+        for process in (worker_peer, other_holder):
+            process.kill()
+            process.communicate()
         backend.delete_sandbox(sb)
 
 
