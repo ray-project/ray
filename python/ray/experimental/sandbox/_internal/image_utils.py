@@ -654,6 +654,7 @@ def build_erofs_image(
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
+_IMAGE_CACHE_MIN_FREE_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
 _USERS_SUBDIR = ".users"
 
@@ -685,6 +686,44 @@ def image_cache_max_bytes(images_dir: str) -> int:
         return shutil.disk_usage(images_dir).total // 2
     except OSError:
         return 0
+
+
+def image_cache_min_free_bytes(images_dir: str) -> int:
+    """Return the free space that eviction keeps on the cache's filesystem.
+
+    The cache shares its filesystem with sandboxes' writable overlays, logs
+    and spilled objects, so it gives way when they fill the disk.
+    ``RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES`` sets the floor in bytes; ``0``
+    disables it. Unset, it is a tenth of the filesystem that holds
+    ``images_dir``, the level at which the kubelet starts evicting Pods.
+
+    Args:
+        images_dir: Root image cache directory.
+
+    Returns:
+        The floor in bytes; 0 disables it.
+    """
+    raw = os.environ.get(_IMAGE_CACHE_MIN_FREE_BYTES_ENV)
+    if raw is not None and raw.strip():
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            logger.warning(
+                "Ignoring %s=%r: expected an integer number of bytes.",
+                _IMAGE_CACHE_MIN_FREE_BYTES_ENV,
+                raw,
+            )
+    try:
+        return shutil.disk_usage(images_dir).total // 10
+    except OSError:
+        return 0
+
+
+def _free_bytes(path: str) -> Optional[int]:
+    try:
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
 
 
 def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
@@ -753,12 +792,17 @@ def _file_size_bytes(path: str) -> int:
 
 
 def evict_least_recently_used_images(
-    images_dir: str, max_bytes: int, keep: Optional[str] = None
+    images_dir: str,
+    max_bytes: Optional[int],
+    keep: Optional[str] = None,
+    min_free_bytes: int = 0,
 ) -> None:
-    """Evict least-recently-extracted images until the cache fits ``max_bytes``.
+    """Evict least-recently-extracted images until the cache fits ``max_bytes``
+    and its filesystem has ``min_free_bytes`` free.
 
     Nodes cache every image they ever ran, so without a cap a long-lived
-    node eventually fills its disk. Candidates are fully extracted images
+    node eventually fills its disk, and the cache also gives way when
+    sandboxes' overlays or anything else fill it. Candidates are fully extracted images
     (``.extracted`` marker present) and ``<name>.tar`` archives left behind
     by earlier Ray versions, oldest first. An image is skipped when a live sandbox uses it, when its
     per-image lock is held (a pull in progress), or when it is ``keep``. The
@@ -767,8 +811,9 @@ def evict_least_recently_used_images(
 
     Args:
         images_dir: Root image cache directory.
-        max_bytes: The cache size cap in bytes.
+        max_bytes: The cache size cap in bytes, or None for no cap.
         keep: Sanitized name of an image that must survive this pass.
+        min_free_bytes: Free space to keep on the cache's filesystem.
     """
     try:
         names = os.listdir(images_dir)
@@ -806,8 +851,11 @@ def evict_least_recently_used_images(
         entries.append((mtime, name, path, tar_path, size))
 
     total = sum(entry[-1] for entry in entries)
+    free = _free_bytes(images_dir)
     for _, name, img_dir, tar_path, size in sorted(entries):
-        if total <= max_bytes:
+        if (max_bytes is None or total <= max_bytes) and (
+            free is None or free >= min_free_bytes
+        ):
             return
         if name == keep or (img_dir is not None and _has_users(img_dir)):
             continue
@@ -827,6 +875,7 @@ def evict_least_recently_used_images(
         except OSError:
             continue  # Locked by an in-progress pull; try the next one.
         total -= size
+        free = _free_bytes(images_dir)
         logger.info("Evicted cached sandbox image %s (%d bytes)", name, size)
 
 
@@ -862,8 +911,14 @@ def pull_and_extract_container_image(
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
     max_cache = image_cache_max_bytes(images_dir)
-    if max_cache > 0:
-        evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
+    min_free = image_cache_min_free_bytes(images_dir)
+    if max_cache > 0 or min_free > 0:
+        evict_least_recently_used_images(
+            images_dir,
+            max_cache if max_cache > 0 else None,
+            keep=safe_name,
+            min_free_bytes=min_free,
+        )
 
     expected_marker = expected_extract_marker()
 

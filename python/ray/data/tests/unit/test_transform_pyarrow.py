@@ -1812,6 +1812,68 @@ def test_align_struct_fields_nested(nested_struct_blocks, nested_struct_schema):
     ]
 
 
+def test_align_struct_fields_drops_extra_nested_fields():
+    """Extra physical struct fields are dropped when aligning to a schema."""
+    physical_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("extra", pa.string()),
+                                ]
+                            ),
+                        ),
+                        pa.field("extra_outer", pa.bool_()),
+                    ]
+                ),
+            )
+        ]
+    )
+    target_schema = pa.schema(
+        [
+            pa.field(
+                "outer",
+                pa.struct(
+                    [
+                        pa.field(
+                            "inner",
+                            pa.struct(
+                                [
+                                    pa.field("a", pa.int64()),
+                                    pa.field("late", pa.string()),
+                                ]
+                            ),
+                        )
+                    ]
+                ),
+            )
+        ]
+    )
+    block = pa.Table.from_pylist(
+        [
+            {"outer": {"inner": {"a": 1, "extra": "discard"}, "extra_outer": True}},
+            {"outer": None},
+            {"outer": {"inner": None, "extra_outer": False}},
+        ],
+        schema=physical_schema,
+    )
+
+    aligned = _align_struct_fields([block], target_schema)[0]
+
+    assert aligned.schema == target_schema
+    assert aligned.to_pylist() == [
+        {"outer": {"inner": {"a": 1, "late": None}}},
+        {"outer": None},
+        {"outer": {"inner": None}},
+    ]
+
+
 def test_align_struct_fields_missing_column(
     missing_column_blocks, missing_column_schema
 ):
