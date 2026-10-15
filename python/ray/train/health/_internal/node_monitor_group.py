@@ -194,20 +194,3 @@ class NodeMonitorGroup:
             node_id: self._monitors[node_id].poll_probes.remote(probes)
             for node_id in node_ids
         }
-
-    def poll_probes(
-        self, probes: List[NodeProbe], node_ids: Optional[List[NodeIdStr]] = None
-    ) -> Dict[NodeIdStr, NodeMonitorStatus]:
-        """Poll some probes once on some monitors' nodes, and wait for the
-        results.
-
-        Args:
-            probes: The probes to poll.
-            node_ids: The nodes to poll them on. ``None`` means every node with a
-                monitor.
-
-        Returns:
-            ``{node ID: NodeMonitorStatus}``.
-        """
-        refs = self.poll_probes_async(probes, node_ids)
-        return dict(zip(refs, ray.get(list(refs.values()))))

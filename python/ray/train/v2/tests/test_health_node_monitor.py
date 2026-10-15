@@ -159,17 +159,20 @@ def test_a_dead_monitor_is_reported(ray_start_4_cpus):
     group.shutdown()
 
 
-def test_poll_probes_polls_probes_once_on_every_node_or_on_some(ray_start_4_cpus):
+def test_poll_probes_async_polls_probes_once_on_every_node_or_on_some(
+    ray_start_4_cpus,
+):
     node_id = _local_node_id()
     group = NodeMonitorGroup([_temp()])
     group.start([node_id])
 
-    statuses = group.poll_probes([Pid(), Broken()])
-    assert list(statuses) == [node_id]
-    pid = statuses[node_id].probe_results["Pid"]
+    refs = group.poll_probes_async([Pid(), Broken()])
+    assert list(refs) == [node_id]
+    status = ray.get(refs[node_id])
+    pid = status.probe_results["Pid"]
     assert pid.metrics["pid"] != os.getpid()
     assert pid.timestamp_s is not None
-    assert isinstance(statuses[node_id].probe_errors["Broken"], RuntimeError)
+    assert isinstance(status.probe_errors["Broken"], RuntimeError)
 
     refs = group.poll_probes_async([Pid()], node_ids=[node_id])
     assert ray.get(refs[node_id]).probe_results["Pid"].metrics == pid.metrics
