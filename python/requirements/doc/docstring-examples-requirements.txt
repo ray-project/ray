@@ -6,6 +6,12 @@
 # Imported at the top of ray.util.dask.
 dask
 
+# The dashboard, which ray.init() starts, imports every module under
+# ray/dashboard/modules when it loads, including test modules in packaged tests/
+# directories, and some import pytest. Without it, the dashboard fails to start
+# and each ray.init() waits out an RPC deadline.
+pytest
+
 # Ray Data imports these lazily, inside the readers, writers, and aggregations
 # whose examples call them.
 crc32c
