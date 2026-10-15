@@ -2,11 +2,12 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union, overload
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
 from starlette.types import ASGIApp
+from typing_extensions import TypedDict, Unpack
 
 import ray
 from ray import cloudpickle
@@ -518,6 +519,48 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     return decorator
 
 
+# Keyword options accepted by `deployment`. Kept in sync with its signature
+# below; used only to type the `@overload`s.
+class _DeploymentOptions(TypedDict, total=False):
+    name: Default[str]
+    version: Default[str]
+    num_replicas: Default[Optional[Union[int, str]]]
+    ray_actor_options: Default[Dict]
+    placement_group_bundles: Default[List[Dict[str, float]]]
+    placement_group_strategy: Default[str]
+    placement_group_bundle_label_selector: Default[List[Dict[str, str]]]
+    max_replicas_per_node: Default[int]
+    user_config: Default[Optional[Any]]
+    max_ongoing_requests: Default[int]
+    max_queued_requests: Default[int]
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]]
+    autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]]
+    graceful_shutdown_wait_loop_s: Default[float]
+    graceful_shutdown_timeout_s: Default[float]
+    health_check_period_s: Default[float]
+    health_check_timeout_s: Default[float]
+    logging_config: Default[Union[Dict, LoggingConfig, None]]
+    request_router_config: Default[Union[Dict, RequestRouterConfig, None]]
+    max_constructor_retry_count: Default[int]
+    gang_scheduling_config: Default[Union[Dict, GangSchedulingConfig, None]]
+    deployment_actors: Default[Optional[List[Union[Dict, DeploymentActorConfig]]]]
+    rolling_update_percentage: Default[float]
+
+
+@overload
+def deployment(
+    _func_or_class: Callable, /, **options: Unpack[_DeploymentOptions]
+) -> Deployment:
+    ...
+
+
+@overload
+def deployment(
+    _func_or_class: None = None, /, **options: Unpack[_DeploymentOptions]
+) -> Callable[[Callable], Deployment]:
+    ...
+
+
 @PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -552,7 +595,7 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
-) -> Callable[[Callable], Deployment]:
+) -> Union[Deployment, Callable[[Callable], Deployment]]:
     """Decorator that converts a Python class to a `Deployment`.
 
     Example:
