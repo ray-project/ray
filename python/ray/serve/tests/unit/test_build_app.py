@@ -599,6 +599,7 @@ def test_build_app_adds_model_multiplexing_ingress_request_router(monkeypatch):
     router = built_app.ingress_request_router_deployment
     assert router is not None
     assert router.name == "IngressRequestRouter"
+    assert router.max_ongoing_requests == 1000
     assert router.init_args == (FakeDeploymentHandle("MultiplexedIngress", "default"),)
 
 

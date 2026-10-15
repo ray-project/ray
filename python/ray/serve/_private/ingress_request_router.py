@@ -9,7 +9,7 @@ from ray.serve._private.http_util import session_id_from_headers
 from ray.serve.handle import DeploymentHandle
 
 
-@serve.deployment
+@serve.deployment(max_ongoing_requests=1000)
 class IngressRequestRouter:
     """Select an ingress replica through its Serve request router."""
 
