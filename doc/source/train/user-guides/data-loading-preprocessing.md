@@ -252,8 +252,7 @@ Inside `train_loop_per_worker`, each worker accesses its shard of the dataset th
 You can consume this data in several ways, including the following:
 
 - To create a generic iterable of batches, call {meth}`~ray.data.DataIterator.iter_batches`.
-- To create a replacement for a PyTorch DataLoader (which automatically places tensors onto the worker's GPU or TPU device), call {meth}`~ray.data.DataIterator.iter_torch_batches`.
-- To stream sharded JAX arrays directly onto local TPU or GPU devices in {class}`~ray.train.v2.jax.JaxTrainer`, call {meth}`~ray.data.DataIterator.iter_jax_batches`.
+- To create a replacement for a PyTorch DataLoader, call {meth}`~ray.data.DataIterator.iter_torch_batches`.
 
 For details on iterating over your data, see {ref}`Iterating over data <iterating-over-data>`.
 

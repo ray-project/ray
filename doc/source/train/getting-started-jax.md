@@ -49,7 +49,7 @@ For TPU training, use {class}`~ray.train.ScalingConfig` to define your TPU slice
 
 * {class}`use_tpu <ray.train.ScalingConfig>`: A boolean flag that tells Ray Train to initialize the JAX backend for TPU execution. Ray 2.49.0 added this field to the V2 `ScalingConfig`.
 * {class}`topology <ray.train.ScalingConfig>`: A string that defines the physical arrangement of the TPU chips, such as `"4x4"`. Multi-host training requires it, and it ensures Ray places workers correctly across the slice. Ray 2.49.0 added this field to the V2 `ScalingConfig`. For a list of supported TPU topologies by generation, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#topology).
-* {class}`num_workers <ray.train.ScalingConfig>`: Set this to the total number of TPU VMs across all slices. For example, one `v6e-16` slice with a `4x4` topology uses 4 VMs, so set `num_workers` to 4. If you use two `v6e-16` slices (`num_workers=8`), Ray Train reserves two slices and automatically configures `MEGASCALE_*` environment variables for multi-slice coordination over DCN.
+* {class}`num_workers <ray.train.ScalingConfig>`: Set this to the total number of TPU VMs across all slices. For example, one v4-32 slice with a 2x2x4 topology uses 4 VMs, so set `num_workers` to 4. If you use two v4-32 slices, set `num_workers` to 8.
 * {class}`resources_per_worker <ray.train.ScalingConfig>`: A dictionary specifying the resources each worker needs. For TPUs, you typically request the number of chips per VM, such as `{"TPU": 4}`.
 * {class}`accelerator_type <ray.train.ScalingConfig>`: For TPUs, `accelerator_type` specifies the TPU generation you're using, such as `"TPU-V6E"`, so that Ray schedules your workload on the desired TPU slice.
 

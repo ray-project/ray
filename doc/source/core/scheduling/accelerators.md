@@ -92,9 +92,9 @@ See the [Amazon documentation](https://awslabs.github.io/data-on-eks/docs/ai-ml/
 ::::{tab-item} Google TPU
 :sync: Google TPU
 :::{tip}
-When a task or actor requests a subset of a host's TPUs (for example, `resources={"TPU": 1}`), Ray automatically sets `TPU_VISIBLE_CHIPS` for that worker process to isolate its assigned chips. You can also set `TPU_VISIBLE_CHIPS` before starting a Ray node to restrict which chips the Ray node manages—for example, `TPU_VISIBLE_CHIPS=0,1 ray start --head --resources='{"TPU": 2}'` restricts the Ray node to chips 0 and 1.
+You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` lets Ray only see devices 1 and 3.
 
-On [TPU v4](https://cloud.google.com/tpu/docs/v4), [TPU v5e](https://cloud.google.com/tpu/docs/v5e), [TPU v5p](https://cloud.google.com/tpu/docs/v5p), and [TPU v6e](https://cloud.google.com/tpu/docs/v6e) (Trillium), each physical chip exposes one logical TPU device (`4` devices on a four-chip host). On [TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) (Ironwood), each physical chip contains [two compute chiplets](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet-architecture) that expose two separate logical TPU devices (`8` devices on a four-chip host). By default, Ray registers one `TPU` resource per physical chip (`{"TPU": 4}`), which is sufficient for host-level SPMD workloads (one process per host, such as JAX). When running one process per logical TPU device (`{"TPU": 1}`, such as TorchTPU or per-device MPMD workloads) on TPU7x, set `RAY_TPU_RESOURCE_PER_CHIP=2` and advertise `{"TPU": 8}` so Ray maps two `TPU` resources to each physical chip.
+By default, Ray registers one `TPU` resource per physical chip, such as `{"TPU": 4}` on a four-chip host. On TPU7x, where each physical chip contains two logical TPU chiplets, set `RAY_TPU_RESOURCE_PER_CHIP=2` and `--resources='{"TPU": 8}'` when running one process per logical device. For details, see {ref}`TPU7x configuration <kuberay-tpu7x-dual-chiplet>`.
 :::
 ::::
 
@@ -362,7 +362,7 @@ ray.get(tpu_task.remote())
 (tpu_task pid=51830) TPU_VISIBLE_CHIPS: 1
 ```
 
-When a task or actor requests a subset of a host's TPUs, Ray sets `TPU_VISIBLE_CHIPS`, `TPU_CHIPS_PER_HOST_BOUNDS`, and `TPU_HOST_BOUNDS`. When a task or actor requests all TPUs on the host, Ray clears those sub-host variables so the framework uses the full host. For multi-host slice scheduling, per-device execution, and MPMD workloads, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
+When a task or actor requests a subset of a host's TPUs, Ray sets `TPU_VISIBLE_CHIPS` to the assigned physical chip indices and, for 1- or 2-chip allocations, sets `TPU_CHIPS_PER_HOST_BOUNDS` and `TPU_HOST_BOUNDS` to isolate the sub-host topology. When a task or actor requests all TPUs on the host, Ray clears `TPU_VISIBLE_CHIPS` and those sub-host bounds so the framework uses the full host. For multi-host slice scheduling, per-device execution, and MPMD workloads, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 :::
 
 :::{tab-item} Intel Gaudi

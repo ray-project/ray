@@ -35,12 +35,12 @@ from ray.serve.llm import LLMConfig, LLMServingArgs, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config=dict(
-        model_id="Qwen/Qwen2.5-7B-Instruct",
-        model_source="Qwen/Qwen2.5-7B-Instruct",
+        model_id="Qwen/Qwen3-8B",
+        model_source="Qwen/Qwen3-8B",
     ),
     accelerator_type="TPU-V6E",
     accelerator_config={"kind": "tpu", "topology": "4x4"},
-    # vllm-torchtpu runs one RayWorkerWrapper actor per logical TPU device.
+    # vLLM-TorchTPU runs one RayWorkerWrapper actor per logical TPU device.
     placement_group_config={"bundle_per_worker": {"TPU": 1}},
     runtime_env={
         "env_vars": {

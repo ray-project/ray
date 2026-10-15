@@ -54,8 +54,6 @@ Ray Train supports many frameworks, including the following:
   - XGBoost
 * - DeepSpeed
   - LightGBM
-* - TorchTPU
-  - JAX
 ```
 
 ## Install Ray Train

@@ -39,16 +39,7 @@ During cluster initialization or as autoscaling events add nodes to your cluster
 | Label | Description |
 | --- | --- |
 | `ray.io/node-id` | A unique ID generated for the node. |
-| `ray.io/accelerator-type` | The accelerator type of the node, such as `L4` or `TPU-V6E`. CPU-only machines don't have the label. See {ref}`accelerator types <accelerator-types>` for a mapping of values. |
-
-On Google Cloud TPU nodes, Ray also sets the following TPU-specific default labels (see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`):
-
-| Label | Description |
-| --- | --- |
-| `ray.io/tpu-slice-name` | The unique name of the TPU slice that the node belongs to. |
-| `ray.io/tpu-worker-id` | The zero-based integer host index (`0`, `1`, ...) of the node within its TPU slice. |
-| `ray.io/tpu-topology` | The physical interconnect topology of the TPU slice, such as `4x4` or `2x2x2`. |
-| `ray.io/tpu-pod-type` | The TPU Pod type combining generation and logical device count, such as `v6e-16` or `v7x-16`. |
+| `ray.io/accelerator-type` | The accelerator type of the node, such as `L4`. CPU-only machines don't have the label. See {ref}`accelerator types <accelerator-types>` for a mapping of values. |
 
 ```{note}
 You can override default values with `ray start` parameters.
