@@ -277,6 +277,7 @@ def test_hudi_rejects_pickle_object_columns(ray_start_regular_shared, local_path
     # doesn't come back as pickled objects.
     ds = ray.data.read_hudi(table_uri=table_path)
     for batch in ds.iter_batches(batch_format="pyarrow"):
+        assert isinstance(batch, pa.Table)
         assert not _contains_pickle_object_type(batch.schema.field("rider").type)
     assert not os.path.exists(marker), "pickle.load executed attacker code"
 
