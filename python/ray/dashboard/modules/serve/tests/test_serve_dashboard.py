@@ -1,6 +1,7 @@
 import copy
 import os
 import secrets
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,12 +21,13 @@ import ray
 from ray import serve
 from ray._common.test_utils import Semaphore, SignalActor, wait_for_condition
 from ray._private.test_utils import request_with_auth_token
+from ray.experimental.internal_kv import _internal_kv_del
 from ray.serve._private.common import (
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
 )
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import get_num_alive_replicas
 from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
@@ -338,6 +340,66 @@ def test_get_serve_instance_details_not_started(ray_start_stop):
         **request_with_auth_token("GET", SERVE_HEAD_URL).json()
     )
     assert serve_details.target_groups == []
+
+
+@pytest.fixture
+def no_working_dir_cache(monkeypatch):
+    # Delete working_dir packages from the node as soon as nothing uses them,
+    # so a restarting actor has to download its package again.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", "0")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+def test_rest_api_recovers_after_controller_runtime_env_setup_error(
+    no_working_dir_cache, ray_start_stop, tmp_path
+):
+    """The REST API recovers once a new controller is started, even when the
+    cached controller handle fails with RuntimeEnvSetupError instead of
+    RayActorError."""
+    (tmp_path / "module.py").write_text("")
+    ray.shutdown()
+    ray.init("auto", runtime_env={"working_dir": str(tmp_path)})
+    package_uri = ray.get_runtime_context().runtime_env["working_dir"]
+    serve.run(serve.deployment(lambda: "hi").bind(), name="app1")
+    wait_for_condition(
+        lambda: request_with_auth_token("GET", SERVE_HEAD_URL).status_code == 200
+    )
+
+    # The controller inherited the job's working_dir. End that job, delete the
+    # package from the GCS and the node, then restart every Serve actor so the
+    # controller restart can't set it up.
+    ray.shutdown()
+    ray.init("auto")
+    _internal_kv_del(package_uri.encode())
+    session_dir = ray._private.worker._global_node.get_session_dir_path()
+    package_dir = Path(session_dir) / "runtime_resources" / "working_dir_files"
+    shutil.rmtree(package_dir / Path(package_uri).stem, ignore_errors=True)
+    for actor in list_actors(filters=[("state", "=", "ALIVE")]):
+        if actor.ray_namespace == SERVE_NAMESPACE and actor.name:
+            ray.kill(
+                ray.get_actor(actor.name, namespace=SERVE_NAMESPACE),
+                no_restart=False,
+            )
+    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    # If the restart is scheduled before the killed actors release the
+    # package, the raylet retries the worker about a minute later and fails then.
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+        ray.get(controller.check_alive.remote(), timeout=180)
+
+    serve.start()
+    new_controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
+    new_controller_id = new_controller._actor_id.hex()
+    assert new_controller_id != controller._actor_id.hex()
+
+    def rest_api_reports_new_controller():
+        response = request_with_auth_token("GET", SERVE_HEAD_URL)
+        assert response.status_code == 200
+        details = ServeInstanceDetails(**response.json())
+        return details.controller_info.actor_id == new_controller_id
+
+    wait_for_condition(rest_api_reports_new_controller, timeout=30)
 
 
 @pytest.mark.skipif(
