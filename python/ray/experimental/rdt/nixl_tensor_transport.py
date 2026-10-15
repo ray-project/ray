@@ -592,16 +592,17 @@ class NixlTensorTransport(TensorTransportManager):
 
             # Nixl agent reuse is enabled.
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE > 0:
-                if remote_name in self._remote_agents:
+                cached_version = self._remote_agents.get(remote_name)
+                if cached_version is not None:
                     # If the remote agent metadata version is different from the cached one,
                     # it means there was memory deregistered. We need to remove the remote agent
                     # before adding it, because `nixlRemoteSection` currently does not support
                     # updating descriptor list in such a case (there is potential memory overlap).
-                    if remote_agent_meta_version != self._remote_agents[remote_name]:
+                    if remote_agent_meta_version > cached_version:
                         with self._agent_guard.write(remote_name, self._wait_done):
                             # A writer queued ahead of us may have refreshed it already.
                             agents = self._remote_agents
-                            if agents.get(remote_name) != remote_agent_meta_version:
+                            if agents.get(remote_name, -1) < remote_agent_meta_version:
                                 nixl_agent.remove_remote_agent(remote_name)
                                 agents[remote_name] = remote_agent_meta_version
                     self._remote_agents.move_to_end(remote_name)
@@ -621,10 +622,14 @@ class NixlTensorTransport(TensorTransportManager):
                         )
                         raise
 
-                self._remote_agents[remote_name] = remote_agent_meta_version
+                self._remote_agents.setdefault(remote_name, remote_agent_meta_version)
 
             reader_key = self._agent_guard.acquire_read(remote_name)
-            nixl_agent.add_remote_agent(remote_nixl_agent_meta)
+            # While we hold a reader the version can't change. Don't re-add metadata
+            # that a concurrent fetch has already replaced with a newer version.
+            cached_now = self._remote_agents.get(remote_name, remote_agent_meta_version)
+            if cached_now <= remote_agent_meta_version:
+                nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
             xfer_handle = nixl_agent.initialize_xfer(
                 "READ",
