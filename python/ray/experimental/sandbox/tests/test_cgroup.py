@@ -260,12 +260,12 @@ def test_reaper_detaches_from_the_process_that_starts_it(tmp_path):
     state = tmp_path / "state"
     state.mkdir()
     command = [sys.executable, "-S", cgroup.__file__, "--reap", str(state)]
-    subprocess.run([*command, "--detach"], check=True, timeout=10)
-    deadline = time.monotonic() + 10
-    while not _reapers(state) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    (reaper,) = _reapers(state)
     try:
+        subprocess.run([*command, "--detach"], check=True, timeout=10)
+        deadline = time.monotonic() + 10
+        while not _reapers(state) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        (reaper,) = _reapers(state)
         ppid = int(
             Path(f"/proc/{reaper}/stat").read_text().rsplit(")", 1)[1].split()[1]
         )
@@ -275,7 +275,9 @@ def test_reaper_detaches_from_the_process_that_starts_it(tmp_path):
         subprocess.run([*command, "--detach"], check=True, timeout=10)
         assert _reapers(state) == [reaper]
     finally:
-        os.kill(reaper, signal.SIGKILL)
+        # A reaper runs until node shutdown, so never leave one behind.
+        for pid in _reapers(state):
+            os.kill(pid, signal.SIGKILL)
 
 
 def test_failed_setup_releases_allocation(manager, monkeypatch):
