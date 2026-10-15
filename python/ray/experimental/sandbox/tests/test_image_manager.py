@@ -302,6 +302,9 @@ def test_custom_image_manager_subclass(tmp_path):
     [
         (False, "64Mi", "size=67108864"),
         (False, 1 << 30, "size=1073741824"),
+        # Floats and fractional sizes come out as whole bytes.
+        (False, float(1 << 30), "size=1073741824"),
+        (False, "1.5Gi", "size=1610612736"),
         (False, 0, None),
         (False, None, None),
         # A read-only rootfs gets no overlay, so there's nothing to cap.
