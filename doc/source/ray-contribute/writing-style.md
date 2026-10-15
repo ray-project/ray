@@ -392,6 +392,32 @@ Look up the form here rather than deriving it. The `Core.Terms` and `Core.Capita
 | Ray Compiled Graph, Ray Direct Transport (RDT) | Compiled graph, Direct transport | Feature names keep their capitals. |
 | Gloo, NCCL, NIXL, CuPy, libfabric | GLOO, gloo, cupy, LIBFABRIC | Third-party names take each project's own casing. |
 
+(ray-train-docs-style)=
+
+## Writing Ray Train docs
+
+Ray Train pages live under `doc/source/train/`. The {ref}`Ray Train overview <train-overview>` defines four concepts: the training function, the worker, the scaling configuration, and the trainer. Use those names for them everywhere else in Train docs.
+
+A Ray Train worker is a Ray Core worker process that runs the training function. Write "worker" when the Train context makes that clear, and "training worker" when a page also discusses Ray Core worker processes or cluster worker nodes.
+
+### Ray Train terms
+
+Look up the form here rather than deriving it. The `Train.Terms` and `Train.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/train/`.
+
+| Use | Not | Note |
+|---|---|---|
+| trainer | Trainer, Ray Train Trainer | The generic concept is lowercase. Put a class name in code style, such as `TorchTrainer` or `XGBoostTrainer`. A third-party class such as the Lightning or Hugging Face Transformers `Trainer` also takes code style. |
+| training function | train function, Training Function | The user-defined function that each worker runs. `train_func` and `train_loop_per_worker` keep code style. |
+| worker, training worker | Train Worker | Capitalize "Train" only as part of "Ray Train." |
+| worker group | Worker Group | |
+| scaling configuration | scaling config | Spell it out in prose. `ScalingConfig` keeps code style. |
+| run configuration, checkpoint configuration | run config, checkpoint config | Spell them out in prose. `RunConfig` and `CheckpointConfig` keep code style. |
+| fault tolerance, local mode, elastic training | Fault Tolerance, Local Mode, Elastic Training | Generic nouns stay lowercase past the first word of a heading. |
+| fine-tune, fine-tuning | finetune, finetuning | Model and file names that contain "finetune" belong in code style. |
+| Ray Train V2 | Ray Train v2 | |
+| PyTorch, PyTorch Lightning, TensorFlow, Keras, JAX, DeepSpeed, Hugging Face, XGBoost, LightGBM, Horovod | Pytorch, Tensorflow, Jax, Deepspeed, HuggingFace | Framework names take each project's own casing. Write the package name in code style, such as `torch` or `lightgbm`. |
+| MLflow, W&B, Weights & Biases, TensorBoard | MLFlow, WandB, Tensorboard | Write `wandb` in code style when you mean the package. |
+
 (kubernetes-docs-style)=
 
 ## Writing Ray on Kubernetes and KubeRay docs

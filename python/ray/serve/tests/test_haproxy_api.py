@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.haproxy import (
@@ -1125,13 +1126,16 @@ def _create_router_server(
 ):
     """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": [], "request_ids": []}
+    captured = {"bodies": [], "request_ids": [], "request_paths": []}
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
         captured["request_ids"].append(req.headers.get("x-request-id", ""))
+        captured["request_paths"].append(
+            req.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
+        )
         response = {"replica_id": replica_id_to_return}
         if extra_response:
             response.update(extra_response)
@@ -1149,6 +1153,7 @@ def _create_router_server(
     # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
     captured["request_ids"].clear()
+    captured["request_paths"].clear()
     return server, thread, captured
 
 
@@ -1279,8 +1284,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             # so the request must land on replica B regardless of LB ordering.
             payload = {"prompt": "hello"}
             resp = requests.post(
-                f"http://127.0.0.1:{haproxy_port}/predict",
+                f"http://127.0.0.1:{haproxy_port}/v1/messages?trace=1",
                 json=payload,
+                headers={
+                    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/chat/completions"
+                },
                 timeout=5,
             )
             assert resp.status_code == 200, resp.text
@@ -1289,6 +1297,9 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 resp.headers.get("x-received-request-id")
             ]
             assert router_captured["request_ids"][0]
+            # The actual path, without the query, identifies the API even if
+            # the client supplies a conflicting router-owned header.
+            assert router_captured["request_paths"] == ["/v1/messages"]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.

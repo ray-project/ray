@@ -20,6 +20,7 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import
     FooterFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    _SCHEMA_READ_BATCH_SIZE,
     ParquetDatasourceV2,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
@@ -35,6 +36,8 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
+from ray.data._internal.util import unify_schemas_with_validation
+from ray.data.checkpoint.generated_id import GeneratedIdColumn
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
@@ -59,6 +62,111 @@ def test_infer_schema_unpartitioned(tmp_path):
     assert schema.names == ["a", "b"]
     assert schema.field("a").type == pa.int64()
     assert schema.field("b").type == pa.string()
+
+
+def test_infer_schema_preserves_unifier_nullability_for_missing_field(tmp_path):
+    first = str(tmp_path / "first.parquet")
+    second = str(tmp_path / "second.parquet")
+    first_schema = pa.schema([pa.field("id", pa.int64(), nullable=False)])
+    second_schema = pa.schema(
+        [
+            pa.field("id", pa.int64(), nullable=False),
+            pa.field("late", pa.string(), nullable=False),
+        ]
+    )
+    _write_parquet(first, pa.Table.from_arrays([pa.array([1])], schema=first_schema))
+    _write_parquet(
+        second,
+        pa.Table.from_arrays(
+            [pa.array([2]), pa.array(["value"])], schema=second_schema
+        ),
+    )
+
+    datasource = ParquetDatasourceV2([str(tmp_path)])
+    schema = datasource.infer_schema(_manifest_of([first, second]))
+
+    expected = unify_schemas_with_validation(
+        [pq.read_schema(first), pq.read_schema(second)]
+    )
+    assert schema == expected
+
+
+def test_infer_schema_preserves_unifier_nullability_for_missing_struct_child(tmp_path):
+    first = str(tmp_path / "first.parquet")
+    second = str(tmp_path / "second.parquet")
+    first_schema = pa.schema(
+        [
+            pa.field(
+                "nested",
+                pa.struct([pa.field("a", pa.int64(), nullable=False)]),
+                nullable=False,
+            )
+        ]
+    )
+    second_schema = pa.schema(
+        [
+            pa.field(
+                "nested",
+                pa.struct(
+                    [
+                        pa.field("a", pa.int64(), nullable=False),
+                        pa.field("late", pa.string(), nullable=False),
+                    ]
+                ),
+                nullable=False,
+            )
+        ]
+    )
+    _write_parquet(
+        first, pa.Table.from_pylist([{"nested": {"a": 1}}], schema=first_schema)
+    )
+    _write_parquet(
+        second,
+        pa.Table.from_pylist(
+            [{"nested": {"a": 2, "late": "value"}}], schema=second_schema
+        ),
+    )
+
+    datasource = ParquetDatasourceV2([str(tmp_path)])
+    schema = datasource.infer_schema(_manifest_of([first, second]))
+
+    expected = unify_schemas_with_validation(
+        [pq.read_schema(first), pq.read_schema(second)]
+    )
+    assert schema == expected
+
+
+def test_infer_schema_promotes_null_field_to_struct(tmp_path):
+    first = str(tmp_path / "first.parquet")
+    second = str(tmp_path / "second.parquet")
+    _write_parquet(first, pa.table({"nested": pa.array([None], type=pa.null())}))
+    _write_parquet(
+        second,
+        pa.table({"nested": pa.array([{"a": 1}], type=pa.struct([("a", pa.int64())]))}),
+    )
+
+    datasource = ParquetDatasourceV2([str(tmp_path)])
+    schema = datasource.infer_schema(_manifest_of([first, second]))
+
+    assert pa.types.is_struct(schema.field("nested").type)
+    assert schema.field("nested").type.field("a").type == pa.int64()
+
+
+def test_infer_schema_unifies_across_footer_batches(tmp_path):
+    paths = []
+    for i in range(_SCHEMA_READ_BATCH_SIZE + 1):
+        path = str(tmp_path / f"f{i:03d}.parquet")
+        if i == _SCHEMA_READ_BATCH_SIZE:
+            table = pa.table({"a": [i], "late": ["value"]})
+        else:
+            table = pa.table({"a": [i]})
+        _write_parquet(path, table)
+        paths.append(path)
+
+    datasource = ParquetDatasourceV2([str(tmp_path)])
+    schema = datasource.infer_schema(_manifest_of(paths))
+
+    assert schema.names == ["a", "late"]
 
 
 def test_infer_schema_hive_partitioned(tmp_path):
@@ -107,6 +215,32 @@ def test_custom_path_column_rejects_row_hash_name(tmp_path):
         ParquetDatasourceV2(
             [str(tmp_path)], include_paths="row_hash", include_row_hash=True
         )
+
+
+def test_custom_path_column_rejects_generated_id_name(tmp_path):
+    with pytest.raises(ValueError, match="conflicts with an extra synthesized column"):
+        ParquetDatasourceV2(
+            [str(tmp_path)],
+            include_paths="source_file",
+            extra_synthesized_columns=(GeneratedIdColumn("source_file"),),
+        )
+
+
+def test_custom_path_column_preserves_generated_id_schema(tmp_path):
+    path = str(tmp_path / "data.parquet")
+    _write_parquet(path, pa.table({"id": [1]}))
+    generated_id = GeneratedIdColumn("checkpoint_id")
+    datasource = ParquetDatasourceV2(
+        [path],
+        include_paths="source_file",
+        extra_synthesized_columns=(generated_id,),
+    )
+
+    schema = datasource.infer_schema(_manifest_of([path]))
+
+    assert schema.names == ["id", "source_file", "checkpoint_id"]
+    assert schema.field("source_file").type == pa.string()
+    assert schema.field("checkpoint_id").type == generated_id.type
 
 
 def test_custom_path_column_rejects_partition_name(tmp_path):

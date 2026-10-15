@@ -152,6 +152,8 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
 INT32_MAX = 2**31 - 1
 
 
@@ -503,6 +505,7 @@ def _read_datasource_v2(
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     block_udf: Optional[Callable[[Any], Any]] = None,
+    sample_all_files_for_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -524,23 +527,29 @@ def _read_datasource_v2(
     - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
       via ``scanner.create_reader().read(manifest)``.
 
-    Schema inference happens once on the driver by sampling the first
-    file — no caching layer needed.
+    Schema inference samples up to 16 files by default. The opt-in full-schema
+    path retains the discovered file infos so ``ListFiles`` reads that same set.
 
     This function is the whole framework <-> datasource contract: every
     attribute it reads is declared on ``DataSourceV2`` or, behind the one
     ``isinstance`` check below, on ``FileDataSourceV2``. The object is not
     referenced after it returns (``ReadFiles`` keeps only ``datasource.name``).
     """
+    import builtins
     import time
 
     from ray.data._internal.datasource_v2.common.listing_utils import (
+        DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE,
         _build_pruners,
         sample_files,
     )
     from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
         DataSourceWithMetadata,
         FileDataSourceV2,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_SIZE_COLUMN_NAME,
+        PATH_COLUMN_NAME,
     )
     from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         PartitionHints,
@@ -600,17 +609,68 @@ def _read_datasource_v2(
     # listed or opened here, so an empty table still reads and no partitioning is
     # derived from paths.
     sample = None
+    listing_started = time.perf_counter() if sample_all_files_for_schema else None
     if datasource.schema_needs_file_sample:
-        # Sample a few files for schema inference. Listed again (cheaply) during
-        # execution inside the ListFiles op — no caching layer needed.
-        sample = sample_files(indexer, datasource.paths, filesystem, pruners)
+        # Full-schema mode retains the discovered files for execution. The
+        # default bounded sample is listed again by ListFiles as before.
+        sample = sample_files(
+            indexer,
+            datasource.paths,
+            filesystem,
+            pruners,
+            max_files=None if sample_all_files_for_schema else 16,
+        )
         if len(sample) == 0:
             raise ValueError(
                 f"no files found under {datasource.paths!r}. Check the path and any "
                 "configured `partition_filter` or `file_extensions` filters."
             )
+        if (
+            sample_all_files_for_schema
+            and len(sample) > _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT
+        ):
+            logger.warning(
+                "Full schema inference discovered %d candidate files, exceeding "
+                "the %d-file warning threshold. Reading every footer before "
+                "read_parquet returns may make planning slow.",
+                len(sample),
+                _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
+            )
 
+    listing_elapsed = (
+        time.perf_counter() - listing_started if listing_started is not None else None
+    )
+    schema_started = time.perf_counter() if sample_all_files_for_schema else None
     schema = datasource.infer_schema(sample)
+    schema_elapsed = (
+        time.perf_counter() - schema_started if schema_started is not None else None
+    )
+    prelisted_file_infos = None
+    if sample_all_files_for_schema:
+        assert sample is not None
+        import pyarrow as pa
+
+        sample_block = sample.as_block()
+        assert isinstance(sample_block, pa.Table)
+        file_infos = sample_block.select([PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME])
+        prelisted_file_infos = []
+        for i in builtins.range(
+            0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
+        ):
+            stop = min(i + DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE, file_infos.num_rows)
+            indices = pa.array(builtins.range(i, stop), type=pa.int64())
+            # Keep the chunking in Arrow to avoid converting every path to
+            # Python objects.
+            prelisted_file_infos.append(file_infos.take(indices))
+        assert listing_elapsed is not None and schema_elapsed is not None
+        logger.info(
+            "Full Parquet schema inference: %d candidate files, %.2fs listing, "
+            "%.2fs footer merge, %d retained Arrow file-info bytes",
+            len(sample),
+            listing_elapsed,
+            schema_elapsed,
+            sum(block.nbytes for block in prelisted_file_infos),
+        )
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
     # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
@@ -670,6 +730,7 @@ def _read_datasource_v2(
         file_indexer=indexer,
         filesystem=filesystem,
         source_paths=list(datasource.paths),
+        prelisted_file_infos=prelisted_file_infos,
         file_partitioner=partitioner,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
@@ -1615,6 +1676,7 @@ def read_parquet(
     tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
+    merge_schema: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: Union[bool, str] = False,
     include_row_hash: bool = False,
@@ -1746,6 +1808,11 @@ def read_parquet(
             with a custom callback to read only selected partitions of a dataset.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to HIVE partitioning.
+        merge_schema: If ``True``, infer the schema from every eligible Parquet
+            file before returning the Dataset. Defaults to ``False``, which
+            infers from up to 16 files. Requires the V2 datasource and cannot be
+            combined with an explicit ``schema``. See the notes below for cost
+            and file-discovery behavior.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
@@ -1757,7 +1824,8 @@ def read_parquet(
             ``'path'`` column and stores file paths in ``'source_file'``. A
             custom name other than ``'path'`` that matches a path-derived
             partition column raises ``ValueError``. Using ``'row_hash'`` when
-            ``include_row_hash=True`` also raises ``ValueError``. To downselect
+            ``include_row_hash=True``, or reusing a checkpoint's generated ID
+            column name, also raises ``ValueError``. To downselect
             to fewer columns, use :meth:`~ray.data.Dataset.select_columns` and
             include the chosen path column name explicitly to retain it.
         include_row_hash: If ``True``, include a deterministic hash for each row.
@@ -1805,6 +1873,22 @@ def read_parquet(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
+
+    .. note::
+
+        ``merge_schema=True`` lists all eligible files and reads every footer during
+        planning, which can be expensive for large or remote datasets. Execution
+        reads footer metadata again. With more than 10,000 candidate files, the
+        reader warns before footer merging. Retained path and size metadata adds
+        O(files) data to serialized lineage.
+
+        Follow-up work for distributed planning-time footer reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+
+        The Dataset retains those candidate paths across actions. Files appended
+        after discovery aren't included. Concurrent directory traversal isn't an
+        atomic snapshot, and replacing a file at the same path is outside this
+        guarantee.
 
     .. tip::
 
@@ -1856,6 +1940,10 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+    # Internal: Ray Data's own reads of checkpoint files pass ``False`` so they
+    # don't get the generated ID column the checkpoint config asks for on
+    # data reads.
+    add_generated_id_column = arrow_parquet_args.pop("_add_generated_id_column", True)
 
     ctx = DataContext.get_current()
     if isinstance(include_paths, str):
@@ -1871,6 +1959,14 @@ def read_parquet(
     else:
         path_column_name = "path"
 
+    if merge_schema and schema is not None:
+        raise ValueError("`merge_schema=True` cannot be combined with `schema`.")
+    if merge_schema and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`merge_schema=True` on `read_parquet` requires the V2 datasource. "
+            "Enable it with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
     if ctx.use_datasource_v2:
         # ``tensor_column_schema`` is folded into ``_block_udf`` by
         # ``_resolve_parquet_args`` above; passing that transform through
@@ -1911,6 +2007,12 @@ def read_parquet(
                 parquet_format_kwargs["dictionary_columns"] = parquet_format_kwargs.pop(
                     "read_dictionary"
                 )
+        checkpoint_config = ctx.checkpoint_config
+        generated_id_column_name: Optional[str] = (
+            checkpoint_config.generated_id_column
+            if add_generated_id_column and checkpoint_config is not None
+            else None
+        )
         select_columns_after_read: Optional[List[str]] = None
         if columns is not None:
             # The deprecated ``columns=`` retains synthesized columns
@@ -1922,6 +2024,11 @@ def read_parquet(
                 select_columns_after_read.append(path_column_name)
             if include_row_hash and "row_hash" not in select_columns_after_read:
                 select_columns_after_read.append("row_hash")
+            if (
+                generated_id_column_name is not None
+                and generated_id_column_name not in select_columns_after_read
+            ):
+                select_columns_after_read.append(generated_id_column_name)
             warnings.warn(
                 "`columns=` on `read_parquet` is deprecated. Use "
                 "`ray.data.read_parquet(path).select_columns([...])` instead.",
@@ -1937,6 +2044,7 @@ def read_parquet(
         from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
             ParquetDatasourceV2,
         )
+        from ray.data.checkpoint.generated_id import GeneratedIdColumn
 
         datasource_v2 = ParquetDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
@@ -1951,6 +2059,11 @@ def read_parquet(
             arrow_parquet_args=arrow_parquet_args,
             schema=schema,
             parquet_format_kwargs=parquet_format_kwargs,
+            extra_synthesized_columns=(
+                (GeneratedIdColumn(generated_id_column_name),)
+                if generated_id_column_name is not None
+                else ()
+            ),
         )
         ds = _read_datasource_v2(
             datasource_v2,
@@ -1968,6 +2081,7 @@ def read_parquet(
             concurrency=concurrency,
             partition_filter=partition_filter,
             block_udf=_block_udf,
+            sample_all_files_for_schema=merge_schema,
         )
         if select_columns_after_read is not None:
             ds = ds.select_columns(select_columns_after_read)
@@ -2894,6 +3008,11 @@ def read_orc(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from records stored in ORC files.
 
+    Note:
+        The DataSourceV2 reader is selected through
+        :attr:`~ray.data.context.DataContext.use_datasource_v2`.
+        It samples file schemas and may omit columns absent from the sample.
+
     Examples:
         Read an ORC file in remote storage or local storage.
 
@@ -2961,6 +3080,37 @@ def read_orc(
     Returns:
         :class:`~ray.data.Dataset` holding records from the ORC files.
     """
+
+    if DataContext.get_current().use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+            OrcDatasourceV2,
+        )
+
+        datasource = OrcDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = ORCDatasource(
         paths,
@@ -6154,9 +6304,37 @@ def read_delta(
         error_msg = str(e)
         # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
         if "deletionVectors" in error_msg:
+            # No deltalake version lifts this: the restriction is specific to
+            # `to_pyarrow_dataset`, which hands raw Parquet fragments to pyarrow.
+            # pyarrow cannot apply the deletion-vector bitmaps, so honouring them
+            # is impossible on that path and deltalake refuses rather than
+            # returning deleted rows. It refuses on the *declared* reader feature,
+            # so a table with deletion vectors enabled but none written is
+            # rejected too. Don't suggest upgrading -- it will not help.
             raise RuntimeError(
-                f"Delta table uses Deletion Vectors, which requires deltalake>=0.10.0. "
-                f"Error: {error_msg}\n"
+                "This Delta table declares the `deletionVectors` reader "
+                "feature, which deltalake cannot honour when reading through "
+                "pyarrow datasets -- the path `ray.data.read_delta` uses. "
+                "Upgrading deltalake will not change this, and note the table "
+                "is rejected for *declaring* the feature, whether or not any "
+                "deletion vectors have actually been written.\n"
+                "\n"
+                "Reading it with Ray Data needs the `delta.enableDeletionVectors"
+                "` table property turned off and the feature dropped from the "
+                "table's protocol. That rewrites data files and changes what "
+                "other readers and writers see, so it is worth reading your "
+                "Delta engine's documentation on removing the feature before "
+                "doing it -- some engines, Databricks included, enable deletion "
+                "vectors by default. If the property is already off, the "
+                "declaration can linger until existing deletion vectors are "
+                "purged and the feature is dropped.\n"
+                "\n"
+                "If reading deletion-vector tables directly matters to you, "
+                "please open or comment on a Ray issue -- it would need a read "
+                "path that does not go through pyarrow datasets, and knowing "
+                "there is demand helps us prioritise it.\n"
+                "\n"
+                f"Underlying error: {error_msg}"
             ) from e
         raise
 
