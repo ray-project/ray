@@ -16,6 +16,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -160,19 +161,39 @@ def _reconcile(state_dir: Path) -> None:
             logger.warning("Failed to reclaim sandbox lease %s: %s", record_path, err)
 
 
+def _private_dir(path: str) -> bool:
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return (
+        stat.S_ISDIR(st.st_mode)
+        and st.st_uid == os.geteuid()
+        and not st.st_mode & (stat.S_IWGRP | stat.S_IWOTH)
+    )
+
+
 def _clean_up_orphan(record: Dict) -> None:
     """Delete what a dead owner's sandbox leaves after its cgroup is killed.
 
     The kill stops the workload, but runsc's container state, the bundle
     (with the writable overlay's backing file) and the image's in-use marker
     would otherwise stay on the node.
+
+    The reaper may run as root, and leases sit under /tmp/ray, which Ray
+    makes world-writable. So a lease never supplies a command: the reaper
+    runs runsc with known flags, only on a state directory that it owns,
+    and deletes only paths named after the sandbox.
     """
+    sandbox_id = Path(record["path"]).name
     cleanup = record.get("cleanup") or {}
-    runsc_args = cleanup.get("runsc_args")
-    if runsc_args:
+    runsc_root = cleanup.get("runsc_root")
+    if isinstance(runsc_root, str) and _private_dir(runsc_root):
+        rootless = ["--rootless"] if cleanup.get("rootless") is True else []
         try:
             subprocess.run(
-                [*runsc_args, "delete", "-force", Path(record["path"]).name],
+                ["runsc", *rootless, "--ignore-cgroups", "--root", runsc_root]
+                + ["delete", "-force", sandbox_id],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 timeout=10,
@@ -180,6 +201,8 @@ def _clean_up_orphan(record: Dict) -> None:
         except (OSError, subprocess.TimeoutExpired):
             pass
     for path in cleanup.get("remove", []):
+        if not isinstance(path, str) or os.path.basename(path) != sandbox_id:
+            continue
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
         else:
@@ -501,7 +524,7 @@ class SandboxCgroupManager:
                 "reserved_cpus": sorted(reserved),
                 "affinity": affinity,
                 # What the reaper deletes after killing an orphan: the
-                # runsc command prefix for `delete -force`, and paths.
+                # sandbox's runsc state, and paths named after the sandbox.
                 "cleanup": cleanup or {},
             }
             if record["owner_starttime"] is None:

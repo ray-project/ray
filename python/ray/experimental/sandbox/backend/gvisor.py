@@ -146,7 +146,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     memory,
                     config.cpu_isolation,
                     cleanup={
-                        "runsc_args": self._runsc_base_args(config),
+                        "runsc_root": _RUNSC_ROOT,
+                        "rootless": config.rootless,
                         "remove": remove,
                     },
                 )

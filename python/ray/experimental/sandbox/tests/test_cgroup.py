@@ -159,36 +159,85 @@ def test_reconcile_kills_orphan_before_reusing_its_cores(manager, monkeypatch):
     assert (second.path / "cpuset.cpus").read_text() == "0,1"
 
 
-def test_reconcile_deletes_an_orphans_runsc_state_and_files(
-    manager, monkeypatch, tmp_path
-):
-    bundle = tmp_path / "bundle"
-    bundle.mkdir()
-    (bundle / ".gvisor.filestore").write_text("overlay")
-    pin = tmp_path / "pin"
-    pin.write_text("")
+@pytest.fixture
+def fake_runsc(tmp_path, monkeypatch):
+    """A ``runsc`` first on PATH that appends its arguments to ``calls``."""
+    bin_dir = tmp_path / "fake-runsc-bin"
+    bin_dir.mkdir()
     calls = tmp_path / "runsc-calls"
+    (bin_dir / "runsc").write_text(f'#!/bin/sh\necho "$@" >> {calls}\n')
+    (bin_dir / "runsc").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
+    return calls
+
+
+def test_reconcile_deletes_an_orphans_runsc_state_and_files(
+    manager, monkeypatch, tmp_path, fake_runsc
+):
+    sandbox_id = "ray-sandbox-000000000001"
+    bundle = tmp_path / "sandbox" / sandbox_id
+    bundle.mkdir(parents=True)
+    (bundle / ".gvisor.filestore").write_text("overlay")
+    pin = tmp_path / "image" / ".users" / sandbox_id
+    pin.parent.mkdir(parents=True)
+    pin.write_text("")
+    runsc_root = tmp_path / "runsc-root"
+    runsc_root.mkdir(mode=0o711)
     cleanup = {
-        # Stands in for runsc: records the arguments it gets.
-        "runsc_args": ["/bin/sh", "-c", f'echo "$@" >> {calls}', "runsc"],
+        "runsc_root": str(runsc_root),
+        "rootless": True,
         "remove": [str(bundle), str(pin)],
     }
-    manager.allocate("ray-sandbox-000000000001", 1, 0, "shared", cleanup=cleanup)
+    manager.allocate(sandbox_id, 1, 0, "shared", cleanup=cleanup)
     monkeypatch.setattr(subprocess, "Popen", _POPEN)
     # A live owner keeps everything.
     with cgroup._locked(manager.state_dir):
         cgroup._reconcile(manager.state_dir)
-    assert bundle.exists() and pin.exists() and not calls.exists()
+    assert bundle.exists() and pin.exists() and not fake_runsc.exists()
 
     monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
     with cgroup._locked(manager.state_dir):
         cgroup._reconcile(manager.state_dir)
-    assert calls.read_text().split() == [
+    assert fake_runsc.read_text().split() == [
+        "--rootless",
+        "--ignore-cgroups",
+        "--root",
+        str(runsc_root),
         "delete",
         "-force",
-        "ray-sandbox-000000000001",
+        sandbox_id,
     ]
     assert not bundle.exists() and not pin.exists()
+
+
+def test_planted_lease_runs_no_command_and_deletes_only_its_sandbox(
+    manager, monkeypatch, tmp_path, fake_runsc
+):
+    """Leases live under /tmp/ray, which Ray makes world-writable, and the
+    reaper may run as root."""
+    sandbox_id = "ray-sandbox-000000000001"
+    victims = tmp_path / "victims"
+    victims.mkdir()
+    victim = victims / "victim"
+    victim.write_text("keep me")
+    marker = tmp_path / "planted-command-ran"
+    shared_root = tmp_path / "shared-runsc-root"
+    shared_root.mkdir()
+    shared_root.chmod(0o777)
+    cleanup = {
+        "runsc_args": ["/bin/sh", "-c", f"touch {marker}"],
+        "runsc_root": str(shared_root),
+        "remove": [str(victim), str(victims)],
+    }
+    manager.allocate(sandbox_id, 1, 0, "shared", cleanup=cleanup)
+    monkeypatch.setattr(subprocess, "Popen", _POPEN)
+    monkeypatch.setattr(cgroup, "_process_identity", lambda _: "owner-gone")
+    cgroup._reconcile(manager.state_dir)
+    assert not marker.exists()
+    # runsc never reads state from a directory that others can write.
+    assert not fake_runsc.exists()
+    assert victim.read_text() == "keep me"
+    assert not list(cgroup._records(manager.state_dir))
 
 
 def _reapers(state_dir) -> list:
