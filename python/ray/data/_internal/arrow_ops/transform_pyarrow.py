@@ -801,11 +801,8 @@ def _backfill_missing_fields(
         field.name: column.field(i) for i, field in enumerate(column.type)
     }
 
-    # Assert that the current fields are a subset of the unified struct type's field names
-    unified_field_names = {field.name for field in unified_struct_type}
-    assert set(current_fields.keys()).issubset(
-        unified_field_names
-    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+    # Ignore fields outside the target schema. A reader may pin the schema to
+    # an inference sample while later files contain additional struct fields.
 
     # Early exit if no fields are missing in the schema
     if column.type == unified_struct_type:
@@ -875,10 +872,10 @@ def _align_struct_fields(
     """
     Align struct columns across blocks to match the provided schema.
 
-    Struct columns in each block are backfilled with nulls for any fields
-    present in the unified schema but missing in that block. Non-struct
-    columns missing from a block are also appended as null columns, and
-    columns are reordered to match the schema.
+    Struct columns in each block are backfilled with nulls for fields present
+    in the unified schema but missing in that block. Struct fields absent from
+    the target schema are dropped. Non-struct columns missing from a block are
+    also appended as null columns, and columns are reordered to match the schema.
 
     Args:
         blocks: List of Arrow tables to align.

@@ -808,6 +808,56 @@ def test_merge_schema_null_fills_nested_struct_field(tmp_path, restore_ctx):
     assert rows[1]["nested"]["late"] == "value"
 
 
+def test_read_parquet_v2_drops_nested_fields_outside_inferred_schema(
+    tmp_path, restore_ctx
+):
+    old_schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field(
+                "nested",
+                pa.struct([pa.field("a", pa.int64())]),
+            ),
+        ]
+    )
+    expanded_schema = pa.schema(
+        [
+            pa.field("id", pa.int64()),
+            pa.field(
+                "nested",
+                pa.struct(
+                    [
+                        pa.field("a", pa.int64()),
+                        pa.field("late", pa.string()),
+                    ]
+                ),
+            ),
+        ]
+    )
+    for i in range(16):
+        _write(
+            tmp_path / f"f{i:02d}.parquet",
+            pa.Table.from_pylist([{"id": i, "nested": {"a": i}}], schema=old_schema),
+        )
+    _write(
+        tmp_path / "f16.parquet",
+        pa.Table.from_pylist(
+            [{"id": 16, "nested": {"a": 16, "late": "value"}}],
+            schema=expanded_schema,
+        ),
+    )
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+
+    assert [field.name for field in ds.schema().base_schema.field("nested").type] == [
+        "a"
+    ]
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    assert len(rows) == 17
+    assert rows[-1]["nested"] == {"a": 16}
+
+
 def test_merge_schema_fails_on_incompatible_file_outside_sample(tmp_path, restore_ctx):
     for i in range(16):
         _write(tmp_path / f"f{i:02d}.parquet", pa.table({"id": [i]}))
