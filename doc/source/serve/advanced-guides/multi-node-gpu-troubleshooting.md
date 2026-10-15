@@ -51,7 +51,7 @@ spec:
     # ... other head group configuration
 ```
 
-(2-aws-ofi-plugin-version-issues-h100-specific)=
+(aws-ofi-plugin-version-issues-h100-specific)=
 ### 2. AWS OFI plugin version issues on H100 instances
 
 **Symptoms**:

@@ -228,7 +228,7 @@ You can also configure each option individually. The following table describes t
 | `RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE=1000` | Sets the log buffer to batch writes to every `1000` logs, flushing the buffer on write. Ray Serve always flushes the buffer and writes logs when it detects a line with level `ERROR`. Set the buffer size to `1` to disable buffering and write logs immediately. |
 | `RAY_SERVE_LOG_TO_STDERR=0` | Ray Serve writes logs only to files under the `logs/serve/` directory. Proxy, controller, and replica logs no longer appear in the console, worker files, or the **Actor Logs** section of the Ray dashboard. Set this variable to `1` to enable additional logging. |
 
-To turn on throughput-optimized serving while customizing individual options, set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override the specific options. For example, to keep logging to stderr with throughput-optimized serving, set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override it with `RAY_SERVE_LOG_TO_STDERR=1`.
+To turn on throughput-optimized serving while customizing individual options, set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and override the specific options. For example, to keep logging to stderr with throughput-optimized serving, set `RAY_SERVE_THROUGHPUT_OPTIMIZED=1` and also set `RAY_SERVE_LOG_TO_STDERR=1` to override the logging option.
 
 (serve-haproxy)=
 ### Use HAProxy load balancing

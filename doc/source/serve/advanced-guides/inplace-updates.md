@@ -14,7 +14,7 @@ To update a Serve application in production, change the settings in your Serve c
 
 ## Lightweight config updates
 
-A lightweight config update modifies running replicas without tearing them down and restarting them, so the deployments have less downtime while they update. Changing any of the following eight values in a deployment's config is a lightweight config update and doesn't tear down that deployment's replicas:
+A lightweight config update modifies running replicas without tearing them down and restarting them, so the deployments have less downtime while they update. Changing any of the following values in a deployment's config is a lightweight config update and doesn't tear down that deployment's replicas:
 
 - `num_replicas`
 - `autoscaling_config`
@@ -110,7 +110,7 @@ The language update took effect, so the returned text is in German instead of Fr
 
 ## Code updates
 
-Changing any of the following three values in a deployment's config triggers a redeployment and restarts all of the deployment's replicas:
+Changing any of the following values in a deployment's config triggers a redeployment and restarts all of the deployment's replicas:
 
 - `ray_actor_options`
 - `placement_group_bundles`

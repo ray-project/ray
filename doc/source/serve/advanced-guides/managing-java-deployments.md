@@ -26,7 +26,7 @@ This page describes how to do the following:
 
 ## Create a deployment
 
-To create and deploy a deployment of a class, pass the full name of the class as an argument to the `Serve.deployment()` method, as in the following example.
+To create and deploy a deployment of a class, call `Serve.deployment()` and pass the full name of the class to `setDeploymentDef()`, as in the following example.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :start-after: docs-create-start
