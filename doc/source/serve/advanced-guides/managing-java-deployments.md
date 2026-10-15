@@ -8,25 +8,21 @@ myst:
 # Experimental Java API
 
 :::{warning}
-Java API support is an experimental feature and subject to change.
+The Java API is experimental and subject to change.
 
-The Java API is not currently supported on KubeRay.
+KubeRay doesn't currently support the Java API.
 :::
 
-Java is a mainstream programming language for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create Ray Serve deployments using Java and call them via Python, or vice versa.
+Java is a mainstream programming language for production services. Ray Serve offers a native Java API for creating, updating, and managing deployments. You can create deployments in Java and call them from Python, or the reverse.
 
-This section helps you to:
-
-- create, query, and update Java deployments
-- configure Java deployment resources
-- manage Python deployments using the Java API
+This page describes how to create, query, update, and configure Java deployments, and how to manage Python deployments with the Java API.
 
 ```{contents}
 ```
 
-## Creating a Deployment
+## Create a deployment
 
-By specifying the full name of the class as an argument to the `Serve.deployment()` method, as shown in the code below, you can create and deploy a deployment of the class.
+To create and deploy a deployment of a class, call `Serve.deployment()` and pass the full name of the class to `setDeploymentDef()`, as in the following example.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :start-after: docs-create-start
@@ -34,9 +30,9 @@ By specifying the full name of the class as an argument to the `Serve.deployment
 :language: java
 ```
 
-## Accessing a Deployment
+## Access a deployment
 
-Once a deployment is deployed, you can fetch its instance by name.
+After you deploy a deployment, you can fetch its instance by name.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :start-after: docs-query-start
@@ -44,7 +40,7 @@ Once a deployment is deployed, you can fetch its instance by name.
 :language: java
 ```
 
-## Updating a Deployment
+## Update a deployment
 
 You can update a deployment's code and configuration and then redeploy it. The following example updates the `"counter"` deployment's initial value to 2.
 
@@ -54,18 +50,18 @@ You can update a deployment's code and configuration and then redeploy it. The f
 :language: java
 ```
 
-## Configuring a Deployment
+## Configure a deployment
 
-Ray Serve lets you configure your deployments to:
+You can configure your deployments to do the following:
 
-- scale out by increasing the number of [deployment replicas](serve-architecture-high-level-view)
-- assign [replica resources](serve-cpus-gpus) such as CPUs and GPUs.
+- Scale out by increasing the number of [deployment replicas](serve-architecture-high-level-view).
+- Assign [replica resources](serve-cpus-gpus) such as CPUs and GPUs.
 
-The next two sections describe how to configure your deployments.
+The next two sections describe each configuration.
 
-### Scaling Out
+### Scale out
 
-By specifying the `numReplicas` parameter, you can change the number of deployment replicas:
+To change the number of deployment replicas, set the `numReplicas` parameter:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :start-after: docs-scale-start
@@ -73,9 +69,10 @@ By specifying the `numReplicas` parameter, you can change the number of deployme
 :language: java
 ```
 
-### Resource Management (CPUs, GPUs)
+(resource-management-cpus-gpus)=
+### Manage CPU and GPU resources
 
-Through the `rayActorOptions` parameter, you can reserve resources for each deployment replica, such as one GPU:
+To reserve resources for each deployment replica, such as one GPU, set the `rayActorOptions` parameter:
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/ManageDeployment.java
 :start-after: docs-resource-start
@@ -83,9 +80,10 @@ Through the `rayActorOptions` parameter, you can reserve resources for each depl
 :language: java
 ```
 
-## Managing a Python Deployment
+(managing-a-python-deployment)=
+## Manage a Python deployment
 
-A Python deployment can also be managed and called by the Java API. Suppose you have a Python file `counter.py` in the `/path/to/code/` directory:
+You can also use the Java API to manage and call a Python deployment. For example, suppose you have a Python file `counter.py` in the `/path/to/code/` directory:
 
 ```python
 from ray import serve
@@ -137,12 +135,13 @@ public class ManagePythonDeployment {
 ```
 
 :::{note}
-Before `Ray.init` or `Serve.start`, you need to specify a directory to find the Python code. For details, please refer to [Cross-Language Programming](cross_language).
+Before you call `Ray.init` or `Serve.start`, specify the directory that contains the Python code. For details, see [Cross-language programming](cross_language).
 :::
 
-## Future Roadmap
+## Roadmap
 
-In the future, Ray Serve plans to provide more Java features, such as:
-- an improved Java API that matches the Python version
+Ray Serve plans to provide more Java features, including the following:
+
+- An improved Java API that matches the Python version
 - HTTP ingress support
-- bring-your-own Java Spring project as a deployment
+- Bring-your-own Java Spring project as a deployment
