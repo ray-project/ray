@@ -12,7 +12,7 @@ Save snapshots of training progress with Ray Train {class}`Checkpoints <ray.trai
 
 Use checkpoints for the following:
 
-- **Fault tolerance:** Handle worker process and node failures in a long-running training job, and use preemptible machines. After a failure, Ray Train restarts the workers, and the training function resumes from the latest checkpoint.
+- **Fault tolerance:** Handle worker process and node failures in a long-running training job, and use preemptible machines. When you {ref}`enable worker fault tolerance <train-worker-fault-tolerance>`, Ray Train restarts the workers after a failure, and a training function that {ref}`loads the latest checkpoint <train-dl-loading-checkpoints>` resumes from it.
 - **Storing the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving or inference.
 - **Distributed checkpointing:** {ref}`Upload model shards from multiple workers in parallel <train-distributed-checkpointing>`.
 

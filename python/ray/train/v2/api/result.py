@@ -30,9 +30,9 @@ class Result(ResultV1):
 
     Attributes:
         metrics: The metrics attached to the latest checkpoint saved by the
-            training function via :func:`ray.train.report`.
+            training function with :func:`ray.train.report`.
         checkpoint: The latest checkpoint saved by the training function
-            via :func:`ray.train.report`.
+            with :func:`ray.train.report`.
         return_value: The value returned by the user-defined training function on the
             rank 0 worker, or ``None`` if no value was returned or if training did
             not complete successfully. The return value must be serializable.

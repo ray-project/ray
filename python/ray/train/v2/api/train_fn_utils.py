@@ -37,9 +37,9 @@ def report(
     the latest reported checkpoint with :func:`ray.train.get_checkpoint` and
     resume from it. See the :ref:`fault tolerance guide <train-fault-tolerance>`.
 
-    The ``metrics`` are attached to the checkpoint. Ray Train uses them to decide
-    which checkpoints to keep (see :class:`~ray.train.CheckpointConfig`) and
-    returns them in :class:`~ray.train.Result`. Ray Train doesn't persist metrics
+    Ray Train attaches the ``metrics`` to the checkpoint, uses them to decide
+    which checkpoints to keep, and returns them in :class:`~ray.train.Result`.
+    See :class:`~ray.train.CheckpointConfig`. Ray Train doesn't persist metrics
     reported without a checkpoint. To track metrics over the course of training,
     log them from the workers to an experiment tracking tool instead. See
     :ref:`train-experiment-tracking-native`.

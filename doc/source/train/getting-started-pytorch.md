@@ -274,9 +274,9 @@ For details, see {ref}`data-ingest-torch`.
 
 ### Save checkpoints for fault tolerance
 
-To recover from worker and node failures without losing progress, save checkpoints with the {func}`ray.train.report` utility function. Ray Train uploads each checkpoint to persistent storage. If workers fail, Ray Train restarts them, and your training function can resume from the latest checkpoint with {func}`ray.train.get_checkpoint`.
+To recover from worker and node failures without losing progress, save checkpoints with the {func}`ray.train.report` utility function. Ray Train uploads each checkpoint to persistent storage. When you {ref}`enable worker fault tolerance <train-worker-fault-tolerance>`, Ray Train restarts failed workers, and your training function can resume from the latest checkpoint with {func}`ray.train.get_checkpoint`.
 
-The metrics that you pass to `ray.train.report` are attached to the checkpoint. Ray Train uses them to decide which checkpoints to keep. To track metrics over the course of training, log them to an experiment tracking tool. See {ref}`train-experiment-tracking-native`.
+Ray Train attaches the metrics that you pass to `ray.train.report` to the checkpoint and uses them to decide which checkpoints to keep. To track metrics over the course of training, log them to an experiment tracking tool. See {ref}`train-experiment-tracking-native`.
 
 ```diff
 +import os
