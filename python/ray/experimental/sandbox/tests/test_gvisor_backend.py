@@ -383,6 +383,24 @@ def test_exec_timeout_kills_background_jobs_that_outlive_the_shell():
         runtime.delete(instance_id)
 
 
+def test_exec_timeout_kills_processes_started_during_the_kill():
+    """A child that keeps starting processes starts more between the listing
+    of the command's processes and its own kill. Those are killed too."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(
+                instance_id,
+                "sh -c 'while :; do sleep 1000 & done' & wait",
+                timeout=0.5,
+            )
+        # A killed process left as a zombie shows up as [sleep].
+        assert "sleep 1000" not in runtime.exec(instance_id, "ps").stdout
+    finally:
+        runtime.delete(instance_id)
+
+
 def test_exec_replaces_output_that_is_not_utf8():
     runtime = SandboxRuntime()
     instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
