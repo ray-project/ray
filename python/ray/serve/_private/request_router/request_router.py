@@ -912,9 +912,17 @@ class RequestRouter(ABC):
         # Index the request under every effective multiplexed model ID so that
         # pending-request coalescing works both for the legacy single-ID path
         # and for the new ordered candidate-list path.
-        for model_id in self._get_effective_multiplexed_model_ids(
-            pending_request.metadata
-        ):
+        #
+        # Use hasattr() to tolerate routers that do not compose MultiplexMixin
+        # (e.g. consistent-hash or custom RequestRouter subclasses).
+        if hasattr(self, "_get_effective_multiplexed_model_ids"):
+            model_ids = self._get_effective_multiplexed_model_ids(
+                pending_request.metadata
+            )
+        else:
+            mid = pending_request.metadata.multiplexed_model_id
+            model_ids = [mid] if mid else []
+        for model_id in model_ids:
             self._pending_requests_by_model_id[model_id].append(pending_request)
 
     def _remove_pending_request_from_indices(self, pending_request: PendingRequest):
