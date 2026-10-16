@@ -137,18 +137,17 @@ def _plan_write_op_internal(
     on_start = None
     if isinstance(datasink, Datasink):
         on_start = datasink.on_write_start
-        # Skip the inherited no-op hook so it doesn't prevent write fusion.
-        if (
-            type(on_start) is MethodType
-            and on_start.__func__ is Datasink.on_write_start
-        ):
-            on_start = None
+
+    start_func = on_start.__func__ if type(on_start) is MethodType else None
+
+    # No callback is needed for the base class's empty implementation.
+    if start_func is Datasink.on_write_start:
+        on_start = None
 
     # The default file hook only handles file setup and doesn't use the schema.
     is_default_file_hook = (
         isinstance(datasink, _FileDatasink)
-        and type(on_start) is MethodType
-        and on_start.__func__ is _FileDatasink.on_write_start
+        and start_func is _FileDatasink.on_write_start
     )
     needs_input_schema = on_start is not None and not is_default_file_hook
     inferred_schema = None
