@@ -1,4 +1,5 @@
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -118,6 +119,35 @@ def test_sandbox_actor_resource_translation():
 
     ray.get(actor.delete.remote())
     ray.kill(actor)
+
+
+def test_sandbox_actor_gpu_ids_default_to_none_without_assigned_gpus():
+    """Like cpu and memory, gpu_ids comes from the actor's assignment. With
+    no GPUs assigned, ray.get_gpu_ids() returns [] and gpu_ids stays None,
+    with no error, rather than an empty non-None value. A None gpu_ids
+    skips the CDI lookup. See
+    test_prepare_oci_bundle_raises_when_no_cdi_spec_found in
+    test_image_manager.py for a failed CDI lookup."""
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    actor = Sandbox.remote(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+    )
+    ret_config = ray.get(actor.get_config.remote())
+    assert ret_config.gpu_ids is None
+
+    ray.get(actor.delete.remote())
+    ray.kill(actor)
+
+
+def test_sandbox_actor_propagates_ray_get_gpu_ids_errors():
+    """Distinct from the empty-result case above: ray.get_gpu_ids() itself
+    raising must fail sandbox creation, not boot the sandbox without the
+    GPUs Ray assigned this actor."""
+    with patch("ray.get_gpu_ids", side_effect=RuntimeError("not in a task")):
+        with pytest.raises(RuntimeError, match="not in a task"):
+            Sandbox.__ray_actor_class__(image="busybox:latest", shell="/bin/sh")
 
 
 def test_sandbox_runtime_create_variants():

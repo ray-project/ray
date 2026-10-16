@@ -7,6 +7,7 @@ import tempfile
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal import cdi, cdi_lib, overlayfs
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     ROOTFS_IMAGE,
@@ -41,6 +42,44 @@ def get_default_oci_spec() -> Dict[str, Any]:
         config_path = os.path.join(temp_dir, "config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def _chain_transform_fns(
+    *fns: Optional[Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that applies `fns` (skipping any
+    that are None) in order, each to the previous one's result.
+    """
+    active_fns = [fn for fn in fns if fn is not None]
+
+    def _chained(spec: Dict[str, Any]) -> Dict[str, Any]:
+        for fn in active_fns:
+            result = fn(spec)
+            if result is not None:
+                spec = result
+        return spec
+
+    return _chained
+
+
+def _build_gpu_cdi_devices_transform_fn(
+    cdi_spec: cdi_lib.CDISpec,
+    cdi_devices: List[Dict[str, Any]],
+) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
+    """Build an `_oci_spec_transform_fn` that merges `cdi_devices`' CDI
+    edits into whatever spec `create_oci_spec` passes it.
+    """
+
+    def _transform(spec: Dict[str, Any]) -> Dict[str, Any]:
+        try:
+            cdi_spec.apply_edits(spec, cdi_devices)
+        except cdi_lib.CDIError as err:
+            raise SandboxCreationError(
+                f"Failed to configure GPU access via CDI: {err}"
+            ) from err
+        return spec
+
+    return _transform
 
 
 class BaseImageManager(ABC):
@@ -176,6 +215,9 @@ class BaseImageManager(ABC):
                 comes from the gVisor annotations (the cached EROFS image);
                 this directory only anchors the overlay's backing file.
                 Defaults to a directory inside the image cache.
+                For an overlayfs sandbox, the backend mounts the sandbox's
+                kernel overlay on this directory, and the spec has no gVisor
+                rootfs annotations.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -197,6 +239,7 @@ class BaseImageManager(ABC):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -215,6 +258,7 @@ class BaseImageManager(ABC):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -401,6 +445,9 @@ class ImageManager(BaseImageManager):
                 comes from the gVisor annotations (the cached EROFS image);
                 this directory only anchors the overlay's backing file.
                 Defaults to a directory inside the image cache.
+                For an overlayfs sandbox, the backend mounts the sandbox's
+                kernel overlay on this directory, and the spec has no gVisor
+                rootfs annotations.
             _oci_spec_transform_fn: Optional callback to transform the final spec.
 
         Returns:
@@ -425,23 +472,6 @@ class ImageManager(BaseImageManager):
         # layer's backing file, so make it per sandbox.
         rootfs = root_path or os.path.join(image_dir, "root")
         os.makedirs(rootfs, exist_ok=True)
-        annotations = spec.setdefault("annotations", {})
-        annotations["dev.gvisor.spec.rootfs.source"] = erofs_image
-        annotations["dev.gvisor.spec.rootfs.type"] = "erofs"
-        # runsc applies no overlay to a read-only root, and an immutable image
-        # can't grow a mount point for an arbitrary workdir, so a readonly
-        # sandbox with an explicit workdir gets a private writable overlay
-        # instead (its writes are discarded with it).
-        if readonly and workdir_path is not None:
-            logger.warning(
-                "readonly=True with an explicit workdir: runsc cannot create "
-                "the workdir mount point in a read-only EROFS image, so this "
-                "sandbox runs on a private writable overlay (its writes are "
-                "discarded with it)."
-            )
-            readonly = False
-        if not readonly:
-            annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
         spec["root"]["path"] = rootfs
         spec["root"]["readonly"] = readonly
 
@@ -578,7 +608,56 @@ class ImageManager(BaseImageManager):
             if result is not None:
                 spec = result
 
+        # runsc applies no overlay to a read-only root, and can't create mount
+        # points in the image, so a readonly sandbox whose mounts need some
+        # boots from a kernel overlay instead. A worker that can't mount one
+        # runs it on a private writable overlay, whose writes are discarded
+        # with it.
+        if self._needs_writable_root_fallback(spec):
+            logger.warning(
+                "readonly=True, but this worker can't mount an overlayfs rootfs, "
+                "and runsc cannot create this sandbox's mount points in a "
+                "read-only EROFS image, so it runs on a private writable overlay "
+                "(its writes are discarded with it)."
+            )
+            spec["root"]["readonly"] = False
+
+        # Only a sandbox that boots straight from the EROFS image needs the
+        # gVisor rootfs annotations, and a writable one its private overlay.
+        # Whether it does depends on the final spec, including anything the
+        # transform added. An overlayfs sandbox instead runs on the kernel
+        # overlay the backend mounts at root.path.
+        if not overlayfs.needs_rootfs_overlay(spec):
+            annotations = spec.setdefault("annotations", {})
+            annotations["dev.gvisor.spec.rootfs.source"] = erofs_image
+            annotations["dev.gvisor.spec.rootfs.type"] = "erofs"
+            if not spec["root"].get("readonly"):
+                annotations["dev.gvisor.spec.rootfs.overlay"] = "self"
+
         return spec
+
+    @staticmethod
+    def _needs_writable_root_fallback(spec: Dict[str, Any]) -> bool:
+        """Whether a readonly sandbox needs a writable root to boot.
+
+        Args:
+            spec: The final OCI spec.
+
+        Returns:
+            True if the root is read-only, the spec has no hooks that need a
+            kernel overlay, some of the spec's mounts need mount points the
+            image may not have, and this worker can't mount a kernel overlay to
+            create them.
+        """
+        if not spec["root"].get("readonly"):
+            return False
+        if overlayfs.has_prestart_hooks(spec):
+            return False
+        if len(overlayfs.missing_mount_points(spec)) == 0:
+            return False
+        if overlayfs.can_mount_rootfs_overlay():
+            return False
+        return True
 
     def prepare_oci_bundle(
         self,
@@ -593,6 +672,7 @@ class ImageManager(BaseImageManager):
         capabilities: Optional[List[str]] = None,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        gpu_ids: Optional[List[str]] = None,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
     ) -> str:
         """Prepare an OCI bundle directory containing config.json for a container instance.
@@ -611,6 +691,7 @@ class ImageManager(BaseImageManager):
             network: Sandbox network mode; picks the resolv.conf to mount
                 ("public"/dns: generated, "host": the host's own).
             dns: Optional nameserver IPs for the generated resolv.conf.
+            gpu_ids: Optional GPU device ids/UUIDs to expose via CDI.
             _oci_spec_transform_fn: Optional OCI spec transform function.
 
         Returns:
@@ -649,6 +730,21 @@ class ImageManager(BaseImageManager):
             f.write("::1\tlocalhost ip6-localhost ip6-loopback\n")
             if host_entries:
                 f.write(host_entries)
+
+        if gpu_ids:
+            cdi_spec = cdi.require_spec("GPU")
+            try:
+                cdi_devices = cdi_spec.select_devices(gpu_ids)
+            except cdi_lib.CDIError as err:
+                raise SandboxCreationError(
+                    f"Failed to configure GPU access via CDI: {err}"
+                ) from err
+            gpu_cdi_devices_fn = _build_gpu_cdi_devices_transform_fn(
+                cdi_spec, cdi_devices
+            )
+            _oci_spec_transform_fn = _chain_transform_fns(
+                gpu_cdi_devices_fn, _oci_spec_transform_fn
+            )
 
         spec = self.create_oci_spec(
             image=image,
