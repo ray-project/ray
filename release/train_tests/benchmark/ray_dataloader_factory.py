@@ -116,9 +116,10 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         data_context.enable_operator_progress_bars = (
             dataloader_config.enable_operator_progress_bars
         )
-        # Retry ACCESS_DENIED errors that sometimes show up
-        # due to throttling during read operations.
+        # Retry transient S3 errors that sometimes show up due to
+        # throttling during read operations.
         data_context.retried_io_errors.append("AWS Error ACCESS_DENIED")
+        data_context.retried_io_errors.append("AWS Error UNKNOWN (HTTP status 500)")
 
         data_context.execution_options.locality_with_output = (
             dataloader_config.locality_with_output

@@ -35,13 +35,17 @@ def enable_monitor_loop_lag(
     interval_s: float = 0.25,
     loop: Optional[asyncio.AbstractEventLoop] = None,
 ) -> None:
-    """
-    Start logging event loop lags to the callback. In ideal circumstances they should be
-    very close to zero. Lags may increase if event loop callbacks block for too long.
+    """Start logging event loop lags to the callback.
+
+    In ideal circumstances they should be very close to zero. Lags may increase
+    if event loop callbacks block for too long.
 
     Note: this works for all event loops, including uvloop.
 
-    :param callback: Callback to call with the lag in seconds.
+    Args:
+        callback: Callback to call with the lag in seconds.
+        interval_s: How often to measure the lag, in seconds.
+        loop: The event loop to monitor. If None, uses the running loop.
     """
     if loop is None:
         loop = asyncio.get_running_loop()

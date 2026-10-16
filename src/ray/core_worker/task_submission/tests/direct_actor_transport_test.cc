@@ -13,41 +13,43 @@
 // limitations under the License.
 
 #include <memory>
+#include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mock/ray/core_worker/memory_store.h"
-#include "mock/ray/core_worker/task_manager_interface.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
+#include "ray/core_worker/fake_task_manager_interface.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
+#include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/fake_subscriber.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace core {
-using ::testing::_;
 
 class DirectTaskTransportTest : public ::testing::Test {
  public:
-  DirectTaskTransportTest() : io_work(io_context.get_executor()) {}
+  DirectTaskTransportTest()
+      : io_work(io_context.get_executor()), store_io_context("DirectTaskTransportTest") {}
 
   void SetUp() override {
-    gcs_client = std::make_shared<ray::gcs::MockGcsClient>();
+    gcs_client = std::make_shared<ray::gcs::FakeGcsClient>();
     actor_creator = std::make_unique<ActorCreator>(gcs_client->Actors());
 
-    task_manager = std::make_shared<MockTaskManagerInterface>();
+    task_manager = std::make_shared<FakeTaskManagerInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
     raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
         [](const rpc::Address &) -> std::shared_ptr<RayletClientInterface> {
           return nullptr;
         });
-    memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+    memory_store =
+        std::make_unique<CoreWorkerMemoryStore>(store_io_context.GetIoService(), clock);
     publisher = std::make_unique<pubsub::FakePublisher>();
     subscriber = std::make_unique<pubsub::FakeSubscriber>();
     reference_counter = std::make_shared<ReferenceCounter>(
@@ -55,6 +57,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         publisher.get(),
         subscriber.get(),
         /*is_node_dead=*/[](const NodeID &) { return false; },
+        /*free_object_on_nodes_async=*/
+        [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
         fake_owned_object_count_gauge,
         fake_owned_object_size_gauge,
         /*lineage_pinning_enabled=*/false);
@@ -68,7 +72,8 @@ class DirectTaskTransportTest : public ::testing::Test {
         [](const ObjectID &object_id) { return std::nullopt; },
         nullptr,
         io_context,
-        reference_counter);
+        reference_counter,
+        clock);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {
@@ -99,13 +104,15 @@ class DirectTaskTransportTest : public ::testing::Test {
  protected:
   instrumented_io_context io_context;
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type> io_work;
+  InstrumentedIOContextWithThread store_io_context;
+  Clock clock;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::shared_ptr<rpc::RayletClientPool> raylet_client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
-  std::shared_ptr<MockTaskManagerInterface> task_manager;
+  std::shared_ptr<FakeTaskManagerInterface> task_manager;
   std::unique_ptr<ActorCreator> actor_creator;
-  std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
+  std::shared_ptr<ray::gcs::FakeGcsClient> gcs_client;
   std::unique_ptr<pubsub::FakePublisher> publisher;
   std::unique_ptr<pubsub::FakeSubscriber> subscriber;
   ray::observability::FakeGauge fake_owned_object_count_gauge;
@@ -116,23 +123,24 @@ class DirectTaskTransportTest : public ::testing::Test {
 TEST_F(DirectTaskTransportTest, ActorCreationOk) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto creation_task_spec = GetActorCreationTaskSpec(actor_id);
-  EXPECT_CALL(*task_manager, CompletePendingTask(creation_task_spec.TaskId(), _, _, _));
   actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
-  gcs_client->mock_actor_accessor->async_create_actor_callback_(Status::OK(),
+  gcs_client->fake_actor_accessor->async_create_actor_callback_(Status::OK(),
                                                                 rpc::CreateActorReply());
+  ASSERT_EQ(task_manager->complete_pending_task_calls.size(), 1);
+  EXPECT_EQ(task_manager->complete_pending_task_calls[0], creation_task_spec.TaskId());
 }
 
 TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto creation_task_spec = GetActorCreationTaskSpec(actor_id);
-  EXPECT_CALL(*task_manager, CompletePendingTask(_, _, _, _)).Times(0);
-  EXPECT_CALL(
-      *task_manager,
-      FailPendingTask(
-          creation_task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, _, _));
   actor_task_submitter->SubmitActorCreationTask(creation_task_spec);
-  gcs_client->mock_actor_accessor->async_create_actor_callback_(Status::IOError(""),
+  gcs_client->fake_actor_accessor->async_create_actor_callback_(Status::IOError(""),
                                                                 rpc::CreateActorReply());
+  EXPECT_EQ(task_manager->complete_pending_task_calls.size(), 0);
+  ASSERT_EQ(task_manager->fail_pending_task_calls.size(), 1);
+  EXPECT_EQ(task_manager->fail_pending_task_calls[0], creation_task_spec.TaskId());
+  EXPECT_EQ(task_manager->fail_pending_task_error_types[0],
+            rpc::ErrorType::ACTOR_CREATION_FAILED);
 }
 
 TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
@@ -152,11 +160,11 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
                                                  /*fail_if_actor_unreachable*/ true,
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
-  EXPECT_CALL(
-      *task_manager,
-      FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _, _));
-  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::IOError(""));
+  gcs_client->fake_actor_accessor->async_register_actor_callback_(Status::IOError(""));
+  ASSERT_EQ(task_manager->fail_or_retry_pending_task_calls.size(), 1);
+  EXPECT_EQ(task_manager->fail_or_retry_pending_task_calls[0], task_spec.TaskId());
+  EXPECT_EQ(task_manager->fail_or_retry_pending_task_error_types[0],
+            rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED);
 }
 
 TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
@@ -176,8 +184,8 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
                                                  /*fail_if_actor_unreachable*/ true,
                                                  /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
-  EXPECT_CALL(*task_manager, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
-  gcs_client->mock_actor_accessor->async_register_actor_callback_(Status::OK());
+  gcs_client->fake_actor_accessor->async_register_actor_callback_(Status::OK());
+  EXPECT_EQ(task_manager->fail_or_retry_pending_task_calls.size(), 0);
 }
 
 }  // namespace core

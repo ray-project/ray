@@ -39,7 +39,7 @@
 namespace ray {
 
 struct GcsServerMocker {
-  class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+  class FakeWorkerClient : public rpc::CoreWorkerClientInterface {
    public:
     void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
@@ -76,7 +76,7 @@ struct GcsServerMocker {
     absl::Mutex mutex_;
   };
 
-  class MockRayletClient : public rpc::FakeRayletClient {
+  class FakeRayletClient : public rpc::FakeRayletClient {
    public:
     void ReturnWorkerLease(int worker_port,
                            const LeaseID &lease_id,
@@ -164,9 +164,8 @@ struct GcsServerMocker {
       }
     }
 
-    bool ReplyCancelWorkerLease(bool success = true) {
+    bool ReplyCancelWorkerLease() {
       rpc::CancelWorkerLeaseReply reply;
-      reply.set_success(success);
       if (cancel_callbacks.size() == 0) {
         return false;
       } else {
@@ -218,12 +217,14 @@ struct GcsServerMocker {
       commit_callbacks.push_back(callback);
     }
 
-    void CancelResourceReserve(
-        const BundleSpecification &bundle_spec,
-        const ray::rpc::ClientCallback<ray::rpc::CancelResourceReserveReply> &callback)
-        override {
-      num_return_requested += 1;
-      return_callbacks.push_back(callback);
+    void RemovePlacementGroupBundles(
+        const PlacementGroupID &placement_group_id,
+        const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
+        const ray::rpc::ClientCallback<ray::rpc::RemovePlacementGroupBundlesReply>
+            &callback) override {
+      num_remove_pg_bundles_requested += 1;
+      num_bundles_removed += bundle_specs.size();
+      remove_pg_bundles_callbacks.push_back(callback);
     }
 
     void ReleaseUnusedBundles(
@@ -258,15 +259,15 @@ struct GcsServerMocker {
       }
     }
 
-    bool GrantCancelResourceReserve(bool success = true) {
+    bool GrantRemovePlacementGroupBundles(bool success = true) {
       Status status = Status::OK();
-      rpc::CancelResourceReserveReply reply;
-      if (return_callbacks.size() == 0) {
+      rpc::RemovePlacementGroupBundlesReply reply;
+      if (remove_pg_bundles_callbacks.size() == 0) {
         return false;
       } else {
-        auto callback = return_callbacks.front();
+        auto callback = remove_pg_bundles_callbacks.front();
         callback(status, std::move(reply));
-        return_callbacks.pop_front();
+        remove_pg_bundles_callbacks.pop_front();
         return true;
       }
     }
@@ -281,7 +282,7 @@ struct GcsServerMocker {
       drain_raylet_callbacks.push_back(callback);
     };
 
-    ~MockRayletClient() {}
+    ~FakeRayletClient() {}
 
     int num_workers_requested = 0;
     int num_workers_returned = 0;
@@ -296,16 +297,18 @@ struct GcsServerMocker {
     std::list<rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply>>
         release_callbacks = {};
     int num_lease_requested = 0;
-    int num_return_requested = 0;
+    int num_remove_pg_bundles_requested = 0;
+    int num_bundles_removed = 0;
     int num_commit_requested = 0;
 
     int num_release_unused_bundles_requested = 0;
     std::list<rpc::ClientCallback<rpc::PrepareBundleResourcesReply>> lease_callbacks = {};
     std::list<rpc::ClientCallback<rpc::CommitBundleResourcesReply>> commit_callbacks = {};
-    std::list<rpc::ClientCallback<rpc::CancelResourceReserveReply>> return_callbacks = {};
+    std::list<rpc::ClientCallback<rpc::RemovePlacementGroupBundlesReply>>
+        remove_pg_bundles_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class FakeGcsActorScheduler : public gcs::GcsActorScheduler {
    public:
     using gcs::GcsActorScheduler::GcsActorScheduler;
 
@@ -334,11 +337,9 @@ struct GcsServerMocker {
     int num_retry_creating_count_ = 0;
   };
 
-  class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
+  class FakeGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
-
-    size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
 
     using gcs::GcsPlacementGroupScheduler::ScheduleUnplacedBundles;
     // Extra conveinence overload for the mock tests to keep using the old interface.
@@ -352,12 +353,11 @@ struct GcsServerMocker {
 
    protected:
     friend class GcsPlacementGroupSchedulerTest;
-    FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
   };
-  class MockedGcsActorTable : public gcs::GcsActorTable {
+  class FakeGcsActorTable : public gcs::GcsActorTable {
    public:
     // The store_client and io_context args are NOT used.
-    explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+    explicit FakeGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key,

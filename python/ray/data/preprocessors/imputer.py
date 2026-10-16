@@ -287,7 +287,17 @@ def _get_most_frequent_values(
             for counter in counters:
                 final_counters[col] += counter
 
+    def most_frequent_value(counter: Counter):
+        # A column with no observed values has no most frequent value, so report
+        # None. `_transform_pandas` turns that into the same "Column x has no
+        # fill value" error the `"mean"` strategy already raises; indexing
+        # `most_common(1)[0][0]` here instead would raise `IndexError: list
+        # index out of range` during `fit`, which says nothing about the column
+        # or the data.
+        ranked = counter.most_common(1)
+        return ranked[0][0] if ranked else None
+
     return {
-        key_gen(column): final_counters[column].most_common(1)[0][0]  # noqa
+        key_gen(column): most_frequent_value(final_counters[column])  # noqa
         for column in columns
     }

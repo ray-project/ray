@@ -227,10 +227,11 @@ const std::shared_ptr<ClientConnection> Worker::Connection() const { return conn
 void Worker::SetOwnerAddress(const rpc::Address &address) { owner_address_ = address; }
 const rpc::Address &Worker::GetOwnerAddress() const { return owner_address_; }
 
-void Worker::ActorCallArgWaitComplete(int64_t tag) {
+void Worker::ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) {
   RAY_CHECK(port_ > 0);
   rpc::ActorCallArgWaitCompleteRequest request;
-  request.set_tag(tag);
+  request.set_task_id(task_id.Binary());
+  request.set_attempt_number(attempt_number);
   request.set_intended_worker_id(worker_id_.Binary());
   rpc_client_->ActorCallArgWaitComplete(
       request, [](Status status, const rpc::ActorCallArgWaitCompleteReply &reply) {

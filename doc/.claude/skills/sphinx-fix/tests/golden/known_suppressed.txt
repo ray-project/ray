@@ -1,0 +1,12 @@
+Build: state=Finished  success=False  exit=1  build finished with problems, 2 warnings.
+
+Findings (0):
+  (none)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (2) — known-benign, not actionable:
+  collections-fetched-footnotes (DOC-1258): 1
+  misc-copy-overwrite (DOC-1257): 1
+
+✓ No actionable warnings.

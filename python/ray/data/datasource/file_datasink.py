@@ -56,6 +56,8 @@ class _FileDatasink(Datasink[None]):
                 included in the filename.
             file_format: The file extension. If specified, files are written with this
                 extension.
+            mode: The save mode controlling behavior when the destination already
+                exists (e.g., append, overwrite, error, ignore).
         """
         if open_stream_args is None:
             open_stream_args = {}
@@ -182,27 +184,21 @@ class RowBasedFileDatasink(_FileDatasink):
     Subclasses must implement ``write_row_to_file`` and call the superclass constructor.
 
     Examples:
-        .. testcode::
-
-            import io
-            from typing import Any, Dict
-
-            import pyarrow
-            from PIL import Image
-
-            from ray.data.datasource import RowBasedFileDatasink
-
-            class ImageDatasink(RowBasedFileDatasink):
-                def __init__(self, path: str, *, column: str, file_format: str = "png"):
-                    super().__init__(path, file_format=file_format)
-                    self._file_format = file_format
-                    self._column = column
-
-                def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
-                    image = Image.fromarray(row[self._column])
-                    buffer = io.BytesIO()
-                    image.save(buffer, format=self._file_format)
-                    file.write(buffer.getvalue())
+        >>> import io
+        >>> from typing import Any, Dict
+        >>> import pyarrow
+        >>> from PIL import Image
+        >>> from ray.data.datasource import RowBasedFileDatasink
+        >>> class ImageDatasink(RowBasedFileDatasink):
+        ...     def __init__(self, path: str, *, column: str, file_format: str = "png"):
+        ...         super().__init__(path, file_format=file_format)
+        ...         self._file_format = file_format
+        ...         self._column = column
+        ...     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
+        ...         image = Image.fromarray(row[self._column])
+        ...         buffer = io.BytesIO()
+        ...         image.save(buffer, format=self._file_format)
+        ...         file.write(buffer.getvalue())
     """  # noqa: E501
 
     def write_row_to_file(self, row: Dict[str, Any], file: "pyarrow.NativeFile"):
@@ -244,20 +240,30 @@ class BlockBasedFileDatasink(_FileDatasink):
     constructor.
 
     Examples:
-        .. testcode::
-
-            class CSVDatasink(BlockBasedFileDatasink):
-                def __init__(self, path: str):
-                    super().__init__(path, file_format="csv")
-
-                def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
-                    from pyarrow import csv
-                    csv.write_csv(block.to_arrow(), file)
+        >>> class CSVDatasink(BlockBasedFileDatasink):
+        ...     def __init__(self, path: str):
+        ...         super().__init__(path, file_format="csv")
+        ...     def write_block_to_file(self, block: BlockAccessor, file: "pyarrow.NativeFile"):
+        ...         from pyarrow import csv
+        ...         csv.write_csv(block.to_arrow(), file)
     """  # noqa: E501
 
     def __init__(
-        self, path, *, min_rows_per_file: Optional[int] = None, **file_datasink_kwargs
+        self,
+        path: str,
+        *,
+        min_rows_per_file: Optional[int] = None,
+        **file_datasink_kwargs,
     ):
+        """Initialize this block-based file datasink.
+
+        Args:
+            path: The folder to write files to.
+            min_rows_per_file: The target minimum number of rows per file. When
+                ``None``, rows are not buffered before being written.
+            **file_datasink_kwargs: Additional keyword arguments forwarded to
+                :class:`_FileDatasink`.
+        """
         super().__init__(path, **file_datasink_kwargs)
 
         self._min_rows_per_file = min_rows_per_file

@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Ray Data expressions: use col and lit to build column-based operations for filtering and transforms, with classes and namespaces.
+
 .. _expressions-api:
 
 Expressions API
@@ -18,6 +21,7 @@ Public API
     :toctree: doc/
 
     star
+    unnest
     col
     lit
     udf
@@ -44,6 +48,7 @@ instantiate them directly, but you may encounter them when working with expressi
     UnaryExpr
     UDFExpr
     StarExpr
+    UnnestExpr
     DownloadExpr
     MonotonicallyIncreasingIdExpr
     RandomExpr

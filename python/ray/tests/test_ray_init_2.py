@@ -260,7 +260,9 @@ def test_non_default_ports_visible_on_init(shutdown_only):
         cmd += ["--" + port_name, str(port)]
 
     print(" ".join(cmd))
-    proc = subprocess.Popen(cmd)
+    proc = subprocess.Popen(
+        cmd, env={**os.environ, "RAY_GRACEFUL_SHUTDOWN_DRAIN_TIMEOUT_S": "0"}
+    )
 
     # From the connected node
     def verify():

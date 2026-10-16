@@ -829,7 +829,7 @@ def init_and_serve(host: str, port: int, *args, **kwargs):
 def shutdown_with_server(server, _exiting_interpreter=False):
     server.stop(1)
     with disable_client_hook():
-        ray.shutdown(_exiting_interpreter)
+        ray.shutdown(_exiting_interpreter=_exiting_interpreter)
 
 
 def create_ray_handler(address, redis_password, redis_username=None):

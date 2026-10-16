@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Dict
+from typing import Any, Dict
 
 import pytest
 import torch
@@ -40,7 +40,12 @@ class Actor:
         return tensor_dict
 
 
-def run_driver_to_worker_dag(actor, device, tensor_input, is_dict=False):
+def run_driver_to_worker_dag(
+    actor: "ray.actor.ActorHandle",
+    device: str,
+    tensor_input: Any,
+    is_dict: bool = False,
+):
     """Create and execute a DAG with tensor transport for driver to worker tests.
 
     Args:
@@ -59,7 +64,13 @@ def run_driver_to_worker_dag(actor, device, tensor_input, is_dict=False):
     return compiled_dag.execute(tensor_input)
 
 
-def run_worker_to_worker_dag(sender, receiver, device, input_device, is_dict=False):
+def run_worker_to_worker_dag(
+    sender: "ray.actor.ActorHandle",
+    receiver: "ray.actor.ActorHandle",
+    device: str,
+    input_device: str,
+    is_dict: bool = False,
+):
     """Create and execute a DAG with tensor transport for worker to worker tests.
 
     Args:
@@ -85,7 +96,12 @@ def run_worker_to_worker_dag(sender, receiver, device, input_device, is_dict=Fal
     return compiled_dag.execute(input_device)
 
 
-def run_worker_to_driver_dag(actor, device, input_device, is_dict=False):
+def run_worker_to_driver_dag(
+    actor: "ray.actor.ActorHandle",
+    device: str,
+    input_device: str,
+    is_dict: bool = False,
+):
     """Create and execute a DAG with tensor transport for worker to driver tests.
 
     Args:

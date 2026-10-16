@@ -50,10 +50,13 @@ class MiddlemanDataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
     def __init__(
         self, on_response: Optional[Hook] = None, on_request: Optional[Hook] = None
     ):
-        """
+        """Initialize the middleman data servicer.
+
         Args:
             on_response: Optional hook to inject errors before sending back a
-                response
+                response.
+            on_request: Optional hook to inject errors before forwarding a
+                request.
         """
         self.stub = None
         self.on_response = on_response
@@ -88,10 +91,11 @@ class MiddlemanLogServicer(ray_client_pb2_grpc.RayletLogStreamerServicer):
     """
 
     def __init__(self, on_response: Optional[Hook] = None):
-        """
+        """Initialize the middleman log servicer.
+
         Args:
             on_response: Optional hook to inject errors before sending back a
-                response
+                response.
         """
         self.stub = None
         self.on_response = on_response
@@ -121,12 +125,13 @@ class MiddlemanRayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
     def __init__(
         self, on_request: Optional[Hook] = None, on_response: Optional[Hook] = None
     ):
-        """
+        """Initialize the middleman raylet servicer.
+
         Args:
             on_request: Optional hook to inject errors before forwarding a
-                request
+                request.
             on_response: Optional hook to inject errors before sending back a
-                response
+                response.
         """
         self.stub = None
         self.on_request = on_request
@@ -224,25 +229,28 @@ class MiddlemanServer:
     def __init__(
         self,
         listen_addr: str,
-        real_addr,
+        real_addr: str,
         on_log_response: Optional[Hook] = None,
         on_data_request: Optional[Hook] = None,
         on_data_response: Optional[Hook] = None,
         on_task_request: Optional[Hook] = None,
         on_task_response: Optional[Hook] = None,
     ):
-        """
+        """Initialize the middleman server.
+
         Args:
-            listen_addr: The address the middleman server will listen on
-            real_addr: The address of the real ray server
+            listen_addr: The address the middleman server will listen on.
+            real_addr: The address of the real ray server.
             on_log_response: Optional hook to inject errors before sending back
-                a log response
+                a log response.
+            on_data_request: Optional hook to inject errors before forwarding
+                a data request.
             on_data_response: Optional hook to inject errors before sending
-                back a data response
+                back a data response.
             on_task_request: Optional hook to inject errors before forwarding
-                a raylet driver request
+                a raylet driver request.
             on_task_response: Optional hook to inject errors before sending
-                back a raylet driver response
+                back a raylet driver response.
         """
         self.listen_addr = listen_addr
         self.real_addr = real_addr
@@ -462,6 +470,54 @@ def test_disconnect_during_large_schedule(call_ray_start_shared):
         result = ray.get(f.remote(a))
         assert i > 8  # Check that the failure was injected
         assert result == (1024, 1024, 6)
+
+
+def test_disconnect_before_large_put_response(call_ray_start_shared):
+    """
+    Disconnect after the server has received every chunk of a large put,
+    but before the client gets the response. The client replays all of the
+    chunks on reconnect, and later chunked puts must still succeed.
+    """
+    dropped = False
+
+    def drop_first_put_response(resp):
+        nonlocal dropped
+        if resp.WhichOneof("type") == "put" and not dropped:
+            dropped = True
+            raise RuntimeError
+
+    with start_middleman_server(on_data_response=drop_first_put_response):
+        first = ray.put(np.random.random((1024, 1024, 6)))
+        assert dropped
+        second = ray.put(np.random.random((1024, 1024, 6)))
+        assert ray.get(first).shape == (1024, 1024, 6)
+        assert ray.get(second).shape == (1024, 1024, 6)
+
+
+def test_disconnect_before_large_schedule_response(call_ray_start_shared):
+    """
+    Same as test_disconnect_before_large_put_response, but for remote calls
+    with a large argument. Two calls are in flight at once, so the replay of
+    the first can arrive while the second is partially received.
+    """
+    dropped = False
+
+    def drop_first_task_response(resp):
+        nonlocal dropped
+        if resp.WhichOneof("type") == "task_ticket" and not dropped:
+            dropped = True
+            raise RuntimeError
+
+    @ray.remote
+    def f(a):
+        return a.shape
+
+    with start_middleman_server(on_data_response=drop_first_task_response):
+        a = np.random.random((1024, 1024, 6))
+        refs = [f.remote(a), f.remote(a)]
+        assert ray.get(refs) == [(1024, 1024, 6)] * 2
+        assert dropped
+        assert ray.get(f.remote(a)) == (1024, 1024, 6)
 
 
 def test_valid_actor_state(call_ray_start_shared):

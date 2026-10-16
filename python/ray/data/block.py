@@ -191,6 +191,21 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 @DeveloperAPI
 @dataclass(frozen=True)
+class CustomOpStats:
+    """Base for operator-specific, worker-reported per-task stats.
+
+    A generic extension slot carried by :class:`TaskExecWorkerStats`. Operators
+    that want to report extra per-task stats to the driver subclass this; it
+    cannot be instantiated directly.
+    """
+
+    def __post_init__(self):
+        if type(self) is CustomOpStats:
+            raise TypeError("CustomOpStats cannot be instantiated directly")
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class TaskExecWorkerStats:
     """Task's execution stats reported from the executing worker"""
 
@@ -200,6 +215,11 @@ class TaskExecWorkerStats:
     # Peak USS (Unique Set Size) memory in bytes observed during the task,
     # or None if USS measurement is unavailable (e.g., non-Linux platforms).
     max_uss_bytes: Optional[int] = None
+
+    # Operator-specific worker-reported stats: one CustomOpStats entry per
+    # reporting transform (fused transforms each contribute one). Empty for
+    # operators that do not report any extra stats.
+    custom_op_stats: List[CustomOpStats] = field(default_factory=list)
 
 
 @DeveloperAPI
@@ -216,14 +236,41 @@ class BlockExecStats:
         default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
     )
 
-    # Absolute wall-clock timestamp when block generation started.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation started. Monotonic with an undefined, per-machine reference
+    # point: only differences between readings taken on the same node are
+    # meaningful. Never compare across nodes; use `start_unix_time_s` for that.
     start_time_s: Optional[float] = None
-    # Absolute wall-clock timestamp when block generation finished.
+    # `time.perf_counter()` reading on the producing worker when block
+    # generation finished. Same caveats as `start_time_s`.
     end_time_s: Optional[float] = None
+    # `time.time()` on the producing worker when block generation started.
+    # Shares an epoch across nodes, so it is safe to compare across blocks
+    # produced on different machines. Not monotonic (NTP can step it); derive
+    # the block's end as `start_unix_time_s + wall_time_s` rather than reading
+    # the clock twice.
+    start_unix_time_s: Optional[float] = None
     # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
     wall_time_s: Optional[float] = None
-    # Time spent inside UDF while generating block.
-    udf_time_s: Optional[float] = 0
+    # Time spent in the map transform chain while generating this block: the
+    # whole chain, not just the user's functions. The three fields below
+    # decompose it and sum back to it.
+    block_transform_time_s: Optional[float] = 0
+    # Time spent turning input blocks into the batches or rows the transforms
+    # consume.
+    input_prep_time_s: Optional[float] = None
+    # Time spent inside the stage bodies themselves, whether the caller wrote
+    # them or Ray Data supplied them, with the formatting and block building
+    # around them excluded.
+    function_body_time_s: Optional[float] = None
+    # Time spent assembling transform output back into blocks. Includes
+    # materializing Python objects into Arrow, which is why it is not covered by
+    # `block_ser_time_s`.
+    output_build_time_s: Optional[float] = None
+    # The same total split per fused stage instead of per phase, in chain
+    # order. `None` unless `DataContext.per_stage_map_timing` is set and the
+    # chain has more than one stage.
+    stage_time_s: Optional[Tuple[float, ...]] = None
     # Time spent serializing this block into a Ray object.
     block_ser_time_s: Optional[float] = None
     # Total CPU time consumed by the worker process during the task, across all threads.
@@ -243,6 +290,7 @@ class _BlockExecStatsBuilder:
 
     def __init__(self):
         self._start_time = time.perf_counter()
+        self._start_unix_time = time.time()
         self._start_cpu = time.process_time()
         self._end_time = None
         self._end_cpu = None
@@ -259,6 +307,7 @@ class _BlockExecStatsBuilder:
         return BlockExecStats(
             start_time_s=self._start_time,
             end_time_s=self._end_time,
+            start_unix_time_s=self._start_unix_time,
             wall_time_s=self._end_time - self._start_time,
             cpu_time_s=self._end_cpu - self._start_cpu,
             **kwargs,
@@ -408,6 +457,9 @@ class BlockAccessor:
         Args:
             public_row_format: Whether to cast rows into the public Dict row
                 format (this incurs extra copy conversions).
+
+        Returns:
+            An iterator over rows in this block.
         """
         raise NotImplementedError
 
@@ -475,6 +527,10 @@ class BlockAccessor:
 
         Args:
             columns: Name of columns to convert, or None if converting all columns.
+
+        Returns:
+            A NumPy ndarray when a single column is selected, or a dict mapping
+            column names to ndarrays when multiple columns are selected.
         """
         raise NotImplementedError
 
@@ -692,7 +748,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
+    def _aggregate(self, key: "SortKey", aggs: Tuple["AggregateFn", ...]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -707,7 +763,7 @@ class BlockAccessor:
     def _combine_aggregated_blocks(
         blocks: List[Block],
         sort_key: "SortKey",
-        aggs: Tuple["AggregateFn"],
+        aggs: Tuple["AggregateFn", ...],
         finalize: bool = True,
     ) -> Tuple[Block, BlockMetadataWithSchema]:
         """Aggregate partially combined and sorted blocks."""
@@ -742,8 +798,6 @@ class BlockAccessor:
         NOTE: In each column, NaNs/None are considered to be the same group.
 
         Args:
-            block: sorted block for which grouping of rows will be determined
-                    based on provided key
             keys: list of columns determining the key for every row based on
                     which the block will be grouped
 
@@ -805,7 +859,7 @@ class BlockColumnAccessor:
 
     def sum(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a sum of the values in the column"""
-        return NotImplementedError()
+        raise NotImplementedError()
 
     def min(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         """Returns a min of the values in the column"""

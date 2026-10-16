@@ -16,6 +16,8 @@
 # This file is copied and adapted from
 # http://github.com/modin-project/modin/master/modin/pandas/test/utils.py
 
+from typing import Any
+
 import modin.pandas as pd
 import numpy as np
 import pandas
@@ -55,7 +57,7 @@ def df_categories_equals(df1, df2):
         )
 
 
-def df_equals(df1, df2):
+def df_equals(df1: Any, df2: Any) -> bool:
     """Tests if df1 and df2 are equal.
 
     Args:

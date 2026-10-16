@@ -13,10 +13,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 # TODO: Consolidate data conversion edges for arrow bug workaround.
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
+import pyarrow
 
 # Lazy import to avoid ray init failures without pandas installed and allow
 # dataset to import modules in this file.
@@ -87,7 +84,7 @@ def _convert_batch_type_to_pandas(
                 )
             tensor_dict[col_name] = _ndarray_to_column(col)
         data = pd.DataFrame(tensor_dict)
-    elif pyarrow is not None and isinstance(data, pyarrow.Table):
+    elif isinstance(data, pyarrow.Table):
         data = data.to_pandas()
     else:
         # Handle cudf.DataFrame (lazy check to avoid import when not used)
@@ -136,12 +133,6 @@ def _convert_pandas_to_batch_type(
                 output_dict[column] = data[column].to_numpy()
             return output_dict
     elif type == BatchFormat.ARROW:
-        if not pyarrow:
-            raise ValueError(
-                "Attempted to convert data to Pyarrow Table but Pyarrow "
-                "is not installed. Please do `pip install pyarrow` to "
-                "install Pyarrow."
-            )
         return pyarrow.Table.from_pandas(data)
     elif type == BatchFormat.CUDF:
         cudf = _lazy_import_cudf()
@@ -182,7 +173,7 @@ def _convert_batch_type_to_numpy(
                     f"instead."
                 )
         return data
-    elif pyarrow is not None and isinstance(data, pyarrow.Table):
+    elif isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
         from ray.data._internal.tensor_extensions.arrow import (
             get_arrow_extension_fixed_shape_tensor_types,
@@ -270,7 +261,21 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
     # TODO(Clark): Optimize this with propagated DataFrame metadata containing a list of
     # column names containing tensor columns, to make this an O(# of tensor columns)
     # check rather than the current O(# of columns) check.
-    for col_name, col in df.items():
+
+    # Scan dtypes rather than df.items(), which would
+    # materialize a Series for every column just to read its dtype.
+    # The below approach avoids the cost of a Series build for non-tensor columns.
+    #
+    # When column names are unique we select and assign by label.
+    # With duplicate names, ``df[col_name]`` returns a DataFrame
+    # rather than a Series, so we select and assign by position instead.
+    columns_unique = df.columns.is_unique
+    for i, (col_name, dtype) in enumerate(df.dtypes.items()):
+        if (
+            dtype.type is not np.object_
+        ):  # Short circuit if non-object type before materializing the column
+            continue
+        col = df[col_name] if columns_unique else df.iloc[:, i]
         if column_needs_tensor_extension(col):
             try:
                 # Suppress Pandas warnings:
@@ -281,7 +286,10 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                     warnings.simplefilter("ignore", category=FutureWarning)
                     if SettingWithCopyWarning is not None:
                         warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                    df[col_name] = TensorArray(col)
+                    if columns_unique:
+                        df[col_name] = TensorArray(col)
+                    else:
+                        df.isetitem(i, TensorArray(col))
             except Exception as e:
                 raise ValueError(
                     f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -334,8 +342,16 @@ def _cast_tensor_columns_to_ndarrays(
                     for arr in df[field.name]
                 ]
 
-    for col_name, col in df.items():
-        if isinstance(col.dtype, TensorDtype):
+    # Scan dtypes rather than df.items(), which would
+    # materialize a Series for every column just to read its dtype.
+    # The below approach avoids the cost of a Series build for non-tensor columns.
+    #
+    # When column names are unique we select and assign by label (the fast,
+    # cached path). With duplicate names, ``df[col_name]`` returns a DataFrame
+    # rather than a Series, so we select and assign by position instead.
+    columns_unique = df.columns.is_unique
+    for i, (col_name, dtype) in enumerate(df.dtypes.items()):
+        if isinstance(dtype, TensorDtype):
             # Suppress Pandas warnings:
             # https://github.com/ray-project/ray/issues/29270
             # We actually want in-place operations so we surpress this warning.
@@ -344,5 +360,8 @@ def _cast_tensor_columns_to_ndarrays(
                 warnings.simplefilter("ignore", category=FutureWarning)
                 if SettingWithCopyWarning is not None:
                     warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                df[col_name] = list(col.to_numpy())
+                if columns_unique:
+                    df[col_name] = list(df[col_name].to_numpy())
+                else:
+                    df.isetitem(i, list(df.iloc[:, i].to_numpy()))
     return df

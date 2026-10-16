@@ -39,14 +39,14 @@ def setup_logger(
 
 def setup_component_logger(
     *,
-    logging_level,
-    logging_format,
-    log_dir,
+    logging_level: Union[int, str],
+    logging_format: str,
+    log_dir: str,
     filename: Union[str, Iterable[str]],
-    max_bytes,
-    backup_count,
-    logger_name=None,
-    propagate=True,
+    max_bytes: int,
+    backup_count: int,
+    logger_name: Optional[str] = None,
+    propagate: bool = True,
 ):
     """Configure the logger that is used for Ray's python components.
 
@@ -110,6 +110,7 @@ def run_callback_on_events_in_ipython(event: str, cb: Callable):
     If IPython is not installed, this function does nothing.
 
     Args:
+        event: The IPython event to subscribe to (e.g. ``post_run_cell``).
         cb: The callback to run.
     """
     if "IPython" in sys.modules:

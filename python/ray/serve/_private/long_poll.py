@@ -123,7 +123,7 @@ class LongPollClient:
 
     def __init__(
         self,
-        host_actor,
+        host_actor: Any,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
         client_id: str,
@@ -332,7 +332,7 @@ class LongPollHost:
     def __init__(
         self,
         listen_for_change_request_timeout_s: Tuple[
-            int, int
+            float, float
         ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
     ):
         # Map object_key -> int
@@ -425,7 +425,7 @@ class LongPollHost:
         if not keys_to_snapshot_ids:
             await sleep(1)
 
-            updated_objects = {}
+            updated_objects: Dict[KeyType, UpdatedObject] = {}
             self._count_send(updated_objects)
             return updated_objects
 
@@ -536,9 +536,13 @@ class LongPollHost:
         keys_to_snapshot_ids_bytes: bytes,
     ) -> bytes:
         """Listen for changed objects. only call by java proxy/router now.
+
         Args:
-            keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
+            keys_to_snapshot_ids_bytes: the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
+
+        Returns:
+            The serialized protobuf bytes of the update payload.
         """
         request_proto = LongPollRequest.FromString(keys_to_snapshot_ids_bytes)
         keys_to_snapshot_ids = {

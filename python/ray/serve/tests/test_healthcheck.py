@@ -135,6 +135,62 @@ async def test_multiple_replicas(serve_instance):
     assert len(new_actors.intersection(actors)) == 1
 
 
+@pytest.mark.asyncio
+async def test_failing_replica_found_among_many(serve_instance):
+    """The health-check sweep finds a single failing replica at an arbitrary
+    position among many healthy ones and replaces only it."""
+    h = serve.run(
+        Patient.options(num_replicas=12, ray_actor_options={"num_cpus": 0.1}).bind()
+    )
+    actors = set()
+
+    async def all_replicas_seen():
+        actors.clear()
+        actors.update(
+            a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(300)])
+        )
+        return len(actors) == 12
+
+    await async_wait_for_condition(all_replicas_seen, timeout=30)
+
+    failed = (await h.set_should_fail.remote())._actor_id
+    await async_wait_for_condition(
+        check_new_actor_started, handle=h, original_actors=actors, timeout=60
+    )
+
+    async def only_failed_replica_replaced():
+        new_actors = {
+            a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(300)])
+        }
+        return (
+            len(new_actors) == 12
+            and failed not in new_actors
+            and len(new_actors.intersection(actors)) == 11
+        )
+
+    await async_wait_for_condition(only_failed_replica_replaced, timeout=60)
+
+
+@pytest.mark.asyncio
+async def test_crashed_replica_replaced_among_many(serve_instance):
+    """A replica whose actor dies outright is detected by the sweep and
+    replaced, restoring the full replica set."""
+    h = serve.run(
+        Patient.options(num_replicas=12, ray_actor_options={"num_cpus": 0.1}).bind()
+    )
+    victim = await h.remote()
+    victim_id = victim._actor_id
+    ray.kill(victim)
+
+    async def victim_replaced():
+        new_actors = {
+            a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(300)])
+        }
+        return victim_id not in new_actors and len(new_actors) == 12
+
+    await async_wait_for_condition(victim_replaced, timeout=60)
+
+
 def test_inherit_healthcheck(serve_instance):
     class Parent:
         def __init__(self):

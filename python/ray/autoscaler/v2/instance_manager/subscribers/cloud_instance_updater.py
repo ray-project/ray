@@ -53,7 +53,7 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
         self._terminate_instances(new_terminations)
         self._count_stopped_instances(terminated_instances)
 
-    def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]):
+    def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]) -> None:
         """
         Terminate cloud instances through cloud provider.
 
@@ -64,8 +64,17 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             logger.debug("No instances to terminate.")
             return
 
-        # Terminate the instances.
-        cloud_instance_ids = [event.cloud_instance_id for event in new_terminations]
+        # Terminate each cloud instance at most once. Multiple instance manager
+        # records can refer to the same cloud instance after a raylet restart.
+        cloud_instance_ids = list(
+            dict.fromkeys(
+                event.cloud_instance_id
+                for event in new_terminations
+                if event.cloud_instance_id
+            )
+        )
+        if not cloud_instance_ids:
+            return
 
         # This is an async call.
         self._cloud_provider.terminate(
@@ -87,7 +96,7 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
 
         self._metrics_reporter.inc_stopped_nodes(len(terminated_instances))
 
-    def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]):
+    def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]) -> None:
         """
         Launches new instances by requesting the cloud provider.
 

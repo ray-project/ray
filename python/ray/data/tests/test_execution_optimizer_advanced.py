@@ -15,6 +15,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
+    ShuffleReduceOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
+    SortShuffleMapOp,
+)
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
@@ -26,7 +32,6 @@ from ray.data._internal.logical.operators import (
     Repartition,
     Sort,
 )
-from ray.data._internal.logical.operators.map_operator import MapBatches
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.rules import (
@@ -36,7 +41,7 @@ from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.stats import DatasetStats
-from ray.data.context import DataContext
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -79,8 +84,11 @@ def test_random_shuffle_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_m
     "shuffle",
     [True, False],
 )
-def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
+def test_repartition_operator(
+    ray_start_regular_shared_2_cpus, restore_data_context, shuffle
+):
     ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
@@ -109,6 +117,19 @@ def test_repartition_e2e(
         _check_usage_record(["ReadRange", "Repartition"])
         ds_stats: DatasetStats = ds._raw_stats()
         if shuffle:
+            context = DataContext.get_current()
+            if context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
+                prefix = "Disk" if context.use_disk_based_hash_shuffle else ""
+                num_partitions = ds._logical_plan.initial_num_blocks()
+                map_name = f"{prefix}SliceShuffleMap(partitions={num_partitions})"
+                reduce_name = f"{prefix}SliceShuffleReduce(partitions={num_partitions})"
+                assert ds_stats.base_name == reduce_name
+                assert reduce_name in ds_stats.metadata
+                map_stats = ds_stats.parents[0]
+                assert map_stats.base_name == map_name
+                assert map_name in map_stats.metadata
+                return
+
             assert ds_stats.base_name == "ReadRange->Repartition"
             assert "ReadRange->RepartitionMap" in ds_stats.metadata
         else:
@@ -143,7 +164,12 @@ def test_repartition_e2e(
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(22))
     if shuffle:
-        assert ds._block_num_rows() == [9, 9, 4, 0], ds._block_num_rows()
+        expected_block_num_rows = (
+            [9, 5, 4, 4]
+            if DataContext.get_current().shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+            else [9, 9, 4, 0]
+        )
+        assert ds._block_num_rows() == expected_block_num_rows, ds._block_num_rows()
     else:
         assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
@@ -186,20 +212,35 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
 
 def test_sort_operator(
     ray_start_regular_shared_2_cpus,
+    restore_data_context,
 ):
     ctx = DataContext.get_current()
 
-    planner = create_planner()
-    read_op = get_parquet_read_logical_op()
-    op = Sort(
-        sort_key=SortKey("col1"),
-        input_dependencies=[read_op],
-    )
-    plan = LogicalPlan(op, ctx)
-    physical_plan, _ = planner.plan(plan)
-    physical_op = physical_plan.dag
+    def plan_sort():
+        planner = create_planner()
+        read_op = get_parquet_read_logical_op()
+        op = Sort(
+            sort_key=SortKey("col1"),
+            input_dependencies=[read_op],
+        )
+        plan = LogicalPlan(op, ctx)
+        physical_plan, _ = planner.plan(plan)
+        assert op.name == "Sort"
+        return physical_plan.dag
 
-    assert op.name == "Sort"
+    # Default (shuffle v2): reduce <- map <- read. The single-file read yields
+    # one partition, so no sampling op is planned.
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    physical_op = plan_sort()
+    assert isinstance(physical_op, ShuffleReduceOp)
+    assert len(physical_op.input_dependencies) == 1
+    map_op = physical_op.input_dependencies[0]
+    assert isinstance(map_op, SortShuffleMapOp)
+    assert isinstance(map_op.input_dependencies[0], MapOperator)
+
+    # Legacy sort shuffle: a single all-to-all op.
+    ctx.shuffle_strategy = ShuffleStrategy.SORT_SHUFFLE_PULL_BASED
+    physical_op = plan_sort()
     assert isinstance(physical_op, AllToAllOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
@@ -253,85 +294,6 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
         ds_named.sort(invalid_col_name).take_all()
 
 
-def test_inherit_batch_format_rule():
-    if (
-        DataContext.get_current().batch_to_block_arrow_format
-    ):  # Skip the test if batch_to_block_arrow_format is True as rule is disabled
-        pytest.skip(
-            "Skipping inherit batch format rule test as batch_to_block_arrow_format is True"
-        )
-
-    from ray.data._internal.logical.rules import (
-        InheritBatchFormatRule,
-    )
-
-    ctx = DataContext.get_current()
-
-    operator1 = get_parquet_read_logical_op()
-    operator2 = MapBatches(
-        fn=lambda g: g, batch_format="pandas", input_dependencies=[operator1]
-    )
-    sort_key = SortKey("number", descending=True)
-    operator3 = Sort(sort_key, input_dependencies=[operator2])
-    original_plan = LogicalPlan(dag=operator3, context=ctx)
-
-    rule = InheritBatchFormatRule()
-    optimized_plan = rule.apply(original_plan)
-    assert optimized_plan.dag.batch_format == "pandas"
-
-
-def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
-    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
-    ds = ray.data.from_items(
-        [
-            {"col1": 1, "col2": 2},
-            {"col1": 1, "col2": 4},
-            {"col1": 5, "col2": 6},
-            {"col1": 7, "col2": 8},
-        ]
-    )
-    df_expected = pd.DataFrame(
-        {
-            "col1": [7, 5, 1, 1],
-            "col2": [8, 6, 4, 2],
-        }
-    )
-    df_actual = (
-        ds.groupby("col1")
-        .map_groups(lambda g: g, batch_format="pandas")
-        .sort("col2", descending=True)
-        .to_pandas()
-    )
-    df_expected = df_expected.astype(df_actual.dtypes.to_dict())
-    pd.testing.assert_frame_equal(df_actual, df_expected)
-
-
-def test_batch_format_on_aggregate(ray_start_regular_shared_2_cpus):
-    """Checks that the Aggregate op can inherit batch_format
-    from upstream ops correctly."""
-    from ray.data.aggregate import AggregateFn
-
-    ds = ray.data.from_items(
-        [
-            {"col1": 1, "col2": 2},
-            {"col1": 1, "col2": 4},
-            {"col1": 5, "col2": 6},
-            {"col1": 7, "col2": 8},
-        ]
-    )
-    aggregation = AggregateFn(
-        init=lambda column: 1,
-        accumulate_row=lambda a, row: a * row["col2"],
-        merge=lambda a1, a2: a1 * a2,
-        name="prod",
-    )
-    assert (
-        ds.groupby("col1")
-        .map_groups(lambda g: g, batch_format="pandas")
-        .aggregate(aggregation)
-    ) == {"prod": 384}
-
-
 def test_aggregate_e2e(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     ds = ray.data.range(100, override_num_blocks=4)
     ds = ds.groupby("id").count()
@@ -382,7 +344,7 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
-    op = Zip(read_op1, read_op2)
+    op = Zip([read_op1, read_op2])
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
     physical_op = physical_plan.dag
@@ -475,12 +437,12 @@ def test_schema_partial_execution(
     # entire Dataset.
     assert not ds._has_computed_output()
     if ray.data.DataContext.get_current().use_datasource_v2:
-        assert ds._plan._logical_plan.dag.dag_str == (
+        assert ds._logical_plan.dag.dag_str == (
             "ListFiles[ListFiles] -> ReadFiles[ReadFilesParquetV2] -> "
             "MapBatches[MapBatches(<lambda>)]"
         )
     else:
-        assert ds._plan._logical_plan.dag.dag_str == (
+        assert ds._logical_plan.dag.dag_str == (
             "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
         )
 

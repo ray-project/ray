@@ -34,25 +34,28 @@ GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)) {}
 
-void GcsResourceManager::ConsumeSyncMessage(
-    std::shared_ptr<const rpc::syncer::RaySyncMessage> message) {
-  // ConsumeSyncMessage is called by ray_syncer which might not run
+void GcsResourceManager::ConsumeSyncMessages(
+    rpc::syncer::MessageType message_type,
+    std::vector<std::shared_ptr<const rpc::syncer::RaySyncMessage>> messages) {
+  // ConsumeSyncMessages is called by ray_syncer which might not run
   // in a dedicated thread for performance.
   // GcsResourceManager is a module always run in the main thread, so we just
   // delegate the work to the main thread for thread safety.
   // Ideally, all public api in GcsResourceManager need to be put into this
   // io context for thread safety.
   io_context_.dispatch(
-      [this, message]() {
-        if (message->message_type() == syncer::MessageType::COMMANDS) {
+      [this, message_type, messages = std::move(messages)]() {
+        if (message_type == syncer::MessageType::COMMANDS) {
           // COMMANDS channel is currently unused.
-        } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-          syncer::ResourceViewSyncMessage resource_view_sync_message;
-          resource_view_sync_message.ParseFromString(message->sync_message());
-          UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
-                                 resource_view_sync_message);
+        } else if (message_type == syncer::MessageType::RESOURCE_VIEW) {
+          for (const auto &message : messages) {
+            syncer::ResourceViewSyncMessage resource_view_sync_message;
+            resource_view_sync_message.ParseFromString(message->sync_message());
+            UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
+                                   resource_view_sync_message);
+          }
         } else {
-          RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
+          RAY_LOG(FATAL) << "Unsupported message type: " << message_type;
         }
       },
       "GcsResourceManager::Update");
@@ -90,9 +93,9 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     rpc::AvailableResources resource;
     resource.set_node_id(node_resources_entry.first.Binary());
     const auto &node_resources = node_resources_entry.second.GetLocalView();
-    for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
+    for (const auto &resource_id : node_resources.GetAvailableResourceIds()) {
       const auto &resource_name = resource_id.Binary();
-      const auto &resource_value = node_resources.available.Get(resource_id);
+      const auto resource_value = node_resources.GetAvailableSum(resource_id);
       resource.mutable_resources_available()->insert(
           {resource_name, resource_value.Double()});
     }

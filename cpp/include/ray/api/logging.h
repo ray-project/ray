@@ -19,10 +19,10 @@
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
-                             // headers you need manually.
-                             // (https://stackoverflow.com/a/8294669)
-#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
+// This is a public header that may be compiled outside of Ray's build system,
+// so we cannot rely on the -DWIN32_LEAN_AND_MEAN compiler flag from ray.bzl.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN  // Prevent Windows.h from including WinSock.h
 #endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
 #endif

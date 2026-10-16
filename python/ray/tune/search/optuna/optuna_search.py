@@ -97,6 +97,9 @@ class OptunaSearch(Searcher):
 
     Multi-objective optimization is supported.
 
+    .. note::
+        ``OptunaSearch`` requires ``optuna>=3.0``.
+
     Args:
         space: Hyperparameter search space definition for
             Optuna's sampler. This can be either a :class:`dict` with
@@ -127,20 +130,10 @@ class OptunaSearch(Searcher):
             for future parameters. Needs to be a list of dicts containing the
             configurations.
         sampler: Optuna sampler used to
-            draw hyperparameter configurations. Defaults to ``MOTPESampler``
-            for multi-objective optimization with Optuna<2.9.0, and
-            ``TPESampler`` in every other case.
+            draw hyperparameter configurations. Defaults to ``TPESampler``,
+            which supports both single- and multi-objective optimization.
             See https://optuna.readthedocs.io/en/stable/reference/samplers/index.html
             for available Optuna samplers.
-
-            .. warning::
-                Please note that with Optuna 2.10.0 and earlier
-                default ``MOTPESampler``/``TPESampler`` suffer
-                from performance issues when dealing with a large number of
-                completed trials (approx. >100). This will manifest as
-                a delay when suggesting new configurations.
-                This is an Optuna issue and may be fixed in a future
-                Optuna release.
         study_name: Optuna study name that uniquely identifies the trial
             results. Defaults to ``"optuna"``.
         storage: Optuna storage used for storing trial results to
@@ -340,6 +333,11 @@ class OptunaSearch(Searcher):
         evaluated_rewards: Optional[List] = None,
     ):
         assert ot is not None, "Optuna must be installed! Run `pip install optuna`."
+        if version.parse(ot.__version__) < version.parse("3.0.0"):
+            raise ImportError(
+                "`OptunaSearch` requires the `optuna` version to be >= 3.0.0. "
+                'Upgrade with: `pip install -U "optuna>=3.0"`'
+            )
         super(OptunaSearch, self).__init__(metric=metric, mode=mode)
 
         if isinstance(space, dict) and space:
@@ -408,12 +406,8 @@ class OptunaSearch(Searcher):
 
         if self._sampler:
             sampler = self._sampler
-        elif isinstance(mode, list) and version.parse(ot.__version__) < version.parse(
-            "2.9.0"
-        ):
-            # MOTPESampler deprecated in Optuna>=2.9.0
-            sampler = ot.samplers.MOTPESampler(seed=self._seed)
         else:
+            # TPESampler handles both single- and multi-objective optimization.
             sampler = ot.samplers.TPESampler(seed=self._seed)
 
         if isinstance(mode, list):

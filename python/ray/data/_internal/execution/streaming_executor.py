@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import threading
 import time
@@ -14,18 +15,26 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
     Executor,
     OutputIterator,
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.lineage_tracker import LineageTracker
+from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
+from ray.data._internal.execution.no_progress_guard import NoProgressGuard
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -54,11 +63,16 @@ from ray.data._internal.operator_schema_exporter import (
 )
 from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.stats_summary_actor import report_stats_summary
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
+from ray.exceptions import UserCodeException
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.issue_detection.issue_detector_manager import (
+        IssueDetectorManager,
+    )
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
     from ray.data.block import Schema
 
@@ -95,6 +109,62 @@ def _log_ray_data_env_vars() -> None:
         logger.debug(f"RAY_DATA environment variables: {formatted}")
     else:
         logger.debug("No RAY_DATA environment variables set.")
+
+
+def _disable_data_reconstruction_if_unsupported(
+    dag: PhysicalOperator, options: ExecutionOptions, dataset_id: str
+) -> bool:
+    """Whether Ray Data lineage reconstruction must be disabled for this plan.
+
+    Only plans made entirely of map operators fed by a source are supported.
+    Warns once per dataset when disabling, since Ray Core lineage reconstruction
+    is also off for this job and a lost object will fail the dataset.
+
+    A map operator whose bundler slices blocks (strict streaming repartition) is
+    not supported either: it splits one block across several tasks, but the
+    lineage graph records whole-block dependencies, so reconstructing any of
+    those tasks would drop or duplicate rows.
+
+    ``preserve_order`` is not supported either. A reconstruction attempt is
+    submitted under a fresh task index, so the ordered output queue would emit
+    the re-produced rows after every task submitted before it.
+
+    Args:
+        dag: The physical plan's output operator.
+        options: The execution options of the dataset being executed.
+        dataset_id: The ID of the dataset being executed.
+
+    Returns:
+        True if the plan contains an operator reconstruction does not support,
+        or requires ordered output.
+    """
+    if options.preserve_order:
+        if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
+            logger.warning(
+                f"Ray Data lineage reconstruction is disabled for dataset "
+                f"{dataset_id}: it runs with preserve_order=True, which "
+                "reconstruction doesn't support. Ray Core lineage reconstruction "
+                "is also disabled for this job, so a lost object will fail the "
+                "dataset."
+            )
+        return True
+    for op in dag.post_order_iter():
+        if isinstance(op, InputDataBuffer):
+            continue
+        if isinstance(op, MapOperator) and not isinstance(
+            op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
+            continue
+        if log_once(f"ray_data_reconstruction_unsupported_{dataset_id}"):
+            logger.warning(
+                f"Ray Data lineage reconstruction is disabled for dataset "
+                f"{dataset_id}: it contains operator {op.name!r}, which "
+                "reconstruction doesn't support. Ray Core lineage reconstruction "
+                "is also disabled for this job, so a lost object will fail the "
+                "dataset."
+            )
+        return True
+    return False
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -134,6 +204,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
+        # Set by IssueDetectionExecutionCallback when issue detection is registered;
+        # otherwise remains None. Access via the issue_detector_manager property.
+        self._issue_detector_manager: Optional["IssueDetectorManager"] = None
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
@@ -157,9 +230,20 @@ class StreamingExecutor(Executor, threading.Thread):
             tag_keys=("dataset",),
         )
 
+        # Resolves pulled (block_ref, meta_ref) pairs into emitted RefBundles.
+        # The threaded fetcher (default) fetches metadata on a background thread
+        # so the scheduling loop never blocks on ``ray.get(meta_refs)``; the
+        # inline fetcher reproduces the synchronous, master-identical path.
+        self._metadata_fetcher = make_metadata_fetcher()
+
         Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._dataset_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
+
+    @property
+    def issue_detector_manager(self) -> Optional["IssueDetectorManager"]:
+        """The issue detector manager, or None if issue detection isn't registered."""
+        return self._issue_detector_manager
 
     def execute(
         self,
@@ -208,21 +292,36 @@ class StreamingExecutor(Executor, threading.Thread):
                 )
 
         # Setup the streaming DAG topology and start the runner thread.
-        self._topology = build_streaming_topology(dag, self._options)
+        self._lineage_tracker = None
+        if (
+            self._data_context.enable_ray_data_reconstruction
+            and not _disable_data_reconstruction_if_unsupported(
+                dag, self._options, self._dataset_id
+            )
+        ):
+            self._lineage_tracker = LineageTracker()
+        self._block_ref_counter = BlockRefCounter()
+        self._topology = build_streaming_topology(
+            dag, self._options, self._block_ref_counter, self._lineage_tracker
+        )
 
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
             lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
+            self._block_ref_counter,
         )
 
         # Constructed once per executor (not per scheduling iteration) so the
         # guard's idle-detection state accumulates across scheduling iterations.
         self._output_backpressure_guard = OutputBackpressureGuard(
-            self._topology, self._resource_manager
+            self._topology,
+            self._resource_manager,
+            release_interval_s=(
+                self._data_context.output_backpressure_guard_release_interval_s
+            ),
         )
-
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,
@@ -245,6 +344,10 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._resource_manager,
             config=self._data_context.autoscaling_config,
+        )
+        self._no_progress_guard = NoProgressGuard(
+            self._topology,
+            self._data_context.execution_no_progress_timeout_s,
         )
 
         self._has_op_completed = dict.fromkeys(self._topology, False)
@@ -283,9 +386,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
             start = time.perf_counter()
 
-            status_detail = (
-                f"failed with {exception}" if exception else "completed successfully"
-            )
+            if exception is None:
+                status_detail = "completed successfully"
+            elif isinstance(exception, UserCodeException):
+                # For a user-code error, str(exception) is the (already-logged)
+                # user traceback, so interpolating it here just re-dumps the stack
+                # a third time. Log only the exception type. Genuine internal /
+                # system errors keep the full exception below for diagnostics.
+                status_detail = f"failed with {type(exception).__name__}"
+            else:
+                status_detail = f"failed with {exception}"
 
             logger.debug(
                 f"Shutting down executor for dataset {self._dataset_id} "
@@ -296,6 +406,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
+            # Stop the metadata fetcher (after the loop thread that feeds it has
+            # been joined). No-op for the inline fetcher.
+            self._metadata_fetcher.stop()
             self._update_stats_metrics(
                 state=DatasetState.FINISHED.name
                 if exception is None
@@ -304,9 +417,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
-            stats_summary_string = self._final_stats.to_summary().to_string(
-                include_parent=False
-            )
+            final_summary = self._final_stats.to_summary()
+            if self._data_context.enable_stats_summary_collection:
+                report_stats_summary(final_summary)
+            stats_summary_string = final_summary.to_string(include_parent=False)
             # Reset the scheduling loop duration gauge + resource manager budgets/usages.
             self._resource_manager.update_usages()
             self.update_metrics(0)
@@ -389,6 +503,7 @@ class StreamingExecutor(Executor, threading.Thread):
         Results are returned via the output node's outqueue.
         """
         exc: Optional[Exception] = None
+        self._metadata_fetcher.start()
         try:
             # Run scheduling loop until complete.
             while True:
@@ -466,6 +581,9 @@ class StreamingExecutor(Executor, threading.Thread):
             2. Pulling completed refs into operator outqueues.
             3. Selecting and dispatching new inputs to operators.
 
+        Args:
+            topology: The :class:`Topology` of operators being executed.
+
         Returns:
             True if we should continue running the scheduling loop.
         """
@@ -478,6 +596,8 @@ class StreamingExecutor(Executor, threading.Thread):
             self._backpressure_policies,
             self._max_errored_blocks,
             output_backpressure_guard=self._output_backpressure_guard,
+            lineage_tracker=self._lineage_tracker,
+            metadata_fetcher=self._metadata_fetcher,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
@@ -521,6 +641,7 @@ class StreamingExecutor(Executor, threading.Thread):
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
             _log_op_metrics(topology)
             _debug_dump_topology(topology, self._resource_manager)
+            self._maybe_warn_output_splitter_memory_constrained()
             self._last_debug_log_time = time.time()
 
         for op, state in topology.items():
@@ -541,8 +662,10 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
 
-        # Keep going until all operators run to completion.
-        return not all(op.has_completed() for op in topology)
+        # Check until all oprators have completed.
+        should_continue = not all(op.has_completed() for op in topology)
+        self._no_progress_guard.check()
+        return should_continue
 
     def _refresh_progress_manager(self, topology: Topology):
         # Update the progress manager to reflect scheduling decisions.
@@ -604,6 +727,25 @@ class StreamingExecutor(Executor, threading.Thread):
             assert len(input_q) == 0, error_msg.format(
                 "External Input", op.name, len(input_q)
             )
+
+    def _maybe_warn_output_splitter_memory_constrained(self) -> None:
+        """Let a terminal OutputSplitter (from `Dataset.streaming_split`) warn if
+        the blocks training workers need to have prefetched can take up a large
+        share of an operator's share of the object store."""
+        output_op, _ = self._output_node
+        if not isinstance(output_op, OutputSplitter):
+            return
+        limit = self._resource_manager.get_global_limits().object_store_memory
+        num_eligible_ops = sum(
+            self._resource_manager.is_op_eligible(op) for op in self._topology
+        )
+        # A limit of 0 means it isn't known yet (e.g., the cluster autoscaler
+        # hasn't reserved resources yet).
+        if not num_eligible_ops or math.isinf(limit) or limit <= 0:
+            return
+        output_op.maybe_warn_memory_constrained(
+            object_store_memory_share_per_op=limit / num_eligible_ops,
+        )
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but

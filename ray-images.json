@@ -16,7 +16,6 @@
     "platforms": [
       "cpu",
       "tpu",
-      "cu11.7.1-cudnn8",
       "cu11.8.0-cudnn8",
       "cu12.1.1-cudnn8",
       "cu12.3.2-cudnn9",
@@ -34,9 +33,9 @@
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },
-    "python": ["3.10", "3.11"],
+    "python": ["3.10", "3.11", "3.12", "3.13"],
     "architectures": ["x86_64"],
-    "platforms": ["cpu", "cu12.1.1-cudnn8"]
+    "platforms": ["cpu", "cu12.1.1-cudnn8", "cu13.0.0-cudnn"]
   },
   "ray-llm": {
     "defaults": {
@@ -45,7 +44,7 @@
       "architecture": "x86_64"
     },
     "python": ["3.12"],
-    "architectures": ["x86_64"],
+    "architectures": ["x86_64", "aarch64"],
     "platforms": ["cu13.0.0-cudnn"]
   }
 }

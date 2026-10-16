@@ -1,0 +1,11 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+head_node:
+    instance_type: m5.2xlarge
+
+# One L4 per worker, so the two LLMServer replicas cannot share a node.
+worker_nodes:
+    - instance_type: g6.4xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND

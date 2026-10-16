@@ -288,6 +288,9 @@ enum class StatusCode : char {
   // Indicates that the executing user does not have permissions to perform the
   // requested operation. A common example is filesystem permissions.
   PermissionDenied = 37,
+  // Indicates that the GCS server is unavailable to respond to the request as it
+  // is in passive (read-only) mode.
+  GcsPassive = 38,
   // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
@@ -379,6 +382,11 @@ class RAY_EXPORT Status {
 
   static Status NotFound(const std::string &msg) {
     return Status(StatusCode::NotFound, msg);
+  }
+
+  static Status GcsPassive(
+      const std::string &msg = "GCS server is in passive (read-only) mode.") {
+    return Status(StatusCode::GcsPassive, msg);
   }
 
   static Status Disconnected(const std::string &msg) {
@@ -473,6 +481,7 @@ class RAY_EXPORT Status {
     return code() == StatusCode::UnexpectedSystemExit;
   }
   bool IsNotFound() const { return code() == StatusCode::NotFound; }
+  bool IsGcsPassive() const { return code() == StatusCode::GcsPassive; }
   bool IsDisconnected() const { return code() == StatusCode::Disconnected; }
   bool IsSchedulingCancelled() const { return code() == StatusCode::SchedulingCancelled; }
   bool IsAlreadyExists() const { return code() == StatusCode::AlreadyExists; }
@@ -514,10 +523,24 @@ class RAY_EXPORT Status {
 
   std::string message() const { return ok() ? "" : state_->msg; }
 
+  // Append context to an error status's message. An OK status has no state_
+  // (ok() is state_ == nullptr), so appending to it is a no-op rather than a
+  // null dereference. The rvalue overload keeps the temporary an rvalue through
+  // a chain (`Status::Invalid(...) << a << b`) so the final init can move.
   template <typename... T>
-  Status &operator<<(T &&...msg) {
-    absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
+  Status &operator<<(T &&...msg) & {
+    if (!ok()) {
+      absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
+    }
     return *this;
+  }
+
+  template <typename... T>
+  Status &&operator<<(T &&...msg) && {
+    if (!ok()) {
+      absl::StrAppend(&state_->msg, std::forward<T>(msg)...);
+    }
+    return std::move(*this);
   }
 
  private:

@@ -4,6 +4,7 @@ import pathlib
 import pickle
 import shutil
 import time
+import warnings
 from dataclasses import dataclass
 from typing import Optional, Union
 from unittest.mock import MagicMock
@@ -93,6 +94,33 @@ def test_read_parquet_rejects_pickle_object_columns(
     assert not marker.exists(), "pickle.load executed attacker code"
 
 
+def test_read_parquet_rejects_nested_pickle_object_columns(
+    tmp_path, ray_start_regular_shared, use_datasource_v2
+):
+    # A pickled-object column nested inside a `list<...>` must trip the guard
+    # just like a top-level one; otherwise nesting bypasses the check.
+    marker = tmp_path / "exploit_marker"
+
+    class Exploit:
+        def __reduce__(self):
+            import os
+
+            return (os.system, (f"touch {marker}",))
+
+    ext_type = ArrowPythonObjectType()
+    storage = pa.array([pickle.dumps(Exploit())], type=ext_type.storage_type)
+    ext_array = pa.ExtensionArray.from_storage(ext_type, storage)
+    list_array = pa.ListArray.from_arrays([0, 1], ext_array)
+    table = pa.table({"col": list_array})
+    pq.write_table(table, str(tmp_path / "data.parquet"))
+
+    ds = ray.data.read_parquet(str(tmp_path))
+    with pytest.raises(Exception, match="arrow_pickled_object"):
+        ds.take_all()
+
+    assert not marker.exists(), "pickle.load executed attacker code"
+
+
 def test_write_parquet_handles_per_block_column_reorder(
     ray_start_regular_shared, tmp_path
 ):
@@ -123,6 +151,77 @@ def test_write_parquet_handles_per_block_column_reorder(
         (1, 2),
         (4, 3),
     ]
+
+
+def test_widen_offset_overflowing_columns(monkeypatch):
+    # Unit test for the schema-promotion helper. Only `string`/`binary` columns
+    # whose combined size across the blocks exceeds the int32 offset limit
+    # (2 GiB) should be promoted to their `large_*` variant; everything else is
+    # left untouched. The real limit is impractical to allocate, so patch the
+    # threshold low and check the decision boundary directly.
+    from ray.data._internal.datasource import parquet_datasink
+    from ray.data._internal.datasource.parquet_datasink import (
+        _widen_offset_overflowing_columns,
+    )
+
+    monkeypatch.setattr(parquet_datasink, "INT32_MAX", 1024)
+
+    big, tiny = "z" * 600, "x"
+    t1 = pa.table(
+        {
+            "id": pa.array([0, 1]),  # not variable-width
+            "big_str": pa.array([big, big]),  # combined > 1024 -> promote
+            "big_bin": pa.array([big.encode(), big.encode()]),  # -> large_binary
+            "small_str": pa.array([tiny, tiny]),  # combined < 1024 -> untouched
+        }
+    )
+    t2 = pa.table(
+        {
+            "id": pa.array([2, 3]),
+            "big_str": pa.array([big, big]),
+            "big_bin": pa.array([big.encode(), big.encode()]),
+            "small_str": pa.array([tiny, tiny]),
+        }
+    )
+    schema = pa.unify_schemas([t1.schema, t2.schema])
+
+    widened = _widen_offset_overflowing_columns([t1, t2], schema)
+
+    assert widened.field("big_str").type == pa.large_string()
+    assert widened.field("big_bin").type == pa.large_binary()
+    assert widened.field("small_str").type == pa.string()
+    assert widened.field("id").type == pa.int64()
+
+    # When nothing overflows, the original schema is returned unchanged.
+    monkeypatch.setattr(parquet_datasink, "INT32_MAX", 1 << 40)
+    assert _widen_offset_overflowing_columns([t1, t2], schema) is schema
+
+
+def test_write_parquet_string_column_over_2gib_e2e(ray_start_regular_shared, tmp_path):
+    # End-to-end through the ray.data API: a dataset whose `payload` column, once
+    # the writer coalesces blocks into a single row group (forced by
+    # `min_rows_per_file`), exceeds Arrow's 2 GiB int32-offset `string` limit.
+    # Each individual value stays small, so only the *cumulative* size overflows.
+    #
+    # Pre-fix the write task died with an offset-overflow / column-length
+    # mismatch; ParquetDatasink now promotes the column to `large_string`.
+    num_rows, row_bytes = 1100, 2_000_000  # ~2.05 GiB combined, just over 2 GiB
+
+    def add_payload(batch):
+        # Reusing one string keeps driver-side memory ~row_bytes; Ray
+        # materializes per-row copies into the object store.
+        batch["payload"] = ["z" * row_bytes] * len(batch["id"])
+        return batch
+
+    ds = ray.data.range(num_rows).map_batches(add_payload, batch_format="numpy")
+    # min_rows_per_file makes the write coalesce all blocks into one row group.
+    ds.write_parquet(str(tmp_path), min_rows_per_file=num_rows)
+
+    out = pq.read_table(str(tmp_path), columns=["id"])
+    assert out.num_rows == num_rows
+    # The oversized variable-width column was promoted to dodge int32 offsets.
+    full_schema = pq.read_schema(str(next(pathlib.Path(tmp_path).glob("*.parquet"))))
+    assert full_schema.field("payload").type == pa.large_string()
 
 
 def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
@@ -1384,7 +1483,9 @@ def test_parquet_concurrency(
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
+def test_parquet_read_spread(
+    ray_start_cluster, tmp_path, restore_data_context, monkeypatch
+):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
@@ -1418,8 +1519,11 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     df2.to_parquet(path2)
 
     # Minimize the block size to prevent Ray Data from reading multiple fragments in a
-    # single task.
+    # single task. On the V2 footer path the packer uses
+    # RAY_DATA_PARQUET_BIN_PACKING_BYTES (not target_max_block_size), so pin that
+    # too or both files collapse into one read task on one node.
     ray.data.DataContext.get_current().target_max_block_size = 1
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
@@ -1973,7 +2077,9 @@ def test_write_partition_cols_with_min_rows_per_file(
 
     ds = ray.data.from_pandas(df)
     ds.write_parquet(
-        tmp_path, partition_cols=["partition_col"], min_rows_per_file=min_rows_per_file
+        tmp_path,
+        partition_cols=["partition_col"],
+        min_rows_per_file=min_rows_per_file,
     )
 
     # Check partition directories exist
@@ -2031,6 +2137,38 @@ def test_write_partition_cols_with_min_rows_per_file(
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
 
 
+def test_write_partition_cols_with_num_rows_per_file_warns(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    ds = ray.data.from_items(
+        [{"partition": index % 2, "value": index} for index in range(10)]
+    )
+
+    with pytest.warns(
+        DeprecationWarning,
+        match=r"will no longer be supported after February 2027",
+    ):
+        ds.write_parquet(tmp_path, partition_cols=["partition"], num_rows_per_file=5)
+
+
+def test_write_empty_partition_cols_with_min_rows_per_file_does_not_warn(
+    tmp_path,
+    ray_start_regular_shared,
+):
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        ray.data.range(10).write_parquet(
+            tmp_path, partition_cols=[], min_rows_per_file=5
+        )
+
+    assert not any(
+        issubclass(warning.category, DeprecationWarning)
+        and "non-empty `partition_cols`" in str(warning.message)
+        for warning in caught_warnings
+    )
+
+
 @pytest.mark.parametrize("max_rows_per_file", [5, 10, 25])
 def test_write_max_rows_per_file(
     tmp_path,
@@ -2073,6 +2211,68 @@ def test_write_max_rows_per_file(
     actual_df = ds_reloaded.to_pandas().sort_values("id").reset_index(drop=True)
 
     pd.testing.assert_frame_equal(actual_df, expected_df, check_dtype=False)
+
+
+def test_write_min_bytes_per_file_coalesces_small_blocks(
+    tmp_path, ray_start_regular_shared
+):
+    ds = ray.data.range(100, override_num_blocks=10)
+    block_sizes = [bundle.size_bytes() for bundle in ds.iter_internal_ref_bundles()]
+    assert len(block_sizes) == 10
+    assert len(set(block_sizes)) == 1
+
+    ds.write_parquet(
+        tmp_path,
+        min_bytes_per_file=2 * block_sizes[0],
+        compression=None,
+        row_group_size=1000,
+    )
+
+    files = list(pathlib.Path(tmp_path).glob("*.parquet"))
+    rows_per_file = sorted(pq.read_table(file).num_rows for file in files)
+    assert rows_per_file == [20, 20, 20, 20, 20]
+
+
+@pytest.mark.parametrize(
+    "row_size_arg",
+    [
+        {"min_rows_per_file": 10},
+        {"max_rows_per_file": 10},
+        {"num_rows_per_file": 10},
+    ],
+)
+def test_write_min_bytes_per_file_rejects_row_limits(
+    tmp_path, ray_start_regular_shared, row_size_arg
+):
+    with pytest.raises(ValueError, match="min_bytes_per_file"):
+        ray.data.range(1).write_parquet(
+            tmp_path,
+            min_bytes_per_file=100,
+            **row_size_arg,
+        )
+
+
+def test_min_bytes_per_file_sets_min_bytes_per_write(tmp_path):
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+
+    datasink = ParquetDatasink(str(tmp_path), min_bytes_per_file=100)
+    assert datasink.min_bytes_per_write == 100
+
+
+@pytest.mark.parametrize("min_bytes_per_file", [0, -1])
+def test_parquet_datasink_min_bytes_per_file_validation(tmp_path, min_bytes_per_file):
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+
+    with pytest.raises(ValueError, match="min_bytes_per_file"):
+        ParquetDatasink(str(tmp_path), min_bytes_per_file=min_bytes_per_file)
+
+
+@pytest.mark.parametrize("min_bytes_per_file", [0, -1])
+def test_write_min_bytes_per_file_validation(
+    tmp_path, ray_start_regular_shared, min_bytes_per_file
+):
+    with pytest.raises(ValueError, match="min_bytes_per_file"):
+        ray.data.range(1).write_parquet(tmp_path, min_bytes_per_file=min_bytes_per_file)
 
 
 @pytest.mark.parametrize(
@@ -3073,7 +3273,7 @@ def test_get_safe_batch_size_skips_zero_uncompressed_row_groups(tmp_path):
     size (e.g. all-null nested data) should not cause ZeroDivisionError."""
     import pyarrow.parquet as pq
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
         _get_safe_batch_size_for_nested_types,
     )
 
@@ -3180,7 +3380,7 @@ def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_co
     import pyarrow.dataset as pds
 
     from ray.data import DataContext
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
         _needs_nested_type_fallback,
         _resolve_read_columns,
     )
@@ -3223,7 +3423,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     """
     from unittest.mock import patch
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
         _needs_nested_type_fallback,
     )
 
@@ -3238,11 +3438,15 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
 
     # End-to-end: reading only "id" should use the normal scanner path, not
-    # the fallback.  Patch to detect whether fallback is invoked.
+    # the fallback.  Patch to detect whether fallback is invoked. Each reader
+    # resolves the helper through its own module, so patch both.
     with patch(
         "ray.data._internal.datasource.parquet_datasource"
         "._get_safe_batch_size_for_nested_types"
-    ) as mock_safe:
+    ) as mock_safe_v1, patch(
+        "ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader"
+        "._get_safe_batch_size_for_nested_types"
+    ) as mock_safe_v2:
         ds = ray.data.read_parquet(data_dir).select_columns(["id"])
         total_rows = 0
         for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
@@ -3250,7 +3454,62 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
             assert batch.column_names == ["id"]
         assert total_rows == num_rows
         # The fallback batch-size helper should never have been called.
-        mock_safe.assert_not_called()
+        mock_safe_v1.assert_not_called()
+        mock_safe_v2.assert_not_called()
+
+
+def test_parquet_sampling_fails_on_permanent_error(
+    ray_start_regular_shared, tmp_path, use_datasource_v2
+):
+    """Test that parquet sampling does not hang on permanent OSError (e.g.,
+    permission denied). Instead, it should fail with a clear error after
+    limited retries. Regression test for #57278."""
+    from unittest.mock import patch
+
+    # Write a valid parquet file so that file/fragment discovery succeeds and
+    # the failure is isolated to the schema/encoding sampling step.
+    table = pa.table({"col": [1, 2, 3]})
+    pq.write_table(table, os.path.join(tmp_path, "data.parquet"))
+
+    def _raise_permission_error(*args, **kwargs):
+        # PermissionError is a subclass of OSError, simulating invalid
+        # credentials against an object store.
+        raise PermissionError("Access Denied: invalid credentials")
+
+    if DataContext.get_current().use_datasource_v2:
+        # V2 samples schema on the driver by reading Parquet footers via
+        # ``pq.read_schema``; a permanent OSError there must propagate.
+        target = "pyarrow.parquet.read_schema"
+    else:
+        # V1 samples files through a remote task wrapping
+        # ``_fetch_parquet_file_info``; retries are capped so the error
+        # surfaces instead of hanging forever.
+        target = (
+            "ray.data._internal.datasource.parquet_datasource."
+            "_fetch_parquet_file_info"
+        )
+
+    with patch(target, new=_raise_permission_error):
+        with pytest.raises(Exception, match="Access Denied"):
+            ray.data.read_parquet(str(tmp_path)).materialize()
+
+
+@pytest.mark.timeout(30)
+def test_count_parquet_is_fast(ray_start_regular_shared):
+    """This is an E2E test that verifies that we pushdown counts. If Ray Data reads the
+    file contents rather than the metadata, the test will timeout and fail.
+
+    The count should only take a handful of seconds on a laptop.
+    """
+    path = "s3://anonymous@ray-benchmark-data/tpch/parquet/sf100/lineitem"
+
+    num_rows = ray.data.read_parquet(path).count()
+
+    # This is the number of rows measured by PyArrow.
+    assert num_rows == 600_037_902, (
+        "The number of rows returned by Ray Data doesn't match the number of rows "
+        f"returned by PyArrow. Expected 600,037,902 but got {num_rows}"
+    )
 
 
 if __name__ == "__main__":

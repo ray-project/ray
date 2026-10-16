@@ -1,6 +1,10 @@
 import asyncio
+import collections
+import hashlib
+import json
 import logging
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -9,17 +13,33 @@ import time
 from typing import Optional
 from unittest import mock
 
+import httpx
 import pytest
 import pytest_asyncio
 import requests
 import uvicorn
+import yaml
 from fastapi import FastAPI, Request, Response
+from starlette.responses import StreamingResponse
 
+import ray
+from ray import serve
 from ray._common.network_utils import find_free_port
-from ray._common.test_utils import async_wait_for_condition, wait_for_condition
+from ray._common.test_utils import (
+    async_wait_for_condition,
+    fetch_prometheus_metrics,
+    wait_for_condition,
+)
+from ray.serve._private import haproxy
 from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
+    RAY_SERVE_HAPROXY_MAXCONN,
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
+    SERVE_MULTIPLEXED_MODEL_ID,
 )
 from ray.serve._private.haproxy import (
     BackendConfig,
@@ -27,8 +47,12 @@ from ray.serve._private.haproxy import (
     HAProxyConfig,
     HAProxyManager,
     ServerConfig,
+    _routers_and_targets_by_backend,
 )
+from ray.serve._private.haproxy_metrics import HAProxyMetricsCollector
 from ray.serve.config import HTTPOptions
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeDeploySchema
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +227,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
             health_check_fall=3,
             health_check_rise=2,
             health_check_inter="2s",
-            health_check_path="/health",
+            http_health_check_path="/health",
             http_options=HTTPOptions(
                 host="0.0.0.0",
                 port=8000,
@@ -220,7 +244,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 app_name="api_backend",
                 timeout_http_keep_alive_s=60,
                 timeout_tunnel_s=60,
-                health_check_path="/api/health",
+                http_health_check_path="/api/health",
                 health_check_fall=2,
                 health_check_rise=3,
                 health_check_inter="5s",
@@ -242,7 +266,7 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 timeout_tunnel_s=45,
                 servers=[
                     ServerConfig(name="web_server1", host="127.0.0.1", port=8003),
-                ]
+                ],
                 # No health check overrides - should use global defaults
             ),
         }
@@ -271,7 +295,11 @@ def test_generate_config_file_internal(haproxy_api_cleanup):
                 # Expected configuration stub (matching the actual template output)
                 expected_config = f"""
 global
-    log 127.0.0.1:514 local0 debug
+    # Access/event log at `info`. The system endpoints (/-/healthz, /-/routes)
+    # tag their logs `debug` so they are dropped here but still reach the
+    # rfc5424 metrics socket (level `debug`) when metrics are enabled -- mirroring
+    # the proxy, which records their metric but not their access log.
+    log 127.0.0.1:514 local0 info
     stats socket {socket_path} mode 666 level admin expose-fd listeners
     stats timeout 30s
     maxconn 1000
@@ -294,11 +322,18 @@ defaults
     option abortonclose
     option splice-request
     option splice-response
+    # On a retry, use a different slot (`1`). retry-on defaults to connect
+    # failures only (nothing was sent → safe to replay); override globally via
+    # RAY_SERVE_HAPROXY_RETRY_ON. Inherited by every backend.
+    option redispatch 1
+    retry-on conn-failure
     # Set TCP_NODELAY on all connections
     option http-no-delay
     option idle-close-on-response
-    # Normalize 502 and 504 errors to 500 per Serve's default behavior
+    # Normalize 502/503/504 to 500 per Serve's default behavior. 503
+    # covers HAProxy's own "all retries exhausted / no server" response.
     errorfile 502 {temp_dir}/500.http
+    errorfile 503 {temp_dir}/500.http
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
     balance random(2)
@@ -309,10 +344,29 @@ frontend prometheus
     no log
 frontend http_frontend
     bind *:8000
+    log global
+    # Per-request HTTP ingress metrics. One RFC 5424 line per request matched to
+    # a Serve app backend, scraped into the serve_num_http_* /
+    # serve_http_request_latency_ms families (the metrics the Python proxy emits
+    # in non-HAProxy mode). Goes only to the rfc5424 target below; the inherited
+    # rfc3164 targets do not include the SD section, so their byte stream is
+    # unchanged. The general fields come from txn.serve_* vars set per backend
+    # below; %ST/%Ta/%ts render unquoted (HAProxy does not quote those aliases).
+    # term_state (%ts) is HAProxy's 2-char session termination state; a leading "C"
+    # means the client aborted, which the collector maps to status 499 to match the
+    # Python proxy's client-disconnect convention. When ingress-request-router
+    # metrics are also enabled, the router-specific fields are appended to the same
+    # line.
+    log /tmp/haproxy-serve/metrics.sock len 8192 format rfc5424 local1 debug
+    log-format-sd "%{{+Q,+E}}o [serve@1 app=%[var(txn.serve_app)] route=%[var(txn.serve_route)] method=%HM status=%ST latency_ms=%Ta deployment=%[var(txn.serve_deployment)] term_state=%ts]"
     # Health check endpoint
     acl healthcheck path -i /-/healthz
-    # Suppress logging for health checks
-    http-request set-log-level silent if healthcheck
+    # Keep health checks out of the access log but still record their metric:
+    # tag them `debug` so the access-log target (level info) drops them while the
+    # metrics socket (level debug) keeps them. Mirrors the proxy, which records
+    # the healthz metric with should_record_access_log=False.
+    http-request set-log-level debug if healthcheck
+    http-request set-var-fmt(txn.serve_route) "/-/healthz" if healthcheck
     # 200 if any backend has at least one server UP
     acl backend_api_backend_server_up nbsrv(api_backend) ge 1
     acl backend_web_backend_server_up nbsrv(web_backend) ge 1
@@ -322,6 +376,10 @@ frontend http_frontend
     http-request return status 503 content-type text/plain string "Service Unavailable" if healthcheck
     # Routes endpoint
     acl routes path -i /-/routes
+    # Like health checks: kept out of the access log (tagged `debug`); its metric
+    # is recorded (route=/-/routes, app unset) when metrics are enabled.
+    http-request set-log-level debug if routes
+    http-request set-var-fmt(txn.serve_route) "/-/routes" if routes
     http-request return status 200 content-type application/json string "{routes}" if routes
     # Per-backend path ACLs (used for both ingress-request-router dispatch
     # and static use_backend selection below).
@@ -329,6 +387,15 @@ frontend http_frontend
     acl is_api_backend path /api
     acl is_web_backend path_beg /web/
     acl is_web_backend path /web
+    # Per-request HTTP metric vars (app / route / ingress deployment), set on the
+    # first matching backend. Backends are sorted longest-prefix-first and the
+    # !found guard makes the longest match win, mirroring the use_backend rules
+    # below. Requests that match no app backend (e.g. /-/routes, 404s) leave
+    # these unset, so the collector can skip them.
+    http-request set-var-fmt(txn.serve_app) "api_backend" if is_api_backend !{{ var(txn.serve_app) -m found }}
+    http-request set-var-fmt(txn.serve_route) "/api" if is_api_backend !{{ var(txn.serve_route) -m found }}
+    http-request set-var-fmt(txn.serve_app) "web_backend" if is_web_backend !{{ var(txn.serve_app) -m found }}
+    http-request set-var-fmt(txn.serve_route) "/web" if is_web_backend !{{ var(txn.serve_route) -m found }}
     # Static routing based on path prefixes in decreasing length then alphabetical order
     use_backend api_backend if is_api_backend
     use_backend web_backend if is_web_backend
@@ -349,8 +416,8 @@ backend api_backend
     http-check expect status 200
     default-server fastinter 250ms downinter 250ms fall 2 rise 3 inter 5s check
     # Servers in this backend
-    server api_server1 127.0.0.1:8001 check
-    server api_server2 127.0.0.1:8002 check
+    server api_server1 127.0.0.1:8001 check observe layer4 error-limit 3 on-error mark-down
+    server api_server2 127.0.0.1:8002 check observe layer4 error-limit 3 on-error mark-down
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server api_fallback_server 127.0.0.1:8500 check backup
 backend web_backend
@@ -369,7 +436,7 @@ backend web_backend
     http-check expect status 200
     default-server fastinter 250ms downinter 250ms fall 3 rise 2 inter 2s check
     # Servers in this backend
-    server web_server1 127.0.0.1:8003 check
+    server web_server1 127.0.0.1:8003 check observe layer4 error-limit 3 on-error mark-down
 listen stats
   bind *:8080
   stats enable
@@ -388,6 +455,79 @@ listen stats
                             os.remove(temp_file)
                     except (FileNotFoundError, OSError):
                         pass  # File already removed or doesn't exist
+
+
+def test_config_escapes_special_characters_in_names(haproxy_api_cleanup):
+    """App / deployment names can contain most characters (see
+    test_deploy_with_any_characters; '#' is rejected at deploy time). They must
+    still be escaped when rendered into the metric set-var-fmt values so a '#'
+    (HAProxy comment char) or other special character can't corrupt the config
+    (regression for the set-var(...) str(...) injection)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            metrics_enabled=True,
+            has_received_routes=True,
+            has_received_servers=True,
+        )
+        backend_configs = {
+            "http-test": BackendConfig(
+                name="http-test",
+                path_prefix="/test",
+                app_name="app#name",
+                ingress_deployment_name="dep#123",
+                servers=[ServerConfig(name="s1", host="127.0.0.1", port=8001)],
+            )
+        }
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs=backend_configs,
+            config_file_path=config_file_path,
+        )
+        api._generate_config_file_internal()
+        with open(config_file_path, "r") as f:
+            cfg = f.read()
+        # Escaped set-var-fmt form (double-quoted), not the injection-prone
+        # unquoted str(...) form that treats '#' as a comment.
+        assert 'set-var-fmt(txn.serve_deployment) "dep#123"' in cfg
+        assert 'set-var-fmt(txn.serve_app) "app#name"' in cfg
+        assert "str(dep#123)" not in cfg
+        assert "str(app#name)" not in cfg
+
+
+def test_generate_config_close_spread_time(haproxy_api_cleanup):
+    """`close-spread-time` is rendered in the global section when configured
+    and omitted when unset (the default)."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        def generate_config(close_spread_time_s):
+            config_stub = HAProxyConfig(
+                socket_path=socket_path,
+                close_spread_time_s=close_spread_time_s,
+                http_options=HTTPOptions(host="0.0.0.0", port=8000),
+                has_received_routes=True,
+                has_received_servers=True,
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                config_file_path,
+            ):
+                api = HAProxyApi(
+                    cfg=config_stub,
+                    backend_configs={},
+                    config_file_path=config_file_path,
+                )
+                api._generate_config_file_internal()
+            with open(config_file_path, "r") as f:
+                return f.read()
+
+        assert "close-spread-time 60s" in generate_config(60)
+        assert "close-spread-time" not in generate_config(None)
 
 
 def test_generate_backends_in_order(haproxy_api_cleanup):
@@ -483,6 +623,76 @@ def _make_api(temp_dir, backend_configs):
         config_file_path=config_file_path,
         backend_configs=backend_configs,
     )
+
+
+def test_routers_and_targets_prefers_colocated_router():
+    """Each HAProxy round-robins across the routers co-located on its own node,
+    and falls back to a single deterministic pick when none is co-located."""
+    local = "10.0.0.1"
+
+    colocated = [
+        BackendConfig(
+            name="llm",
+            path_prefix="/",
+            servers=[
+                ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_local_b", host=local, port=9001),
+                ServerConfig(name="router_local_a", host=local, port=9000),
+                ServerConfig(name="router_remote", host="10.0.0.2", port=9000),
+            ],
+        )
+    ]
+    # Both on-node routers form the sorted pool; the remote router is excluded.
+    routers, _ = _routers_and_targets_by_backend(colocated, local_host=local)
+    assert [s.name for s in routers["llm"]] == ["router_local_a", "router_local_b"]
+
+    # No router on this node falls back to a single lexicographically smallest.
+    remote_only = [
+        BackendConfig(
+            name="llm",
+            path_prefix="/",
+            servers=[
+                ServerConfig(name="r1", host="10.0.0.5", port=30001, replica_id="rid_1")
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_a", host="10.0.0.2", port=9000),
+                ServerConfig(name="router_b", host="10.0.0.3", port=9000),
+            ],
+        )
+    ]
+    routers, _ = _routers_and_targets_by_backend(remote_only, local_host=local)
+    assert [s.name for s in routers["llm"]] == ["router_a"]
+
+
+def test_write_ingress_request_router_lua_pools_colocated_routers(haproxy_api_cleanup):
+    """Multiple co-located routers render as a pool in the app's ROUTERS entry."""
+    from ray._common.network_utils import get_localhost_ip
+
+    local = get_localhost_ip()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(name="r1", host=local, port=30001, replica_id="rid_1"),
+            ],
+            ingress_request_router_servers=[
+                ServerConfig(name="router_a", host=local, port=9000),
+                ServerConfig(name="router_b", host=local, port=9001),
+            ],
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+
+        result = api._write_ingress_request_router_lua([backend])
+        assert result is not None
+        with open(result) as f:
+            lua = f.read()
+
+        # Both co-located routers land in the pool the Lua round-robins over.
+        assert "port = 9000" in lua and "port = 9001" in lua
 
 
 def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
@@ -661,11 +871,11 @@ def test_router_failure_503_rule_appears_before_use_backend(haproxy_api_cleanup)
         assert "X-Serve-Reason" in cfg, cfg
 
 
-def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
-    """When the three RAY_SERVE_HAPROXY_INGRESS_* env-var-derived fields are
-    set on HAProxyConfig, the corresponding HAProxy directives are emitted
-    into the ``-via-ingress-request-router`` backend. When unset, none of
-    them appear (backward-compat)."""
+def test_ingress_backend_inherits_global_retry_policy(haproxy_api_cleanup):
+    """The ``-via-ingress-request-router`` backend defines no retry directives
+    of its own — it inherits retry-on / retries / redispatch from the defaults
+    block (one policy everywhere). Only timeout server remains a per-ingress
+    override."""
     backends = {
         "llm": BackendConfig(
             name="llm",
@@ -698,13 +908,14 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
             with open(api.config_file_path) as f:
                 return f.read()
 
+    # retry-on is defined once (defaults block); the ingress backend inherits it.
     unset = render({})
-    # Match the actual HAProxy directive at line-start (4-space indent), not
-    # any occurrences of "retry-on" inside template comments.
-    assert "\n    retry-on " not in unset
-    assert "\n    retries " not in unset
     assert "ingress-request-router" in unset  # backend still rendered
+    assert unset.count("\n    retry-on ") == 1
+    assert "\n    retries " not in unset
 
+    # ingress retry knobs are inherited, not re-emitted in the ingress backend;
+    # only timeout server renders there as a per-ingress override.
     set_cfg = render(
         {
             "ingress_retry_on": "conn-failure empty-response response-timeout",
@@ -712,9 +923,101 @@ def test_ingress_retry_knobs_render_when_set(haproxy_api_cleanup):
             "ingress_timeout_server_s": 5,
         }
     )
-    assert "retry-on conn-failure empty-response response-timeout" in set_cfg
-    assert "\n    retries 4\n" in set_cfg
+    assert set_cfg.count("\n    retry-on ") == 1  # still only the defaults block
+    assert "empty-response" not in set_cfg
+    assert "\n    retries 4\n" not in set_cfg
     assert "\n    timeout server 5s\n" in set_cfg
+
+
+def test_global_retry_knobs_render(haproxy_api_cleanup):
+    """RAY_SERVE_HAPROXY_RETRY_ON / RETRIES drive the defaults block (inherited
+    by every backend). Defaults to `conn-failure` with no explicit `retries`."""
+
+    def render(overrides):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            api = HAProxyApi(
+                cfg=HAProxyConfig(
+                    socket_path=os.path.join(temp_dir, "admin.sock"), **overrides
+                ),
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+            )
+            with mock.patch(
+                "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+                api.config_file_path,
+            ):
+                api._generate_config_file_internal()
+            with open(api.config_file_path) as f:
+                return f.read()
+
+    # Default: conn-failure only, no explicit retries line.
+    default_cfg = render({})
+    assert "\n    retry-on conn-failure\n" in default_cfg
+    assert "\n    retries " not in default_cfg
+
+    # Both knobs override the defaults block.
+    overridden = render({"retry_on": "conn-failure junk-response", "retries": 2})
+    assert "\n    retry-on conn-failure junk-response\n" in overridden
+    assert "\n    retries 2\n" in overridden
+
+
+# Overriding any of these is supported, and makes the shipped-default
+# assertions below meaningless rather than false, so the test opts out instead.
+_DEFAULT_TUNING_ENV_VARS = (
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED",
+    "RAY_SERVE_HAPROXY_OBSERVE_ERROR_LIMIT",
+    "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S",
+    "RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S",
+)
+
+
+@pytest.mark.skipif(
+    any(v in os.environ for v in _DEFAULT_TUNING_ENV_VARS),
+    reason=f"environment overrides one of {_DEFAULT_TUNING_ENV_VARS}",
+)
+def test_default_data_plane_tuning_renders(haproxy_api_cleanup):
+    """The shipped defaults bound connect time, mark dead replicas down from
+    live traffic, and leave `timeout server` unset.
+
+    Every other test in this file passes explicit overrides, so nothing else
+    would catch a silent change to these; each one changes how every Serve
+    cluster routes."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            backend_configs={
+                "api": BackendConfig(
+                    name="api",
+                    path_prefix="/api",
+                    app_name="api",
+                    servers=[
+                        ServerConfig(
+                            name="s1", host="127.0.0.1", port=8001, replica_id="rid_1"
+                        )
+                    ],
+                )
+            },
+            config_file_path=config_file_path,
+        )
+        api._generate_config_file_internal()
+        with open(config_file_path) as f:
+            cfg = f.read()
+
+    # Replicas are in-cluster: a connect that takes seconds means the node is
+    # gone, and failing fast lets redispatch reach another replica in time.
+    assert "\n    timeout connect 5s\n" in cfg
+
+    # No `timeout server`. It is a server-side inactivity limit applied to every
+    # connection on the live process, so any value caps request duration -- and
+    # Serve's own request_timeout_s defaults to no timeout. hard-stop-after
+    # bounds draining workers on a separate clock.
+    assert "\n    timeout server " not in cfg
+
+    # Live traffic marks a dead replica DOWN without waiting for a health check.
+    assert (
+        "server s1 127.0.0.1:8001 check observe layer4 "
+        "error-limit 3 on-error mark-down"
+    ) in cfg
 
 
 @pytest.mark.parametrize("forward_body", [True, False])
@@ -767,40 +1070,84 @@ def test_ingress_request_router_forward_body_gate_renders(
 
         if forward_body:
             assert "wait-for-body" in cfg, cfg
+            assert (
+                f"tune.bufsize {RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE}"
+                in cfg
+            ), cfg
             assert "local FORWARD_BODY = true" in lua, lua
         else:
             assert "wait-for-body" not in cfg, cfg
             assert "local FORWARD_BODY = false" in lua, lua
+        assert f"maxconn {RAY_SERVE_HAPROXY_MAXCONN}" in cfg, cfg
+        assert (
+            "http-request del-header x-serve-router- -m beg "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert (
+            "http-request del-header serve_multiplexed_model_id "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert (
+            "http-request del-header serve-multiplexed-model-id "
+            "if has_ingress_request_router_app"
+        ) in cfg
+        assert "extract_json_string" not in lua
 
 
 def _create_replica_server(port: int, replica_id_header: str):
-    """Fake data-plane replica that echoes its identity in a response header."""
+    """Fake data-plane replica that echoes routing and request-ID headers."""
     app = FastAPI()
 
     @app.get("/-/healthz")
     async def health():
         return {"status": "OK"}
 
-    @app.post("/{path:path}")
+    @app.api_route("/{path:path}", methods=["GET", "POST"])
     async def root(path: str, req: Request, res: Response):
         res.headers["x-replica-id"] = replica_id_header
+        for name, value in req.headers.items():
+            if name.startswith(SERVE_INGRESS_ROUTER_HEADER_PREFIX):
+                res.headers[f"echo-{name}"] = value
+            if name.replace("-", "_") == SERVE_MULTIPLEXED_MODEL_ID.replace("-", "_"):
+                res.headers[f"echo-{name}"] = value
+        res.headers["x-received-request-id"] = req.headers.get("x-request-id", "")
         body = await req.body()
-        return {"replica": replica_id_header, "echo": body.decode("utf-8")}
+        return {
+            "replica": replica_id_header,
+            "body_length": len(body),
+            "body_sha256": hashlib.sha256(body).hexdigest(),
+        }
 
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
 
-def _create_router_server(port: int, replica_id_to_return: str):
-    """Fake /internal/route. Captures bodies so tests can verify HAProxy
-    forwards the buffered request body prefix to the router."""
+def _create_router_server(
+    port: int, replica_id_to_return: str, extra_response: Optional[dict] = None
+):
+    """Fake /internal/route. Captures request data forwarded by HAProxy."""
     app = FastAPI()
-    captured = {"bodies": []}
+    captured = {
+        "bodies": [],
+        "headers": [],
+        "request_ids": [],
+        "request_paths": [],
+        "model_ids": [],
+    }
 
     @app.post("/internal/route")
     async def route(req: Request):
         body = await req.body()
         captured["bodies"].append(body.decode("utf-8"))
-        return {"replica_id": replica_id_to_return}
+        captured["headers"].append(dict(req.headers))
+        captured["request_ids"].append(req.headers.get("x-request-id", ""))
+        captured["request_paths"].append(
+            req.headers.get(SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER)
+        )
+        captured["model_ids"].append(req.headers.get(SERVE_MULTIPLEXED_MODEL_ID, ""))
+        response = {"replica_id": replica_id_to_return}
+        if extra_response:
+            response.update(extra_response)
+        return response
 
     def ready():
         return (
@@ -811,16 +1158,79 @@ def _create_router_server(port: int, replica_id_to_return: str):
         )
 
     server, thread = _serve_fastapi_app(app, port, ready)
-    # Discard the readiness-probe body so callers see only client traffic.
+    # Discard the readiness-probe data so callers see only client traffic.
     captured["bodies"].clear()
+    captured["headers"].clear()
+    captured["request_ids"].clear()
+    captured["request_paths"].clear()
+    captured["model_ids"].clear()
     return server, thread, captured
+
+
+async def _start_router_haproxy(
+    temp_dir,
+    haproxy_port,
+    stats_port,
+    backend_configs,
+    haproxy_api_cleanup,
+    **config_overrides,
+):
+    """Build, start, and await readiness of an HAProxyApi for the ingress
+    request router e2e tests. These tests share this scaffold and differ only
+    in their backends, router behavior, and assertions."""
+    config = HAProxyConfig(
+        http_options=HTTPOptions(
+            host="127.0.0.1",
+            port=haproxy_port,
+            keep_alive_timeout_s=58,
+        ),
+        stats_port=stats_port,
+        socket_path=os.path.join(temp_dir, "admin.sock"),
+        has_received_routes=True,
+        has_received_servers=True,
+        http_health_check_path="/-/healthz",
+        health_check_inter="500ms",
+        health_check_rise=1,
+        health_check_fall=2,
+        **config_overrides,
+    )
+    api = HAProxyApi(
+        cfg=config,
+        backend_configs=backend_configs,
+        config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+    )
+    haproxy_api_cleanup(api)
+    await api.start()
+    wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
+    # Wait for primary-backend health checks to mark the replicas UP.
+    await async_wait_for_condition(
+        lambda: requests.get(
+            f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
+        ).status_code
+        == 200,
+        timeout=10,
+    )
+    return api
+
+
+def _shutdown_fake_servers(servers, threads):
+    """Signal uvicorn fake servers to exit and join their threads. Mirrors the
+    teardown each router test runs in its finally block."""
+    for srv in servers:
+        try:
+            srv.should_exit = True
+        except Exception:
+            pass
+    for thr in threads:
+        try:
+            thr.join(timeout=5)
+        except Exception:
+            pass
 
 
 @pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatch):
-    """Run actual HAProxy against a fake router + two replicas; verify a POST
-    is pinned to the replica the router selects, while a GET (which doesn't
-    trigger the router-routed path) is not."""
+    """Run HAProxy against a fake router and verify all methods are pinned."""
     monkeypatch.setattr(
         "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
         True,
@@ -842,31 +1252,19 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
             replica_b_port, replica_id_header="B"
         )
         router, router_thread, router_captured = _create_router_server(
-            router_port, replica_id_to_return=actor_name_b  # always pick B
+            router_port,
+            replica_id_to_return=actor_name_b,  # always pick B
+            extra_response={
+                "request_headers": {SERVE_MULTIPLEXED_MODEL_ID: "trusted-model"}
+            },
         )
 
         try:
-            config = HAProxyConfig(
-                http_options=HTTPOptions(
-                    host="127.0.0.1",
-                    port=haproxy_port,
-                    keep_alive_timeout_s=58,
-                ),
-                stats_port=stats_port,
-                socket_path=os.path.join(temp_dir, "admin.sock"),
-                has_received_routes=True,
-                has_received_servers=True,
-                health_check_path="/-/healthz",
-                health_check_inter="500ms",
-                health_check_rise=1,
-                health_check_fall=2,
-            )
-
             backend = BackendConfig(
                 name="llm",
                 path_prefix="/",
                 app_name="llm",
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 servers=[
                     ServerConfig(
                         name="A",
@@ -886,34 +1284,34 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 ],
             )
 
-            api = HAProxyApi(
-                cfg=config,
-                backend_configs={"llm": backend},
-                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
-            )
-            haproxy_api_cleanup(api)
-            await api.start()
-
-            wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
-            # Wait for primary-backend health checks to mark both replicas UP.
-            await async_wait_for_condition(
-                lambda: requests.get(
-                    f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
-                ).status_code
-                == 200,
-                timeout=10,
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
             )
 
             # POST goes through the router. Router returns B's actor name,
             # so the request must land on replica B regardless of LB ordering.
             payload = {"prompt": "hello"}
             resp = requests.post(
-                f"http://127.0.0.1:{haproxy_port}/predict",
+                f"http://127.0.0.1:{haproxy_port}/v1/messages?trace=1",
                 json=payload,
+                headers={
+                    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/chat/completions"
+                },
                 timeout=5,
             )
             assert resp.status_code == 200, resp.text
             assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["request_ids"] == [
+                resp.headers.get("x-received-request-id")
+            ]
+            assert router_captured["request_ids"][0]
+            # The actual path, without the query, identifies the API even if
+            # the client supplies a conflicting router-owned header.
+            assert router_captured["request_paths"] == ["/v1/messages"]
 
             # Direct streaming keeps a bounded request-body path for
             # prefix-cache-aware routing.
@@ -928,28 +1326,160 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup, monkeypatc
                 )
                 assert resp.headers.get("x-replica-id") == "B"
             assert router_captured["bodies"] == ['{"prompt": "hello"}'] * 4
+            assert len(router_captured["request_ids"]) == 4
+            assert all(router_captured["request_ids"])
 
-            # GET is not POST, so Lua routing never runs; the router should
-            # have seen exactly the four POSTs above and nothing more.
-            n_router_calls_before_get = len(router_captured["bodies"])
-            requests.get(
-                f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
+            # A leading-space word is typically one token with common BPE
+            # tokenizers. Verify that a request approximating a million-token
+            # prompt reaches both the  router and selected replica intact.
+            large_body = json.dumps({"prompt": " token" * 1_000_000})
+            large_body_size = len(large_body.encode())
+            assert 262144 < large_body_size < 8 * 1024 * 1024
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                data=large_body,
+                headers={"content-type": "application/json"},
+                timeout=30,
             )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert resp.json()["body_length"] == large_body_size
+            assert router_captured["bodies"][-1] == large_body
+
+            n_router_calls_before_get = len(router_captured["bodies"])
+            resp = requests.get(
+                f"http://127.0.0.1:{haproxy_port}/health-passthrough",
+                headers={
+                    "x-routing-tenant": "tenant-a",
+                    "connection": "x-hop-secret, close",
+                    "x-hop-secret": "must-not-forward",
+                },
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert len(router_captured["bodies"]) == n_router_calls_before_get + 1
+            assert router_captured["headers"][-1]["x-routing-tenant"] == "tenant-a"
+            assert router_captured["headers"][-1]["host"] == (
+                f"127.0.0.1:{router_port}"
+            )
+            assert router_captured["headers"][-1]["connection"] == "close"
+            assert "x-hop-secret" not in router_captured["headers"][-1]
+
+            # A model-multiplexed GET does use the router. HAProxy forwards the
+            # client value to the internal router, strips it from the original
+            # request, then installs the trusted value returned by the router.
+            resp = requests.get(
+                f"http://127.0.0.1:{haproxy_port}/model",
+                headers={SERVE_MULTIPLEXED_MODEL_ID: "client-model"},
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+            assert router_captured["model_ids"][-1] == "client-model"
             assert (
-                len(router_captured["bodies"]) == n_router_calls_before_get
-            ), "GET must not invoke /internal/route"
+                resp.headers.get(f"echo-{SERVE_MULTIPLEXED_MODEL_ID}")
+                == "trusted-model"
+            )
 
         finally:
-            for srv in (replica_a, replica_b, router):
-                try:
-                    srv.should_exit = True
-                except Exception:
-                    pass
-            for thr in (replica_a_thread, replica_b_thread, router_thread):
-                try:
-                    thr.join(timeout=5)
-                except Exception:
-                    pass
+            _shutdown_fake_servers(
+                (replica_a, replica_b, router),
+                (replica_a_thread, replica_b_thread, router_thread),
+            )
+
+
+@pytest.mark.asyncio
+async def test_ingress_request_router_forwards_trusted_headers(
+    haproxy_api_cleanup, monkeypatch
+):
+    """Router metadata is forwarded generically, while client-supplied values
+    under the router-owned prefix are stripped."""
+    monkeypatch.setattr(
+        "ray.serve._private.haproxy.RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY",
+        True,
+    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        router_port = find_free_port()
+
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+        token_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "kv-token-key"
+        metadata_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "metadata"
+        spoofed_only_header = SERVE_INGRESS_ROUTER_HEADER_PREFIX + "spoofed-only"
+        multiplexed_model_header = SERVE_MULTIPLEXED_MODEL_ID
+        hyphenated_multiplexed_model_header = multiplexed_model_header.replace("_", "-")
+
+        replica, replica_thread = _create_replica_server(
+            replica_port, replica_id_header="A"
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port,
+            replica_id_to_return=actor_name,
+            extra_response={
+                RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD: {
+                    token_header: "trusted-key",
+                    metadata_header: "trusted-metadata",
+                    multiplexed_model_header: "base:adapter",
+                }
+            },
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                json={"prompt": "hello"},
+                headers={
+                    token_header: "spoofed-key",
+                    metadata_header: "spoofed-metadata",
+                    spoofed_only_header: "must-be-removed",
+                    multiplexed_model_header: "spoofed:adapter",
+                    hyphenated_multiplexed_model_header: "spoofed-hyphen:adapter",
+                },
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get(f"echo-{token_header}") == "trusted-key"
+            assert resp.headers.get(f"echo-{metadata_header}") == "trusted-metadata"
+            assert (
+                resp.headers.get(f"echo-{multiplexed_model_header}") == "base:adapter"
+            )
+            assert f"echo-{hyphenated_multiplexed_model_header}" not in resp.headers
+            assert f"echo-{spoofed_only_header}" not in resp.headers
+
+        finally:
+            _shutdown_fake_servers(
+                (replica, router),
+                (replica_thread, router_thread),
+            )
 
 
 def _create_broken_router_server(port: int, status_code: int = 500):
@@ -1011,27 +1541,11 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
         broken_router, broken_router_thread = _create_broken_router_server(router_port)
 
         try:
-            config = HAProxyConfig(
-                http_options=HTTPOptions(
-                    host="127.0.0.1",
-                    port=haproxy_port,
-                    keep_alive_timeout_s=58,
-                ),
-                stats_port=stats_port,
-                socket_path=os.path.join(temp_dir, "admin.sock"),
-                has_received_routes=True,
-                has_received_servers=True,
-                health_check_path="/-/healthz",
-                health_check_inter="500ms",
-                health_check_rise=1,
-                health_check_fall=2,
-            )
-
             backend = BackendConfig(
                 name="llm",
                 path_prefix="/",
                 app_name="llm",
-                health_check_path="/-/healthz",
+                http_health_check_path="/-/healthz",
                 servers=[
                     ServerConfig(
                         name="A",
@@ -1045,21 +1559,12 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 ],
             )
 
-            api = HAProxyApi(
-                cfg=config,
-                backend_configs={"llm": backend},
-                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
-            )
-            haproxy_api_cleanup(api)
-            await api.start()
-
-            wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
-            await async_wait_for_condition(
-                lambda: requests.get(
-                    f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
-                ).status_code
-                == 200,
-                timeout=10,
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
             )
 
             # Every dispatch failure must surface as 5xx with a reason
@@ -1088,16 +1593,117 @@ async def test_router_failure_fails_loud_with_reason(haproxy_api_cleanup):
                 _backend_stot(stats_csv, "llm-via-ingress-request-router") == 0
             ), stats_csv
         finally:
-            for srv in (replica, broken_router):
-                try:
-                    srv.should_exit = True
-                except Exception:
-                    pass
-            for thr in (replica_thread, broken_router_thread):
-                try:
-                    thr.join(timeout=5)
-                except Exception:
-                    pass
+            _shutdown_fake_servers(
+                (replica, broken_router), (replica_thread, broken_router_thread)
+            )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ingress_router_fallback", [False, True])
+async def test_pin_miss_falls_back_to_fallback_server(
+    haproxy_api_cleanup, ingress_router_fallback
+):
+    """When the router pins a replica_id that is not in HAProxy's server map
+    (the brief membership gap right after an app becomes RUNNING, where the
+    router's in-process view runs ahead of HAProxy's config reload), HAProxy
+    must hand the request to the fallback Serve proxy instead of returning 503.
+    The primary backend must not be load-balanced into, since that would break
+    session affinity."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_port = find_free_port()
+        fallback_port = find_free_port()
+        router_port = find_free_port()
+
+        actor_name = "SERVE_REPLICA::app#dep#aaa"
+        # The router names a replica that is NOT among the configured servers,
+        # simulating HAProxy lagging the router's freshly-updated view.
+        unknown_actor_name = "SERVE_REPLICA::app#dep#not_loaded_yet"
+
+        replica, replica_thread = _create_replica_server(
+            replica_port, replica_id_header="A"
+        )
+        fallback, fallback_thread = _create_replica_server(
+            fallback_port, replica_id_header="FALLBACK"
+        )
+        router, router_thread, _ = _create_router_server(
+            router_port, replica_id_to_return=unknown_actor_name
+        )
+
+        try:
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                http_health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_port,
+                        replica_id=actor_name,
+                    ),
+                ],
+                ingress_request_router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+                fallback_server=ServerConfig(
+                    name="fallback",
+                    host="127.0.0.1",
+                    port=fallback_port,
+                ),
+                ingress_router_fallback=ingress_router_fallback,
+            )
+
+            await _start_router_haproxy(
+                temp_dir,
+                haproxy_port,
+                stats_port,
+                {"llm": backend},
+                haproxy_api_cleanup,
+            )
+
+            # The fallback is a `backup` server, so the /-/healthz wait above
+            # (satisfied by the primary replica alone) does not gate it. Before
+            # its health check passes, a pin-miss use-server is skipped and the
+            # request load-balances onto the primary replica; once it passes,
+            # every pin-miss POST lands on the fallback proxy. Require several
+            # consecutive FALLBACK responses so a transient health-check flap
+            # during warmup retries here instead of failing an assertion.
+            def _pin_miss_consistently_reaches_fallback():
+                for _ in range(3):
+                    resp = requests.post(
+                        f"http://127.0.0.1:{haproxy_port}/predict",
+                        json={"prompt": "hi"},
+                        timeout=5,
+                    )
+                    if (
+                        resp.status_code != 200
+                        or resp.headers.get("x-replica-id") != "FALLBACK"
+                    ):
+                        return False
+                return True
+
+            await async_wait_for_condition(
+                _pin_miss_consistently_reaches_fallback, timeout=10
+            )
+
+            # A pin-miss must route via the router backend, never through the
+            # plain primary backend (a silent router bypass). The router backend
+            # carries the fallback-served sessions; the plain backend stays 0.
+            stats_csv = requests.get(
+                f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
+            ).text
+            assert _backend_stot(stats_csv, "llm") == 0, stats_csv
+            assert (
+                _backend_stot(stats_csv, "llm-via-ingress-request-router") >= 3
+            ), stats_csv
+        finally:
+            _shutdown_fake_servers(
+                (replica, fallback, router),
+                (replica_thread, fallback_thread, router_thread),
+            )
 
 
 @pytest.mark.asyncio
@@ -1292,6 +1898,46 @@ async def test_start(haproxy_api_cleanup):
         await api.stop()
         assert api._proc is None
         assert not api._is_running()
+
+
+@pytest.mark.asyncio
+async def test_get_running_pid_matches_live_proc(haproxy_api_cleanup):
+    """`_get_running_pid` parses real `show info` and returns the forked pid.
+
+    Guards the reload-takeover gate against a `show info` format change that the
+    hard-coded fakes in test_haproxy_process_manager.py can't catch.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        socket_path = os.path.join(temp_dir, "admin.sock")
+
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            socket_path=socket_path,
+            has_received_routes=True,
+            has_received_servers=True,
+        )
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=config_file_path,
+        )
+        haproxy_api_cleanup(api)
+
+        await api.start()
+        # The socket's `show info` must report the pid we forked.
+        assert await api._get_running_pid() == api._proc.pid
+
+        await api.stop()
+        # Socket is gone once stopped, so the pid is unknown.
+        assert await api._get_running_pid() is None
 
 
 @pytest.mark.asyncio
@@ -1894,12 +2540,15 @@ async def test_errorfile_creation_and_config(haproxy_api_cleanup):
         # Start HAProxy and verify config contains errorfile directives
         await api.start()
 
-        # Verify config file contains errorfile directives for both 502 and 504 pointing to the same file
+        # Verify config file contains errorfile directives for 502, 503 and 504 pointing to the same file
         with open(config_file_path, "r") as f:
             config_content = f.read()
             assert (
                 f"errorfile 502 {expected_error_file_path}" in config_content
             ), "HAProxy config should contain 502 errorfile directive"
+            assert (
+                f"errorfile 503 {expected_error_file_path}" in config_content
+            ), "HAProxy config should contain 503 errorfile directive"
             assert (
                 f"errorfile 504 {expected_error_file_path}" in config_content
             ), "HAProxy config should contain 504 errorfile directive"
@@ -2298,6 +2947,60 @@ async def test_start_with_tcp_nodelay(haproxy_api_cleanup):
         await api.stop()
 
 
+@pytest.mark.asyncio
+async def test_std_streams_redirected_to_files(haproxy_api_cleanup):
+    """Both HAProxy stdout and stderr must be files (not PIPEs) so a
+    full 64KB kernel pipe buffer can never block admin-socket threads
+    under load. Each spawn gets its own files so a reload doesn't lose
+    the prior worker's diagnostics.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config = HAProxyConfig(
+            http_options=HTTPOptions(host="127.0.0.1", port=8000),
+            stats_port=8404,
+            pass_health_checks=True,
+            socket_path=os.path.join(temp_dir, "admin.sock"),
+            has_received_routes=True,
+            has_received_servers=True,
+            reload_id=f"initial-{int(time.time() * 1000)}",
+        )
+        backend = BackendConfig(
+            name="test_backend",
+            path_prefix="/",
+            app_name="test_app",
+            servers=[ServerConfig(name="server", host="127.0.0.1", port=9999)],
+        )
+        api = HAProxyApi(
+            cfg=config,
+            backend_configs={"test_backend": backend},
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+        haproxy_api_cleanup(api)
+
+        await api.start()
+        first_stderr = api._proc._stderr_path
+        first_stdout = api._proc._stdout_path
+        # No pipes — both streams went to files.
+        assert api._proc.stderr is None
+        assert api._proc.stdout is None
+        # HAProxy's -db startup banner landed on stderr.
+        assert os.path.getsize(first_stderr) > 0
+        # stdout file exists even if it stays empty by default.
+        assert os.path.exists(first_stdout)
+
+        # Reload must open new files so the prior worker's logs survive.
+        config.reload_id = f"reload-{int(time.time() * 1000)}"
+        await api._graceful_reload()
+        assert api._proc.stderr is None
+        assert api._proc.stdout is None
+        assert api._proc._stderr_path != first_stderr
+        assert api._proc._stdout_path != first_stdout
+        assert os.path.exists(first_stderr)
+        assert os.path.exists(first_stdout)
+
+        await api.stop()
+
+
 def _bare_haproxy_manager():
     """An uninitialized HAProxyManager for unit-testing its methods.
 
@@ -2333,6 +3036,30 @@ async def test_is_drained_waits_for_old_procs():
     assert await manager.is_drained() is True
 
 
+def test_soft_stop_old_procs_signals_live_workers():
+    """_soft_stop_old_procs re-delivers SIGUSR1 to our live displaced workers,
+    healing a worker whose `-sf` signal was lost, and skips exited procs and a
+    pid that is no longer one of ours (recycled)."""
+    api = HAProxyApi.__new__(HAProxyApi)
+
+    alive_ours = mock.Mock(pid=111, returncode=None)
+    exited = mock.Mock(pid=222, returncode=0)
+    alive_recycled = mock.Mock(pid=333, returncode=None)
+    api._old_procs = [alive_ours, exited, alive_recycled]
+    api._retired_logs = collections.deque()
+    api._max_retained_logs = 10
+
+    # 333's pid was recycled onto an unrelated process.
+    api._is_our_haproxy = lambda pid: pid != 333
+
+    with mock.patch("ray.serve._private.haproxy.os.kill") as mock_kill:
+        api._soft_stop_old_procs()
+
+    # Only the live worker that is still ours is signaled; the exited one is
+    # pruned and the recycled pid is left alone.
+    mock_kill.assert_called_once_with(111, signal.SIGUSR1)
+
+
 @pytest.mark.asyncio
 async def test_is_drained_false_before_min_period():
     """is_drained() is False until PROXY_MIN_DRAINING_PERIOD_S has elapsed,
@@ -2346,6 +3073,442 @@ async def test_is_drained_false_before_min_period():
     )
 
     assert await manager.is_drained() is False
+
+
+@pytest.mark.asyncio
+async def test_failed_spawn_retires_log_files(monkeypatch):
+    """A spawn that fails startup must not orphan its std-stream log files —
+    they should be retired into the bounded ring like an exited worker's."""
+
+    class _FakeProc:
+        def __init__(self):
+            self.returncode = None
+            self.pid = 4321
+
+        def kill(self):
+            self.returncode = -9
+
+        async def wait(self):
+            return self.returncode
+
+    async def _fake_exec(*args, **kwargs):
+        return _FakeProc()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = HAProxyApi(
+            cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+            config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+        )
+
+        monkeypatch.setattr(
+            "ray.serve._private.haproxy.get_haproxy_binary", lambda: "haproxy"
+        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_exec)
+
+        async def _boom(proc, timeout_s=5):
+            raise RuntimeError("startup failed")
+
+        monkeypatch.setattr(api, "_wait_for_hap_availability", _boom)
+
+        with pytest.raises(RuntimeError, match="startup failed"):
+            await api._start_and_wait_for_haproxy()
+
+        # The failed spawn's files were created then retired into the ring,
+        # not left orphaned on disk.
+        assert len(api._retired_logs) == 1
+        stdout_path, stderr_path = api._retired_logs[0]
+        assert stdout_path.endswith(".stdout.log")
+        assert stderr_path.endswith(".stderr.log")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metrics_enabled,router_metrics_enabled",
+    [(False, False), (True, False), (True, True)],
+)
+async def test_ingress_router_fallback_uses_primary_backend(
+    haproxy_api_cleanup, tmp_path, metrics_enabled, router_metrics_enabled
+):
+    """Router failures use primary replicas even when the head proxy is healthy."""
+    release = threading.Event()
+    router_failed = threading.Event()
+    servers, threads, targets = [], [], []
+    for replica_id in ("a", "b"):
+        app = FastAPI()
+
+        @app.get("/-/healthz")
+        async def health():
+            return {}
+
+        @app.post("/predict")
+        async def predict(request: Request, replica_id=replica_id):
+            if (await request.json()).get("hold"):
+
+                async def stream():
+                    yield b"started\n"
+                    while not release.is_set():
+                        await asyncio.sleep(0.01)
+                    yield b"done\n"
+
+                return StreamingResponse(stream(), headers={"x-replica-id": replica_id})
+            return Response(replica_id)
+
+        port = find_free_port()
+        server, thread = _serve_fastapi_app(app, port, _healthz_ready(port))
+        servers.append(server)
+        threads.append(thread)
+        targets.append(
+            ServerConfig(
+                name=replica_id, host="127.0.0.1", port=port, replica_id=replica_id
+            )
+        )
+
+    app = FastAPI()
+
+    @app.get("/-/healthz")
+    async def router_health():
+        return {}
+
+    @app.post("/internal/route")
+    async def route():
+        if router_failed.is_set():
+            return Response(status_code=503)
+        # Choose b, not the backend's first/default server. This verifies that
+        # a successful router decision survives the fallback-enabled path.
+        return {"replica_id": "b"}
+
+    port = find_free_port()
+    server, thread = _serve_fastapi_app(app, port, _healthz_ready(port))
+    servers.append(server)
+    threads.append(thread)
+    fallback_app = FastAPI()
+
+    @fallback_app.get("/-/healthz")
+    async def fallback_health():
+        return {}
+
+    @fallback_app.post("/predict")
+    async def fallback_predict():
+        return Response("fallback")
+
+    fallback_port = find_free_port()
+    fallback_server, fallback_thread = _serve_fastapi_app(
+        fallback_app, fallback_port, _healthz_ready(fallback_port)
+    )
+    servers.append(fallback_server)
+    threads.append(fallback_thread)
+    backend = BackendConfig(
+        name="llm",
+        path_prefix="/",
+        servers=targets,
+        ingress_request_router_servers=[
+            ServerConfig(name="router", host="127.0.0.1", port=port)
+        ],
+        fallback_server=ServerConfig(
+            name="fallback", host="127.0.0.1", port=fallback_port
+        ),
+        ingress_router_fallback=True,
+    )
+    http_port, stats_port = find_free_port(), find_free_port()
+    try:
+        api = await _start_router_haproxy(
+            str(tmp_path),
+            http_port,
+            stats_port,
+            {"llm": backend},
+            haproxy_api_cleanup,
+            metrics_enabled=metrics_enabled,
+            ingress_request_router_metrics_enabled=router_metrics_enabled,
+        )
+        assert api.cfg.balance_algorithm == "leastconn"
+        config = (tmp_path / "haproxy.cfg").read_text()
+        lua = (tmp_path / "ingress_request_router.lua").read_text()
+        primary_backend = config.split("\nbackend llm\n", 1)[1].split(
+            "\nbackend llm-via-ingress-request-router\n", 1
+        )[0]
+        assert "balance random(1)" in primary_backend
+        assert (
+            "balance random(1)"
+            in config.split("\nbackend llm-via-ingress-request-router\n", 1)[1]
+        )
+        assert ("log-format-sd" in config) == metrics_enabled
+        assert ("fallback=%" in config) == router_metrics_enabled
+        assert ("_metrics_t0" in lua) == router_metrics_enabled
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{http_port}", timeout=10
+        ) as client:
+            async with client.stream(
+                "POST", "/predict", json={"hold": True}
+            ) as response:
+                assert response.status_code == 200
+                assert response.headers["x-replica-id"] == "b"
+                router_failed.set()
+                # Router failures randomly select a healthy primary replica.
+                for _ in range(10):
+                    result = await client.post("/predict", json={})
+                    assert result.status_code == 200
+                    assert result.text in {"a", "b"}
+                stats_csv = requests.get(
+                    f"http://127.0.0.1:{stats_port}/stats;csv", timeout=5
+                ).text
+                assert _backend_stot(stats_csv, "llm") >= 10, stats_csv
+                assert (
+                    _backend_stot(stats_csv, "llm-via-ingress-request-router") >= 1
+                ), stats_csv
+                release.set()
+                assert await response.aread() == b"started\ndone\n"
+    finally:
+        release.set()
+        _shutdown_fake_servers(servers, threads)
+
+
+@pytest.fixture(scope="module")
+def metrics_port():
+    port = find_free_port()
+    ray.init(
+        num_cpus=1,
+        include_dashboard=False,
+        _metrics_export_port=port,
+        _system_config={"metrics_report_interval_ms": 100},
+    )
+    yield port
+    ray.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure,reason,router_status",
+    [
+        ("4xx", "router_non_200_4xx", 400),
+        ("5xx", "router_non_200_5xx", 503),
+        ("timeout", "router_unreachable", None),
+        ("unreachable", "router_unreachable", None),
+        ("no_routers", "router_unavailable", None),
+        ("malformed", "unparseable_replica_id", 200),
+        ("unknown", "unknown_replica_id", 200),
+    ],
+)
+async def test_ingress_router_fallback(
+    failure,
+    reason,
+    router_status,
+    metrics_port,
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    # Short test deadline; the production router request timeout remains unchanged.
+    monkeypatch.setattr(
+        haproxy, "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S", 1
+    )
+    monkeypatch.setattr(haproxy, "RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY", True)
+    # Capture at the Serve logger once, independent of Ray/root propagation.
+    monkeypatch.setattr(logging.getLogger("ray.serve"), "handlers", [caplog.handler])
+    monkeypatch.setattr(logging.getLogger("ray.serve"), "propagate", False)
+    servers, threads, targets = [], [], []
+    for replica_id in ("a", "b"):
+        port = find_free_port()
+        server, thread = _create_replica_server(port, replica_id)
+        servers.append(server)
+        threads.append(thread)
+        targets.append(
+            ServerConfig(
+                name=replica_id, host="127.0.0.1", port=port, replica_id=replica_id
+            )
+        )
+
+    router_app = FastAPI()
+    state = {"failure": failure}
+
+    @router_app.get("/-/healthz")
+    async def router_health():
+        return {}
+
+    @router_app.post("/internal/route")
+    async def route():
+        mode = state["failure"]
+        if mode == "4xx":
+            return Response(status_code=400)
+        if mode == "5xx":
+            return Response(status_code=503)
+        if mode == "timeout":
+            await asyncio.sleep(2)
+        if mode == "malformed":
+            return Response("not a routing response")
+        return {"replica_id": "absent" if mode == "unknown" else "a"}
+
+    router_port = find_free_port()
+    server, thread = _serve_fastapi_app(
+        router_app, router_port, _healthz_ready(router_port)
+    )
+    servers.append(server)
+    threads.append(thread)
+    router = ServerConfig(name="router", host="127.0.0.1", port=router_port)
+    backend = BackendConfig(
+        name=f"llm-{failure}",
+        app_name=f"llm-{failure}",
+        path_prefix="/",
+        servers=targets,
+        ingress_router_fallback=True,
+        ingress_request_router_servers=[]
+        if failure == "no_routers"
+        else [
+            ServerConfig(name="down", host="127.0.0.1", port=find_free_port())
+            if failure == "unreachable"
+            else router
+        ],
+    )
+    http_port, stats_port = find_free_port(), find_free_port()
+    cfg = HAProxyConfig(
+        http_options=HTTPOptions(host="127.0.0.1", port=http_port),
+        stats_port=stats_port,
+        socket_path=str(tmp_path / "admin.sock"),
+        server_state_base=str(tmp_path),
+        server_state_file=str(tmp_path / "server-state"),
+        metrics_socket_path=str(tmp_path / "metrics.sock"),
+        metrics_enabled=True,
+        ingress_request_router_metrics_enabled=True,
+        has_received_routes=True,
+        has_received_servers=True,
+        http_health_check_path="/-/healthz",
+        health_check_inter="100ms",
+        health_check_rise=1,
+    )
+    api = HAProxyApi(
+        cfg=cfg,
+        backend_configs={backend.name: backend},
+        config_file_path=str(tmp_path / "haproxy.cfg"),
+    )
+    collector = HAProxyMetricsCollector(api, "test-node")
+    await collector.bind_and_attach(cfg.metrics_socket_path)
+    try:
+        await api.start()
+        await async_wait_for_condition(lambda: check_haproxy_ready(stats_port))
+        await async_wait_for_condition(
+            lambda: requests.get(
+                f"http://127.0.0.1:{http_port}/-/healthz", timeout=2
+            ).status_code
+            == 200
+        )
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{http_port}", timeout=10
+        ) as client:
+
+            async def send_request(i):
+                request_id = f"{failure}-{i}"
+                body = json.dumps({"prompt": f"hello {i}"})
+                response = await client.post(
+                    "/predict",
+                    content=body,
+                    headers={
+                        "x-request-id": request_id,
+                        "x-serve-router-kv-token-key": "untrusted",
+                    },
+                )
+                assert response.status_code == 200, response.text
+                assert (
+                    response.json()["body_sha256"]
+                    == hashlib.sha256(body.encode()).hexdigest()
+                )
+                assert response.headers["x-received-request-id"] == request_id
+                assert "echo-x-serve-router-kv-token-key" not in response.headers
+                assert response.headers["x-replica-id"] in {"a", "b"}
+
+            await asyncio.gather(*(send_request(i) for i in range(12)))
+
+            def check_metrics():
+                metrics = fetch_prometheus_metrics([f"127.0.0.1:{metrics_port}"])
+                samples = metrics.get(
+                    "ray_serve_haproxy_ingress_router_fallbacks_total", []
+                )
+                samples = [
+                    s
+                    for s in samples
+                    if s.labels.get("application") == backend.app_name
+                ]
+                assert sum(s.value for s in samples) == 12
+                assert {s.labels["reason"] for s in samples} == {reason}
+                return True
+
+            await async_wait_for_condition(check_metrics, timeout=30)
+            warnings = [
+                record.getMessage()
+                for record in caplog.records
+                if "Routing fell back after ingress router failure"
+                in record.getMessage()
+                and backend.app_name in record.getMessage()
+            ]
+            # All 12 fallbacks are counted, while repeated warnings are limited.
+            assert len(warnings) == 1
+            assert f"reason={reason}" in warnings[0]
+            assert f"router_status={router_status}" in warnings[0]
+            assert "Check ingress router logs" in warnings[0]
+
+            # Restore the ingress router, retaining the same app and proxy.
+            state["failure"] = None
+            if failure in {"no_routers", "unreachable"}:
+                backend.ingress_request_router_servers = [router]
+                api.set_backend_configs({backend.name: backend})
+                await api.reload()
+            # Existing keep-alive connections may still use the draining worker's
+            # old Lua state. A new connection exercises the reloaded router pool.
+            async with httpx.AsyncClient(
+                base_url=f"http://127.0.0.1:{http_port}", timeout=10
+            ) as recovered_client:
+                response = await recovered_client.post(
+                    "/predict",
+                    json={"prompt": "recovered"},
+                    headers={"x-request-id": "recovered"},
+                )
+                assert response.status_code == 200
+                assert response.headers["x-replica-id"] == "a"
+
+            def check_recovery_metrics():
+                samples = fetch_prometheus_metrics([f"127.0.0.1:{metrics_port}"]).get(
+                    "ray_serve_haproxy_ingress_router_requests_total", []
+                )
+                assert (
+                    sum(
+                        s.value
+                        for s in samples
+                        if s.labels.get("application") == backend.app_name
+                    )
+                    == 13
+                )
+                return check_metrics()  # Still exactly 12 fallbacks.
+
+            await async_wait_for_condition(check_recovery_metrics, timeout=30)
+    finally:
+        await api.stop()
+        collector.close()
+        _shutdown_fake_servers(tuple(servers), tuple(threads))
+
+
+def test_ingress_router_fallback_yaml(ray_shutdown):
+    ray.init(num_cpus=1, include_dashboard=False)
+    config_path = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "ingress_router_fallback.yaml"
+    )
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    config = ServeDeploySchema.model_validate(config)
+    serve.start()
+    _get_global_client().deploy_apps(config, _blocking=True)
+    router = serve.get_deployment_handle("Router", app_name="app")
+
+    def router_ready():
+        # App readiness can precede HAProxy's router membership update.
+        requests.post("http://127.0.0.1:8000/", json={}, timeout=10)
+        return router.get_num_requests.remote().result(timeout_s=10) > 0
+
+    wait_for_condition(router_ready)
+    # The router returns 503, so HAProxy falls back to a healthy serving replica.
+    for i in range(8):
+        response = requests.post(
+            "http://127.0.0.1:8000/", json={"request": i}, timeout=10
+        )
+        assert response.status_code == 200
+        assert response.json() == {"request": i}
 
 
 if __name__ == "__main__":

@@ -19,6 +19,10 @@ def _equalize(
 
     Args:
         per_split_bundles: ref bundles to equalize.
+        owned_by_consumer: whether the resulting blocks are owned by the
+            consumer of the equalized output (passed through to
+            :class:`RefBundle`).
+
     Returns:
         the equalized ref bundles.
     """
@@ -118,8 +122,9 @@ def _shave_all_splits(
 
     Args:
         input_splits: all block list to shave.
-        input_splits: num rows (per block) for each block list.
+        per_split_num_rows: num rows (per block) for each block list.
         target_size: the upper bound target size of the shaved lists.
+
     Returns:
         A tuple of:
             - all shaved block list.
@@ -156,7 +161,6 @@ def _split_leftovers(
     ] = _split_at_indices(
         [(entry.ref, entry.metadata) for entry in leftovers.blocks],
         split_indices,
-        leftovers.owns_blocks,
     )
     return [list(zip(block_refs, meta)) for block_refs, meta in zip(*split_result)][
         :num_splits

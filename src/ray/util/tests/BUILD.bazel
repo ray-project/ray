@@ -22,15 +22,6 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "array_test",
-    srcs = ["array_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:array",
-    ],
-)
-
-ray_cc_test(
     name = "thread_checker_test",
     size = "small",
     srcs = ["thread_checker_test.cc"],

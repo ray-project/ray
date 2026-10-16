@@ -141,10 +141,14 @@ def _explore(
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
-            if isinstance(config[key], int):
-                # If this hyperparameter started out as an integer (ex: `batch_size`),
-                # convert the new value back
-                new_config[key] = int(new_config[key])
+            if isinstance(config[key], bool):
+                # Keep as bool, let `resample_probability` flip it and ignore
+                # `perturbation_factor`
+                new_config[key] = bool(new_config[key])
+            elif isinstance(config[key], int):
+                # If this parameter started out as an integer (e.g. `batch_size`),
+                # round before converting the new value back.
+                new_config[key] = int(round(new_config[key]))
         else:
             raise ValueError(
                 f"Unsupported hyperparameter distribution type: {type(distribution)}"
@@ -994,7 +998,12 @@ class PopulationBasedTraining(FIFOScheduler):
             )
             if num_trials_in_quantile > len(trials) / 2:
                 num_trials_in_quantile = int(math.floor(len(trials) / 2))
-            return (trials[:num_trials_in_quantile], trials[-num_trials_in_quantile:])
+            # Indexed from the front as `trials[-num_trials_in_quantile:]` is the
+            # whole population
+            return (
+                trials[:num_trials_in_quantile],
+                trials[len(trials) - num_trials_in_quantile :],
+            )
 
     def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
         """Ensures all trials get fair share of time (as defined by time_attr).

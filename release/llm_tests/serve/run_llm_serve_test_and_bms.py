@@ -81,7 +81,7 @@ SERVICE_NAME = "serve_llm_release_test_service"
     help="Don't query AWS Secrets Manager for HuggingFace token",
 )
 @click.option(
-    "--timeout", type=int, default=600, help="Ray LLM service timeout parameter."
+    "--timeout", type=int, default=900, help="Ray LLM service timeout parameter."
 )
 @click.option(
     "--run-vllm-profiler",

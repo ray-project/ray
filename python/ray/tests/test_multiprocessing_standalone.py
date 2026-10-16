@@ -10,7 +10,7 @@ import sys
 import pytest
 
 import ray
-from ray._private.test_utils import external_redis_test_enabled
+from ray._private.test_utils import persistent_gcs_test_enabled
 from ray.util.multiprocessing import Pool
 
 
@@ -36,7 +36,7 @@ def pool_4_processes_python_multiprocessing_lib():
 
 
 @pytest.mark.skipif(
-    external_redis_test_enabled(),
+    persistent_gcs_test_enabled(),
     reason="Starts multiple Ray instances in parallel with the same namespace.",
 )
 def test_ray_init(shutdown_only):
@@ -74,7 +74,7 @@ def test_ray_init(shutdown_only):
 
 
 @pytest.mark.skipif(
-    external_redis_test_enabled(),
+    persistent_gcs_test_enabled(),
     reason="Starts multiple Ray instances in parallel with the same namespace.",
 )
 @pytest.mark.parametrize(

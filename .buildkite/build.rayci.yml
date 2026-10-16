@@ -94,6 +94,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -115,6 +116,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -151,8 +153,8 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -161,6 +163,7 @@ steps:
         - "12.6.3-cudnn"
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
+        - "13.0.0-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -183,7 +186,6 @@ steps:
         --python-version {{array.python}}
         --platform cpu
         --platform tpu
-        --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
         --platform cu12.3.2-cudnn9
@@ -192,6 +194,7 @@ steps:
         --platform cu12.6.3-cudnn
         --platform cu12.8.1-cudnn
         --platform cu12.9.1-cudnn
+        --platform cu13.0.0-cudnn
         --image-type ray
         --architecture x86_64
     array:
@@ -200,6 +203,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     depends_on:
       - ray-image-cpu-build($)
       - ray-image-tpu-build($)
@@ -219,6 +223,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -240,8 +245,8 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -250,6 +255,7 @@ steps:
         - "12.6.3-cudnn"
         - "12.8.1-cudnn"
         - "12.9.1-cudnn"
+        - "13.0.0-cudnn"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -313,7 +319,6 @@ steps:
       - bazel run //ci/ray_ci/automation:push_ray_image --
         --python-version {{array.python}}
         --platform cpu
-        --platform cu11.7.1-cudnn8
         --platform cu11.8.0-cudnn8
         --platform cu12.1.1-cudnn8
         --platform cu12.3.2-cudnn9
@@ -322,6 +327,7 @@ steps:
         --platform cu12.6.3-cudnn
         --platform cu12.8.1-cudnn
         --platform cu12.9.1-cudnn
+        --platform cu13.0.0-cudnn
         --image-type ray-extra
         --architecture x86_64
     array:
@@ -330,6 +336,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     depends_on:
       - ray-extra-image-cpu-build($)
       - ray-extra-image-cuda-build($)
@@ -427,7 +434,12 @@ steps:
     commands:
       - bazel run .buildkite:copy_files -- --destination docker_login
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
+      - bazel run //ci/ray_ci/automation:generate_index --
+        --prefix nightly
+        --image-type ray-llm
     depends_on:
       - ray_images_push(*)
       - ray_images_push_aarch64(*)
+      - ray_llm_images_cuda_push(*)
+      - ray_llm_images_cuda_push_aarch64(*)
       - forge

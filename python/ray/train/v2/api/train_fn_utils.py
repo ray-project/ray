@@ -15,6 +15,7 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import Checkpoint
+    from ray.train.v2.api.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
 
 
@@ -29,10 +30,19 @@ def report(
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
     validation: Union[bool, ValidationTaskConfig] = False,
 ):
-    """Report metrics and optionally save a checkpoint.
+    """Save a checkpoint of the training state so that training can recover from failures.
 
-    If a checkpoint is provided, it will be
-    :ref:`persisted to storage <persistent-storage-guide>`.
+    The checkpoint is :ref:`persisted to storage <persistent-storage-guide>`.
+    If workers fail and Ray Train restarts them, the training function can load
+    the latest reported checkpoint with :func:`ray.train.get_checkpoint` and
+    resume from it. See the :ref:`fault tolerance guide <train-fault-tolerance>`.
+
+    Ray Train attaches the ``metrics`` to the checkpoint, uses them to decide
+    which checkpoints to keep, and returns them in :class:`~ray.train.Result`.
+    See :class:`~ray.train.CheckpointConfig`. Ray Train doesn't persist metrics
+    reported without a checkpoint. To track metrics over the course of training,
+    log them from the workers to an experiment tracking tool instead. See
+    :ref:`train-experiment-tracking-native`.
 
     If this is called in multiple distributed training workers:
 
@@ -66,6 +76,14 @@ def report(
             def train_func(config):
                 start_epoch = 0
 
+                # Resume from the latest reported checkpoint after a failure.
+                checkpoint = ray.train.get_checkpoint()
+                if checkpoint:
+                    with checkpoint.as_directory() as checkpoint_dir:
+                        # Load the model and optimizer state...
+                        # start_epoch = ... + 1
+                        pass
+
                 for epoch in range(start_epoch, config.get("num_epochs", 10)):
                     # Do training...
 
@@ -88,8 +106,11 @@ def report(
             )
 
     Args:
-        metrics: The metrics you want to report.
-        checkpoint: The optional checkpoint you want to report.
+        metrics: The metrics to attach to the checkpoint, such as the
+            validation loss. Ray Train uses them to rank checkpoints.
+        checkpoint: The checkpoint to persist. Workers that don't hold any
+            checkpoint data, such as non-zero ranks in data-parallel training,
+            pass ``None``.
         checkpoint_dir_name: Custom name for the checkpoint directory.
             If not provided, a unique directory name will be automatically generated.
             If provided, it must be unique across all checkpoints per worker to avoid
@@ -142,6 +163,52 @@ def get_context() -> TrainContext:
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     return get_train_fn_utils().get_context()
+
+
+@PublicAPI(stability="alpha")
+@requires_train_worker(raise_in_tune_session=True)
+def get_preemption_info() -> Optional["PreemptionInfo"]:
+    """Return the imminent preemption info for the current worker, or ``None``.
+
+    Returns ``None`` until a node hosting one of the workers is being preempted
+    (e.g. a spot instance reclaim). The recommended reaction is to save a
+    just-in-time checkpoint and keep training: when the node is actually
+    preempted, Ray Train restarts the run and resumes it from the latest
+    checkpoint, retrying against ``FailureConfig.max_preemption_failures``.
+    A run that returns cleanly always finishes, whether or not a preemption
+    is in progress.
+
+    .. warning::
+
+        All workers must call `ray.train.get_preemption_info` the same number of
+        times so that Ray Train can agree on a single value across all workers.
+        This method acts as a barrier across all workers, so be sure that every
+        worker reaches this method.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            import ray.train
+
+            def train_func(config):
+                saved_on_preemption = False
+                for step in range(config["total_steps"]):
+                    # ... normal training step (with your usual periodic
+                    # checkpointing) ...
+
+                    preemption_info = ray.train.get_preemption_info()
+                    if preemption_info is not None and not saved_on_preemption:
+                        ray.train.report(metrics, checkpoint=checkpoint)
+                        saved_on_preemption = True
+
+    Returns:
+        A :class:`~ray.train.PreemptionInfo` with the affected node ids / world
+        ranks and the reclaim deadline, or ``None`` if no preemption has been
+        detected.
+    """
+    return get_train_fn_utils().get_preemption_info()
 
 
 @PublicAPI(stability="stable")

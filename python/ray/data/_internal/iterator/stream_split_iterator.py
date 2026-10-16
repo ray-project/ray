@@ -4,8 +4,10 @@ import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
-from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
+from ray.data._internal.execution.interfaces import (
+    NodeIdStr,
+    RefBundle,
+)
 from ray.data._internal.stats import DatasetStats
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
@@ -75,7 +77,7 @@ class StreamSplitDataIterator(DataIterator):
 
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
         def gen_blocks() -> Iterator[RefBundle]:
             logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
             cur_epoch = ray.get(
@@ -125,9 +127,13 @@ class StreamSplitDataIterator(DataIterator):
 
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted")
 
+        # The prefetched bytes stat should not accumulate across different executions
+        # because this stat is used by the StreamingExecutor for backpressure decisions.
+        self._iter_stats.iter_prefetched_bytes = 0
+
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
-        return gen_blocks(), self._iter_stats, False, None
+        return gen_blocks(), self._iter_stats, None
 
     def _on_iteration_end(self, executor) -> None:
         """Fire ``notify_split_finished`` from the consumer's thread.
@@ -177,7 +183,7 @@ class StreamSplitDataIterator(DataIterator):
         """Returns the number of splits total."""
         return self._world_size
 
-    def _get_dataset_tag(self):
+    def _get_dataset_tag(self) -> Dict[str, str]:
         return ray.get(self._coord_actor.get_dataset_tag.remote(self._output_split_idx))
 
 
@@ -246,8 +252,16 @@ class SplitCoordinator:
     def get_dataset_context(self) -> DataContext:
         return self._data_context
 
-    def get_dataset_tag(self, output_split_idx: int) -> str:
-        return f"{self._base_dataset.get_dataset_id()}_split_{output_split_idx}"
+    def get_dataset_tag(self, output_split_idx: int) -> Dict[str, str]:
+        """Metrics tags for the dataset.
+
+        ``dataset`` is the dataset id and ``split_index`` indicates the split.
+        """
+        # The tag is for the next epoch; its executor is created lazily, so the run index is not incremented yet.
+        return {
+            "dataset": self._base_dataset._get_dataset_id_for_next_run(),
+            "split_index": str(output_split_idx),
+        }
 
     def get_dataset_schema(self):
         with self._dataset_state_lock:
@@ -277,6 +291,10 @@ class SplitCoordinator:
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
 
+        Args:
+            split_idx: The split index of the caller; used as the barrier key
+                so all split consumers synchronize before a new epoch starts.
+
         Returns:
             UUID for the epoch, which must be used when accessing results via get().
         """
@@ -302,8 +320,8 @@ class SplitCoordinator:
                     ds = self._base_dataset
                     # Re-execute dataset
                     self._current_executor = ds._create_executor()
-                    self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, ds._plan
+                    self._output_iterator = ds._build_bundle_iterator(
+                        self._current_executor
                     )
                     # Register the streaming split external consumers with the executor's resource manager.
                     self._current_executor.set_external_consumer_bytes(0)

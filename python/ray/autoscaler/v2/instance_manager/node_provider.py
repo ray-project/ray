@@ -310,7 +310,8 @@ class NodeProviderAdapter(ICloudInstanceProvider):
         max_launch_batch_per_type: int = AUTOSCALER_MAX_LAUNCH_BATCH,
         max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
     ) -> None:
-        """
+        """Initialize the node provider adapter.
+
         Args:
             v1_provider: The v1 node provider to wrap.
             config_reader: The config reader to read the autoscaling config.

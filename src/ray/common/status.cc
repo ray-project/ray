@@ -79,6 +79,7 @@ const absl::flat_hash_map<StatusCode, std::string_view> kCodeToStr = {
     {StatusCode::ChannelError, "ChannelError"},
     {StatusCode::ChannelTimeoutError, "ChannelTimeoutError"},
     {StatusCode::PermissionDenied, "PermissionDenied"},
+    {StatusCode::GcsPassive, "GcsPassive"},
 };
 
 const absl::flat_hash_map<std::string_view, StatusCode> kStrToCode = []() {

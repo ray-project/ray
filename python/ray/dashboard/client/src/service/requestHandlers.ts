@@ -8,7 +8,7 @@
  * arises.
  */
 
-import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
+import { AxiosRequestConfig, AxiosResponse, create } from "axios";
 import { AUTHENTICATION_ERROR_EVENT } from "../authentication/constants";
 import { DASHBOARD_DATA_LOADED_EVENT } from "../common/constants";
 
@@ -29,7 +29,7 @@ export const formatUrl = (url: string): string => {
 };
 
 // Create axios instance with interceptors for authentication
-const axiosInstance = axios.create();
+const axiosInstance = create();
 
 // Export the configured axios instance for direct use when needed
 export { axiosInstance };
@@ -65,4 +65,11 @@ export const get = <T = any, R = AxiosResponse<T>>(
   config?: AxiosRequestConfig,
 ): Promise<R> => {
   return axiosInstance.get<T, R>(formatUrl(url), config);
+};
+
+export const head = <R = AxiosResponse>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<R> => {
+  return axiosInstance.head<unknown, R>(formatUrl(url), config);
 };

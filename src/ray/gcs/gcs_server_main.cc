@@ -177,6 +177,17 @@ int main(int argc, char *argv[]) {
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
+  gcs_server_config.enable_gcs_leader_election =
+      RayConfig::instance().ENABLE_GCS_LEADER_ELECTION();
+  if (gcs_server_config.enable_gcs_leader_election) {
+    // Nothing drives promotion yet, so this GCS stays passive until a future release
+    // wires up the leader election client. Warn loudly: on a cluster with no other
+    // active GCS it will block in startup waiting for a cluster ID.
+    RAY_LOG(WARNING)
+        << "RAY_ENABLE_GCS_LEADER_ELECTION is set. Active-passive GCS leader election "
+           "is experimental and incomplete: this GCS starts passive and cannot yet be "
+           "promoted. Unset it unless you are developing this feature.";
+  }
 
   // Create individual metrics
   auto actor_by_state_gauge = ray::GetActorByStateGaugeMetric();
@@ -200,11 +211,20 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetGcsStorageOperationLatencyInMsHistogramMetric();
   auto storage_operation_count_counter =
       ray::gcs::GetGcsStorageOperationCountCounterMetric();
+  auto redis_request_payload_bytes_sum =
+      ray::gcs::GetGcsRedisRequestPayloadBytesSumMetric();
+  auto redis_response_payload_bytes_sum =
+      ray::gcs::GetGcsRedisResponsePayloadBytesSumMetric();
+  auto redis_command_count_counter = ray::gcs::GetGcsRedisCommandCountCounterMetric();
   auto resource_usage_gauge = ray::raylet::GetResourceUsageGaugeMetric();
   auto health_check_rpc_latency_ms_histogram =
       ray::gcs::GetHealthCheckRpcLatencyMsHistogramMetric();
   auto scheduler_placement_time_ms_histogram =
       ray::GetSchedulerPlacementTimeMsHistogramMetric();
+  auto io_context_monitor_latency_ms_gauge =
+      ray::gcs::GetIoContextMonitorLatencyMsGaugeMetric();
+  auto io_context_monitor_unhealthy_counter =
+      ray::gcs::GetIoContextMonitorUnhealthyCountMetric();
 
   // Create the metrics struct
   ray::gcs::GcsServerMetrics gcs_server_metrics{
@@ -226,9 +246,14 @@ int main(int argc, char *argv[]) {
       /*storage_operation_latency_in_ms_histogram=*/
       storage_operation_latency_in_ms_histogram,
       /*storage_operation_count_counter=*/storage_operation_count_counter,
+      /*redis_request_payload_bytes_sum=*/redis_request_payload_bytes_sum,
+      /*redis_response_payload_bytes_sum=*/redis_response_payload_bytes_sum,
+      /*redis_command_count_counter=*/redis_command_count_counter,
       resource_usage_gauge,
       scheduler_placement_time_ms_histogram,
       health_check_rpc_latency_ms_histogram,
+      /*io_context_monitor_latency_ms_gauge=*/io_context_monitor_latency_ms_gauge,
+      /*io_context_monitor_unhealthy_counter=*/io_context_monitor_unhealthy_counter,
   };
 
   ray::gcs::GcsServer gcs_server(gcs_server_config, gcs_server_metrics, main_service);

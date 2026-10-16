@@ -15,6 +15,7 @@ from networkx import topological_sort
 from ci.raydepsets.cli import (
     DEFAULT_UV_FLAGS,
     DependencySetManager,
+    _drop_emitted_index_url,
     _flatten_flags,
     _get_depset,
     _override_uv_flags,
@@ -425,6 +426,47 @@ class TestCli(unittest.TestCase):
             "--index",
             "https://download.pytorch.org/whl/cu128",
         ]
+
+    def test_drop_emitted_index_url(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "--index-url https://pypi.org/simple\n"
+                "--extra-index-url https://download.pytorch.org/whl/cu128\n"
+                "--find-links https://data.pyg.org/whl/torch-2.9.0+cu128.html\n"
+                "\n"
+                "torch==2.9.0+cu128 \\\n"
+                "    --hash=sha256:abc123\n"
+            )
+            _drop_emitted_index_url(lock_file)
+            # The primary index goes; the indexes that are not PyPI stay, because
+            # nothing else supplies them at install time.
+            assert lock_file.read_text() == (
+                "--extra-index-url https://download.pytorch.org/whl/cu128\n"
+                "--find-links https://data.pyg.org/whl/torch-2.9.0+cu128.html\n"
+                "\n"
+                "torch==2.9.0+cu128 \\\n"
+                "    --hash=sha256:abc123\n"
+            )
+
+    def test_drop_emitted_index_url_only_option(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            lock_file = Path(tmpdir) / "requirements.txt"
+            lock_file.write_text(
+                "--index-url https://pypi.org/simple\n"
+                "\n"
+                "emoji==2.9.0 \\\n"
+                "    --hash=sha256:abc123\n"
+            )
+            _drop_emitted_index_url(lock_file)
+            # The blank line that separated the options goes with it, so the file
+            # starts on a requirement.
+            expected = "emoji==2.9.0 \\\n    --hash=sha256:abc123\n"
+            assert lock_file.read_text() == expected
+            # Rerunning is a no-op, so regenerating an already-stripped lock file
+            # cannot drift.
+            _drop_emitted_index_url(lock_file)
+            assert lock_file.read_text() == expected
 
     def test_build_graph(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1217,31 +1259,39 @@ class TestCli(unittest.TestCase):
 
     def test_relax_preserves_options(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            copy_data_to_tmpdir(tmpdir)
-            manager = _create_test_manager(tmpdir)
-            manager.compile(
-                constraints=["requirement_constraints_test.txt"],
+            copy_data_to_tmpdir(tmpdir, ignore_patterns="test2.depsets.yaml")
+            # Sourced from the large fixture because that is the one carrying an
+            # --extra-index-url: a compiled lock keeps no primary --index-url, so
+            # a freshly compiled source would have no options left to preserve.
+            depset = Depset(
+                name="large_depset",
+                operation="compile",
                 requirements=["requirements_test.txt"],
-                name="general_depset__py311_cpu",
-                output="requirements_compiled_general.txt",
+                output="requirements_compiled_large_test.txt",
+                config_name="test.depsets.yaml",
             )
-            # Verify the source has an index URL option
+            write_to_config_file(tmpdir, [depset], "test.depsets.yaml")
+            manager = _create_test_manager(tmpdir)
             source_rf = parse_lock_file(
-                str(Path(tmpdir) / "requirements_compiled_general.txt")
+                str(Path(tmpdir) / "requirements_compiled_large_test.txt")
             )
             assert len(source_rf.options) >= 1
 
             manager.relax(
-                source_depset="general_depset__py311_cpu",
-                packages=["emoji"],
+                source_depset="large_depset",
+                packages=["numpy"],
                 name="relaxed_depset",
                 output="requirements_compiled_relaxed.txt",
             )
             output_rf = parse_lock_file(
                 str(Path(tmpdir) / "requirements_compiled_relaxed.txt")
             )
-            # Options (like --index-url) should be preserved
-            assert len(output_rf.options) >= 1
+            # Options that are not PyPI, like the PyTorch --extra-index-url, have
+            # to survive a relax. Compared on the parsed options rather than the
+            # OptionLine objects, which carry the file name they came from.
+            assert [option.options for option in output_rf.options] == [
+                option.options for option in source_rf.options
+            ]
 
     def test_relax_large_lock_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -60,7 +60,7 @@ vision_processor_config = vLLMEngineProcessorConfig(
     ),
     batch_size=16,
     concurrency=1,
-    prepare_multimodal_stage={"enabled": True},
+    prepare_multimodal_stage=True,
 )
 # __vlm_config_example_end__
 
@@ -178,7 +178,7 @@ def create_vlm_config():
         ),
         batch_size=1,
         concurrency=1,
-        prepare_multimodal_stage={"enabled": True},
+        prepare_multimodal_stage=True,
     )
 
 
@@ -196,7 +196,6 @@ def run_vlm_example():
 
         print("VLM processor configured successfully")
         print(f"Model: {config.model_source}")
-        print(f"Has multimodal support: {config.prepare_multimodal_stage.get('enabled', False)}")
         result = processor(vision_dataset).take_all()
         return config, processor, result
 # __vlm_run_example_end__
@@ -205,12 +204,23 @@ def run_vlm_example():
 
 # __vlm_image_example_end__
 
+# Number of rows to run in CI. The full coco2017_cap_val split (500 rows at
+# batch_size=1) takes ~15 minutes, which runs into the test timeout.
+_CI_NUM_ROWS = 8
+
 if __name__ == "__main__":
     # Run the example VLM workflow only if GPU is available
     try:
         import torch
 
         if torch.cuda.is_available():
+            # Limit the dataset in CI without changing the docs snippets above.
+            _load_full_dataset = load_vision_dataset
+
+            def load_vision_dataset():
+                ds = _load_full_dataset()
+                return ds.limit(_CI_NUM_ROWS) if ds is not None else None
+
             run_vlm_example()
         else:
             print("Skipping VLM example run (no GPU available)")

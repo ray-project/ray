@@ -1,3 +1,4 @@
+import copy
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
@@ -14,6 +15,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    ReportsExtraResourceUsage,
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
@@ -22,10 +24,13 @@ from ray.data._internal.execution.operators.map_operator import (
 )
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.utils.cached_ray_internals import (
+    get_local_ongoing_lineage_reconstruction_tasks,
+)
 from ray.data.context import DataContext
 
 
-class TaskPoolMapOperator(MapOperator):
+class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     """A MapOperator implementation that executes tasks on a task pool."""
 
     def __init__(
@@ -43,12 +48,16 @@ class TaskPoolMapOperator(MapOperator):
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
+        isolate_workers: bool = False,
+        default_logical_memory_enabled: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
         Args:
-            transform_fn: The function to apply to each ref bundle input.
+            map_transformer: The :class:`MapTransformer` to apply to each ref
+                bundle input.
             input_op: Operator generating input data for this op.
+            data_context: The :class:`DataContext` to use for this operator.
             name: The name of this operator.
             target_max_block_size_override: Override for target max-block-size.
             min_rows_per_bundle: The number of rows to gather per batch passed to the
@@ -70,6 +79,13 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args: Customize the :func:`ray.remote` args for this op's tasks.
             on_start: Optional callback invoked with the schema from the first input
                 bundle before any tasks are submitted.
+            isolate_workers: If ``True``, ensure that other operators' tasks don't get
+                scheduled on the same worker processes as this operator's. This flag
+                is useful to prevent side-effects from affecting other operators, like
+                large PyArrow memory allocations.
+            default_logical_memory_enabled: If ``True``, the operator launches tasks
+                with a default logical ``memory``. The method for choosing the
+                default is an implementation detail.
         """
         super().__init__(
             map_transformer,
@@ -84,7 +100,10 @@ class TaskPoolMapOperator(MapOperator):
             ray_remote_args_fn,
             ray_remote_args,
             on_start,
+            default_logical_memory_enabled,
         )
+
+        self._isolate_workers = isolate_workers
 
         if max_concurrency is not None and max_concurrency <= 0:
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
@@ -101,7 +120,41 @@ class TaskPoolMapOperator(MapOperator):
             "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
 
+        # Ray Core doesn't share workers for tasks with different `runtime_env`s. We use
+        # this property to implicitly ensure that this operator's tasks run on isolated
+        # workers.
+        if self._isolate_workers:
+            ray_remote_static_args = self._add_unique_runtime_env(
+                ray_remote_static_args
+            )
+
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
+    def _add_unique_runtime_env(
+        self, ray_remote_args: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Return a copy of the remote args with a runtime env that's unique to this
+        operator.
+        """
+        ray_remote_args = copy.deepcopy(ray_remote_args)
+
+        runtime_env = ray_remote_args.get("runtime_env", {})
+        env_vars = ray_remote_args.get("env_vars", {})
+        env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
+        runtime_env["env_vars"] = env_vars
+
+        ray_remote_args["runtime_env"] = runtime_env
+        return ray_remote_args
+
+    @property
+    def isolate_workers(self) -> bool:
+        """Return whether this operator launches tasks on isolated worker processes.
+
+        If ``True``, other operators' tasks won't get scheduled on the same worker
+        processes as this operator's. This flag is useful to prevent side-effects
+        from affecting other operators, like large PyArrow memory allocations.
+        """
+        return self._isolate_workers
 
     @property
     @override
@@ -112,6 +165,19 @@ class TaskPoolMapOperator(MapOperator):
     @override
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
+
+    @override
+    def _get_dynamic_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = super()._get_dynamic_ray_remote_args(input_bundle)
+        # `.options()` replaces `_labels` wholesale, so user labels would erase the
+        # operator id that lineage reconstruction accounting keys on. Merge instead.
+        ray_remote_args["_labels"] = {
+            **(ray_remote_args.pop("_labels", None) or {}),
+            self._OPERATOR_ID_LABEL_KEY: self.id,
+        }
+        return ray_remote_args
 
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
@@ -173,6 +239,35 @@ class TaskPoolMapOperator(MapOperator):
             cpu=self._ray_remote_args.get("num_cpus", 0),
             gpu=self._ray_remote_args.get("num_gpus", 0),
             memory=self._ray_remote_args.get("memory", 0),
+        )
+
+    def extra_resource_usage(self) -> ExecutionResources:
+        """Returns resources occupied by lineage reconstruction tasks.
+
+        When an output object is lost, Ray Core re-runs the task that produced
+        it. Those retries aren't submitted by this operator, so they don't show
+        up in the operator's own accounting, but they occupy real resources. The
+        resource manager adds this on top of the standard usage so backpressure
+        doesn't hand out budget that Ray Core has already spent.
+
+        Returns zero when
+        `DataContext.enable_lineage_reconstruction_resource_accounting` is off.
+        """
+        if not self.data_context.enable_lineage_reconstruction_resource_accounting:
+            return ExecutionResources.zero()
+
+        return self.incremental_resource_usage().scale(
+            self._num_lineage_reconstruction_tasks()
+        )
+
+    def _num_lineage_reconstruction_tasks(self) -> int:
+        # Reconstruction tasks inherit the labels of the task they replay, so
+        # they carry the `_OPERATOR_ID_LABEL_KEY` attached in `__init__`.
+        task_infos = get_local_ongoing_lineage_reconstruction_tasks()
+        return sum(
+            num_tasks
+            for task_info, num_tasks in task_infos
+            if task_info.labels.get(self._OPERATOR_ID_LABEL_KEY) == self.id
         )
 
     def min_scheduling_resources(

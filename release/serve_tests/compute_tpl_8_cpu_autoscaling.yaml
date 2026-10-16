@@ -8,8 +8,8 @@ advanced_instance_config:
           Value: '24'
 
 head_node:
-    # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
-    instance_type: m5.2xlarge
+    # 16 cpus, x86, 64G mem, 10Gb NIC, $0.768/hr on demand
+    instance_type: m5.4xlarge
     resources:
       CPU: 0
       proxy: 1
@@ -20,8 +20,10 @@ worker_nodes:
       # smaller min workers will make the head node cpu usage very high, and crash the head node.
       # issue: https://github.com/ray-project/ray/issues/18908
       min_nodes: 5
-      # 4096 max replicas
-      max_nodes: 220
+      # Sized for the 8192-replica controller-benchmark checkpoint: the per-node
+      # replica cap (serve/_private/benchmarks/common.py) gives ~241 nodes, plus
+      # slack. A cap, not a target; the autoscaler launches what placement needs.
+      max_nodes: 280
       market_type: ON_DEMAND
       # New SDK's `resources` is a full override, so include `CPU: 8`
       # explicitly alongside the custom `proxy` resource.

@@ -36,7 +36,7 @@ def mock_vllm_wrapper():
                     request_id=0,
                     prompt=row["prompt"],
                     prompt_token_ids=None,
-                    images=[],
+                    multimodal_data=None,
                     params=row["sampling_params"],
                     idx_in_batch=row["__idx_in_batch"],
                 ),
@@ -302,7 +302,6 @@ async def test_vllm_wrapper_forwards_lora_request(task_type):
         idx_in_batch=0,
         prompt="hello",
         prompt_token_ids=None,
-        images=[],
         multimodal_data=None,
         mm_processor_kwargs=None,
         multimodal_uuids=None,
@@ -319,6 +318,36 @@ async def test_vllm_wrapper_forwards_lora_request(task_type):
         else wrapper.engine.encode
     )
     assert expected.call_args.kwargs.get("lora_request") is sentinel_lora
+
+
+def _make_bare_wrapper():
+    """Build a vLLMEngineWrapper without invoking __init__ (which boots vLLM)."""
+    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
+    wrapper.request_id = 0
+    wrapper.idx_in_batch_column = "__idx_in_batch"
+    wrapper.task_type = vLLMTaskType.GENERATE
+    wrapper.model = "test-model"
+    wrapper.lora_lock = asyncio.Lock()
+    wrapper.lora_name_to_request = {}
+    return wrapper
+
+
+@pytest.mark.asyncio
+async def test_vllm_wrapper_uses_explicit_multimodal_data():
+    """Explicit multimodal data is propagated to the engine request."""
+    wrapper = _make_bare_wrapper()
+
+    sentinel_image = object()
+    row = {
+        "__idx_in_batch": 0,
+        "prompt": "hi",
+        "multimodal_data": {"image": [sentinel_image]},
+        "sampling_params": {"max_tokens": 1, "temperature": 0.0},
+    }
+
+    request = await wrapper._prepare_llm_request(row)
+
+    assert request.multimodal_data == {"image": [sentinel_image]}
 
 
 @pytest.mark.asyncio

@@ -1,5 +1,6 @@
 import os
 import re
+from dataclasses import replace
 from typing import Any, List
 
 import lance
@@ -15,7 +16,9 @@ from ray.data import Dataset
 from ray.data._internal.logical.operators import (
     Filter,
     Limit,
+    ListFiles,
     Project,
+    ReadFiles,
     Repartition,
     Sort,
 )
@@ -23,7 +26,8 @@ from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
 from ray.data.datasource.partitioning import Partitioning
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.expressions import col, lit
+from ray.data.datatype import DataType
+from ray.data.expressions import col, lit, udf
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
     _check_valid_plan_and_result,
@@ -124,6 +128,116 @@ def test_filter_with_expressions(parquet_ds):
         filtered_expr_ds,
         "",  # Pushed down to read, no additional operators
         filtered_udf_data,
+    )
+
+
+def test_filter_with_udf_expression_not_pushed_down(parquet_ds):
+    """A UDF based filter expression must not be pushed into the datasource."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    expected = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0).take_all()
+    filtered_ds = parquet_ds.filter(expr=gt5(col("sepal.length")))
+
+    # The whole UDF predicate stays as a Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+@pytest.mark.parametrize("udf_first", [True, False])
+def test_filter_mixed_udf_and_expression(parquet_ds, udf_first):
+    """Convertible conjuncts push down while the UDF stays as a Filter."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    udf_filter = gt5(col("sepal.length"))
+    expr_filter = col("sepal.width") > lit(3.0)
+
+    if udf_first:
+        filtered_ds = parquet_ds.filter(expr=udf_filter).filter(expr=expr_filter)
+    else:
+        filtered_ds = parquet_ds.filter(expr=expr_filter).filter(expr=udf_filter)
+
+    expected = parquet_ds.filter(
+        lambda r: r["sepal.length"] > 5.0 and r["sepal.width"] > 3.0
+    ).take_all()
+
+    # The convertible ``sepal.width > 3.0`` conjunct is pushed into the Read
+    # and only the UDF conjunct survives as a residual Filter
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_or_of_pyarrow_and_udf_not_pushed_down(parquet_ds):
+    """``pyarrow_expr | udf_expr`` must stay as a Filter above the Read."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    or_predicate = (col("sepal.width") > 3.0) | gt5(col("sepal.length"))
+    filtered_ds = parquet_ds.filter(expr=or_predicate)
+    expected = parquet_ds.filter(
+        lambda r: r["sepal.width"] > 3.0 or r["sepal.length"] > 5.0
+    ).take_all()
+
+    # The entire OR predicate stays as a single Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter((col('sepal.width') > 3.0) | gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_and_wrapping_or_with_udf_splits(parquet_ds):
+    """An AND of a convertible conjunct and a UDF containing OR splits correctly."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    or_conjunct = (col("sepal.width") > 3.0) | gt5(col("sepal.length"))
+    predicate = or_conjunct & (col("sepal.length") > 4.0)
+    filtered_ds = parquet_ds.filter(expr=predicate)
+    expected = parquet_ds.filter(
+        lambda r: (r["sepal.width"] > 3.0 or r["sepal.length"] > 5.0)
+        and r["sepal.length"] > 4.0
+    ).take_all()
+
+    # ``sepal.length > 4.0`` is pushed into the Read and only the OR conjunct
+    # survives as a residual Filter
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter((col('sepal.width') > 3.0) | gt5(col('sepal.length')))]",
+        expected,
+    )
+
+
+def test_not_udf_not_pushed_down(parquet_ds):
+    """A negation of a UDF must stay as a Filter."""
+
+    @udf(return_dtype=DataType.bool())
+    def gt5(value: pa.Array) -> pa.Array:
+        return pa.compute.greater(value, 5.0)
+
+    filtered_ds = parquet_ds.filter(expr=~gt5(col("sepal.length")))
+    expected = parquet_ds.filter(lambda r: r["sepal.length"] <= 5.0).take_all()
+
+    # The negated UDF stays as a Filter above the Read
+    _check_plan_with_flexible_read(
+        filtered_ds,
+        "Filter[Filter(~gt5(col('sepal.length')))]",
+        expected,
     )
 
 
@@ -409,15 +523,16 @@ class TestPredicatePushdownIntoRead:
     def parquet_ds(self, ray_start_regular_shared):
         return ray.data.read_parquet("example://iris.parquet")
 
-    def test_complex_pipeline_all_filters_push_to_read(self, parquet_ds):
-        """Complex pipeline: filters should push through all operators into Read.
+    def test_complex_pipeline_filters_stop_at_limit(self, parquet_ds):
+        """Only filters before the limit should be absorbed into Read.
 
         Pipeline: Read -> Filter -> Rename -> Filter -> Sort -> Repartition
                   -> Filter -> Limit -> Filter
 
-        All filters should fuse, push through all operators, rebind through rename,
-        and be absorbed into the Read operator.
+        Filters before the limit can rebind through rename and push into Read.
+        The final filter must stay after the limit to preserve which rows it sees.
         """
+        parquet_ds.context.execution_options.preserve_order = True
         ds = (
             parquet_ds.filter(expr=col("sepal.length") > 4.0)
             .rename_columns({"sepal.length": "len", "sepal.width": "width"})
@@ -435,27 +550,52 @@ class TestPredicatePushdownIntoRead:
                 expr=(col("sepal.length") > 4.0)
                 & (col("sepal.length") < 7.0)
                 & (col("sepal.width") > 2.5)
-                & (col("sepal.length") > 4.5)
             )
             .rename_columns({"sepal.length": "len", "sepal.width": "width"})
             .sort("len")
             .repartition(3)
             .limit(100)
+            .materialize()
+            .filter(expr=col("len") > 4.5)
         )
 
         assert rows_same(ds.to_pandas(), expected.to_pandas())
 
-        # Verify plan: all filters pushed into Read, passthrough ops remain
+        # Only the post-limit filter should remain outside the reader.
         optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
-        assert not plan_has_operator(
-            optimized_plan, Filter
-        ), "No Filter operators should remain after pushdown into Read"
+        assert len(get_operators_of_type(optimized_plan, Filter)) == 1
+        assert plan_operator_comes_before(optimized_plan, Limit, Filter)
+
+
+@pytest.mark.parametrize("source", ["range", "parquet"])
+@pytest.mark.parametrize("num_blocks", [1, 3])
+@pytest.mark.parametrize("threshold,expected_ids", [(1, [1, 2]), (3, [])])
+def test_filter_does_not_push_through_limit(
+    ray_start_regular_shared, tmp_path, source, num_blocks, threshold, expected_ids
+):
+    if source == "range":
+        ds = ray.data.range(10, override_num_blocks=num_blocks)
+    else:
+        path = tmp_path / "data.parquet"
+        pq.write_table(pa.table({"id": list(range(10))}), path)
+        ds = ray.data.read_parquet(str(path), override_num_blocks=num_blocks)
+    ds.context.execution_options.preserve_order = True
+
+    # Renaming is safe to push through, but the limit must still be a barrier.
+    filtered = (
+        ds.limit(3)
+        .rename_columns({"id": "value"})
+        .filter(expr=col("value") >= threshold)
+    )
+    assert filtered.take_all() == [{"value": i} for i in expected_ids]
+    optimized_plan = LogicalOptimizer().optimize(filtered._logical_plan)
+    assert plan_operator_comes_before(optimized_plan, Limit, Filter)
 
 
 class TestPassthroughBehavior:
     """Tests for PASSTHROUGH behavior operators.
 
-    Operators: Sort, Repartition, RandomShuffle, Limit
+    Operators: Sort, Repartition, RandomShuffle
     Predicates pass through unchanged - operators don't affect filtering.
     """
 
@@ -473,9 +613,8 @@ class TestPassthroughBehavior:
                 "StreamingRepartition",
             ),
             (lambda ds: ds.random_shuffle(), "RandomShuffle"),
-            (lambda ds: ds.limit(50), "Limit"),
         ],
-        ids=["sort", "repartition", "streaming_repartition", "random_shuffle", "limit"],
+        ids=["sort", "repartition", "streaming_repartition", "random_shuffle"],
     )
     def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
@@ -497,7 +636,7 @@ class TestPassthroughBehavior:
 
     def test_filter_pushes_through_multiple_ops(self, base_ds):
         """Filter should push through multiple passthrough operators."""
-        ds = base_ds.sort("id").repartition(5).limit(50).filter(expr=col("id") < 10)
+        ds = base_ds.sort("id").repartition(5).filter(expr=col("id") < 10)
 
         # Verify correctness against expected result
         expected = base_ds.filter(expr=col("id") < 10)
@@ -510,7 +649,6 @@ class TestPassthroughBehavior:
         assert plan_has_operator(
             optimized_plan, Repartition
         ), "Repartition should remain"
-        assert plan_has_operator(optimized_plan, Limit), "Limit should remain"
 
     def test_multiple_filters_fuse_and_push_through(self, base_ds):
         """Multiple filters should fuse and push through passthrough operators."""
@@ -1056,6 +1194,101 @@ class TestPushIntoBranchesBehavior:
         )
         expected = expected_single.union(expected_single)
         assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+
+def test_limit_over_partition_filter(ray_start_regular_shared, tmp_path):
+    """A limit under a partition filter must be correct *and* still stop early.
+
+    Listing prunes on row-group statistics, which cannot see partition columns
+    -- those live in the directory name, not the file. So listing counted all
+    50 rows of whichever file completed first, stopped, and the reader then
+    dropped that file, returning 0 rows whenever the first-listed file was not
+    ``year=2020``. Which file completed first is decided by an unordered actor
+    pool, so the query was nondeterministically wrong.
+
+    The fix gives listing the same path-based pruning the reader uses, so it
+    drops ``year=2019`` before reading its footer. Every row it counts towards
+    the limit now belongs to a file the reader keeps.
+    """
+    for year in (2019, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") == "2020")
+
+    optimized_plan = LogicalOptimizer().optimize(ds.limit(5)._logical_plan)
+    list_files = get_operators_of_type(optimized_plan, ListFiles)
+    assert len(list_files) == 1
+    # The limit survives -- pruning is what makes stopping early sound.
+    assert list_files[0].limit == 5
+    assert list_files[0].partition_pruner is not None
+
+    # Racy on master: it passed only when ``year=2020`` happened to land first.
+    assert len(ds.take(5)) == 5
+
+
+def test_limit_over_partition_filter_prunes_before_listing(
+    ray_start_regular_shared, tmp_path
+):
+    """Listing reads footers only for files the partition filter keeps.
+
+    Without pruning, a correct answer costs a footer read for every file in the
+    dataset, because the limit has to be abandoned to stay correct. The
+    ``ListFiles`` output row count is one row per file whose footer was read.
+    """
+    for year in range(2000, 2020):
+        (tmp_path / f"year={year}").mkdir()
+        pq.write_table(
+            pa.table({"x": list(range(50))}),
+            tmp_path / f"year={year}" / "data.parquet",
+        )
+
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("year") >= "2010")
+
+    # 10 of 20 partitions match, and a limit of 5 is satisfied by the first
+    # file, so listing should stop far short of even those 10.
+    assert len(ds.limit(5).take_all()) == 5
+
+    # Without a limit, pruning alone still keeps listing to the 10 matches.
+    assert ds.count() == 500
+
+
+def test_limit_over_partition_filter_without_partitioning_spec(
+    ray_start_regular_shared, tmp_path
+):
+    """With no partitioning spec, listing cannot prune, so it must not stop early.
+
+    This is the conservative branch: ``pushed_partition_pruner`` returns
+    ``None`` and planning drops the limit rather than risk truncating listing
+    to files the reader discards.
+    """
+    from ray.data._internal.datasource_v2.common.pushdown_utils import (
+        derive_list_files_pushdown,
+    )
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+        ParquetScanner,
+    )
+
+    pq.write_table(pa.table({"x": [1, 2, 3]}), tmp_path / "a.parquet")
+    ds = ray.data.read_parquet(str(tmp_path))
+    reads = get_operators_of_type(
+        LogicalOptimizer().optimize(ds._logical_plan), ReadFiles
+    )
+    scanner = reads[0].scanner
+    assert isinstance(scanner, ParquetScanner)
+
+    # A partition predicate but no partitioning spec to evaluate it against.
+    scanner = replace(scanner, partition_predicate=col("year") == "2020")
+    scanner = replace(scanner, partitioning=None)
+    scanner = scanner.push_limit(5)
+
+    assert scanner.pushed_partition_pruner() is None
+    pushdown = derive_list_files_pushdown(scanner)
+    assert pushdown.limit is None
+    assert pushdown.partition_pruner is None
 
 
 if __name__ == "__main__":

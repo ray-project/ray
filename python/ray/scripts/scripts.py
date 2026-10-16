@@ -27,6 +27,7 @@ from ray._common.usage import usage_lib
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
+    maybe_enable_token_auth_if_token_available,
 )
 from ray._private.internal_api import memory_summary
 from ray._private.label_utils import (
@@ -1065,6 +1066,8 @@ def start(
                     " flag of `ray start` command."
                 )
 
+        maybe_enable_token_auth_if_token_available()
+
         # Ensure auth token is available if authentication mode is token
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
@@ -1353,6 +1356,16 @@ def stop(force: bool, grace_period: int):
         Unless `force` is specified, it gracefully kills processes. If
         processes are not cleaned within `grace_period`, it force kill all
         remaining processes.
+
+        Args:
+            force: When ``True``, send ``SIGKILL`` immediately. Otherwise send
+                ``SIGTERM`` and escalate to ``SIGKILL`` after ``grace_period``.
+            grace_period: Number of seconds to wait for graceful termination
+                before sending ``SIGKILL`` to processes that are still alive.
+            processes_to_kill: Sequence of ``(keyword, filter_by_cmd)`` pairs
+                identifying the processes to terminate. ``keyword`` is matched
+                against either the process name (when ``filter_by_cmd`` is
+                ``True``) or the joined command line.
 
         Returns:
             total_procs_found: Total number of processes found from
@@ -1964,18 +1977,18 @@ def rsync_up(cluster_config_file, source, target, cluster_name, all_nodes):
 )
 @add_click_logging_options
 def submit(
-    cluster_config_file,
-    screen,
-    tmux,
-    stop,
-    start,
-    cluster_name,
-    no_config_cache,
-    port_forward,
-    script,
-    args,
-    script_args,
-    disable_usage_stats,
+    cluster_config_file: str,
+    screen: bool,
+    tmux: bool,
+    stop: bool,
+    start: bool,
+    cluster_name: Optional[str],
+    no_config_cache: bool,
+    port_forward: Tuple[int, ...],
+    script: str,
+    args: Optional[str],
+    script_args: Tuple[str, ...],
+    disable_usage_stats: bool,
     extra_screen_args: Optional[str] = None,
 ):
     """Uploads and runs a script on the specified cluster.
@@ -1986,6 +1999,21 @@ def submit(
 
     Example:
         ray submit [CLUSTER.YAML] experiment.py -- --smoke-test
+
+    Args:
+        cluster_config_file: Path to the cluster YAML configuration file.
+        screen: When ``True``, run the script inside a ``screen`` session.
+        tmux: When ``True``, run the script inside a ``tmux`` session.
+        stop: When ``True``, stop the cluster after the script finishes.
+        start: When ``True``, start the cluster if it is not already running.
+        cluster_name: Optional override for the cluster name configured in the cluster YAML.
+        no_config_cache: When ``True``, disable the local cluster config cache.
+        port_forward: Local ports to forward to the cluster head node.
+        script: Path to the Python script to upload and run.
+        args: Deprecated single-string form of ``script_args``. Prefer ``-- --arg1 --arg2``.
+        script_args: Positional arguments forwarded to the remote script.
+        disable_usage_stats: When ``True``, disable usage statistics collection.
+        extra_screen_args: Extra arguments appended to the ``screen`` invocation when ``screen`` is enabled.
     """
     cli_logger.doassert(
         not (screen and tmux),
@@ -2694,7 +2722,15 @@ def drain_node(
     help="The Kubernetes namespace the Ray Cluster lives in.\n"
     "Should coincide with the `metadata.namespace` of the RayCluster CR.",
 )
-def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
+@click.option(
+    "--gcs-address",
+    required=False,
+    type=str,
+    help="The address (host:port) of GCS. Defaults to <node_ip>:6379.",
+)
+def kuberay_autoscaler(
+    cluster_name: str, cluster_namespace: str, gcs_address: Optional[str]
+) -> None:
     """Runs the autoscaler for a Ray cluster managed by the KubeRay operator.
 
     `ray kuberay-autoscaler` is meant to be used as an entry point in
@@ -2705,7 +2741,7 @@ def kuberay_autoscaler(cluster_name: str, cluster_namespace: str) -> None:
     # client.
     from ray.autoscaler._private.kuberay.run_autoscaler import run_kuberay_autoscaler
 
-    run_kuberay_autoscaler(cluster_name, cluster_namespace)
+    run_kuberay_autoscaler(cluster_name, cluster_namespace, gcs_address)
 
 
 @cli.command(name="health-check", hidden=True)

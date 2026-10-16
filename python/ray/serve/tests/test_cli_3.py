@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.test_utils import get_application_url
 from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
@@ -23,12 +24,19 @@ from ray.serve.tests.common.remote_uris import (
 CONNECTION_ERROR_MSG = "connection error"
 
 
-def ping_endpoint(endpoint: str, params: str = ""):
-    endpoint = endpoint.lstrip("/")
-
+def ping_endpoint(app_name: str = SERVE_DEFAULT_APP_NAME, params: str = ""):
     try:
-        return httpx.get(f"http://localhost:8000/{endpoint}{params}").text
-    except httpx.HTTPError:
+        url = get_application_url("HTTP", app_name=app_name)
+        if params.startswith("?"):
+            url = f"{url}{params}"
+        elif params:
+            url = f"{url.rstrip('/')}/{params.lstrip('/')}"
+        return httpx.get(url).text
+    # A broad except is intentional: once `serve run` is torn down the app
+    # disappears from Serve details and `get_application_url` raises (not an
+    # httpx error), which is exactly the "endpoint is down" signal the
+    # post-shutdown assertions below rely on.
+    except Exception:
         return CONNECTION_ERROR_MSG
 
 
@@ -188,7 +196,7 @@ class TestRun:
         p = subprocess.Popen(["serve", "run", config_path])
         wait_for_condition(
             lambda: is_proxy_location_correct(expected_proxy_location=expected),
-            timeout=10,
+            timeout=15,
         )
         p.send_signal(signal.SIGINT)
         p.wait()
@@ -208,17 +216,22 @@ class TestRun:
         print('Running config file "arithmetic.yaml".')
         p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/", json=["ADD", 0]).json() == 1,
+            lambda: httpx.post(get_application_url("HTTP"), json=["ADD", 0]).json()
+            == 1,
             timeout=15,
         )
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/", json=["SUB", 5]).json() == 3,
+            lambda: httpx.post(get_application_url("HTTP"), json=["SUB", 5]).json()
+            == 3,
             timeout=15,
         )
         print(
             "Run successful! Deployments are live and reachable over HTTP. Killing run."
         )
 
+        # Resolve the URL while the app is still running; after shutdown the app
+        # disappears from Serve details and it can no longer be looked up.
+        url = get_application_url("HTTP")
         for _ in range(number_of_kill_signals):
             p.send_signal(signal.SIGINT)
             # Mimic realistic human Ctrl-C timing. Without a gap, two
@@ -229,9 +242,13 @@ class TestRun:
         p.wait()
 
         with pytest.raises(httpx.HTTPError):
-            httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
+            httpx.post(url, json=["ADD", 0]).json()
 
         print("Kill successful! Deployments are not reachable over HTTP.")
+
+        # Forget the cached Serve client so the next `get_application_url`
+        # reconnects to the parrot run's controller (this run's was torn down).
+        serve.shutdown()
 
         print('Running node at import path "ray.serve.tests.test_cli_3.parrot_node".')
         # Deploy via import path
@@ -239,7 +256,7 @@ class TestRun:
             ["serve", "run", "--address=auto", "ray.serve.tests.test_cli_3.parrot_node"]
         )
         wait_for_condition(
-            lambda: ping_endpoint("/", params="?sound=squawk") == "squawk"
+            lambda: ping_endpoint(params="?sound=squawk") == "squawk", timeout=15
         )
         print(
             "Run successful! Deployment is live and reachable over HTTP. Killing run."
@@ -247,7 +264,10 @@ class TestRun:
 
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
-        assert ping_endpoint("/", params="?sound=squawk") == CONNECTION_ERROR_MSG
+        wait_for_condition(
+            lambda: ping_endpoint(params="?sound=squawk") == CONNECTION_ERROR_MSG,
+            timeout=15,
+        )
         print("Kill successful! Deployment is not reachable over HTTP.")
 
     @pytest.mark.skipif(
@@ -264,17 +284,22 @@ class TestRun:
         print('Running config file "pizza_world.yaml".')
         p = subprocess.Popen(["serve", "run", "--address=auto", config_file_name])
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app1").text == "wonderful world",
+            lambda: httpx.post(get_application_url("HTTP", app_name="app1")).text
+            == "wonderful world",
             timeout=15,
         )
         print('Application "app1" is reachable over HTTP.')
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app2", json=["ADD", 2]).text
+            lambda: httpx.post(
+                get_application_url("HTTP", app_name="app2"), json=["ADD", 2]
+            ).text
             == "12 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: httpx.post("http://localhost:8000/app2", json=["MUL", 2]).text
+            lambda: httpx.post(
+                get_application_url("HTTP", app_name="app2"), json=["MUL", 2]
+            ).text
             == "20 pizzas please!",
             timeout=15,
         )
@@ -282,12 +307,16 @@ class TestRun:
             "Run successful! Deployments are live and reachable over HTTP. Killing run."
         )
 
+        # Resolve URLs while the apps are still running; they can't be looked up
+        # once `serve run` is torn down.
+        url_app1 = get_application_url("HTTP", app_name="app1")
+        url_app2 = get_application_url("HTTP", app_name="app2")
         p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
         p.wait()
         with pytest.raises(httpx.HTTPError):
-            _ = httpx.post("http://localhost:8000/app1").text
+            _ = httpx.post(url_app1).text
         with pytest.raises(httpx.HTTPError):
-            _ = httpx.post("http://localhost:8000/app2", json=["ADD", 0]).text
+            _ = httpx.post(url_app2, json=["ADD", 0]).text
         print("Kill successful! Deployments are not reachable over HTTP.")
 
     @pytest.mark.skipif(
@@ -305,10 +334,10 @@ class TestRun:
                 "ray.serve.tests.test_cli_3.molly_macaw",
             ]
         )
-        wait_for_condition(lambda: ping_endpoint("/") == "Molly is green!", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "Molly is green!", timeout=15)
         p.send_signal(signal.SIGINT)
         p.wait()
-        assert ping_endpoint("/") == CONNECTION_ERROR_MSG
+        wait_for_condition(lambda: ping_endpoint() == CONNECTION_ERROR_MSG, timeout=15)
 
     @pytest.mark.skipif(
         sys.platform == "win32", reason="File path incorrect on Windows."
@@ -334,10 +363,14 @@ class TestRun:
                 import_path,
             ]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "DEFAULT", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "DEFAULT", timeout=15)
         p.send_signal(signal.SIGINT)
         p.wait()
-        assert ping_endpoint("/") == CONNECTION_ERROR_MSG
+        # This `serve run` started its own controller. Forget the cached Serve
+        # client so the next `get_application_url` reconnects to the next run's
+        # controller instead of the one that was just torn down.
+        serve.shutdown()
+        wait_for_condition(lambda: ping_endpoint() == CONNECTION_ERROR_MSG, timeout=15)
 
         # Now deploy passing a message as an argument, should get passed message.
         p = subprocess.Popen(
@@ -349,11 +382,11 @@ class TestRun:
                 "message=hello world",
             ]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "hello world", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "hello world", timeout=15)
 
         p.send_signal(signal.SIGINT)
         p.wait()
-        assert ping_endpoint("/") == CONNECTION_ERROR_MSG
+        wait_for_condition(lambda: ping_endpoint() == CONNECTION_ERROR_MSG, timeout=15)
 
     @pytest.mark.skipif(
         sys.platform == "win32", reason="File path incorrect on Windows."
@@ -372,11 +405,12 @@ class TestRun:
                 ('{"env_vars": {"buried_item": "lucky coin"} }'),
             ]
         )
-        wait_for_condition(
-            lambda: ping_endpoint("MetalDetector") == "lucky coin", timeout=10
-        )
+        wait_for_condition(lambda: ping_endpoint() == "lucky coin", timeout=15)
         p.send_signal(signal.SIGINT)
         p.wait()
+        # Forget the cached Serve client so the next `get_application_url`
+        # reconnects to the config run's controller (this run's was torn down).
+        serve.shutdown()
 
         # With config
         p = subprocess.Popen(
@@ -400,7 +434,7 @@ class TestRun:
                 TEST_DAG_PINNED_URI,
             ]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "wonderful world", timeout=15)
+        wait_for_condition(lambda: ping_endpoint() == "wonderful world", timeout=15)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -474,8 +508,10 @@ class TestRun:
             ]
         )
 
-        wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
-        assert ping_endpoint("/") == "hello"
+        wait_for_condition(
+            check_app_running, app_name=SERVE_DEFAULT_APP_NAME, timeout=30
+        )
+        wait_for_condition(lambda: ping_endpoint() == "hello", timeout=15)
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -496,9 +532,20 @@ class TestRun:
             ],
         )
 
-        wait_for_condition(check_app_running, app_name="hello_app")
-        assert "Path '/' not found" in ping_endpoint("/")
-        assert ping_endpoint("/hello") == "hello"
+        wait_for_condition(check_app_running, app_name="hello_app", timeout=30)
+        # The app is mounted at "/hello", so the bare root path should 404.
+        wait_for_condition(
+            lambda: "Path '/' not found"
+            in httpx.get(
+                get_application_url(
+                    "HTTP", app_name="hello_app", exclude_route_prefix=True
+                )
+            ).text,
+            timeout=15,
+        )
+        wait_for_condition(
+            lambda: ping_endpoint(app_name="hello_app") == "hello", timeout=15
+        )
         p.send_signal(signal.SIGINT)
         p.wait()
 
@@ -524,15 +571,21 @@ class TestRun:
         # Ensure the http request is killed and failed when the deployment runs longer than
         # the 0.1 request_timeout_s set in in the config yaml
         wait_for_condition(
-            lambda: httpx.get("http://localhost:8000/app1?sleep_s=0.11").status_code
+            lambda: httpx.get(
+                f"{get_application_url('HTTP', app_name='app1')}?sleep_s=0.11"
+            ).status_code
             == 408,
+            timeout=15,
         )
 
         # Ensure the http request returned the correct response when the deployment runs
         # shorter than the 0.1 request_timeout_s set up in the config yaml
         wait_for_condition(
-            lambda: httpx.get("http://localhost:8000/app1?sleep_s=0.09").text
+            lambda: httpx.get(
+                f"{get_application_url('HTTP', app_name='app1')}?sleep_s=0.09"
+            ).text
             == "Task Succeeded!",
+            timeout=15,
         )
 
         p.send_signal(signal.SIGINT)
@@ -582,7 +635,7 @@ msg_app = MessageDeployment.bind("Hello {message}!")
                 "reload_serve:msg_app",
             ]
         )
-        wait_for_condition(lambda: ping_endpoint("") == "Hello World!", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "Hello World!", timeout=15)
 
         # Sleep to ensure the `serve run` command is in the file watching loop when we
         # write the change, else it won't be picked up.
@@ -590,7 +643,7 @@ msg_app = MessageDeployment.bind("Hello {message}!")
 
         # Write the file: an update should be auto-triggered.
         write_file("Updated")
-        wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "Hello Updated!", timeout=15)
 
         # Ensure a bad change doesn't shut down serve and serve reports deploy failed.
         write_file(message="update1", invalid_suffix="foobar")
@@ -598,15 +651,16 @@ msg_app = MessageDeployment.bind("Hello {message}!")
             condition_predictor=check_app_status,
             app_name="default",
             expected_status="DEPLOY_FAILED",
+            timeout=30,
         )
 
         # Ensure the following reload happens as expected.
         write_file("Updated2")
-        wait_for_condition(lambda: ping_endpoint("") == "Hello Updated2!", timeout=10)
+        wait_for_condition(lambda: ping_endpoint() == "Hello Updated2!", timeout=15)
 
         p.send_signal(signal.SIGINT)
         p.wait()
-        assert ping_endpoint("") == CONNECTION_ERROR_MSG
+        wait_for_condition(lambda: ping_endpoint() == CONNECTION_ERROR_MSG, timeout=15)
 
 
 if __name__ == "__main__":

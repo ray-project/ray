@@ -26,18 +26,6 @@ class GrpcDeployment:
         )
         return user_response
 
-    @serve.multiplexed(max_num_models_per_replica=1)
-    async def get_model(self, model_id: str) -> str:
-        return f"loading model: {model_id}"
-
-    async def Method2(self, user_message):
-        model_id = serve.get_multiplexed_model_id()
-        model = await self.get_model(model_id)
-        user_response = serve_pb2.UserDefinedResponse(
-            greeting=f"Method2 called model, {model}",
-        )
-        return user_response
-
     def Streaming(self, user_message):
         for i in range(10):
             greeting = f"{i}: Hello {user_message.name} from {user_message.foo}"
@@ -50,6 +38,30 @@ class GrpcDeployment:
 
 
 g = GrpcDeployment.options(name="grpc-deployment").bind()
+
+
+# Model multiplexing is kept on a separate deployment from the shared `g` so tests can
+# exercise model-specific behavior independently.
+@serve.deployment
+class MultiplexedGrpcDeployment:
+    def __call__(self, user_message):
+        greeting = f"Hello {user_message.name} from {user_message.foo}"
+        return serve_pb2.UserDefinedResponse(greeting=greeting)
+
+    @serve.multiplexed(max_num_models_per_replica=1)
+    async def get_model(self, model_id: str) -> str:
+        return f"loading model: {model_id}"
+
+    async def Method2(self, user_message):
+        model_id = serve.get_multiplexed_model_id()
+        model = await self.get_model(model_id)
+        user_response = serve_pb2.UserDefinedResponse(
+            greeting=f"Method2 called model, {model}",
+        )
+        return user_response
+
+
+multiplexed_g = MultiplexedGrpcDeployment.options(name="grpc-deployment").bind()
 
 
 @serve.deployment(ray_actor_options={"num_cpus": 0})

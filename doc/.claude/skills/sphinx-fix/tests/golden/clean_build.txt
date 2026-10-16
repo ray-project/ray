@@ -1,0 +1,10 @@
+Build: state=Finished  success=True  exit=0  build succeeded.
+
+Findings (0):
+  (none)
+
+Unclassified (0) — no rule matched; resolve with the user, then file a skill-improvement ticket to add a rule:
+
+Suppressed (0) — known-benign, not actionable:
+
+✓ No actionable warnings.

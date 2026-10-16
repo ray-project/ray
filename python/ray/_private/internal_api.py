@@ -1,8 +1,6 @@
-import warnings
 from typing import List, Tuple
 
 import ray
-import ray._private.profiling as profiling
 import ray._private.services as services
 import ray._private.worker
 from ray._common.network_utils import build_address
@@ -10,7 +8,7 @@ from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
 from ray.core.generated import common_pb2
 
-__all__ = ["free", "global_gc"]
+__all__ = ["global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
 
 
@@ -176,74 +174,6 @@ def store_stats_summary(reply):
         store_summary += "Object fetches queued, waiting for available memory."
 
     return store_summary
-
-
-def free(object_refs: list, local_only: bool = False):
-    """
-    DeprecationWarning: `free` is a deprecated API and will be
-    removed in a future version of Ray. If you have a use case
-    for this API, please open an issue on GitHub.
-
-    Free a list of IDs from the in-process and plasma object stores.
-
-    This function is a low-level API which should be used in restricted
-    scenarios.
-
-    If local_only is false, the request will be send to all object stores.
-
-    This method will not return any value to indicate whether the deletion is
-    successful or not. This function is an instruction to the object store. If
-    some of the objects are in use, the object stores will delete them later
-    when the ref count is down to 0.
-
-    Examples:
-
-        .. testcode::
-
-            import ray
-
-            @ray.remote
-            def f():
-                return 0
-
-            obj_ref = f.remote()
-            ray.get(obj_ref)  # wait for object to be created first
-            free([obj_ref])  # unpin & delete object globally
-
-    Args:
-        object_refs (List[ObjectRef]): List of object refs to delete.
-        local_only: Whether only deleting the list of objects in local
-            object store or all object stores.
-    """
-    warnings.warn(
-        "`free` is a deprecated API and will be removed in a future version of Ray. "
-        "If you have a use case for this API, please open an issue on GitHub.",
-        DeprecationWarning,
-    )
-    worker = ray._private.worker.global_worker
-
-    if isinstance(object_refs, ray.ObjectRef):
-        object_refs = [object_refs]
-
-    if not isinstance(object_refs, list):
-        raise TypeError(
-            "free() expects a list of ObjectRef, got {}".format(type(object_refs))
-        )
-
-    # Make sure that the values are object refs.
-    for object_ref in object_refs:
-        if not isinstance(object_ref, ray.ObjectRef):
-            raise TypeError(
-                "Attempting to call `free` on the value {}, "
-                "which is not an ray.ObjectRef.".format(object_ref)
-            )
-
-    worker.check_connected()
-    with profiling.profile("ray.free"):
-        if len(object_refs) == 0:
-            return
-
-        worker.core_worker.free_objects(object_refs, local_only)
 
 
 def get_local_ongoing_lineage_reconstruction_tasks() -> List[

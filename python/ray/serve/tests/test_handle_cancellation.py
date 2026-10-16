@@ -297,11 +297,12 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
 def test_recursive_cancellation_during_execution(serve_instance):
     inner_signal_actor = SignalActor.remote()
     outer_signal_actor = SignalActor.remote()
+    inner_running_signal_actor = SignalActor.remote()
 
     @serve.deployment
     async def inner():
         async with send_signal_on_cancellation(inner_signal_actor):
-            pass
+            await inner_running_signal_actor.send.remote()
 
     @serve.deployment
     class Ingress:
@@ -319,9 +320,13 @@ def test_recursive_cancellation_during_execution(serve_instance):
     with pytest.raises(TimeoutError):
         resp.result(timeout_s=0.5)
 
+    # Cancelling while `inner` is still pending assignment tears down its
+    # assignment task rather than its execution, so it would never signal.
+    ray.get(inner_running_signal_actor.wait.remote(), timeout=20)
+
     resp.cancel()
-    ray.get(inner_signal_actor.wait.remote(), timeout=10)
-    ray.get(outer_signal_actor.wait.remote(), timeout=10)
+    ray.get(inner_signal_actor.wait.remote(), timeout=20)
+    ray.get(outer_signal_actor.wait.remote(), timeout=20)
 
 
 @pytest.mark.skipif(

@@ -24,7 +24,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/monitors/memory_monitor_utils.h"
 
 namespace ray {
 

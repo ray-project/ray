@@ -66,16 +66,12 @@ def main(args):
     # Get the preprocessing transforms from the pre-trained weights.
     transform = weights.transforms()
 
-    start_time = time.time()
-
-    if data_format == "raw":
-        if smoke_test:
-            data_url += "/dog_1.jpg"
-        ds = ray.data.read_images(data_url, size=(256, 256))
-    elif data_format == "parquet":
-        if smoke_test:
-            data_url += "/8cc8856e16c343829ef320fef4b353b1_000000.parquet"
-        ds = ray.data.read_parquet(data_url)
+    if smoke_test:
+        compute = ActorPoolStrategy(size=4)
+        num_gpus = 0
+    else:
+        compute = ActorPoolStrategy(min_size=1, max_size=10)
+        num_gpus = 1
 
     # Preprocess the images using standard preprocessing
     def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -97,38 +93,55 @@ def main(args):
                 output = self.model(torch.as_tensor(batch["image"], device=device))
                 return {"predictions": output.cpu().numpy()}
 
-    start_time_without_metadata_fetching = time.time()
+    holder = {}
 
-    if smoke_test:
-        compute = ActorPoolStrategy(size=4)
-        num_gpus = 0
-    else:
-        compute = ActorPoolStrategy(min_size=1, max_size=10)
-        num_gpus = 1
-    ds = ds.map_batches(preprocess, batch_size="auto")
-    ds = ds.map_batches(
-        Predictor,
-        batch_size=INFERENCE_BATCH_SIZE,
-        compute=compute,
-        num_gpus=num_gpus,
-        fn_constructor_kwargs={"model": model_ref},
-        max_concurrency=2,
-    )
+    def benchmark_fn():
+        url = data_url
+        if data_format == "raw":
+            if smoke_test:
+                url += "/dog_1.jpg"
+            ds = ray.data.read_images(url, size=(256, 256))
+        elif data_format == "parquet":
+            if smoke_test:
+                url += "/8cc8856e16c343829ef320fef4b353b1_000000.parquet"
+            ds = ray.data.read_parquet(url)
 
-    total_images = 0
+        # Secondary timer that excludes the read_* metadata fetch.
+        start_time_without_metadata_fetching = time.time()
 
-    # NOTE: We're iterating over ref-bundles to avoid pulling blocks into the
-    #       driver, therefore making it a factor impacting benchmark performance
-    for bundle in ds.iter_internal_ref_bundles():
-        total_images += bundle.num_rows()
+        ds = ds.map_batches(preprocess, batch_size="auto")
+        ds = ds.map_batches(
+            Predictor,
+            batch_size=INFERENCE_BATCH_SIZE,
+            compute=compute,
+            num_gpus=num_gpus,
+            fn_constructor_kwargs={"model": model_ref},
+        )
 
-    end_time = time.time()
+        total_images = 0
 
-    total_time = end_time - start_time
-    throughput = total_images / (total_time)
-    total_time_without_metadata_fetch = end_time - start_time_without_metadata_fetching
-    throughput_without_metadata_fetch = total_images / (
-        total_time_without_metadata_fetch
+        # NOTE: We're iterating over ref-bundles to avoid pulling blocks into the
+        #       driver, therefore making it a factor impacting benchmark performance
+        for bundle in ds.iter_internal_ref_bundles():
+            total_images += bundle.num_rows()
+
+        holder["ds"] = ds
+        holder["total_images"] = total_images
+        holder["total_time_s_wo_metadata_fetch"] = (
+            time.time() - start_time_without_metadata_fetching
+        )
+
+    benchmark = Benchmark()
+    benchmark.run_fn("batch-inference", benchmark_fn)
+
+    total_time = benchmark.result["batch-inference"][BenchmarkMetric.RUNTIME.value]
+    total_images = holder["total_images"]
+    total_time_without_metadata_fetch = holder["total_time_s_wo_metadata_fetch"]
+    throughput = total_images / total_time if total_time else 0
+    throughput_without_metadata_fetch = (
+        total_images / total_time_without_metadata_fetch
+        if total_time_without_metadata_fetch
+        else 0
     )
 
     print("Total time (sec): ", total_time)
@@ -144,23 +157,22 @@ def main(args):
         print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
-    results = collect_dataset_stats(ds)
-    results = {
-        BenchmarkMetric.RUNTIME: total_time,
-        BenchmarkMetric.THROUGHPUT: throughput,
-        "data_directory": data_directory,
-        "data_format": data_format,
-        "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
-        "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
-    }
-    results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-
-    return results
+    results = collect_dataset_stats(holder["ds"])
+    results.update(
+        {
+            BenchmarkMetric.THROUGHPUT.value: throughput,
+            "data_directory": data_directory,
+            "data_format": data_format,
+            "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
+            "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
+            "runtime_env_setup": RuntimeEnvSetupTracker.collect(),
+        }
+    )
+    benchmark.result["batch-inference"].update(results)
+    benchmark.write_result()
 
 
 if __name__ == "__main__":
     args = parse_args()
     ray.init(runtime_env={"py_modules": benchmark_py_modules()})
-    benchmark = Benchmark()
-    benchmark.run_fn("batch-inference", main, args)
-    benchmark.write_result()
+    main(args)
