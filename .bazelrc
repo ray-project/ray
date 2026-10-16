@@ -11,6 +11,10 @@ common --noincompatible_disallow_empty_glob
 # (Python/Java proto codegen) still calls. Drop once rules_proto_grpc is
 # replaced.
 common --noincompatible_disallow_ctx_resolve_tools
+# rules_python >= 1.0 can compile .pyc at build time; ci/ray_ci/automation lists
+# the same sources in a py_library and several py_binary targets, which then
+# produce conflicting __pycache__ outputs. rules_python 0.40 never precompiled.
+common --@rules_python//python/config_settings:precompile=force_disabled
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
