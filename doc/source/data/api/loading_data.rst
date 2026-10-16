@@ -297,6 +297,15 @@ SQL Databases
 
    read_sql
 
+HiveServer2
+^^^^^^^^^^^
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hive
+
 Snowflake
 ^^^^^^^^^
 

@@ -125,7 +125,7 @@ from ray.train.v2.jax import JaxTrainer
 def train_func():
     import jax
     devices = jax.devices()
-    ray.train.report({"num_devices": len(devices)})
+    print(f"Worker {ray.train.get_context().get_world_rank()} sees {len(devices)} devices.")
 
 trainer = JaxTrainer(
     train_func,

@@ -203,7 +203,7 @@ scrape_configs:
     refresh_interval: 60s
 ```
 
-- `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details.
+- `<DashboardPort>` is `8265` by default. See [Configuring and managing Ray dashboard](configure-manage-dashboard.md) for more details.
 - The endpoint returns a JSON list of targets for Prometheus metrics. When no targets are available, it returns `[]`.
 
 ### Manually discovering metrics endpoints

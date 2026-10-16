@@ -1,3 +1,8 @@
+# doc/source/serve/advanced-guides/multi-app-container.md downloads this
+# file in a Dockerfile from its raw GitHub URL on master. Renaming or moving
+# the file breaks that page.
+
+# __serve_example_begin__
 from ray import serve
 import re
 import subprocess
@@ -80,3 +85,4 @@ class WhisperModel:
 
 
 entrypoint = WhisperModel.bind()
+# __serve_example_end__

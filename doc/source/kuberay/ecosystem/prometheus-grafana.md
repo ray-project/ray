@@ -114,7 +114,7 @@ curl localhost:8080
   * `# HELP`: Describe the meaning of this metric.
   * `# TYPE`: See [this document](https://prometheus.io/docs/concepts/metric_types/) for more details.
 
-* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and managing Ray dashboard](https://docs.ray.io/en/latest/cluster/configure-manage-dashboard.html) for more details about these environment variables.
+* Three required environment variables are defined in [ray-cluster.embed-grafana.yaml](https://github.com/ray-project/kuberay/blob/v1.7.0/ray-operator/config/samples/ray-cluster.embed-grafana.yaml). See [Configuring and managing Ray dashboard](../../cluster/configure-manage-dashboard.md) for more details about these environment variables.
   ```yaml
   env:
     - name: RAY_GRAFANA_IFRAME_HOST
@@ -365,8 +365,8 @@ kubectl port-forward -n prometheus-system service/prometheus-kube-prometheus-pro
 ![Prometheus Web UI](../images/prometheus_web_ui.png)
 
 - Go to `${YOUR_IP}:9090/graph`. You should be able to query:
-  - [System Metrics](https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#system-metrics)
-  - [Application Level Metrics](https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#application-level-metrics)
+  - {ref}`System Metrics <system-metrics>`
+  - {ref}`Application Level Metrics <application-level-metrics>`
   - Custom Metrics defined in Recording Rules (e.g. `ray_gcs_availability_30d`)
 
 - Go to `${YOUR_IP}:9090/alerts`. You should be able to see:

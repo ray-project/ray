@@ -50,7 +50,11 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+    from ray.data._internal.execution.interfaces import (
+        ExecutionResources,
+        NodeIdStr,
+        RefBundle,
+    )
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
@@ -59,6 +63,7 @@ if TYPE_CHECKING:
         Schema,
         UserDefinedFunction,
     )
+    from ray.data.dataset import Dataset
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -2134,3 +2139,27 @@ def explain_plan(logical_plan: "LogicalPlan") -> str:
     _add_section("Physical Plan (Optimized)", optimized_physical)
 
     return "".join(sections)
+
+
+def create_streaming_split_dataset(
+    dataset: "Dataset",
+    n: int,
+    *,
+    equal: bool = False,
+    locality_hints: Optional[List["NodeIdStr"]] = None,
+) -> "Dataset":
+    """Wrap ``dataset`` in a ``StreamingSplit`` logical op, as
+    :meth:`Dataset.streaming_split` does."""
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators import StreamingSplit
+    from ray.data.dataset import Dataset
+
+    op = StreamingSplit(
+        num_splits=n,
+        equal=equal,
+        input_dependencies=[dataset._logical_plan.dag],
+        locality_hints=locality_hints,
+    )
+    split_dataset = Dataset._from_parent(dataset, LogicalPlan(op, dataset.context))
+    split_dataset._set_uuid(dataset._uuid)
+    return split_dataset

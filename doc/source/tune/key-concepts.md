@@ -156,31 +156,31 @@ Here's an overview of all available search algorithms in Tune:
 * - {ref}`Random search/grid search <tune-basicvariant>`
   - Random search/grid search
   -
-  - {doc}`/tune/examples/includes/tune_basic_example`
+  - {doc}`/tune/examples/includes/tune-basic-example`
 * - {ref}`AxSearch <tune-ax>`
   - Bayesian/Bandit Optimization
   - [[Ax](https://ax.dev/)]
-  - {doc}`/tune/examples/includes/ax_example`
+  - {doc}`/tune/examples/includes/ax-example`
 * - {ref}`HyperOptSearch <tune-hyperopt>`
   - Tree-Parzen Estimators
   - [[HyperOpt](http://hyperopt.github.io/hyperopt)]
-  - {doc}`/tune/examples/hyperopt_example`
+  - {doc}`/tune/examples/hyperopt-example`
 * - {ref}`BayesOptSearch <bayesopt>`
   - Bayesian Optimization
   - [[BayesianOptimization](https://github.com/fmfn/BayesianOptimization)]
-  - {doc}`/tune/examples/includes/bayesopt_example`
+  - {doc}`/tune/examples/includes/bayesopt-example`
 * - {ref}`TuneBOHB <suggest-TuneBOHB>`
   - Bayesian Opt/HyperBand
   - [[BOHB](https://github.com/automl/HpBandSter)]
-  - {doc}`/tune/examples/includes/bohb_example`
+  - {doc}`/tune/examples/includes/bohb-example`
 * - {ref}`NevergradSearch <nevergrad>`
   - Gradient-free Optimization
   - [[Nevergrad](https://github.com/facebookresearch/nevergrad)]
-  - {doc}`/tune/examples/includes/nevergrad_example`
+  - {doc}`/tune/examples/includes/nevergrad-example`
 * - {ref}`OptunaSearch <tune-optuna>`
   - Optuna search algorithms
   - [[Optuna](https://optuna.org/)]
-  - {doc}`/tune/examples/optuna_example`
+  - {doc}`/tune/examples/optuna-example`
 ```
 
 :::{note}
@@ -234,7 +234,7 @@ Schedulers can dynamically change trial resource requirements during tuning. Thi
 * - {ref}`ASHA <tune-scheduler-hyperband>`
   - No
   - Yes
-  - {doc}`Link </tune/examples/includes/async_hyperband_example>`
+  - {doc}`Link </tune/examples/includes/async-hyperband-example>`
 * - {ref}`Median Stopping Rule <tune-scheduler-msr>`
   - No
   - Yes
@@ -242,19 +242,19 @@ Schedulers can dynamically change trial resource requirements during tuning. Thi
 * - {ref}`HyperBand <tune-original-hyperband>`
   - Yes
   - Yes
-  - {doc}`Link </tune/examples/includes/hyperband_example>`
+  - {doc}`Link </tune/examples/includes/hyperband-example>`
 * - {ref}`BOHB <tune-scheduler-bohb>`
   - Yes
   - Only TuneBOHB
-  - {doc}`Link </tune/examples/includes/bohb_example>`
+  - {doc}`Link </tune/examples/includes/bohb-example>`
 * - {ref}`Population Based Training <tune-scheduler-pbt>`
   - Yes
   - Not Compatible
-  - {doc}`Link </tune/examples/includes/pbt_function>`
+  - {doc}`Link </tune/examples/includes/pbt-function>`
 * - {ref}`Population Based Bandits <tune-scheduler-pb2>`
   - Yes
   - Not Compatible
-  - {doc}`Basic Example </tune/examples/includes/pb2_example>`, {doc}`PPO example </tune/examples/includes/pb2_ppo_example>`
+  - {doc}`Basic Example </tune/examples/includes/pb2-example>`, {doc}`PPO example </tune/examples/includes/pb2-ppo-example>`
 ```
 
 Learn more about trial schedulers in {ref}`the scheduler API documentation <schedulers-ref>`.

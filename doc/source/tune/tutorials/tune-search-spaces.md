@@ -177,5 +177,5 @@ Here's an example showing a grid search over two nested parameters combined with
 :::{note}
 This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like {ref}`HyperOpt <tune-hyperopt>` and {ref}`Optuna <tune-optuna>`, handle conditional search spaces at all.
 
-In order to use conditional search spaces with {ref}`HyperOpt <tune-hyperopt>`, a [Hyperopt search space](http://hyperopt.github.io/hyperopt/getting-started/search_spaces/) isnecessary. {ref}`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface ({doc}`/tune/examples/optuna_example`).
+In order to use conditional search spaces with {ref}`HyperOpt <tune-hyperopt>`, a [Hyperopt search space](http://hyperopt.github.io/hyperopt/getting-started/search_spaces/) is necessary. {ref}`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface ({doc}`/tune/examples/optuna-example`).
 :::
