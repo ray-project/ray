@@ -116,10 +116,17 @@ def _modify_context_impl(
             # swap the file for a symlink before the next worker mounts it.
             # The digest keeps clusters with different tokens apart.
             token_dir = _get_default_token_path().parent
-            token_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             token_digest = hashlib.sha256(token.encode()).hexdigest()[:16]
             token_path = str(token_dir / f"image_uri_auth_token_{token_digest}")
-            _write_owner_only_file(token_path, token)
+            try:
+                token_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+                _write_owner_only_file(token_path, token)
+            except OSError as e:
+                raise RuntimeError(
+                    f"Failed to write the auth token to {token_path} for a "
+                    f"containerized worker: {e}. Store the token in a file and "
+                    "set RAY_AUTH_TOKEN_PATH instead of RAY_AUTH_TOKEN."
+                ) from e
         else:
             # Ignore the job's env_vars: a job-chosen path would mount any
             # host file the Ray user can read into the container.

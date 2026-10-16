@@ -132,6 +132,17 @@ def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
     assert TOKEN not in command
 
 
+def test_unwritable_token_dir_names_the_workaround(auth_env, tmp_path):
+    # A file where ~/.ray should be makes the directory uncreatable.
+    (tmp_path / ".ray").write_text("")
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
+    reset_auth_token_state()
+
+    with pytest.raises(RuntimeError, match="RAY_AUTH_TOKEN_PATH"):
+        _container_command()
+
+
 @pytest.mark.parametrize("temp_file_already_gone", [False, True])
 def test_failed_token_write_leaves_no_temp_file(tmp_path, temp_file_already_gone):
     def fail_replace(src, dst):
