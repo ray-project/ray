@@ -549,10 +549,16 @@ class MockReplicaActorWrapper:
         self._gang_context = None
         self._gang_pg_index = None
         self._unrecoverable = False
+        self._pending_allocation = True
 
     @property
     def is_cross_language(self) -> bool:
         return self._is_cross_language
+
+    @property
+    def is_pending_allocation(self) -> bool:
+        """True if the replica has not yet been allocated to a node."""
+        return self._pending_allocation
 
     @property
     def has_in_flight_health_or_routing_probe(self) -> bool:
@@ -660,6 +666,7 @@ class MockReplicaActorWrapper:
 
     def set_ready(self, version: Optional[DeploymentVersion] = None):
         self.status = ReplicaStartupStatus.SUCCEEDED
+        self._pending_allocation = False
         # Mirror the real actor: a started replica has allocated a log file.
         self._log_file_path = "serve/replica.log"
         if version:

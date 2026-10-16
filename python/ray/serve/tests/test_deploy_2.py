@@ -12,12 +12,13 @@ import pytest
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import DeploymentStatus
+from ray.serve._private.common import DeploymentID, DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
     SharedFlag,
     check_deployment_status,
     check_num_replicas_eq,
+    check_replica_counts,
     get_application_url,
 )
 from ray.serve._private.utils import get_component_file_name
@@ -414,6 +415,41 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
         wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
+
+
+def test_unallocated_replica_shutdown(serve_instance):
+    """Tests unallocated replicas during shutdown
+    should be stopped well before the graceful_shutdown_timesout.
+    """
+    app_name = "test_unallocated_shutdown"
+    deployment_name = "FakeResourceDeployment"
+
+    @serve.deployment(
+        ray_actor_options={"resources": {"accelerator_type:fakenews": 0.001}},
+        graceful_shutdown_timeout_s=100,
+    )
+    class FakeResourceDeployment:
+        def __call__(self):
+            return "ready"
+
+    serve._run(FakeResourceDeployment.bind(), name=app_name, _blocking=False)
+
+    # Wait until the replica is created.
+    wait_for_condition(
+        check_replica_counts,
+        controller=serve_instance._controller,
+        deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
+        total=1,
+    )
+
+    serve.delete(app_name, _blocking=False)
+
+    def check_app_removed():
+        return app_name not in serve.status().applications
+
+    # The application should be fully removed well before the 100s
+    # graceful shutdown timeout.
+    wait_for_condition(check_app_removed, timeout=30)
 
 
 if __name__ == "__main__":
