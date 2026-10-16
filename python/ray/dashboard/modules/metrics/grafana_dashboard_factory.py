@@ -326,6 +326,7 @@ def _generate_panel_template(
             PanelTemplate.STAT,
             PanelTemplate.GAUGE,
             PanelTemplate.TABLE,
+            PanelTemplate.STATE_TIMELINE,
         ):
             template["fieldConfig"]["defaults"]["mappings"] = panel.value_mappings
 

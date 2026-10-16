@@ -95,30 +95,50 @@ def test_enum_metric(monkeypatch, mock_gauge):
         name="test_enum",
         description="Test enum metric",
         base_tags=base_tags,
-        enum_tag_key="state",
+        enum_codes={TestEnum.A: 1, TestEnum.B: 2, TestEnum.C: 3},
+    )
+    assert metric.get_value() is None
+
+    # Each value is recorded as its code on a single series.
+    for value, code in [(TestEnum.A, 1), (TestEnum.B, 2), (TestEnum.C, 3)]:
+        metric.record(value)
+        assert metric.get_value() == value
+        assert metric._gauge._values == {frozenset(base_tags.items()): code}
+
+    # Reset records 0, meaning "no value".
+    metric.reset()
+    assert metric.get_value() is None
+    assert metric._gauge._values == {frozenset(base_tags.items()): 0}
+
+
+@pytest.mark.parametrize(
+    "enum_codes",
+    [{"A": 0, "B": 1}, {"A": 1, "B": 1}],
+    ids=["zero_code", "duplicate_code"],
+)
+def test_enum_metric_invalid_codes(mock_gauge, enum_codes):
+    with pytest.raises(ValueError):
+        EnumMetric(
+            name="test_enum",
+            description="Test enum metric",
+            base_tags={},
+            enum_codes=enum_codes,
+        )
+
+
+def test_controller_state_codes_match_dashboard_panel():
+    """The Grafana state timeline maps the gauge's codes back to state names."""
+    from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
+        CONTROLLER_STATE_CODES as PANEL_CONTROLLER_STATE_CODES,
     )
 
-    # Test recording values
-    metric.record(TestEnum.A)
-    assert metric.get_value(TestEnum.A) == 1
-    assert metric.get_value(TestEnum.B) == 0
-    assert metric.get_value(TestEnum.C) == 0
-
-    metric.record(TestEnum.B)
-    assert metric.get_value(TestEnum.A) == 0
-    assert metric.get_value(TestEnum.B) == 1
-    assert metric.get_value(TestEnum.C) == 0
-
-    metric.record(TestEnum.C)
-    assert metric.get_value(TestEnum.A) == 0
-    assert metric.get_value(TestEnum.B) == 0
-    assert metric.get_value(TestEnum.C) == 1
-
-    # Test reset
-    metric.reset()
-    assert metric.get_value(TestEnum.A) == 0
-    assert metric.get_value(TestEnum.B) == 0
-    assert metric.get_value(TestEnum.C) == 0
+    assert set(ControllerMetrics.CONTROLLER_STATE_CODES) == set(
+        TrainControllerStateType
+    )
+    assert {
+        code: state.name
+        for state, code in ControllerMetrics.CONTROLLER_STATE_CODES.items()
+    } == {code: name for code, (name, _) in PANEL_CONTROLLER_STATE_CODES.items()}
 
 
 def test_worker_metrics_callback(monkeypatch, mock_gauge):
@@ -282,79 +302,36 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
     callback = ControllerMetricsCallback()
     callback.after_controller_start(train_run_context=create_dummy_run_context())
 
+    state_metric = callback._metrics[ControllerMetrics.CONTROLLER_STATE]
+
+    def recorded_code():
+        (code,) = state_metric._gauge._values.values()
+        return code
+
     # Test initial state
+    assert state_metric.get_value() == TrainControllerStateType.INITIALIZING
     assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
+        recorded_code()
+        == ControllerMetrics.CONTROLLER_STATE_CODES[
             TrainControllerStateType.INITIALIZING
-        )
-        == 1
+        ]
     )
 
-    # Test state transition
-
-    previous_state = TrainControllerState(TrainControllerStateType.INITIALIZING)
-    current_state = TrainControllerState(TrainControllerStateType.RUNNING)
-    callback.after_controller_state_update(previous_state, current_state)
-
-    # Verify state counts
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.INITIALIZING
+    # Test state transitions
+    for previous_type, current_type in [
+        (TrainControllerStateType.INITIALIZING, TrainControllerStateType.RUNNING),
+        (TrainControllerStateType.RUNNING, TrainControllerStateType.FINISHED),
+    ]:
+        callback.after_controller_state_update(
+            TrainControllerState(previous_type), TrainControllerState(current_type)
         )
-        == 0
-    )
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.RUNNING
-        )
-        == 1
-    )
-
-    # Test another state transition
-    previous_state = TrainControllerState(TrainControllerStateType.RUNNING)
-    current_state = TrainControllerState(TrainControllerStateType.FINISHED)
-    callback.after_controller_state_update(previous_state, current_state)
-
-    # Verify updated state counts
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.INITIALIZING
-        )
-        == 0
-    )
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.RUNNING
-        )
-        == 0
-    )
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.FINISHED
-        )
-        == 1
-    )
+        assert state_metric.get_value() == current_type
+        assert recorded_code() == ControllerMetrics.CONTROLLER_STATE_CODES[current_type]
 
     asyncio.run(callback.before_controller_shutdown())
 
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.INITIALIZING
-        )
-        == 0
-    )
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.RUNNING
-        )
-        == 0
-    )
-    assert (
-        callback._metrics[ControllerMetrics.CONTROLLER_STATE].get_value(
-            TrainControllerStateType.FINISHED
-        )
-        == 0
-    )
+    assert state_metric.get_value() is None
+    assert recorded_code() == 0
 
 
 if __name__ == "__main__":
