@@ -19,6 +19,8 @@ def pytest_runtest_setup(item):
     if not sandbox_test_enabled():
         pytest.skip("Sandbox tests are only run when TEST_SANDBOX=1")
     os.environ["RAY_SANDBOX_IGNORE_CGROUPS"] = "1"
+    # A pull mustn't evict cached images because the runner's disk is full.
+    os.environ["RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"] = "0"
 
 
 @pytest.fixture

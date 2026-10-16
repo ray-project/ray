@@ -23,8 +23,8 @@ As workload demands change, the autoscaler adjusts the cluster size by adding or
 
 You configure worker groups in one of two ways, depending on how you launch the cluster:
 
-- The [available_node_types](https://docs.ray.io/en/releases-2.48.0/cluster/vms/references/ray-cluster-configuration.html#node-types) field in the cluster YAML file, if you're using the `ray up` cluster launcher.
-- The [workerGroupSpecs](https://docs.ray.io/en/releases-2.48.0/cluster/kubernetes/user-guides/config.html#pod-configuration-headgroupspec-and-workergroupspecs) field in the RayCluster CRD, if you're using KubeRay.
+- The [available_node_types](../../cluster/vms/references/ray-cluster-configuration.md#node-types) field in the cluster YAML file, if you're using the `ray up` cluster launcher.
+- The [workerGroupSpecs](../../kuberay/user-guides/config.md#pod-configuration-headgroupspec-and-workergroupspecs) field in the RayCluster CRD, if you're using KubeRay.
 
 The configuration specifies the logical resources of each node in a worker group, along with the minimum and maximum number of nodes for each group.
 

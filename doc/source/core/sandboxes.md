@@ -337,15 +337,7 @@ Sandboxes boot from OCI container images. The image manager pulls an image strai
 
 ### Bound the image cache
 
-The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before pulling or building an image it doesn't have, Ray evicts the least recently used images until the cache fits under the cap. Built images and their layers count toward the same cap. A built image is evicted in two steps: first its root filesystem goes, while its layers stay, so the next sandbox that needs it rebuilds it from the cached layers without running any build step again. Its layers go only if the cache is still over the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
-
-Ray exports metrics about the cache and the image builds that the next section describes, through the same [metrics system](../ray-observability/user-guides/add-app-metrics.md) as application metrics:
-
-* `ray_sandbox_image_requests`: images that sandboxes asked for, by `result`: `hit` (cached), `waited` (another build on the node made it), or `built`.
-* `ray_sandbox_image_build_seconds` and `ray_sandbox_image_phase_seconds`: how long builds take, in total and by `phase` (`sandbox_create`, `commands`, `export`, `normalize`, `copy`, `apply`, `verify`).
-* `ray_sandbox_image_slot_wait_seconds`: how long builds wait for one of the node's build slots.
-* `ray_sandbox_image_evictions`: evictions by `kind`: `whole`, or `demote` for a built image reduced to its layers.
-* `ray_sandbox_image_cache_bytes`: the cache's size as of its last eviction check.
+The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before pulling or building an image it doesn't have, Ray evicts the least recently used images until the cache fits under the cap and the filesystem that holds the cache has a minimum of free space, so the cache gives way when sandboxes' writable overlays, logs, or spilled objects fill the disk. Built images and their layers count toward the same cap. A built image is evicted in two steps: first its root filesystem goes, while its layers stay, so the next sandbox that needs it rebuilds it from the cached layers without running any build step again. Its layers go only if the cache is still over the cap or the disk still short of free space. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem and the free-space floor to a tenth of it, the level at which the kubelet starts evicting Pods. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` and `RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES` on worker nodes to choose either in bytes, or set both to `0` to disable eviction.
 
 ### Build images
 

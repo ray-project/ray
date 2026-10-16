@@ -49,7 +49,7 @@ Look at the Ray Serve configuration `serveConfigV2` embedded in the RayService Y
   * `import_path`: The path to import the Serve application. For `fruit_app`, [fruit.py](https://github.com/ray-project/test_dag/blob/master/fruit.py) defines the application in the `deployment_graph` variable.
   * `route_prefix`: See [Ray Serve API](serve-api) for more details.
   * `working_dir`: The working directory points to the [test_dag](https://github.com/ray-project/test_dag/) repository, which RayService downloads at runtime and uses to start your application. See {ref}`Runtime Environments <runtime-environments>`. for more details.
-  * `deployments`: See [Ray Serve Documentation](https://docs.ray.io/en/master/serve/configure-serve-deployment.html).
+  * `deployments`: See [Ray Serve Documentation](../../serve/configure-serve-deployment.md).
   ```yaml
   serveConfigV2: |
     applications:

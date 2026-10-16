@@ -1,3 +1,4 @@
+import concurrent.futures
 import contextlib
 import errno
 import fcntl
@@ -13,6 +14,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -20,9 +22,8 @@ import urllib.request
 import uuid
 from collections import deque
 from functools import lru_cache
-from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
+from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
-from ray.experimental.sandbox._internal import image_metrics
 from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 logger = logging.getLogger(__name__)
@@ -53,6 +54,8 @@ _FORCE_TOKEN_SUFFIX = ".force_token"
 _EXTRACT_FORMAT = 3
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
+# How many of an image's layers download at once, as in Docker.
+_LAYER_DOWNLOADS = 3
 
 
 class BuiltImageEvictedError(SandboxCreationError):
@@ -360,8 +363,12 @@ def extract_tar_layer(
         tar_fileobj = tar_input
 
     dir_mtimes = []
+    # Iterating reads the layer once; getmembers() first would decompress it
+    # twice, since extractfile() then rewinds a compressed stream. Not stream
+    # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
+    # short on a member boundary would extract without an error.
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
-        for member in tar.getmembers():
+        for member in tar:
             name = member.name.lstrip("/")
 
             # Prevent path traversal
@@ -809,6 +816,7 @@ def hold_lock(path: str):
 
 
 _IMAGE_CACHE_MAX_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES"
+_IMAGE_CACHE_MIN_FREE_BYTES_ENV = "RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES"
 # Subdirectory of each cached image holding one marker file per live sandbox.
 _USERS_SUBDIR = ".users"
 
@@ -840,6 +848,44 @@ def image_cache_max_bytes(images_dir: str) -> int:
         return shutil.disk_usage(images_dir).total // 2
     except OSError:
         return 0
+
+
+def image_cache_min_free_bytes(images_dir: str) -> int:
+    """Return the free space that eviction keeps on the cache's filesystem.
+
+    The cache shares its filesystem with sandboxes' writable overlays, logs
+    and spilled objects, so it gives way when they fill the disk.
+    ``RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES`` sets the floor in bytes; ``0``
+    disables it. Unset, it is a tenth of the filesystem that holds
+    ``images_dir``, the level at which the kubelet starts evicting Pods.
+
+    Args:
+        images_dir: Root image cache directory.
+
+    Returns:
+        The floor in bytes; 0 disables it.
+    """
+    raw = os.environ.get(_IMAGE_CACHE_MIN_FREE_BYTES_ENV)
+    if raw is not None and raw.strip():
+        try:
+            return max(int(raw), 0)
+        except ValueError:
+            logger.warning(
+                "Ignoring %s=%r: expected an integer number of bytes.",
+                _IMAGE_CACHE_MIN_FREE_BYTES_ENV,
+                raw,
+            )
+    try:
+        return shutil.disk_usage(images_dir).total // 10
+    except OSError:
+        return 0
+
+
+def _free_bytes(path: str) -> Optional[int]:
+    try:
+        return shutil.disk_usage(path).free
+    except OSError:
+        return None
 
 
 def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
@@ -989,15 +1035,49 @@ def _try_evict(
     return size
 
 
+def _cache_fits(
+    total: int, free: Optional[int], max_bytes: Optional[int], min_free_bytes: int
+) -> bool:
+    return (max_bytes is None or total <= max_bytes) and (
+        free is None or free >= min_free_bytes
+    )
+
+
+def evict_to_cache_limits(images_dir: str, keep: Optional[str] = None) -> None:
+    """Evict as this node's cache cap and free-space floor require.
+
+    See :func:`image_cache_max_bytes` and :func:`image_cache_min_free_bytes`;
+    nothing happens when both are disabled.
+
+    Args:
+        images_dir: Root image cache directory.
+        keep: Sanitized name of an image that must survive this pass.
+    """
+    max_cache = image_cache_max_bytes(images_dir)
+    min_free = image_cache_min_free_bytes(images_dir)
+    if max_cache > 0 or min_free > 0:
+        evict_least_recently_used_images(
+            images_dir,
+            max_cache if max_cache > 0 else None,
+            keep=keep,
+            min_free_bytes=min_free,
+        )
+
+
 def evict_least_recently_used_images(
-    images_dir: str, max_bytes: int, keep: Optional[str] = None
+    images_dir: str,
+    max_bytes: Optional[int],
+    keep: Optional[str] = None,
+    min_free_bytes: int = 0,
 ) -> None:
-    """Evict least-recently-used images until the cache fits ``max_bytes``.
+    """Evict least-recently-used images until the cache fits ``max_bytes``
+    and its filesystem has ``min_free_bytes`` free.
 
     Nodes cache every image they ever ran, so without a cap a long-lived
-    node eventually fills its disk. Candidates are fully extracted images
-    (``.extracted`` marker present) and ``<name>.tar`` archives left behind
-    by earlier Ray versions, oldest first. An image is skipped when a live
+    node eventually fills its disk, and the cache also gives way when
+    sandboxes' overlays or anything else fill it. Candidates are fully
+    extracted images (``.extracted`` marker present) and ``<name>.tar``
+    archives left behind by earlier Ray versions, oldest first. An image is skipped when a live
     sandbox uses it, when its per-image lock is held (a pull in progress),
     or when it is ``keep``. The in-use check is repeated under the lock,
     which is also where pulls register their users, so a marked image is
@@ -1011,8 +1091,9 @@ def evict_least_recently_used_images(
 
     Args:
         images_dir: Root image cache directory.
-        max_bytes: The cache size cap in bytes.
+        max_bytes: The cache size cap in bytes, or None for no cap.
         keep: Sanitized name of an image that must survive this pass.
+        min_free_bytes: Free space to keep on the cache's filesystem.
     """
     try:
         names = os.listdir(images_dir)
@@ -1050,36 +1131,32 @@ def evict_least_recently_used_images(
         entries.append((mtime, name, path, tar_path, size))
 
     total = sum(entry[-1] for entry in entries)
-    try:
-        if total <= max_bytes:
+    free = _free_bytes(images_dir)
+    if _cache_fits(total, free, max_bytes, min_free_bytes):
+        return
+    # Built images reduced to their layer in the first pass.
+    demoted = []
+    for entry in sorted(entries):
+        if _cache_fits(total, free, max_bytes, min_free_bytes):
             return
-        # Built images reduced to their layer in the first pass.
-        demoted = []
-        for entry in sorted(entries):
-            if total <= max_bytes:
-                return
-            _, name, img_dir, tar_path, size = entry
-            if name == keep or (img_dir is not None and _has_users(img_dir)):
-                continue
-            flattened = _flattened_bytes(name, img_dir) if img_dir is not None else 0
-            freed = _try_evict(images_dir, name, img_dir, tar_path, size, flattened > 0)
-            if freed is None:
-                continue
+        _, name, img_dir, tar_path, size = entry
+        if name == keep or (img_dir is not None and _has_users(img_dir)):
+            continue
+        flattened = _flattened_bytes(name, img_dir) if img_dir is not None else 0
+        freed = _try_evict(images_dir, name, img_dir, tar_path, size, flattened > 0)
+        if freed is None:
+            continue
+        total -= freed
+        free = _free_bytes(images_dir)
+        if flattened > 0:
+            demoted.append((entry, size - freed))
+    for (_, name, img_dir, tar_path, _), size in demoted:
+        if _cache_fits(total, free, max_bytes, min_free_bytes):
+            return
+        freed = _try_evict(images_dir, name, img_dir, tar_path, size, False)
+        if freed is not None:
             total -= freed
-            if flattened > 0:
-                demoted.append((entry, size - freed))
-                image_metrics.count_eviction("demote")
-            else:
-                image_metrics.count_eviction("whole")
-        for (_, name, img_dir, tar_path, _), size in demoted:
-            if total <= max_bytes:
-                return
-            freed = _try_evict(images_dir, name, img_dir, tar_path, size, False)
-            if freed is not None:
-                total -= freed
-                image_metrics.count_eviction("whole")
-    finally:
-        image_metrics.set_cache_bytes(total)
+            free = _free_bytes(images_dir)
 
 
 def pull_and_extract_container_image(
@@ -1176,9 +1253,7 @@ def pull_and_extract_container_image(
 
         # Only before a download, not on every hit: the scan walks every
         # cached entry, and a hit adds nothing to the cache.
-        max_cache = image_cache_max_bytes(images_dir)
-        if max_cache > 0:
-            evict_least_recently_used_images(images_dir, max_cache, keep=safe_name)
+        evict_to_cache_limits(images_dir, keep=safe_name)
 
         # Anything in the tree stamped after this came from the pull, not
         # from the image.
@@ -1342,6 +1417,126 @@ def invalidate_cached_image(
             fcntl.flock(f_lock, fcntl.LOCK_UN)
 
 
+def _download_blob(
+    url: str,
+    digest: str,
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+    image: str,
+    stop: threading.Event,
+) -> BinaryIO:
+    """Download a registry blob into an anonymous temporary file, and check it.
+
+    The blob is hashed as it arrives and checked against ``digest`` before
+    anything reads it, so a layer that is not what the manifest named never
+    has a byte extracted.
+
+    Args:
+        url: The blob's URL.
+        digest: The digest the manifest names for it.
+        headers: Request headers.
+        auth_header: The registry's ``Authorization`` value, if any.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for the temporary file.
+        image: The image reference, for errors.
+        stop: Set to end the download early.
+
+    Returns:
+        The file, rewound; a partial, unchecked one if ``stop`` was set
+        meanwhile.
+
+    Raises:
+        SandboxCreationError: The blob does not match ``digest``.
+    """
+    blob = tempfile.TemporaryFile(dir=blob_dir)
+    if stop.is_set():
+        return blob
+    try:
+        req = _registry_request(url, headers, auth_header)
+        hasher = hashlib.sha256()
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            while not stop.is_set():
+                # read1 returns what has arrived, so a stop takes effect soon.
+                chunk = resp.read1(1 << 20)
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                blob.write(chunk)
+        if not stop.is_set():
+            _verify_digest(digest, hasher.hexdigest(), image, f"layer {digest[:19]}...")
+        blob.seek(0)
+    except BaseException:
+        blob.close()
+        raise
+    return blob
+
+
+def _download_blobs(
+    blobs: List[Tuple[str, str]],
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+    image: str,
+) -> Iterator[BinaryIO]:
+    """Yield registry blobs in order, downloading a few of them at a time.
+
+    The caller extracts each layer while the ones after it download, and
+    closes each blob it gets. Closing the generator, as on an error, returns
+    at once: downloads still running stop at their next read, and the blobs
+    nobody took get closed.
+
+    Args:
+        blobs: ``(url, digest)`` of each blob, in the order to yield them.
+        headers: Request headers.
+        auth_header: The registry's ``Authorization`` value, if any.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for the temporary files.
+        image: The image reference, for errors.
+
+    Yields:
+        BinaryIO: Each blob, checked against its digest, as a rewound
+        temporary file.
+    """
+    stop = threading.Event()
+    pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=_LAYER_DOWNLOADS, thread_name_prefix="sandbox-layer-download"
+    )
+    downloads = [
+        pool.submit(
+            _download_blob,
+            url,
+            digest,
+            headers,
+            auth_header,
+            timeout_seconds,
+            blob_dir,
+            image,
+            stop,
+        )
+        for url, digest in blobs
+    ]
+    yielded = 0
+    try:
+        for download in downloads:
+            blob = download.result()
+            yielded += 1
+            yield blob
+    finally:
+        stop.set()
+        for download in downloads[yielded:]:
+            download.cancel()
+            download.add_done_callback(_close_blob)
+        pool.shutdown(wait=False)
+
+
+def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
+    if not download.cancelled() and download.exception() is None:
+        download.result().close()
+
+
 def _extract_image_layers(
     image: str,
     rootfs_dir: str,
@@ -1483,25 +1678,21 @@ def _extract_image_layers(
                 f"No layers found in manifest for image '{image}'"
             )
 
-        for layer in layers:
-            digest = layer["digest"]
-            blob_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
-            blob_req = _registry_request(blob_url, headers, auth_header)
-            with urllib.request.urlopen(blob_req, timeout=timeout_seconds) as blob_resp:
-                with tempfile.NamedTemporaryFile(
-                    dir=blob_dir, delete=True
-                ) as tmp_blob_file:
-                    # Hashed while spooling and checked before a byte of the
-                    # layer is extracted.
-                    hasher = hashlib.sha256()
-                    for chunk in iter(lambda: blob_resp.read(64 * 1024), b""):
-                        hasher.update(chunk)
-                        tmp_blob_file.write(chunk)
-                    _verify_digest(
-                        digest, hasher.hexdigest(), image, f"layer {digest[:19]}..."
-                    )
-                    tmp_blob_file.seek(0)
-                    extract_tar_layer(tmp_blob_file, rootfs_dir, ownership=ownership)
+        blobs = [
+            (
+                f"{registry_base_url(registry)}/v2/{repo}/blobs/{layer['digest']}",
+                layer["digest"],
+            )
+            for layer in layers
+        ]
+        with contextlib.closing(
+            _download_blobs(
+                blobs, headers, auth_header, timeout_seconds, blob_dir, image
+            )
+        ) as downloaded:
+            for blob in downloaded:
+                with blob:
+                    extract_tar_layer(blob, rootfs_dir, ownership=ownership)
 
     except Exception as err:
         if isinstance(err, SandboxCreationError):

@@ -26,7 +26,7 @@ import uuid
 import pytest
 
 from ray.experimental.sandbox import image_builder as image_builder_module
-from ray.experimental.sandbox._internal import image_layers, image_metrics
+from ray.experimental.sandbox._internal import image_layers
 from ray.experimental.sandbox._internal.erofs_reader import ErofsImage
 from ray.experimental.sandbox._internal.image_utils import (
     LAYER_TAR,
@@ -863,58 +863,6 @@ def test_a_built_image_is_checked_before_it_is_published(
     assert _work_copies(builder.images_dir) == []
 
 
-class _Recorder:
-    """Stands in for a ``ray.util.metrics`` metric."""
-
-    def __init__(self):
-        self.calls = []
-
-    def inc(self, value=1.0, tags=None):
-        self.calls.append(tags)
-
-    def observe(self, value, tags=None):
-        self.calls.append(tags)
-
-    def set(self, value, tags=None):
-        self.calls.append(value)
-
-
-def test_builds_hits_and_evictions_are_measured(builder, base_tar, monkeypatch):
-    metrics = {
-        name: _Recorder()
-        for name in (
-            "requests",
-            "build_seconds",
-            "phase_seconds",
-            "slot_wait_seconds",
-            "evictions",
-            "cache_bytes",
-        )
-    }
-    monkeypatch.setattr(image_metrics, "_get", lambda: metrics)
-    plan = ImageBuildPlan((_run("put /a 1"),))
-    builder.build(base_tar, plan)
-    builder.build(base_tar, plan)
-
-    assert [tags["result"] for tags in metrics["requests"].calls] == ["built", "hit"]
-    assert len(metrics["build_seconds"].calls) == 1
-    assert len(metrics["slot_wait_seconds"].calls) == 1
-    phases = {tags["phase"] for tags in metrics["phase_seconds"].calls}
-    assert {"sandbox_create", "commands", "export", "normalize", "copy"} <= phases
-    assert "apply" in phases
-    evict_least_recently_used_images(builder.images_dir, 1)
-    kinds = {tags["kind"] for tags in metrics["evictions"].calls}
-    assert kinds == {"demote", "whole"}
-    assert metrics["cache_bytes"].calls[-1] >= 0
-
-
-def test_metrics_do_nothing_outside_ray():
-    assert image_metrics._get() is None
-    image_metrics.count_request("hit")
-    with image_metrics.phase("apply"):
-        pass
-
-
 def test_builds_sweep_in_the_background_at_most_once_a_minute(
     builder, base_tar, monkeypatch
 ):
@@ -1309,6 +1257,16 @@ def test_eviction_takes_a_built_image_before_its_layer(builder, base_tar):
     assert builder.build(base_tar, plan_a) == ref_a
     assert len(builder._backend.runs) == runs
     assert _read(_image_file(builder, ref_a), "/a") == b"1"
+
+
+def test_builds_keep_the_free_space_floor(builder, base_tar, monkeypatch):
+    first = builder.build(base_tar, ImageBuildPlan((_run("put /a 1"),)))
+    # More free space than any disk has: as on a pull, everything not in use
+    # goes, though no cache cap is set.
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES", str(1 << 50))
+    second = builder.build(base_tar, ImageBuildPlan((_run("put /b 2"),)))
+    assert not os.path.exists(_image_file(builder, first))
+    assert _read(_image_file(builder, second), "/b") == b"2"
 
 
 def test_eviction_takes_layers_too_when_it_must(builder, base_tar):

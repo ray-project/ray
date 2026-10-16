@@ -52,7 +52,6 @@ import uuid
 from collections import deque
 from typing import BinaryIO, Callable, Deque, Dict, List, Optional, Set, Tuple
 
-from ray.experimental.sandbox._internal import image_metrics
 from ray.experimental.sandbox._internal.erofs_reader import ErofsError, ErofsImage
 from ray.experimental.sandbox._internal.image_layers import (
     LayerInfo,
@@ -82,11 +81,10 @@ from ray.experimental.sandbox._internal.image_utils import (
     _mark_image_in_use,
     entry_build_lock_path,
     entry_lock_path,
-    evict_least_recently_used_images,
+    evict_to_cache_limits,
     expected_extract_marker,
     get_platform_arch,
     hold_lock,
-    image_cache_max_bytes,
     sanitize_image_name,
 )
 from ray.experimental.sandbox.backend.base import BaseSandboxBackend
@@ -413,7 +411,6 @@ class ImageBuilder:
                 claim_epoch(self.images_dir, key, base_force_token)
         chain = self._resolve_chain(base, plan)
         if self._leaf_ready(chain):
-            image_metrics.count_request("hit")
             return self._hit(chain)
         require_incremental_mkfs_erofs()
         # A build of this very image may be under way: wait for it before
@@ -424,7 +421,6 @@ class ImageBuilder:
             pass
         chain = self._resolve_chain(base, plan)
         if self._leaf_ready(chain):
-            image_metrics.count_request("waited")
             return self._hit(chain)
         with self._build_slot():
             return self._build_locked(
@@ -508,11 +504,11 @@ class ImageBuilder:
                 except OSError:
                     f.close()
                     continue
-                waited = 0.0
                 if waiting_since is not None:
-                    waited = time.monotonic() - waiting_since
-                    logger.info("Got an image build slot after %.1fs", waited)
-                image_metrics.observe_slot_wait(waited)
+                    logger.info(
+                        "Got an image build slot after %.1fs",
+                        time.monotonic() - waiting_since,
+                    )
                 try:
                     yield
                 finally:
@@ -552,7 +548,6 @@ class ImageBuilder:
                     continue
                 chain = current
                 if self._leaf_ready(chain):
-                    image_metrics.count_request("waited")
                     return layer_reference(chain.leaf)
                 sweep_stale_work_dirs(self.images_dir)
                 started = time.time()
@@ -575,15 +570,12 @@ class ImageBuilder:
                             "building it again",
                             rebase.key[:12],
                         )
-                took = time.time() - started
                 logger.info(
                     "Built image %s (%d layers) in %.1fs",
                     chain.leaf[:12],
                     len(plan.steps),
-                    took,
+                    time.time() - started,
                 )
-                image_metrics.count_request("built")
-                image_metrics.observe_build(took)
                 return layer_reference(chain.leaf)
         raise SandboxCreationError(
             "Image layer keys kept changing under concurrent force_build "
@@ -894,7 +886,6 @@ class ImageBuilder:
                 start over from (see :class:`_Rebase`).
         """
         n = len(plan.steps)
-        max_bytes = image_cache_max_bytes(self.images_dir)
         work_ref = work_reference(chain.leaf)
         work_dir = os.path.join(self.images_dir, sanitize_image_name(work_ref))
         work_image = os.path.join(work_dir, ROOTFS_IMAGE)
@@ -910,10 +901,7 @@ class ImageBuilder:
             # a sweep removes the work copy and releases the token's pins.
             owner = own_work_dir(work_dir, token)
             _mark_image_in_use(work_dir, token)
-            if max_bytes > 0:
-                evict_least_recently_used_images(
-                    self.images_dir, max_bytes, keep=os.path.basename(work_dir)
-                )
+            evict_to_cache_limits(self.images_dir, keep=os.path.basename(work_dir))
             for attempt in range(2):
                 start, start_ref, start_dir, parent_build_id = self._start_point(
                     base, plan, chain, timeout_seconds, token
@@ -938,8 +926,7 @@ class ImageBuilder:
 
             def work_ready() -> str:
                 """Wait for the copy; the work image is usable from here on."""
-                with image_metrics.phase("copy"):
-                    copier.wait()
+                copier.wait()
                 marker = os.path.join(work_dir, _MARKER)
                 if not os.path.exists(marker):
                     with open(marker, "w", encoding="utf-8") as f:
@@ -1003,8 +990,7 @@ class ImageBuilder:
                             before_apply()
                             # Applied before publishing: once published, the
                             # entry is evictable and the diff may vanish.
-                            with image_metrics.phase("apply"):
-                                apply_layer_to_erofs(work_image, layer)
+                            apply_layer_to_erofs(work_image, layer)
                             _apply_image_env(step, work_dir)
                             meta = self._layer_meta(
                                 chain,
@@ -1016,9 +1002,7 @@ class ImageBuilder:
                                 info,
                             )
                             if is_leaf:
-                                self._publish_leaf(
-                                    key, work_dir, layer, meta, max_bytes
-                                )
+                                self._publish_leaf(key, work_dir, layer, meta)
                             else:
                                 self._publish(key, {LAYER_TAR: layer}, meta)
                             if index in chain.forced:
@@ -1028,14 +1012,13 @@ class ImageBuilder:
                     link, meta = reused
                     work_ready()
                     before_apply()
-                    with image_metrics.phase("apply"):
-                        apply_layer_to_erofs(work_image, link)
+                    apply_layer_to_erofs(work_image, link)
                     _apply_image_env(step, work_dir)
                     os.remove(link)
                     parent_build_id = meta["build_id"]
                     self._touch(key)
                     if is_leaf:
-                        self._publish_leaf(key, work_dir, None, meta, max_bytes)
+                        self._publish_leaf(key, work_dir, None, meta)
                 run_image = work_ref
         finally:
             # Not waited for: the image is published, and only a build
@@ -1203,8 +1186,7 @@ class ImageBuilder:
             timeout_seconds=timeout_seconds,
             **sandbox_options,
         )
-        with image_metrics.phase("sandbox_create"):
-            sandbox_id = self._backend.create_sandbox(config)
+        sandbox_id = self._backend.create_sandbox(config)
         deleter = None
         raw = os.path.join(work_dir, f"upper-{key[:16]}.tar")
         # In the build's private directory, which no sandbox mounts: runsc
@@ -1217,13 +1199,11 @@ class ImageBuilder:
                 if config.network == "none"
                 else ""
             )
-            with image_metrics.phase("commands"):
-                for command in step.commands:
-                    self._check_cancelled()
-                    self._exec(sandbox_id, step, command, key, pid_file, hint)
+            for command in step.commands:
+                self._check_cancelled()
+                self._exec(sandbox_id, step, command, key, pid_file, hint)
             self._check_cancelled()
-            with image_metrics.phase("export"):
-                self._backend.export_rootfs_upper(sandbox_id, raw)
+            self._backend.export_rootfs_upper(sandbox_id, raw)
             # Deleting a sandbox that wrote a lot takes a while (runsc tears
             # its memory down), and nothing from here on needs it gone: its
             # changes are in the export. The build waits for it only before
@@ -1240,7 +1220,7 @@ class ImageBuilder:
             work_ready()
             with ErofsImage(os.path.join(work_dir, ROOTFS_IMAGE)) as erofs:
                 root = erofs.stat(erofs.root_nid)
-            with open(raw, "rb") as src, image_metrics.phase("normalize"):
+            with open(raw, "rb") as src:
                 return normalize_overlay_diff(src, layer, root)
         finally:
             if deleter is None:
@@ -1435,7 +1415,6 @@ class ImageBuilder:
         work_dir: str,
         layer: Optional[str],
         meta: Dict,
-        max_bytes: int,
     ) -> None:
         """Move the finished image into the leaf entry (whose lock the caller holds).
 
@@ -1444,14 +1423,10 @@ class ImageBuilder:
         cached.
         """
         if os.environ.get(_VERIFY_ENV, "1") != "0":
-            with image_metrics.phase("verify"):
-                verify_erofs_image(os.path.join(work_dir, ROOTFS_IMAGE), key)
-        if max_bytes > 0:
-            evict_least_recently_used_images(
-                self.images_dir,
-                max_bytes,
-                keep=sanitize_image_name(layer_reference(key)),
-            )
+            verify_erofs_image(os.path.join(work_dir, ROOTFS_IMAGE), key)
+        evict_to_cache_limits(
+            self.images_dir, keep=sanitize_image_name(layer_reference(key))
+        )
         extra = {ROOTFS_IMAGE: os.path.join(work_dir, ROOTFS_IMAGE)}
         config = os.path.join(work_dir, _IMAGE_CONFIG)
         if os.path.isfile(config):
