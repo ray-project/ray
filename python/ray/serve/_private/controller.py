@@ -136,16 +136,12 @@ LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
-def _coerce_tracing_config(
-    tracing_config: Optional[TracingConfig],
-) -> TracingConfig:
+def _resolve_tracing_config(tracing_config: TracingConfig) -> TracingConfig:
     """Resolve unset tracing fields from this process's env vars.
 
     The config may have been built in another process (the driver or the
     dashboard), whose RAY_SERVE_TRACING_* env vars can differ from ours.
     """
-    if tracing_config is None:
-        return TracingConfig()
     return TracingConfig(**tracing_config.model_dump(exclude_unset=True))
 
 
@@ -195,7 +191,11 @@ class ServeController:
         # constructor arg. Validate before writing any state: if __init__
         # raises, Ray doesn't restart the actor and releases its name. On a
         # restart, log instead so recovery isn't blocked.
-        self.global_tracing_config = _coerce_tracing_config(global_tracing_config)
+        self.global_tracing_config = (
+            TracingConfig()
+            if global_tracing_config is None
+            else _resolve_tracing_config(global_tracing_config)
+        )
         try:
             check_tracing_exporter_import_path(self.global_tracing_config)
         except Exception as e:
@@ -386,16 +386,14 @@ class ServeController:
         """Return the global tracing config."""
         return self.global_tracing_config
 
-    def reconfigure_global_tracing_config(
-        self, global_tracing_config: Optional[TracingConfig]
-    ):
+    def reconfigure_global_tracing_config(self, global_tracing_config: TracingConfig):
         """Reject a change to the tracing config after startup.
 
         A no-op if it matches the config in effect. OpenTelemetry sets the
         tracer provider once per process, so running components can't adopt a
         new config.
         """
-        global_tracing_config = _coerce_tracing_config(global_tracing_config)
+        global_tracing_config = _resolve_tracing_config(global_tracing_config)
 
         if global_tracing_config != self.global_tracing_config:
             raise ValueError(
