@@ -894,6 +894,7 @@ class PushedHealthTracker:
             in (
                 ReplicaHealthCheckResponse.SUCCEEDED,
                 ReplicaHealthCheckResponse.APP_FAILURE,
+                ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
             )
             and probe_started_at < self._applied_push_received_at
         ):

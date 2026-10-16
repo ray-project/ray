@@ -13587,23 +13587,48 @@ class TestPushedHealthTracker:
         # ...and the push it beat is still in hand for the next tick.
         assert self._resolve(t).source is HealthSource.PUSH
 
-    def test_a_probe_started_before_an_applied_push_is_superseded(self):
+    @pytest.mark.parametrize(
+        "probe_response",
+        [
+            ReplicaHealthCheckResponse.SUCCEEDED,
+            ReplicaHealthCheckResponse.APP_FAILURE,
+            ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
+        ],
+    )
+    @pytest.mark.parametrize("pushed_healthy", [True, False])
+    def test_a_probe_started_before_an_applied_push_is_superseded(
+        self, probe_response, pushed_healthy
+    ):
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
-        t.record(timer.time(), True, 0)
+        t.record(timer.time(), pushed_healthy, 0 if pushed_healthy else 2)
         self._resolve(t)  # the push is applied
-        r = self._resolve(t, ReplicaHealthCheckResponse.APP_FAILURE, probe_started)
+        r = self._resolve(t, probe_response, probe_started)
         assert r.source is HealthSource.SUPERSEDED_PROBE
         assert r.response is ReplicaHealthCheckResponse.NONE
 
-    def test_an_actor_crash_is_never_superseded(self):
+    @pytest.mark.parametrize("probe_delay", [0, 1])
+    def test_an_unavailable_probe_started_at_or_after_a_push_is_not_superseded(
+        self, probe_delay
+    ):
+        t, timer = self._tracker()
+        t.record(timer.time(), True, 0)
+        self._resolve(t)
+        timer.advance(probe_delay)
+        r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE, timer.time())
+        assert r.source is HealthSource.PROBE
+        assert r.response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
+
+    @pytest.mark.parametrize("pushed_healthy", [True, False])
+    def test_an_actor_crash_is_never_superseded(self, pushed_healthy):
         t, timer = self._tracker()
         probe_started = timer.time()
         timer.advance(1)
-        t.record(timer.time(), True, 0)
+        t.record(timer.time(), pushed_healthy, 0 if pushed_healthy else 2)
         self._resolve(t)
         r = self._resolve(t, ReplicaHealthCheckResponse.ACTOR_CRASHED, probe_started)
+        assert r.source is HealthSource.PROBE
         assert r.response is ReplicaHealthCheckResponse.ACTOR_CRASHED
 
     def test_a_push_older_than_an_applied_probe_is_dropped(self):
@@ -13684,6 +13709,43 @@ class TestPushedHealthWrapper:
         assert wrapper.check_health() is True
         wrapper._actor_handle.check_health.remote.assert_not_called()
         assert wrapper._probe_ref is None
+
+    @pytest.mark.parametrize("pushed_healthy", [True, False])
+    @pytest.mark.parametrize(
+        "probe_error, expected_healthy",
+        [
+            (ActorUnavailableError("net", None), True),
+            (ActorDiedError(), False),
+        ],
+        ids=["unavailable", "dead"],
+    )
+    def test_a_push_supersedes_an_unavailable_probe_but_not_actor_death(
+        self, pushed_healthy, probe_error, expected_healthy
+    ):
+        wrapper, timer = self._wrapper()
+        failures = REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD - 1
+        wrapper._consecutive_health_check_failures = failures
+        pushed_failures = 0 if pushed_healthy else failures
+
+        with patch.object(ds_mod.time, "time", timer.time):
+            assert wrapper.check_health() is True
+            timer.advance(1)
+            wrapper.record_pushed_health(timer.time(), pushed_healthy, pushed_failures)
+            with patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=False):
+                assert wrapper.check_health() is True
+            assert wrapper._consecutive_health_check_failures == pushed_failures
+
+            timer.advance(1)
+            with (
+                patch.object(ds_mod, "check_obj_ref_ready_nowait", return_value=True),
+                patch.object(ds_mod.ray, "get", side_effect=probe_error),
+            ):
+                assert wrapper.check_health() is expected_healthy
+
+        assert wrapper._consecutive_health_check_failures == pushed_failures
+        assert wrapper._probe_ref is None
+        assert wrapper.last_health_check_failed is (None if expected_healthy else True)
+        wrapper._actor_handle.check_health.remote.assert_called_once()
 
     def test_a_pushed_count_reaching_the_threshold_marks_the_replica_unhealthy(self):
         wrapper, timer = self._wrapper()
