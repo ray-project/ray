@@ -96,13 +96,8 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     // This is the default value so there is no need to store it.
     resources_.erase(resource_id);
   } else {
-    auto it = resources_.find(resource_id);
-    const bool is_new_key = (it == resources_.end());
-    if (is_new_key) {
-      it = resources_.emplace(resource_id, std::move(instances)).first;
-    } else {
-      it->second = std::move(instances);
-    }
+    const bool is_new_key =
+        resources_.insert_or_assign(resource_id, std::move(instances)).second;
 
     if (is_new_key) {
       // Popluate the pg_indexed_resources_map_
