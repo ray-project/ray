@@ -413,3 +413,9 @@ def test_metadata_failure_falls_back_and_closes_input(tmp_path, monkeypatch, fai
     assert sizing.estimate_batch_size(tracked, None, 65536) is None
     assert len(filesystem.files) == 1
     assert all(raw.closed and source.closed for raw, source in filesystem.files)
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
