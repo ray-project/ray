@@ -11,11 +11,10 @@ need a live cluster.
 
 import asyncio
 import threading
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     DeploymentID,
@@ -24,7 +23,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -285,7 +283,7 @@ class TestRunningReplicaLazyResolution:
         info = _make_running_replica_info(actor_name="ensure-async")
         fake = _make_mock_actor_handle()
 
-        with patch("ray.get_actor", return_value=fake) as mock_get:
+        with patch("ray.get_actor", return_value=fake):
             replica = RunningReplica(info)
             h = await replica._ensure_actor_handle()
 
