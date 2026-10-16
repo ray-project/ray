@@ -551,11 +551,11 @@ func TestToAbsolutePath(t *testing.T) {
 }
 
 func TestGenerateRandomNamespace(t *testing.T) {
-	a := generateRandomNamespace()
+	a := options.GenerateDefaultNamespace()
 	if a == "" {
 		t.Fatal("expected non-empty namespace, got empty string")
 	}
-	b := generateRandomNamespace()
+	b := options.GenerateDefaultNamespace()
 	if b == "" {
 		t.Fatal("expected non-empty namespace for the second call, got empty string")
 	}

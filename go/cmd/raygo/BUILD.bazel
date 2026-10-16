@@ -30,10 +30,17 @@ go_library(
         "//go/cmd/raygo/version",
         "//go/pkg/log",
         "//go/pkg/log/zap",
+        "//go/pkg/version",
         "@com_github_spf13_cobra//:cobra",
     ],
 )
 
+# raygo executable. x_defs bakes the version package's version/commit into the
+# binary at link time (-ldflags -X), aligned with python/ray/_version.py's
+# build-time {{RAY_COMMIT_SHA}} placeholder substitution. The default value is
+# the {{RAY_COMMIT_SHA}} placeholder (no injected signal, matching _version.py's
+# commit); the wheel build script replaces version.RayCommit with the real
+# TRAVIS_COMMIT via sed before compilation.
 go_binary(
     name = "raygo",
     embed = [":raygo_lib"],
@@ -44,4 +51,8 @@ go_binary(
         "-w",
     ],
     visibility = ["//visibility:public"],
+    x_defs = {
+        "github.com/ray-project/ray/go/pkg/version.RayVersion": "3.0.0.dev0",
+        "github.com/ray-project/ray/go/pkg/version.RayCommit": "{{RAY_COMMIT_SHA}}",
+    },
 )

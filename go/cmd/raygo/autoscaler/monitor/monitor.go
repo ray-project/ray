@@ -24,7 +24,11 @@ import (
 	v2 "github.com/ray-project/ray/go/internal/autoscaler/v2"
 	"github.com/ray-project/ray/go/internal/autoscaler/v2/constant"
 	"github.com/ray-project/ray/go/internal/common"
+	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -63,10 +67,10 @@ func init() {
 		fmt.Sprintf("Specify the name of log file, log to stdout if set empty (--logging-filename). Default is %q", common.MONITOR_LOG_FILE_NAME))
 	MonitorCmd.Flags().String(constant.FlagsLogsDir, "",
 		"Specify the path of the logs directory used by Ray processes (--logs-dir).")
-	MonitorCmd.Flags().Int(constant.FlagsLoggingRotateBytes, common.LOGGING_ROTATE_BYTES,
-		fmt.Sprintf("Specify the max bytes for rotating log file (--logging-rotate-bytes). Default is %d bytes.", common.LOGGING_ROTATE_BYTES))
-	MonitorCmd.Flags().Int(constant.FlagsLoggingRotateBackupCount, common.LOGGING_ROTATE_BACKUP_COUNT,
-		fmt.Sprintf("Specify the backup count of rotated log file (--logging-rotate-backup-count). Default is %d.", common.LOGGING_ROTATE_BACKUP_COUNT))
+	MonitorCmd.Flags().Int(constant.FlagsLoggingRotateBytes, logconfig.LOGGING_ROTATE_BYTES,
+		fmt.Sprintf("Specify the max bytes for rotating log file (--logging-rotate-bytes). Default is %d bytes.", logconfig.LOGGING_ROTATE_BYTES))
+	MonitorCmd.Flags().Int(constant.FlagsLoggingRotateBackupCount, logconfig.LOGGING_ROTATE_BACKUP_COUNT,
+		fmt.Sprintf("Specify the backup count of rotated log file (--logging-rotate-backup-count). Default is %d.", logconfig.LOGGING_ROTATE_BACKUP_COUNT))
 
 	// Monitor flags (optional).
 	MonitorCmd.Flags().String(constant.FlagsMonitorIP, "",
@@ -126,15 +130,15 @@ func runMonitor(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	// Set up the logging system.
-	if err = common.NewLogOption(
-		common.WithLoggingLevel(config.LoggingLevel),
-		common.WithLoggingFormat(config.LoggingFormat),
-		common.WithLoggingFilename(config.LoggingFilename),
-		common.WithLogsDir(config.LogsDir),
-		common.WithLoggingRotateBytes(config.LoggingRotateBytes),
-		common.WithLoggingRotateBackupCount(config.LoggingRotateBackupCount),
-		common.WithStdoutFilepath(config.StdoutFilepath),
-		common.WithStderrFilepath(config.StderrFilepath),
+	if err = logconfig.NewLogOption(
+		logconfig.WithLoggingLevel(config.LoggingLevel),
+		logconfig.WithLoggingFormat(config.LoggingFormat),
+		logconfig.WithLoggingFilename(config.LoggingFilename),
+		logconfig.WithLogsDir(config.LogsDir),
+		logconfig.WithLoggingRotateBytes(config.LoggingRotateBytes),
+		logconfig.WithLoggingRotateBackupCount(config.LoggingRotateBackupCount),
+		logconfig.WithStdoutFilepath(config.StdoutFilepath),
+		logconfig.WithStderrFilepath(config.StderrFilepath),
 	).SetupComponentLogger(); err != nil {
 		v2.CustomErrorHook(err)
 		return err
@@ -147,8 +151,27 @@ func runMonitor(cmd *cobra.Command, args []string) (err error) {
 		"log_dir", config.LogsDir,
 		"monitor_ip", config.MonitorIP)
 
+	// Fail fast on deployment errors (missing/invalid go_runtime.so).
+	if err := plugin.CheckPluginLoadable(); err != nil {
+		v2.CustomErrorHook(err)
+		return err
+	}
+
+	// Build the GCS client through the plugin export surface and reuse the same
+	// instance for the config reader and the monitor (one-process-one-client).
+	gcsClient, err := plugin.LoadGCSClient(gcs.ClientOptions{
+		Address:   config.GcsAddress,
+		ClusterID: ids.NilClusterID(),
+		TimeoutMs: 10000,
+	})
+	if err != nil {
+		v2.CustomErrorHook(err)
+		return fmt.Errorf("failed to connect to GCS client: %w", err)
+	}
+	defer gcsClient.Close()
+
 	// Create the config reader and validate it.
-	configReader, err := v2.CreateConfigReader(config)
+	configReader, err := v2.CreateConfigReader(config, gcsClient)
 	if err != nil {
 		v2.CustomErrorHook(err)
 		return err
@@ -159,6 +182,7 @@ func runMonitor(cmd *cobra.Command, args []string) (err error) {
 		configReader,
 		config.LogsDir,
 		config.MonitorIP,
+		gcsClient,
 	)
 	if err != nil {
 		v2.CustomErrorHook(err)

@@ -1,0 +1,2 @@
+# This package hosts the shared Starlark macro (defs.bzl) used by the
+# per-plugin packages (bad/full/incomplete) to build plugin-mode binaries.

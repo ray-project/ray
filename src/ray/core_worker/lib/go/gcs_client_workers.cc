@@ -119,4 +119,65 @@ int ray_gcs_client_workers_add_worker_info(CGcsClient *client,
   }
 }
 
+int ray_gcs_client_workers_get_worker_debugger_port(CGcsClient *client,
+                                                    const char *worker_id_hex,
+                                                    uint32_t *port_out,
+                                                    char **error_out) {
+  if (!client || !client->global_state_accessor || !worker_id_hex || !port_out) {
+    set_error(error_out, "Invalid arguments");
+    return 0;
+  }
+  try {
+    ray::WorkerID worker_id = ray::WorkerID::FromHex(std::string(worker_id_hex));
+    *port_out = client->global_state_accessor->GetWorkerDebuggerPort(worker_id);
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
+}
+
+int ray_gcs_client_workers_update_worker_debugger_port(CGcsClient *client,
+                                                       const char *worker_id_hex,
+                                                       uint32_t debugger_port,
+                                                       int *success_out,
+                                                       char **error_out) {
+  if (!client || !client->global_state_accessor || !worker_id_hex || !success_out) {
+    set_error(error_out, "Invalid arguments");
+    return 0;
+  }
+  try {
+    ray::WorkerID worker_id = ray::WorkerID::FromHex(std::string(worker_id_hex));
+    bool success =
+        client->global_state_accessor->UpdateWorkerDebuggerPort(worker_id, debugger_port);
+    *success_out = success ? 1 : 0;
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
+}
+
+int ray_gcs_client_workers_update_worker_num_paused_threads(
+    CGcsClient *client,
+    const char *worker_id_hex,
+    int32_t num_paused_threads_delta,
+    int *success_out,
+    char **error_out) {
+  if (!client || !client->global_state_accessor || !worker_id_hex || !success_out) {
+    set_error(error_out, "Invalid arguments");
+    return 0;
+  }
+  try {
+    ray::WorkerID worker_id = ray::WorkerID::FromHex(std::string(worker_id_hex));
+    bool success = client->global_state_accessor->UpdateWorkerNumPausedThreads(
+        worker_id, num_paused_threads_delta);
+    *success_out = success ? 1 : 0;
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
+}
+
 }  // extern "C"

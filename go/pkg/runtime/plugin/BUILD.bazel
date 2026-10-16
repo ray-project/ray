@@ -19,30 +19,45 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "plugin",
     srcs = [
+        "driver_handshake.go",
         "plugin.go",
         "plugin_loader.go",
     ],
     importpath = "github.com/ray-project/ray/go/pkg/runtime/plugin",
     visibility = ["//visibility:public"],
     deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
         "//go/pkg/options",
         "//go/pkg/runtime/contract",
+        "//go/proto",
     ],
 )
 
 # Unit tests for plugin loading
 go_test(
-    name = "plugin_loader_test",
-    srcs = ["plugin_loader_test.go"],
+    name = "plugin_test",
+    srcs = [
+        "driver_handshake_test.go",
+        "plugin_loader_gcs_test.go",
+        "plugin_loader_test.go",
+    ],
+    args = [
+        "$(location //go/pkg/runtime/plugin/testplugins/full:full)",
+        "$(location //go/pkg/runtime/plugin/testplugins/bad:bad)",
+        "$(location //go/pkg/runtime/plugin/testplugins/incomplete:incomplete)",
+    ],
+    data = [
+        "//go/pkg/runtime/plugin/testplugins/bad",
+        "//go/pkg/runtime/plugin/testplugins/full",
+        "//go/pkg/runtime/plugin/testplugins/incomplete",
+    ],
     embed = [":plugin"],
     deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
         "//go/pkg/options",
-        "//go/pkg/runtime/contract",
+        "//go/proto",
     ],
-)
-
-go_test(
-    name = "plugin_test",
-    srcs = ["plugin_loader_test.go"],
-    embed = [":plugin"],
 )

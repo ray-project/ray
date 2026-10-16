@@ -43,6 +43,12 @@ func runAgentWithFakeGCS(t *testing.T, run func(context.Context) error) error {
 	}
 	t.Cleanup(func() { connectGCSClient = origConnect })
 
+	// The sandbox has no go_runtime.so, so stub the startup plugin
+	// loadability pre-check to keep testing the original logic.
+	origValidate := validatePluginLoadableFn
+	validatePluginLoadableFn = func() error { return nil }
+	t.Cleanup(func() { validatePluginLoadableFn = origValidate })
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	errCh := make(chan error, 1)

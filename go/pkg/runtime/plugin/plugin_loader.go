@@ -33,6 +33,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
 )
@@ -46,6 +47,16 @@ const (
 	// This prevents loading excessively large files that could cause memory issues.
 	maxPluginSize = 100 * 1024 * 1024 // 100MB
 	pluginExt     = ".so"             // Required plugin file extension
+
+	// Exported plugin symbols. Centralized so the thin-layer loaders and the
+	// startup plugin loadability pre-check share one source of truth for symbol
+	// names (a typo here is caught at compile time, not only at runtime via
+	// plugin.Lookup).
+	symInitialize           = "Initialize"
+	symShutdown             = "Shutdown"
+	symRunTaskExecutionLoop = "RunTaskExecutionLoop"
+	symConnectClient        = "ConnectClient"
+	symNewLogBatchPublisher = "NewLogBatchPublisher"
 )
 
 // findPythonSitePackages attempts to find the Python site-packages directory.
@@ -53,9 +64,14 @@ const (
 // Returns a list of site-packages paths to try.
 //
 // The function uses dynamic discovery to find site-packages directories:
-// 1. Use python executable to query site-packages (most reliable)
-// 2. Scan ~/.local/lib for user-installed packages (pattern-based, version-agnostic)
+// 1. Scan ~/.local/lib for user-installed packages (pattern-based, version-agnostic)
+// 2. Use python executable to query site-packages (most reliable)
 // 3. Fallback to PYTHONPATH environment variable
+//
+// The ~/.local/user site-packages are tried first: a `pip install --user` ray
+// (the common local deployment) is installed there, and it is the location with
+// the most up-to-date go_runtime.so. PATH-discovered python site-packages (which
+// may point at a different, older installation) are only consulted afterwards.
 //
 // This approach avoids hardcoding Python versions and supports any Python installation.
 func findPythonSitePackages() []string {
@@ -70,41 +86,7 @@ func findPythonSitePackages() []string {
 		}
 	}
 
-	// Strategy 1: Use python executable to query site-packages (most reliable)
-	// This dynamically discovers the actual site-packages paths for the current Python installation
-	pythonExe, err := exec.LookPath("python3")
-	if err != nil {
-		pythonExe, _ = exec.LookPath("python")
-	}
-	if pythonExe != "" {
-		// Query site-packages using Python's site module
-		cmd := exec.Command(pythonExe, "-c", "import site; print(site.getsitepackages())")
-		output, err := cmd.Output()
-		if err == nil {
-			// Output is like "['/path1', '/path2']"
-			outputStr := strings.TrimSpace(string(output))
-			outputStr = strings.Trim(outputStr, "[]")
-			paths := strings.Split(outputStr, "', '")
-			for _, p := range paths {
-				p = strings.Trim(p, "[]'\" ")
-				if p != "" {
-					addPath(p)
-				}
-			}
-		}
-
-		// Also try user site-packages (pip install --user)
-		cmd = exec.Command(pythonExe, "-c", "import site; print(site.getusersitepackages())")
-		output, err = cmd.Output()
-		if err == nil {
-			p := strings.TrimSpace(string(output))
-			if p != "" && p != "None" {
-				addPath(p)
-			}
-		}
-	}
-
-	// Strategy 2: Scan ~/.local/lib for any Python version (pattern-based discovery)
+	// Strategy 1: Scan ~/.local/lib for user-installed packages (pattern-based discovery)
 	// This finds site-packages without hardcoding Python versions.
 	// When multiple Python versions exist, the newest version is preferred.
 	home := os.Getenv("HOME")
@@ -166,6 +148,40 @@ func findPythonSitePackages() []string {
 			// Add sorted paths to result
 			for _, path := range sitePackagesPaths {
 				addPath(path)
+			}
+		}
+	}
+
+	// Strategy 2: Use python executable to query site-packages (most reliable)
+	// This dynamically discovers the actual site-packages paths for the current Python installation
+	pythonExe, err := exec.LookPath("python3")
+	if err != nil {
+		pythonExe, _ = exec.LookPath("python")
+	}
+	if pythonExe != "" {
+		// Query site-packages using Python's site module
+		cmd := exec.Command(pythonExe, "-c", "import site; print(site.getsitepackages())")
+		output, err := cmd.Output()
+		if err == nil {
+			// Output is like "['/path1', '/path2']"
+			outputStr := strings.TrimSpace(string(output))
+			outputStr = strings.Trim(outputStr, "[]")
+			paths := strings.Split(outputStr, "', '")
+			for _, p := range paths {
+				p = strings.Trim(p, "[]'\" ")
+				if p != "" {
+					addPath(p)
+				}
+			}
+		}
+
+		// Also try user site-packages (pip install --user)
+		cmd = exec.Command(pythonExe, "-c", "import site; print(site.getusersitepackages())")
+		output, err = cmd.Output()
+		if err == nil {
+			p := strings.TrimSpace(string(output))
+			if p != "" && p != "None" {
+				addPath(p)
 			}
 		}
 	}
@@ -430,9 +446,14 @@ func callPluginFunc(fn reflect.Value, args []reflect.Value, expectedResults int,
 	if len(results) != expectedResults {
 		return nil, fmt.Errorf("function must return exactly %d values, got %d", expectedResults, len(results))
 	}
-	for i, validator := range resultValidators {
-		if i < len(results) {
-			if err := validator(results[i]); err != nil {
+	// Validate the trailing error result first: when a plugin function returns
+	// (nil, err) the err must surface as-is instead of being masked by a
+	// value-type validator ("must return gcs.Client, got <nil>"). This also
+	// kills the typed-nil path where a value validator would dereference a nil
+	// pointer (e.g. Initialize's handle.Runtime()) before the error is seen.
+	for i := expectedResults - 1; i >= 0; i-- {
+		if i < len(resultValidators) {
+			if err := resultValidators[i](results[i]); err != nil {
 				return nil, err
 			}
 		}
@@ -458,32 +479,27 @@ func validateError(v reflect.Value) error {
 // loadPluginInternal loads a plugin from the specified path without caching.
 // This is an internal helper function used by LoadOrGet.
 func loadPluginInternal(pluginPath string, opts options.InitializeOptions) (*RuntimePlugin, error) {
-	// Security check: validate plugin path before loading
-	// This is the primary security gate - checks path traversal, extension, size, and checksum
-	if err := validatePluginPath(pluginPath); err != nil {
-		return nil, fmt.Errorf("plugin validation failed: %w", err)
-	}
-
-	// Open the plugin.
-	p, err := plugin.Open(pluginPath)
+	// Open the plugin via openPluginAt, which applies validatePluginPath (the
+	// primary security gate) and plugin.Open with consistent error reporting.
+	p, err := openPluginAt(pluginPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load go_runtime.so: %w", err)
+		return nil, err
 	}
 
 	// Lookup Initialize symbol.
-	initSym, err := p.Lookup("Initialize")
+	initSym, err := p.Lookup(symInitialize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup Initialize symbol: %w", err)
 	}
 
 	// Lookup Shutdown symbol.
-	shutdownSym, err := p.Lookup("Shutdown")
+	shutdownSym, err := p.Lookup(symShutdown)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup Shutdown symbol: %w", err)
 	}
 
 	// Lookup RunTaskExecutionLoop symbol.
-	runTaskSym, err := p.Lookup("RunTaskExecutionLoop")
+	runTaskSym, err := p.Lookup(symRunTaskExecutionLoop)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup RunTaskExecutionLoop symbol: %w", err)
 	}
@@ -539,6 +555,9 @@ func loadPluginInternal(pluginPath string, opts options.InitializeOptions) (*Run
 		return results[0].Interface().(contract.RuntimeHandle), nil
 	}
 
+	// The exported plugin symbols (go/cmd/plugin) take a base.RuntimeHandle,
+	// which is an alias of contract.RuntimeHandle, so the handle can be passed
+	// directly without any widening.
 	shutdown := func(handle contract.RuntimeHandle) error {
 		args := []reflect.Value{reflect.ValueOf(handle)}
 		_, err := callPluginFunc(shutdownFunc, args, 1, validateError)
@@ -581,18 +600,35 @@ func (p *RuntimePlugin) IsInitialized() bool {
 // This method allows api.InitWithOptions() to reuse the handle without
 // calling Initialize again, avoiding double-initialization.
 func (p *RuntimePlugin) GetHandle() contract.RuntimeHandle {
+	if p == nil {
+		return nil
+	}
 	return p.handle
 }
 
 // Initialize calls the plugin's Initialize function with the given options.
-// This method provides a public API for the api package to call the plugin.
-// Note: For api.InitWithOptions(), use GetHandle() instead to avoid
-// double-initialization, since LoadRuntimePlugin already calls Initialize.
+// The returned handle is stored back on the plugin so a subsequent
+// GetHandle() returns the fresh handle. This supports the
+// Init -> Shutdown -> Init cycle within a single process: Shutdown clears
+// p.handle, and the next Initialize repopulates it.
+//
+// Note: For api.InitWithOptions() the first time, LoadRuntimePlugin already
+// calls Initialize internally, so callers should use GetHandle() instead to
+// avoid double-initialization (base.Initialize is a singleton).
 func (p *RuntimePlugin) Initialize(opts options.InitializeOptions) (contract.RuntimeHandle, error) {
-	return p.initialize(opts)
+	h, err := p.initialize(opts)
+	if err != nil {
+		return nil, err
+	}
+	p.handle = h
+	return h, nil
 }
 
 // Shutdown shuts down the plugin runtime.
+// It delegates to the plugin's exported Shutdown (go/cmd/plugin), which clears
+// the api-level GCS client cache and calls base.Shutdown, resetting the base
+// runtime singleton so a later Initialize can build a fresh runtime.
+// After this returns, p.handle is nil and the plugin is ready for re-init.
 func (p *RuntimePlugin) Shutdown() error {
 	if p == nil || p.handle == nil {
 		return ErrInvalidHandle
@@ -879,4 +915,165 @@ func LoadRuntimePlugin(pluginPath string, opts options.InitializeOptions) (*Runt
 
 	// Use global loader to cache loaded plugins
 	return globalPluginLoader.LoadOrGet(pluginPath, opts)
+}
+
+// resolvePluginPath resolves the plugin path with a single, consistent
+// semantic shared by both the startup plugin loadability pre-check
+// (ValidatePluginLoadable) and the thin-layer loaders (openPlugin): an
+// explicitly set RAY_GO_RUNTIME_PATH is authoritative, so a broken path is a
+// deployment error that must fail fast instead of silently falling back to
+// another location. When the env var is unset, FindPluginPath's multi-tier
+// fallback is consulted.
+//
+// When RAY_GO_RUNTIME_PATH is unset, the FindPluginPath result is cached so
+// repeated calls -- e.g. a subcommand's pre-check plus its GCS client load, or
+// the log_monitor retry loop -- do not re-run FindPluginPath (which may spawn
+// python subprocesses) on every call. An explicitly set env var is returned
+// directly and never cached.
+func resolvePluginPath() (string, error) {
+	envPath := os.Getenv("RAY_GO_RUNTIME_PATH")
+	if envPath != "" {
+		return envPath, nil
+	}
+	resolvedPluginPathOnce.Do(func() {
+		resolvedPluginPath, resolvedPluginPathErr = FindPluginPath()
+	})
+	return resolvedPluginPath, resolvedPluginPathErr
+}
+
+// resolvedPluginPath* cache the result of FindPluginPath for the env-unset
+// case. The cache is only consulted when RAY_GO_RUNTIME_PATH is not set, so an
+// explicit env var (or a test that sets one) always bypasses it.
+var (
+	resolvedPluginPathOnce sync.Once
+	resolvedPluginPath     string
+	resolvedPluginPathErr  error
+)
+
+// openPlugin resolves the plugin path via resolvePluginPath, validates it, and
+// opens go_runtime.so. Shared by the thin-layer loaders so path resolution,
+// validation, and open errors are reported consistently.
+func openPlugin() (*plugin.Plugin, error) {
+	pluginPath, err := resolvePluginPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find plugin path: %w", err)
+	}
+	return openPluginAt(pluginPath)
+}
+
+// openPluginAt validates the given plugin path and opens go_runtime.so.
+func openPluginAt(pluginPath string) (*plugin.Plugin, error) {
+	if err := validatePluginPath(pluginPath); err != nil {
+		return nil, fmt.Errorf("plugin validation failed: %w", err)
+	}
+	p, err := plugin.Open(pluginPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load go_runtime.so: %w", err)
+	}
+	return p, nil
+}
+
+// =============================================================================
+// GCS Client / Publisher Loading (thin-layer surface)
+// =============================================================================
+
+// loadPluginFunc opens go_runtime.so via openPlugin, looks up the given
+// exported symbol, reflect-calls it with the provided arguments, and validates
+// the results. It is the shared plumbing behind the thin-layer loaders so the
+// open/lookup/call pattern is not duplicated per loader.
+func loadPluginFunc(symName string, args []reflect.Value, expectedResults int, resultValidators ...func(reflect.Value) error) ([]reflect.Value, error) {
+	p, err := openPlugin()
+	if err != nil {
+		return nil, err
+	}
+	sym, err := p.Lookup(symName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup %s symbol: %w", symName, err)
+	}
+	return callPluginFunc(reflect.ValueOf(sym), args, expectedResults, resultValidators...)
+}
+
+// LoadGCSClient resolves the plugin path, opens go_runtime.so, and reflect-calls
+// its exported ConnectClient with opts, returning the pkg-level gcs.Client.
+// The thin layer (agents/log_monitor/dashboard head handshake) holds this
+// interface; the concrete client stays inside the plugin.
+func LoadGCSClient(opts gcs.ClientOptions) (gcs.Client, error) {
+	results, err := loadPluginFunc(symConnectClient, []reflect.Value{reflect.ValueOf(opts)}, 2,
+		func(v reflect.Value) error {
+			_, ok := v.Interface().(gcs.Client)
+			if !ok {
+				return fmt.Errorf("ConnectClient must return gcs.Client, got %T", v.Interface())
+			}
+			return nil
+		},
+		validateError,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return results[0].Interface().(gcs.Client), nil
+}
+
+// LoadLogBatchPublisher reflect-calls the plugin's exported NewLogBatchPublisher
+// with the given gcs.Client, returning the pkg-level gcs.LogBatchPublisher.
+func LoadLogBatchPublisher(client gcs.Client) (gcs.LogBatchPublisher, error) {
+	results, err := loadPluginFunc(symNewLogBatchPublisher, []reflect.Value{reflect.ValueOf(client)}, 2,
+		func(v reflect.Value) error {
+			_, ok := v.Interface().(gcs.LogBatchPublisher)
+			if !ok {
+				return fmt.Errorf("NewLogBatchPublisher must return gcs.LogBatchPublisher, got %T", v.Interface())
+			}
+			return nil
+		},
+		validateError,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return results[0].Interface().(gcs.LogBatchPublisher), nil
+}
+
+// CheckPluginLoadable is the single fail-fast startup entry point shared by
+// every plugin-using subcommand: it runs ValidatePluginLoadable and wraps any
+// failure with the standard ErrPluginNotLoadable message. Subcommands should
+// call this once at startup instead of re-implementing the validate-and-wrap
+// sequence.
+func CheckPluginLoadable() error {
+	if err := ValidatePluginLoadable(); err != nil {
+		return ErrPluginNotLoadable(err)
+	}
+	return nil
+}
+
+// ErrPluginNotLoadable wraps a plugin load failure with the standard fail-fast
+// message. Every plugin-using subcommand surfaces deployment errors
+// (missing/invalid go_runtime.so) with this exact wording so logs stay
+// greppable and the message has a single source of truth.
+func ErrPluginNotLoadable(err error) error {
+	return fmt.Errorf("go_runtime.so plugin not loadable: %w", err)
+}
+
+// ValidatePluginLoadable is the startup plugin loadability pre-check: resolve
+// the plugin path,
+// validate it, plugin.Open it, and confirm the Initialize and ConnectClient
+// symbols exist -- WITHOUT calling Initialize. A failure here is a
+// deployment/build error (missing go_runtime.so, package-hash mismatch) and
+// every plugin-using subcommand fails fast on it. plugin.Open is idempotent,
+// so this is free once any later LoadGCSClient/InitWithOptions runs.
+//
+// The pre-check delegates to openPlugin so it reports exactly the same failure
+// the actual plugin load would: an explicitly set RAY_GO_RUNTIME_PATH is
+// authoritative (broken path fails fast), and the multi-tier fallback is only
+// consulted when the env var is unset.
+func ValidatePluginLoadable() error {
+	p, err := openPlugin()
+	if err != nil {
+		return err
+	}
+	for _, name := range []string{symInitialize, symConnectClient} {
+		if _, err := p.Lookup(name); err != nil {
+			return fmt.Errorf("failed to lookup %s symbol: %w", name, err)
+		}
+	}
+	return nil
 }

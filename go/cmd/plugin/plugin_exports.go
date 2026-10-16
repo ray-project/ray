@@ -15,11 +15,11 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	rayerrors "github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/gcs/native"
+	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/internal/runtime/base"
 	_ "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory (init function)
 	"github.com/ray-project/ray/go/pkg/gcs"
@@ -27,113 +27,33 @@ import (
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
-	"github.com/ray-project/ray/go/proto"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 )
-
-// ============================================================================
-// GCS Client Factory Implementation (for Dependency Inversion)
-// ============================================================================
-
-// gcsClientFactory implements api.GCSClientFactory by delegating to
-// go/internal/gcs/native.ConnectClient().
-//
-// This allows go_runtime.so to provide the concrete GCS client implementation
-// to the api package without the api package directly importing go/internal/gcs/native.
-type gcsClientAdapter struct {
-	client gcs.Client
-}
-
-// GetNodeToConnect implements api.GCSClient.GetNodeToConnect.
-func (a *gcsClientAdapter) GetNodeToConnect(ctx context.Context, nodeIpAddress string) (*proto.GcsNodeInfo, error) {
-	return a.client.GetNodeToConnect(ctx, nodeIpAddress)
-}
-
-// NextJobID implements api.GCSClient.NextJobID.
-// Converts ids.JobID to hex string.
-func (a *gcsClientAdapter) NextJobID(ctx context.Context) (string, error) {
-	jobID, err := a.client.NextJobID(ctx)
-	if err != nil {
-		return "", err
-	}
-	return jobID.Hex(), nil
-}
-
-// Close implements api.GCSClient.Close.
-func (a *gcsClientAdapter) Close() error {
-	return a.client.Close()
-}
-
-// IsClosed implements api.GCSClient.IsClosed by delegating to the underlying client.
-// This allows the cache to check if a cached client is still usable.
-func (a *gcsClientAdapter) IsClosed() bool {
-	// Delegate to the underlying client if it supports IsClosed()
-	if checker, ok := a.client.(interface{ IsClosed() bool }); ok {
-		return checker.IsClosed()
-	}
-	// Fallback: assume not closed if the underlying client doesn't support IsClosed()
-	return false
-}
-
-// GetPlacementGroupInfo implements api.GCSClient.GetPlacementGroupInfo.
-func (a *gcsClientAdapter) GetPlacementGroupInfo(ctx context.Context, id ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
-	return a.client.GetPlacementGroup(ctx, id)
-}
-
-// GetPlacementGroupInfoByName implements api.GCSClient.GetPlacementGroupInfoByName.
-func (a *gcsClientAdapter) GetPlacementGroupInfoByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
-	return a.client.GetPlacementGroupByName(ctx, name, namespace)
-}
-
-// GetAllPlacementGroupInfo implements api.GCSClient.GetAllPlacementGroupInfo.
-func (a *gcsClientAdapter) GetAllPlacementGroupInfo(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {
-	return a.client.ListPlacementGroups(ctx)
-}
-
-// GetInternalKV implements api.GCSClient.GetInternalKV.
-func (a *gcsClientAdapter) GetInternalKV(ctx context.Context, ns, key string) ([]byte, error) {
-	return a.client.Get(ctx, ns, key)
-}
-
-// GetAllNodeInfo implements api.GCSClient.GetAllNodeInfo.
-// A nil node list queries all nodes in the cluster.
-func (a *gcsClientAdapter) GetAllNodeInfo(ctx context.Context) (map[ids.NodeID]*proto.GcsNodeInfo, error) {
-	return a.client.GetAll(ctx, nil)
-}
-
-// GetAllActorInfo implements api.GCSClient.GetAllActorInfo.
-func (a *gcsClientAdapter) GetAllActorInfo(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
-	return a.client.ListActorsByFilter(ctx, jobID, actorStateName)
-}
-
-type gcsClientFactory struct{}
-
-// CreateClient implements api.GCSClientFactory.CreateClient().
-func (f *gcsClientFactory) CreateClient(opts gcs.ClientOptions) (api.GCSClient, error) {
-	client, err := native.ConnectClient(opts)
-	if err != nil {
-		return nil, err
-	}
-	return &gcsClientAdapter{client: client}, nil
-}
-
-// registerGCSClientFactory registers the GCS client factory during initialization.
-// This is called by Initialize() to set up the dependency injection.
-func registerGCSClientFactory() {
-	api.RegisterGCSClientFactory(&gcsClientFactory{})
-}
 
 // Initialize is exported for plugin users to call.
 // Initializes CoreWorker and returns a handle.
 // This function delegates to base.Initialize().
 func Initialize(opts options.InitializeOptions) (base.RuntimeHandle, error) {
 	// Register GCS client factory for dependency inversion.
+	// The concrete implementation lives in go/internal/gcs/native (shared with
+	// the static worker / dashboard-head initialization paths), so the api
+	// package never imports it directly.
 	// This allows api.FetchNodeInfoFromGCS() to use GCS without directly
 	// importing go/internal/gcs/native.
-	registerGCSClientFactory()
+	native.RegisterGCSClientFactory()
+
+	// Capture the original argv area before base.Initialize consumes the
+	// command line (its C++ side reads argv). This keeps the cgo proctitle
+	// package on the plugin side so the thin raygo binary keeps no cgo
+	// dependency: a shared cgo package between raygo and go_runtime.so would
+	// fail the plugin version check (the two are built under different
+	// linkmodes). Fail-soft: on capture failure the process title still
+	// updates /proc/self/comm via prctl.
+	proctitle.Init()
 
 	// For Driver mode, fetch node connection info from GCS if needed.
 	// This mimics Java's GcsClient.getNodeToConnectForDriver().
-	// Note: This must be called AFTER registerGCSClientFactory() and BEFORE base.Initialize().
+	// Note: This must be called AFTER native.RegisterGCSClientFactory() and BEFORE base.Initialize().
 	log.Log.Info("initializing worker",
 		"workerType", opts.WorkerType,
 		"gcsAddress", opts.Network.GcsAddress,
@@ -152,52 +72,11 @@ func Initialize(opts options.InitializeOptions) (base.RuntimeHandle, error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			// Fetch node info from GCS for missing socket/port fields
-			// Always fetch from GCS to ensure we use the same IP that the Raylet registered with
-			if opts.Runtime.StoreSocket == "" || opts.Runtime.RayletSocket == "" || opts.Network.NodeManagerPort == 0 || opts.Network.NodeIPAddress == "" {
-				nodeInfo, err := client.GetNodeToConnect(ctx, opts.Network.NodeIPAddress)
-				if err != nil {
-					log.Log.Error(err, "failed to fetch node info from GCS")
-					// Log warning but continue - let C++ core worker handle missing fields
-					// The validation in base.InitializeOptionsFromAPI has been relaxed for Driver mode
-				} else if nodeInfo != nil {
-					// Populate missing fields from GCS node info
-					if opts.Runtime.StoreSocket == "" && nodeInfo.ObjectStoreSocketName != "" {
-						opts.Runtime.StoreSocket = nodeInfo.ObjectStoreSocketName
-					}
-					if opts.Runtime.RayletSocket == "" && nodeInfo.RayletSocketName != "" {
-						opts.Runtime.RayletSocket = nodeInfo.RayletSocketName
-					}
-					if opts.Network.NodeManagerPort == 0 && nodeInfo.NodeManagerPort != 0 {
-						opts.Network.NodeManagerPort = int32(nodeInfo.NodeManagerPort)
-					}
-					// Use NodeManagerAddress from GCS if available
-					// This ensures we use the same IP that the Raylet actually registered with
-					// Java does NOT do this - it always uses its own detected nodeIp
-					// But we need this because our auto-detection may differ from Python's
-					if nodeInfo.NodeManagerAddress != "" {
-						opts.Network.NodeIPAddress = nodeInfo.NodeManagerAddress
-					}
-				}
-			}
-
-			// Fetch next JobID from GCS if not provided.
-			// This mimics Java's GcsClient.nextJobId() which allocates a new JobID for the driver.
-			// Note: JobID must be set before calling base.Initialize(), which passes it to C++.
-			if opts.Job.JobID == "" {
-				log.Log.Info("fetching next JobID from GCS", "gcsAddress", opts.Network.GcsAddress)
-				jobIDHex, err := client.NextJobID(ctx)
-				if err != nil {
-					log.Log.Error(err, "failed to fetch next JobID from GCS")
-					return fmt.Errorf("failed to get next JobID from GCS: %w", err)
-				}
-				log.Log.Info("fetched next JobID from GCS", "jobID", jobIDHex)
-				opts.Job.JobID = jobIDHex
-			} else {
-				log.Log.Info("JobID already set", "jobID", opts.Job.JobID)
-			}
-
-			return nil
+			// Fill missing node connection info (store/raylet sockets, node
+			// manager port, node IP) and allocate a fresh JobID through the
+			// shared driver handshake, so the fill rules stay identical to the
+			// dashboard head's pre-handshake (plugin.DriverHandshake).
+			return plugin.DriverHandshake(ctx, client, &opts)
 		})
 		if err != nil {
 			return nil, err
@@ -214,6 +93,15 @@ func Initialize(opts options.InitializeOptions) (base.RuntimeHandle, error) {
 		log.Log.Info("base.Initialize returned nil handle")
 	} else {
 		log.Log.Info("base.Initialize succeeded", "handle", handle)
+	}
+
+	// Now that base.Initialize() has consumed the command line, set the worker
+	// process title to "ray::IDLE" (matching Python setproctitle in connect()
+	// and C++ SetProcTitle after ray::Init). Doing it here also overwrites the
+	// captured argv area, scrubbing sensitive args (e.g. --redis-password).
+	// Only worker-mode processes get the IDLE title; drivers keep their own.
+	if opts.WorkerType == options.WorkerTypeWorker {
+		proctitle.SetTitle(proctitle.IdleTitle())
 	}
 	return handle, err
 }
@@ -249,6 +137,18 @@ func RunTaskExecutionLoop(handle base.RuntimeHandle) error {
 	}
 
 	return rt.Run()
+}
+
+// ConnectClient forwards to the cgo GCS client constructor. The thin layer
+// obtains gcs.Client values across the plugin boundary via plugin.Lookup.
+func ConnectClient(opts gcs.ClientOptions) (gcs.Client, error) {
+	return native.ConnectClient(opts)
+}
+
+// NewLogBatchPublisher forwards to the cgo log batch publisher constructor,
+// returning the pkg-level interface so the thin layer never imports internal.
+func NewLogBatchPublisher(client gcs.Client) (gcs.LogBatchPublisher, error) {
+	return native.NewLogBatchPublisher(client)
 }
 
 // main function is required (plugin mode requirement) but will not be called.

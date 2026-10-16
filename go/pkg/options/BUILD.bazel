@@ -31,6 +31,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//go/proto",
+        "@com_github_google_uuid//:uuid",
         "@org_golang_google_protobuf//proto",
     ],
 )

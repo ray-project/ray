@@ -640,6 +640,17 @@ var ErrRuntimeNotInitialized = &RuntimeError{
 	details:   make(map[string]interface{}),
 }
 
+// ErrActorNotFound is a predefined error for a named actor lookup that found no
+// actor. It is wrapped (via %w) by the api layer's GetActorWithNamespace and
+// GetPythonActorWithNamespace when the submitter returns a nil handle, so
+// callers can use errors.Is to distinguish a transient "not found yet" (e.g.
+// while polling for a detached actor to register) from other lookup failures.
+var ErrActorNotFound = &RuntimeError{
+	Operation: "api_call",
+	State:     "actor_not_found",
+	details:   make(map[string]interface{}),
+}
+
 // NewRayInvalidArgumentException creates a new validation error for invalid arguments.
 // This function is provided for Java API consistency.
 // Prefer using NewValidationError for clearer Go code.

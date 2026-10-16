@@ -243,11 +243,10 @@ func setHandle(h contract.RuntimeHandle) {
 //
 // It is a no-op if the runtime has already been initialized or if h is nil.
 //
-// Internal use only (worker startup); application code should use
-// InitWithOptions. Note: unlike the driver path, a worker shuts down via
-// base.Shutdown (internal), which does not clear the api handle, so
-// handle-dependent functions remain callable until process exit. Do not call
-// api.Shutdown from worker-side code: it would tear down the worker's runtime.
+// Retained for backward compatibility. The default_worker rework initializes
+// through api.InitWithOptions, which attaches the handle itself, so this is no
+// longer called by the worker; worker shutdown now uses api.Shutdown (full
+// plugin teardown).
 func SetRuntimeHandleForWorker(h contract.RuntimeHandle) {
 	initMu.Lock()
 	defer initMu.Unlock()
@@ -278,14 +277,11 @@ func storeHandleLocked(h contract.RuntimeHandle) {
 
 // clearHandle clears the handle after shutdown.
 //
-// This function acquires a write lock on finalizerMu to prevent finalizers
-// from running concurrently with shutdown. This solves the race condition where
-// finalizers might access C++ objects that are being released during shutdown.
+// The caller (Shutdown) must hold the finalizerMu write lock: re-acquiring it
+// here would deadlock since sync.RWMutex is not reentrant. Holding the write
+// lock for the whole teardown prevents finalizers from accessing C++ objects
+// that are being released during shutdown.
 func clearHandle() {
-	// Acquire write lock - this blocks all finalizers from running until shutdown completes
-	finalizerMu.Lock()
-	defer finalizerMu.Unlock()
-
 	// Note: atomic.Value cannot store nil, so we don't clear currentHandle.
 	// Instead, we rely on initialized=false to indicate shutdown.
 	// tryGetHandle() checks initialized first, so it will return nil after shutdown.

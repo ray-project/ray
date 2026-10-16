@@ -85,6 +85,22 @@ func getPythonExecutable() (string, error) {
 	return executable, nil
 }
 
+// GetPythonExecutable returns a Python interpreter from PATH, or an empty
+// string when none is available. It is the exported form of
+// getPythonExecutable for use by process entrypoints (e.g. setup_worker) that
+// need to initialize the process-wide PythonExecutable.
+//
+// The underlying error is logged so a caller that only sees "" can still tell
+// "no interpreter found" apart from "PATH lookup failed" when debugging.
+func GetPythonExecutable() string {
+	py, err := getPythonExecutable()
+	if err != nil {
+		log.Log.V(1).Info("GetPythonExecutable: python interpreter not found", "error", err)
+		return ""
+	}
+	return py
+}
+
 // createOrGetVirtualenv creates a virtualenv at the given path, cloning the
 // current one when already inside a virtualenv.
 func createOrGetVirtualenv(ctx context.Context, path string, cwd string) error {

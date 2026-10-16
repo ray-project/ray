@@ -6,7 +6,6 @@ go_library(
     importpath = "github.com/ray-project/ray/go/cmd/raygo/dashboard",
     visibility = ["//visibility:public"],
     deps = [
-        "//go/internal/common",
         "//go/internal/dashboard/head",
         "//go/internal/dashboard/head/modules/data",
         "//go/internal/dashboard/head/modules/event",
@@ -23,7 +22,9 @@ go_library(
         "//go/internal/dashboard/head/modules/usage_stats",
         "//go/internal/runtime_env",
         "//go/pkg/log",
+        "//go/pkg/log/logconfig",
         "//go/pkg/log/zap",
+        "//go/pkg/runtime/plugin",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

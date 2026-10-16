@@ -26,8 +26,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/logmonitor"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -303,5 +305,107 @@ func saveAndRestoreStandardStreams(t *testing.T) func() {
 		_ = syscall.Close(savedStderr)
 		os.Stdout = os.NewFile(uintptr(syscall.Stdout), "/dev/stdout")
 		os.Stderr = os.NewFile(uintptr(syscall.Stderr), "/dev/stderr")
+	}
+}
+
+// fakeLogBatchPublisher satisfies gcs.LogBatchPublisher.
+type fakeLogBatchPublisher struct {
+	gcs.LogBatchPublisher
+	payloads []gcs.LogBatchPayload
+}
+
+func (f *fakeLogBatchPublisher) PublishLogBatch(ctx context.Context, payload gcs.LogBatchPayload) error {
+	f.payloads = append(f.payloads, payload)
+	return nil
+}
+
+// TestRunLogMonitorWiresPublishClient verifies the publisher built by
+// runnerDeps.newPublishClient is passed through to logmonitor.NewRuntimePublisher
+// and that publishing a batch reaches the underlying gcs.LogBatchPublisher.
+func TestRunLogMonitorWiresPublishClient(t *testing.T) {
+	pub := &fakeLogBatchPublisher{}
+
+	monitorStarted := make(chan struct{}, 1)
+	var capturedPublisher logmonitor.Publisher
+	deps := runnerDeps{
+		connectGCSClient: func(gcs.ClientOptions) (gcs.Client, error) {
+			return &fakeLogMonitorClient{}, nil
+		},
+		newPublishClient: func(client gcs.Client) (gcs.LogBatchPublisher, error) {
+			return pub, nil
+		},
+		retryTimeout: 50 * time.Millisecond,
+		retryDelay:   time.Millisecond,
+		newMonitor: func(ip string, opts *Options, publisher logmonitor.Publisher, autoscalerV2 bool, runtimeEnvToDriver bool) (monitorRunner, error) {
+			capturedPublisher = publisher
+			return &fakeMonitorRunner{started: monitorStarted}, nil
+		},
+	}
+
+	opts := &Options{
+		SessionDir:    t.TempDir(),
+		LogsDir:       t.TempDir(),
+		GCSAddress:    "127.0.0.1:6379",
+		ClusterIDHex:  "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c",
+		NodeIPAddress: "127.0.0.1",
+		Logging:       LoggingConfig{Level: "info", Filename: ""},
+	}
+	if err := runLogMonitorWithDeps(opts, deps); err != nil {
+		t.Fatalf("runLogMonitorWithDeps error = %v", err)
+	}
+	if capturedPublisher == nil {
+		t.Fatal("newMonitor did not receive a publisher")
+	}
+	// Publish a batch through the wrapped runtime publisher.
+	if err := capturedPublisher.Publish(logmonitor.LogBatch{IP: "1.2.3.4", JobID: "j1", Lines: []string{"hello"}}); err != nil {
+		t.Fatalf("Publish error = %v", err)
+	}
+	if len(pub.payloads) != 1 {
+		t.Fatalf("fake publisher got %d payloads, want 1", len(pub.payloads))
+	}
+	if pub.payloads[0].IP != "1.2.3.4" || pub.payloads[0].Lines[0] != "hello" {
+		t.Fatalf("payload = %+v, want IP 1.2.3.4 lines [hello]", pub.payloads[0])
+	}
+}
+
+// fakeLogMonitorClient satisfies gcs.Client by embedding the interface.
+type fakeLogMonitorClient struct {
+	gcs.Client
+}
+
+func (f *fakeLogMonitorClient) Get(ctx context.Context, ns, key string) ([]byte, error) {
+	return []byte("0"), nil
+}
+
+func (f *fakeLogMonitorClient) Close() error { return nil }
+
+func (f *fakeLogMonitorClient) IsClosed() bool { return false }
+
+type fakeMonitorRunner struct {
+	started chan struct{}
+}
+
+func (f *fakeMonitorRunner) Run(ctx context.Context) error {
+	select {
+	case f.started <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// TestRunLogMonitorFailsFastOnPluginUnloadable verifies the startup plugin
+// loadability pre-check.
+func TestRunLogMonitorFailsFastOnPluginUnloadable(t *testing.T) {
+	deps := runnerDeps{
+		validatePlugin: func() error {
+			return plugin.ErrPluginNotLoadable(errors.New("go_runtime.so missing"))
+		},
+	}
+	err := runLogMonitorWithDeps(&Options{LogsDir: t.TempDir(), Logging: LoggingConfig{Level: "info", Filename: ""}}, deps)
+	if err == nil {
+		t.Fatal("runLogMonitorWithDeps() = nil error, want plugin error")
+	}
+	if !strings.Contains(err.Error(), "plugin not loadable") {
+		t.Fatalf("error %q does not mention plugin not loadable", err)
 	}
 }

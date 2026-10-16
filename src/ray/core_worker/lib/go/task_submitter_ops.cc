@@ -307,11 +307,14 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
   // Make a copy of namespace_ because ActorCreationOptions constructor
   // expects a non-const reference (unusual API design)
   std::string namespace_copy = options.namespace_;
-  // A valid scheduling strategy is mandatory: CoreWorker::CreateActor CHECK-fails
-  // when actor_creation_options.scheduling_strategy is NOT_SET. Actor creation
-  // has no placement-group fields, so the default scheduling strategy is used.
-  ray::rpc::SchedulingStrategy scheduling_strategy;
-  scheduling_strategy.mutable_default_scheduling_strategy();
+  // Build the scheduling strategy from the actor's placement group binding (if
+  // any). Aligns with Java's nativeCreateActor
+  // (io_ray_runtime_task_NativeTaskSubmitter.cc), which builds a
+  // placement_group_scheduling_strategy when the actor is bound to a placement
+  // group and a default strategy otherwise. Previously this was hardcoded to
+  // the default strategy, silently dropping PG-bound actors to arbitrary nodes.
+  ray::rpc::SchedulingStrategy scheduling_strategy =
+      BuildSchedulingStrategy(options.placement_group_id_hex, options.bundle_index);
 
   // Add default CPU=1 if no resources are specified, matching Python's behavior
   // for autoscaler compatibility (it triggers pending lease reporting). The
@@ -388,6 +391,11 @@ ray::rpc::SchedulingStrategy TaskSubmitterOperations::BuildSchedulingStrategy(
         ->set_placement_group_id(pg_id.Binary());
     scheduling_strategy.mutable_placement_group_scheduling_strategy()
         ->set_placement_group_bundle_index(bundle_index);
+    // Explicitly disable capture-child-tasks, matching Java's
+    // io_ray_runtime_task_NativeTaskSubmitter.cc for both SubmitTask and
+    // CreateActor.
+    scheduling_strategy.mutable_placement_group_scheduling_strategy()
+        ->set_placement_group_capture_child_tasks(false);
   } else {
     // No placement group specified - use default scheduling strategy.
     // This matches Java's behavior in io_ray_runtime_task_NativeTaskSubmitter.cc:383

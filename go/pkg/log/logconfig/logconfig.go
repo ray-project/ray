@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,51 +12,81 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package common
+// Package logconfig provides component logger configuration for Ray Go
+// processes: build a LogOption and apply it to the global zap logger.
+//
+// It lives under go/pkg/log (not go/internal/common) so that pkg-level code
+// such as go/pkg/runtime/api can configure the component logger without a
+// pkg -> internal dependency.
+package logconfig
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+
 	"github.com/ray-project/ray/go/pkg/log/lumberjack"
 	"github.com/ray-project/ray/go/pkg/log/zap"
 	"go.uber.org/zap/zapcore"
-	"path/filepath"
 )
 
+const (
+	// DefaultLoggingDevelopment controls whether the logger runs in development
+	// or production mode.
+	DefaultLoggingDevelopment = true
+	// LOGGING_ROTATE_BYTES is the default log rotation size in bytes (aligned
+	// with the Python LOGGING_ROTATE_BYTES constant).
+	LOGGING_ROTATE_BYTES = 512 * 1024 * 1024 // 512MB
+	// LOGGING_ROTATE_BACKUP_COUNT is the default number of rotated log backups
+	// to keep.
+	LOGGING_ROTATE_BACKUP_COUNT = 5
+)
+
+// RayGoLogFilename returns the log file name for the Go driver/worker process.
+// Shared by go/pkg/runtime/api (driver logger) and go/cmd/raygo/default_worker
+// (worker logger) so both always produce identical names.
+func RayGoLogFilename() string {
+	return fmt.Sprintf("ray_go_%d.log", os.Getpid())
+}
+
 type LogOption struct {
-	// LoggingLevel log level (optional, default: "info")
+	// LoggingLevel is the logging level (optional, default: "info").
 	LoggingLevel string
 
-	// LoggingFormat log format (optional)
+	// LoggingFormat is the logging format (optional).
 	LoggingFormat string
 
-	// LoggingFilename log file name (optional, default: "monitor.log")
+	// LoggingFilename is the log file name (optional, default: "monitor.log").
 	LoggingFilename string
 
-	// LogsDir log directory (required)
+	// LogsDir is the log directory (required).
 	LogsDir string
 
-	// LoggingRotateBytes log rotation size (optional, default: 100MB)
+	// LoggingRotateBytes is the log rotation size in bytes (optional, defaults
+	// to LOGGING_ROTATE_BYTES).
 	LoggingRotateBytes int
 
-	// LoggingRotateBackupCount number of rotation backups (optional, default: 5)
+	// LoggingRotateBackupCount is the number of rotated log backups (optional, default: 5).
 	LoggingRotateBackupCount int
 
-	// StdoutFilepath stdout output file path (optional)
+	// StdoutFilepath is the stdout output file path (optional).
 	StdoutFilepath string
 
-	// StderrFilepath stderr output file path (optional)
+	// StderrFilepath is the stderr output file path (optional).
 	StderrFilepath string
 }
 
-// Option is a function type that configures *LogOption.
+// Option modifies a LogOption.
 type Option func(*LogOption)
 
+// WithLoggingLevel sets the logging level.
 func WithLoggingLevel(level string) Option {
 	return func(c *LogOption) {
 		c.LoggingLevel = level
 	}
 }
 
+// WithLoggingFormat sets the logging format.
 func WithLoggingFormat(format string) Option {
 	return func(c *LogOption) {
 		c.LoggingFormat = format
@@ -71,12 +101,14 @@ func WithLogsDir(logsDir string) Option {
 	}
 }
 
+// WithLoggingFilename sets the log file name.
 func WithLoggingFilename(filename string) Option {
 	return func(c *LogOption) {
 		c.LoggingFilename = filename
 	}
 }
 
+// WithLoggingRotateBytes sets the log rotation size in bytes.
 func WithLoggingRotateBytes(bytes int) Option {
 	return func(c *LogOption) {
 		if bytes > 0 {
@@ -85,6 +117,7 @@ func WithLoggingRotateBytes(bytes int) Option {
 	}
 }
 
+// WithLoggingRotateBackupCount sets the number of rotated log backups.
 func WithLoggingRotateBackupCount(count int) Option {
 	return func(c *LogOption) {
 		if count > 0 {
@@ -93,21 +126,23 @@ func WithLoggingRotateBackupCount(count int) Option {
 	}
 }
 
+// WithStdoutFilepath sets the stdout output file path.
 func WithStdoutFilepath(path string) Option {
 	return func(c *LogOption) {
 		c.StdoutFilepath = path
 	}
 }
 
+// WithStderrFilepath sets the stderr output file path.
 func WithStderrFilepath(path string) Option {
 	return func(c *LogOption) {
 		c.StderrFilepath = path
 	}
 }
 
-// NewLogOption creates and returns a new *LogOption.
+// NewLogOption creates and returns a new LogOption instance.
 func NewLogOption(opts ...Option) *LogOption {
-	// Default values.
+	// Apply defaults.
 	cfg := &LogOption{
 		LoggingLevel:             "info",
 		LoggingRotateBytes:       LOGGING_ROTATE_BYTES,
@@ -121,6 +156,7 @@ func NewLogOption(opts ...Option) *LogOption {
 	return cfg
 }
 
+// ParseLogLevel parses a logging level.
 func ParseLogLevel(level string) (zapcore.Level, error) {
 	switch level {
 	case "debug":
@@ -140,13 +176,13 @@ func ParseLogLevel(level string) (zapcore.Level, error) {
 
 // SetupComponentLogger configures the component logging system.
 func (opt *LogOption) SetupComponentLogger() error {
-	// Parse the configured log level.
+	// Parse the logging level.
 	loggingZapcoreLevel, err := ParseLogLevel(opt.LoggingLevel)
 	if err != nil {
 		return err
 	}
 
-	// Build the full log file paths.
+	// Build the full log file path.
 	var logOutputPaths []string
 	var logErrorOutputPaths []string
 
@@ -173,7 +209,7 @@ func (opt *LogOption) SetupComponentLogger() error {
 		}
 	}
 
-	// If no log file path is configured, fall back to empty outputs.
+	// If no log file path is configured, fall back to the default output.
 	if len(logOutputPaths) == 0 {
 		logOutputPaths = []string{}
 	}
@@ -181,16 +217,16 @@ func (opt *LogOption) SetupComponentLogger() error {
 		logErrorOutputPaths = []string{}
 	}
 
-	// Convert bytes to MB (lumberjack uses MB as the unit).
+	// Convert bytes to MB (lumberjack uses MB as its unit).
 	maxSizeMB := opt.LoggingRotateBytes / (1024 * 1024)
 	if maxSizeMB <= 0 {
 		maxSizeMB = 1
 	}
 
-	// Choose the encoder type based on the configured log format.
+	// Choose the encoder type based on the logging format.
 	var encoderType zap.EncoderType
 	if opt.LoggingFormat != "" {
-		// If a custom format is configured, use the Console encoder.
+		// Use the console encoder when a custom format is configured.
 		encoderType = zap.ConsoleEncoder
 	} else {
 		// Default to the JSON encoder (production mode).

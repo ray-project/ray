@@ -17,17 +17,12 @@
 package worker
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
-
-	"github.com/google/uuid"
 
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/pkg/log"
@@ -328,7 +323,18 @@ func parseClusterFlags(cmd *cobra.Command, config *RayConfig) error {
 	if searchPath != "" {
 		// Multiple paths separated by ':'.
 		paths := strings.Split(searchPath, ":")
-		config.CodeSearchPath = append(config.CodeSearchPath, paths...)
+		// The flag value is a zero-copy view over the C argv area (Go builds
+		// os.Args with gostringnocopy, so the string data lives in the argv
+		// block). The plugin Initialize scrubs that block after base.Initialize
+		// consumed the command line (proctitle.SetTitle overwrites argv to
+		// remove sensitive args like --redis-password), which would otherwise
+		// leave these paths as NULs when the worker loads user plugins later.
+		// Clone every entry now so it owns independent memory.
+		for _, p := range paths {
+			if p != "" {
+				config.CodeSearchPath = append(config.CodeSearchPath, strings.Clone(p))
+			}
+		}
 		log.Log.V(1).Info("Code search path set from command line", "paths", config.CodeSearchPath)
 	}
 
@@ -522,7 +528,7 @@ func parseDriverConfig(cmd *cobra.Command, config *RayConfig) error {
 			config.RayNamespace = namespace
 		}
 		if config.RayNamespace == "" {
-			config.RayNamespace = generateRandomNamespace()
+			config.RayNamespace = options.GenerateDefaultNamespace()
 		}
 	}
 
@@ -584,18 +590,6 @@ func toAbsolutePath(path string) (string, error) {
 	}
 	cleanPath := filepath.Clean(absPath)
 	return cleanPath, nil
-}
-
-func generateRandomNamespace() string {
-	id, err := uuid.NewRandom()
-	if err == nil {
-		return id.String()
-	}
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return fmt.Sprintf("ns-%d", os.Getpid())
-	}
-	return hex.EncodeToString(bytes) + "-" + strconv.Itoa(os.Getpid())
 }
 
 func (c *RayConfig) GetBootstrapAddress() string {

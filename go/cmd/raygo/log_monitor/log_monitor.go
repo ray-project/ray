@@ -28,13 +28,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ray-project/ray/go/internal/common"
-	nativegcs "github.com/ray-project/ray/go/internal/gcs/native"
 	"github.com/ray-project/ray/go/internal/logmonitor"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
 	lj "github.com/ray-project/ray/go/pkg/log/lumberjack"
 	"github.com/ray-project/ray/go/pkg/log/zap"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 )
 
 const (
@@ -72,22 +72,24 @@ type monitorRunner interface {
 
 type runnerDeps struct {
 	loadNodeIPAddress func(string) (string, error)
+	validatePlugin    func() error
 	connectGCSClient  func(gcs.ClientOptions) (gcs.Client, error)
 	retryTimeout      time.Duration
 	retryDelay        time.Duration
-	newPublishClient  func(gcs.Client) (*nativegcs.LogBatchPublisher, error)
+	newPublishClient  func(gcs.Client) (gcs.LogBatchPublisher, error)
 	newMonitor        func(ip string, opts *Options, publisher logmonitor.Publisher, autoscalerV2 bool, runtimeEnvToDriver bool) (monitorRunner, error)
 }
 
 var defaultRunnerDeps = runnerDeps{
 	loadNodeIPAddress: defaultLoadNodeIPAddress,
+	validatePlugin:    plugin.CheckPluginLoadable,
 	connectGCSClient: func(opts gcs.ClientOptions) (gcs.Client, error) {
-		return nativegcs.ConnectClient(opts)
+		return plugin.LoadGCSClient(opts)
 	},
 	retryTimeout: defaultGCSStartupRetryTimeout,
 	retryDelay:   defaultGCSStartupRetryDelay,
-	newPublishClient: func(client gcs.Client) (*nativegcs.LogBatchPublisher, error) {
-		return nativegcs.NewLogBatchPublisher(client)
+	newPublishClient: func(client gcs.Client) (gcs.LogBatchPublisher, error) {
+		return plugin.LoadLogBatchPublisher(client)
 	},
 	newMonitor: func(ip string, opts *Options, publisher logmonitor.Publisher, autoscalerV2 bool, runtimeEnvToDriver bool) (monitorRunner, error) {
 		return logmonitor.NewWithConfig(ip, opts.LogsDir, publisher, logmonitor.RuntimeConfig{
@@ -102,6 +104,13 @@ func runLogMonitor(opts *Options) error {
 }
 
 func runLogMonitorWithDeps(opts *Options, deps runnerDeps) error {
+	// Fail fast on deployment errors (missing/invalid go_runtime.so)
+	// before the GCS-connect retry loop (which would otherwise retry for 30s).
+	if deps.validatePlugin != nil {
+		if err := deps.validatePlugin(); err != nil {
+			return err
+		}
+	}
 	if err := setupLogger(opts); err != nil {
 		return err
 	}
@@ -208,7 +217,7 @@ func validateOptions(opts *Options) error {
 }
 
 func setupLogger(opts *Options) error {
-	level, err := common.ParseLogLevel(opts.Logging.Level)
+	level, err := logconfig.ParseLogLevel(opts.Logging.Level)
 	if err != nil {
 		return err
 	}

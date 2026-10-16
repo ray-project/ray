@@ -11,10 +11,11 @@ go_library(
         "//go/internal/dashboard/event",
         "//go/internal/dashboard/healthz",
         "//go/internal/dashboard/log",
-        "//go/internal/gcs/native",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",
+        "//go/pkg/log/logconfig",
+        "//go/pkg/runtime/plugin",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

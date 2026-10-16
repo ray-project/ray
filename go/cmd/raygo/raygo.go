@@ -24,9 +24,10 @@ import (
 	"github.com/ray-project/ray/go/cmd/raygo/log_monitor"
 	"github.com/ray-project/ray/go/cmd/raygo/runtime_env_agent"
 	"github.com/ray-project/ray/go/cmd/raygo/setup_worker"
-	"github.com/ray-project/ray/go/cmd/raygo/version"
+	versioncmd "github.com/ray-project/ray/go/cmd/raygo/version"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/log/zap"
+	"github.com/ray-project/ray/go/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +36,7 @@ var rootCmd = &cobra.Command{
 	Short: "Ray Go CLI tool",
 	Long:  "Ray Go CLI tool for interacting with Ray from Go",
 	Run: func(cmd *cobra.Command, args []string) {
-		log.WithName("cli").Info("started", "version", "1.0.0", "args", len(args))
+		log.WithName("cli").Info("started", "version", version.RayVersion, "args", len(args))
 	},
 }
 
@@ -55,7 +56,7 @@ func init() {
 	// Register monitor subcommand (the Go autoscaler v2 monitor).
 	rootCmd.AddCommand(monitor.GetMonitorCmd())
 	// Register version subcommand.
-	rootCmd.AddCommand(version.GetVersionCmd())
+	rootCmd.AddCommand(versioncmd.GetVersionCmd())
 }
 
 func main() {

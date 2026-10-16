@@ -38,7 +38,6 @@ go_library(
         "//go/internal/common",
         "//go/internal/common/usage",
         "//go/internal/event",
-        "//go/internal/gcs/native",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 load("@bazel_gazelle//:def.bzl", "gazelle")
+load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files")
 load("@rules_pkg//pkg:zip.bzl", "pkg_zip")
 
@@ -82,10 +83,41 @@ py_binary(
     name = "gen_ray_go_pkg",
     srcs = ["gen_ray_go_pkg.py"],
     data = [
+        ":check_pkghash",
         ":ray_go_pkg_zip",
     ],
     visibility = ["//visibility:private"],
     deps = [
         "//bazel:gen_extract",
+        "//go:check_pkghash",
+    ],
+)
+
+# D4: readelf-based package-hash check (pkghashbytes.*runtime/api) - build-time
+# verification that raygo and go_runtime.so are built from the same source
+# revision, preventing Go plugin version mismatches.
+py_binary(
+    name = "check_pkghash",
+    srcs = ["check_pkghash.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "check_pkghash_test",
+    size = "small",
+    srcs = [
+        "check_pkghash_test.py",
+        "//bazel:pytest_wrapper.py",
+    ],
+    args = [
+        "$(location check_pkghash_test.py)",
+    ],
+    data = [
+        "//go/cmd/raygo",
+    ],
+    main = "//bazel:pytest_wrapper.py",
+    deps = [
+        ":check_pkghash",
+        ci_require("pytest"),
     ],
 )

@@ -142,6 +142,14 @@ func InitializeOptionsFromAPI(opts options.InitializeOptions) (InitializeOptions
 		return result, err
 	}
 
+	// Worker mode: C++ core_worker requires options.job_id.IsNil() and reads
+	// the real JobID from the RAY_JOB_ID environment variable (set by the
+	// raylet). api.InitWithOptions refills JobID from RAY_JOB_ID, so force nil
+	// here to hold the invariant regardless of entry point (api or base).
+	if opts.WorkerType == options.WorkerTypeWorker {
+		result.Job.JobID = nil
+	}
+
 	// Validate initialization parameters
 	if err := validateInitializeOptions(result); err != nil {
 		return result, err

@@ -21,6 +21,12 @@ cd python
 # Set the commit SHA in _version.py.
 if [[ -n "$TRAVIS_COMMIT" ]]; then
   sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
+  # The Go runtime links rayVersion/rayCommit (go/pkg/version) into the raygo
+  # binary via go_binary x_defs (-ldflags -X). Rewrite the version.RayCommit
+  # x_def to the same TRAVIS_COMMIT so the Go head reports the actual source
+  # commit, mirroring the Python sed above (version stays the repo constant,
+  # like _version.py). We are in python/ here, so the BUILD file is one level up.
+  sed -i.bak "s/version\.RayCommit\": \"[^\"]*\"/version.RayCommit\": \"$TRAVIS_COMMIT\"/" ../go/cmd/raygo/BUILD.bazel && rm -f ../go/cmd/raygo/BUILD.bazel.bak
 else
   echo "TRAVIS_COMMIT variable not set - required to populated ray.__commit__."
   exit 1

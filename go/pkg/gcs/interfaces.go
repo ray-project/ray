@@ -90,3 +90,9 @@ type AutoscalerInterface interface {
 	// GetAutoscalerStatus returns the deserialized protobuf autoscaler status.
 	GetAutoscalerStatus(ctx context.Context) (*proto.GetClusterStatusReply, error)
 }
+
+// LogBatchPublisher publishes log batches to GCS. Implemented by the cgo
+// native layer inside go_runtime.so; the thin layer holds this interface.
+type LogBatchPublisher interface {
+	PublishLogBatch(ctx context.Context, payload LogBatchPayload) error
+}

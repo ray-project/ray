@@ -31,8 +31,9 @@ typedef struct {
   int max_retries;          // Maximum number of retries for failed tasks
   const char *runtime_env;  // Serialized runtime environment
   // PlacementGroup fields
-  const char *placement_group_id;  // PlacementGroup ID binary data (hex string)
-  int placement_group_id_size;     // Size of placement group ID in bytes
+  const char *placement_group_id;  // PlacementGroup ID as hex string (e.g.
+                                   // "0102030405060708090a0b0c0d0e0f101112")
+  int placement_group_id_size;     // Size of placement group ID hex string in bytes
   int bundle_index;                // Bundle index within placement group (-1 if not used)
   const char *name;                // Task name (optional, can be NULL)
   const char *concurrency_group_name;  // Concurrency group name (optional, can be NULL)
@@ -49,9 +50,14 @@ typedef struct {
   const char *name;         // Actor name (optional)
   const char *namespace_;   // Namespace for actor (optional)
   const char *runtime_env;  // Serialized runtime environment
-  int is_detached;          // Whether the actor is detached (lifetime)
-  int is_asyncio;           // Whether to use async direct call mode
-  int max_pending_calls;    // Maximum pending calls (-1 = unlimited)
+  // PlacementGroup fields (mirror CTaskOptions; -1/empty when not used)
+  const char *placement_group_id;  // PlacementGroup ID as hex string (e.g.
+                                   // "0102030405060708090a0b0c0d0e0f101112")
+  int placement_group_id_size;     // Size of placement group ID hex string in bytes
+  int bundle_index;                // Bundle index within placement group (-1 if not used)
+  int is_detached;                 // Whether the actor is detached (lifetime)
+  int is_asyncio;                  // Whether to use async direct call mode
+  int max_pending_calls;           // Maximum pending calls (-1 = unlimited)
   // Concurrency groups (flat arrays). cg_count=0 means no groups.
   const char **cg_names;    // [cg_count] group names
   int *cg_max_concurrency;  // [cg_count] max calls per group

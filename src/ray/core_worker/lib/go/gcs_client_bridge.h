@@ -88,6 +88,10 @@ int ray_gcs_client_kv_exists(CGcsClient *client,
                              const char *key,
                              int *exists_out,
                              char **error_out);
+int ray_gcs_client_internal_kv_get_system_config(CGcsClient *client,
+                                                 char **serialized_out,
+                                                 int *size_out,
+                                                 char **error_out);
 
 // NodeResources
 int ray_gcs_client_node_resources_get_available(CGcsClient *client,
@@ -114,6 +118,15 @@ int ray_gcs_client_node_resources_get_all_total(CGcsClient *client,
                                                 int **sizes_out,
                                                 int *count_out,
                                                 char **error_out);
+int ray_gcs_client_node_resources_get_all_resource_usage(CGcsClient *client,
+                                                         char **serialized_out,
+                                                         int *size_out,
+                                                         char **error_out);
+int ray_gcs_client_node_resources_get_draining_nodes(CGcsClient *client,
+                                                     char ***node_ids_hex_out,
+                                                     int64_t **deadlines_ms_out,
+                                                     int *count_out,
+                                                     char **error_out);
 
 // Nodes
 int ray_gcs_client_nodes_get_node_to_connect(CGcsClient *client,
@@ -187,6 +200,28 @@ int ray_gcs_client_workers_add_worker_info(CGcsClient *client,
                                            int size,
                                            int *success_out,
                                            char **error_out);
+int ray_gcs_client_workers_get_worker_debugger_port(CGcsClient *client,
+                                                    const char *worker_id_hex,
+                                                    uint32_t *port_out,
+                                                    char **error_out);
+int ray_gcs_client_workers_update_worker_debugger_port(CGcsClient *client,
+                                                       const char *worker_id_hex,
+                                                       uint32_t debugger_port,
+                                                       int *success_out,
+                                                       char **error_out);
+int ray_gcs_client_workers_update_worker_num_paused_threads(
+    CGcsClient *client,
+    const char *worker_id_hex,
+    int32_t num_paused_threads_delta,
+    int *success_out,
+    char **error_out);
+
+// Tasks
+int ray_gcs_client_task_events_get_all(CGcsClient *client,
+                                       char ***serialized_out,
+                                       int **sizes_out,
+                                       int *count_out,
+                                       char **error_out);
 
 // Publisher
 int ray_gcs_client_publisher_publish_log_batch(CGcsClient *client,

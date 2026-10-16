@@ -22,9 +22,15 @@
 package options
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
+
+	"github.com/google/uuid"
 
 	rayproto "github.com/ray-project/ray/go/proto"
 	protolib "google.golang.org/protobuf/proto"
@@ -125,6 +131,11 @@ type InitializeOptions struct {
 	Network    NetworkOptions // Network configuration
 	Job        JobOptions     // Job configuration
 	Runtime    RuntimeOptions // Runtime configuration
+	// SkipDriverLogSetup suppresses the inline driver-logger setup inside
+	// api.InitWithOptions (ray_go_{PID}.log). Set by processes that already
+	// configured their own component logger before calling InitWithOptions
+	// (e.g. the dashboard head), so it is not overwritten mid-startup.
+	SkipDriverLogSetup bool
 }
 
 // JobConfigActorLifetime specifies the default lifetime for actors.
@@ -263,6 +274,8 @@ func (b *JobConfigBuilder) Build() (string, error) {
 	}
 	if b.namespace != "" {
 		jobConfig.RayNamespace = b.namespace
+	} else {
+		jobConfig.RayNamespace = GenerateDefaultNamespace()
 	}
 	if len(b.jvmOptions) > 0 {
 		jobConfig.JvmOptions = append(jobConfig.JvmOptions, b.jvmOptions...)
@@ -311,4 +324,21 @@ func (b *JobConfigBuilder) BuildToJobOptions() (JobOptions, error) {
 	return JobOptions{
 		JobConfig: configBase64,
 	}, nil
+}
+
+// GenerateDefaultNamespace returns a random default namespace when the caller
+// did not configure one. GCS enforces that a job's ray_namespace is non-empty,
+// so Build() always fills it; matching Python's str(uuid.uuid4()) behavior.
+// The uuid path is preferred; the fallbacks (crypto/rand bytes or a pid-based
+// sentinel) cover environments where uuid generation fails.
+func GenerateDefaultNamespace() string {
+	id, err := uuid.NewRandom()
+	if err == nil {
+		return id.String()
+	}
+	bytes := make([]byte, 16)
+	if _, err := rand.Read(bytes); err != nil {
+		return fmt.Sprintf("ns-%d", os.Getpid())
+	}
+	return hex.EncodeToString(bytes) + "-" + strconv.Itoa(os.Getpid())
 }

@@ -900,7 +900,12 @@ var startFlowControllerFn = func(ctx context.Context, h *FlowHead) (flowControll
 			return nil, err
 		}
 		if controller, err := getFlowControllerFn(); err != nil {
-			return nil, err
+			// A not-found lookup is the benign race between the start task
+			// returning and the detached actor registering its GCS name; keep
+			// polling. Any other error is fatal.
+			if !errors.Is(err, rayerrors.ErrActorNotFound) {
+				return nil, err
+			}
 		} else if controller != nil {
 			log.Log.Info("flow: controller started cross-language")
 			return controller, nil

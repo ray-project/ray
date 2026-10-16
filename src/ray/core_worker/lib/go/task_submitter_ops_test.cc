@@ -584,6 +584,42 @@ TEST(TaskSubmitterOperationsBuildActorOptionsTest, ConcurrencyGroups) {
   ASSERT_EQ(fd->MethodName(), "Add");
 }
 
+// TestTaskSubmitterOperationsBuildActorOptionsTest_PlacementGroup verifies that
+// a placement group bound actor produces a placement_group_scheduling_strategy
+// in the built ActorCreationOptions, aligning with Java's nativeCreateActor
+// (io_ray_runtime_task_NativeTaskSubmitter.cc) and closing the actor-side gap
+// where the Go runtime dropped the binding at the C boundary.
+TEST(TaskSubmitterOperationsBuildActorOptionsTest, PlacementGroup) {
+  ray::go::ActorCreateOptions options;
+  const std::string pg_id_hex = "0102030405060708090a0b0c0d0e0f101112";
+  options.placement_group_id_hex = pg_id_hex;
+  options.bundle_index = 1;
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_TRUE(built.scheduling_strategy.has_placement_group_scheduling_strategy());
+  const auto &pg_strategy =
+      built.scheduling_strategy.placement_group_scheduling_strategy();
+  EXPECT_EQ(pg_strategy.placement_group_id(),
+            ray::PlacementGroupID::FromHex(pg_id_hex).Binary());
+  EXPECT_EQ(pg_strategy.placement_group_bundle_index(), 1);
+  EXPECT_FALSE(pg_strategy.placement_group_capture_child_tasks());
+}
+
+// TestTaskSubmitterOperationsBuildActorOptionsTest_NoPlacementGroupUsesDefault
+// verifies that an actor without a placement group keeps the default scheduling
+// strategy (no PG scheduling strategy), so existing no-PG actors are unchanged.
+TEST(TaskSubmitterOperationsBuildActorOptionsTest, NoPlacementGroupUsesDefault) {
+  ray::go::ActorCreateOptions options;
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_TRUE(built.scheduling_strategy.has_default_scheduling_strategy());
+  EXPECT_FALSE(built.scheduling_strategy.has_placement_group_scheduling_strategy());
+}
+
 // ============================================================================
 // MapConcurrencyGroupsFromC Tests
 //

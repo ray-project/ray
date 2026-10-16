@@ -1,0 +1,16 @@
+# gazelle:ignore
+load("//go/pkg/runtime/plugin/testplugins:defs.bzl", "ray_go_testplugin")
+
+# Bad test plugin: ConnectClient intentionally returns (string, error) instead
+# of (gcs.Client, error), so callPluginFunc's result validator rejects it. Used
+# to exercise the wrong-signature failure path in plugin_loader_gcs_test.
+ray_go_testplugin(
+    name = "bad",
+    out = "testplugin_bad.so",
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/plugin/testplugins/bad",
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
+    ],
+)

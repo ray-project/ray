@@ -24,6 +24,7 @@
 #include "ray/core_worker/lib/go/gcs_client_bridge.h"
 #include "ray/core_worker/lib/go/gcs_client_internal.h"
 #include "ray/core_worker/lib/go/gcs_client_utils.h"
+#include "ray/gcs_rpc_client/global_state_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 
 extern "C" {
@@ -310,6 +311,34 @@ int ray_gcs_client_kv_exists(CGcsClient *client,
   }
   *exists_out = exists ? 1 : 0;
   return 0;
+}
+
+int ray_gcs_client_internal_kv_get_system_config(CGcsClient *client,
+                                                 char **serialized_out,
+                                                 int *size_out,
+                                                 char **error_out) {
+  if (!client || !client->global_state_accessor || !serialized_out || !size_out) {
+    set_error(error_out, "Invalid arguments");
+    return 0;
+  }
+  try {
+    std::string config = client->global_state_accessor->GetSystemConfig();
+    size_t data_size = config.size();
+    // malloc(0) may return NULL on some platforms; use 1 byte for the
+    // empty-string case so a zero-length buffer is not misreported as an
+    // allocation failure.
+    *serialized_out = static_cast<char *>(malloc(data_size ? data_size : 1));
+    *size_out = static_cast<int>(data_size);
+    if (!*serialized_out) {
+      set_error(error_out, "Failed to allocate memory for serialized data");
+      return 0;
+    }
+    memcpy(*serialized_out, config.c_str(), data_size);
+    return 1;
+  } catch (const std::exception &e) {
+    set_error(error_out, e.what());
+    return 0;
+  }
 }
 
 }  // extern "C"

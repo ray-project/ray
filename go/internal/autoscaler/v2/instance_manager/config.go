@@ -16,6 +16,7 @@ package instance_manager
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,9 +27,7 @@ import (
 	"github.com/ray-project/ray/go/internal/autoscaler/v2/constant"
 	service "github.com/ray-project/ray/go/internal/autoscaler/v2/service"
 	"github.com/ray-project/ray/go/internal/common"
-	"github.com/ray-project/ray/go/internal/gcs/native"
 	"github.com/ray-project/ray/go/pkg/gcs"
-	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
 	"gopkg.in/yaml.v3"
 )
@@ -222,32 +221,30 @@ func (fcr *FileConfigReader) RefreshCachedAutoscalingConfig() error {
 // It serves the notebook mode / manually set up cluster mode, reporting state
 // to the user in the same way.
 type ReadOnlyProviderConfigReader struct {
-	configs    map[string]interface{}
-	gcsClient  gcs.Client
-	gcsAddress string
+	configs   map[string]interface{}
+	gcsClient gcs.Client
 }
 
 // NewReadOnlyProviderConfigReader creates a new read-only provider config
-// reader.
-func NewReadOnlyProviderConfigReader(gcsAddress string) (IConfigReader, error) {
+// reader. The GCS client is injected by the caller; when nil, the global
+// singleton fast path is used. The native.ConnectClient fallback is removed.
+func NewReadOnlyProviderConfigReader(gcsClient gcs.Client) (IConfigReader, error) {
 	configs := deepcopy.Copy(constant.BASE_READONLY_CONFIG).(map[string]interface{})
 
-	gcsClient, err := gcs.GetClient()
-	if err != nil || gcsClient == nil {
-		gcsClient, err = native.ConnectClient(gcs.ClientOptions{
-			Address:   gcsAddress,
-			ClusterID: ids.NilClusterID(),
-			TimeoutMs: 10000,
-		})
-		if err != nil || gcsClient == nil {
-			return nil, fmt.Errorf("failed to connect to GCS at '%s': %w", gcsAddress, err)
+	if gcsClient == nil {
+		var err error
+		gcsClient, err = gcs.GetClient()
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to GCS: %w", err)
+		}
+		if gcsClient == nil {
+			return nil, errors.New("failed to connect to GCS: nil client")
 		}
 	}
 
 	reader := &ReadOnlyProviderConfigReader{
-		configs:    configs,
-		gcsAddress: gcsAddress,
-		gcsClient:  gcsClient,
+		configs:   configs,
+		gcsClient: gcsClient,
 	}
 	return reader, nil
 }

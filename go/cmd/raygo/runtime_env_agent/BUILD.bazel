@@ -23,13 +23,14 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//go/internal/common",
-        "//go/internal/gcs/native",
         "//go/internal/runtime_env",
         "//go/internal/runtime_env/agent",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",
+        "//go/pkg/log/logconfig",
         "//go/pkg/log/zap",
+        "//go/pkg/runtime/plugin",
         "@com_github_spf13_cobra//:cobra",
     ],
 )

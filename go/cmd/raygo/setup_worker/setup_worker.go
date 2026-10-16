@@ -23,6 +23,7 @@ import (
 	"github.com/ray-project/ray/go/internal/common"
 	runtime_env "github.com/ray-project/ray/go/internal/runtime_env"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
 	"github.com/ray-project/ray/go/pkg/log/zap"
 	"github.com/ray-project/ray/go/proto"
 	"github.com/spf13/cobra"
@@ -117,7 +118,7 @@ func GetSetupWorkerCmd() *cobra.Command {
 func runSetupWorker(ctx context.Context, args []string, cfg *SetupWorkerConfig) error {
 	// ParseLogLevel accepts the documented level names (warning, critical)
 	// that zapcore.ParseLevel rejects.
-	level, err := common.ParseLogLevel(common.LoggerLevel)
+	level, err := logconfig.ParseLogLevel(common.LoggerLevel)
 	if err != nil {
 		level = zapcore.InfoLevel
 	}
@@ -127,6 +128,16 @@ func runSetupWorker(ctx context.Context, args []string, cfg *SetupWorkerConfig) 
 
 	logger := log.WithName("setup_worker")
 	logger.Info("starting worker setup")
+
+	// Prestarted python workers are launched without a runtime env context, so
+	// the deserialized context carries no py_executable. Initialize the
+	// process-wide PythonExecutable from PATH so those workers are still exec'd
+	// through a python interpreter instead of running default_worker.py
+	// directly (which is not executable / has no shebang). Mirrors Python's
+	// RuntimeEnvContext.__init__ falling back to sys.executable.
+	if runtime_env.PythonExecutable == "" {
+		runtime_env.PythonExecutable = runtime_env.GetPythonExecutable()
+	}
 
 	// Create a separate pflag.FlagSet to parse known flags.
 	flagSet := pflag.NewFlagSet("setup-worker", pflag.ContinueOnError)

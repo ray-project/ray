@@ -1,17 +1,3 @@
-// Copyright 2025 The Ray Authors.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//  http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package head
 
 import (
@@ -24,9 +10,35 @@ import (
 
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
-	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/proto"
 )
+
+// fakeGCSClient stubs the gcs.Client surface the dashboard head's
+// initWithConfig exercises (GetNodeToConnect + NextJobID). It lets tests drive
+// the fail-closed branches without a live GCS or a loaded go_runtime.so.
+type fakeGCSClient struct {
+	gcs.Client
+	getNodeInfo func(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error)
+	nextJobID   func(ctx context.Context) (ids.JobID, error)
+	closed      bool
+}
+
+func (f *fakeGCSClient) GetNodeToConnect(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error) {
+	if f.getNodeInfo != nil {
+		return f.getNodeInfo(ctx, nodeIP)
+	}
+	return nil, errors.New("GetNodeToConnect not stubbed")
+}
+
+func (f *fakeGCSClient) NextJobID(ctx context.Context) (ids.JobID, error) {
+	if f.nextJobID != nil {
+		return f.nextJobID(ctx)
+	}
+	return ids.NilJobID(), errors.New("NextJobID not stubbed")
+}
+
+func (f *fakeGCSClient) Close() error   { f.closed = true; return nil }
+func (f *fakeGCSClient) IsClosed() bool { return f.closed }
 
 // resetInitBackoff clears the OSS lazy-init cool-down cache. The INT 313d
 // tests were written against a backoff-free EnsureInitialized (the INT baseline
@@ -40,58 +52,12 @@ func resetInitBackoff() {
 	lastInitErr = nil
 }
 
-// fakeGCSClient stubs the api.GCSClient surface the dashboard head's
-// initWithConfig exercises (GetNodeToConnect + NextJobID). It lets tests drive
-// the fail-closed branches without a live GCS or a linked C++ bridge.
-type fakeGCSClient struct {
-	getNodeInfo func(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error)
-	nextJobID   func(ctx context.Context) (string, error)
-}
-
-func (f *fakeGCSClient) GetNodeToConnect(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error) {
-	if f.getNodeInfo != nil {
-		return f.getNodeInfo(ctx, nodeIP)
-	}
-	return nil, errors.New("GetNodeToConnect not stubbed")
-}
-
-func (f *fakeGCSClient) NextJobID(ctx context.Context) (string, error) {
-	if f.nextJobID != nil {
-		return f.nextJobID(ctx)
-	}
-	return "", errors.New("NextJobID not stubbed")
-}
-
-func (f *fakeGCSClient) Close() error   { return nil }
-func (f *fakeGCSClient) IsClosed() bool { return false }
-
-func (f *fakeGCSClient) GetPlacementGroupInfo(ctx context.Context, id ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
-	return nil, errors.New("GetPlacementGroupInfo not stubbed")
-}
-func (f *fakeGCSClient) GetPlacementGroupInfoByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
-	return nil, errors.New("GetPlacementGroupInfoByName not stubbed")
-}
-func (f *fakeGCSClient) GetAllPlacementGroupInfo(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {
-	return nil, errors.New("GetAllPlacementGroupInfo not stubbed")
-}
-func (f *fakeGCSClient) GetInternalKV(ctx context.Context, ns, key string) ([]byte, error) {
-	return nil, errors.New("GetInternalKV not stubbed")
-}
-func (f *fakeGCSClient) GetAllNodeInfo(ctx context.Context) (map[ids.NodeID]*proto.GcsNodeInfo, error) {
-	return nil, errors.New("GetAllNodeInfo not stubbed")
-}
-func (f *fakeGCSClient) GetAllActorInfo(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
-	return nil, errors.New("GetAllActorInfo not stubbed")
-}
-
-// runWithFakeGCS runs fn with withCachedClientFn swapped for a stub that hands
+// runWithFakeGCS runs fn with loadGCSClientFn swapped for a stub that hands
 // fn the given fake client, restoring the original after.
-func runWithFakeGCS(fake api.GCSClient, fn func()) {
-	orig := withCachedClientFn
-	withCachedClientFn = func(gcsAddress string, opts gcs.ClientOptions, cb func(api.GCSClient) error) error {
-		return cb(fake)
-	}
-	defer func() { withCachedClientFn = orig }()
+func runWithFakeGCS(fake gcs.Client, fn func()) {
+	orig := loadGCSClientFn
+	loadGCSClientFn = func(opts gcs.ClientOptions) (gcs.Client, error) { return fake, nil }
+	defer func() { loadGCSClientFn = orig }()
 	fn()
 }
 
@@ -102,10 +68,14 @@ func runWithFakeGCS(fake api.GCSClient, fn func()) {
 // would hand to CoreWorkerProcess as an empty raylet socket (RAY_LOG(FATAL))
 // or a port-0 address (QuickExit) killing the whole dashboard.
 func TestInitWithConfigFailsClosedOnGetNodeToConnectError(t *testing.T) {
-	sentinel := errors.New("gcs rpc failed")
-	runWithFakeGCS(&fakeGCSClient{getNodeInfo: func(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error) {
-		return nil, sentinel
-	}}, func() {
+	runWithFakeGCS(&fakeGCSClient{
+		getNodeInfo: func(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error) {
+			return nil, errors.New("gcs rpc failed")
+		},
+		nextJobID: func(ctx context.Context) (ids.JobID, error) {
+			return mustJobID(t, "01020304"), nil
+		},
+	}, func() {
 		origPre := preflightConnectFn
 		called := false
 		preflightConnectFn = func(addr string, timeout time.Duration) error { called = true; return nil }
@@ -116,8 +86,8 @@ func TestInitWithConfigFailsClosedOnGetNodeToConnectError(t *testing.T) {
 		if err == nil {
 			t.Fatal("initWithConfig returned nil, want error for GetNodeToConnect failure")
 		}
-		if !errors.Is(err, sentinel) {
-			t.Fatalf("initWithConfig error = %v, want sentinel %v", err, sentinel)
+		if !errors.Is(err, errNoNodeInfo) {
+			t.Fatalf("initWithConfig error = %v, want ErrNoNodeInfo", err)
 		}
 		if called {
 			t.Fatal("preflightConnectFn called despite GetNodeToConnect failure; want fail-closed before any dial")
@@ -130,9 +100,14 @@ func TestInitWithConfigFailsClosedOnGetNodeToConnectError(t *testing.T) {
 // would leave sockets empty and NodeManagerPort=0, the same QuickExit/FATAL
 // hazards as an RPC error.
 func TestInitWithConfigFailsClosedOnNilNodeInfo(t *testing.T) {
-	runWithFakeGCS(&fakeGCSClient{getNodeInfo: func(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error) {
-		return nil, nil
-	}}, func() {
+	runWithFakeGCS(&fakeGCSClient{
+		getNodeInfo: func(ctx context.Context, nodeIP string) (*proto.GcsNodeInfo, error) {
+			return nil, nil
+		},
+		nextJobID: func(ctx context.Context) (ids.JobID, error) {
+			return mustJobID(t, "01020304"), nil
+		},
+	}, func() {
 		cfg := &HeadConfig{GCSAddress: "127.0.0.1:6379", ClusterIDHex: "abc", NodeIPAddress: "127.0.0.1"}
 		err := initWithConfig(cfg)
 		if err == nil {
@@ -305,6 +280,15 @@ func TestPreflightNodeManagerAllowsReachable(t *testing.T) {
 	if err := preflightNodeManager("10.0.0.1", 12345); err != nil {
 		t.Fatalf("preflightNodeManager returned error for reachable port: %v", err)
 	}
+}
+
+func mustJobID(t *testing.T, hex string) ids.JobID {
+	t.Helper()
+	id, err := ids.JobIDFromHex(hex)
+	if err != nil {
+		t.Fatalf("JobIDFromHex(%q): %v", hex, err)
+	}
+	return id
 }
 
 // TestPreflightNodeManagerSkipsUnset verifies the preflight is a no-op when

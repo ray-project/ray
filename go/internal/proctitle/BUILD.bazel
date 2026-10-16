@@ -19,9 +19,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 # with no separate .c/.h dependency.
 go_library(
     name = "proctitle",
-    srcs = [
-        "proctitle.go",
-    ],
+    srcs = ["proctitle.go"],
     cgo = True,
     importpath = "github.com/ray-project/ray/go/internal/proctitle",
     visibility = ["//go:__subpackages__"],
@@ -29,9 +27,7 @@ go_library(
 
 go_test(
     name = "proctitle_test",
-    srcs = [
-        "proctitle_test.go",
-    ],
+    srcs = ["proctitle_test.go"],
     embed = [":proctitle"],
     importpath = "github.com/ray-project/ray/go/internal/proctitle",
 )

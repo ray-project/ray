@@ -18,7 +18,6 @@ go_library(
     name = "common",
     srcs = [
         "file_lock.go",
-        "log_utils.go",
         "network_util.go",
         "path_utils.go",
         "ray_constants.go",
@@ -33,11 +32,9 @@ go_library(
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",
-        "//go/pkg/log/lumberjack",
-        "//go/pkg/log/zap",
+        "//go/pkg/log/logconfig",
         "//go/proto",
         "@com_github_gofrs_flock//:flock",
-        "@org_uber_go_zap//zapcore",
     ],
 )
 
@@ -45,7 +42,6 @@ go_test(
     name = "common_test",
     srcs = [
         "file_lock_test.go",
-        "log_utils_test.go",
         "network_util_test.go",
         "path_utils_test.go",
         "ray_constants_test.go",

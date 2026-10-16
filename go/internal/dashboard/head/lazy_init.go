@@ -24,13 +24,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ray-project/ray/go/internal/gcs/native"
-	"github.com/ray-project/ray/go/internal/runtime/base"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 )
 
 // initOnce serializes concurrent lazy initializations. Without it, two
@@ -45,22 +44,25 @@ var initOnce sync.Mutex
 // so the two observations stay consistent without sharing state.
 var attemptCount int32
 
-// errNoNodeInfo is the sentinel wrapped (via %w) when GetNodeToConnect returned
-// no node info, so callers/tests can distinguish "node table empty" from other
-// init failures.
+// errNoNodeInfo is the sentinel wrapped (via %w) when the driver handshake
+// could not fill node connection info (GetNodeToConnect failed or returned no
+// node), so callers/tests can distinguish "node table empty" from other init
+// failures.
 var errNoNodeInfo = errors.New("no node info returned from GCS")
 
 // initWithConfigFn is the actual runtime initializer. It is a package-level
-// variable so tests can inject a fake without linking the C++ gcs_client_bridge
-// (base.Initialize would attempt a real driver-mode GCS handshake).
+// variable so tests can inject a fake without linking go_runtime.so.
 var initWithConfigFn = initWithConfig
 
-// withCachedClientFn wraps api.WithCachedClient so tests can drive the GCS
-// client callbacks (GetNodeToConnect, NextJobID) with a fake api.GCSClient
-// instead of a live connection. The real implementation creates a cached
-// native GCS client (via RegisterGCSClientFactory) which would dial a real GCS
-// in tests.
-var withCachedClientFn = api.WithCachedClient
+// loadGCSClientFn wraps plugin.LoadGCSClient so tests can inject a fake
+// without loading go_runtime.so.
+var loadGCSClientFn = plugin.LoadGCSClient
+
+// initRuntimeWithOptionsFn wraps api.InitWithOptions so tests can inject a
+// fake without loading go_runtime.so.
+var initRuntimeWithOptionsFn = func(opts *options.InitializeOptions) error {
+	return api.InitWithOptions(opts)
+}
 
 // preflightConnectFn opens a TCP connection to a node_manager_port. It is a
 // package-level variable so tests can inject a fake. The preflight must happen
@@ -182,21 +184,17 @@ func RuntimeStatusInfo() RuntimeStatus {
 	return RuntimeStatus{Initialized: api.IsInitialized(), Attempts: initAttempts()}
 }
 
-// initWithConfig initializes the Go runtime as a driver through the static
-// base.Initialize path, so the dashboard head can call Python actors across
-// languages (e.g. GetPythonActorWithNamespace in the flow/serve/train/data
-// modules). Mirrors the Python dashboard, which connects as a driver in the
-// internal dashboard namespace.
+// initWithConfig initializes the Go runtime as a driver through the api plugin
+// path (api.InitWithOptions), so the dashboard head can call Python actors
+// across languages (e.g. GetPythonActorWithNamespace in the flow/serve/train/
+// data modules). Mirrors the Python dashboard, which connects as a driver in
+// the internal dashboard namespace.
 //
-// The dashboard head runs inside the monolithic raygo binary, which already
-// statically links the C++ GCS client bridge (via default_worker). Loading the
-// go_runtime.so plugin on top would trigger the "grpc_experiments linked both
-// statically and dynamically" conflict, so the head initializes exactly like a
-// worker process (internal/worker): register the GCS client factory, fetch
-// driver node info and JobID from GCS, then base.Initialize + SetRuntime
-// HandleForWorker. The static NativeRuntime's task submitter supports
-// cross-language calls (CreateActor passes LanguagePython), so the
-// serve/flow/train/data modules keep working.
+// The dashboard head runs inside the monolithic raygo binary, which links the
+// go_runtime.so plugin (loaded by go/cmd/raygo/raygo.go). The handshake client
+// is obtained through the plugin's export surface (plugin.LoadGCSClient) so the
+// head stays aligned with the worker/agent plugin path instead of statically
+// linking the C++ gcs_client_bridge.
 //
 // The code_search_path makes cross-language Python workers load actor classes
 // from local code instead of GCS. Go cannot export a pickled Python actor class
@@ -207,8 +205,6 @@ func RuntimeStatusInfo() RuntimeStatus {
 // locally. The paths are passed through verbatim, matching the Python
 // dashboard's RAY_DASHBOARD_CODE_SEARCH_PATH handling (no absolutization).
 func initWithConfig(cfg *HeadConfig) error {
-	native.RegisterGCSClientFactory()
-
 	initOpts := options.InitializeOptions{
 		WorkerType: options.WorkerTypeDriver,
 		Network: options.NetworkOptions{
@@ -220,100 +216,100 @@ func initWithConfig(cfg *HeadConfig) error {
 		},
 	}
 
-	// Driver mode: fetch node connection info (store/raylet sockets, node
-	// manager port) and a fresh JobID from GCS, mirroring internal/worker.Run
-	// and the Python dashboard's ray.init(). Only GcsAddress and NodeIPAddress
-	// are required; the rest is auto-filled from GCS.
+	// Driver-mode handshake: fetch node connection info (store/raylet sockets,
+	// node manager port) and a fresh JobID from GCS, mirroring the Python
+	// dashboard's ray.init(). The handshake client is obtained from go_runtime.so
+	// via the plugin export surface (plugin.LoadGCSClient), which reflects into
+	// the plugin's exported ConnectClient and needs no api-level factory
+	// registration (that only happens inside the plugin's Initialize). It is
+	// used only for the handshake and closed afterwards: the dashboard's
+	// GCS-based modules query GCS through the pure-Go gRPC stub
+	// (head.NewGCSClient), never api.GetGCSClient, so nothing here needs to
+	// register the client in api's cache.
 	gcsOpts := gcs.ClientOptions{
 		Address:   cfg.GCSAddress,
 		ClusterID: ids.NilClusterID(),
 		TimeoutMs: 10000,
 	}
-	if err := withCachedClientFn(cfg.GCSAddress, gcsOpts, func(client api.GCSClient) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	handshakeClient, err := loadGCSClientFn(gcsOpts)
+	if err != nil {
+		return err
+	}
+	// The one-shot handshake client must not outlive the handshake: the plugin's
+	// Initialize creates the long-lived client during InitWithOptions, and a
+	// deferred close that runs at function end would clear the pkg/gcs global
+	// singletons that client seeded. Close it explicitly right after the
+	// handshake on the success path, and keep the close on every error path
+	// (DriverHandshake failure, fail-closed, preflight failure) via the
+	// handshakeOK flag. Nothing between the handshake return and function end
+	// reads handshakeClient, so closing it here is safe.
+	handshakeOK := false
+	defer func() {
+		if !handshakeOK {
+			handshakeClient.Close()
+		}
+	}()
 
-		nodeInfo, err := client.GetNodeToConnect(ctx, initOpts.Network.NodeIPAddress)
-		if err != nil {
-			// Fail closed: without node information the sockets stay empty and
-			// the node manager port stays 0, and base.Initialize would dial an
-			// empty raylet socket (RAY_LOG(FATAL)) or a port-0 address
-			// (CoreWorkerProcess::QuickExit), killing the whole dashboard.
-			// Surface the error so the request degrades to a 500 (aligned with
-			// Python init_ray_and_catch_exceptions returning
-			// HTTPInternalServerError) and the process stays alive;
-			// EnsureInitialized retries on the next request.
-			return fmt.Errorf("failed to fetch node info from GCS: %w", err)
-		}
-		if nodeInfo == nil {
-			// A nil node (GCS alive but no node registered for this IP yet) has
-			// the same failure mode as an error above: continuing would hand
-			// empty sockets/port-0 to base.Initialize. Fail closed and let the
-			// next request retry.
-			return fmt.Errorf("%w for %s", errNoNodeInfo, initOpts.Network.NodeIPAddress)
-		}
-		if nodeInfo.ObjectStoreSocketName != "" {
-			initOpts.Runtime.StoreSocket = nodeInfo.ObjectStoreSocketName
-		}
-		if nodeInfo.RayletSocketName != "" {
-			initOpts.Runtime.RayletSocket = nodeInfo.RayletSocketName
-		}
-		if nodeInfo.NodeManagerPort != 0 {
-			initOpts.Network.NodeManagerPort = int32(nodeInfo.NodeManagerPort)
-		}
-		if nodeInfo.NodeManagerAddress != "" {
-			initOpts.Network.NodeIPAddress = nodeInfo.NodeManagerAddress
-		}
-		log.Log.Info("fetched node info from GCS for dashboard head",
-			"store_socket", initOpts.Runtime.StoreSocket,
-			"raylet_socket", initOpts.Runtime.RayletSocket,
-			"node_manager_port", initOpts.Network.NodeManagerPort,
-		)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-		// Preflight the raylet's node_manager_port before base.Initialize.
-		// GetNodeToConnectForDriver returns the first ALIVE node from GCS
-		// without validating its port. After a GCS restart, GcsNodeManager::
-		// Initialize restores the previous head's ALIVE node with a stale
-		// node_manager_port; base.Initialize would then dial the dead port and
-		// hit CoreWorkerProcess::QuickExit, killing the whole dashboard. A TCP
-		// connect is a deterministic proxy: the raylet runs its node_manager
-		// grpc server before RegisterGcs(), so an ALIVE node whose port refuses
-		// connections is stale. On staleness we degrade (return an error so the
-		// module handler surfaces a 500 and the process stays alive) instead of
-		// dialing a dead port and dying. Setting the port to 0 does NOT help:
-		// NodeManagerPort=0 also QuickExits in GenerateRayletAddress.
-		if err := preflightNodeManager(initOpts.Network.NodeIPAddress, initOpts.Network.NodeManagerPort); err != nil {
-			return err
-		}
+	// Shared driver handshake: fill node connection info and allocate a fresh
+	// JobID with the same rules as the plugin's Initialize
+	// (plugin.DriverHandshake), so the later api.InitWithOptions handshake is a
+	// no-op.
+	if err := plugin.DriverHandshake(ctx, handshakeClient, &initOpts); err != nil {
+		return err
+	}
+	handshakeClient.Close()
+	handshakeOK = true
 
-		// Reuse the node's cached metrics agent port (ports_by_node.json) so the
-		// driver's metrics exporter can reach the dashboard agent, mirroring the
-		// Python dashboard head (node.py _get_cached_port). Without it the
-		// exporter retries against a disabled port and logs
-		// "Failed to establish connection to the metrics exporter agent" (rpc 14).
-		if initOpts.Runtime.StoreSocket != "" {
-			port, portErr := readMetricsAgentPort(cfg.SessionDir, initOpts.Network.NodeIPAddress, initOpts.Runtime.StoreSocket)
-			if portErr != nil {
-				log.Log.Error(portErr, "failed to read metrics agent port from ports_by_node.json")
-			} else if port > 0 {
-				initOpts.Runtime.MetricsAgentPort = int32(port)
-				log.Log.Info("reusing node metrics agent port for dashboard head", "metrics_agent_port", port)
-			}
-		}
+	// Fail closed: DriverHandshake tolerates a node-info fetch failure (it
+	// logs and continues so a plain driver can surface the C++ connectivity
+	// error), but the dashboard must not hand empty sockets / port 0 to
+	// base.Initialize -- an empty raylet socket is RAY_LOG(FATAL) and a port-0
+	// address hits CoreWorkerProcess::QuickExit, killing the whole dashboard.
+	// Re-check the fields the handshake was supposed to fill and degrade
+	// (return an error so the module handler surfaces a 500) when they are
+	// still missing, so the next request retries.
+	if initOpts.Runtime.StoreSocket == "" || initOpts.Runtime.RayletSocket == "" ||
+		initOpts.Network.NodeManagerPort == 0 {
+		return fmt.Errorf("%w for %s", errNoNodeInfo, cfg.NodeIPAddress)
+	}
 
-		jobIDHex, err := client.NextJobID(ctx)
-		if err != nil {
-			return err
-		}
-		initOpts.Job.JobID = jobIDHex
-		log.Log.Info("fetched next JobID from GCS for dashboard head", "job_id", jobIDHex)
-		return nil
-	}); err != nil {
+	// Preflight the raylet's node_manager_port before base.Initialize.
+	// GetNodeToConnectForDriver returns the first ALIVE node from GCS without
+	// validating its port. After a GCS restart, GcsNodeManager::Initialize
+	// restores the previous head's ALIVE node with a stale node_manager_port;
+	// base.Initialize would then dial the dead port and hit
+	// CoreWorkerProcess::QuickExit, killing the whole dashboard. A TCP connect
+	// is a deterministic proxy: the raylet runs its node_manager grpc server
+	// before RegisterGcs(), so an ALIVE node whose port refuses connections is
+	// stale. On staleness we degrade (return an error so the module handler
+	// surfaces a 500 and the process stays alive) instead of dialing a dead
+	// port and dying.
+	if err := preflightNodeManager(initOpts.Network.NodeIPAddress, initOpts.Network.NodeManagerPort); err != nil {
 		return err
 	}
 
+	// Reuse the node's cached metrics agent port (ports_by_node.json) so the
+	// driver's metrics exporter can reach the dashboard agent (mirroring the
+	// Python dashboard head, node.py _get_cached_port). Without it the exporter
+	// retries against a disabled port and logs "Failed to establish connection
+	// to the metrics exporter agent" (rpc 14). The plugin's Initialize handshake
+	// does NOT fill this field.
+	if initOpts.Runtime.StoreSocket != "" {
+		port, portErr := readMetricsAgentPort(cfg.SessionDir, initOpts.Network.NodeIPAddress, initOpts.Runtime.StoreSocket)
+		if portErr != nil {
+			log.Log.Error(portErr, "failed to read metrics agent port from ports_by_node.json")
+		} else if port > 0 {
+			initOpts.Runtime.MetricsAgentPort = int32(port)
+			log.Log.Info("reusing node metrics agent port for dashboard head", "metrics_agent_port", port)
+		}
+	}
+
 	// Build the JobConfig with the internal dashboard namespace and code search
-	// path (mirroring the previous plugin path's JobConfigBuilder usage).
+	// path (unchanged). api.InitWithOptions never overwrites a non-empty
+	// JobConfig (spec Key Fact 9).
 	jobOpts, err := options.NewJobConfigBuilder().
 		WithNamespace("_ray_internal_dashboard").
 		WithCodeSearchPath(cfg.CodeSearchPath...).
@@ -323,22 +319,22 @@ func initWithConfig(cfg *HeadConfig) error {
 	}
 	initOpts.Job.JobConfig = jobOpts.JobConfig
 
-	// Initialize the runtime and attach it to the api package so the
-	// cross-language modules' submitter calls work (mirrors worker.Run).
-	handle, err := base.Initialize(initOpts)
-	if err != nil {
-		return err
-	}
-	api.SetRuntimeHandleForWorker(handle)
-	return nil
+	// The dashboard already configured its own logger (dashboard.go setupLogging
+	// runs before initGoRuntime); skip the inline driver-logger setup inside
+	// api.InitWithOptions so it is not overwritten mid-startup.
+	initOpts.SkipDriverLogSetup = true
+
+	// Initialize through the api plugin path. Because the handshake above filled
+	// every field, the plugin's Initialize handshake is a no-op (its fill
+	// conditions are == "" checks) and it allocates/reuses its own cached GCS
+	// client through api.WithCachedClient for the same GCS address.
+	return initRuntimeWithOptionsFn(&initOpts)
 }
 
-// ShutdownRuntime tears down the dashboard head's statically initialized Go
-// runtime. It mirrors worker.Worker.Shutdown and must be used instead of
-// api.Shutdown (which would attempt a plugin teardown the static path never
-// performed). No-op when the runtime was never initialized.
+// ShutdownRuntime tears down the dashboard head's Go runtime. The head now
+// initializes through api.InitWithOptions, so api.Shutdown drives the plugin's
+// full teardown. It is a no-op when the runtime was never initialized
+// (tryGetHandle/currentRuntimePlugin are nil and api.Shutdown is idempotent).
 func ShutdownRuntime() {
-	if h := base.GetHandle(); h != nil {
-		_ = base.Shutdown(h)
-	}
+	api.Shutdown()
 }

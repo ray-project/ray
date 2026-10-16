@@ -31,7 +31,6 @@ import (
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/common/usage"
 	"github.com/ray-project/ray/go/internal/event"
-	"github.com/ray-project/ray/go/internal/gcs/native"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
@@ -65,12 +64,12 @@ const (
 )
 
 // CreateConfigReader creates the matching config reader for the given config.
-func CreateConfigReader(config *MonitorV2Config) (instance_manager.IConfigReader, error) {
+func CreateConfigReader(config *MonitorV2Config, gcsClient gcs.Client) (instance_manager.IConfigReader, error) {
 	// Which config reader to build depends on whether a config file is provided.
 	if config.AutoscalingConfig == "" {
 		// No config file: use the read-only node provider.
 		log.Log.V(1).Info("No autoscaling config provided: use read only node provider.")
-		return instance_manager.NewReadOnlyProviderConfigReader(config.GcsAddress)
+		return instance_manager.NewReadOnlyProviderConfigReader(gcsClient)
 	} else {
 		// A config file is provided: use the file config reader.
 		log.Log.V(1).Info("Using autoscaling config file", "path", config.AutoscalingConfig)
@@ -137,14 +136,14 @@ type AutoscalerMonitor struct {
 }
 
 // NewAutoscalerMonitor creates and initializes an AutoscalerMonitor instance.
-func NewAutoscalerMonitor(address string, configReader instance_manager.IConfigReader, logDir string, monitorIP string) (*AutoscalerMonitor, error) {
-	gcsClient, err := gcs.GetClient()
-	if err != nil || gcsClient == nil {
-		gcsClient, err = native.ConnectClient(gcs.ClientOptions{
-			Address:   address,
-			ClusterID: ids.NilClusterID(),
-			TimeoutMs: 10000,
-		})
+func NewAutoscalerMonitor(address string, configReader instance_manager.IConfigReader, logDir string, monitorIP string, gcsClient gcs.Client) (*AutoscalerMonitor, error) {
+	// The client is injected by the caller; fall back to the global
+	// singleton fast path when the caller has none (kept for tests and callers
+	// that already set gcs.SetClient). The native.ConnectClient fallback is
+	// removed: the thin layer never imports internal/gcs/native.
+	if gcsClient == nil {
+		var err error
+		gcsClient, err = gcs.GetClient()
 		if err != nil || gcsClient == nil {
 			return nil, fmt.Errorf("failed to connect to GCS at '%s': %w", address, err)
 		}

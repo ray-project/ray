@@ -213,6 +213,12 @@ extern "C" CByteArray *CNativeTaskSubmitter_CreateActor(
           actor_options.namespace_ = options->namespace_ ? options->namespace_ : "";
           actor_options.serialized_runtime_env_info =
               options->runtime_env ? options->runtime_env : "";
+          if (options->placement_group_id != nullptr &&
+              options->placement_group_id_size > 0) {
+            actor_options.placement_group_id_hex = std::string(
+                options->placement_group_id, options->placement_group_id_size);
+            actor_options.bundle_index = options->bundle_index;
+          }
           actor_options.is_detached = options->is_detached == 1;
           actor_options.is_asyncio = options->is_asyncio == 1;
           actor_options.max_pending_calls = options->max_pending_calls;

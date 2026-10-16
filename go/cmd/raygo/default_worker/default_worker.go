@@ -32,9 +32,9 @@ import (
 	"os"
 
 	"github.com/ray-project/ray/go/internal/common"
-	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/internal/worker" // Use worker package (Plugin mode)
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/spf13/cobra"
 )
@@ -160,13 +160,19 @@ func runWorker(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize config: %w", err)
 	}
 
-	// Init before the runtime consumes the argv area (notably before
-	// base.Initialize, whose C++ side reads the command line): it captures the
-	// original argv string area so SetProcTitle can later overwrite it
-	// (visible to ps / psutil cmdline) and scrub sensitive args (e.g.
-	// --redis-password) from the worker command line. Mirrors
-	// InitProcessTitle(argc, argv) in C++ default_worker.cc.
-	proctitle.Init()
+	// Setup worker logging so Go-side application logs (job init, task
+	// execution, errors) land in ray_go_{PID}.log.
+	if err := setupWorkerLogger(config.LogsDir); err != nil {
+		return fmt.Errorf("failed to setup worker logger: %w", err)
+	}
+	log.Log.Info("worker logger initialized", "log_dir", config.LogsDir)
+
+	// The argv-area capture and process-title setup (proctitle.Init and the
+	// "ray::IDLE" SetTitle) live inside the plugin Initialize (go_runtime.so),
+	// before its base.Initialize consumes the command line. Keeping the cgo
+	// proctitle package on the plugin side preserves the thin-raygo (no-cgo)
+	// goal and avoids the shared-package version conflict between raygo and
+	// go_runtime.so.
 
 	// For Worker mode, set RAY_JOB_ID environment variable.
 	// C++ core_worker reads JobID from RAY_JOB_ID env var for workers (not from options).
@@ -224,4 +230,13 @@ func runWorker(cmd *cobra.Command, args []string) error {
 	w.Shutdown()
 
 	return nil
+}
+
+// setupWorkerLogger redirects the Go global zap logger to ray_go_{PID}.log
+// (with lumberjack rotation), so application logs from log.Log are persisted.
+func setupWorkerLogger(logsDir string) error {
+	return logconfig.NewLogOption(
+		logconfig.WithLogsDir(logsDir),
+		logconfig.WithLoggingFilename(logconfig.RayGoLogFilename()),
+	).SetupComponentLogger()
 }

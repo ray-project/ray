@@ -281,3 +281,28 @@ func TestResolveIsHead(t *testing.T) {
 		}
 	})
 }
+
+func TestRunDashboardAgentConnectsThroughPluginSeam(t *testing.T) {
+	args := testArgs(map[string]string{"log-dir": t.TempDir()})
+	if err := DashboardAgentCmd.ParseFlags(args); err != nil {
+		t.Fatalf("parse flags: %v", err)
+	}
+
+	orig := loadGCSClientFn
+	loadGCSClientFn = func(opts gcs.ClientOptions) (gcs.Client, error) {
+		return nil, errors.New("plugin connect failed")
+	}
+	defer func() { loadGCSClientFn = orig }()
+
+	origValidate := validatePluginLoadableFn
+	validatePluginLoadableFn = func() error { return nil }
+	defer func() { validatePluginLoadableFn = origValidate }()
+
+	err := runDashboardAgent(context.Background())
+	if err == nil {
+		t.Fatal("runDashboardAgent() = nil error, want connect error through the seam")
+	}
+	if !strings.Contains(err.Error(), "failed to connect to GCS client") {
+		t.Fatalf("error %q does not mention failed to connect to GCS client", err)
+	}
+}

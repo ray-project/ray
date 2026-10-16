@@ -416,6 +416,20 @@ func convertActorCreationOptionsToC(opts *submitter.ActorCreationOptions, actorD
 		cOpts.runtime_env = C.CString(opts.RuntimeEnv)
 	}
 
+	// Convert placement group (mirrors convertTaskOptionsToC). Without this,
+	// a PG-bound actor's binding was silently dropped at the C boundary and the
+	// actor was scheduled as a plain actor on an arbitrary node. The hex id and
+	// bundle index are converted exactly like the task path, and consumed by
+	// CNativeTaskSubmitter_CreateActor -> BuildActorOptions to build the
+	// placement_group_scheduling_strategy (aligned with Java's nativeCreateActor).
+	if opts.PlacementGroup != nil {
+		// Convert PlacementGroup ID to hex string
+		pgIDHex := opts.PlacementGroup.ID.Hex()
+		cOpts.placement_group_id = C.CString(pgIDHex)
+		cOpts.placement_group_id_size = C.int(len(pgIDHex))
+		cOpts.bundle_index = C.int(opts.PlacementGroup.BundleIndex)
+	}
+
 	if opts.Name != "" {
 		cOpts.name = C.CString(opts.Name)
 	}
@@ -576,6 +590,9 @@ func freeActorCreationOptions(opts *C.CActorCreationOptions) {
 	}
 	if opts.runtime_env != nil {
 		C.free(unsafe.Pointer(opts.runtime_env))
+	}
+	if opts.placement_group_id != nil {
+		C.free(unsafe.Pointer(opts.placement_group_id))
 	}
 	// Free concurrency group flat arrays: each group's descriptor array
 	// (per-method inner 4-element arrays), then the per-group outer arrays.

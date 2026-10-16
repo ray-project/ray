@@ -185,6 +185,42 @@ func TestJobConfigBuilder_WithNamespace(t *testing.T) {
 	}
 }
 
+// TestJobConfigBuilder_DefaultNamespace verifies Build() backfills a random
+// non-empty RayNamespace when the builder has no WithNamespace call. GCS
+// enforces !ray_namespace.empty(), so a builder without an explicit namespace
+// must never emit an empty one, and two successive Builds must differ (matching
+// Python's str(uuid.uuid4()) behavior).
+func TestJobConfigBuilder_DefaultNamespace(t *testing.T) {
+	buildNamespace := func(t *testing.T, builder *JobConfigBuilder) string {
+		t.Helper()
+		configStr, err := builder.Build()
+		if err != nil {
+			t.Fatalf("Build() unexpected error: %v", err)
+		}
+		decoded, err := base64.StdEncoding.DecodeString(configStr)
+		if err != nil {
+			t.Fatalf("Build() returned invalid base64: %v", err)
+		}
+		var config rayproto.JobConfig
+		if err := protolib.Unmarshal(decoded, &config); err != nil {
+			t.Fatalf("Build() returned invalid protobuf: %v", err)
+		}
+		return config.RayNamespace
+	}
+
+	first := buildNamespace(t, NewJobConfigBuilder())
+	if first == "" {
+		t.Fatal("ray_namespace empty without WithNamespace; want a non-empty default")
+	}
+	second := buildNamespace(t, NewJobConfigBuilder())
+	if second == "" {
+		t.Fatal("second Build() ray_namespace empty; want a non-empty default")
+	}
+	if first == second {
+		t.Fatalf("two successive Build() returned the same ray_namespace %q; want distinct values", first)
+	}
+}
+
 func TestJobConfigBuilder_BuildToJobOptions(t *testing.T) {
 	builder := NewJobConfigBuilder().
 		WithCodeSearchPath("./userfuncs.so", "./plugins/plugin.so").

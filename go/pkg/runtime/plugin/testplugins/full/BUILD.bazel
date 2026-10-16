@@ -1,0 +1,16 @@
+# gazelle:ignore
+load("//go/pkg/runtime/plugin/testplugins:defs.bzl", "ray_go_testplugin")
+
+# Full test plugin: exports ConnectClient (gcs.Client, error),
+# NewLogBatchPublisher, and Initialize with valid signatures. Used to exercise
+# the successful plugin load path in plugin_loader_gcs_test.
+ray_go_testplugin(
+    name = "full",
+    out = "testplugin_full.so",
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/plugin/testplugins/full",
+    deps = [
+        "//go/pkg/gcs",
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
+    ],
+)

@@ -95,6 +95,10 @@ struct ActorCreateOptions {
   std::string name;
   std::string namespace_;
   std::string serialized_runtime_env_info;
+  // Placement group binding (hex id + bundle index). Empty id / -1 index mean
+  // "no placement group", mirroring TaskSubmitOptions for tasks.
+  std::string placement_group_id_hex;
+  int bundle_index = -1;
   bool is_detached = false;        // whether detached (lifetime=DETACHED)
   bool is_asyncio = false;         // whether async direct call
   int32_t max_pending_calls = -1;  // max pending calls (-1 unlimited)

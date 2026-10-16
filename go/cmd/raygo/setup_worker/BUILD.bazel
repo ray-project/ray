@@ -23,6 +23,7 @@ go_library(
         "//go/internal/common",
         "//go/internal/runtime_env",
         "//go/pkg/log",
+        "//go/pkg/log/logconfig",
         "//go/pkg/log/zap",
         "//go/proto",
         "@com_github_spf13_cobra//:cobra",

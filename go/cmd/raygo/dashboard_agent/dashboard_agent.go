@@ -26,10 +26,11 @@ import (
 	dashboardevent "github.com/ray-project/ray/go/internal/dashboard/event"
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
-	"github.com/ray-project/ray/go/internal/gcs/native"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +71,14 @@ var (
 	// Reserved flags (P0 deferred).
 	minimal bool
 )
+
+// loadGCSClientFn builds the GCS client via the go_runtime.so plugin export
+// surface. It is a package-level variable so tests can inject a fake.
+var loadGCSClientFn = plugin.LoadGCSClient
+
+// validatePluginLoadableFn wraps plugin.CheckPluginLoadable (the startup
+// plugin loadability pre-check) so tests can inject a fake.
+var validatePluginLoadableFn = plugin.CheckPluginLoadable
 
 // DashboardAgentCmd is the `dashboard-agent` subcommand of raygo.
 var DashboardAgentCmd = &cobra.Command{
@@ -249,17 +258,22 @@ func runDashboardAgent(ctx context.Context) error {
 		logFilename = dashboardAgentLogFilename
 	}
 
-	if err := common.NewLogOption(
-		common.WithLoggingLevel(loggingLevel),
-		common.WithLoggingFormat(loggingFormat),
-		common.WithLoggingFilename(logFilename),
-		common.WithLogsDir(logDir),
-		common.WithLoggingRotateBytes(loggingRotateBytes),
-		common.WithLoggingRotateBackupCount(loggingRotateBackupCount),
-		common.WithStdoutFilepath(stdoutFilepath),
-		common.WithStderrFilepath(stderrFilepath),
+	if err := logconfig.NewLogOption(
+		logconfig.WithLoggingLevel(loggingLevel),
+		logconfig.WithLoggingFormat(loggingFormat),
+		logconfig.WithLoggingFilename(logFilename),
+		logconfig.WithLogsDir(logDir),
+		logconfig.WithLoggingRotateBytes(loggingRotateBytes),
+		logconfig.WithLoggingRotateBackupCount(loggingRotateBackupCount),
+		logconfig.WithStdoutFilepath(stdoutFilepath),
+		logconfig.WithStderrFilepath(stderrFilepath),
 	).SetupComponentLogger(); err != nil {
 		return fmt.Errorf("failed to setup default logger: %w", err)
+	}
+
+	// Fail fast on deployment errors (missing/invalid go_runtime.so).
+	if err := validatePluginLoadableFn(); err != nil {
+		return err
 	}
 
 	clusterID, err := ids.ClusterIDFromHex(clusterIDHex)
@@ -268,7 +282,7 @@ func runDashboardAgent(ctx context.Context) error {
 	}
 
 	// 10s connect timeout mirrors the Python dashboard agent defaults.
-	gcsClient, err := native.ConnectClient(gcs.ClientOptions{
+	gcsClient, err := loadGCSClientFn(gcs.ClientOptions{
 		Address:   gcsAddress,
 		ClusterID: clusterID,
 		TimeoutMs: 10_000,

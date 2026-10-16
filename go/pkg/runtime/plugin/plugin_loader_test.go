@@ -15,9 +15,13 @@
 package plugin
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -163,6 +167,53 @@ func TestFindPluginPath_EnvVarNotFound(t *testing.T) {
 	t.Logf("FindPluginPath() with invalid env var: %v (expected)", err)
 }
 
+// TestValidatePluginLoadable_StrictEnvPath verifies the startup plugin
+// loadability pre-check treats an
+// explicitly set RAY_GO_RUNTIME_PATH as authoritative: a non-existent path is
+// a deployment error that must fail fast, instead of silently falling back to
+// FindPluginPath's multi-tier search (which may find a valid plugin elsewhere,
+// e.g. Python site-packages). This mirrors api.InitWithOptions' resolution.
+func TestValidatePluginLoadable_StrictEnvPath(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist.so")
+	t.Setenv("RAY_GO_RUNTIME_PATH", missing)
+
+	err := ValidatePluginLoadable()
+	if err == nil {
+		t.Fatal("ValidatePluginLoadable() = nil error, want failure for non-existent RAY_GO_RUNTIME_PATH")
+	}
+	if !strings.Contains(err.Error(), "plugin validation failed") {
+		t.Fatalf("error %q does not mention plugin validation failed", err)
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Fatalf("error %q does not mention the configured plugin path %q", err, missing)
+	}
+}
+
+// TestValidatePluginLoadable_UnsetEnvUsesFindPluginPath verifies that when
+// RAY_GO_RUNTIME_PATH is unset, ValidatePluginLoadable resolves via
+// FindPluginPath (accepting any plugin found by the multi-tier search).
+func TestValidatePluginLoadable_UnsetEnvUsesFindPluginPath(t *testing.T) {
+	origEnv, hadEnv := os.LookupEnv("RAY_GO_RUNTIME_PATH")
+	os.Unsetenv("RAY_GO_RUNTIME_PATH")
+	t.Cleanup(func() {
+		if hadEnv {
+			os.Setenv("RAY_GO_RUNTIME_PATH", origEnv)
+		} else {
+			os.Unsetenv("RAY_GO_RUNTIME_PATH")
+		}
+	})
+
+	_, err := FindPluginPath()
+	pluginFound := err == nil
+	valErr := ValidatePluginLoadable()
+	if pluginFound && valErr != nil {
+		t.Fatalf("ValidatePluginLoadable() = %v, want nil when FindPluginPath finds a plugin", valErr)
+	}
+	if !pluginFound && valErr == nil {
+		t.Fatal("ValidatePluginLoadable() = nil, want error when FindPluginPath finds no plugin")
+	}
+}
+
 // TestGetLibraryName_AllPlatforms tests library names for all platforms (simulated)
 func TestGetLibraryName_AllPlatforms(t *testing.T) {
 	// Note: Can only test current platform at runtime
@@ -212,6 +263,31 @@ func TestGetLibraryName_AllPlatforms(t *testing.T) {
 //     p, err := loader.LoadPlugin()
 //     // ...
 // }
+
+// TestCallPluginFuncErrorBeforeValueValidator verifies callPluginFunc validates
+// the trailing error result before the value-type validators: a function that
+// returns (nil, someErr) must surface someErr (or a wrapping of it), never the
+// value validator's "must return ..., got <nil>" message. It also guards the
+// typed-nil path where a value validator would dereference nil (e.g. calling
+// Runtime() on a nil handle) before the error was observed.
+func TestCallPluginFuncErrorBeforeValueValidator(t *testing.T) {
+	sentinel := errors.New("sentinel failure from plugin")
+	// Signature: func() (any, error) returning (nil, sentinel). The nil first
+	// value is a typed nil interface, which the value validator must never see.
+	fn := func() (any, error) { return nil, sentinel }
+
+	valueValidator := func(v reflect.Value) error {
+		return fmt.Errorf("value validator ran on %v; want error validator first", v)
+	}
+
+	_, err := callPluginFunc(reflect.ValueOf(fn), nil, 2, valueValidator, validateError)
+	if err == nil {
+		t.Fatal("callPluginFunc() = nil error, want the sentinel error")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("callPluginFunc() error = %v, want sentinel %v (value validator must not mask it)", err, sentinel)
+	}
+}
 
 // TODO(Stage 2): TestPluginLoader_Concurrent
 // func TestPluginLoader_Concurrent(t *testing.T) {

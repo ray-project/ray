@@ -14,40 +14,35 @@
 
 // Package worker provides the Worker process implementation for Ray.
 //
-// This implementation directly calls base.Initialize() to create the runtime,
-// rather than using Go's plugin API to dynamically load go_runtime.so.
+// This implementation initializes the runtime through api.InitWithOptions,
+// which loads go_runtime.so via the plugin API and runs the plugin's exported
+// Initialize (base.Initialize plus the driver-mode GCS handshake inside the
+// plugin), identical to the proven pure-Go driver layout (go/test_driver.go).
 //
 // Design notes:
 //  1. A single Worker process creates exactly one runtime instance (singleton pattern).
-//  2. The runtime is created via base.Initialize(), which uses the factory registered
-//     by go/internal/runtime/native's init() function.
-//  3. For Driver mode, node connection info and JobID are fetched from GCS before initialization.
+//  2. The runtime is created via api.InitWithOptions, which dynamically loads
+//     go_runtime.so and calls its Initialize (plugin.Initialize -> base.Initialize).
+//  3. The plugin's exported Initialize performs the driver-mode GCS handshake
+//     (node info + JobID allocation), so the worker no longer talks to GCS directly.
 //  4. This design is consistent with Java's RayNativeRuntime initialization.
 package worker
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"plugin"
+	goplugin "plugin"
 	"strings"
 	"sync"
-	"time"
 
 	rayerrors "github.com/ray-project/ray/go/internal/errors"
-	"github.com/ray-project/ray/go/internal/gcs/native"
-	"github.com/ray-project/ray/go/internal/proctitle"
 	"github.com/ray-project/ray/go/internal/runtime/actor"
-	"github.com/ray-project/ray/go/internal/runtime/base"
-	_ "github.com/ray-project/ray/go/internal/runtime/native" // Register Runtime factory via init()
-	"github.com/ray-project/ray/go/pkg/gcs"
-	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
-	"github.com/ray-project/ray/go/proto"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 )
 
 // Options contains configuration parameters for Worker startup.
@@ -83,6 +78,16 @@ type Options struct {
 // Option is a function that configures an Options instance.
 // Use With* functions to create options.
 type Option func(*Options)
+
+// initRuntimeWithOptionsFn wraps api.InitWithOptions so tests can inject a
+// fake without loading go_runtime.so.
+var initRuntimeWithOptionsFn = func(opts *options.InitializeOptions) error {
+	return api.InitWithOptions(opts)
+}
+
+// validatePluginLoadableFn wraps plugin.CheckPluginLoadable (the startup
+// plugin loadability pre-check) so tests can inject a fake.
+var validatePluginLoadableFn = plugin.CheckPluginLoadable
 
 // NewOptions creates a new Options instance.
 //
@@ -134,7 +139,7 @@ func WithCodeSearchPath(paths []string) Option {
 //  3. Shutdown: worker.Shutdown() - optional, automatically called when process exits
 type Worker struct {
 	opts         *Options
-	handle       base.RuntimeHandle
+	handle       contract.RuntimeHandle
 	doneCh       chan struct{}
 	shutdownOnce sync.Once
 	mu           sync.RWMutex
@@ -157,95 +162,6 @@ func New(opts *Options) *Worker {
 	}
 }
 
-// ============================================================================
-// GCS Client Factory Implementation (for Dependency Inversion)
-// ============================================================================
-
-// gcsClientFactory implements api.GCSClientFactory by delegating to
-// go/internal/gcs/native.ConnectClient().
-//
-// This allows worker to provide the concrete GCS client implementation
-// to the api package without the api package directly importing go/internal/gcs/native.
-type gcsClientAdapter struct {
-	client gcs.Client
-}
-
-// GetNodeToConnect implements api.GCSClient.GetNodeToConnect.
-func (a *gcsClientAdapter) GetNodeToConnect(ctx context.Context, nodeIpAddress string) (*proto.GcsNodeInfo, error) {
-	return a.client.GetNodeToConnect(ctx, nodeIpAddress)
-}
-
-// NextJobID implements api.GCSClient.NextJobID.
-// Converts ids.JobID to hex string.
-func (a *gcsClientAdapter) NextJobID(ctx context.Context) (string, error) {
-	jobID, err := a.client.NextJobID(ctx)
-	if err != nil {
-		return "", err
-	}
-	return jobID.Hex(), nil
-}
-
-// Close implements api.GCSClient.Close.
-func (a *gcsClientAdapter) Close() error {
-	return a.client.Close()
-}
-
-// IsClosed implements api.GCSClient.IsClosed by delegating to the underlying client.
-func (a *gcsClientAdapter) IsClosed() bool {
-	if checker, ok := a.client.(interface{ IsClosed() bool }); ok {
-		return checker.IsClosed()
-	}
-	return false
-}
-
-// GetPlacementGroupInfo implements api.GCSClient.GetPlacementGroupInfo.
-func (a *gcsClientAdapter) GetPlacementGroupInfo(ctx context.Context, id ids.PlacementGroupID) (*proto.PlacementGroupTableData, error) {
-	return a.client.GetPlacementGroup(ctx, id)
-}
-
-// GetPlacementGroupInfoByName implements api.GCSClient.GetPlacementGroupInfoByName.
-func (a *gcsClientAdapter) GetPlacementGroupInfoByName(ctx context.Context, name, namespace string) (*proto.PlacementGroupTableData, error) {
-	return a.client.GetPlacementGroupByName(ctx, name, namespace)
-}
-
-// GetAllPlacementGroupInfo implements api.GCSClient.GetAllPlacementGroupInfo.
-func (a *gcsClientAdapter) GetAllPlacementGroupInfo(ctx context.Context) ([]*proto.PlacementGroupTableData, error) {
-	return a.client.ListPlacementGroups(ctx)
-}
-
-// GetInternalKV implements api.GCSClient.GetInternalKV.
-func (a *gcsClientAdapter) GetInternalKV(ctx context.Context, ns, key string) ([]byte, error) {
-	return a.client.Get(ctx, ns, key)
-}
-
-// GetAllNodeInfo implements api.GCSClient.GetAllNodeInfo.
-// A nil node list queries all nodes in the cluster.
-func (a *gcsClientAdapter) GetAllNodeInfo(ctx context.Context) (map[ids.NodeID]*proto.GcsNodeInfo, error) {
-	return a.client.GetAll(ctx, nil)
-}
-
-// GetAllActorInfo implements api.GCSClient.GetAllActorInfo.
-func (a *gcsClientAdapter) GetAllActorInfo(ctx context.Context, jobID *ids.JobID, actorStateName *gcs.ActorStateName) ([]*proto.ActorTableData, error) {
-	return a.client.ListActorsByFilter(ctx, jobID, actorStateName)
-}
-
-type gcsClientFactory struct{}
-
-// CreateClient implements api.GCSClientFactory.CreateClient().
-func (f *gcsClientFactory) CreateClient(opts gcs.ClientOptions) (api.GCSClient, error) {
-	client, err := native.ConnectClient(opts)
-	if err != nil {
-		return nil, err
-	}
-	return &gcsClientAdapter{client: client}, nil
-}
-
-// registerGCSClientFactory registers the GCS client factory.
-// This must be called before using api.FetchNodeInfoFromGCS() or api.NextJobID().
-func registerGCSClientFactory() {
-	api.RegisterGCSClientFactory(&gcsClientFactory{})
-}
-
 // registerUserFunctions reads user-registered functions from the global registry
 // and registers them with the FunctionManager.
 // This is called during worker startup, after base.Initialize() succeeds.
@@ -263,20 +179,31 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 	if len(codeSearchPath) > 0 {
 		log.Log.Info("loading user plugins from codeSearchPath", "paths", codeSearchPath)
 
-		for _, pluginPath := range codeSearchPath {
+		for i, pluginPath := range codeSearchPath {
 			pluginPath = strings.TrimSpace(pluginPath)
 			if pluginPath == "" {
+				log.Log.V(1).Info("skipping empty codeSearchPath entry", "index", i)
 				continue
 			}
 
-			// Check if file exists - V(2) for detailed debugging
-			if _, err := os.Stat(pluginPath); os.IsNotExist(err) {
+			info, err := os.Stat(pluginPath)
+			if os.IsNotExist(err) {
 				log.Log.V(1).Info("plugin file does not exist, skipping", "path", pluginPath)
+				continue
+			} else if err != nil {
+				log.Log.Error(err, "failed to stat plugin file, skipping", "path", pluginPath)
+				continue
+			}
+			// Skip directories: code_search_path may contain directories (e.g.
+			// a Python source dir for cross-language calls) that are valid for
+			// other languages but must not be plugin.Open'ed as a Go .so.
+			if info.IsDir() {
+				log.Log.V(1).Info("code search path entry is a directory, skipping", "path", pluginPath)
 				continue
 			}
 
 			// Load the plugin
-			p, err := plugin.Open(pluginPath)
+			p, err := goplugin.Open(pluginPath)
 			if err != nil {
 				log.Log.Error(err, "failed to load plugin", "path", pluginPath)
 				return fmt.Errorf("failed to load plugin %s: %w", pluginPath, err)
@@ -284,17 +211,25 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 
 			// Look for RegisterFunctions symbol (optional)
 			// If the plugin exports a RegisterFunctions function, call it
-			sym, err := p.Lookup("RegisterFunctions")
-			if err == nil {
-				// Found RegisterFunctions, call it
-				if registerFunc, ok := sym.(func() error); ok {
-					if err := registerFunc(); err != nil {
-						log.Log.Error(err, "RegisterFunctions failed", "path", pluginPath)
-						return fmt.Errorf("RegisterFunctions in plugin %s failed: %w", pluginPath, err)
-					}
-					log.Log.Info("RegisterFunctions called successfully", "path", pluginPath)
-				}
+			sym, lookupErr := p.Lookup("RegisterFunctions")
+			if lookupErr != nil {
+				// The plugin's init() function may still have registered functions.
+				log.Log.V(1).Info("plugin does not export RegisterFunctions", "path", pluginPath)
+				continue
 			}
+
+			registerFunc, ok := sym.(func() error)
+			if !ok {
+				log.Log.V(1).Info("plugin RegisterFunctions has unexpected type, skipping",
+					"path", pluginPath, "expected", "func() error", "got", fmt.Sprintf("%T", sym))
+				continue
+			}
+
+			if regErr := registerFunc(); regErr != nil {
+				log.Log.Error(regErr, "RegisterFunctions failed", "path", pluginPath)
+				return fmt.Errorf("RegisterFunctions in plugin %s failed: %w", pluginPath, regErr)
+			}
+			log.Log.Info("RegisterFunctions called successfully", "path", pluginPath)
 			// Note: The plugin's init() function may have already registered functions
 		}
 	}
@@ -325,7 +260,6 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 			if actorRegistrar != nil {
 				ctor := actor.WrapActorConstructor(regFn.Function())
 				actorRegistrar.RegisterActorConstructor(regFn.Descriptor().String(), ctor)
-				log.Log.Info("registered actor constructor", "descriptor", regFn.Descriptor().String())
 			} else {
 				log.Log.Error(nil, "runtime does not support actor construction, skipping actor constructor",
 					"descriptor", regFn.Descriptor().String())
@@ -359,9 +293,10 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 // This is a blocking call until the Worker receives an exit signal or an error occurs.
 //
 // Workflow:
-//  1. For Driver mode: fetch node info and JobID from GCS
-//  2. Register GCS client factory for dependency inversion
-//  3. Call base.Initialize() to create and start the runtime
+//  1. Startup pre-check: validate that go_runtime.so is loadable (ValidatePluginLoadable)
+//  2. Validate the plasma store and raylet sockets
+//  3. Call api.InitWithOptions to load go_runtime.so and start the runtime
+//     (the plugin's Initialize performs the driver-mode GCS handshake)
 //  4. Call handle.Runtime().Run() to execute task loop
 //
 // Returns:
@@ -370,7 +305,7 @@ func registerUserFunctions(rt contract.Runtime, codeSearchPath []string) error {
 // Note:
 //   - This method is blocking, with task execution driven by C++ core_worker
 //   - A single Worker process creates exactly one runtime instance (singleton pattern)
-//   - The runtime factory is registered by go/internal/runtime/native's init() function
+//   - The runtime is created through the plugin path (api.InitWithOptions -> plugin.Initialize -> base.Initialize)
 func (w *Worker) Run() error {
 	logger := log.WithName("worker")
 
@@ -388,13 +323,6 @@ func (w *Worker) Run() error {
 		"gcs_address", w.opts.Network.GcsAddress,
 	)
 
-	// Validate socket paths before calling C++ initialization.
-	// This provides clear error messages if the socket files don't exist.
-	logger.Info("validating socket paths",
-		"plasma_store_socket", w.opts.Runtime.StoreSocket,
-		"raylet_socket", w.opts.Runtime.RayletSocket,
-	)
-
 	// validateSocket checks if a socket file exists and returns a standardized error.
 	validateSocket := func(socketType, socketPath string) error {
 		if _, err := os.Stat(socketPath); err != nil {
@@ -407,8 +335,13 @@ func (w *Worker) Run() error {
 				rayerrors.WithCategory(category),
 				rayerrors.WithMessage(message))
 		}
-		logger.Info(fmt.Sprintf("%s socket exists", socketType), "socket", socketPath)
 		return nil
+	}
+
+	// Fail fast on deployment errors (missing/invalid go_runtime.so)
+	// before any business logic.
+	if err := validatePluginLoadableFn(); err != nil {
+		return err
 	}
 
 	if err := validateSocket("plasma store", w.opts.Runtime.StoreSocket); err != nil {
@@ -419,7 +352,7 @@ func (w *Worker) Run() error {
 	}
 
 	// Prepare initialization options.
-	// The grouped Options structure simplifies passing configuration to base.Initialize().
+	// The grouped Options structure simplifies passing configuration to api.InitWithOptions.
 	initOpts := options.InitializeOptions{
 		WorkerType: w.opts.WorkerType,
 		Network:    w.opts.Network,
@@ -427,147 +360,38 @@ func (w *Worker) Run() error {
 		Runtime:    w.opts.Runtime,
 	}
 
-	// For Worker mode, do NOT pass JobID to C++.
-	// The JobID is passed via RAY_JOB_ID environment variable (set by Raylet),
-	// and C++ CoreWorkerProcess::GetProcessJobID() will read it from the environment.
-	// We must pass an empty JobID to C++, which expects options.job_id.IsNil() for Worker mode.
-	// See: src/ray/core_worker/core_worker.cc:154 - RAY_CHECK(options.job_id.IsNil())
-	// If JobID is provided via command line or environment, clear it before passing to C++.
-	if w.opts.WorkerType == options.WorkerTypeWorker && initOpts.Job.JobID != "" {
-		logger.Info("clearing JobID for Worker mode (C++ expects Nil, actual JobID from RAY_JOB_ID env var)", "job_id", initOpts.Job.JobID)
-		// Clear JobID before passing to C++ - the actual JobID will be read from RAY_JOB_ID environment variable
-		initOpts.Job.JobID = ""
-	}
+	// Worker-mode JobID handling: the configured JobID (from --job-id /
+	// RAY_JOB_ID) is passed through as-is. base.InitializeOptionsFromAPI
+	// (inside go_runtime.so) forces a nil JobID for Worker mode, because C++
+	// core_worker requires options.job_id.IsNil() and reads the real JobID
+	// from RAY_JOB_ID (core_worker.cc:154).
+	//
+	// Driver mode: the plugin's exported Initialize performs the GCS handshake
+	// (node info + JobID allocation, plugin_exports.go).
 
-	// For Driver mode, fetch node connection info and JobID from GCS.
-	// This mimics Java's RayNativeRuntime.start() which calls getGcsClient().getNodeToConnectForDriver()
-	// and getGcsClient().nextJobId().
-	if w.opts.WorkerType == options.WorkerTypeDriver {
-		logger.Info("fetching node info and JobID from GCS for Driver mode",
-			"gcs_address", initOpts.Network.GcsAddress,
-			"job_id", initOpts.Job.JobID,
-		)
-
-		// Register GCS client factory first, so api.WithCachedClient can use it.
-		registerGCSClientFactory()
-
-		gcsOpts := gcs.ClientOptions{
-			Address:   initOpts.Network.GcsAddress,
-			ClusterID: ids.NilClusterID(),
-			TimeoutMs: 10000,
-		}
-
-		// Use cached client to fetch both node info and JobID in a single client lifecycle.
-		err := api.WithCachedClient(initOpts.Network.GcsAddress, gcsOpts, func(client api.GCSClient) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-
-			// Fetch node info from GCS for missing socket/port fields.
-			// This mimics Java's GcsClient.getNodeToConnectForDriver().
-			if initOpts.Runtime.StoreSocket == "" || initOpts.Runtime.RayletSocket == "" ||
-				initOpts.Network.NodeManagerPort == 0 || initOpts.Network.NodeIPAddress == "" {
-				logger.Info("fetching node info from GCS",
-					"missing_store_socket", initOpts.Runtime.StoreSocket == "",
-					"missing_raylet_socket", initOpts.Runtime.RayletSocket == "",
-					"missing_node_manager_port", initOpts.Network.NodeManagerPort == 0,
-					"missing_node_ip", initOpts.Network.NodeIPAddress == "",
-				)
-
-				nodeInfo, err := client.GetNodeToConnect(ctx, initOpts.Network.NodeIPAddress)
-				if err != nil {
-					logger.Error(err, "failed to fetch node info from GCS")
-					// Log warning but continue - let C++ core worker handle missing fields
-				} else if nodeInfo != nil {
-					// Populate missing fields from GCS node info
-					if initOpts.Runtime.StoreSocket == "" && nodeInfo.ObjectStoreSocketName != "" {
-						initOpts.Runtime.StoreSocket = nodeInfo.ObjectStoreSocketName
-					}
-					if initOpts.Runtime.RayletSocket == "" && nodeInfo.RayletSocketName != "" {
-						initOpts.Runtime.RayletSocket = nodeInfo.RayletSocketName
-					}
-					if initOpts.Network.NodeManagerPort == 0 && nodeInfo.NodeManagerPort != 0 {
-						initOpts.Network.NodeManagerPort = int32(nodeInfo.NodeManagerPort)
-					}
-					// Use NodeManagerAddress from GCS if available
-					if nodeInfo.NodeManagerAddress != "" {
-						initOpts.Network.NodeIPAddress = nodeInfo.NodeManagerAddress
-					}
-					logger.Info("fetched node info from GCS",
-						"store_socket", initOpts.Runtime.StoreSocket,
-						"raylet_socket", initOpts.Runtime.RayletSocket,
-						"node_manager_port", initOpts.Network.NodeManagerPort,
-					)
-				}
-			}
-
-			// Fetch next JobID from GCS if not provided.
-			// This mimics Java's GcsClient.nextJobId() which allocates a new JobID for the driver.
-			if initOpts.Job.JobID == "" {
-				logger.Info("fetching next JobID from GCS", "gcs_address", initOpts.Network.GcsAddress)
-				jobIDHex, err := client.NextJobID(ctx)
-				if err != nil {
-					logger.Error(err, "failed to fetch next JobID from GCS")
-					return rayerrors.WrapRayError(err, rayerrors.CodeNetworkError,
-						rayerrors.WithCategory(rayerrors.CategoryNetwork),
-						rayerrors.WithMessage("failed to get next JobID from GCS"))
-				}
-				logger.Info("fetched next JobID from GCS", "job_id", jobIDHex)
-				initOpts.Job.JobID = jobIDHex
-			} else {
-				logger.Info("JobID already set", "job_id", initOpts.Job.JobID)
-			}
-
-			return nil
-		})
-		if err != nil {
-			logger.Error(err, "failed to fetch node info and JobID from GCS")
-			return err
-		}
-	}
-
-	logger.Info("initializing Ray runtime",
-		"worker_type", initOpts.WorkerType,
-		"gcs_address", initOpts.Network.GcsAddress,
-		"node_ip", initOpts.Network.NodeIPAddress,
-		"job_id", initOpts.Job.JobID,
-		"store_socket", initOpts.Runtime.StoreSocket,
-		"raylet_socket", initOpts.Runtime.RayletSocket,
-	)
-
-	// Initialize the runtime using base.Initialize().
-	// This calls the factory registered by go/internal/runtime/native's init() function.
-	// The factory creates and starts a NativeRuntime instance.
-	var err error
-	w.handle, err = base.Initialize(initOpts)
-	if err != nil {
-		logger.Error(err, "base.Initialize() returned error")
+	// Initialize the runtime through the api plugin path:
+	// api.InitWithOptions -> plugin.Initialize -> base.Initialize, identical
+	// to the proven pure-Go driver layout (go/test_driver.go).
+	if err := initRuntimeWithOptionsFn(&initOpts); err != nil {
+		logger.Error(err, "api.InitWithOptions() returned error")
 		return err
 	}
 
+	// The handle is attached to the api package by InitWithOptions (setHandle);
+	// obtain it via api.Internal().
+	w.handle = api.Internal()
 	if w.handle == nil {
-		return rayerrors.NewInitializationError("runtime", "base.Initialize returned nil handle")
+		return rayerrors.NewInitializationError("runtime", "api.Internal() returned nil handle")
 	}
-
-	// Attach the runtime handle to the public api package. Worker processes
-	// initialize via the internal base.Initialize path (not api.InitWithOptions),
-	// which would otherwise leave api's runtime handle unset. Handle-dependent API
-	// functions (e.g. api.GetRuntimeContext called from a task or actor method,
-	// including code loaded from Go plugins that share this package's state) rely
-	// on it.
-	api.SetRuntimeHandleForWorker(w.handle)
 
 	logger.Info("Ray runtime initialized successfully", "handle", w.handle)
 
-	// Now that base.Initialize() has consumed the command line, overwrite the
-	// process title to "ray::IDLE" matching Python worker behavior
-	// (setproctitle("ray::IDLE") in connect()) and C++'s SetProcTitle after
-	// ray::Init. Doing this before Initialize would destroy the args C++ reads
-	// at startup; doing it here also scrubs sensitive argv (e.g. --redis-password).
-	// Only worker processes get the idle title: Python gates this on
-	// mode != SCRIPT_MODE, so a driver keeps its own process title.
-	if w.opts.WorkerType == options.WorkerTypeWorker {
-		proctitle.SetTitle(proctitle.IdleTitle())
-	}
+	// The idle worker process title ("ray::IDLE") and the sensitive-argv scrub
+	// are handled inside the plugin Initialize (go_runtime.so): base.Initialize
+	// has consumed the command line by then, and the cgo proctitle package must
+	// stay on the plugin side so the thin raygo binary keeps no cgo dependency
+	// (otherwise the plugin version check fails on the shared proctitle
+	// package).
 
 	// Get runtime and check if it's initialized
 	rt := w.handle.Runtime()
@@ -587,8 +411,7 @@ func (w *Worker) Run() error {
 	// Run the task execution loop.
 	// This calls NativeRuntime.Run() which delegates to C++ core_worker's RunTaskExecutionLoop().
 	logger.Info("calling handle.Runtime().Run() - this will block until shutdown")
-	err = w.handle.Runtime().Run()
-	if err != nil {
+	if err := w.handle.Runtime().Run(); err != nil {
 		logger.Error(err, "handle.Runtime().Run() returned error")
 		return err
 	}
@@ -606,19 +429,17 @@ func (w *Worker) Run() error {
 //   - This method uses sync.Once to ensure shutdown happens only once
 //   - If handle is not initialized, Shutdown does nothing
 //   - Typically called automatically when Worker process exits
-//   - Calls base.Shutdown() which cleans up global state (handle registry, cached handle, etc.)
+//   - Calls api.Shutdown() which performs full plugin teardown
+//     (ClearAllCachedClients + base.Shutdown)
 func (w *Worker) Shutdown() {
 	w.shutdownOnce.Do(func() {
 		w.mu.Lock()
 		defer w.mu.Unlock()
 
 		if w.handle != nil {
-			// Call base.Shutdown() to clean up global state.
-			// This removes the handle from the registry, clears the global runtime,
-			// and calls the underlying runtime's Shutdown() method.
-			if err := base.Shutdown(w.handle); err != nil {
-				log.Log.Error(err, "failed to shutdown Ray runtime")
-			}
+			// Full plugin teardown: ClearAllCachedClients + base.Shutdown via
+			// the plugin's exported Shutdown.
+			api.Shutdown()
 			w.handle = nil
 		}
 
@@ -638,7 +459,7 @@ func (w *Worker) IsRunning() bool {
 
 // GetHandle returns the runtime handle for testing purposes.
 // Returns nil if the runtime is not initialized.
-func (w *Worker) GetHandle() base.RuntimeHandle {
+func (w *Worker) GetHandle() contract.RuntimeHandle {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 	return w.handle

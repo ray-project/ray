@@ -244,11 +244,80 @@ func (s *stateCgoClient) GetNode(nodeID ids.NodeID) (*proto.GcsNodeInfo, error) 
 	return node, nil
 }
 
+// freeDrainingNodeIDStrings releases the per-element C strings allocated by
+// the C++ side for GetDrainingNodes. It must be called on every early-return
+// path so the node ID strings do not leak; the normal consumption loop frees
+// each element itself.
+func freeDrainingNodeIDStrings(cNodeIDs **C.char, cCount C.int) {
+	if cNodeIDs == nil || cCount <= 0 {
+		return
+	}
+	idsSlice := unsafe.Slice(cNodeIDs, int(cCount))
+	for i := 0; i < int(cCount); i++ {
+		C.free(unsafe.Pointer(idsSlice[i]))
+	}
+}
+
 // GetDrainingNodes retrieves draining nodes and their deadlines.
-// The underlying C bridge does not expose a corresponding draining deadline
-// query interface, so this is not supported yet.
+// It returns a map of NodeID to drain-deadline timestamp (ms).
 func (s *stateCgoClient) GetDrainingNodes() (map[ids.NodeID]int64, error) {
-	return nil, gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return nil, gcs.ErrNotImplemented
+	}
+
+	var cNodeIDs **C.char
+	var cDeadlines *C.int64_t
+	var cCount C.int
+	var cErr *C.char
+	var empty bool
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_node_resources_get_draining_nodes(
+			ptr, &cNodeIDs, &cDeadlines, &cCount, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("get draining nodes failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 || cNodeIDs == nil || cCount == 0 {
+			freeDrainingNodeIDStrings(cNodeIDs, cCount)
+			empty = true
+			return nil
+		}
+		if cCount < 0 || int(cCount) > maxListResultCount {
+			freeDrainingNodeIDStrings(cNodeIDs, cCount)
+			return fmt.Errorf("invalid draining node count: %d", cCount)
+		}
+		if cDeadlines == nil {
+			freeDrainingNodeIDStrings(cNodeIDs, cCount)
+			return fmt.Errorf("get draining nodes: deadline array is nil")
+		}
+		return nil
+	})
+	// The outer arrays (char**/int64_t*) are registered for release immediately
+	// after the CGO call; the per-element strings were already freed inside the
+	// closure or by the consumption loop below.
+	defer C.free(unsafe.Pointer(cNodeIDs))
+	defer C.free(unsafe.Pointer(cDeadlines))
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return map[ids.NodeID]int64{}, nil
+	}
+
+	result := make(map[ids.NodeID]int64)
+	nodeIDsSlice := unsafe.Slice(cNodeIDs, int(cCount))
+	deadlinesSlice := unsafe.Slice(cDeadlines, int(cCount))
+	for i := 0; i < int(cCount); i++ {
+		nodeID, err := ids.NodeIDFromHex(C.GoString(nodeIDsSlice[i]))
+		C.free(unsafe.Pointer(nodeIDsSlice[i]))
+		if err != nil {
+			continue
+		}
+		result[nodeID] = int64(deadlinesSlice[i])
+	}
+	return result, nil
 }
 
 // GetNodeToConnectForDriver retrieves the node to connect for the driver.
@@ -375,10 +444,50 @@ func (s *stateCgoClient) GetAllTotalResources() ([]*proto.TotalResources, error)
 }
 
 // GetAllResourceUsage retrieves all resource usage.
-// The underlying C bridge does not expose a batch resource usage query
-// interface, so this is not supported yet.
 func (s *stateCgoClient) GetAllResourceUsage() (*proto.ResourceUsageBatchData, error) {
-	return nil, gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return nil, gcs.ErrNotImplemented
+	}
+
+	var cSerialized *C.char
+	var cSize C.int
+	var cErr *C.char
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_node_resources_get_all_resource_usage(
+			ptr, &cSerialized, &cSize, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("get all resource usage failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 || cSerialized == nil || cSize == 0 {
+			return nil
+		}
+		if err := validateProtoMessageSize(cSize); err != nil {
+			C.free(unsafe.Pointer(cSerialized))
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// Register the free on every path below (including the empty-return path:
+	// a non-NULL zero-length buffer must still be released, mirroring how the
+	// cErr defer is registered early).
+	defer C.free(unsafe.Pointer(cSerialized))
+	if cSerialized == nil || cSize == 0 {
+		return nil, nil
+	}
+
+	serialized := C.GoBytes(unsafe.Pointer(cSerialized), cSize)
+
+	var result proto.ResourceUsageBatchData
+	if err := protolib.Unmarshal(serialized, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal resource usage batch failed: %w", err)
+	}
+	return &result, nil
 }
 
 // GetAllActorInfo retrieves information for all actors.
@@ -448,31 +557,144 @@ func (s *stateCgoClient) AddWorkerInfo(data *proto.WorkerTableData) (bool, error
 }
 
 // GetWorkerDebuggerPort retrieves the worker debugger port.
-// The underlying C bridge does not expose this interface, so it is not
-// supported yet.
 func (s *stateCgoClient) GetWorkerDebuggerPort(workerID ids.WorkerID) (uint32, error) {
-	return 0, gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return 0, gcs.ErrNotImplemented
+	}
+
+	cWorkerID := C.CString(workerID.Hex())
+	defer C.free(unsafe.Pointer(cWorkerID))
+
+	var cPort C.uint32_t
+	var cErr *C.char
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_workers_get_worker_debugger_port(
+			ptr, cWorkerID, &cPort, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("get worker debugger port failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 {
+			return fmt.Errorf("get worker debugger port failed: C++ returned ok=0 with no error")
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return uint32(cPort), nil
 }
 
 // UpdateWorkerDebuggerPort updates the worker debugger port.
-// The underlying C bridge does not expose this interface, so it is not
-// supported yet.
 func (s *stateCgoClient) UpdateWorkerDebuggerPort(workerID ids.WorkerID, debuggerPort uint32) (bool, error) {
-	return false, gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return false, gcs.ErrNotImplemented
+	}
+
+	cWorkerID := C.CString(workerID.Hex())
+	defer C.free(unsafe.Pointer(cWorkerID))
+
+	var cSuccess C.int
+	var cErr *C.char
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_workers_update_worker_debugger_port(
+			ptr, cWorkerID, C.uint32_t(debuggerPort), &cSuccess, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("update worker debugger port failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 {
+			return fmt.Errorf("update worker debugger port failed: C++ returned ok=0 with no error")
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return cSuccess != 0, nil
 }
 
 // UpdateWorkerNumPausedThreads updates the number of paused threads of a worker.
-// The underlying C bridge does not expose this interface, so it is not
-// supported yet.
 func (s *stateCgoClient) UpdateWorkerNumPausedThreads(workerID ids.WorkerID, numPausedThreadsDelta int32) (bool, error) {
-	return false, gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return false, gcs.ErrNotImplemented
+	}
+
+	cWorkerID := C.CString(workerID.Hex())
+	defer C.free(unsafe.Pointer(cWorkerID))
+
+	var cSuccess C.int
+	var cErr *C.char
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_workers_update_worker_num_paused_threads(
+			ptr, cWorkerID, C.int32_t(numPausedThreadsDelta), &cSuccess, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("update worker num paused threads failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 {
+			return fmt.Errorf("update worker num paused threads failed: C++ returned ok=0 with no error")
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return cSuccess != 0, nil
 }
 
 // GetAllTaskEvents retrieves all task events.
-// The underlying C bridge does not expose a task event query interface, so
-// this is not supported yet.
 func (s *stateCgoClient) GetAllTaskEvents() ([]*proto.TaskEvents, error) {
-	return nil, gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return nil, gcs.ErrNotImplemented
+	}
+
+	var cSerialized **C.char
+	var cSizes *C.int
+	var cCount C.int
+	var cErr *C.char
+	var empty bool
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_task_events_get_all(
+			ptr, &cSerialized, &cSizes, &cCount, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("get all task events failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 || cSerialized == nil || cCount == 0 {
+			empty = true
+		}
+		return nil
+	})
+	defer C.free(unsafe.Pointer(cSerialized))
+	defer C.free(unsafe.Pointer(cSizes))
+	if err != nil {
+		return nil, err
+	}
+	if empty {
+		return []*proto.TaskEvents{}, nil
+	}
+
+	// Boundary validation (cCount non-negative/within limit, cSizes not nil),
+	// consistent with the existing unpacking logic in cgoClient
+	if err := validateSerializedListBounds(cSizes, cCount); err != nil {
+		freeSerializedListElements(cSerialized, cCount)
+		return nil, err
+	}
+
+	result, err := unpackSerializedList[*proto.TaskEvents, proto.TaskEvents](cSerialized, cSizes, cCount, "task events")
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // GetAllPlacementGroupInfo retrieves information for all placement groups.
@@ -511,8 +733,42 @@ func (s *stateCgoClient) GetPlacementGroupByName(name, namespace string) (*proto
 }
 
 // GetSystemConfig retrieves the system configuration.
-// The underlying C bridge does not expose a system configuration query
-// interface, so this is not supported yet.
 func (s *stateCgoClient) GetSystemConfig() (string, error) {
-	return "", gcs.ErrNotImplemented
+	cc := s.cgoClientAccessor()
+	if cc == nil {
+		return "", gcs.ErrNotImplemented
+	}
+
+	var cSerialized *C.char
+	var cSize C.int
+	var cErr *C.char
+
+	err := cc.withPtr(func(ptr *C.CGcsClient) error {
+		ok := C.ray_gcs_client_internal_kv_get_system_config(
+			ptr, &cSerialized, &cSize, &cErr)
+		if cErr != nil {
+			defer C.free(unsafe.Pointer(cErr))
+			return fmt.Errorf("get system config failed: %s", C.GoString(cErr))
+		}
+		if ok == 0 || cSerialized == nil || cSize == 0 {
+			return nil
+		}
+		if err := validateProtoMessageSize(cSize); err != nil {
+			C.free(unsafe.Pointer(cSerialized))
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	// Register the free on every path below (including the empty-return path:
+	// a non-NULL zero-length buffer must still be released, mirroring how the
+	// cErr defer is registered early).
+	defer C.free(unsafe.Pointer(cSerialized))
+	if cSerialized == nil || cSize == 0 {
+		return "", nil
+	}
+
+	return string(C.GoBytes(unsafe.Pointer(cSerialized), cSize)), nil
 }

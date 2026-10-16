@@ -55,6 +55,7 @@ ray_cc_library(
         "gcs_client_nodes.cc",
         "gcs_client_placement_groups.cc",
         "gcs_client_publisher.cc",
+        "gcs_client_tasks.cc",
         "gcs_client_workers.cc",
     ],
     hdrs = [

@@ -1,0 +1,15 @@
+# gazelle:ignore
+load("//go/pkg/runtime/plugin/testplugins:defs.bzl", "ray_go_testplugin")
+
+# Incomplete test plugin: exports only Initialize, missing ConnectClient and
+# NewLogBatchPublisher. Used to exercise the missing-symbol failure path in
+# plugin_loader_gcs_test.
+ray_go_testplugin(
+    name = "incomplete",
+    out = "testplugin_incomplete.so",
+    importpath = "github.com/ray-project/ray/go/pkg/runtime/plugin/testplugins/incomplete",
+    deps = [
+        "//go/pkg/options",
+        "//go/pkg/runtime/contract",
+    ],
+)

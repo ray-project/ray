@@ -22,6 +22,9 @@ go_test(
     deps = [
         "//go/internal/dashboard/head",
         "//go/internal/dashboard/head/modules/job",
+        "//go/pkg/errors",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
         "//go/proto",
         "@com_github_coder_websocket//:websocket",
         "@org_golang_google_grpc//:go_default_library",

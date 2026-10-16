@@ -16,11 +16,16 @@
 
 package native
 
+/*
+#include <stdlib.h>
+*/
+import "C"
+
 import (
-	"C"
 	"context"
 	"errors"
 	"testing"
+	"unsafe"
 
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
@@ -82,7 +87,10 @@ func Test_stateCgoClient_Close(t *testing.T) {
 	}
 }
 
-// Test_stateCgoClient_UnsupportedMethods verifies methods without an underlying implementation return ErrNotImplemented
+// Test_stateCgoClient_UnsupportedMethods verifies that methods routed through
+// the C bridge return ErrNotImplemented when the wrapped client is not a
+// *cgoClient (e.g. a test mock), consistent with the existing
+// Test_stateCgoClient_GetAllResources_nonCgoClient behavior.
 func Test_stateCgoClient_UnsupportedMethods(t *testing.T) {
 	s := newStateCgoClient(&stateMockClient{})
 
@@ -318,4 +326,117 @@ func Test_validateSerializedListBounds(t *testing.T) {
 	if err := validateSerializedListBounds(nil, C.int(1)); err == nil {
 		t.Error("expected error for nil cSizes")
 	}
+}
+
+// Test_freeSerializedListElements pins the batch-element release helper's branch
+// behavior: count 0, negative count and a nil array must be no-ops (no panic,
+// nothing freed), and a within-bounds count must free exactly that many elements.
+// Each element is a C.malloc'd block; the helper frees the covered elements and
+// the test frees the remainder (none, or the tail for the partial-free case) plus
+// the outer array so the test itself stays leak-free.
+func Test_freeSerializedListElements(t *testing.T) {
+	freeP := func(p unsafe.Pointer) {
+		if p != nil {
+			C.free(p)
+		}
+	}
+	allocElems := func(count C.int) (**C.char, []unsafe.Pointer) {
+		arr := C.malloc(C.size_t(count) * C.size_t(unsafe.Sizeof(uintptr(0))))
+		sl := unsafe.Slice((**C.char)(arr), int(count))
+		ptrs := make([]unsafe.Pointer, 0, int(count))
+		for i := 0; i < int(count); i++ {
+			p := C.malloc(8)
+			sl[i] = (*C.char)(p)
+			ptrs = append(ptrs, p)
+		}
+		return (**C.char)(arr), ptrs
+	}
+	freeOuter := func(p unsafe.Pointer) {
+		if p != nil {
+			C.free(p)
+		}
+	}
+
+	// count 0: must be a no-op (nil array too).
+	freeSerializedListElements(nil, 0)
+	freeSerializedListElements(nil, -1)
+	arr0, _ := allocElems(0)
+	freeSerializedListElements(arr0, 0)
+	freeOuter(unsafe.Pointer(arr0))
+
+	// negative count: no-op, must not panic even with a real array.
+	arrNeg, ptrsNeg := allocElems(2)
+	freeSerializedListElements(arrNeg, -1)
+	// Elements were NOT freed by the helper (negative count is a no-op), so we
+	// must free them ourselves to avoid a leak.
+	for _, p := range ptrsNeg {
+		freeP(p)
+	}
+	freeOuter(unsafe.Pointer(arrNeg))
+
+	// within-bounds count: helper frees exactly the count elements; there are no
+	// remaining ones, and the outer array is freed below.
+	arr, _ := allocElems(3)
+	freeSerializedListElements(arr, 3)
+	freeOuter(unsafe.Pointer(arr))
+
+	// Partial free: helper frees the first count elements; the tail stays owned
+	// by us, so free it here to keep the test leak-free.
+	arrP, ptrsP := allocElems(4)
+	freeSerializedListElements(arrP, 2)
+	for _, p := range ptrsP[2:] {
+		freeP(p)
+	}
+	freeOuter(unsafe.Pointer(arrP))
+}
+
+// Test_freeDrainingNodeIDStrings verifies the draining-node release helper with
+// the same boundary values: count 0 / negative / nil are no-ops, and a
+// within-bounds count frees exactly that many element strings.
+func Test_freeDrainingNodeIDStrings(t *testing.T) {
+	freeP := func(p unsafe.Pointer) {
+		if p != nil {
+			C.free(p)
+		}
+	}
+	allocElems := func(count C.int) (**C.char, []unsafe.Pointer) {
+		arr := C.malloc(C.size_t(count) * C.size_t(unsafe.Sizeof(uintptr(0))))
+		sl := unsafe.Slice((**C.char)(arr), int(count))
+		ptrs := make([]unsafe.Pointer, 0, int(count))
+		for i := 0; i < int(count); i++ {
+			p := C.malloc(8)
+			sl[i] = (*C.char)(p)
+			ptrs = append(ptrs, p)
+		}
+		return (**C.char)(arr), ptrs
+	}
+	freeOuter := func(p unsafe.Pointer) {
+		if p != nil {
+			C.free(p)
+		}
+	}
+
+	freeDrainingNodeIDStrings(nil, 0)
+	freeDrainingNodeIDStrings(nil, -1)
+	arr0, _ := allocElems(0)
+	freeDrainingNodeIDStrings(arr0, 0)
+	freeOuter(unsafe.Pointer(arr0))
+
+	arrNeg, ptrsNeg := allocElems(2)
+	freeDrainingNodeIDStrings(arrNeg, -1)
+	for _, p := range ptrsNeg {
+		freeP(p)
+	}
+	freeOuter(unsafe.Pointer(arrNeg))
+
+	arr, _ := allocElems(3)
+	freeDrainingNodeIDStrings(arr, 3)
+	freeOuter(unsafe.Pointer(arr))
+
+	arrP, ptrsP := allocElems(4)
+	freeDrainingNodeIDStrings(arrP, 2)
+	for _, p := range ptrsP[2:] {
+		freeP(p)
+	}
+	freeOuter(unsafe.Pointer(arrP))
 }

@@ -77,7 +77,7 @@ func GetActorWithNamespace[T any](name string, namespace string) (*ActorHandleIm
 	}
 
 	if actorHandle == nil {
-		return nil, fmt.Errorf("actor '%s' not found in namespace '%s'", name, namespace)
+		return nil, fmt.Errorf("actor '%s' not found in namespace '%s': %w", name, namespace, errors.ErrActorNotFound)
 	}
 
 	// Convert to typed ActorHandleImpl[T]
@@ -188,7 +188,7 @@ func GetPythonActorWithNamespace(name, namespace, moduleName, className string) 
 	}
 
 	if actorHandle == nil {
-		return nil, fmt.Errorf("actor '%s' not found in namespace '%s'", name, namespace)
+		return nil, fmt.Errorf("actor '%s' not found in namespace '%s': %w", name, namespace, errors.ErrActorNotFound)
 	}
 
 	// Wrap the retrieved actor ID into a PythonActorHandle. The module/class

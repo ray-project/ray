@@ -200,6 +200,17 @@ func TestGetPythonExecutable(t *testing.T) {
 	}
 }
 
+func TestGetPythonExecutableExported(t *testing.T) {
+	// Exported wrapper: returns a valid path or an empty string (no error, no panic).
+	py := GetPythonExecutable()
+	if py == "" {
+		return
+	}
+	if _, err := os.Stat(py); os.IsNotExist(err) {
+		t.Errorf("GetPythonExecutable() returned non-existent path: %s", py)
+	}
+}
+
 // TestCreateOrGetVirtualenv tests the createOrGetVirtualenv function.
 func TestCreateOrGetVirtualenv(t *testing.T) {
 	originalPythonExecutable := PythonExecutable

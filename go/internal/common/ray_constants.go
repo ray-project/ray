@@ -18,6 +18,8 @@ import (
 	"os"
 	"runtime"
 	"strconv"
+
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
 )
 
 // EnvInteger reads an integer from an environment variable, returning the
@@ -100,13 +102,6 @@ const (
 const (
 	MONITOR_LOG_FILE_NAME = "monitor.log"
 
-	// DefaultLoggingDevelopment is the default development/production log mode.
-	DefaultLoggingDevelopment = true
-	// Default log rotation size (aligned with Python LOGGING_ROTATE_BYTES).
-	LOGGING_ROTATE_BYTES = 512 * 1024 * 1024 // 512MB
-	// Default number of log rotation backups.
-	LOGGING_ROTATE_BACKUP_COUNT = 5
-
 	REDIS_DEFAULT_USERNAME = ""
 	REDIS_DEFAULT_PASSWORD = ""
 
@@ -141,11 +136,11 @@ func EnableRayCluster() bool {
 // MonitorLogRotateBytes returns the log rotation size, overridable via an
 // environment variable.
 func MonitorLogRotateBytes() int {
-	return EnvInteger("RAY_MONITOR_LOG_ROTATE_BYTES", LOGGING_ROTATE_BYTES)
+	return EnvInteger("RAY_MONITOR_LOG_ROTATE_BYTES", logconfig.LOGGING_ROTATE_BYTES)
 }
 
 // MonitorLogRotateBackupCount returns the number of log rotation backups,
 // overridable via an environment variable.
 func MonitorLogRotateBackupCount() int {
-	return EnvInteger("RAY_MONITOR_LOG_ROTATE_BACKUP_COUNT", LOGGING_ROTATE_BACKUP_COUNT)
+	return EnvInteger("RAY_MONITOR_LOG_ROTATE_BACKUP_COUNT", logconfig.LOGGING_ROTATE_BACKUP_COUNT)
 }

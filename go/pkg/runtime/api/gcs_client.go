@@ -48,8 +48,10 @@ type GCSClient interface {
 
 	// NextJobID fetches the next available JobID from GCS.
 	// This corresponds to Java's GcsClient.nextJobId().
-	// Returns the hex-encoded JobID string (4 bytes = 8 hex characters).
-	NextJobID(ctx context.Context) (string, error)
+	// Returns the strongly-typed JobID, matching gcs.Client so the driver
+	// handshake can be shared across the plugin Initialize and the dashboard
+	// head (callers convert with ids.JobID.Hex() when a hex string is needed).
+	NextJobID(ctx context.Context) (ids.JobID, error)
 
 	// Close closes the GCS client connection.
 	Close() error

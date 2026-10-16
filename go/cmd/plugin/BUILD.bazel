@@ -56,6 +56,7 @@ go_library(
     deps = [
         "//go/internal/errors",
         "//go/internal/gcs/native",
+        "//go/internal/proctitle",
         "//go/internal/runtime/base",
         "//go/internal/runtime/native",
         "//go/pkg/gcs",
@@ -63,6 +64,6 @@ go_library(
         "//go/pkg/log",
         "//go/pkg/options",
         "//go/pkg/runtime/api",
-        "//go/proto",
+        "//go/pkg/runtime/plugin",
     ],
 )

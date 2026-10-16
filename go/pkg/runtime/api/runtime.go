@@ -24,13 +24,16 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/pkg/log/logconfig"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/pathutil"
+	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/ray-project/ray/go/proto"
 	protolib "google.golang.org/protobuf/proto"
@@ -39,6 +42,29 @@ import (
 // ============================================================================
 // Runtime Lifecycle Functions
 // ============================================================================
+
+// currentRuntimePlugin retains the loaded runtime plugin across Init/Shutdown
+// cycles so that api.Shutdown can drive the plugin's full teardown: the plugin's
+// exported Shutdown (go/cmd/plugin) clears the api-level GCS client cache and
+// calls base.Shutdown, which resets the base runtime singleton. Calling only
+// handle.Runtime().Shutdown() would leave the base singleton in place, making a
+// subsequent Init fail with ErrRuntimeAlreadyInitialized.
+//
+// It is an atomic.Pointer so the Shutdown-side read/clear has a happens-before
+// edge with the Init-side store without sharing finalizerMu: Shutdown writes
+// other state under finalizerMu, and an unsynchronized bare pointer write could
+// race with the Shutdown goroutine's read.
+var currentRuntimePlugin atomic.Pointer[plugin.RuntimePlugin]
+
+// setupDriverLoggerFn configures the driver's component logger
+// (ray_go_{PID}.log). It is a package-level variable so tests can observe and
+// override it; the default is the logconfig-based setup.
+var setupDriverLoggerFn = func(logDir string) error {
+	return logconfig.NewLogOption(
+		logconfig.WithLogsDir(logDir),
+		logconfig.WithLoggingFilename(logconfig.RayGoLogFilename()),
+	).SetupComponentLogger()
+}
 
 // Init initializes the Ray runtime with default options.
 // This function must be called before using any other Ray API functions.
@@ -63,7 +89,8 @@ func Init() error {
 //
 // The local-mode initializer is registered by importing
 // go/pkg/runtime/local (a public adapter package); without it, InitLocal
-// returns an error instead of falling back to the plugin path.
+// falls through to the plugin path, which then fails if no runtime plugin is
+// available.
 //
 // Example:
 //
@@ -96,31 +123,6 @@ func InitWithOptions(opts *options.InitializeOptions) error {
 	var initOpts options.InitializeOptions
 	if opts != nil {
 		initOpts = *opts
-	}
-
-	// If an initializer has been registered in-process (for example the pure-Go
-	// local-mode runtime), use it directly instead of locating and loading a
-	// runtime plugin .so. This keeps the minimal runtime usable without building
-	// go_runtime.so.
-	if initFunc := getInitFunc(initOpts.WorkerType); initFunc != nil {
-		handle, err := getFactory().Initialize(&initOpts)
-		if err != nil {
-			return err
-		}
-		setHandle(handle)
-		return nil
-	}
-
-	// Use plugin.Open() to dynamically load go_runtime.so at runtime
-	// This follows the Dependency Inversion Principle: api depends only on
-	// the abstract contract.RuntimeHandle interface, not on concrete implementations.
-	pluginPath := os.Getenv("RAY_GO_RUNTIME_PATH")
-	if pluginPath == "" {
-		var err error
-		pluginPath, err = plugin.FindPluginPath()
-		if err != nil {
-			return err
-		}
 	}
 
 	// Read configuration from environment variables if not provided in opts.
@@ -204,6 +206,23 @@ func InitWithOptions(opts *options.InitializeOptions) error {
 		}
 	}
 
+	// Set default WorkerType to Driver only when no options were provided
+	// (api.Init()). An explicit WorkerTypeWorker (zero value, iota 0) must be
+	// preserved: promoting it here would initialize a worker process as a
+	// driver, so its registration is rejected by the raylet ("Job ... already
+	// started in worker pool") and tasks never execute.
+	if opts == nil {
+		initOpts.WorkerType = options.WorkerTypeDriver
+	}
+
+	// Route driver logs to ray_go_{PID}.log unless the caller already
+	// configured its own logger (SkipDriverLogSetup).
+	if initOpts.WorkerType == options.WorkerTypeDriver && initOpts.Runtime.LogDir != "" && !initOpts.SkipDriverLogSetup {
+		if err := setupDriverLoggerFn(initOpts.Runtime.LogDir); err != nil {
+			log.Log.Error(err, "failed to setup driver logger, continuing with stdout", "log_dir", initOpts.Runtime.LogDir)
+		}
+	}
+
 	// Node manager port
 	if initOpts.Network.NodeManagerPort == 0 {
 		if portStr := os.Getenv("RAY_NODE_MANAGER_PORT"); portStr != "" {
@@ -229,11 +248,6 @@ func InitWithOptions(opts *options.InitializeOptions) error {
 				initOpts.Runtime.RuntimeEnvHash = int32(hash)
 			}
 		}
-	}
-
-	// Set default WorkerType to Driver if zero value (user application)
-	if initOpts.WorkerType == 0 {
-		initOpts.WorkerType = options.WorkerTypeDriver
 	}
 
 	// Validate required configuration for cluster mode
@@ -270,11 +284,91 @@ func InitWithOptions(opts *options.InitializeOptions) error {
 			"codeSearchPath", config.CodeSearchPath,
 			"rayNamespace", config.RayNamespace,
 			"defaultActorLifetime", config.DefaultActorLifetime.String())
+	} else if initOpts.WorkerType == options.WorkerTypeDriver {
+		// No JobConfig was provided by the caller. Driver mode requires a
+		// non-empty ray_namespace when creating actors (GCS enforces
+		// !ray_namespace.empty() in GcsActorManager), so build a default
+		// JobConfig whose namespace is auto-generated. This matches the
+		// Java/C++ behavior where driver initialization always produces a
+		// JobConfig with a random default namespace (Java: RayConfig.java
+		// UUID.randomUUID(); C++: ConfigInternal.cc UniqueID::FromRandom()),
+		// and reuses the same JobConfigBuilder serialization path as
+		// InitializeWithJobConfig so the payload is byte-identical.
+		//
+		// The code search path is sourced from the RAY_CODE_SEARCH_PATH
+		// environment variable (':' separated), mirroring the worker side:
+		// the raylet sets RAY_CODE_SEARCH_PATH for Go workers from the job
+		// config's code_search_path (worker_pool.cc), so the driver and
+		// worker resolve the same user-function plugin. The job-injected
+		// runtime_env/metadata (if any) are also merged in.
+		builder := options.NewJobConfigBuilder()
+		if searchPath := os.Getenv("RAY_CODE_SEARCH_PATH"); searchPath != "" {
+			paths := strings.Split(searchPath, ":")
+			nonEmpty := make([]string, 0, len(paths))
+			for _, p := range paths {
+				if p != "" {
+					nonEmpty = append(nonEmpty, p)
+				}
+			}
+			builder.WithCodeSearchPath(nonEmpty...)
+		}
+		if err := builder.MergeFromEnv(); err != nil {
+			return fmt.Errorf("failed to build default JobConfig: %w", err)
+		}
+		jobOpts, err := builder.BuildToJobOptions()
+		if err != nil {
+			return fmt.Errorf("failed to build default JobConfig: %w", err)
+		}
+		initOpts.Job.JobConfig = jobOpts.JobConfig
+		// Log the generated namespace for traceability.
+		if decoded, err := base64.StdEncoding.DecodeString(initOpts.Job.JobConfig); err == nil {
+			var config proto.JobConfig
+			if err := protolib.Unmarshal(decoded, &config); err == nil {
+				log.Log.Info("initialized with default JobConfig",
+					"rayNamespace", config.RayNamespace,
+					"codeSearchPath", config.CodeSearchPath)
+			}
+		}
+	}
+
+	// Local mode is a pure in-process runtime and must not load the
+	// go_runtime.so plugin: the plugin's Initialize registers a GCS client
+	// factory and performs driver-mode GCS handshakes that local mode does not
+	// use, and plugin.Open requires the plugin to be built with exactly the same
+	// package versions as this executable. Route through the registered
+	// initializer instead (dependency inversion: api does not import internal
+	// packages; the local_mode package registers the initializer from its
+	// init(), reached by importing go/pkg/runtime/local). The native package
+	// does NOT register an initializer: it only registers its runtime factory
+	// for the driver/worker worker types.
+	if initOpts.WorkerType == options.WorkerTypeLocal {
+		if fn := getInitFunc(initOpts.WorkerType); fn != nil {
+			handle, err := fn(&initOpts)
+			if err != nil {
+				return err
+			}
+			setHandle(handle)
+			return nil
+		}
+		// No initializer registered: fall through to the plugin path for
+		// backward compatibility (e.g. tests that load the plugin directly).
 	}
 
 	// Note: For Driver mode, fetching node info from GCS is now done in plugin.Initialize()
 	// after the GCS client factory is registered. This ensures the factory is available
 	// when FetchNodeInfoFromGCS is called.
+
+	// Resolve the plugin path lazily, only for the plugin path. Local mode
+	// returns above and never needs the go_runtime.so plugin (it may not even
+	// be present in a pure local-mode environment).
+	pluginPath := os.Getenv("RAY_GO_RUNTIME_PATH")
+	if pluginPath == "" {
+		var err error
+		pluginPath, err = plugin.FindPluginPath()
+		if err != nil {
+			return err
+		}
+	}
 
 	// Dynamically load the plugin
 	// plugin.Open() will execute init() functions in all packages of go_runtime.so,
@@ -289,14 +383,37 @@ func InitWithOptions(opts *options.InitializeOptions) error {
 		return err
 	}
 
-	// Reuse the handle obtained from LoadRuntimePlugin.
-	// The handle was already created when loadPluginInternal called the plugin's
-	// Initialize function. Calling Initialize again would cause double-initialization
-	// error since base.Initialize is a singleton.
-	handle := runtimePlugin.GetHandle()
-	if handle == nil {
-		return fmt.Errorf("LoadRuntimePlugin returned plugin with nil handle - Initialize may have failed")
+	// The plugin loader caches the loaded plugin, so a subsequent InitWithOptions
+	// after a previous Shutdown() returns the same plugin object. api.Shutdown
+	// drives the plugin's full teardown (which resets the base runtime singleton
+	// and clears the plugin's handle), so the cached plugin reports
+	// IsInitialized()==false on the second call. In that case re-initialize the
+	// plugin to obtain a fresh handle instead of reusing the stale one, which
+	// would leave every submitter/object-store call failing with
+	// "submitter_not_available". This keeps api.Init/Shutdown reentrant within a
+	// single process (e.g. Go tests that Init and Shutdown per test).
+	var handle contract.RuntimeHandle
+	if !runtimePlugin.IsInitialized() {
+		log.Log.Info("plugin is shut down, re-initializing")
+		handle, err = runtimePlugin.Initialize(initOpts)
+		if err != nil {
+			return fmt.Errorf("failed to re-initialize plugin after shutdown: %w", err)
+		}
+	} else {
+		// Reuse the handle obtained from LoadRuntimePlugin.
+		// The handle was already created when loadPluginInternal called the plugin's
+		// Initialize function. Calling Initialize again would cause double-initialization
+		// error since base.Initialize is a singleton.
+		handle = runtimePlugin.GetHandle()
+		if handle == nil {
+			return fmt.Errorf("LoadRuntimePlugin returned plugin with nil handle - Initialize may have failed")
+		}
 	}
+
+	// Retain the plugin so api.Shutdown can perform full teardown
+	// (ClearAllCachedClients + base.Shutdown), resetting the base runtime
+	// singleton for a later re-init.
+	currentRuntimePlugin.Store(runtimePlugin)
 
 	// Store handle in api's service locator
 	setHandle(handle)
@@ -311,19 +428,43 @@ func InitWithOptions(opts *options.InitializeOptions) error {
 //	defer api.Shutdown()
 //
 // Implementation notes:
-//   - shutdownComplete is set BEFORE calling handle.Runtime().Shutdown() to prevent
+//   - shutdownComplete is set BEFORE tearing down the runtime to prevent
 //     finalizers from accessing C++ objects that are being shutdown.
 //   - This ensures that if a finalizer runs concurrently with shutdown,
 //     it will see shutdownComplete=true and skip RemoveLocalReference().
-//   - handle.Runtime().Shutdown() calls ShutdownAllocator() internally to stop
-//     the Go object allocator finalizers.
+//   - When the runtime was initialized through the plugin path, shutdown goes
+//     through the plugin's full teardown (go/cmd/plugin.Shutdown), which clears
+//     the api-level GCS client cache and calls base.Shutdown. base.Shutdown
+//     resets the base runtime singleton, making a later Init/InitWithOptions
+//     build a fresh runtime in the same process. A bare
+//     handle.Runtime().Shutdown() would only tear down the native runtime and
+//     leave the base singleton behind, failing the next Init with
+//     ErrRuntimeAlreadyInitialized.
 func Shutdown() {
 	handle, ok := tryGetHandle()
 	// Always set shutdownComplete to prevent any stray finalizers from
 	// accessing C++ objects during or after shutdown.
 	shutdownComplete.Store(true)
 
-	if ok && handle != nil && handle.Runtime() != nil {
+	// Hold the write lock while tearing down the C++ runtime so that no
+	// finalizer can be in the middle of a RemoveLocalReference call (which takes
+	// the read lock) while the object store is being released. Finalizers either
+	// finish before this lock is taken or block until shutdown completes and then
+	// skip via the shutdownComplete flag.
+	finalizerMu.Lock()
+	defer finalizerMu.Unlock()
+
+	if runtimePlugin := currentRuntimePlugin.Load(); runtimePlugin != nil {
+		// Full plugin teardown: ClearAllCachedClients + base.Shutdown. This also
+		// resets the base runtime singleton and clears the plugin's handle, so a
+		// subsequent InitWithOptions re-initializes cleanly.
+		if err := runtimePlugin.Shutdown(); err != nil {
+			log.Log.Error(err, "failed to shutdown runtime plugin")
+		}
+		currentRuntimePlugin.Store(nil)
+	} else if ok && handle != nil && handle.Runtime() != nil {
+		// Local mode or worker-side runtime: no plugin loaded, tear down the
+		// native runtime directly.
 		_ = handle.Runtime().Shutdown()
 	}
 	clearHandle()
@@ -517,10 +658,10 @@ func NextJobID(gcsAddress string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	jobIDHex, err := client.NextJobID(ctx)
+	jobID, err := client.NextJobID(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get next JobID from GCS: %w", err)
 	}
 
-	return jobIDHex, nil
+	return jobID.Hex(), nil
 }

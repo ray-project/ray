@@ -159,11 +159,9 @@ func TestCreateConfigReader_NoAutoscalingConfig(t *testing.T) {
 		addr:      "mock:1234",
 		clusterID: ids.NewClusterID(),
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
 	// Create the config reader with the mock GCS client.
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, mockClient)
 
 	// Verify the read-only provider config reader was created successfully.
 	assert.NoError(t, err)
@@ -219,7 +217,7 @@ worker_start_ray_commands: []
 		AutoscalingConfig: configPath,
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	if err != nil {
 		t.Fatalf("CreateConfigReader failed: %v", err)
 	}
@@ -255,7 +253,7 @@ invalid_config: true
 		AutoscalingConfig: configPath,
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	assert.Error(t, err)
 	assert.Nil(t, configReader)
 	assert.Contains(t, err.Error(), "failed to create autoscaling config")
@@ -268,7 +266,7 @@ func TestCreateConfigReader_NonExistentConfigFile(t *testing.T) {
 		AutoscalingConfig: "/non/existent/path/config.yaml",
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	assert.Error(t, err)
 	assert.Nil(t, configReader)
 	assert.Contains(t, err.Error(), "no such file or directory")
@@ -323,7 +321,7 @@ worker_start_ray_commands: []
 		AutoscalingConfig: relativePath,
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, configReader)
 
@@ -338,7 +336,7 @@ worker_start_ray_commands: []
 func TestCreateConfigReader_EmptyConfig(t *testing.T) {
 	config := &MonitorV2Config{}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 
 	// Without a GCS address and a config file this must return an error.
 	assert.Error(t, err)
@@ -379,7 +377,7 @@ worker_start_ray_commands: []
 		AutoscalingConfig: configPath,
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, configReader)
 }
@@ -425,7 +423,7 @@ worker_start_ray_commands: []
 		AutoscalingConfig: configPath,
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, configReader)
 }
@@ -472,7 +470,7 @@ worker_start_ray_commands:
 		AutoscalingConfig: configPath,
 	}
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, configReader)
 }
@@ -522,7 +520,7 @@ worker_start_ray_commands: []
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, _ = CreateConfigReader(config)
+		_, _ = CreateConfigReader(config, nil)
 	}
 }
 
@@ -535,7 +533,7 @@ func TestCreateConfigReader_NoAutoscalingConfig_GcsError(t *testing.T) {
 
 	// Note: this test tries to connect to an invalid GCS address and must return
 	// a connection error.
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, nil)
 
 	// Verify the error.
 	assert.Error(t, err)
@@ -554,10 +552,8 @@ func TestCreateConfigReader_ReadOnlyProviderRefresh(t *testing.T) {
 		addr:      "mock:1234",
 		clusterID: ids.NewClusterID(),
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
-	configReader, err := CreateConfigReader(config)
+	configReader, err := CreateConfigReader(config, mockClient)
 	assert.NoError(t, err)
 	assert.NotNil(t, configReader)
 
@@ -731,15 +727,13 @@ func TestNewAutoscalerMonitor_EventLoggerFailure(t *testing.T) {
 			},
 		}, nil
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
 	configReader, err := CreateConfigReader(&MonitorV2Config{
 		GcsAddress: "127.0.0.1:6379",
-	})
+	}, mockClient)
 	assert.NoError(t, err)
 
-	monitor, err := NewAutoscalerMonitor("127.0.0.1:6379", configReader, tmpDir, "")
+	monitor, err := NewAutoscalerMonitor("127.0.0.1:6379", configReader, tmpDir, "", mockClient)
 	assert.NoError(t, err)
 	if assert.NotNil(t, monitor) {
 		assert.Nil(t, monitor.eventLogger)
@@ -768,15 +762,13 @@ func TestNewAutoscalerMonitor(t *testing.T) {
 			}
 			return nil, gcs.ErrNotImplemented
 		}
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
 
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress: "mock:1234",
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
-		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 
 		fmt.Sprintf("aa %s", monitor)
 		assert.NoError(t, err)
@@ -835,16 +827,13 @@ worker_start_ray_commands: []
 			return true, nil
 		}
 
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
-
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress:        "mock:1234",
 			AutoscalingConfig: configPath,
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
-		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, tmpDir, "127.0.0.1")
+		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, tmpDir, "127.0.0.1", mockClient)
 		assert.NoError(t, err)
 		assert.NotNil(t, monitor)
 		assert.Equal(t, tmpDir, monitor.logDir)
@@ -862,41 +851,29 @@ worker_start_ray_commands: []
 				return nil, gcs.ErrKeyNotFound
 			},
 		}
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
 
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress: "mock:1234",
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
-		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 		assert.NoError(t, err)
 		assert.NotNil(t, monitor)
 		assert.Empty(t, monitor.sessionName)
 	})
 
 	t.Run("GCS connection failure", func(t *testing.T) {
-		// Clear any existing GCS client.
+		// No injected client and no global singleton: constructor injection must
+		// fail fast with a clear error (no cgo dependency in tests).
 		gcs.ClearClient()
-
-		configReader, err := CreateConfigReader(&MonitorV2Config{
-			GcsAddress: "invalid-address",
-		})
-		// Continue the test even when the config reader cannot be created.
-		if err != nil {
-			// Skip this test when the config reader creation failed.
-			t.Skipf("Skipping test due to config reader creation failure: %v", err)
-		}
-
-		monitor, err := NewAutoscalerMonitor("invalid-address", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("invalid-address", nil, "", "", nil)
 		assert.Error(t, err)
 		assert.Nil(t, monitor)
 		assert.Contains(t, err.Error(), "failed to connect to GCS")
 	})
 
 	t.Run("invalid GCS address format", func(t *testing.T) {
-		gcs.ClearClient()
 		mockClient := &mockGcsClient{
 			addr:      "mock:1234",
 			clusterID: ids.NewClusterID(),
@@ -907,16 +884,14 @@ worker_start_ray_commands: []
 				return nil, gcs.ErrNotImplemented
 			},
 		}
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
 
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress: "mock:1234",
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
 		// Use an invalid GCS address format (missing port).
-		monitor, err := NewAutoscalerMonitor("invalid", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("invalid", configReader, "", "", mockClient)
 		assert.Error(t, err)
 		assert.Nil(t, monitor)
 		assert.Contains(t, err.Error(), "invalid GCS address")
@@ -939,15 +914,13 @@ func TestCreateHTTPServer(t *testing.T) {
 			}
 			return nil, gcs.ErrNotImplemented
 		}
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
 
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress: "mock:1234",
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
-		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 		assert.NoError(t, err)
 
 		// Create a temporary prometheus registry for the test.
@@ -975,15 +948,13 @@ func TestCreateHTTPServer(t *testing.T) {
 			}
 			return nil, gcs.ErrNotImplemented
 		}
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
 
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress: "mock:1234",
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
-		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 		assert.NoError(t, err)
 
 		server, err := monitor.createHTTPServer(8080, nil, "127.0.0.1")
@@ -1003,15 +974,13 @@ func TestCreateHTTPServer(t *testing.T) {
 			}
 			return nil, gcs.ErrNotImplemented
 		}
-		gcs.SetClient(mockClient)
-		defer gcs.ClearClient()
 
 		configReader, err := CreateConfigReader(&MonitorV2Config{
 			GcsAddress: "mock:1234",
-		})
+		}, mockClient)
 		assert.NoError(t, err)
 
-		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+		monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 		assert.NoError(t, err)
 
 		promMetrics, err := autoscaler.NewAutoscalerPrometheusMetrics("test-session")
@@ -1036,15 +1005,13 @@ func TestAutoscalerMonitor_Run(t *testing.T) {
 		}
 		return nil, gcs.ErrNotImplemented
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
 	configReader, err := CreateConfigReader(&MonitorV2Config{
 		GcsAddress: "mock:1234",
-	})
+	}, mockClient)
 	assert.NoError(t, err)
 
-	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 	assert.NoError(t, err)
 
 	// run is an infinite loop; a pre-canceled ctx makes it exit right after one round.
@@ -1081,15 +1048,12 @@ func TestAutoscalerMonitor_Fields(t *testing.T) {
 		return true, nil
 	}
 
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
-
 	configReader, err := CreateConfigReader(&MonitorV2Config{
 		GcsAddress: "mock:1234",
-	})
+	}, mockClient)
 	assert.NoError(t, err)
 
-	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "/tmp/logs", "192.168.1.100")
+	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "/tmp/logs", "192.168.1.100", mockClient)
 	assert.NoError(t, err)
 
 	// Verify every field was set correctly.
@@ -1276,15 +1240,13 @@ func TestAutoscalerMonitor_Wiring(t *testing.T) {
 			},
 		}, nil
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
 	configReader, err := CreateConfigReader(&MonitorV2Config{
 		GcsAddress: "mock:1234",
-	})
+	}, mockClient)
 	assert.NoError(t, err)
 
-	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 	assert.NoError(t, err)
 	assert.NotNil(t, monitor)
 	assert.NotNil(t, monitor.autoscaler)
@@ -1321,15 +1283,13 @@ func TestAutoscalerMonitor_Run_Reconciled(t *testing.T) {
 	mockClient.getAutoscalerStatusFunc = func(ctx context.Context) (*proto.GetClusterStatusReply, error) {
 		return nil, gcs.ErrNotImplemented
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
 	configReader, err := CreateConfigReader(&MonitorV2Config{
 		GcsAddress: "mock:1234",
-	})
+	}, mockClient)
 	assert.NoError(t, err)
 
-	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "")
+	monitor, err := NewAutoscalerMonitor("mock:1234", configReader, "", "", mockClient)
 	assert.NoError(t, err)
 
 	// The pre-canceled ctx makes the loop exit right after one round.
@@ -1364,15 +1324,13 @@ func TestNewAutoscalerMonitor_PutFalseNoError(t *testing.T) {
 	mockClient.putFunc = func(ctx context.Context, ns, key string, value []byte, overwrite bool) (bool, error) {
 		return false, nil
 	}
-	gcs.SetClient(mockClient)
-	defer gcs.ClearClient()
 
 	configReader, err := CreateConfigReader(&MonitorV2Config{
 		GcsAddress: "127.0.0.1:6379",
-	})
+	}, mockClient)
 	assert.NoError(t, err)
 
-	monitor, err := NewAutoscalerMonitor("127.0.0.1:6379", configReader, tmpDir, "127.0.0.1")
+	monitor, err := NewAutoscalerMonitor("127.0.0.1:6379", configReader, tmpDir, "127.0.0.1", mockClient)
 	if monitor == nil && err == nil {
 		t.Fatal("NewAutoscalerMonitor returned (nil, nil): Run() would dereference a nil receiver and panic")
 	}

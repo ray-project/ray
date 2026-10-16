@@ -36,6 +36,11 @@ type LogBatchPublisher struct {
 	client *cgoClient
 }
 
+// Compile-time assertion: *LogBatchPublisher satisfies the pkg-level
+// gcs.LogBatchPublisher interface, so the thin layer can hold it across the
+// plugin boundary without importing this package.
+var _ gcs.LogBatchPublisher = (*LogBatchPublisher)(nil)
+
 // NewLogBatchPublisher creates a publish-side adapter from a native GCS client.
 func NewLogBatchPublisher(client gcs.Client) (*LogBatchPublisher, error) {
 	nativeClient, ok := client.(*cgoClient)

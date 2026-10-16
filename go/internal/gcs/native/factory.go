@@ -40,14 +40,10 @@ func (a *gcsClientAdapter) GetNodeToConnect(ctx context.Context, nodeIpAddress s
 	return a.client.GetNodeToConnect(ctx, nodeIpAddress)
 }
 
-// NextJobID implements api.GCSClient.NextJobID.
-// Converts ids.JobID to hex string.
-func (a *gcsClientAdapter) NextJobID(ctx context.Context) (string, error) {
-	jobID, err := a.client.NextJobID(ctx)
-	if err != nil {
-		return "", err
-	}
-	return jobID.Hex(), nil
+// NextJobID implements api.GCSClient.NextJobID by delegating to the
+// underlying gcs.Client (identical return type, no conversion needed).
+func (a *gcsClientAdapter) NextJobID(ctx context.Context) (ids.JobID, error) {
+	return a.client.NextJobID(ctx)
 }
 
 // Close implements api.GCSClient.Close.

@@ -19,6 +19,8 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -31,6 +33,9 @@ import (
 	"github.com/coder/websocket"
 	"github.com/ray-project/ray/go/internal/dashboard/head"
 	"github.com/ray-project/ray/go/internal/dashboard/head/modules/job"
+	rayerrors "github.com/ray-project/ray/go/pkg/errors"
+	"github.com/ray-project/ray/go/pkg/runtime/api"
+	_ "github.com/ray-project/ray/go/pkg/runtime/local" // register the local-mode initializer
 	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
 )
@@ -810,7 +815,85 @@ func TestPluginControllerUnavailable(t *testing.T) {
 	}
 }
 
-// TestPluginAddSingleAutoCreatesController verifies the B-D3 behavior: when no
+// TestStartFlowControllerRetriesWhileNotFound verifies the polling behavior:
+// startFlowControllerFn keeps polling when the detached FlowController actor has
+// not yet registered its GCS name (the benign race between the start task
+// returning and the actor appearing), instead of aborting on the first
+// not-found lookup. Without the fix the first poll returns the wrapped
+// ErrActorNotFound and flow start fails with an intermittent 500.
+func TestStartFlowControllerRetriesWhileNotFound(t *testing.T) {
+	// The real RemotePythonVoid(...).Call() path needs a live runtime; local
+	// mode is a pure-Go, plugin-free runtime that makes the Call succeed and
+	// return (nil, nil) for the 0-return _start_controller task, so only
+	// getFlowControllerFn needs to be injected.
+	if !api.IsInitialized() {
+		if err := api.InitLocal(); err != nil {
+			t.Fatalf("InitLocal: %v", err)
+		}
+		t.Cleanup(api.Shutdown)
+	}
+
+	origGet := getFlowControllerFn
+	defer func() { getFlowControllerFn = origGet }()
+
+	calls := 0
+	fc := newFakeController()
+	getFlowControllerFn = func() (flowController, error) {
+		calls++
+		if calls <= 2 {
+			return nil, fmt.Errorf("actor '%s' not found in namespace '%s': %w",
+				flowControllerName, flowNamespace, rayerrors.ErrActorNotFound)
+		}
+		return fc, nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	controller, err := startFlowControllerFn(ctx, &FlowHead{})
+	if err != nil {
+		t.Fatalf("startFlowControllerFn: %v", err)
+	}
+	if controller != fc {
+		t.Fatalf("controller = %v, want the fake controller", controller)
+	}
+	if calls != 3 {
+		t.Fatalf("getFlowControllerFn calls = %d, want 3", calls)
+	}
+}
+
+// TestStartFlowControllerAbortsOnOtherError verifies that a non-not-found
+// lookup error is not swallowed: startFlowControllerFn must return it
+// immediately rather than keep polling until the deadline.
+func TestStartFlowControllerAbortsOnOtherError(t *testing.T) {
+	if !api.IsInitialized() {
+		if err := api.InitLocal(); err != nil {
+			t.Fatalf("InitLocal: %v", err)
+		}
+		t.Cleanup(api.Shutdown)
+	}
+
+	origGet := getFlowControllerFn
+	defer func() { getFlowControllerFn = origGet }()
+
+	sentinel := errors.New("gcs unreachable")
+	getFlowControllerFn = func() (flowController, error) {
+		return nil, sentinel
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	start := time.Now()
+	_, err := startFlowControllerFn(ctx, &FlowHead{})
+	if err != sentinel {
+		t.Fatalf("err = %v, want the sentinel error", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("aborted after %v, want an immediate return", elapsed)
+	}
+}
+
+// TestPluginAddSingleAutoCreatesController verifies the auto-create behavior:
+// when no
 // FlowController is running, add_plugin auto-creates one (via
 // startFlowControllerFn, mirroring flow.start()) and then registers the plugin,
 // like the Python ensure_flow_controller.

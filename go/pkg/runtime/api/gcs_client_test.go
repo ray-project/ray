@@ -40,8 +40,8 @@ func (m *mockGCSClient) GetNodeToConnect(ctx context.Context, nodeIpAddress stri
 	return nil, m.err
 }
 
-func (m *mockGCSClient) NextJobID(ctx context.Context) (string, error) {
-	return "", m.err
+func (m *mockGCSClient) NextJobID(ctx context.Context) (ids.JobID, error) {
+	return ids.NilJobID(), m.err
 }
 
 func (m *mockGCSClient) Close() error {

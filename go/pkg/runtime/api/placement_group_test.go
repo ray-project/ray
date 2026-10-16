@@ -108,7 +108,9 @@ func (m *pgMockGCSClient) GetNodeToConnect(ctx context.Context, nodeIpAddress st
 	return nil, m.err
 }
 
-func (m *pgMockGCSClient) NextJobID(ctx context.Context) (string, error) { return "", m.err }
+func (m *pgMockGCSClient) NextJobID(ctx context.Context) (ids.JobID, error) {
+	return ids.NilJobID(), m.err
+}
 
 func (m *pgMockGCSClient) Close() error { return nil }
 

@@ -315,3 +315,45 @@ func TestNormalizeMetricsAgentPort(t *testing.T) {
 		})
 	}
 }
+
+// TestInitializeOptionsFromAPIWorkerModeForcesNilJobID verifies the C++ core
+// worker invariant: Worker mode must pass options.job_id.IsNil() to C++ (the
+// real JobID arrives via RAY_JOB_ID env). api.InitWithOptions refills JobID
+// from RAY_JOB_ID, so the nil-forcing must live in the base conversion to hold
+// regardless of entry point.
+func TestInitializeOptionsFromAPIWorkerModeForcesNilJobID(t *testing.T) {
+	workerOpts := options.InitializeOptions{
+		WorkerType: options.WorkerTypeWorker,
+		Network: options.NetworkOptions{
+			NodeIPAddress:   "127.0.0.1",
+			NodeManagerPort: 12345,
+			GcsAddress:      "127.0.0.1:6379",
+		},
+		Job: options.JobOptions{JobID: "01020304"},
+		Runtime: options.RuntimeOptions{
+			StoreSocket:  "/tmp/ray/store.sock",
+			RayletSocket: "/tmp/ray/raylet.sock",
+			LogDir:       "/tmp/ray/logs",
+		},
+	}
+	internal, err := InitializeOptionsFromAPI(workerOpts)
+	if err != nil {
+		t.Fatalf("InitializeOptionsFromAPI(worker) error = %v", err)
+	}
+	if internal.Job.JobID != nil {
+		t.Fatalf("Worker mode JobID = %v, want nil", internal.Job.JobID)
+	}
+
+	driverOpts := workerOpts
+	driverOpts.WorkerType = options.WorkerTypeDriver
+	internal, err = InitializeOptionsFromAPI(driverOpts)
+	if err != nil {
+		t.Fatalf("InitializeOptionsFromAPI(driver) error = %v", err)
+	}
+	if internal.Job.JobID == nil {
+		t.Fatal("Driver mode JobID = nil, want preserved")
+	}
+	if len(internal.Job.JobID) != 4 || internal.Job.JobID[0] != 0x01 {
+		t.Fatalf("Driver mode JobID = %v, want decoded 01020304", internal.Job.JobID)
+	}
+}
