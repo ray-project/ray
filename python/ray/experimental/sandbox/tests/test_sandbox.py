@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray.experimental.sandbox import Sandbox
+from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
@@ -49,6 +50,13 @@ def test_sandbox_actor_wrapper():
     ray.get(actor.write_file.remote("/workspace/test.txt", "actor content"))
     data = ray.get(actor.read_file.remote("/workspace/test.txt"))
     assert data == b"actor content"
+
+    # Test status, pause, and resume
+    assert ray.get(actor.get_status.remote()) == SandboxStatus.RUNNING
+    ray.get(actor.pause.remote())
+    assert ray.get(actor.get_status.remote()) == SandboxStatus.PAUSED
+    ray.get(actor.resume.remote())
+    assert ray.get(actor.get_status.remote()) == SandboxStatus.RUNNING
 
     ray.get(actor.delete.remote())
     ray.kill(actor)
