@@ -604,8 +604,9 @@ def test_unenforceable_network_policy_is_refused() -> None:
 
 
 def test_set_network_access_replaces_the_allowlist() -> None:
-    """A sandbox created with an allowlist can be narrowed or reopened at
-    runtime; OPEN is the allow-all list."""
+    """A sandbox with network access can be narrowed or reopened at runtime,
+    even one created without an allowlist; OPEN is the creation default, the
+    public internet."""
     port = next(_next_port)
 
     async def scenario() -> Any:
@@ -615,9 +616,7 @@ def test_set_network_access_replaces_the_allowlist() -> None:
         async with _Facade(resolver, port):
             channel, control, router = _channel(port)
             try:
-                sandbox_id = await _make_sandbox(
-                    control, network_access=_allowlist("0.0.0.0/0")
-                )
+                sandbox_id = await _make_sandbox(control)
                 await _wait_running(control, sandbox_id)
                 await router.TaskSetNetworkAccess(
                     sr_pb2.TaskSetNetworkAccessRequest(
@@ -637,7 +636,7 @@ def test_set_network_access_replaces_the_allowlist() -> None:
                 await channel.close()
 
     calls = asyncio.run(scenario())
-    assert [c["cidrs"] for c in calls] == [["52.0.0.1/32"], ["0.0.0.0/0", "::/0"]]
+    assert [c["cidrs"] for c in calls] == [["52.0.0.1/32"], ["internet"]]
     assert {c["instance_id"] for c in calls} == {"ray-sandbox-fake0001"}
 
 
@@ -651,8 +650,10 @@ def test_set_network_access_refusals() -> None:
         async with _Facade(resolver, port):
             channel, control, router = _channel(port)
             try:
-                open_id = await _make_sandbox(control, name="open")
-                await _wait_running(control, open_id)
+                blocked_id = await _make_sandbox(
+                    control, name="blocked", block_network=True
+                )
+                await _wait_running(control, blocked_id)
                 allow_id = await _make_sandbox(
                     control, name="allow", network_access=_allowlist("10.0.0.0/8")
                 )
@@ -661,7 +662,7 @@ def test_set_network_access_refusals() -> None:
                     network_access_type=api_pb2.NetworkAccess.BLOCKED
                 )
                 attempts = [
-                    ("fixed", open_id, _allowlist("10.0.0.0/8")),
+                    ("no-network", blocked_id, _allowlist("10.0.0.0/8")),
                     ("domains", allow_id, _allowlist(domains=("*.github.com",))),
                     ("blocked", allow_id, blocked),
                     ("bad-cidr", allow_id, _allowlist("nope")),
@@ -682,7 +683,7 @@ def test_set_network_access_refusals() -> None:
 
     results, calls = asyncio.run(scenario())
     assert results == {
-        "fixed": StatusCode.FAILED_PRECONDITION,
+        "no-network": StatusCode.FAILED_PRECONDITION,
         "domains": StatusCode.INVALID_ARGUMENT,
         "blocked": StatusCode.INVALID_ARGUMENT,
         "bad-cidr": StatusCode.INVALID_ARGUMENT,

@@ -34,7 +34,8 @@ class Sandbox:
             (public resolvers by default for "public").
         cidr_allowlist: Optional egress allowlist for network="public": only
             the listed IPv4/IPv6 networks are reachable (plus DNS to the
-            ``dns`` resolvers); see
+            ``dns`` resolvers). None means the public internet only, and the
+            cluster's control plane stays closed whatever the list says; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none); see
