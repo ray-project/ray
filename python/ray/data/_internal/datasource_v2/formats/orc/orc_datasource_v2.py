@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Literal
 
 import pyarrow as pa
-from ray._common.utils import env_bool, env_integer
 from typing_extensions import override
 
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_indexer import OrcFileIndexer
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
