@@ -1,18 +1,29 @@
-from typing import Iterator
+import math
+from typing import Iterator, List, Optional, Sequence
 
 import pyarrow as pa
 import pyarrow.dataset as pds
+from pyarrow.fs import FileSystem
 from typing_extensions import override
 
-from ray.data._internal.datasource_v2.common.file_reader import FileReader
+from ray.data._internal.datasource_v2.common.file_reader import (
+    _ARROW_DEFAULT_BATCH_SIZE,
+    FileFormat,
+    FileReader,
+)
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    SynthesizedColumn,
+)
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
+from ray.data.datasource.partitioning import Partitioning
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
@@ -25,6 +36,68 @@ class OrcFileReader(FileReader):
     Path-derived partition values take precedence over same-named file columns
     and are synthesized before filtering and projection.
     """
+
+    def __init__(
+        self,
+        format: FileFormat,
+        batch_size: Optional[int] = None,
+        columns: Optional[List[str]] = None,
+        predicate: Optional[Expr] = None,
+        limit: Optional[int] = None,
+        filesystem: Optional[FileSystem] = None,
+        partitioning: Optional[Partitioning] = None,
+        ignore_prefixes: Optional[List[str]] = None,
+        synthesized_columns: Sequence[SynthesizedColumn] = (),
+        schema: Optional[pa.Schema] = None,
+        target_block_size: Optional[int] = None,
+    ):
+        """Initialize the ORC reader.
+
+        Args:
+            format: File format passed to the base reader.
+            batch_size: Explicit batch row count, which takes priority over estimates.
+            columns: Columns to read, or None for all columns.
+            predicate: Row filter applied during reading.
+            limit: Maximum number of output rows.
+            filesystem: Filesystem used to open files.
+            partitioning: Path-derived partition columns.
+            ignore_prefixes: File name prefixes ignored by PyArrow.
+            synthesized_columns: Columns appended after reading.
+            schema: Unified schema for file reads and partition values.
+            target_block_size: Target output batch size in bytes when batch_size
+                is unset. Observed batches refine subsequent read() calls.
+        """
+        super().__init__(
+            format=format,
+            batch_size=(
+                batch_size if batch_size is not None else _ARROW_DEFAULT_BATCH_SIZE
+            ),
+            columns=columns,
+            predicate=predicate,
+            limit=limit,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            ignore_prefixes=ignore_prefixes,
+            synthesized_columns=synthesized_columns,
+            schema=schema,
+        )
+        self._explicit_batch_size = batch_size
+        self._target_block_size = target_block_size
+        self._sampled_batch_size: Optional[int] = None
+
+    @override
+    def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
+        """Use an explicit row count, previous batch feedback, or the default.
+
+        ORC has no usable row-width statistics on the manifest. Fall back
+        without sampling data; feedback applies only to subsequent read()
+        calls on this instance, as in the Parquet DSV2 reader.
+        """
+        if self._explicit_batch_size is not None:
+            return self._explicit_batch_size
+        if self._sampled_batch_size is not None:
+            return self._sampled_batch_size
+        return _ARROW_DEFAULT_BATCH_SIZE
 
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
@@ -153,3 +226,7 @@ class OrcFileReader(FileReader):
     def _on_batch_read(self, table: pa.Table) -> None:
         super()._on_batch_read(table)
         raise_on_pickle_object_columns(table)
+        if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
+            return
+        row_size = table.nbytes / table.num_rows
+        self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
