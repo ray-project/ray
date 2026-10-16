@@ -233,7 +233,6 @@ class _DeploymentHandleBase(Generic[T]):
             _request_counter=self.request_counter,
             _handle_id=self.handle_id,
         )
-
     def _remote(
         self,
         args: Tuple[Any],
@@ -294,6 +293,7 @@ class _DeploymentHandleBase(Generic[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1079,6 +1079,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
         session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1091,6 +1092,10 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         Args:
             method_name: The method name to call on the deployment.
             multiplexed_model_id: The model ID to use for multiplexed model requests.
+            candidate_multiplexed_model_ids: An ordered list of candidate model IDs.
+                The router will try to route to replicas that have whichever model
+                ID in this list is available first. When both this and
+                `multiplexed_model_id` are set, the single value is prepended.
             session_id: Session identifier used for honoring session stickiness.
             stream: Whether to use streaming for the request.
             _prefer_local_routing: Whether to prefer local routing.
@@ -1123,6 +1128,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
+            candidate_multiplexed_model_ids=candidate_multiplexed_model_ids,
             session_id=session_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,

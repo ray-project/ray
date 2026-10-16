@@ -216,26 +216,79 @@ class MultiplexMixin:
         self._replica_id_set: Set[ReplicaID] = set()
         self._replicas: Dict[ReplicaID, RunningReplica] = {}
 
+    def _get_effective_multiplexed_model_ids(
+        self, request_metadata: Optional[RequestMetadata]
+    ) -> List[str]:
+        """Return an ordered, deduplicated list of multiplexed model IDs.
+
+        Merges the legacy single ``multiplexed_model_id`` with the new
+        ``candidate_multiplexed_model_ids`` list. Duplicates are removed
+        while preserving the original ordering. The single ``multiplexed_model_id``
+        (when present) is treated as highest priority and prepended.
+        """
+        if request_metadata is None:
+            return []
+
+        ids: List[str] = []
+        if request_metadata.multiplexed_model_id:
+            ids.append(request_metadata.multiplexed_model_id)
+        if request_metadata.candidate_multiplexed_model_ids:
+            ids.extend(request_metadata.candidate_multiplexed_model_ids)
+
+        # Deduplicate while preserving order.
+        seen: Set[str] = set()
+        unique_ids: List[str] = []
+        for mid in ids:
+            if mid and mid not in seen:
+                seen.add(mid)
+                unique_ids.append(mid)
+        return unique_ids
+
+    def _get_first_available_multiplexed_model_id(
+        self, request_metadata: Optional[RequestMetadata]
+    ) -> str:
+        """Return the first model ID in the effective list that has at least one
+        replica loaded. Falls back to the first entry in the effective list (or
+        an empty string) if no replicas are currently loaded for any candidate.
+
+        The returned model ID is what the routing logic should use for the rest
+        of the dispatch.  This lets a caller pass an ordered fallback list and
+        have the router transparently pick whichever replica already has one of
+        those models warm, while keeping the legacy single-model-id behavior
+        unchanged.
+        """
+        effective = self._get_effective_multiplexed_model_ids(request_metadata)
+        for mid in effective:
+            if self._multiplexed_model_id_to_replica_ids.get(mid):
+                return mid
+        return effective[0] if effective else ""
+
     def _get_pending_request_matching_multiplexed_model_id(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
         """Matching pending request based on the request metadata.
 
-        Uses dict index for O(1) lookup by multiplexed_model_id.
+        Uses dict index for O(1) lookup by multiplexed_model_id.  When an
+        ordered list of candidate model IDs is provided, we look up pending
+        requests for each model ID in order (so we reuse work from whichever
+        replica warms a model first).
         Also performs lazy cleanup of done futures to prevent memory leaks.
         """
-        if request_metadata is None or not request_metadata.multiplexed_model_id:
+        effective = self._get_effective_multiplexed_model_ids(request_metadata)
+        if not effective:
             return None
 
-        model_id = request_metadata.multiplexed_model_id
-        candidates = self._pending_requests_by_model_id.get(model_id)
-        while candidates:
-            pr = candidates[0]
-            if not pr.future.done():
-                return pr
-            candidates.popleft()
-        self._pending_requests_by_model_id.pop(model_id, None)
+        for model_id in effective:
+            candidates = self._pending_requests_by_model_id.get(model_id)
+            if not candidates:
+                continue
+            while candidates:
+                pr = candidates[0]
+                if not pr.future.done():
+                    return pr
+                candidates.popleft()
+            self._pending_requests_by_model_id.pop(model_id, None)
         return None
 
     def _discard_multiplexed_replica_ids_on_replica_actor_died(
@@ -299,6 +352,13 @@ class MultiplexMixin:
         then the replicas with the fewest multiplexed models, and finally all
         replicas.
 
+        When ``candidate_multiplexed_model_ids`` is also provided (the ordered
+        list), the router prefers whichever candidate model ID already has at
+        least one warm replica, preserving the user's ordering. This lets a
+        client request several mutually-compatible model IDs and have the
+        router pick the first replica that is already warm for any of them,
+        reducing cold-load latency.
+
         Args:
             pending_request: The pending request to be routed based on
                 multiplexed model policy.
@@ -318,7 +378,20 @@ class MultiplexMixin:
         multiplexed_start_matching_time = (
             pending_request.routing_context.multiplexed_start_matching_time
         )
-        multiplexed_model_id = pending_request.metadata.multiplexed_model_id
+        # Resolve the effective model ID.  This lets callers pass an ordered
+        # list of candidate IDs and have the router transparently pick the
+        # first one that currently has replicas loaded.  Falls back to the
+        # legacy single-value behaviour when no ordered list is supplied.
+        multiplexed_model_id = self._get_first_available_multiplexed_model_id(
+            pending_request.metadata
+        )
+        # Propagate the resolved model ID back onto the request metadata so
+        # that replica-side multiplexed loaders see whichever ID the router
+        # actually routed to. This is essential when the caller only provided
+        # ``candidate_multiplexed_model_ids`` (no legacy single ID) — without
+        # the write-back the replica would see an empty model ID and either
+        # cold-load the wrong model or fail to multiplex at all.
+        pending_request.metadata.multiplexed_model_id = multiplexed_model_id
         if (
             time.time() - multiplexed_start_matching_time
             < self._multiplexed_matching_timeout
@@ -364,9 +437,15 @@ class MultiplexMixin:
         multiplexed_model_id: str,
     ) -> List[List[RunningReplica]]:
         """Rank the replicas based on the multiplexed model ID.
-        Rank 0 is the list of replicas that have the multiplexed model ID.
-        Rank 1 is the list of replicas that have the fewest multiplexed models.
-        Rank 2 is the list of all other replicas.
+
+        Rank 0 is the list of replicas that have the multiplexed model ID (or,
+        when an ordered candidate list is passed, replicas that have *any* of
+        the listed model IDs loaded).  Rank 1 is the replicas that have the
+        fewest models overall, and Rank 2 is the rest.
+
+        The legacy single-ID path still works; the ``apply_multiplex_routing``
+        method is responsible for resolving an ordered list down to the single
+        model ID that will be used here.
         """
         replica_ids_with_multiplexed_model = (
             self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
@@ -830,8 +909,12 @@ class RequestRouter(ABC):
             # Retry path: avoid duplicating entries (especially for model_id lists).
             return
         self._pending_requests_by_id[internal_id] = pending_request
-        model_id = pending_request.metadata.multiplexed_model_id
-        if model_id:
+        # Index the request under every effective multiplexed model ID so that
+        # pending-request coalescing works both for the legacy single-ID path
+        # and for the new ordered candidate-list path.
+        for model_id in self._get_effective_multiplexed_model_ids(
+            pending_request.metadata
+        ):
             self._pending_requests_by_model_id[model_id].append(pending_request)
 
     def _remove_pending_request_from_indices(self, pending_request: PendingRequest):

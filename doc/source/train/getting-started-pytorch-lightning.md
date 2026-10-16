@@ -13,7 +13,7 @@ This tutorial shows how to convert an existing PyTorch Lightning script to use R
 You learn how to do the following:
 
 1. Configure the Lightning `Trainer` to run distributed with Ray on the correct CPU or GPU device.
-1. Configure the {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
+1. Configure the {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
 1. Launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
 
@@ -287,9 +287,9 @@ Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` 
 
 
 
-### Save checkpoints for fault tolerance
+### Report checkpoints and metrics
 
-To persist checkpoints so that training can recover from failures, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
+To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
 
 
 ```diff

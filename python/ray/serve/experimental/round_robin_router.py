@@ -99,8 +99,17 @@ class RoundRobinRouter(FIFOMixin, MultiplexMixin, RequestRouter):
             # when every replica is at capacity.
             pending_request.routing_context.should_backoff = True
 
-            if pending_request.metadata.multiplexed_model_id:
-                multiplexed_model_id = pending_request.metadata.multiplexed_model_id
+            has_multiplexed = (
+                pending_request.metadata.multiplexed_model_id
+                or pending_request.metadata.candidate_multiplexed_model_ids
+            )
+            if has_multiplexed:
+                # Resolve the effective model ID (respects ordered
+                # candidate list) so that per-model round-robin counters are
+                # keyed by whichever model ID actually ended up routing.
+                multiplexed_model_id = self._get_first_available_multiplexed_model_id(
+                    pending_request.metadata
+                )
                 is_first_multiplexed_attempt = (
                     not pending_request.routing_context.tried_first_multiplexed_models
                 )
