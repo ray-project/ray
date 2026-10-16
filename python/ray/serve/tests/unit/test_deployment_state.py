@@ -4599,7 +4599,7 @@ class TestActorReplicaWrapper:
             ),
         ):
             for failures in range(1, 4):
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is (failures < 3)
                 assert actor_replica._consecutive_health_check_failures == failures
 
@@ -4620,11 +4620,11 @@ class TestActorReplicaWrapper:
                     side_effect=ActorUnavailableError("net", None),
                 ),
             ):
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is True
                 assert actor_replica._consecutive_health_check_failures == 1
 
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is True
                 assert actor_replica._consecutive_health_check_failures == 2
 
@@ -4636,7 +4636,7 @@ class TestActorReplicaWrapper:
                 ),
                 patch("ray.serve._private.deployment_state.ray.get"),
             ):
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is True
                 assert actor_replica._consecutive_health_check_failures == 0
 
@@ -4650,11 +4650,11 @@ class TestActorReplicaWrapper:
                     side_effect=ActorUnavailableError("net", None),
                 ),
             ):
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is True
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is True
-                actor_replica._health_check_ref = object()
+                actor_replica._probe_ref = object()
                 assert actor_replica.check_health() is False
                 assert actor_replica._consecutive_health_check_failures == 3
 
@@ -4676,7 +4676,7 @@ class TestActorReplicaWrapper:
                 side_effect=ActorDiedError(),
             ),
         ):
-            actor_replica._health_check_ref = object()
+            actor_replica._probe_ref = object()
             assert actor_replica.check_health() is False
 
 
@@ -4721,7 +4721,10 @@ def test_health_check_failure_thresholds(
         "success": None,
     }
     for failure, healthy in zip(failures, expected_health):
-        wrapper._health_check_ref = object()
+        if deployment_actor:
+            wrapper._health_check_ref = object()
+        else:
+            wrapper._probe_ref = object()
         with patch.object(ds_mod.ray, "get", side_effect=errors[failure]):
             assert wrapper.check_health() is healthy
         if failure == "success":
