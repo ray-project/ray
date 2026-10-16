@@ -524,19 +524,15 @@ std::string DescribeRedisTcpKeepalivePolicy(int64_t interval, int64_t probes) {
 }
 
 #ifdef _WIN32
-// redisAsyncConnect starts a non-blocking connect and returns before it
-// finishes. Winsock doesn't support setting socket options while a connect is
-// in progress (see the Winsock connect() docs), and enabling keepalive on such
-// a socket fails intermittently. hiredis reports that failure as EIO
-// ("Input/output error"), hiding the underlying Winsock error.
-//
-// Winsock reports that a non-blocking connect finished by making the socket
-// writable in select(), or reports it failed through the exception set, so wait
-// for that. Don't use getpeername() instead: setting SO_KEEPALIVE has failed
-// with WSAEINVAL on sockets that getpeername() already reported as connected.
-//
-// A connect that fails or doesn't finish in time is a connectivity error, so it
-// is retryable like any other.
+/// Waits for the given context to finish connecting before returning.
+///
+/// Arguments:
+///   \param context - The connection context
+///   \param address - The address the context is trying to make a connection to
+///   \param port - The port the context is trying to connect to
+///
+/// A connect that fails or doesn't finish in time is a connectivity error, so it
+/// is retryable like any other.
 Status WaitForRedisConnect(const redisContext *context,
                            const std::string &address,
                            int port) {
@@ -547,9 +543,7 @@ Status WaitForRedisConnect(const redisContext *context,
   FD_ZERO(&failed);
   FD_SET(redis_socket, &writable);
   FD_SET(redis_socket, &failed);
-  const int64_t timeout_ms = RayConfig::instance().redis_db_probe_timeout_milliseconds();
-  timeval timeout{static_cast<long>(timeout_ms / 1000),
-                  static_cast<long>((timeout_ms % 1000) * 1000)};
+  timeval timeout{static_cast<long>(kRedisConnectWaitTimeoutSeconds), 0};
   const int ready = ::select(/*nfds=*/0, nullptr, &writable, &failed, &timeout);
   if (ready == SOCKET_ERROR) {
     return Status::RedisError(
@@ -563,8 +557,8 @@ Status WaitForRedisConnect(const redisContext *context,
     return Status::RedisError(absl::StrCat("The async Redis connection to ",
                                            BuildAddress(address, port),
                                            " did not finish connecting within ",
-                                           timeout_ms,
-                                           "ms."));
+                                           kRedisConnectWaitTimeoutSeconds,
+                                           "s."));
   }
   if (FD_ISSET(redis_socket, &failed)) {
     return Status::RedisError(absl::StrCat(
@@ -594,8 +588,11 @@ Status ConfigureRedisTcpKeepalive(redisContext *context,
     return Status::OK();
   }
 #ifdef _WIN32
-  // hiredis creates sync contexts with REDIS_BLOCK, and they are already
-  // connected. Async contexts may still be connecting.
+  // Note: redisAsyncConnect starts a non-blocking connect and returns before it
+  // finishes. Winsock doesn't support setting socket options while a connect is
+  // in progress (see the Winsock connect() docs), and enabling keepalive on such
+  // a socket without waiting for it to complete may fail if the setting is written
+  // before the connection completes.
   if (!(context->flags & REDIS_BLOCK)) {
     RAY_RETURN_NOT_OK(WaitForRedisConnect(context, address, port));
   }
