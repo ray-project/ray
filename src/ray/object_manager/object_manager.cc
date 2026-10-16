@@ -72,8 +72,6 @@ ObjectManager::ObjectManager(
     RestoreSpilledObjectCallback restore_spilled_object,
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-    std::function<bool(const ObjectID &object_id, const rpc::Address &owner_address)>
-        pin_and_report_moved_object,
     const std::shared_ptr<plasma::PlasmaClientInterface> &buffer_pool_store_client,
     std::unique_ptr<ObjectStoreRunner> object_store_internal,
     std::function<std::shared_ptr<rpc::ObjectManagerClientInterface>(
@@ -101,7 +99,6 @@ ObjectManager::ObjectManager(
                            config_.rpc_service_threads_number),
       restore_spilled_object_(std::move(restore_spilled_object)),
       get_spilled_object_url_(std::move(get_spilled_object_url)),
-      pin_and_report_moved_object_(std::move(pin_and_report_moved_object)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)),
       push_manager_(std::make_unique<PushManager>(/* max_chunks_in_flight= */ std::max(
@@ -690,18 +687,12 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                                 /*defer_release=*/is_move);
     if (is_move && sealed) {
       // WriteChunk kept the plasma store reference it took when it created the
-      // object, so the store cannot evict the object before it is pinned on the
-      // main service. ReleaseObject drops that reference after the pin.
-      main_service_->post(
-          [this, object_id, owner_address = rpc::Address(owner_address)]() {
-            if (pin_and_report_moved_object_(object_id, owner_address)) {
-              num_moved_objects_pinned_++;
-            } else {
-              num_moved_objects_pin_failed_++;
-            }
-            buffer_pool_.ReleaseObject(object_id);
-          },
-          "ObjectManager.PinAndReportMovedObject");
+      // object. The seal already queued the store's "object added" notification on
+      // the main service, and the raylet pins the move while handling it; this
+      // release is queued behind that, so the store cannot evict the object before
+      // it is pinned.
+      main_service_->post([this, object_id]() { buffer_pool_.ReleaseObject(object_id); },
+                          "ObjectManager.ReleaseMovedObject");
     }
     return true;
   } else {
@@ -794,8 +785,6 @@ std::string ObjectManager::DebugString() const {
     absl::ReaderMutexLock lock(&move_pull_mutex_);
     result << "\n- num move pull records: " << move_pull_object_ids_.size();
   }
-  result << "\n- num moved objects pinned: " << num_moved_objects_pinned_;
-  result << "\n- num moved objects pin failed: " << num_moved_objects_pin_failed_;
   result << "\nEvent stats:" << rpc_service_.stats()->StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
