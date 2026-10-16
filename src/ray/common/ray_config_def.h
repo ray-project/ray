@@ -437,10 +437,10 @@ RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 ///
 /// Linux (including musl) applies idle, interval, and count when the TCP socket
 /// options are available. macOS applies idle only; Windows uses a system-fixed
-/// probe count. Other platforms use OS timing defaults. On POSIX, rejected
-/// timing options warn and retain their previous values, so the requested
-/// detection window may not apply. Valid values are 1 through 127 when TCP
-/// keepalive is enabled.
+/// probe count. Other platforms use OS timing defaults. Rejected timing options
+/// warn and retain their previous values (the OS defaults on Windows), so the
+/// requested detection window may not apply. Valid values are 1 through 127
+/// when TCP keepalive is enabled.
 RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
 
 /// Number of retries for a redis request failure.

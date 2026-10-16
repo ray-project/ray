@@ -27,6 +27,13 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#include <winsock2.h>
+
+// mstcpip.h needs winsock2.h first.
+#include <mstcpip.h>
+#endif
+
 #include "ray/asio/asio_util.h"
 #include "ray/gcs/store_client/redis_tcp_keepalive.h"
 #include "ray/util/network_util.h"
@@ -519,14 +526,122 @@ std::string DescribeRedisTcpKeepalivePolicy(int64_t interval, int64_t probes) {
 #endif
 }
 
+#ifdef _WIN32
+using SocketLength = int;
+int LastSocketError() { return ::WSAGetLastError(); }
+#else
+using SocketLength = socklen_t;
+int LastSocketError() { return errno; }
+#endif
+
+// hiredis creates sync contexts with REDIS_BLOCK and async contexts without it.
+const char *RedisContextKind(const redisContext *context) {
+  return (context->flags & REDIS_BLOCK) ? "sync" : "async";
+}
+
+// Snapshot of the socket for keepalive failure messages. The async context's
+// non-blocking connect may still be in flight when keepalive is applied, so
+// record whether the socket has a peer yet and any pending socket error.
+std::string DescribeRedisSocketState(const redisContext *context) {
+  std::string peer;
+  sockaddr_storage peer_address;
+  SocketLength peer_address_length = sizeof(peer_address);
+  if (::getpeername(context->fd,
+                    reinterpret_cast<sockaddr *>(&peer_address),
+                    &peer_address_length) == 0) {
+    peer = "connected";
+  } else {
+    peer = absl::StrCat("not connected (error=", LastSocketError(), ")");
+  }
+  std::string pending_error;
+  int so_error = 0;
+  SocketLength so_error_length = sizeof(so_error);
+  if (::getsockopt(context->fd,
+                   SOL_SOCKET,
+                   SO_ERROR,
+                   reinterpret_cast<char *>(&so_error),
+                   &so_error_length) == 0) {
+    pending_error = absl::StrCat(so_error);
+  } else {
+    pending_error = absl::StrCat("unavailable (error=", LastSocketError(), ")");
+  }
+  return absl::StrCat("socket state: context=",
+                      RedisContextKind(context),
+                      ", peer=",
+                      peer,
+                      ", SO_ERROR=",
+                      pending_error);
+}
+
+#ifdef _WIN32
+// redisAsyncConnect returns while its non-blocking connect may still be in
+// flight, and Windows rejects SO_KEEPALIVE on such a socket with WSAEINVAL.
+// getpeername() alone is not enough: SO_KEEPALIVE has failed with WSAEINVAL on
+// sockets that getpeername() already reported as connected. select()
+// writability is how Winsock documents that a non-blocking connect finished,
+// so wait on that. A connect that fails or doesn't finish in time is a
+// connectivity error, so it is retryable like any other.
+Status WaitForRedisConnect(const redisContext *context,
+                           const std::string &address,
+                           int port) {
+  const auto redis_socket = static_cast<SOCKET>(context->fd);
+  fd_set writable;
+  fd_set failed;
+  const auto select_connect = [&](timeval timeout) {
+    FD_ZERO(&writable);
+    FD_ZERO(&failed);
+    FD_SET(redis_socket, &writable);
+    FD_SET(redis_socket, &failed);
+    return ::select(/*nfds=*/0, nullptr, &writable, &failed, &timeout);
+  };
+
+  // Poll without waiting first, only to log whether the connect was pending.
+  int ready = select_connect(timeval{0, 0});
+  if (ready == 0) {
+    const int64_t timeout_ms =
+        RayConfig::instance().redis_db_probe_timeout_milliseconds();
+    RAY_LOG(INFO) << "select() does not report the async Redis connection to "
+                  << BuildAddress(address, port) << " as connected yet ("
+                  << DescribeRedisSocketState(context) << "). Waiting up to "
+                  << timeout_ms << "ms for it before enabling TCP keepalive.";
+    ready = select_connect(timeval{static_cast<long>(timeout_ms / 1000),
+                                   static_cast<long>((timeout_ms % 1000) * 1000)});
+    if (ready == 0) {
+      return Status::RedisError(absl::StrCat("The async Redis connection to ",
+                                             BuildAddress(address, port),
+                                             " did not finish connecting within ",
+                                             timeout_ms,
+                                             "ms."));
+    }
+  }
+  if (ready == SOCKET_ERROR) {
+    return Status::RedisError(
+        absl::StrCat("Failed to wait for the async Redis connection to ",
+                     BuildAddress(address, port),
+                     " (WSA error=",
+                     ::WSAGetLastError(),
+                     ")."));
+  }
+  if (FD_ISSET(redis_socket, &failed)) {
+    return Status::RedisError(absl::StrCat("The async Redis connection to ",
+                                           BuildAddress(address, port),
+                                           " failed to connect (",
+                                           DescribeRedisSocketState(context),
+                                           ")."));
+  }
+  return Status::OK();
+}
+#endif
+
 // Applies the configured TCP keepalive policy to a freshly created hiredis
 // context. Called from exactly one place (ConnectWithoutRetries) so that every
 // external Redis socket - sync, async, Sentinel, Cluster-redirect, and cleanup
 // connections - receives the same policy before TLS, AUTH, or any command.
 //
-// Validation and failures to enable keepalive are non-retryable. On POSIX,
-// tuning failures leave keepalive enabled and warn without rejecting a usable
-// connection. Windows retains hiredis' combined enable/tune operation.
+// Validation and failures to enable keepalive are non-retryable, except
+// WSAEINVAL on a Windows async socket, which has been seen to be transient.
+// Tuning failures leave keepalive enabled and warn without rejecting a usable
+// connection.
 Status ConfigureRedisTcpKeepalive(redisContext *context,
                                   const std::string &address,
                                   int port) {
@@ -539,17 +654,69 @@ Status ConfigureRedisTcpKeepalive(redisContext *context,
     return Status::OK();
   }
 #ifdef _WIN32
-  if (::redisEnableKeepAliveWithInterval(context, static_cast<int>(interval)) !=
-      REDIS_OK) {
+  // Don't use redisEnableKeepAliveWithInterval: hiredis' win32_redisKeepAlive
+  // maps WSAIoctl's SOCKET_ERROR return value instead of WSAGetLastError(), so
+  // every failure is reported as EIO and the Winsock error is lost.
+  const auto redis_socket = static_cast<SOCKET>(context->fd);
+  if (!(context->flags & REDIS_BLOCK)) {
+    RAY_RETURN_NOT_OK(WaitForRedisConnect(context, address, port));
+  }
+  // Recorded before setsockopt so a failure shows the state the call saw, not
+  // only the state afterwards.
+  const std::string state_before = DescribeRedisSocketState(context);
+  const BOOL enable = TRUE;
+  if (::setsockopt(redis_socket,
+                   SOL_SOCKET,
+                   SO_KEEPALIVE,
+                   reinterpret_cast<const char *>(&enable),
+                   sizeof(enable)) == SOCKET_ERROR) {
+    const int wsa_error = ::WSAGetLastError();
+    const std::string error = absl::StrCat("Failed to set SO_KEEPALIVE on the ",
+                                           RedisContextKind(context),
+                                           " Redis connection to ",
+                                           BuildAddress(address, port),
+                                           " (WSA error=",
+                                           wsa_error,
+                                           "; before: ",
+                                           state_before,
+                                           "; after: ",
+                                           DescribeRedisSocketState(context),
+                                           ")");
+    if (wsa_error == WSAEINVAL && !(context->flags & REDIS_BLOCK)) {
+      // Seen intermittently on async sockets right after connecting. Treat it
+      // as transient so the connect loop retries with a fresh socket.
+      return Status::RedisError(error);
+    }
     return Status::IOError(
-        absl::StrCat("Failed to enable TCP keepalive on the Redis connection to ",
-                     BuildAddress(address, port),
-                     ": ",
-                     context->errstr,
+        absl::StrCat(error,
                      ". Set RAY_redis_tcp_keepalive_interval_seconds=0 to disable TCP "
                      "keepalive if this platform cannot support it."));
   }
-
+  tcp_keepalive timing{};
+  timing.onoff = 1;
+  timing.keepalivetime = static_cast<ULONG>(interval * 1000);
+  timing.keepaliveinterval = static_cast<ULONG>(interval * 1000);
+  DWORD bytes_returned = 0;
+  if (::WSAIoctl(redis_socket,
+                 SIO_KEEPALIVE_VALS,
+                 &timing,
+                 sizeof(timing),
+                 nullptr,
+                 0,
+                 &bytes_returned,
+                 nullptr,
+                 nullptr) == SOCKET_ERROR) {
+    const int wsa_error = ::WSAGetLastError();
+    RAY_LOG(WARNING) << "Failed to set SIO_KEEPALIVE_VALS (idle=" << interval
+                     << "s, probe interval=" << interval << "s) on the "
+                     << RedisContextKind(context) << " Redis connection to "
+                     << BuildAddress(address, port) << " (WSA error=" << wsa_error << "; "
+                     << DescribeRedisSocketState(context)
+                     << "). TCP keepalive remains enabled with the OS default "
+                        "timing. The requested detection window does not apply. "
+                        "Continuing with the connection.";
+    return Status::OK();
+  }
 #else
   // hiredis also tunes the timing, and marks context->err on any failure.
   // Apply options directly so a rejected timing option cannot poison an
@@ -567,12 +734,17 @@ Status ConfigureRedisTcpKeepalive(redisContext *context,
                                         name,
                                         "=",
                                         value,
-                                        " on the Redis connection to ",
+                                        " on the ",
+                                        RedisContextKind(context),
+                                        " Redis connection to ",
                                         BuildAddress(address, port),
                                         " (errno=",
                                         saved_errno,
-                                        "): ",
-                                        std::strerror(saved_errno));
+                                        ", ",
+                                        std::strerror(saved_errno),
+                                        "; ",
+                                        DescribeRedisSocketState(context),
+                                        ")");
         if (level == SOL_SOCKET && option == SO_KEEPALIVE) {
           enable_status = Status::IOError(absl::StrCat(
               error,
@@ -591,8 +763,8 @@ Status ConfigureRedisTcpKeepalive(redisContext *context,
     return Status::OK();
   }
 #endif
-  RAY_LOG(INFO) << "Enabled TCP keepalive on the Redis connection to "
-                << BuildAddress(address, port) << ": "
+  RAY_LOG(INFO) << "Enabled TCP keepalive on the " << RedisContextKind(context)
+                << " Redis connection to " << BuildAddress(address, port) << ": "
                 << DescribeRedisTcpKeepalivePolicy(
                        interval, RayConfig::instance().redis_tcp_keepalive_probes())
                 << ".";
@@ -708,8 +880,8 @@ ConnectWithoutRetries(const std::string &address,
   }
   // Apply the TCP keepalive policy before the context is used for anything
   // (TLS, AUTH, or the first command). For the async context the TCP handshake
-  // may not have completed yet; that is fine - the options apply to the
-  // socket, not the connection.
+  // may not have completed yet. POSIX accepts the options on a connecting
+  // socket; on Windows, ConfigureRedisTcpKeepalive waits for the connect first.
   Status status = ConfigureRedisTcpKeepalive(AsRedisContext(newContext), address, port);
   if (!status.ok()) {
     return std::make_pair(status, nullptr);
