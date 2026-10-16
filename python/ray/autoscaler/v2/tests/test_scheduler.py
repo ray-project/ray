@@ -1842,6 +1842,82 @@ def test_idle_termination_pending_nodes_with_min_worker():
     assert to_terminate[0][0] in ("i-2", "i-3")
 
 
+def _pending_idle_test_configs() -> Dict[NodeType, NodeTypeConfig]:
+    return {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+
+
+def _schedule_pending_at(
+    scheduler: ResourceDemandScheduler,
+    now_s: float,
+    instance_ids: List[str],
+    num_cpu_requests: int,
+    idle_timeout_s: float,
+) -> List[str]:
+    request = sched_request(
+        node_type_configs=_pending_idle_test_configs(),
+        instances=[_pending_instance(i, Instance.ALLOCATED) for i in instance_ids],
+        idle_timeout_s=idle_timeout_s,
+        disable_launch_config_check=True,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * num_cpu_requests,
+    )
+    with patch("time.monotonic", return_value=now_s):
+        _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+    return [instance_id for instance_id, _, _ in to_terminate]
+
+
+def test_idle_termination_pending_nodes_tracked_by_node_type():
+    """
+    Test that the idle durations of the pending nodes are tracked per node type,
+    so they don't reset when the requests land on a different pending node of
+    the same type in each round.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    idle_timeout_s = 10
+
+    # One of the two pending nodes is needed by the request. The request lands on
+    # a different pending node each round, as the instance order changes.
+    assert _schedule_pending_at(scheduler, 0, ["i-1", "i-2"], 1, idle_timeout_s) == []
+    assert _schedule_pending_at(scheduler, 6, ["i-2", "i-1"], 1, idle_timeout_s) == []
+    assert _schedule_pending_at(scheduler, 11, ["i-1", "i-2"], 1, idle_timeout_s) in (
+        ["i-1"],
+        ["i-2"],
+    )
+
+
+def test_idle_termination_pending_nodes_count_changes():
+    """
+    Test that the oldest idle durations are kept when the number of unneeded
+    pending nodes drops, and that the durations of the terminated nodes are not
+    inherited by the remaining ones.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    idle_timeout_s = 10
+
+    # 2 unneeded pending nodes since t=0.
+    assert _schedule_pending_at(scheduler, 0, ["i-1", "i-2"], 0, idle_timeout_s) == []
+    # Only 1 unneeded pending node since t=5, which keeps the duration since t=0.
+    assert _schedule_pending_at(scheduler, 5, ["i-1", "i-2"], 1, idle_timeout_s) == []
+    # 2 unneeded pending nodes again, the 2nd one since t=8.
+    assert _schedule_pending_at(scheduler, 8, ["i-1", "i-2"], 0, idle_timeout_s) == []
+    # The 1st one has been unneeded since t=0 and is terminated.
+    terminated = _schedule_pending_at(scheduler, 11, ["i-1", "i-2"], 0, idle_timeout_s)
+    assert len(terminated) == 1
+    remaining = "i-2" if terminated == ["i-1"] else "i-1"
+    # The remaining one has only been unneeded since t=8.
+    assert _schedule_pending_at(scheduler, 12, [remaining], 0, idle_timeout_s) == []
+    assert _schedule_pending_at(scheduler, 19, [remaining], 0, idle_timeout_s) == [
+        remaining
+    ]
+
+
 def test_gang_scheduling():
     """
     Test that gang scheduling works.
