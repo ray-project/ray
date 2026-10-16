@@ -49,6 +49,7 @@ EXPECTED_MODEL_FIELDS = {
         "cpu_limit",
         "memory_request_mb",
         "memory_limit_mb",
+        "disk_limit_mb",
         "custom",
     },
     "SandboxInfo": {

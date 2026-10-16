@@ -213,6 +213,18 @@ print("Result:", output_bytes.decode("utf-8"))
 ray.get(sb.delete.remote())
 ```
 
+### Cap disk use
+
+A writable sandbox (`readonly=False`) keeps the files it writes in a private overlay, which is a file on the node's disk. Set `disk` to cap that overlay, so that a runaway build or download in one sandbox can't fill the node's disk:
+
+```python
+sb = sandbox.create(image="python:3.12-slim", readonly=False, disk="10Gi")
+```
+
+Writes past the cap fail inside the sandbox with `ENOSPC` ("No space left on device"), and the sandbox keeps running. Deleting files frees space again. `disk` takes the units that `memory` takes and also counts `/tmp`. In-memory mounts such as `/dev/shm` count toward the sandbox's memory instead.
+
+A `readonly=True` sandbox with a `workdir` also runs on a private overlay (see [Container images](#container-images)), so `disk` caps it too, and its `workdir` then lives in the overlay instead of a directory on the node. A read-only sandbox without a `workdir` has no overlay to cap, so `disk` requires `readonly=False` or a `workdir`.
+
 ### Schedule a Sandbox actor with custom resources
 
 Because `Sandbox` is a standard Ray actor, you can instantiate it directly with Ray actor scheduling options such as `num_cpus`, `memory`, and custom accelerator or placement constraints.
@@ -447,7 +459,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
-* **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
+* **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors. A `disk` cap bounds a sandbox's writable overlay on the node's disk.
 
 ## HTTP API service
 
@@ -476,7 +488,7 @@ Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..
 Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
-* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits.
+* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits. `disk_limit_mb` caps the writable root filesystem (see [Cap disk use](#cap-disk-use)) and requires `readonly: false` or a `workdir`.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
 * **Network modes**: These are the Python API's modes, which Ray validates: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
 
