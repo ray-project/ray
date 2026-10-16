@@ -13,6 +13,7 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
 )
 from ray_release.configs.global_config import init_global_config
+from ray_release.credentials import prepare_release_credentials
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
@@ -115,6 +116,7 @@ def main(
         )
 
     maybe_fetch_api_token()
+    prepare_release_credentials(test)
 
     result = Result()
 
