@@ -838,6 +838,47 @@ TEST_F(NodeManagerTest, TestPinAndReportMovedObject) {
   EXPECT_EQ(fake_object_directory_->primary_moved_objects.size(), 1u);
 }
 
+namespace {
+
+ObjectInfo MakeObjectInfo(const ObjectID &object_id, const rpc::Address &owner_address) {
+  ObjectInfo info;
+  info.object_id = object_id;
+  info.owner_node_id = NodeID::FromBinary(owner_address.node_id());
+  info.owner_ip_address = owner_address.ip_address();
+  info.owner_port = owner_address.port();
+  info.owner_worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  return info;
+}
+
+}  // namespace
+
+/// A received move is pinned as the primary copy when the store reports it
+/// local, with the owner from the object info. An object nobody consumes is
+/// left alone.
+TEST_F(NodeManagerTest, TestHandleObjectLocalPinsMovedObject) {
+  rpc::Address owner_addr;
+  owner_addr.set_worker_id(WorkerID::FromRandom().Binary());
+  owner_addr.set_node_id(NodeID::FromRandom().Binary());
+  owner_addr.set_ip_address("127.0.0.1");
+  owner_addr.set_port(1234);
+  const ObjectID moved = ObjectID::FromRandom();
+  const ObjectID plain = ObjectID::FromRandom();
+  plasma::flatbuf::ObjectSource source = plasma::flatbuf::ObjectSource::CreatedByWorker;
+  for (const ObjectID &id : {moved, plain}) {
+    RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+        id, owner_addr, 1024, nullptr, 1024, nullptr, source, 0));
+  }
+  fake_object_manager_->MarkMovePull(moved);
+
+  node_manager_->HandleObjectLocal(MakeObjectInfo(plain, owner_addr));
+  EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
+  EXPECT_TRUE(fake_object_directory_->primary_moved_objects.empty());
+
+  node_manager_->HandleObjectLocal(MakeObjectInfo(moved, owner_addr));
+  EXPECT_EQ(local_object_manager_->pinned_objects, std::vector<ObjectID>{moved});
+  EXPECT_EQ(fake_object_directory_->primary_moved_objects, std::vector<ObjectID>{moved});
+}
+
 TEST_F(NodeManagerTest, TestConsumeSyncMessages) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;
