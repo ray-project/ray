@@ -8,9 +8,9 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import pyarrow as pa
-from ray._common.utils import env_bool, env_integer
 from typing_extensions import override
 
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
