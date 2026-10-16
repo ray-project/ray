@@ -146,9 +146,19 @@ class MetricsPusher:
                 task.cancel()
             if pending:
                 # Bounded so a task that ignores cancellation can't hang shutdown.
-                await asyncio.wait(
+                _, still_pending = await asyncio.wait(
                     pending, timeout=METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S
                 )
+                if still_pending:
+                    names = [
+                        name
+                        for name, task in self._async_tasks.items()
+                        if task in still_pending
+                    ]
+                    logger.warning(
+                        f"Metrics tasks {names} did not exit after being cancelled "
+                        "during graceful shutdown."
+                    )
 
         self._tasks.clear()
         self._async_tasks.clear()
