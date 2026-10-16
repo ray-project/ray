@@ -726,6 +726,19 @@ def _free_bytes(path: str) -> Optional[int]:
         return None
 
 
+def image_use_marker(image_dir: str, instance_id: str) -> str:
+    """Path of the file that marks ``instance_id`` as a user of a cached image.
+
+    Args:
+        image_dir: The cached image's directory.
+        instance_id: The sandbox instance.
+
+    Returns:
+        The marker's path. Eviction skips an image while any marker exists.
+    """
+    return os.path.join(image_dir, _USERS_SUBDIR, instance_id)
+
+
 def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
     """Record ``instance_id`` as a live user of the cached image.
 
@@ -733,16 +746,16 @@ def _mark_image_in_use(image_dir: str, instance_id: str) -> None:
     image's lock, so eviction (which re-checks users under the same lock)
     can never remove an image between its pull and its first use.
     """
-    users_dir = os.path.join(image_dir, _USERS_SUBDIR)
-    os.makedirs(users_dir, exist_ok=True)
-    with open(os.path.join(users_dir, instance_id), "w", encoding="utf-8"):
+    marker = image_use_marker(image_dir, instance_id)
+    os.makedirs(os.path.dirname(marker), exist_ok=True)
+    with open(marker, "w", encoding="utf-8"):
         pass
 
 
 def _release_image_use(image_dir: str, instance_id: str) -> None:
     """Drop ``instance_id``'s in-use record; a no-op if it was never marked."""
     try:
-        os.remove(os.path.join(image_dir, _USERS_SUBDIR, instance_id))
+        os.remove(image_use_marker(image_dir, instance_id))
     except OSError:
         pass
 

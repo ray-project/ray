@@ -64,7 +64,7 @@ class Sandbox:
         # Extract CPU and memory from Ray assigned resources if not explicitly provided
         try:
             assigned = ray.get_runtime_context().get_assigned_resources()
-            if (cpu is None or cpu <= 0) and "CPU" in assigned and assigned["CPU"] > 0:
+            if cpu is None and "CPU" in assigned and assigned["CPU"] > 0:
                 cpu = float(assigned["CPU"])
 
             if (memory is None) and "memory" in assigned and assigned["memory"] > 0:

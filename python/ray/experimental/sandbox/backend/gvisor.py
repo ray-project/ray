@@ -7,14 +7,17 @@ import signal
 import subprocess
 import time
 import uuid
+from functools import lru_cache
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.image_utils import image_use_marker
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -88,6 +91,15 @@ def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
     return None
 
 
+@lru_cache(maxsize=8)
+def _supports_gofer_network_namespace(executable: str) -> bool:
+    """Detect the optional flag introduced with shared Gofer namespaces."""
+    result = subprocess.run(
+        [executable, "flags"], capture_output=True, text=True, timeout=5
+    )
+    return "-gofer-network-namespace " in result.stdout + result.stderr
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -117,6 +129,48 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
+
+        cgroup = None
+        try:
+            memory = parse_memory_bytes(config.memory) or 0
+            if config.cpu > 0 or memory > 0:
+                # If this worker dies, the node's reaper kills the sandbox and
+                # then deletes its runsc state, bundle, and image pin.
+                remove = [root_dir]
+                image_dir = self._image_manager.get_image_dir(config.image)
+                if isinstance(image_dir, str):
+                    remove.append(image_use_marker(image_dir, sandbox_id))
+                cgroup = SandboxCgroupManager().allocate(
+                    sandbox_id,
+                    config.cpu,
+                    memory,
+                    cleanup={
+                        "runsc_root": _RUNSC_ROOT,
+                        "rootless": config.rootless,
+                        "remove": remove,
+                    },
+                )
+            return self._start_sandbox(config, sandbox_id, root_dir, cgroup)
+        except Exception as err:
+            if cgroup is not None:
+                try:
+                    cgroup.release()
+                except Exception as release_err:
+                    # Report the creation error instead. The lease stays
+                    # held until this worker exits and the reaper frees it.
+                    logger.warning(
+                        "Failed to release sandbox %s's cgroup: %s",
+                        sandbox_id,
+                        release_err,
+                    )
+            self._image_manager.release_image(config.image, sandbox_id)
+            shutil.rmtree(root_dir, ignore_errors=True)
+            if isinstance(err, SandboxError):
+                raise
+            raise SandboxCreationError(f"Failed to create sandbox: {err}") from err
+
+    def _start_sandbox(self, config, sandbox_id, root_dir, cgroup):
+        """Start the workload only after allocating its enforced resources."""
 
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
@@ -176,7 +230,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except Exception:
             self._image_manager.release_image(config.image, sandbox_id)
             raise
-        run_args = self._build_run_command(config, root_dir, sandbox_id)
+        run_args = self._build_run_command(
+            config,
+            root_dir,
+            sandbox_id,
+            fresh_gofer=_supports_gofer_network_namespace(shutil.which("runsc")),
+        )
+        if cgroup is not None:
+            run_args = cgroup.wrap(run_args)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -184,13 +245,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # in one process group so cleanup can kill the whole tree; they share
         # the stderr log so startup failures (missing /dev/net/tun, no
         # uplink) surface through the SandboxCreationError path below.
-        proc = subprocess.Popen(
-            run_args,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=stderr_file,
-            start_new_session=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                run_args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+                start_new_session=True,
+            )
+        except Exception:
+            stderr_file.close()
+            raise
         start_time = time.time()
         timeout = config.timeout_seconds
 
@@ -210,6 +275,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         state_data = json.loads(res.stdout)
                         status = state_data.get("status")
                         if status == "running":
+                            if cgroup is not None:
+                                try:
+                                    cgroup.verify(proc.pid)
+                                except Exception as err:
+                                    raise SandboxCreationError(
+                                        f"Sandbox resource verification failed: {err}"
+                                    ) from err
                             break
                         elif status in ("stopped", "error"):
                             raise SandboxCreationError(
@@ -247,6 +319,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
+            "cgroup": cgroup,
             # The process group leader whose tree holds the sandbox and,
             # for network="public", the namespace holder and slirp4netns.
             "proc": proc,
@@ -257,7 +330,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
-        meta = self._sandbox_metadata.pop(sandbox_id, None)
+        meta = self._sandbox_metadata.get(sandbox_id)
         if meta:
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
@@ -279,15 +352,24 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if proc:
                 self._terminate_tree(proc)
 
-            if stderr_file:
-                try:
-                    stderr_file.close()
-                except Exception:
-                    pass
+            cgroup = meta.get("cgroup")
+            try:
+                if cgroup is not None:
+                    # A detached Sentry needn't remain in runsc's process group.
+                    # Keep metadata and its core lease until every process dies.
+                    cgroup.release()
+            finally:
+                # Free the files and the image pin even if release fails. The
+                # caller may never retry, and the reaper reclaims only cgroups.
+                if stderr_file:
+                    try:
+                        stderr_file.close()
+                    except Exception:
+                        pass
 
-            shutil.rmtree(root_dir, ignore_errors=True)
-            # Only now is the cached image unused.
-            self._image_manager.release_image(config.image, sandbox_id)
+                shutil.rmtree(root_dir, ignore_errors=True)
+                self._image_manager.release_image(config.image, sandbox_id)
+            self._sandbox_metadata.pop(sandbox_id, None)
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
@@ -379,6 +461,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc_args.extend([sandbox_id, exec_shell, "-c", command])
 
         start_time = time.time()
+        runsc_args = self._wrap_workload(meta, runsc_args)
 
         try:
             proc = subprocess.Popen(
@@ -430,15 +513,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 sandbox_id,
                 "/bin/sh",
                 "-c",
-                'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
-                if append
-                else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"',
+                (
+                    'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
+                    if append
+                    else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"'
+                ),
                 "--",
                 path,
             ]
         )
 
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
@@ -460,6 +546,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         runsc_args = self._runsc_base_args(config)
         exec_cwd = meta["cwd"]
         runsc_args.extend(["exec", "-cwd", exec_cwd, sandbox_id, "cat", "--", path])
+        runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
@@ -479,8 +566,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Get operational status of the gVisor sandbox."""
         meta = self._sandbox_metadata.get(sandbox_id)
         if meta and os.path.exists(meta["root_dir"]):
+            proc = meta.get("proc")
+            if proc is not None and proc.poll() is not None:
+                return SandboxStatus.TERMINATED
             return SandboxStatus.RUNNING
         return SandboxStatus.TERMINATED
+
+    def get_termination_reason(self, sandbox_id: str) -> Optional[str]:
+        meta = self._sandbox_metadata.get(sandbox_id)
+        if meta is not None and self.get_status(sandbox_id) == SandboxStatus.TERMINATED:
+            cgroup = meta.get("cgroup")
+            return (
+                cgroup.termination_reason() if cgroup is not None else None
+            ) or "Sandbox runtime stopped unexpectedly"
+        return None
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
@@ -488,12 +587,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         if config.rootless:
             args.append("--rootless")
         if (
-            getattr(config, "_ignore_cgroups", False)
+            config.cpu > 0
+            or (parse_memory_bytes(config.memory) or 0) > 0
+            or getattr(config, "_ignore_cgroups", False)
             or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
         ):
             args.append("--ignore-cgroups")
         args.extend(["--root", _RUNSC_ROOT])
         return args
+
+    @staticmethod
+    def _wrap_workload(meta, args):
+        cgroup = meta.get("cgroup")
+        return cgroup.wrap(args) if cgroup is not None else args
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
@@ -509,7 +615,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             pass
 
     def _build_run_command(
-        self, config: SandboxConfig, root_dir: str, sandbox_id: str
+        self,
+        config: SandboxConfig,
+        root_dir: str,
+        sandbox_id: str,
+        fresh_gofer: bool = False,
     ) -> List[str]:
         """Build the full `runsc run` argv, namespace-wrapped for network="public".
 
@@ -520,6 +630,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         ``--overlay2`` flag.
         """
         args = self._runsc_base_args(config)
+        if fresh_gofer:
+            # A cached empty network namespace belongs to its creator's user
+            # namespace. A subsequent rootless sandbox in a sibling user
+            # namespace cannot join it, even though it shares runsc's root.
+            args.append("--gofer-network-namespace=new")
         use_netns = config.network == "public"
         if use_netns and "--rootless" in args:
             # runsc runs as mapped root inside the holder's user namespace;
@@ -594,6 +709,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _get_metadata_or_raise(self, sandbox_id: str) -> Dict:
         if sandbox_id not in self._sandbox_metadata:
             raise SandboxNotFoundError(f"Sandbox ID '{sandbox_id}' not found.")
+        reason = self.get_termination_reason(sandbox_id)
+        if reason is not None:
+            raise SandboxError(reason)
         return self._sandbox_metadata[sandbox_id]
 
     def _pull_and_extract_image(self, image: str) -> str:
