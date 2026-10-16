@@ -12,6 +12,7 @@ pyo3_extension(
 # providers); see ray_probe_ext_deps_test below for the deps form.
 py_test(
     name = "ray_probe_ext_test",
+    tags = ["team:core"],
     srcs = ["ray_probe_ext_test.py"],
     data = [":ray_probe_ext"],
 )
@@ -20,6 +21,7 @@ py_test(
 # systems), the extension is an ordinary deps edge.
 py_test(
     name = "ray_probe_ext_deps_test",
+    tags = ["team:core"],
     srcs = ["ray_probe_ext_deps_test.py"],
     deps = [":ray_probe_ext"],
 )
