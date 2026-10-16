@@ -1,7 +1,12 @@
+import contextlib
+import ctypes
 import os
+import signal
 import socket
+import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -566,14 +571,18 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert cmd[:2] == ["bash", "-c"]
     script = cmd[2]
 
+    # The shell stays the parent of every helper and reaps them as it exits.
     assert script.startswith(
+        "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
+        "setpriv --pdeathsig KILL -- "
         "unshare --user --map-root-user --net --fork --kill-child "
     )
-    assert script.endswith("run --bundle /tmp/rd sb-1")
+    assert script.endswith("run --bundle /tmp/rd sb-1 & wait $!")
     for fragment in (
         "/tmp/rd/netns.pid",
         # slirp4netns stays in the sandbox's process group and its ready
         # file, written once the tap is configured, gates the runsc start.
+        "setpriv --pdeathsig KILL -- "
         "slirp4netns --configure --cidr=198.18.0.0/24 --mtu=65520 --disable-host-loopback "
         "--disable-dns --enable-seccomp --ready-fd=3 "
         "--netns-type=path /proc/$NSPID/ns/net tap0 "
@@ -584,7 +593,8 @@ def test_build_run_command_public_wraps_with_slirp4netns():
         # empty NSPID (which would resolve to /proc//ns/net).
         "kill -0 $HOLDER",
         '[ -n "$NSPID" ]',
-        "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc",
+        "nsenter --preserve-credentials -U -n -t $NSPID -- "
+        "setpriv --pdeathsig KILL -- runsc",
         "--network host",
     ):
         assert fragment in script, fragment
@@ -618,21 +628,48 @@ def test_build_run_command_other_modes_unwrapped(network, rootless):
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
 
 
-def test_create_sandbox_requires_slirp4netns(monkeypatch):
-    """A missing slirp4netns fails fast, before the image pull, with remediation."""
+@pytest.mark.parametrize("binary", ["slirp4netns", "nsenter", "setpriv"])
+def test_create_sandbox_requires_netns_binaries(monkeypatch, binary):
+    """A missing helper fails fast, before the image pull, with remediation."""
 
     class _NoPullImageManager:
         def pull_image(self, *args, **kwargs):
-            raise AssertionError("image pull must not run when slirp4netns is missing")
+            raise AssertionError(f"image pull must not run when {binary} is missing")
 
     monkeypatch.setattr(
         "ray.experimental.sandbox.backend.gvisor.shutil.which",
-        lambda name: None if name == "slirp4netns" else f"/usr/bin/{name}",
+        lambda name: None if name == binary else f"/usr/bin/{name}",
     )
     backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
     with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(_public_config())
-    assert "slirp4netns" in str(err.value)
+    assert binary in str(err.value)
+
+
+def test_terminate_tree_kills_the_group_only_before_reaping_it(monkeypatch):
+    """Once the launch process is reaped, its pid, which is the group id, can
+    go to an unrelated process group. A launch process that exits on its own
+    leaves an empty group, so teardown kills the group only for one that
+    hangs, and before it reaps that one."""
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor._TREE_EXIT_GRACE_SECONDS", 0.2
+    )
+    exits = subprocess.Popen(["true"], start_new_session=True)
+    hangs = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    killed = []
+    killpg = os.killpg
+
+    def recording_killpg(pgid, sig):
+        # A return code means the Popen has reaped the group's leader.
+        killed.append((pgid, (exits if pgid == exits.pid else hangs).returncode))
+        killpg(pgid, sig)
+
+    monkeypatch.setattr(os, "killpg", recording_killpg)
+    backend = GVisorSandboxBackend()
+    backend._terminate_tree(exits)
+    backend._terminate_tree(hangs)
+    assert killed == [(hangs.pid, None)]
+    assert (exits.returncode, hangs.returncode) == (0, -signal.SIGKILL)
 
 
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
@@ -705,6 +742,123 @@ def test_netns_teardown_reaps_slirp4netns(ensure_slirp4netns):
     assert _slirp4netns_pids() == before
     assert not os.path.exists(meta["root_dir"])
     assert sb not in backend._sandbox_metadata
+
+
+_PR_SET_CHILD_SUBREAPER = 36
+
+
+def _stat(pid) -> tuple:
+    """(state, ppid, comm) of a process, or None once it's fully gone."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return None
+    comm = stat[stat.index("(") + 1 : stat.rindex(")")]
+    state, ppid = stat[stat.rindex(")") + 2 :].split()[:2]
+    return state, int(ppid), comm
+
+
+def _zombie_children() -> dict:
+    """{pid: comm} of this process's zombie children."""
+    zombies = {}
+    for entry in Path("/proc").iterdir():
+        if entry.name.isdigit():
+            info = _stat(entry.name)
+            if info and info[0] == "Z" and info[1] == os.getpid():
+                zombies[int(entry.name)] = info[2]
+    return zombies
+
+
+@contextlib.contextmanager
+def _subreaper():
+    """Adopt orphaned descendants of this test process.
+
+    Whatever the container's init does with orphans, a helper the backend
+    fails to reap then shows up as this process's zombie. The context reaps
+    them on exit.
+    """
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(_PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0) != 0:
+        pytest.skip("prctl(PR_SET_CHILD_SUBREAPER) isn't available")
+    try:
+        yield
+    finally:
+        libc.prctl(_PR_SET_CHILD_SUBREAPER, 0, 0, 0, 0)
+        for pid in _zombie_children():
+            os.waitpid(pid, os.WNOHANG)
+
+
+def _netns_helpers(root_dir: str) -> dict:
+    """{pid: comm} of a public sandbox's namespace holder and slirp4netns."""
+    nspid = int(Path(root_dir, "netns.pid").read_text())
+    helpers = {nspid: "sleep", _stat(nspid)[1]: "unshare"}
+    for entry in Path("/proc").iterdir():
+        try:
+            argv = (entry / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if os.path.basename(argv[0]) == b"slirp4netns" and (
+            f"/proc/{nspid}/ns/net".encode() in argv
+        ):
+            helpers[int(entry.name)] = "slirp4netns"
+    return helpers
+
+
+def test_netns_teardown_leaves_no_zombies(ensure_slirp4netns):
+    """The launch shell reaps the holder and slirp4netns. When it exec'd
+    runsc, they outlived their parent and became zombies of the pod's init."""
+    backend = GVisorSandboxBackend()
+    with _subreaper():
+        before = _zombie_children()
+        for _ in range(3):
+            sb = backend.create_sandbox(_public_config())
+            helpers = _netns_helpers(backend._sandbox_metadata[sb]["root_dir"])
+            assert sorted(helpers.values()) == ["sleep", "slirp4netns", "unshare"]
+            backend.delete_sandbox(sb)
+            assert all(_stat(pid) is None for pid in helpers), helpers
+        assert _zombie_children() == before
+
+
+def test_netns_launch_shell_death_stops_the_sandbox(ensure_slirp4netns):
+    """Ray kills a dead worker's child processes, which for a public sandbox
+    is only the launch shell. Everything the shell started must die with it."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(_public_config())
+    meta = backend._sandbox_metadata[sb]
+    try:
+        with _subreaper():
+            helpers = _netns_helpers(meta["root_dir"])
+            sandbox_pids = [
+                int(entry.name)
+                for entry in Path("/proc").iterdir()
+                if entry.name.isdigit()
+                and sb.encode() in _cmdline(entry)
+                and int(entry.name) != meta["proc"].pid
+            ]
+            assert sandbox_pids
+            os.kill(meta["proc"].pid, signal.SIGKILL)
+            meta["proc"].wait()
+            deadline = time.monotonic() + 10
+            alive = None
+            while time.monotonic() < deadline:
+                alive = {
+                    pid
+                    for pid in [*helpers, *sandbox_pids]
+                    if (_stat(pid) or ("Z",))[0] != "Z"
+                }
+                if not alive:
+                    break
+                time.sleep(0.2)
+            assert not alive, alive
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def _cmdline(entry: Path) -> bytes:
+    try:
+        return (entry / "cmdline").read_bytes()
+    except OSError:
+        return b""
 
 
 _UDP_CLIENT = r"""

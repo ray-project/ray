@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 # sandbox must agree on this, otherwise the container cannot be looked up.
 _RUNSC_ROOT = "/tmp/runsc"
 
+# How long teardown waits for a sandbox's launch process to exit on its own
+# after the container stops, before it kills the process group.
+_TREE_EXIT_GRACE_SECONDS = 2.0
+
 # Directory for sandbox bundles, cached container images, and per-sandbox
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
@@ -103,7 +107,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         if config.network == "public":
-            missing = [b for b in ("slirp4netns", "nsenter") if not shutil.which(b)]
+            missing = [
+                b for b in ("slirp4netns", "nsenter", "setpriv") if not shutil.which(b)
+            ]
             if missing:
                 raise SandboxCreationError(
                     "network='public' isolates each sandbox in its own network "
@@ -231,9 +237,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
                 time.sleep(0.1)
         except Exception:
-            # Delete runsc's container state, then kill the whole group:
-            # under slirp4netns, a bare proc.kill() would orphan the namespace
-            # holder and slirp4netns.
+            # Delete runsc's container state, then stop the launch process
+            # and everything it started.
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
@@ -274,9 +279,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
             self._delete_container_state(config, sandbox_id)
 
-            # Always take the whole group: after `runsc run` exits, the
-            # namespace holder and slirp4netns (network="public") are still alive
-            # in it.
+            # After `runsc run` exits, a network="public" sandbox's launch
+            # shell still stops and reaps the namespace holder and slirp4netns.
             if proc:
                 self._terminate_tree(proc)
 
@@ -544,8 +548,17 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
             script = (
+                # This shell stays the parent of the holder, slirp4netns and
+                # runsc, and its exit trap kills and reaps the helpers. When it
+                # exec'd runsc instead, the helpers outlived their parent and
+                # became zombies of the pod's init, which often never reaps
+                # them. Killing the holder's sleep (NSPID) lets unshare reap it.
+                "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
+                # setpriv --pdeathsig kills each child with this shell, which
+                # is what Ray kills when the owning worker exits.
                 # The holder pins the namespaces for the sandbox's lifetime;
                 # --kill-child ties it to this script's process group.
+                "setpriv --pdeathsig KILL -- "
                 "unshare --user --map-root-user --net --fork --kill-child "
                 f"bash -c 'echo $$ > {netns_pidfile}; exec sleep infinity' & "
                 "HOLDER=$!; "
@@ -559,30 +572,41 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 # foreground, so it lives and dies with this process group.
                 # It writes "1" to --ready-fd once the tap is configured:
                 # that is the go signal.
-                f"{slirp} --ready-fd=3 --netns-type=path "
+                f"setpriv --pdeathsig KILL -- {slirp} --ready-fd=3 --netns-type=path "
                 "/proc/$NSPID/ns/net tap0 --userns-path /proc/$NSPID/ns/user "
                 f"3>{ready_file} & "
                 "SLIRP=$!; "
                 f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
                 "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
-                f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
+                "nsenter --preserve-credentials -U -n -t $NSPID -- "
+                f"setpriv --pdeathsig KILL -- {runsc} & "
+                "wait $!"
             )
             return ["bash", "-c", script]
         return args
 
     def _terminate_tree(self, proc: subprocess.Popen) -> None:
-        """SIGKILL the sandbox process group and reap the Popen.
+        """Reap the launch process, and SIGKILL its process group if it hangs.
 
         The run Popen is started with ``start_new_session=True``, so its pid
-        is the group id for the namespace holder, slirp4netns, runsc run, and the
-        sandbox process.
+        is the group id for the namespace holder, slirp4netns and runsc run;
+        runsc starts the sandbox and gofer in sessions of their own. Callers
+        stop the container first, so the launch process normally exits on its
+        own and leaves an empty group: the launch shell of a network="public"
+        sandbox reaps its helpers first. Killing the group before that would
+        orphan them.
         """
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            if proc.poll() is None:
-                proc.kill()
+            proc.wait(timeout=_TREE_EXIT_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            # Only while the launch process is unreaped: once it's reaped,
+            # its pid, the group id, can go to an unrelated process group.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                if proc.poll() is None:
+                    proc.kill()
         try:
             proc.communicate(timeout=2)
         except (subprocess.TimeoutExpired, ValueError):
