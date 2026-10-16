@@ -19,6 +19,9 @@ py_test(
         "//doc:doc_source_modules",
         "//doc:source/_ext/api_sidebar.py",
     ],
+    # rules_python >= 1.0 runs py_test with PYTHONSAFEPATH on Python >= 3.11, so the
+    # test's own directory is no longer on sys.path; it imports a sibling module.
+    imports = ["."],
     tags = [
         "ci_unit",
         "team:ci",

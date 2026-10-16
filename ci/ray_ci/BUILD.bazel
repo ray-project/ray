@@ -256,6 +256,9 @@ py_test(
     srcs = ["test_bazel_sharding.py"],
     data = ["mock_BUILD"],
     exec_compatible_with = ["//bazel:py3"],
+    # rules_python >= 1.0 runs py_test with PYTHONSAFEPATH on Python >= 3.11, so the
+    # test's own directory is no longer on sys.path; it imports a sibling module.
+    imports = ["."],
     tags = [
         "ci_unit",
         "team:ci",
