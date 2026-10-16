@@ -1182,6 +1182,20 @@ class Quantile(VectorizedAggregateFnV2[List[Any], List[Any]]):
         return BlockColumnAccessor.for_column(accumulator_col).flatten()
 
 
+def _to_hashable(value: Any) -> Any:
+    """Make a list-like value usable as a set member or dict key.
+
+    Lists, tuples and arrays become tuples; anything else is returned as is.
+    """
+    return tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else value
+
+
+# Errors that mean the vectorized path is unavailable for a column's type:
+# Arrow has no kernel for it (e.g. extension types such as tensors), or it
+# needs the optional `polars` package (uniqueness of list-typed columns).
+_PYTHON_FALLBACK_ERRORS = (pa.ArrowNotImplementedError, ImportError)
+
+
 @PublicAPI
 class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
     """Defines unique aggregation.
@@ -1213,6 +1227,11 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
             whole lists (i.e., the entire list is considered as a single object).
             `False` by default. Note that this is a top-level flatten (not a recursive
             flatten) operation.
+
+    Values that the vectorized path can't handle (column types without an
+    Arrow ``unique`` kernel, such as tensors, or list-typed columns when the
+    optional ``polars`` package isn't installed) are collected in Python
+    instead; lists and arrays become tuples.
     """
 
     class ListEncodingMode(str, enum.Enum):
@@ -1287,7 +1306,12 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
         return column_accessor.unique()
 
     def aggregate_block(self, block: Block) -> AggType:
-        column = self._compute_unique(block)
+        try:
+            column = self._compute_unique(block)
+        except _PYTHON_FALLBACK_ERRORS:
+            if self._list_encoding_mode == Unique.ListEncodingMode.HASH:
+                raise
+            return self._unique_in_python(block)
 
         # Return column of unique values as is
         #
@@ -1295,6 +1319,22 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
         #       Arrow-compatible format (either ``pyarrow.Array`` or Python's ``list``)
         #       to make sure it's not converted into a tensor downstream
         return BlockColumnAccessor.for_column(column)._to_arrow_compatible_container()
+
+    def _unique_in_python(self, block: Block) -> List[Any]:
+        """Collect the unique values of a block when the vectorized path can't
+        handle the column's type. Lists and arrays become tuples."""
+        values = set()
+        column = BlockColumnAccessor.for_column(block[self._target_col_name])
+        for value in column.to_pylist():
+            if self._list_encoding_mode == Unique.ListEncodingMode.FLATTEN and (
+                isinstance(value, (list, np.ndarray))
+            ):
+                values.update(_to_hashable(element) for element in value)
+            else:
+                values.add(_to_hashable(value))
+        if self._ignore_nulls:
+            values = {value for value in values if not is_null(value)}
+        return list(self._normalize_nans(values))
 
     @staticmethod
     def _to_set(x):
@@ -1322,9 +1362,16 @@ class Unique(VectorizedAggregateFnV2[Set[Any], List[Any]]):
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
         column_accessor = BlockColumnAccessor.for_column(accumulator_col)
 
-        # Combine all the lists in a column into a single value (ie flatten it)
-        flattened = column_accessor.flatten()
-        return BlockColumnAccessor.for_column(flattened).unique()
+        try:
+            # Combine all the lists in a column into a single value (ie flatten it)
+            flattened = column_accessor.flatten()
+            return BlockColumnAccessor.for_column(flattened).unique()
+        except _PYTHON_FALLBACK_ERRORS:
+            merged = set()
+            for partial in column_accessor.to_pylist():
+                if partial is not None:
+                    merged.update(_to_hashable(value) for value in partial)
+            return list(self._normalize_nans(merged))
 
 
 @PublicAPI
@@ -2106,7 +2153,9 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
             #       missing rows can be None, NaN or pd.NA depending on the block
             #       type - none of which is iterable.
             counter = collections.Counter(
-                tuple(value) if isinstance(value, (list, tuple, np.ndarray)) else None
+                _to_hashable(value)
+                if isinstance(value, (list, tuple, np.ndarray))
+                else None
                 for value in accessor.to_pylist()
             )
             value_counts = {
@@ -2120,10 +2169,7 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
                 # Arrow has no `value_counts` kernel for this type (e.g. extension
                 # types such as tensors), so count in Python over hashable values.
                 counter = collections.Counter(
-                    tuple(value)
-                    if isinstance(value, (list, tuple, np.ndarray))
-                    else value
-                    for value in accessor.to_pylist()
+                    _to_hashable(value) for value in accessor.to_pylist()
                 )
                 value_counts = {
                     "values": list(counter.keys()),

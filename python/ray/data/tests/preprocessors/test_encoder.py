@@ -8,7 +8,6 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data.aggregate import Unique
 from ray.data.exceptions import UserCodeException
 from ray.data.preprocessor import (
     PreprocessorNotFittedException,
@@ -21,7 +20,6 @@ from ray.data.preprocessors import (
     OneHotEncoder,
     OrdinalEncoder,
 )
-from ray.data.preprocessors.encoder import _EncoderUnique
 
 
 # Helper functions for parameterized OrdinalEncoder tests
@@ -1710,20 +1708,17 @@ def test_encoders_fit_via_aggregation():
         pytest.param(lambda: OneHotEncoder(["t"]), id="OneHotEncoder"),
     ],
 )
-def test_whole_list_categories_across_multiple_partial_aggregates(make_encoder):
+def test_whole_list_categories_across_multiple_partial_aggregates(
+    make_encoder, restore_data_context
+):
     """With whole-list categories, partial aggregates from different blocks must
     merge into whole lists, not into their inner elements."""
-    ctx = ray.data.DataContext.get_current()
-    original = ctx.shuffle_input_batch_bytes
     # One partial aggregate per block (Ray otherwise batches small inputs together).
-    ctx.shuffle_input_batch_bytes = 1
-    try:
-        lists = [["a", "b"], ["a", "b"], ["c"], ["a", "b"], ["d", "e"], ["c"]] * 3
-        ds = ray.data.from_items([{"t": v} for v in lists], override_num_blocks=6)
+    restore_data_context.shuffle_input_batch_bytes = 0
+    lists = [["a", "b"], ["a", "b"], ["c"], ["a", "b"], ["d", "e"], ["c"]] * 3
+    ds = ray.data.from_items([{"t": v} for v in lists], override_num_blocks=6)
 
-        encoder = make_encoder().fit(ds)
-    finally:
-        ctx.shuffle_input_batch_bytes = original
+    encoder = make_encoder().fit(ds)
 
     stats = encoder.stats_["unique_values(t)"]
     categories = {tuple(cat): idx for cat, idx in stats.items()}
@@ -1755,21 +1750,16 @@ def test_whole_list_categories_across_multiple_partial_aggregates(make_encoder):
         ),
     ],
 )
-def test_encoders_fit_tensor_columns(make_encoder, expected):
+def test_encoders_fit_tensor_columns(make_encoder, expected, restore_data_context):
     """Arrow has no `unique`/`value_counts` kernel for extension types such as
     tensors, but the encoders have always accepted a column of arrays, treating
     each array as one category."""
-    ctx = ray.data.DataContext.get_current()
-    original = ctx.shuffle_input_batch_bytes
     # One partial aggregate per block (Ray otherwise batches small inputs together).
-    ctx.shuffle_input_batch_bytes = 1
-    try:
-        arrays = [np.array([1, 2]), np.array([3, 4]), np.array([1, 2])]
-        ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+    restore_data_context.shuffle_input_batch_bytes = 0
+    arrays = [np.array([1, 2]), np.array([3, 4]), np.array([1, 2])]
+    ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
 
-        encoder = make_encoder().fit(ds)
-    finally:
-        ctx.shuffle_input_batch_bytes = original
+    encoder = make_encoder().fit(ds)
 
     stats = encoder.stats_["unique_values(t)"]
     assert {_as_python_ints(cat): idx for cat, idx in stats.items()} == expected
@@ -1781,41 +1771,49 @@ def _as_python_ints(category):
     return int(category)
 
 
+@pytest.mark.parametrize(
+    "make_encoder",
+    [
+        pytest.param(lambda: MultiHotEncoder(["c"]), id="MultiHotEncoder"),
+        pytest.param(lambda: OrdinalEncoder(["c"]), id="OrdinalEncoder"),
+    ],
+)
+def test_list_encoders_skip_null_rows(make_encoder):
+    """A missing row in a list column contributes no categories."""
+    rows = [["a"], None, ["a", "b"]]
+    ds = ray.data.from_items([{"c": r} for r in rows], override_num_blocks=1)
+
+    encoder = make_encoder().fit(ds)
+
+    assert encoder.stats_["unique_values(c)"] == {"a": 0, "b": 1}
+
+
 @pytest.mark.parametrize("polars_available", [True, False])
-def test_encoder_unique_merge_keeps_whole_categories(monkeypatch, polars_available):
-    """Merging per-block partials keeps array/list categories whole, both on the
-    vectorized path (which needs polars) and on the Python fallback."""
+def test_whole_list_encoders_fit_with_and_without_polars(monkeypatch, polars_available):
+    """Whole-list categories stay whole, both when the vectorized path (which
+    needs the optional `polars` package) collects and merges them and when the
+    Python fallback does (used without `polars`)."""
     if polars_available:
         pytest.importorskip("polars")
     else:
         monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
-    # One row per block, each a list of whole-array categories; a null row is an
-    # empty group.
-    partials = pa.chunked_array([pa.array([[(1, 2), (3, 4)], [(1, 2)], None])])
-
-    merged = _EncoderUnique(on="t", ignore_nulls=False)._combine_column(partials)
-
-    values = merged.to_pylist() if isinstance(merged, pa.Array) else merged
-    assert {tuple(value) for value in values} == {(1, 2), (3, 4)}
-
-
-def test_whole_list_encoders_fit_without_polars(monkeypatch):
-    """Arrow's uniqueness of a list-typed column needs the optional `polars`
-    package; the encoders must not."""
-    monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
-    table = pa.table({"t": [["a", "b"], ["c"], ["a", "b"]]})
-    with pytest.raises(ImportError):
-        Unique(on="t").aggregate_block(table)
-
     encoder = OneHotEncoder(["t"])
     encoder._fit(None)
     (spec,) = list(encoder._stat_computation_plan)
     aggregator = spec.stat_fn
+    table = pa.table({"t": [["a", "b"], ["c"], ["a", "b"]]})
 
-    partials = [aggregator.aggregate_block(table), aggregator.aggregate_block(table)]
-    merged = aggregator._combine_column(pa.chunked_array([pa.array(partials)]))
+    partials = [_to_pylist(aggregator.aggregate_block(table)) for _ in range(2)]
+    # A null row stands for an empty group.
+    merged = aggregator._combine_column(pa.chunked_array([pa.array(partials + [None])]))
 
-    assert {tuple(category) for category in merged} == {("a", "b"), ("c",)}
+    assert {tuple(category) for category in _to_pylist(merged)} == {("a", "b"), ("c",)}
+
+
+def _to_pylist(values):
+    if isinstance(values, (pa.Array, pa.ChunkedArray)):
+        return values.to_pylist()
+    return values
 
 
 if __name__ == "__main__":

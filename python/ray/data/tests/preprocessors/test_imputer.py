@@ -632,20 +632,6 @@ def test_most_frequent_fits_via_aggregation():
     assert imputer.stats_ == {"most_frequent(A)": "a"}
 
 
-def test_most_frequent_never_imputes_null():
-    """Nulls never win the frequency contest, even when most common.
-
-    An Arrow-backed column reports nulls as `value_counts` entries, so without
-    filtering, a mostly-null column would be "imputed" with null.
-    """
-    ds = ray.data.from_items(
-        [{"A": None}, {"A": None}, {"A": None}, {"A": "a"}, {"A": "a"}, {"A": "b"}]
-    )
-    imputer = SimpleImputer(["A"], strategy="most_frequent")
-    imputer.fit(ds)
-    assert imputer.stats_ == {"most_frequent(A)": "a"}
-
-
 def test_most_frequent_deterministic_tiebreak():
     """Among equally frequent values, the smallest wins."""
     ds = ray.data.from_items(
@@ -673,6 +659,9 @@ def test_most_frequent_deterministic_tiebreak():
         pytest.param(
             np.array([np.nan] * 6 + [1, 1, 2], dtype=np.float64), 1.0, id="float64_nan"
         ),
+        pytest.param(
+            pd.Series([None] * 3 + ["a", "a", "b"], dtype=object), "a", id="object_none"
+        ),
     ],
 )
 def test_most_frequent_ignores_null_sentinels(column, expected):
@@ -685,20 +674,15 @@ def test_most_frequent_ignores_null_sentinels(column, expected):
     assert imputer.stats_["most_frequent(x)"] == expected
 
 
-def test_most_frequent_across_multiple_partial_aggregates():
+def test_most_frequent_across_multiple_partial_aggregates(restore_data_context):
     """The most frequent value is chosen from counts summed across blocks."""
-    ctx = ray.data.DataContext.get_current()
-    original = ctx.shuffle_input_batch_bytes
     # One partial aggregate per block (Ray otherwise batches small inputs together).
-    ctx.shuffle_input_batch_bytes = 1
-    try:
-        # "c" is never the top value of a single block but is the top overall.
-        values = ["a"] * 4 + ["c"] * 3 + ["b"] * 4 + ["c"] * 3 + ["a"] * 4 + ["c"] * 3
-        ds = ray.data.from_items([{"x": v} for v in values], override_num_blocks=3)
+    restore_data_context.shuffle_input_batch_bytes = 0
+    # "c" is never the top value of a single block but is the top overall.
+    values = ["a"] * 4 + ["c"] * 3 + ["b"] * 4 + ["c"] * 3 + ["a"] * 4 + ["c"] * 3
+    ds = ray.data.from_items([{"x": v} for v in values], override_num_blocks=3)
 
-        imputer = SimpleImputer(["x"], strategy="most_frequent").fit(ds)
-    finally:
-        ctx.shuffle_input_batch_bytes = original
+    imputer = SimpleImputer(["x"], strategy="most_frequent").fit(ds)
 
     assert imputer.stats_ == {"most_frequent(x)": "c"}
 
