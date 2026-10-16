@@ -56,6 +56,7 @@ class SandboxRuntime:
         rootless: bool = True,
         network: str = "none",
         dns: Optional[List[str]] = None,
+        cidr_allowlist: Optional[List[str]] = None,
         capabilities: Optional[List[str]] = None,
         readonly: bool = True,
         _oci_spec_transform_fn: Optional[Callable[[Dict], Optional[Dict]]] = None,
@@ -83,6 +84,13 @@ class SandboxRuntime:
                 "public" is the recommended internet-access mode.
             dns: Optional nameserver IPs for the generated /etc/resolv.conf
                 (public resolvers by default for "public").
+            cidr_allowlist: Optional egress allowlist for network="public":
+                only the listed IPv4/IPv6 networks are reachable (plus DNS
+                to the ``dns`` resolvers). None means the public internet
+                only, and the cluster's control plane stays closed whatever
+                the list says; see
+                :class:`~ray.experimental.sandbox.config.SandboxConfig`.
+                Change it later with :meth:`set_egress_allowlist`.
             capabilities: Linux capabilities, written exactly (None keeps
                 the runtime default; ``[]`` means none). Use
                 ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
@@ -111,6 +119,7 @@ class SandboxRuntime:
             rootless=rootless,
             network=network,
             dns=dns,
+            cidr_allowlist=cidr_allowlist,
             capabilities=capabilities,
             readonly=readonly,
             _oci_spec_transform_fn=_oci_spec_transform_fn,
@@ -278,6 +287,20 @@ class SandboxRuntime:
             SandboxStatus of the sandbox instance.
         """
         return self._backend.get_status(instance_id)
+
+    def set_egress_allowlist(self, instance_id: str, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of a network="public" sandbox.
+
+        The new list takes effect for the next packet of every flow; flows
+        it no longer permits stall rather than being reset. No list opens
+        the cluster's control plane; ``ALLOW_ALL_CIDRS`` opens everything
+        else, private networks included.
+
+        Args:
+            instance_id: Unique identifier of the sandbox instance.
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
+        """
+        self._backend.set_egress_allowlist(instance_id, cidrs)
 
     def delete(self, instance_id: str) -> None:
         """Clean up and terminate the sandbox instance.

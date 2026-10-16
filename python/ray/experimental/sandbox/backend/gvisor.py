@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import logging
 import os
@@ -5,16 +6,28 @@ import shlex
 import shutil
 import signal
 import subprocess
+import tempfile
+import threading
 import time
 import uuid
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from ray.experimental.sandbox._internal import egress_guard
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import (
+    DEFAULT_PUBLIC_ALLOWLIST,
+    DEFAULT_PUBLIC_DNS,
+    INTERNET,
+    INTERNET_EXCLUDED_IPV4,
+    INTERNET_IPV6,
+    SandboxConfig,
+    normalize_cidr_allowlist,
+    parse_cidr_allowlist_entry,
+)
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
@@ -50,10 +63,42 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # flows from different sandboxes can never share a host socket (pasta, which
 # preserves UDP source ports with SO_REUSEADDR, delivered one sandbox's
 # replies to another when their source ports collided). It relays through
-# the pod's own sockets, so the sandbox can reach any address the pod can
-# reach: other Ray nodes (including the head node's GCS and dashboard),
-# other pods, and internal services. There is no destination filter;
-# network="none" remains the boundary for untrusted code.
+# the pod's own sockets, so on its own the sandbox could reach any address
+# the pod can reach: other Ray nodes (including the head node's GCS and
+# dashboard), other pods, internal services, the Kubernetes API, and cloud
+# instance metadata. A pod-level NetworkPolicy can't tell those flows from
+# the worker's own.
+#
+# An nftables ruleset in the sandbox's network namespace (see
+# _render_egress_ruleset) closes that, for every network="public" sandbox.
+# It drops each locally generated packet bound for the control-plane guard
+# (egress_guard: instance metadata, loopback, the Kubernetes API, this
+# worker's and every Ray node's addresses) or outside cidr_allowlist, which
+# defaults to the public internet, before it reaches the tap. It is
+# installed from the pod side, between slirp4netns coming up and runsc
+# starting, and a failed install aborts the start.
+#
+# Why nftables inside the sandbox netns is the right enforcement point:
+# Inside the sandbox's private user + net namespace, the host-side launch
+# script has CAP_NET_ADMIN over that child network namespace (without
+# needing CAP_NET_ADMIN on the Kubernetes worker pod itself).
+#
+# runsc runs inside that child netns with --network=host. That means
+# gVisor's hostinet creates real Linux kernel AF_INET/AF_INET6 sockets
+# inside the child netns, so every packet from the sandbox passes through
+# the Linux kernel's nf_tables output chain before reaching slirp4netns's
+# tap0.
+#
+# Why sandbox code cannot tamper with the rules (even with CAP_NET_ADMIN):
+# gVisor's Sentry intercepts all syscalls inside the sandbox. Even if the
+# container process has CAP_NET_ADMIN or CAP_NET_RAW, gVisor's hostinet
+# (without --net-raw) never forwards AF_NETLINK (NETLINK_NETFILTER /
+# NETLINK_ROUTE) or AF_PACKET sockets to the host kernel. Running nft flush
+# ruleset or iptables -F inside the sandbox talks only to gVisor's internal
+# Sentry stub, never touching the host kernel netns where the rules live.
+#
+# The output hook is interface-independent, so added routes or addresses do
+# not bypass it either.
 #
 # These flags are the isolation property; tests pin the exact list:
 #   --configure              bring the tap up: network + 100, gateway + 2.
@@ -77,6 +122,239 @@ _SLIRP4NETNS_FLAGS = [
     "--disable-dns",
     "--enable-seccomp",
 ]
+
+# The egress allowlist ruleset lives in the sandbox's root_dir and is loaded
+# with `nft -f` inside the sandbox's network namespace.
+_EGRESS_RULES_FILE = "egress.nft"
+_EGRESS_TABLE = "ray_sandbox_egress"
+
+# The namespaces set_egress_allowlist enters to reload the ruleset.
+_EGRESS_NAMESPACES = ("user", "net")
+
+
+def _namespace_ids(pid: int) -> Optional[List[Tuple[int, int]]]:
+    """Identify the user and network namespaces of a process.
+
+    A namespace's identity is the ``(st_dev, st_ino)`` of its nsfs inode,
+    which stays the same for the namespace's whole life.
+
+    Args:
+        pid: The process.
+
+    Returns:
+        One identity per ``_EGRESS_NAMESPACES`` entry, or None if ``pid`` is
+        gone or its namespaces can't be read.
+    """
+    try:
+        stats = [os.stat(f"/proc/{pid}/ns/{ns}") for ns in _EGRESS_NAMESPACES]
+    except OSError:
+        return None
+    return [(st.st_dev, st.st_ino) for st in stats]
+
+
+def _holder_namespace_ids(root_dir: str) -> Optional[List[Tuple[int, int]]]:
+    """Identify the namespaces of the holder named in ``root_dir``'s netns.pid.
+
+    Called right after the sandbox starts, while that holder runs its
+    network. A holder never shares this process's user or network
+    namespace, so a pid that does isn't the holder.
+
+    Args:
+        root_dir: The sandbox's per-instance directory.
+
+    Returns:
+        The holder's namespaces, as ``_namespace_ids`` gives them, or None.
+    """
+    try:
+        with open(os.path.join(root_dir, "netns.pid"), encoding="utf-8") as f:
+            pid = f.read().strip()
+    except OSError:
+        return None
+    ids = _namespace_ids(int(pid)) if pid.isdigit() else None
+    own = _namespace_ids(os.getpid())
+    if ids is None or own is None or any(a == b for a, b in zip(ids, own)):
+        return None
+    return ids
+
+
+def _open_holder_namespaces(
+    root_dir: str, expected: Optional[List[Tuple[int, int]]]
+) -> Optional[List[int]]:
+    """Open the namespaces of the holder named in ``root_dir``'s netns.pid.
+
+    Once the holder exits, its pid can be reused by any process, such as
+    another sandbox's holder. So the namespaces found there must be the
+    ones in ``expected``, and the caller enters them through the returned
+    fds rather than the pid, which could be reused again after this check.
+
+    Args:
+        root_dir: The sandbox's per-instance directory.
+        expected: The sandbox's namespaces, from ``_namespace_ids``.
+
+    Returns:
+        Open fds, one per ``_EGRESS_NAMESPACES`` entry, that the caller
+        closes; or None if the holder is gone or not in those namespaces.
+    """
+    fds: List[int] = []
+    try:
+        with open(os.path.join(root_dir, "netns.pid"), encoding="utf-8") as f:
+            pid = f.read().strip()
+        if pid.isdigit() and expected is not None:
+            for ns in _EGRESS_NAMESPACES:
+                fds.append(os.open(f"/proc/{pid}/ns/{ns}", os.O_RDONLY))
+            if [(st.st_dev, st.st_ino) for st in map(os.fstat, fds)] == expected:
+                return fds
+    except OSError:
+        pass
+    for fd in fds:
+        os.close(fd)
+    return None
+
+
+def _render_egress_ruleset(
+    cidrs: List[str],
+    dns_servers: List[str],
+    *,
+    denied: List[str],
+    cluster: List[str],
+) -> str:
+    """Render the nftables ruleset that restricts a sandbox's egress to ``cidrs``.
+
+    The ruleset is one transaction: ``flush ruleset`` (the namespace is
+    private to the sandbox, so this only ever clears this sandbox's own
+    rules) followed by a single ``inet`` table whose output chain drops by
+    default. Its rules run in this order:
+
+    1. Loopback (the sandbox's own) and DNS, UDP and TCP port 53, to the
+       sandbox's resolvers: accepted.
+    2. ``denied``: dropped, so no allowlist entry opens it.
+    3. Entries naming one address and its ports (``10.0.3.7/32:8000``):
+       accepted, ahead of the next rule.
+    4. ``cluster``: dropped.
+    5. The other entries: accepted. An entry with ports accepts only those
+       TCP and UDP ports, and ``internet`` accepts every address outside the
+       non-public IPv4 networks plus IPv6 global unicast.
+
+    Plain prefix matches, anonymous sets, and a numeric hook priority keep it
+    valid on every nft from 0.9 on, and nothing depends on conntrack, so only
+    nf_tables itself is needed in the kernel.
+
+    Args:
+        cidrs: Allowed destination networks (IPv4 or IPv6, any form
+            ``normalize_cidr_allowlist`` accepts).
+        dns_servers: Resolver addresses the generated resolv.conf lists.
+        denied: Networks no entry opens (``egress_guard.always_denied``).
+        cluster: The Ray cluster's addresses, which only pinned entries
+            open (``egress_guard.cluster_addresses``).
+
+    Returns:
+        The ruleset text, ready for ``nft -f``.
+
+    Raises:
+        ValueError: If an entry is not an IP address or network.
+    """
+    lines = [
+        "flush ruleset",
+        f"table inet {_EGRESS_TABLE} {{",
+        "    chain output {",
+        "        type filter hook output priority 0; policy drop;",
+        '        oif "lo" accept',
+    ]
+    for server in dns_servers:
+        try:
+            address = ipaddress.ip_address(str(server).strip())
+        except ValueError:
+            raise ValueError(
+                f"dns entry {server!r} is not an IP address; network='public' "
+                "needs resolver addresses to keep DNS reachable"
+            ) from None
+        family = "ip6" if address.version == 6 else "ip"
+        for proto in ("udp", "tcp"):
+            lines.append(f"        {family} daddr {address} {proto} dport 53 accept")
+
+    def drop(networks: List[str]) -> None:
+        for family, members in zip(("ip", "ip6"), egress_guard.collapse(networks)):
+            if members:
+                lines.append(f"        {family} daddr {{ {', '.join(members)} }} drop")
+
+    pinned, others = [], []
+    for entry in normalize_cidr_allowlist(cidrs):
+        destination, ports = parse_cidr_allowlist_entry(entry)
+        if destination != INTERNET:
+            network = ipaddress.ip_network(destination)
+            if ports is not None and network.prefixlen == network.max_prefixlen:
+                pinned.append((destination, ports))
+                continue
+        others.append((destination, ports))
+
+    def accept(destination: str, ports: Optional[str]) -> None:
+        if destination == INTERNET:
+            matches = [
+                " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4),
+                f"ip6 daddr {INTERNET_IPV6}",
+            ]
+        else:
+            family = "ip6" if ipaddress.ip_network(destination).version == 6 else "ip"
+            matches = [f"{family} daddr {destination}"]
+        for match in matches:
+            if ports is None:
+                lines.append(f"        {match} accept")
+            else:
+                for proto in ("tcp", "udp"):
+                    lines.append(f"        {match} {proto} dport {ports} accept")
+
+    drop(denied)
+    for destination, ports in pinned:
+        accept(destination, ports)
+    drop(cluster)
+    for destination, ports in others:
+        accept(destination, ports)
+    lines.extend(["    }", "}", ""])
+    return "\n".join(lines)
+
+
+def _write_egress_ruleset(
+    root_dir: str, cidrs: List[str], dns: Optional[List[str]]
+) -> str:
+    """Write the egress ruleset for ``cidrs`` into ``root_dir`` atomically.
+
+    The control-plane guard is looked up afresh, so each write also picks
+    up Ray nodes that joined since the last one.
+
+    Args:
+        root_dir: The sandbox's per-instance directory.
+        cidrs: Allowed destination networks.
+        dns: The sandbox's ``dns`` setting; None means the public defaults,
+            the same rule the generated resolv.conf follows.
+
+    Returns:
+        The path of the written ruleset.
+
+    Raises:
+        Exception: If the guard can't be determined (for example, GCS
+            doesn't answer) or the file can't be written. Nothing is
+            written then.
+    """
+    resolvers = list(dns) if dns else list(DEFAULT_PUBLIC_DNS)
+    text = _render_egress_ruleset(
+        cidrs,
+        resolvers,
+        denied=egress_guard.always_denied(),
+        cluster=egress_guard.cluster_addresses(),
+    )
+    path = os.path.join(root_dir, _EGRESS_RULES_FILE)
+    fd, tmp_path = tempfile.mkstemp(dir=root_dir, prefix=_EGRESS_RULES_FILE + ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    return path
 
 
 def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
@@ -103,15 +381,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 "Please install gVisor (runsc) on the node."
             )
         if config.network == "public":
-            missing = [b for b in ("slirp4netns", "nsenter") if not shutil.which(b)]
+            missing = [
+                b for b in ("slirp4netns", "nsenter", "nft") if not shutil.which(b)
+            ]
             if missing:
                 raise SandboxCreationError(
                     "network='public' isolates each sandbox in its own network "
-                    "namespace via slirp4netns, but "
+                    "namespace via slirp4netns and filters its egress with an "
+                    "nftables ruleset there, but "
                     f"{', '.join(repr(b) for b in missing)} was not found in "
                     "PATH. Install slirp4netns (distro package, or a static "
-                    "build from github.com/rootless-containers/slirp4netns) "
-                    "and util-linux on the node image."
+                    "build from github.com/rootless-containers/slirp4netns), "
+                    "util-linux, and nftables on the node image."
                 )
 
         sandbox_uuid = uuid.uuid4().hex[:12]
@@ -176,6 +457,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except Exception:
             self._image_manager.release_image(config.image, sandbox_id)
             raise
+        egress_allowlist = None
+        if config.network == "public":
+            egress_allowlist = list(
+                config.cidr_allowlist
+                if config.cidr_allowlist is not None
+                else DEFAULT_PUBLIC_ALLOWLIST
+            )
+            # Loaded by the run command inside the sandbox's network
+            # namespace once slirp4netns has brought the tap up.
+            try:
+                _write_egress_ruleset(root_dir, egress_allowlist, config.dns)
+            except Exception as err:
+                self._image_manager.release_image(config.image, sandbox_id)
+                raise SandboxCreationError(
+                    f"Failed to write the egress ruleset for '{root_dir}': {err}"
+                ) from err
         run_args = self._build_run_command(config, root_dir, sandbox_id)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
@@ -242,11 +539,25 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._image_manager.release_image(config.image, sandbox_id)
             raise
 
+        # The namespaces set_egress_allowlist must find behind netns.pid,
+        # read while the holder is known to run the sandbox's network.
+        netns_ids = (
+            _holder_namespace_ids(root_dir) if config.network == "public" else None
+        )
         self._sandbox_metadata[sandbox_id] = {
             "root_dir": root_dir,
             "workdir": workdir_path,
             "cwd": container_cwd,
             "config": config,
+            # The egress allowlist in force (None: not network="public");
+            # updated by set_egress_allowlist.
+            "egress_allowlist": egress_allowlist,
+            # Serializes set_egress_allowlist: the ruleset file, the nft
+            # load, and egress_allowlist must change together.
+            "egress_lock": threading.Lock(),
+            # The sandbox's user and network namespaces (None if unknown,
+            # which makes set_egress_allowlist refuse).
+            "netns_ids": netns_ids,
             # The process group leader whose tree holds the sandbox and,
             # for network="public", the namespace holder and slirp4netns.
             "proc": proc,
@@ -288,6 +599,101 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             shutil.rmtree(root_dir, ignore_errors=True)
             # Only now is the cached image unused.
             self._image_manager.release_image(config.image, sandbox_id)
+
+    def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of a running network="public" sandbox.
+
+        The sandbox's ruleset is already in place, so the update is one
+        atomic ``nft -f`` (flush and reinstall in a single transaction) run
+        inside the sandbox's own namespaces. They're entered through the
+        holder in netns.pid, but only once its namespaces match the ones
+        recorded at creation, and through fds rather than the reusable pid.
+        The control-plane guard is looked up again and reinstalled with the
+        list, so no list opens it. Flows the new list no longer permits are
+        not reset; they stall from their next packet on.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            cidrs: The new allowlist; ``ALLOW_ALL_CIDRS`` opens every
+                destination outside the guard.
+
+        Raises:
+            SandboxNotFoundError: If the sandbox is unknown.
+            SandboxError: If the sandbox isn't network="public", or the
+                ruleset could not be installed.
+            ValueError: If an entry is not an IP address or network.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        if meta.get("egress_allowlist") is None:
+            raise SandboxError(
+                f"Sandbox '{sandbox_id}' has no egress allowlist: only "
+                "network='public' sandboxes have one."
+            )
+        normalized = normalize_cidr_allowlist(cidrs)
+        config: SandboxConfig = meta["config"]
+        root_dir = meta["root_dir"]
+
+        # One update at a time per sandbox, so two overlapping updates can
+        # never leave one list loaded while the other is recorded.
+        with meta.setdefault("egress_lock", threading.Lock()):
+            rules_path = os.path.join(root_dir, _EGRESS_RULES_FILE)
+            try:
+                with open(rules_path, encoding="utf-8") as f:
+                    previous_rules = f.read()
+            except OSError:
+                previous_rules = None
+            # `flush ruleset` must only ever run inside the sandbox's own
+            # namespaces, never wherever a reused holder pid now points.
+            ns_fds = _open_holder_namespaces(root_dir, meta.get("netns_ids"))
+            if ns_fds is None:
+                raise SandboxError(
+                    f"Sandbox '{sandbox_id}' has lost its network namespace "
+                    "holder; cannot update its egress allowlist."
+                )
+            user_fd, net_fd = ns_fds
+            try:
+                try:
+                    _write_egress_ruleset(root_dir, normalized, config.dns)
+                except Exception as err:
+                    raise SandboxError(
+                        f"Failed to write the egress ruleset of sandbox "
+                        f"'{sandbox_id}': {err}"
+                    ) from err
+                proc = subprocess.run(
+                    [
+                        "nsenter",
+                        "--preserve-credentials",
+                        f"--user=/proc/self/fd/{user_fd}",
+                        f"--net=/proc/self/fd/{net_fd}",
+                        "--",
+                        "nft",
+                        "-f",
+                        rules_path,
+                    ],
+                    pass_fds=ns_fds,
+                    capture_output=True,
+                    timeout=10,
+                )
+                failure = (
+                    proc.stderr.decode("utf-8", errors="replace").strip()
+                    if proc.returncode != 0
+                    else None
+                )
+            except subprocess.TimeoutExpired:
+                failure = "nft did not finish within 10 seconds"
+            finally:
+                for fd in ns_fds:
+                    os.close(fd)
+            if failure is not None:
+                # Keep the file describing the ruleset that is actually in force.
+                if previous_rules is not None:
+                    with open(rules_path, "w", encoding="utf-8") as f:
+                        f.write(previous_rules)
+                raise SandboxError(
+                    f"Failed to update the egress allowlist of sandbox "
+                    f"'{sandbox_id}': {failure}"
+                )
+            meta["egress_allowlist"] = normalized
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
@@ -542,6 +948,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             ready_file = shlex.quote(os.path.join(root_dir, "slirp4netns.ready"))
             runsc = " ".join(shlex.quote(a) for a in args)
             slirp = " ".join(["slirp4netns", *_SLIRP4NETNS_FLAGS])
+            rules_file = shlex.quote(os.path.join(root_dir, _EGRESS_RULES_FILE))
+            egress = (
+                "nsenter --preserve-credentials -U -n -t $NSPID -- "
+                f"nft -f {rules_file} || "
+                '{ echo "egress ruleset install failed" >&2; exit 1; }; '
+            )
             script = (
                 # The holder pins the namespaces for the sandbox's lifetime;
                 # --kill-child ties it to this script's process group.
@@ -565,6 +977,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"for i in $(seq 1 100); do [ -s {ready_file} ] && break; "
                 "kill -0 $SLIRP 2>/dev/null || break; sleep 0.1; done; "
                 f'[ -s {ready_file} ] || {{ echo "slirp4netns failed to start" >&2; exit 1; }}; '
+                # The egress ruleset goes in after the tap exists and
+                # before anything runs behind it; a failed install aborts
+                # the start rather than leaving egress open.
+                f"{egress}"
                 f"exec nsenter --preserve-credentials -U -n -t $NSPID -- {runsc}"
             )
             return ["bash", "-c", script]

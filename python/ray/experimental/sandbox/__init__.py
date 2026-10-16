@@ -9,6 +9,8 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
+    ALLOW_ALL_CIDRS,
+    DEFAULT_PUBLIC_ALLOWLIST,
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
     parse_memory_bytes,
@@ -42,6 +44,7 @@ def create(
     rootless: bool = True,
     network: str = "none",
     dns: Optional[List[str]] = None,
+    cidr_allowlist: Optional[List[str]] = None,
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
@@ -72,6 +75,11 @@ def create(
             is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
+        cidr_allowlist: Optional egress allowlist for network="public": only
+            the listed IPv4/IPv6 networks are reachable (plus DNS to the
+            ``dns`` resolvers). None means the public internet only, and the
+            cluster's control plane stays closed whatever the list says; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none). Use
             ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
@@ -108,6 +116,7 @@ def create(
         rootless=rootless,
         network=network,
         dns=dns,
+        cidr_allowlist=cidr_allowlist,
         capabilities=capabilities,
         readonly=readonly,
         **kwargs,
@@ -116,6 +125,8 @@ def create(
 
 __all__ = [
     "create",
+    "ALLOW_ALL_CIDRS",
+    "DEFAULT_PUBLIC_ALLOWLIST",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",
