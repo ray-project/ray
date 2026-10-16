@@ -46,9 +46,6 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
 
-_SCHEMA_READ_BATCH_SIZE = 256
-
-
 @DeveloperAPI
 class OrcDatasourceV2(FileDataSourceV2):
     """V2 datasource that lists ORC files and reads them with ``OrcScanner``."""
@@ -132,16 +129,13 @@ class OrcDatasourceV2(FileDataSourceV2):
             with filesystem.open_input_file(path) as source:
                 return orc.ORCFile(source).schema
 
-        per_file_schemas: List[pa.Schema] = []
         with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-            for start in range(0, len(sample_paths), _SCHEMA_READ_BATCH_SIZE):
-                batch = sample_paths[start : start + _SCHEMA_READ_BATCH_SIZE]
-                per_file_schemas.extend(executor.map(_read_schema, batch))
+            per_file_schemas = list(executor.map(_read_schema, sample_paths))
         try:
             schema = (
                 unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
             )
-        except (pa.ArrowTypeError, pa.ArrowInvalid):
+        except (pa.ArrowTypeError, pa.ArrowInvalid) as orig_err:
             merged = per_file_schemas[0]
             for path, file_schema in zip(sample_paths[1:], per_file_schemas[1:]):
                 try:
@@ -152,6 +146,7 @@ class OrcDatasourceV2(FileDataSourceV2):
                     raise type(cause)(
                         f"Failed to merge ORC schema from {path!r}: {cause}"
                     ) from cause
+            raise orig_err
         assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)

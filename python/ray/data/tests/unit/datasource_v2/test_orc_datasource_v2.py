@@ -230,7 +230,7 @@ def test_infer_schema_empty_sample():
     assert len(schema) == 0
 
 
-def test_infer_schema_unifies_across_batches(tmp_path):
+def test_infer_schema_unifies_multiple_files(tmp_path):
     paths = []
     for i in range(5):
         path = str(tmp_path / f"part_{i:02d}.orc")
@@ -257,6 +257,30 @@ def test_infer_schema_conflicting_types_error(tmp_path):
     with pytest.raises(
         (pa.ArrowTypeError, pa.ArrowInvalid), match="Failed to merge ORC schema from"
     ):
+        datasource.infer_schema(_manifest_of([first_path, second_path]))
+
+
+def test_infer_schema_fallback_raises_original_error(monkeypatch, tmp_path):
+    from ray.data._internal.datasource_v2.formats.orc import orc_datasource_v2
+
+    first_path = str(tmp_path / "first.orc")
+    second_path = str(tmp_path / "second.orc")
+    _write_orc(first_path, pa.table({"col": [1]}))
+    _write_orc(second_path, pa.table({"col": [2]}))
+
+    call_count = 0
+
+    def mock_unify(schemas):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise pa.ArrowInvalid("Simulated batch unification failure")
+        return schemas[0]
+
+    monkeypatch.setattr(orc_datasource_v2, "unify_schemas_with_validation", mock_unify)
+
+    datasource = OrcDatasourceV2([str(tmp_path)])
+    with pytest.raises(pa.ArrowInvalid, match="Simulated batch unification failure"):
         datasource.infer_schema(_manifest_of([first_path, second_path]))
 
 
