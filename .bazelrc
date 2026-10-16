@@ -12,6 +12,10 @@ common --proto_compiler=@com_google_protobuf//:protoc
 common --proto_toolchain_for_cc=@com_google_protobuf//:cc_toolchain
 common --proto_toolchain_for_java=@com_google_protobuf//:java_toolchain
 common --proto_toolchain_for_javalite=@com_google_protobuf//:javalite_toolchain
+# rules_python >= 1.0 can compile .pyc at build time; ci/ray_ci/automation lists
+# the same sources in a py_library and several py_binary targets, which then
+# produce conflicting __pycache__ outputs. rules_python 0.40 never precompiled.
+common --@rules_python//python/config_settings:precompile=force_disabled
 
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config

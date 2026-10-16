@@ -11,6 +11,9 @@ py_test(
     name = "container_resource_utils_test",
     size = "small",
     srcs = ["container_resource_utils_test.py"],
+    # rules_python >= 1.0 runs py_test with PYTHONSAFEPATH on Python >= 3.11, so the
+    # test's own directory is no longer on sys.path; it imports a sibling module.
+    imports = ["."],
     tags = [
         "ci_unit",
         "team:ci",
@@ -46,6 +49,9 @@ py_test(
     name = "build_wheel_test",
     size = "small",
     srcs = ["build_wheel_test.py"],
+    # rules_python >= 1.0 runs py_test with PYTHONSAFEPATH on Python >= 3.11, so the
+    # test's own directory is no longer on sys.path; it imports a sibling module.
+    imports = ["."],
     tags = [
         "ci_unit",
         "team:ci",
@@ -65,6 +71,9 @@ py_test(
     name = "build_image_test",
     size = "small",
     srcs = ["build_image_test.py"],
+    # rules_python >= 1.0 runs py_test with PYTHONSAFEPATH on Python >= 3.11, so the
+    # test's own directory is no longer on sys.path; it imports a sibling module.
+    imports = ["."],
     tags = [
         "ci_unit",
         "team:ci",
