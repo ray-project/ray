@@ -15,12 +15,13 @@ The behavior is controlled by two orthogonal config knobs:
 Both apply identically regardless of ``evaluation_parallel_to_training``.
 """
 import time
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo import PPO, PPOConfig
 
 
 @pytest.fixture(params=[True, False], ids=["parallel", "sequential"])
@@ -30,12 +31,12 @@ def parallel_to_training(request):
 
 def _algo_with_unhealthy_eval_workers(
     *,
-    timeout_s=0,
-    error_after_n_consecutive_skips=None,
-    parallel_to_training=True,
-    spawn_replacement=False,
-    enable_v2_stack=True,
-):
+    timeout_s: float = 0,
+    error_after_n_consecutive_skips: Optional[int] = None,
+    parallel_to_training: bool = True,
+    spawn_replacement: bool = False,
+    enable_v2_stack: bool = True,
+) -> PPO:
     """Build a PPO algo and put every remote eval worker into the failed
     state.
 
@@ -44,7 +45,21 @@ def _algo_with_unhealthy_eval_workers(
     them. This keeps each test deterministic: the only way a worker reappears
     is for the test to explicitly add one back (see ``spawn_replacement``).
 
+    Config is the smallest that exercises the failure path: no remote
+    training EnvRunners, 1 remote eval EnvRunner, fixed-duration eval so
+    we can call ``evaluate()`` directly without a parallel-training
+    future.
+
     Args:
+        timeout_s: Value for ``evaluation_unhealthy_workers_timeout_s``: how
+            long ``evaluate()`` waits for at least one eval EnvRunner to
+            recover before deciding what to do.
+        error_after_n_consecutive_skips: Value for
+            ``evaluation_error_after_n_consecutive_skips``: how many
+            consecutive all-unhealthy evaluation iterations to tolerate
+            before raising. ``None`` tolerates an unbounded number.
+        parallel_to_training: Value for
+            ``evaluation_parallel_to_training``.
         spawn_replacement: If True, additionally spawn a fresh remote eval
             EnvRunner via ``add_workers(1)`` after the kill, then flip its
             health flag to False as well. The replacement is what a
@@ -56,10 +71,9 @@ def _algo_with_unhealthy_eval_workers(
             the recovery path's ``_sync_filters_if_needed`` branch is
             exercised instead of ``sync_env_runner_states``.
 
-    Config is the smallest that exercises the failure path: no remote
-    training EnvRunners, 1 remote eval EnvRunner, fixed-duration eval so
-    we can call ``evaluate()`` directly without a parallel-training
-    future.
+    Returns:
+        The built PPO algo, whose eval EnvRunner group has zero healthy
+        remote workers.
     """
     config = PPOConfig()
     if not enable_v2_stack:

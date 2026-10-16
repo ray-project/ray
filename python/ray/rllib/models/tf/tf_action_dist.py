@@ -1,6 +1,6 @@
 import functools
 from math import log
-from typing import Optional
+from typing import Any, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -272,6 +272,8 @@ class GumbelSoftmax(TFActionDistribution):
         """Initializes a GumbelSoftmax distribution.
 
         Args:
+            inputs: The logits from which to compute samples.
+            model: Reference to the model producing the inputs.
             temperature: Temperature parameter. For low temperatures,
                 the expected value approaches a categorical random variable.
                 For high temperatures, the expected value approaches a uniform
@@ -410,6 +412,9 @@ class SquashedGaussian(TFActionDistribution):
         """Parameterizes the distribution via `inputs`.
 
         Args:
+            inputs: The concatenated mean and log std values from which to
+                compute samples.
+            model: Reference to the model producing the inputs.
             low: The lowest possible sampling value
                 (excluding this value).
             high: The highest possible sampling value
@@ -577,15 +582,34 @@ class Deterministic(TFActionDistribution):
 
 @OldAPIStack
 class MultiActionDistribution(TFActionDistribution):
-    """Action distribution that operates on a set of actions.
-
-    Args:
-        inputs (Tensor list): A list of tensors from which to compute samples.
-    """
+    """Action distribution that operates on a set of actions."""
 
     def __init__(
-        self, inputs, model, *, child_distributions, input_lens, action_space, **kwargs
+        self,
+        inputs: TensorType,
+        model: ModelV2,
+        *,
+        child_distributions: Any,
+        input_lens: Any,
+        action_space: Union[gym.spaces.Dict, gym.spaces.Tuple],
+        **kwargs
     ):
+        """Initializes a MultiActionDistribution object.
+
+        Args:
+            inputs: A single tensor of shape [BATCH, size], to be split up
+                into the child distributions' inputs.
+            model: Reference to the model producing the inputs.
+            child_distributions: Any struct that contains the child
+                distribution classes to use to instantiate the child
+                distributions from `inputs`. This could be an already
+                flattened list or a struct according to `action_space`.
+            input_lens: A flat list or a nested struct of input split lengths
+                used to split `inputs`.
+            action_space: The complex and possibly nested action space.
+            **kwargs: Forwarded as extra keyword arguments to each child
+                distribution's constructor.
+        """
         ActionDistribution.__init__(self, inputs, model)
 
         self.action_space_struct = get_base_struct_from_space(action_space)

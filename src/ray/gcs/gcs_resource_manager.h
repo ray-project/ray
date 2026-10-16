@@ -62,9 +62,13 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
 
   virtual ~GcsResourceManager() = default;
 
-  /// Handle the resource update.
-  void ConsumeSyncMessage(
-      std::shared_ptr<const rpc::syncer::RaySyncMessage> message) override;
+  /// Apply resource views received through the ray syncer to the cluster resource view.
+  ///
+  /// \param message_type The type every message in `messages` has.
+  /// \param messages The messages received together, applied as one batch.
+  void ConsumeSyncMessages(
+      rpc::syncer::MessageType message_type,
+      std::vector<std::shared_ptr<const rpc::syncer::RaySyncMessage>> messages) override;
 
   /// Handle get available resources of all nodes.
   /// Autoscaler-specific RPC called from Python.

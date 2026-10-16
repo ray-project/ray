@@ -154,4 +154,10 @@ inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues
   return std::nullopt;
 }
 
+inline bool HasHardNodeAffinity(const LabelSelector &label_selector) {
+  const std::optional<absl::flat_hash_set<std::string>> hard_node_affinity_values =
+      GetHardNodeAffinityValues(label_selector);
+  return hard_node_affinity_values.has_value() && !hard_node_affinity_values->empty();
+}
+
 }  // namespace ray

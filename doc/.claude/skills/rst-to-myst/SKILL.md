@@ -235,7 +235,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
    ```bash
    python3 doc/.claude/skills/rst-to-myst/render_diff.py \
        https://anyscale-ray--<PR>.com.readthedocs.build/en/<PR>/ \
-       ray-core/key-concepts.html cluster/key-concepts.html
+       core/key-concepts.html cluster/key-concepts.html
    ```
 
    **This is not optional, and a green step 2 is not a substitute for it.** Steps 1–3 are all source-side or resolution-side; this is the only step that looks at output, and it's the only one that catches Hard rule 5 or the `nested_parse` degradation below. On the first batch it caught three regressions — a lost `<title>` on the site root, an `alt=""` image, a dropped `code` class — through a build that was green and silent on all three.
@@ -249,7 +249,7 @@ Static checks → build (RtD) → doctest (if the file is doctest-tested) → re
 ## Verified Ray-specific facts (as of mid-2026)
 
 - `doc/source/conf.py`: `default_role = "code"`; `myst_enable_extensions` includes `colon_fence` and `html_image` but **not** `linkify` or `substitution`; `myst_heading_anchors = 4` (so `[text](#slug)` resolves to any h1–h4 heading).
-- `doc/BUILD.bazel` main `doctest(` rule globs `source/**/*.md` + `source/**/*.rst`, with a per-file `exclude` list (e.g. `ray-contribute/getting-involved.md`, `ray-contribute/testing-tips.md`) and whole-subtree excludes for `ray-core/`, `data/`, `rllib/`, `serve/`, `train/`, `tune/` (which have their own `doctest` rules).
+- `doc/BUILD.bazel` main `doctest(` rule globs `source/**/*.md` + `source/**/*.rst`, with a per-file `exclude` list (e.g. `ray-contribute/getting-involved.md`, `ray-contribute/testing-tips.md`) and whole-subtree excludes for `core/`, `data/`, `rllib/`, `serve/`, `train/`, `tune/` (which have their own `doctest` rules).
 - `pre-commit` has no hook that lints `doc/source/**/*.md` outside `doc/source/data/` (vale) — so pre-commit passing is not evidence the page is correct; the Sphinx build is.
 - `sphinx_design==0.7.0` (`doc/requirements-doc.txt`) supports MyST first-class: its own docs are MyST and it ships a `snippets/myst/` tree, and its directives register through `app.add_directive`, so MyST's `{name}` fence dispatch reaches them like any other directive.
 - `doc/source/_ext/callouts.py` defines `callout` and `annotations`, used by exactly one page (`tune/index.md`). Its `<1>`-to-① substitution happens in two independent places: `_replace_numbers()` for the annotation text, and the `CalloutIncludePostTransform` pass for the code in `literal_block`s. Both work under MyST, because `nested_parse` still hands the directive a docutils `StringList` and `StringList.replace()` mutates in place. Don't "fix" `_replace_numbers()` on the strength of its discarded return value — the mutation already happened. Its `content: str` type hint is wrong, though, and passing it an actual `str` would silently no-op, since Python strings are immutable.

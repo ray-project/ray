@@ -41,7 +41,7 @@ class BCCatalog(Catalog):
         Args:
             observation_space: The observation space if the Encoder.
             action_space: The action space for the Pi Head.
-            model_cnfig_dict: The model config to use..
+            model_config_dict: The model config to use..
         """
         super().__init__(
             observation_space=observation_space,

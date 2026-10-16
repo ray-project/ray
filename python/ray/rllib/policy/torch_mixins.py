@@ -1,9 +1,14 @@
+from typing import Dict, List
+
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -154,15 +159,21 @@ class ValueNetworkMixin:
 
         self._value = value
 
-    def extra_action_out(self, input_dict, state_batches, model, action_dist):
+    def extra_action_out(
+        self,
+        input_dict: Dict[str, TensorType],
+        state_batches: List[TensorType],
+        model: ModelV2,
+        action_dist: TorchDistributionWrapper,
+    ):
         """Defines extra fetches per action computation.
 
         Args:
-            input_dict (Dict[str, TensorType]): The input dict used for the action
+            input_dict: The input dict used for the action
                 computing forward pass.
-            state_batches (List[TensorType]): List of state tensors (empty for
+            state_batches: List of state tensors (empty for
                 non-RNNs).
-            model (ModelV2): The Model object of the Policy.
+            model: The Model object of the Policy.
             action_dist: The instantiated distribution
                 object, resulting from the model's outputs and the given
                 distribution class.

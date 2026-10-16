@@ -1,6 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -227,6 +228,24 @@ def _group_indices(
     return grouped_indices, offsets
 
 
+@lru_cache()
+def _get_nullable_dtypes() -> Dict["pyarrow.DataType", Any]:
+    """Build the pandas dtype map only when the hash fallback is used."""
+    import pandas as pd
+
+    return {
+        pyarrow.bool_(): pd.BooleanDtype(),
+        pyarrow.int8(): pd.Int8Dtype(),
+        pyarrow.int16(): pd.Int16Dtype(),
+        pyarrow.int32(): pd.Int32Dtype(),
+        pyarrow.int64(): pd.Int64Dtype(),
+        pyarrow.uint8(): pd.UInt8Dtype(),
+        pyarrow.uint16(): pd.UInt16Dtype(),
+        pyarrow.uint32(): pd.UInt32Dtype(),
+        pyarrow.uint64(): pd.UInt64Dtype(),
+    }
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -247,12 +266,15 @@ def _hash_partition(
         # row-by-row loop.
         import pandas as pd
 
-        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
-        # in pandas. This avoids int64 -> float64 promotion for nullable integer
-        # columns, which would cause the same value to hash differently across
-        # blocks depending on whether the block contains nulls.
+        # Use pandas' nullable integer and boolean dtypes so null and non-null
+        # values hash consistently across blocks.
+        nullable_dtypes = _get_nullable_dtypes()
+
+        def types_mapper(dtype):
+            return nullable_dtypes.get(dtype) or pd.ArrowDtype(dtype)
+
         hashes = pd.util.hash_pandas_object(
-            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+            table.to_pandas(types_mapper=types_mapper), index=False
         ).values
         # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
         # avoid in-place np.mod(..., out=hashes). See #64552.
@@ -801,11 +823,8 @@ def _backfill_missing_fields(
         field.name: column.field(i) for i, field in enumerate(column.type)
     }
 
-    # Assert that the current fields are a subset of the unified struct type's field names
-    unified_field_names = {field.name for field in unified_struct_type}
-    assert set(current_fields.keys()).issubset(
-        unified_field_names
-    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+    # Ignore fields outside the target schema. A reader may pin the schema to
+    # an inference sample while later files contain additional struct fields.
 
     # Early exit if no fields are missing in the schema
     if column.type == unified_struct_type:
@@ -875,10 +894,10 @@ def _align_struct_fields(
     """
     Align struct columns across blocks to match the provided schema.
 
-    Struct columns in each block are backfilled with nulls for any fields
-    present in the unified schema but missing in that block. Non-struct
-    columns missing from a block are also appended as null columns, and
-    columns are reordered to match the schema.
+    Struct columns in each block are backfilled with nulls for fields present
+    in the unified schema but missing in that block. Struct fields absent from
+    the target schema are dropped. Non-struct columns missing from a block are
+    also appended as null columns, and columns are reordered to match the schema.
 
     Args:
         blocks: List of Arrow tables to align.
@@ -1481,6 +1500,29 @@ def try_combine_chunked_columns(
         new_column_values_arrays.append(new_col)
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def deepcopy_array(
+    array: Union["pyarrow.ChunkedArray", "pyarrow.Array"],
+) -> "pyarrow.Array":
+    """Deepcopy an Arrow array.
+
+    `pa.concat_arrays` copies the input arrays into a new array buffer.
+
+    This utility can be used to sever references to the original buffers
+    and allows them to be freed. See https://github.com/apache/arrow/issues/38806.
+
+    For example, consider a pyarrow table in shared memory that contains many columns.
+    If we keep a column view of the table around as metadata, even though all
+    other columns are no longer referenced, the table would not be freed.
+    If we deepcopy the column instead, the original table can be freed earlier.
+    """
+    chunks = array.chunks if isinstance(array, pyarrow.ChunkedArray) else [array]
+
+    if len(chunks) == 0:
+        return pyarrow.array([], type=array.type)
+
+    return pyarrow.concat_arrays(chunks)
 
 
 def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table":
