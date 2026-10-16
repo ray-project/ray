@@ -274,6 +274,16 @@ class RequestRouterConfig(BaseModel):
         ),
     )
 
+    request_routing_timeout_s: Optional[PositiveFloat] = Field(
+        default=None,
+        description=(
+            "Maximum duration in seconds that a request waits to be assigned a "
+            "replica before it fails with a TimeoutError. This bounds routing "
+            "only, not the time the replica takes to handle the request. "
+            "Defaults to None, meaning a request waits indefinitely."
+        ),
+    )
+
     @field_validator("request_router_kwargs")
     @classmethod
     def request_router_kwargs_json_serializable(cls, v):
@@ -308,6 +318,7 @@ class RequestRouterConfig(BaseModel):
             and self.initial_backoff_s == other.initial_backoff_s
             and self.backoff_multiplier == other.backoff_multiplier
             and self.max_backoff_s == other.max_backoff_s
+            and self.request_routing_timeout_s == other.request_routing_timeout_s
         )
 
     def __hash__(self):
@@ -329,6 +340,7 @@ class RequestRouterConfig(BaseModel):
                 self.initial_backoff_s,
                 self.backoff_multiplier,
                 self.max_backoff_s,
+                self.request_routing_timeout_s,
             )
         )
 
