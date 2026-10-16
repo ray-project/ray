@@ -111,6 +111,10 @@ Compare a JAX training script with and without Ray Train.
 ```{testcode}
 :skipif: True
 
+import os
+import pickle
+import tempfile
+
 import jax
 import jax.numpy as jnp
 import optax
@@ -150,8 +154,20 @@ def train_func():
     epochs = 100
     for epoch in range(epochs):
         params, opt_state, loss = train_step(params, opt_state, X, y)
-        # Report metrics back to Ray Train.
-        ray.train.report({"loss": float(loss), "epoch": epoch})
+
+        # Save a checkpoint every 10 epochs so that Ray Train can resume
+        # training after a failure. Only rank 0 writes the parameters,
+        # but every worker must call `ray.train.report`.
+        if (epoch + 1) % 10 == 0:
+            with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
+                checkpoint = None
+                if ray.train.get_context().get_world_rank() == 0:
+                    with open(os.path.join(temp_checkpoint_dir, "params.pkl"), "wb") as f:
+                        pickle.dump(jax.device_get(params), f)
+                    checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
+                ray.train.report(
+                    {"loss": float(loss), "epoch": epoch}, checkpoint=checkpoint
+                )
 
 # Define the TPU scaling configuration for your distributed job.
 scaling_config = ScalingConfig(

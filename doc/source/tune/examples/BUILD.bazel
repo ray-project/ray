@@ -10,7 +10,7 @@ filegroup(
 # Test all doc/source/tune/examples notebooks.
 # --------------------------------------------------------------------
 
-# pbt_ppo_example.ipynb is not tested right now due to large resource
+# pbt-ppo-example.ipynb is not tested right now due to large resource
 # requirements
 
 py_test_run_all_notebooks(
@@ -19,11 +19,11 @@ py_test_run_all_notebooks(
     data = ["//doc/source/tune/examples:tune_examples"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     exclude = [
-        "pbt_ppo_example.ipynb",
+        "pbt-ppo-example.ipynb",
         "tune-xgboost.ipynb",
-        "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
+        "pbt-transformers.ipynb",  # Transformers uses legacy Tune APIs.
         "tune-aim.ipynb",  # CI does not have `aim`
-        "bohb_example.ipynb",  # CI does not have bohb requirements
+        "bohb-example.ipynb",  # CI does not have bohb requirements
     ],
     tags = [
         "exclusive",

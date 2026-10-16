@@ -3,9 +3,11 @@ import re
 import sys
 import threading
 import time
+from collections import Counter
+from contextlib import contextmanager
 from copy import copy
 from functools import partial
-from typing import List, Tuple
+from typing import Iterator, List, Tuple
 
 import httpx
 import pytest
@@ -55,6 +57,132 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
         actor["name"] for actor in list_actors(filters=[("state", "=", "ALIVE")])
     ]
     return all(f"ServeReplica::{p}" not in actor_names for p in prefixes)
+
+
+FAIL_ON_FLAG_IMPORT_PATH = "ray.serve.tests.test_config_files.fail_on_flag.build"
+
+
+def _wait_for_app_build(deployment: str, app_name: str) -> None:
+    """Wait for the app build to register the deployment."""
+    wait_for_condition(
+        lambda: deployment in serve.status().applications[app_name].deployments,
+        timeout=60,
+    )
+
+
+def _deployment_details(
+    client, deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
+):
+    _wait_for_app_build(deployment, app_name)
+    details = ServeInstanceDetails(
+        **ray.get(client._controller.get_serve_instance_details.remote())
+    )
+    return details.applications[app_name].deployments[deployment]
+
+
+def _running_replica_pids(
+    client, deployment: str = "FailOnFlag", app_name: str = SERVE_DEFAULT_APP_NAME
+) -> List[int]:
+    replicas = _deployment_details(client, deployment, app_name).replicas
+    return sorted(r.pid for r in replicas if r.state == "RUNNING")
+
+
+@contextmanager
+def _background_traffic(url: str = "http://localhost:8000/") -> Iterator[List[int]]:
+    """Send requests from a thread until the block exits.
+
+    Yields the status codes seen so far. When the block exits without an
+    exception, every request must have returned 200.
+    """
+    stop = threading.Event()
+    started = threading.Event()
+    status_codes: List[int] = []
+    errors: List[str] = []
+
+    def send_requests():
+        with httpx.Client(timeout=10) as http:
+            while not stop.is_set():
+                try:
+                    status_codes.append(http.get(url).status_code)
+                except Exception as exc:
+                    errors.append(repr(exc))
+                finally:
+                    started.set()
+                stop.wait(0.005)
+
+    traffic = threading.Thread(target=send_requests, daemon=True)
+    traffic.start()
+    try:
+        assert started.wait(timeout=15)
+        yield status_codes
+    finally:
+        stop.set()
+        traffic.join(timeout=30)
+    assert not traffic.is_alive()
+    assert not errors, errors
+    assert status_codes and set(status_codes) == {200}, Counter(status_codes)
+
+
+def _rolling_update_config(
+    *deployments: dict, import_path: str = FAIL_ON_FLAG_IMPORT_PATH
+) -> ServeDeploySchema:
+    """Config for the default app; no deployments means no config overrides."""
+    app = {"name": SERVE_DEFAULT_APP_NAME, "import_path": import_path}
+    if deployments:
+        app["deployments"] = list(deployments)
+    return ServeDeploySchema(applications=[app])
+
+
+def _config_options(client, deployment: str = "FailOnFlag") -> Tuple[int, int]:
+    config = _deployment_details(client, deployment).deployment_config
+    return config.num_replicas, config.max_ongoing_requests
+
+
+def _autoscaling_config(client, deployment: str = "FailOnFlag"):
+    config = _deployment_details(client, deployment).deployment_config
+    # Details report an unset option as the DEFAULT sentinel rather than None.
+    return (
+        None
+        if config.autoscaling_config is DEFAULT.VALUE
+        else config.autoscaling_config
+    )
+
+
+def _check_terminal_rolling_update(client, running=None):
+    app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+    assert app.status == ApplicationStatus.DEPLOY_FAILED
+    deployment = _deployment_details(client)
+    assert deployment.status == "DEPLOY_FAILED"
+    # Health failures can report DEPLOY_FAILED before the retry budget is spent.
+    assert "The update is stopped" in deployment.message
+    if running is not None:
+        assert len(deployment.replicas) == running
+        assert all(r.state == "RUNNING" for r in deployment.replicas)
+    return True
+
+
+def _assert_rollout_stays_stopped(client, old_pids: List[int], seconds: float = 10):
+    """Check that only old_pids serve requests, with no replacements, for seconds."""
+    deadline = time.monotonic() + seconds
+
+    def check_stays_stopped():
+        status = serve.status().applications["default"]
+        assert status.status == ApplicationStatus.DEPLOY_FAILED
+        replica_states = status.deployments["FailOnFlag"].replica_states
+        assert "STARTING" not in replica_states, replica_states
+        assert "STOPPING" not in replica_states, replica_states
+        assert _running_replica_pids(client) == old_pids
+        r = httpx.get("http://localhost:8000/", timeout=10)
+        assert r.status_code == 200 and r.text == "ok"
+        return time.monotonic() >= deadline
+
+    # Observe the full interval and fail immediately if any invariant breaks.
+    wait_for_condition(
+        check_stays_stopped,
+        timeout=seconds + 15,
+        retry_interval_ms=500,
+        raise_exceptions=True,
+    )
 
 
 class TestDeploywithLoggingConfig:
@@ -1000,42 +1128,6 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
     assert "v3" not in responses
 
 
-def _deployment_details(client, deployment: str = "FailOnFlag"):
-    details = ServeInstanceDetails(
-        **ray.get(client._controller.get_serve_instance_details.remote())
-    )
-    return details.applications["default"].deployments[deployment]
-
-
-def _running_replica_pids(client, deployment: str = "FailOnFlag") -> List[int]:
-    replicas = _deployment_details(client, deployment).replicas
-    return sorted(r.pid for r in replicas if r.state == "RUNNING")
-
-
-def _assert_rollout_stays_stopped(client, old_pids: List[int], seconds: float = 10):
-    """Check that only old_pids serve requests, with no replacements, for seconds."""
-    deadline = time.monotonic() + seconds
-
-    def check_stays_stopped():
-        status = serve.status().applications["default"]
-        assert status.status == ApplicationStatus.DEPLOY_FAILED
-        replica_states = status.deployments["FailOnFlag"].replica_states
-        assert "STARTING" not in replica_states, replica_states
-        assert "STOPPING" not in replica_states, replica_states
-        assert _running_replica_pids(client) == old_pids
-        r = httpx.get("http://localhost:8000/", timeout=10)
-        assert r.status_code == 200 and r.text == "ok"
-        return time.monotonic() >= deadline
-
-    # Observe the full interval and fail immediately if any invariant breaks.
-    wait_for_condition(
-        check_stays_stopped,
-        timeout=seconds + 15,
-        retry_interval_ms=500,
-        raise_exceptions=True,
-    )
-
-
 def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
     """Health check failures stop a rolling update before it replaces all old replicas."""
     client = serve_instance
@@ -1146,45 +1238,6 @@ def test_terminally_failed_rolling_update_survives_controller_restart(
     # The restarted controller never retried the failed version: the dead
     # replica list (in memory, empty after the restart) stays empty.
     assert _deployment_details(client).recent_dead_replicas == []
-
-
-def _rolling_update_config(
-    *deployments: dict,
-    import_path: str = "ray.serve.tests.test_config_files.fail_on_flag.build",
-) -> ServeDeploySchema:
-    """Config for the default app; no deployments means no config overrides."""
-    app = {"name": SERVE_DEFAULT_APP_NAME, "import_path": import_path}
-    if deployments:
-        app["deployments"] = list(deployments)
-    return ServeDeploySchema(applications=[app])
-
-
-def _config_options(client, deployment: str = "FailOnFlag") -> Tuple[int, int]:
-    config = _deployment_details(client, deployment).deployment_config
-    return config.num_replicas, config.max_ongoing_requests
-
-
-def _autoscaling_config(client, deployment: str = "FailOnFlag"):
-    config = _deployment_details(client, deployment).deployment_config
-    # Details report an unset option as the DEFAULT sentinel rather than None.
-    return (
-        None
-        if config.autoscaling_config is DEFAULT.VALUE
-        else config.autoscaling_config
-    )
-
-
-def _check_terminal_rolling_update(client, running=None):
-    app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-    assert app.status == ApplicationStatus.DEPLOY_FAILED
-    deployment = _deployment_details(client)
-    assert deployment.status == "DEPLOY_FAILED"
-    # Health failures can report DEPLOY_FAILED before the retry budget is spent.
-    assert "The update is stopped" in deployment.message
-    if running is not None:
-        assert len(deployment.replicas) == running
-        assert all(r.state == "RUNNING" for r in deployment.replicas)
-    return True
 
 
 def test_delete_app_with_terminally_failed_rolling_update(serve_instance):
@@ -1444,22 +1497,6 @@ def test_sparse_config_rollback_restores_code_defined_options(
     assert len(initial_pids) == 2
     assert _config_options(client) == (2, 7)
 
-    stop = threading.Event()
-    started = threading.Event()
-    status_codes = []
-    errors = []
-
-    def send_requests():
-        with httpx.Client(timeout=10) as http:
-            while not stop.is_set():
-                try:
-                    status_codes.append(http.get("http://localhost:8000/").status_code)
-                except Exception as exc:
-                    errors.append(repr(exc))
-                finally:
-                    started.set()
-                stop.wait(0.005)
-
     def check_deploy_failed():
         status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert status.status == ApplicationStatus.DEPLOY_FAILED
@@ -1468,10 +1505,7 @@ def test_sparse_config_rollback_restores_code_defined_options(
         assert set(deployment.replica_states) == {"RUNNING"}
         return True
 
-    traffic = threading.Thread(target=send_requests, daemon=True)
-    traffic.start()
-    try:
-        assert started.wait(timeout=15)
+    with _background_traffic() as status_codes:
         # The runtime environment override makes new replicas fail to start.
         client.deploy_apps(
             _rolling_update_config(
@@ -1506,15 +1540,6 @@ def test_sparse_config_rollback_restores_code_defined_options(
         assert _config_options(client) == (2, 7)
         served_before_rollback = len(status_codes)
         wait_for_condition(lambda: len(status_codes) > served_before_rollback + 10)
-    finally:
-        stop.set()
-        traffic.join(timeout=15)
-
-    assert not traffic.is_alive()
-    assert not errors, errors
-    assert set(status_codes) == {200}, {
-        code: status_codes.count(code) for code in set(status_codes)
-    }
 
 
 def test_new_config_restores_only_the_overrides_it_drops(serve_instance):
