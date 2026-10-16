@@ -460,54 +460,6 @@
 
 
 #######################
-# AIR examples
-#######################
-
-
-# Test additional CPU nodes for preprocessing.
-- name: air_example_dreambooth_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dreambooth
-
-  # https://github.com/ray-project/ray/issues/49847
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: dreambooth_compute_aws.yaml
-
-  run:
-    timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
-    artifact_path: /tmp/artifacts/example_out.jpg
-
-  # variations: A10G not available on GCE, yet.
-
-- name: air_example_dreambooth_finetuning_lora
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dreambooth
-
-  # https://github.com/ray-project/ray/issues/49846
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: dreambooth_compute_aws.yaml
-
-  run:
-    timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
-    artifact_path: /tmp/artifacts/example_out.jpg
-
-#######################
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing

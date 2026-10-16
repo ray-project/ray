@@ -1236,11 +1236,15 @@ def test_suspicion_and_periodic_messages_fail_mode(monkeypatch, caplog, propagat
     text = caplog.text
     # New-suspicion announcement describes the stalled communicator.
     assert (
-        "Possible NCCL hang detected by the Ray Train hang detector callback!" in text
+        "Possible NCCL hang detected by the Ray Train NCCL hang detector callback!"
+        in text
     )
     assert f"Communicator {_COMM_A} over" in text
     # Periodic reminder uses the "still suspected" wording.
-    assert "NCCL hang still suspected!" in text
+    assert (
+        "NCCL hang still suspected by the Ray Train NCCL hang detector callback!"
+        in text
+    )
     # Fail mode threatens to raise a NCCLHangError.
     assert "A NCCLHangError will be raised" in text
     # The RAS report is introduced so users know where it comes from, and is
@@ -1277,9 +1281,9 @@ def test_periodic_warning_never_precedes_the_first_suspicion(
         [],
         [],
         [],
-        ["Possible NCCL hang detected by the Ray Train hang detector callback"],
+        ["Possible NCCL hang detected by the Ray Train NCCL hang detector callback"],
         [],
-        ["NCCL hang still suspected"],
+        ["NCCL hang still suspected by the Ray Train NCCL hang detector callback"],
         [],
     ]
 
@@ -1398,9 +1402,13 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
 
     text = caplog.text
     assert (
-        "Possible NCCL hang detected by the Ray Train hang detector callback!" in text
+        "Possible NCCL hang detected by the Ray Train NCCL hang detector callback!"
+        in text
     )
-    assert "NCCL hang still suspected!" in text
+    assert (
+        "NCCL hang still suspected by the Ray Train NCCL hang detector callback!"
+        in text
+    )
     assert "NCCLHangError will be raised" not in text
 
 

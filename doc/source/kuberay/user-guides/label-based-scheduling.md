@@ -181,4 +181,4 @@ kind delete cluster
 
 ## Next steps
 * See [Use labels to control scheduling](../../core/scheduling/labels.md) for more details on label selectors in Ray.
-* See [KubeRay Autoscaling](https://docs.ray.io/en/latest/cluster/kubernetes/user-guides/configuring-autoscaling.html) for instructions on how to configure the Ray autoscaler with KubeRay.
+* See [KubeRay Autoscaling](configuring-autoscaling.md) for instructions on how to configure the Ray autoscaler with KubeRay.
