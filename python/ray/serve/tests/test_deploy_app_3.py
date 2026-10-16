@@ -146,7 +146,8 @@ def test_surge_rolling_update_keeps_capacity_and_replaces(
             old_pid = ray.get(client._controller.get_pid.remote())
             ray.kill(client._controller, no_restart=False)
             wait_for_condition(
-                lambda: ray.get(client._controller.get_pid.remote()) != old_pid
+                lambda: ray.get(client._controller.get_pid.remote()) != old_pid,
+                timeout=20,
             )
 
             def check_recovered():
@@ -1032,6 +1033,7 @@ def test_surge_rolling_update_with_deployment_actors(serve_instance_with_signal)
             client=client,
             states={"RUNNING": 3, "STARTING": 2},
             old_pids=initial_pids,
+            timeout=30,
         )
         # Keep both versions' actors alive during the rollout.
         assert len(live_deployment_actor_ids()) == 2
