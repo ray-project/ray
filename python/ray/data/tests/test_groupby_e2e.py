@@ -1399,9 +1399,7 @@ def test_map_groups_async_function_callable_class(
 
     ds = ray.data.from_items([{"group": 1}, {"group": 2}])
 
-    result = ds.groupby("group").map_groups(
-        AsyncIdentity, batch_format="pandas", concurrency=1
-    )
+    result = ds.groupby("group").map_groups(AsyncIdentity)
 
     assert rows_same(result.to_pandas(), pd.DataFrame({"group": [1, 2]}))
 
@@ -1415,9 +1413,7 @@ def test_map_groups_async_generator_callable_class(
 
     ds = ray.data.from_items([{"group": 1}, {"group": 2}])
 
-    result = ds.groupby("group").map_groups(
-        AsyncGeneratorIdentity, batch_format="pandas", concurrency=1
-    )
+    result = ds.groupby("group").map_groups(AsyncGeneratorIdentity)
 
     assert rows_same(result.to_pandas(), pd.DataFrame({"group": [1, 2]}))
 
