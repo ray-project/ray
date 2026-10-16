@@ -98,6 +98,48 @@ def test_from_arrow_override_num_blocks(
         assert values == expected_data
 
 
+@pytest.mark.parametrize(
+    "to_iterable",
+    [iter, lambda tables: (table for table in tables)],
+    ids=["iterator", "generator"],
+)
+def test_from_arrow_iterable(ray_start_regular_shared, sample_dataframes, to_iterable):
+    """Test from_arrow with an iterable of tables rather than a list."""
+    df1, df2 = sample_dataframes
+    tables = [pa.Table.from_pandas(df1), pa.Table.from_pandas(df2)]
+
+    ds = ray.data.from_arrow(to_iterable(tables))
+
+    values = [(r["one"], r["two"]) for r in ds.take(6)]
+    rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+    assert values == rows
+    # Check that metadata fetch is included in stats.
+    assert "FromArrow" in ds.stats()
+
+
+def test_from_arrow_iterable_override_num_blocks(
+    ray_start_regular_shared, sample_dataframes
+):
+    """Test from_arrow with override_num_blocks and an iterable, which has no length."""
+    df1, df2 = sample_dataframes
+    tables = (pa.Table.from_pandas(df) for df in (df1, df2))
+
+    ds = ray.data.from_arrow(tables, override_num_blocks=3)
+
+    assert ds.num_blocks() == 3
+    assert ds.count() == 6
+    values = [(r["one"], r["two"]) for r in ds.take_all()]
+    assert values == [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
+
+
+@pytest.mark.parametrize("to_input", [list, iter], ids=["list", "iterator"])
+def test_from_arrow_no_tables_override_num_blocks(ray_start_regular_shared, to_input):
+    """Test from_arrow with override_num_blocks and no tables at all."""
+    ds = ray.data.from_arrow(to_input([]), override_num_blocks=2)
+
+    assert ds.count() == 0
+
+
 def test_from_arrow_refs(ray_start_regular_shared, sample_dataframes):
     df1, df2 = sample_dataframes
     ds = ray.data.from_arrow_refs(
