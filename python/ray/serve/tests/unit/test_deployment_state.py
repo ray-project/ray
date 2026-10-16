@@ -573,6 +573,20 @@ class TestDeploymentActorContainer:
         assert c.get_code_versions() == {"v2"}
 
 
+@pytest.fixture
+def deployment_actor_wrapper() -> DeploymentActorWrapper:
+    config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+    # MagicMock does not automatically create __ray_ready__.
+    mock_handle = MagicMock()
+    mock_handle.__ray_ready__ = MagicMock(remote=MagicMock(return_value=MagicMock()))
+    return DeploymentActorWrapper(
+        deployment_id=TEST_DEPLOYMENT_ID,
+        config=config,
+        code_version="v1",
+        recovered_handle=mock_handle,
+    )
+
+
 class TestDeploymentActorWrapper:
     @pytest.mark.parametrize(
         "deployment_runtime_env,actor_runtime_env,conflicting_keys",
@@ -938,25 +952,11 @@ class TestDeploymentActorWrapper:
             )
             wrapper.kill()  # should not raise
 
-    @staticmethod
-    def _make_wrapper() -> DeploymentActorWrapper:
-        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
-        # MagicMock does not automatically create __ray_ready__.
-        mock_handle = MagicMock()
-        mock_handle.__ray_ready__ = MagicMock(
-            remote=MagicMock(return_value=MagicMock())
-        )
-        wrapper = DeploymentActorWrapper(
-            deployment_id=TEST_DEPLOYMENT_ID,
-            config=config,
-            code_version="v1",
-            recovered_handle=mock_handle,
-        )
-        return wrapper
-
-    def test_check_health_actor_unavailable_default_threshold(self):
+    def test_check_health_actor_unavailable_default_threshold(
+        self, deployment_actor_wrapper
+    ):
         """The default tolerates two unavailable failures and rejects the third."""
-        wrapper = self._make_wrapper()
+        wrapper = deployment_actor_wrapper
         with (
             patch(
                 "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
@@ -972,9 +972,11 @@ class TestDeploymentActorWrapper:
                 assert wrapper.check_health() is (failures < 3)
                 assert wrapper._consecutive_health_check_failures == failures
 
-    def test_check_health_actor_unavailable_tolerates_threshold(self):
+    def test_check_health_actor_unavailable_tolerates_threshold(
+        self, deployment_actor_wrapper
+    ):
         """A successful check resets the counter before the threshold is reached."""
-        wrapper = self._make_wrapper()
+        wrapper = deployment_actor_wrapper
         with patch(
             "ray.serve._private.deployment_state.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
             3,
@@ -1027,11 +1029,13 @@ class TestDeploymentActorWrapper:
                 assert wrapper.check_health() is False
                 assert wrapper._consecutive_health_check_failures == 3
 
-    def test_check_health_actor_died_marks_unhealthy_immediately(self):
+    def test_check_health_actor_died_marks_unhealthy_immediately(
+        self, deployment_actor_wrapper
+    ):
         """ActorDiedError (a plain actor crash) should mark the deployment actor
         unhealthy immediately, regardless of the ActorUnavailableError
         threshold."""
-        wrapper = self._make_wrapper()
+        wrapper = deployment_actor_wrapper
         with (
             patch(
                 "ray.serve._private.deployment_state.DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
@@ -4537,6 +4541,20 @@ def test_gang_pg_leak_detection_removes_unoccupied_pg(mock_deployment_state_mana
     mock_remove.assert_called_once()
 
 
+@pytest.fixture
+def actor_replica_wrapper() -> ActorReplicaWrapper:
+    actor_replica = ActorReplicaWrapper(
+        version=deployment_version("1"),
+        replica_id=ReplicaID(
+            "abc123",
+            deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+        ),
+    )
+    # Mock remote health-check calls.
+    actor_replica._actor_handle = MagicMock()
+    return actor_replica
+
+
 class TestActorReplicaWrapper:
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(
@@ -4573,22 +4591,11 @@ class TestActorReplicaWrapper:
             == max_ongoing_requests
         )
 
-    @staticmethod
-    def _make_actor_replica() -> ActorReplicaWrapper:
-        actor_replica = ActorReplicaWrapper(
-            version=deployment_version("1"),
-            replica_id=ReplicaID(
-                "abc123",
-                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
-            ),
-        )
-        # Mock remote health-check calls.
-        actor_replica._actor_handle = MagicMock()
-        return actor_replica
-
-    def test_check_health_actor_unavailable_default_threshold(self):
+    def test_check_health_actor_unavailable_default_threshold(
+        self, actor_replica_wrapper
+    ):
         """The default tolerates two unavailable failures and rejects the third."""
-        actor_replica = self._make_actor_replica()
+        actor_replica = actor_replica_wrapper
         with (
             patch(
                 "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
@@ -4604,9 +4611,11 @@ class TestActorReplicaWrapper:
                 assert actor_replica.check_health() is (failures < 3)
                 assert actor_replica._consecutive_health_check_failures == failures
 
-    def test_check_health_actor_unavailable_tolerates_threshold(self):
+    def test_check_health_actor_unavailable_tolerates_threshold(
+        self, actor_replica_wrapper
+    ):
         """A successful check resets the counter before the threshold is reached."""
-        actor_replica = self._make_actor_replica()
+        actor_replica = actor_replica_wrapper
         with patch(
             "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
             3,
@@ -4659,10 +4668,12 @@ class TestActorReplicaWrapper:
                 assert actor_replica.check_health() is False
                 assert actor_replica._consecutive_health_check_failures == 3
 
-    def test_check_health_actor_died_marks_unhealthy_immediately(self):
+    def test_check_health_actor_died_marks_unhealthy_immediately(
+        self, actor_replica_wrapper
+    ):
         """ActorDiedError (a plain actor crash) should mark the replica unhealthy
         immediately, regardless of the ActorUnavailableError threshold."""
-        actor_replica = self._make_actor_replica()
+        actor_replica = actor_replica_wrapper
         with (
             patch(
                 "ray.serve._private.deployment_state.REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
@@ -4697,13 +4708,19 @@ class TestActorReplicaWrapper:
     ],
 )
 def test_health_check_failure_thresholds(
-    deployment_actor, threshold, failures, expected_health, monkeypatch
+    deployment_actor,
+    threshold,
+    failures,
+    expected_health,
+    monkeypatch,
+    deployment_actor_wrapper,
+    actor_replica_wrapper,
 ):
     """Application and unavailable failures use each wrapper's existing threshold."""
     if deployment_actor:
-        wrapper = TestDeploymentActorWrapper._make_wrapper()
+        wrapper = deployment_actor_wrapper
     else:
-        wrapper = TestActorReplicaWrapper._make_actor_replica()
+        wrapper = actor_replica_wrapper
     monkeypatch.setattr(
         ds_mod,
         "REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD",
