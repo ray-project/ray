@@ -135,7 +135,7 @@ def _deduce_default_shuffle_compression() -> str:
             "RAY_DATA_SHUFFLE_COMPRESSION instead"
         )
 
-    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "lz4")
 
 
 DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
@@ -885,7 +885,7 @@ class DataContext:
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         shuffle_compression: Codec used to compress shuffle intermediate
-            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            shards: "none", "lz4", or "zstd" (default "lz4"). Deprecated
             alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
