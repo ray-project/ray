@@ -209,6 +209,32 @@ install_py_deps_py310()
 
 register_toolchains("//bazel:py310_toolchain")
 
+# rules_python >= 1.0, as a module, registers its own hermetic interpreters
+# (@pythons_hub) for every platform. Ray's py_test targets have to run on the
+# Python found on PATH (CI images install pytest and Ray's deps there), which
+# is what rules_python 0.40's autodetecting toolchain gave.
+#
+# A local_runtime_repo inspects that Python at fetch time, so the toolchain it
+# provides knows its version and exposes its headers and libpython. That is
+# what rules_rust_pyo3 needs to build extensions; the bare runtime_env
+# toolchain has neither. WORKSPACE registrations take priority over non-root
+# modules', so this wins over @pythons_hub. on_failure = "warn" falls back to
+# the hermetic toolchain where no usable system Python exists.
+load("@rules_python//python/local_toolchains:repos.bzl", "local_runtime_repo", "local_runtime_toolchains_repo")
+
+local_runtime_repo(
+    name = "local_python3",
+    interpreter_path = "python3",
+    on_failure = "warn",
+)
+
+local_runtime_toolchains_repo(
+    name = "local_python3_toolchains",
+    runtimes = ["local_python3"],
+)
+
+register_toolchains("@local_python3_toolchains//:all")
+
 register_execution_platforms(
     "@local_config_platform//:host",
     "//bazel:py310_platform",
