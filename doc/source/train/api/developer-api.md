@@ -48,3 +48,14 @@ These developer APIs extend Ray Train with custom trainers, backends, and callba
 
     ~train.UserCallback
 ```
+
+## Exceptions
+
+```{eval-rst}
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.NCCLHangError
+```
