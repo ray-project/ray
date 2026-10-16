@@ -386,11 +386,11 @@ applied. Windows applies idle time and probe interval, with an OS-controlled
 probe count. Other platforms use OS timing defaults.
 
 Invalid configuration and failure to enable keepalive fail the connection
-attempt without retries. Failure to tune a timing option instead logs a warning
-and continues with keepalive enabled. On POSIX, successful options remain
-applied and rejected options retain their previous values. On Windows, the
-socket keeps the OS default timing. In either case, the requested detection
-window may not apply.
+attempt without retries. On POSIX, failure to tune a timing option instead logs
+a warning and continues with keepalive enabled. Successful options remain
+applied; rejected options retain their previous values. In that case, the
+requested detection window may not apply. Windows uses a combined enable/tune
+operation and any failure still fails the connection attempt.
 ```
 
 ```{warning}
