@@ -142,6 +142,9 @@ class RuntimeEnvContext:
         cmd = list(self.container["command"])
         for name, value in container_env.items():
             cmd.extend(["--env", name if value is None else f"{name}={value}"])
+        # After the --env flags, so a user's `--env NAME=VALUE` wins, as podman
+        # applies the last value given for a name.
+        cmd.extend(self.container["run_options"])
         cmd.extend(
             [
                 "--entrypoint",

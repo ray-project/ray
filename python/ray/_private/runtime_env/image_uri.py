@@ -130,8 +130,9 @@ def _modify_context_impl(
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             container_env["RAY_AUTH_TOKEN_PATH"] = token_path
 
-    for run_option in run_options or []:
-        container_command.extend(shlex.split(run_option))
+    split_run_options = [
+        arg for run_option in run_options or [] for arg in shlex.split(run_option)
+    ]
     # TODO(chenk008): add resource limit
 
     # Example:
@@ -140,12 +141,13 @@ def _modify_context_impl(
     # --userns=keep-id rayproject/ray:nightly-py39
     logger.info(
         "Starting worker in container with prefix %s %s",
-        shlex.join(container_command),
+        shlex.join(container_command + split_run_options),
         image_uri,
     )
 
     context.container = {
         "command": container_command,
+        "run_options": split_run_options,
         "image": image_uri,
         "entrypoint": "python",
         "env_vars": container_env,

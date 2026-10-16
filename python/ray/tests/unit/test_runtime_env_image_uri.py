@@ -132,9 +132,13 @@ def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
     assert TOKEN not in command
 
 
-def test_failed_token_write_leaves_no_temp_file(tmp_path):
+@pytest.mark.parametrize("temp_file_already_gone", [False, True])
+def test_failed_token_write_leaves_no_temp_file(tmp_path, temp_file_already_gone):
     def fail_replace(src, dst):
-        os.unlink(src)
+        # When the temp file is already gone, cleanup itself fails, and that
+        # error must not replace the original one.
+        if temp_file_already_gone:
+            os.unlink(src)
         raise PermissionError("replace failed")
 
     with mock.patch.object(os, "replace", fail_replace):
@@ -166,6 +170,22 @@ def test_log_omits_env_var_values(auth_env, caplog):
     assert "fake-image" in caplog.text
     assert "user-secret" not in caplog.text
     assert "host-secret" not in caplog.text
+
+
+def test_run_options_env_overrides_ray_and_job_env(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    auth_env.setenv("RAY_RAYLET_PID", "1234")
+    context = RuntimeEnvContext(env_vars={"JOB_VAR": "from_env_vars"})
+
+    argv, _ = _launch(
+        context,
+        run_options=["--env RAY_RAYLET_PID=5678", "--env JOB_VAR=from_run_options"],
+    )
+
+    # podman applies the last --env for a name, so run_options must come last.
+    assert argv.index("RAY_RAYLET_PID=5678") > argv.index("RAY_RAYLET_PID")
+    assert argv.index("JOB_VAR=from_run_options") > argv.index("JOB_VAR=from_env_vars")
 
 
 def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
