@@ -1682,6 +1682,166 @@ def test_idle_termination_with_node_type_idle_timeout(node_type_idle_timeout_s):
         assert len(to_terminate) == 0
 
 
+def _pending_instance(
+    instance_id: str, status: Instance.InstanceStatus, instance_type: str = "type_cpu"
+) -> AutoscalerInstance:
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_id=instance_id,
+            instance_type=instance_type,
+            status=status,
+            launch_config_hash="hash1",
+        ),
+        cloud_instance_id=(f"c-{instance_id}" if status != Instance.QUEUED else None),
+    )
+
+
+def _running_instance(
+    instance_id: str, idle_duration_ms: int, instance_type: str = "type_cpu"
+) -> AutoscalerInstance:
+    return make_autoscaler_instance(
+        im_instance=Instance(
+            instance_id=instance_id,
+            instance_type=instance_type,
+            status=Instance.RAY_RUNNING,
+            launch_config_hash="hash1",
+            node_id=f"r-{instance_id}",
+        ),
+        ray_node=NodeState(
+            node_id=f"r-{instance_id}".encode(),
+            ray_node_type_name=instance_type,
+            available_resources={"CPU": 1},
+            total_resources={"CPU": 1},
+            idle_duration_ms=idle_duration_ms,
+            status=NodeStatus.IDLE,
+        ),
+        cloud_instance_id=f"c-{instance_id}",
+    )
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        Instance.QUEUED,
+        Instance.REQUESTED,
+        Instance.ALLOCATED,
+        Instance.RAY_INSTALLING,
+    ],
+    ids=Instance.InstanceStatus.Name,
+)
+def test_idle_termination_pending_nodes(status):
+    """
+    Test that pending nodes not needed by any resource demands are terminated
+    after being continuously unneeded for the idle timeout, except for the
+    REQUESTED ones whose launch requests can't be cancelled.
+    """
+    idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+
+    def _schedule(now_s: float, resource_requests: List[ResourceRequest]):
+        request = sched_request(
+            node_type_configs=node_type_configs,
+            instances=[_pending_instance("i-1", status)],
+            idle_timeout_s=idle_timeout_s,
+            # KubeRay disables the launch config check.
+            disable_launch_config_check=True,
+            resource_requests=resource_requests,
+        )
+        with patch("time.monotonic", return_value=now_s):
+            return _launch_and_terminate(scheduler.schedule(request))
+
+    # Not needed, but not for long enough.
+    assert _schedule(0, []) == ({}, [])
+    assert _schedule(idle_timeout_s, []) == ({}, [])
+    # Needed again by a pending demand, which resets the idle duration.
+    assert _schedule(idle_timeout_s + 1, [ResourceRequestUtil.make({"CPU": 1})]) == (
+        {},
+        [],
+    )
+    assert _schedule(idle_timeout_s + 2, []) == ({}, [])
+    assert _schedule(2 * idle_timeout_s + 2, []) == ({}, [])
+
+    _, to_terminate = _schedule(2 * idle_timeout_s + 3, [])
+    if status == Instance.REQUESTED:
+        assert to_terminate == []
+    else:
+        assert to_terminate == [("i-1", "", TerminationRequest.Cause.IDLE)]
+
+
+def test_idle_termination_pending_nodes_needed_by_constraints():
+    """
+    Test that pending nodes needed by cluster resource constraints are not
+    terminated.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            _pending_instance("i-1", Instance.ALLOCATED),
+            _pending_instance("i-2", Instance.ALLOCATED),
+        ],
+        idle_timeout_s=1,
+        disable_launch_config_check=True,
+        cluster_resource_constraints=[ResourceRequestUtil.make({"CPU": 1})],
+    )
+    for now_s in [0, 10]:
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+    # Only one of the pending nodes is needed by the constraints.
+    assert len(to_terminate) == 1
+    assert to_terminate[0][2] == TerminationRequest.Cause.IDLE
+
+
+def test_idle_termination_pending_nodes_with_min_worker():
+    """
+    Test that the min_worker_nodes are honored when terminating the unneeded
+    pending nodes, and the pending nodes are terminated before the running ones.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "type_cpu": NodeTypeConfig(
+            name="type_cpu",
+            resources={"CPU": 1},
+            min_worker_nodes=2,
+            max_worker_nodes=5,
+            launch_config_hash="hash1",
+        ),
+    }
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=[
+            _running_instance("i-1", idle_duration_ms=100 * 1000),
+            _pending_instance("i-2", Instance.ALLOCATED),
+            _pending_instance("i-3", Instance.QUEUED),
+        ],
+        idle_timeout_s=1,
+        disable_launch_config_check=True,
+    )
+    for now_s in [0, 10]:
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+    assert len(to_terminate) == 1
+    assert to_terminate[0][0] in ("i-2", "i-3")
+
+
 def test_gang_scheduling():
     """
     Test that gang scheduling works.

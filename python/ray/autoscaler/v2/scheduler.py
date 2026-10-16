@@ -912,8 +912,21 @@ class ResourceDemandScheduler(IResourceScheduler):
         4. Schedule the tasks/actor resource requests
     """
 
+    # Statuses of pending (not yet running ray) instances that could be terminated
+    # without draining ray when they are not needed. REQUESTED is excluded since
+    # an in-flight launch request can't be cancelled.
+    PENDING_TERMINABLE_STATUSES = (
+        Instance.QUEUED,
+        Instance.ALLOCATED,
+        Instance.RAY_INSTALLING,
+    )
+
     def __init__(self, event_logger: Optional[AutoscalerEventLogger] = None):
         self._event_logger = event_logger
+        # Pending instances have no idle duration reported by GCS. This tracks the
+        # monotonic time since which each pending instance has been continuously
+        # not needed by any resource demands, keyed by the IM instance id.
+        self._pending_unneeded_since_s: Dict[str, float] = {}
 
     @dataclass
     class ScheduleContext:
@@ -1236,6 +1249,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx,
             ResourceRequestUtil.ungroup_by_count(request.resource_requests),
         )
+
+        # Pending nodes not needed by the resource demands are considered idle.
+        self._update_pending_nodes_idle_duration(ctx)
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
         # not needed by min_worker count, etc.)
@@ -2105,6 +2121,41 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         ctx.update(nodes)
 
+    def _update_pending_nodes_idle_duration(
+        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+    ) -> None:
+        """
+        Set the idle duration of the pending nodes to how long they have been
+        continuously not needed by any resource demands or cluster resource
+        constraints, so that they are subject to idle termination like the running
+        nodes. The duration resets whenever a pending node is needed again.
+
+        Args:
+            ctx: The schedule context, after all resource demands are scheduled.
+        """
+        now_s = time.monotonic()
+        unneeded_since_s: Dict[str, float] = {}
+        nodes = ctx.get_nodes()
+        for node in nodes:
+            if (
+                node.status != SchedulingNodeStatus.SCHEDULABLE
+                or node.node_kind == NodeKind.HEAD
+                or node.im_instance_status
+                not in ResourceDemandScheduler.PENDING_TERMINABLE_STATUSES
+                or any(node.sched_requests.values())
+            ):
+                continue
+
+            since_s = self._pending_unneeded_since_s.get(node.im_instance_id, now_s)
+            unneeded_since_s[node.im_instance_id] = since_s
+            node.idle_duration_ms = int((now_s - since_s) * 1000)
+
+        # Only keep the pending nodes that are still not needed, so the duration
+        # resets once a node is needed, running ray, or terminated.
+        self._pending_unneeded_since_s = unneeded_since_s
+        ctx.update(nodes)
+
     @staticmethod
     def _enforce_idle_termination(
         ctx: "ResourceDemandScheduler.ScheduleContext",
@@ -2122,7 +2173,12 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         nodes = ctx.get_nodes()
         s_to_ms = 1000
-        for node in nodes:
+        # Visit the nodes in termination preference order, i.e. pending nodes and
+        # nodes idle for longer first, so that the nodes kept for min_worker_nodes
+        # are the most useful ones.
+        for node in sorted(
+            nodes, key=ResourceDemandScheduler._sort_nodes_for_termination
+        ):
             if node.status != SchedulingNodeStatus.SCHEDULABLE:
                 # We don't need to care about the non-running nodes.
                 continue
@@ -2195,8 +2251,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 instance_type=node.node_type,
                 instance_status=node.im_instance_status,
                 idle_duration_ms=node.idle_duration_ms,
-                details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
-                f"timeout={idle_timeout_s} secs",
+                details=(
+                    f"{'idle' if node.ray_node_id else 'pending and not needed'} "
+                    f"for {node.idle_duration_ms/s_to_ms} secs > "
+                    f"timeout={idle_timeout_s} secs"
+                ),
             )
 
         ctx.update(nodes)
