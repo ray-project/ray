@@ -24,6 +24,15 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
+
+#if !defined(_WIN32)
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
@@ -293,6 +302,148 @@ TEST_F(RedisAsyncContextTest, TestDropDuringConnectStillReconnects) {
   ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
   EXPECT_TRUE(future.get());
 }
+
+#if !defined(_WIN32)
+namespace {
+
+// A TCP proxy to the test Redis that can switch to closing every connection
+// as soon as it accepts it, which is what a proxy or a port forwarder does
+// while the Redis behind it is down.
+class ClosingProxy {
+ public:
+  explicit ClosingProxy(int redis_port) : redis_port_(redis_port) {
+    listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    RAY_CHECK(listen_fd_ >= 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    RAY_CHECK(bind(listen_fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
+    RAY_CHECK(listen(listen_fd_, 64) == 0);
+    socklen_t len = sizeof(addr);
+    RAY_CHECK(getsockname(listen_fd_, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
+    port_ = ntohs(addr.sin_port);
+    accept_thread_ = std::thread([this] { AcceptLoop(); });
+  }
+
+  ~ClosingProxy() {
+    stopping_ = true;
+    StartClosing();
+    accept_thread_.join();
+    for (auto &t : pipes_) {
+      t.join();
+    }
+    for (int fd : open_fds_) {
+      close(fd);
+    }
+    close(listen_fd_);
+  }
+
+  int port() const { return port_; }
+
+  /// Drop every forwarded connection and close new ones on accept.
+  void StartClosing() {
+    closing_ = true;
+    std::lock_guard<std::mutex> lock(mu_);
+    for (int fd : open_fds_) {
+      shutdown(fd, SHUT_RDWR);
+    }
+  }
+
+  int closed_on_accept() const { return closed_on_accept_; }
+
+ private:
+  void AcceptLoop() {
+    while (!stopping_) {
+      pollfd p{listen_fd_, POLLIN, 0};
+      if (poll(&p, 1, 50) <= 0) {
+        continue;
+      }
+      int client = accept(listen_fd_, nullptr, nullptr);
+      if (client < 0) {
+        continue;
+      }
+      if (closing_) {
+        ++closed_on_accept_;
+        close(client);
+        continue;
+      }
+      int upstream = socket(AF_INET, SOCK_STREAM, 0);
+      sockaddr_in addr{};
+      addr.sin_family = AF_INET;
+      addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+      addr.sin_port = htons(redis_port_);
+      RAY_CHECK(connect(upstream, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) ==
+                0);
+      {
+        std::lock_guard<std::mutex> lock(mu_);
+        open_fds_.push_back(client);
+        open_fds_.push_back(upstream);
+      }
+      pipes_.emplace_back([client, upstream] { Pipe(client, upstream); });
+    }
+  }
+
+  static void Pipe(int a, int b) {
+    char buf[16384];
+    pollfd fds[2] = {{a, POLLIN, 0}, {b, POLLIN, 0}};
+    while (poll(fds, 2, -1) > 0) {
+      for (int i = 0; i < 2; ++i) {
+        if (fds[i].revents == 0) {
+          continue;
+        }
+        ssize_t n = read(fds[i].fd, buf, sizeof(buf));
+        if (n <= 0 || write(fds[1 - i].fd, buf, n) != n) {
+          shutdown(a, SHUT_RDWR);
+          shutdown(b, SHUT_RDWR);
+          return;
+        }
+      }
+    }
+  }
+
+  const int redis_port_;
+  int listen_fd_ = -1;
+  int port_ = 0;
+  std::atomic<bool> stopping_{false};
+  std::atomic<bool> closing_{false};
+  std::atomic<int> closed_on_accept_{0};
+  std::mutex mu_;
+  std::vector<int> open_fds_;
+  std::vector<std::thread> pipes_;
+  std::thread accept_thread_;
+};
+
+}  // namespace
+
+// A connection that is accepted and then closed before Redis answers is a
+// failed attempt, not a reconnect. Counting it as a success reset the backoff
+// and turned the outage into a tight loop of connects.
+TEST_F(RedisAsyncContextTest, TestAcceptThenCloseBacksOff) {
+  ClosingProxy proxy(TEST_REDIS_SERVER_PORTS.front());
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  // Declared after the proxy, so the context stops reconnecting before the
+  // proxy goes away.
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(
+      ctx->Connect("127.0.0.1", proxy.port(), /*username=*/"", /*password=*/"").ok());
+
+  proxy.StartClosing();
+  std::this_thread::sleep_for(2s);
+  // The backoff starts at 100ms and doubles: about five attempts in 2s.
+  EXPECT_GE(proxy.closed_on_accept(), 1);
+  EXPECT_LE(proxy.closed_on_accept(), 10);
+}
+#endif
 
 // A server that answers -NOAUTH never ran the command: that is what commands
 // queued behind a rejected reconnect AUTH get back. Such replies must not spend

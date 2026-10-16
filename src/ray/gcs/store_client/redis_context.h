@@ -304,15 +304,23 @@ class RedisContext {
   /// inside hiredis' teardown, so it only schedules work.
   void OnAsyncDisconnected();
 
-  /// Called when hiredis reports the async connection came up.
-  void OnAsyncConnected();
-
   /// hiredis reply callback for the AUTH that ConnectToResolvedAddress sends.
   /// Unlike startup, a reconnect has no synchronous probe that already proved
-  /// the credentials, so this is where the attempt succeeds or fails.
+  /// the credentials, so a rejection here fails the attempt.
   static void ReconnectAuthCallback(redisAsyncContext *async_context,
                                     void *raw_reply,
                                     void *privdata);
+
+  /// hiredis reply callback for the PING that ConnectToResolvedAddress sends
+  /// after AUTH. Its reply, not the TCP connect, ends a reconnect: a proxy in
+  /// front of a Redis that is down accepts the connection and closes it, and a
+  /// Redis still loading its data answers -LOADING.
+  static void ReconnectPingCallback(redisAsyncContext *async_context,
+                                    void *raw_reply,
+                                    void *privdata);
+
+  /// The reconnect PING was answered: end the episode.
+  void OnReconnectConfirmed();
 
   /// Try once to re-establish the async connection, rescheduling itself with
   /// exponential backoff on failure. Runs on the io_service thread and never
@@ -429,9 +437,6 @@ class RedisContext {
   /// A reconnect attempt is in flight: its DNS resolve or its async connect
   /// has not reported back yet.
   bool reconnect_pending_ = false;
-  /// An AUTH sent by ConnectToResolvedAddress has not been answered yet. While
-  /// set, a TCP-level connect callback must not declare the reconnect done.
-  bool auth_pending_ = false;
   int64_t reconnect_attempts_left_ = 0;
   /// Bumped when a reconnect episode ends in success, so retry timers armed
   /// during that episode die instead of joining the next one.
