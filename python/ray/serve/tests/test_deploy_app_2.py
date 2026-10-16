@@ -38,6 +38,7 @@ from ray.serve.schema import (
     ServeDeploySchema,
     ServeInstanceDetails,
 )
+from ray.serve.tests.test_config_files.fail_on_flag import INGRESS_DRAIN_ENV
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
@@ -60,6 +61,7 @@ def check_deployments_dead(deployment_ids: List[DeploymentID]):
 
 
 FAIL_ON_FLAG_IMPORT_PATH = "ray.serve.tests.test_config_files.fail_on_flag.build"
+FAIL_ON_FLAG_DRAINING_IMPORT_PATH = f"{FAIL_ON_FLAG_IMPORT_PATH}_draining"
 
 
 def _wait_for_app_build(deployment: str, app_name: str) -> None:
@@ -1063,6 +1065,10 @@ def test_rolling_update_chain_with_rollback(serve_instance, rebuild):
                         }
                     }
                 }
+        # D1 is the ingress; keep it reachable until HAProxy's reload drops it.
+        actor_options = app["deployments"][0].setdefault("ray_actor_options", {})
+        runtime_env = actor_options.setdefault("runtime_env", {})
+        runtime_env.setdefault("env_vars", {}).update(INGRESS_DRAIN_ENV)
         return ServeDeploySchema(applications=[app])
 
     def check_healthy(version):
@@ -1503,7 +1509,11 @@ def test_sparse_config_rollback_restores_code_defined_options(
     must never see a non-200 response.
     """
     client = serve_instance
-    client.deploy_apps(_rolling_update_config())
+    # A code-defined drain, so the sparse rollback that drops every override keeps it.
+    rollout = partial(
+        _rolling_update_config, import_path=FAIL_ON_FLAG_DRAINING_IMPORT_PATH
+    )
+    client.deploy_apps(rollout())
     wait_for_condition(check_running, timeout=60)
     initial_pids = _running_replica_pids(client)
     assert len(initial_pids) == 2
@@ -1520,7 +1530,7 @@ def test_sparse_config_rollback_restores_code_defined_options(
     with _background_traffic() as status_codes:
         # The runtime environment override makes new replicas fail to start.
         client.deploy_apps(
-            _rolling_update_config(
+            rollout(
                 {
                     "name": "FailOnFlag",
                     "max_ongoing_requests": 3,
@@ -1545,7 +1555,7 @@ def test_sparse_config_rollback_restores_code_defined_options(
 
         # Removing both overrides reuses the survivor and replaces the missing
         # replica.
-        client.deploy_apps(_rolling_update_config())
+        client.deploy_apps(rollout())
         wait_for_condition(check_running, timeout=60)
         wait_for_condition(lambda: len(_running_replica_pids(client)) == 2, timeout=60)
         assert set(surviving_pids) <= set(_running_replica_pids(client))
