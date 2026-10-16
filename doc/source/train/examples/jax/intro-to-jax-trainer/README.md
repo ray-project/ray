@@ -617,7 +617,7 @@ scaling_config = ScalingConfig(
 # If you plan to use TPUs, see an example below.
 # This ScalingConfig requires a KubeRay cluster configured for a TPU v6e 4x4 slice with 4 TPU VMs.
 # For more information about TPU clusters with Ray on Kubernetes, see the
-# KubeRay TPU guide: https://docs.ray.io/en/master/kuberay/user-guides/tpu.html#kuberay-tpu
+# KubeRay TPU guide: https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#kuberay-tpu
 # scaling_config = ScalingConfig(
 #     use_tpu=True,
 #     num_workers=4,

@@ -45,6 +45,7 @@ def create(
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
+    disk: Union[str, int, float] = 0,
     **kwargs,
 ) -> ActorHandle:
     """Create a remote sandbox environment managed by a Ray actor.
@@ -81,6 +82,10 @@ def create(
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
+        disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
+            fail with ENOSPC. Zero (default) means no cap. Requires
+            ``readonly=False`` or a ``workdir``; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         **kwargs: Additional options.
 
     Returns:
@@ -110,6 +115,7 @@ def create(
         dns=dns,
         capabilities=capabilities,
         readonly=readonly,
+        disk=disk,
         **kwargs,
     )
 
