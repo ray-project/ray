@@ -242,6 +242,7 @@ def ray_deps_setup():
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
         patches = [
             "//thirdparty/patches:boost-headers.patch",
+            "//thirdparty/patches:boost-windows-arm64.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -262,6 +263,8 @@ def ray_deps_setup():
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
+        patches = ["//thirdparty/patches:gflags-windows-arm64.patch"],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
@@ -293,6 +296,7 @@ def ray_deps_setup():
         patches = [
             "@io_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@io_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
+            "@io_ray//thirdparty/patches:opencensus-windows-arm64.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -344,6 +348,7 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:prometheus-windows-zlib.patch",
             "@io_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
             "@io_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
+            "@io_ray//thirdparty/patches:prometheus-windows-arm64.patch",
         ],
     )
 
@@ -354,6 +359,7 @@ def ray_deps_setup():
         sha256 = "ec64fdab22726d50fc056474dd29401d914cc616f53ab8f2fe4866772881d581",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@io_ray//thirdparty/patches:grpc-windows-arm64.patch",
             # Work around bazelbuild/bazel#21592: with layering_check and
             # non-sandbox/local spawn, clang can record transitive *.cppmap files
             # in .d files, which Bazel then reports as undeclared direct deps.

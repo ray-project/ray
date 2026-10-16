@@ -68,6 +68,14 @@ config_setting(
     ],
 )
 
+platform(
+    name = "windows_arm64_platform",
+    constraint_values = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:windows",
+    ],
+)
+
 # Hermetic python environment, currently only used for CI infra and scripts.
 
 py_runtime(

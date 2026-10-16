@@ -55,6 +55,9 @@ build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"
 build:clang-cl --compiler=clang-cl
 build:msvc-cl --compiler=msvc-cl
+build:windows-arm64 --cpu=arm64_windows
+build:windows-arm64 --platforms=//bazel:windows_arm64_platform
+build:windows-arm64 --extra_toolchains=@local_config_cc//:cc-toolchain-arm64_windows
 # `LC_ALL` and `LANG` is needed for cpp worker tests, because they will call "ray start".
 # If we don't add them, python's `click` library will raise an error.
 test --test_env=LC_ALL

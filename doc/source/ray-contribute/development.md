@@ -351,6 +351,56 @@ cd ray\python
 pip install -e . --verbose
 ```
 
+#### Building a Windows ARM64 wheel with uv
+
+Use an ARM64 Windows host, an ARM64 CPython interpreter, and Visual Studio 2022
+with the ARM64 C++ build tools and Windows SDK installed. The x64 Bazel 7.5.0
+executable runs under Windows emulation, but the following configuration selects
+the ARM64 compiler and target platform. Setting only the wheel's platform tag
+doesn't cross-compile Ray.
+
+Build the dashboard as described in the full source build instructions, then run
+these commands in PowerShell from the repository root:
+
+```powershell
+uv venv --no-config --python cpython-3.13-windows-aarch64-none --seed .venv-arm64-py313
+uv pip install --python .\.venv-arm64-py313\Scripts\python.exe setuptools==80.9.0 wheel==0.45.1 Cython==3.0.12 pip==25.2
+$env:BAZEL_SH = "C:\Program Files\Git\bin\bash.exe"
+# Adjust this path for your Visual Studio edition.
+$env:BAZEL_VC = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC"
+$env:BAZEL_ARGS = "--config=windows-arm64 --jobs=6"
+$env:RAY_DISABLE_EXTRA_CPP = "1"
+$env:RAY_BUILD_REDIS = "0"
+uv build --no-config --no-build-isolation --python .\.venv-arm64-py313\Scripts\python.exe --wheel .\python --out-dir .\python\dist
+```
+
+Set `BAZEL_PATH` to the Bazel 7.5.0 executable as described above. This builds the
+standard Python wheel, without the separate C++ package or test-only Redis
+binaries. The wheel has the `cp313-cp313-win_arm64` tag. The ARM64 configuration
+uses Boost.Context's Windows-fiber backend instead of x64 assembly. For
+redistribution, use `delvewheel repair` to bundle required Visual C++ runtime
+DLLs, as the Windows wheel CI build does.
+
+For local tests that need NumPy or Numba, install the Windows ARM64 versions
+from the source test requirements:
+
+```powershell
+uv pip install --python .\.venv-arm64-py313\Scripts\python.exe --only-binary=:all: -c .\python\requirements\test-requirements.txt numpy numba llvmlite
+```
+
+On Windows ARM64 with Python 3.12 or later, these requirements select NumPy
+2.3.3, Numba 0.68.0, and llvmlite 0.50.0. The pins for other platforms stay
+unchanged.
+
+On Qualcomm Oryon CPUs, llvmlite 0.50.0 can abort during array compilation with
+an LLVM `incomplete machine model` error. Set the following before importing
+Numba to use generic ARM64 code generation. JIT compilation stays enabled, but
+CPU-specific tuning is disabled:
+
+```powershell
+$env:NUMBA_CPU_NAME = "generic"
+```
+
 ## Advanced build options
 
 ### Environment variables that influence builds

@@ -1,0 +1,13 @@
+diff --git a/opencensus/BUILD b/opencensus/BUILD
+--- a/opencensus/BUILD
++++ b/opencensus/BUILD
+@@ -28,8 +28,6 @@
+ config_setting(
+     name = "windows",
+-    values = {
+-        "cpu": "x64_windows",
+-    },
++    constraint_values = ["@platforms//os:windows"],
+     visibility = [
+         ":__subpackages__",
+         "//examples:__subpackages__",

@@ -1,6 +1,8 @@
 import os
 import shutil
 import subprocess
+import sys
+import zipfile
 from typing import List, Optional
 
 import runfiles
@@ -34,5 +36,9 @@ def gen_extract(
         if not zip_path:
             raise ValueError(f"Zip file {zip_file} not found")
 
-        # Uses unzip; python zipfile does not restore the file permissions correctly.
-        subprocess.check_call(["unzip", "-q", "-o", zip_path, "-d", extract_dir])
+        if sys.platform == "win32":
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(extract_dir)
+        else:
+            # zipfile does not restore the executable permissions needed on POSIX.
+            subprocess.check_call(["unzip", "-q", "-o", zip_path, "-d", extract_dir])

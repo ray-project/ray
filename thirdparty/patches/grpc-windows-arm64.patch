@@ -1,0 +1,28 @@
+diff --git BUILD BUILD
+--- BUILD
++++ BUILD
+@@ -177,4 +177,4 @@
+ config_setting(
+     name = "windows",
+-    values = {"cpu": "x64_windows"},
++    constraint_values = ["@platforms//os:windows"],
+ )
+diff --git third_party/cares/cares.BUILD third_party/cares/cares.BUILD
+--- third_party/cares/cares.BUILD
++++ third_party/cares/cares.BUILD
+@@ -23,4 +23,4 @@
+ config_setting(
+     name = "windows",
+-    values = {"cpu": "x64_windows"},
++    constraint_values = ["@platforms//os:windows"],
+ )
+diff --git third_party/py/BUILD.tpl third_party/py/BUILD.tpl
+--- third_party/py/BUILD.tpl
++++ third_party/py/BUILD.tpl
+@@ -5,5 +5,5 @@
+ config_setting(
+     name="windows",
+-    values={"cpu": "x64_windows"},
++    constraint_values=["@platforms//os:windows"],
+     visibility=["//visibility:public"],
+ )

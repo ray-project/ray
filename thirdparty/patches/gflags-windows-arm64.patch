@@ -1,0 +1,12 @@
+diff --git a/BUILD b/BUILD
+--- a/BUILD
++++ b/BUILD
+@@ -8,7 +8,7 @@ exports_files(["src/gflags_completions.sh", "COPYING.txt"])
+ 
+ config_setting(
+     name = "x64_windows",
+-    values = {"cpu": "x64_windows"},
++    constraint_values = ["@platforms//os:windows"],
+ )
+ 
+ load(":bazel/gflags.bzl", "gflags_sources", "gflags_library")
