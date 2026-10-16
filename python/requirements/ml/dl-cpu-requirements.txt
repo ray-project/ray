@@ -4,8 +4,6 @@
 # TensorFlow 2.20 requires protobuf>=5.28; use 2.19 with protobuf 5.27.5.
 tensorflow==2.19.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow==2.20.0; python_version >= '3.12' and python_version < '3.14' and (sys_platform != 'darwin' or platform_machine != 'arm64')
-tensorflow-macos==2.19.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'
-tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.12'
 tensorboard==2.19.0; python_version < '3.12'
 tensorboard==2.20.0; python_version >= '3.12'
 tensorflow-probability==0.24.0
@@ -13,6 +11,8 @@ tensorflow-io-gcs-filesystem==0.31.0; python_version < '3.12'
 # Skip Windows: array-record has no CPython 3.10 wheel.
 tensorflow-datasets; python_version < '3.12' and platform_system != 'Windows'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
+# array-record 0.5.1 has no wheels for Python 3.12+; newer versions are Linux-only.
+array-record>=0.8; python_version >= '3.12' and sys_platform == 'linux'
 etils==1.5.2; python_version < '3.12'
 tf-keras==2.19.0; python_version < '3.12'
 tf-keras==2.20.0; python_version >= '3.12' and python_version < '3.14'

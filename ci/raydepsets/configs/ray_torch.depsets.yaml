@@ -30,6 +30,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
     pre_hooks:
+      - ci/raydepsets/pre_hooks/compile-constraints.sh
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
     build_arg_sets:
       - py311_cuda128

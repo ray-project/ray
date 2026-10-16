@@ -14,6 +14,7 @@ suppress_output() {
 }
 
 # Source requirements compiled into requirements_compiled*.txt.
+# Keep in sync with SOURCES in ci/raydepsets/pre_hooks/compile-constraints.sh.
 COMPILE_PIP_SOURCES=(
   python/requirements.txt
   python/requirements/lint-requirements.txt
@@ -37,64 +38,14 @@ COMPILE_PIP_SOURCES=(
 )
 
 compile_pip_dependencies() {
-  # Compile boundaries
-  TARGET="${1-requirements_compiled.txt}"
-
-  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
-    # Resolution currently does not work on aarch64 as some pinned packages
-    # are not available. Once they are reasonably upgraded we should be able
-    # to enable this here.p
-    echo "Skipping for aarch64"
-    return 0
-  fi
-
+  # raydepsets runs this same hook before compiling any depset; this entry point
+  # lets the dependencies CI step check the committed file on its own.
   (
-    # shellcheck disable=SC2262
-    alias pip="python -m pip"
-
     cd "${WORKSPACE_DIR}"
-
-    echo "Target file: $TARGET"
-    pip install "pip-tools==7.4.1" "wheel==0.45.1"
-
-    # Required packages to lookup e.g. dragonfly-opt
-    HAS_TORCH=0
-    python -c "import torch" 2>/dev/null && HAS_TORCH=1
-    pip install --no-cache-dir numpy torch
-
-    # pip-compile writes whatever index it used into the lockfile. Keep CI's temporary
-    # mirror URL out, or the regenerated file stops matching the committed one.
-    env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
-      -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
-      pip-compile --verbose --resolver=backtracking \
-      --pip-args --no-deps --strip-extras --no-header \
-      --unsafe-package ray \
-      --unsafe-package pip \
-      --unsafe-package setuptools \
-      -o "python/$TARGET" \
-      "${COMPILE_PIP_SOURCES[@]}"
-
-    # Delete local installation
-    sed -i "/@ file/d" "python/$TARGET"
-
-    # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
-    # This is needed because we specify the requirements as torch==version, but
-    # the resolver adds the device-specific version tag. If this is not removed,
-    # pip install will complain about irresolvable constraints.
-    # Strip the whole local segment whenever it names cpu: +cpu, +pt29cpu, and
-    # Astral's +cpu.torch.2.9. The result has to be the bare public version --
-    # this file is also the constraint for the GPU depsets, and only a bare
-    # torch-scatter==2.1.2 lets their +cu.12.8.torch.2.9 pin satisfy it. The old
-    # pattern stopped at the first "cpu" and left 2.1.2.torch.2.9 behind. The
-    # public version may carry a pre/post/dev suffix (2.10.0rc1, 2.10.0.post0),
-    # hence letters in the first class.
-    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
-
-    cat "python/$TARGET"
-
-    if [[ "$HAS_TORCH" == "0" ]]; then
-      pip uninstall -y torch
-    fi
+    # Match the uv that raydepsets pins (uv_x86_64-linux in WORKSPACE).
+    pip install "uv==0.9.26"
+    ci/raydepsets/pre_hooks/compile-constraints.sh
+    cat python/requirements_compiled.txt
   )
 }
 

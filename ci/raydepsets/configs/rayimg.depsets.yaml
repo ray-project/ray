@@ -65,6 +65,7 @@ depsets:
       - py314
     pre_hooks:
       - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh
+      - ci/raydepsets/pre_hooks/compile-constraints.sh
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   # cu130 variant of the core ray image deps: ray[all] pins cupy-cuda12x (a
