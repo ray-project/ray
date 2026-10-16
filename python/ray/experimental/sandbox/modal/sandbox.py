@@ -110,6 +110,47 @@ def _reject_unsupported(**kwargs) -> None:
 # an unbounded gather would try to spawn a process per file in the tree.
 _STARTUP_PUSH_CONCURRENCY = 16
 
+# How long a cancelled create waits for its actor to stop creating the
+# sandbox and clean up, before it kills the actor. Above the actor's own
+# bound for stopping the create, to which deleting a sandbox the create
+# still made adds.
+_ABANDON_START_SECONDS = 60.0
+
+
+async def _abandon_start(
+    actor: "ray.actor.ActorHandle", start_ref: "ray.ObjectRef"
+) -> None:
+    """Stop a sandbox actor's start, whose caller cancelled ``create``, and kill it.
+
+    Dropping the handle alone would leave the actor to finish the image build
+    and the sandbox nobody will use, and a kill alone leaves the build's
+    sandbox running. ``ray.cancel`` raises ``CancelledError`` in ``start``,
+    which stops the build and deletes what it made, and the ref resolves once
+    that is done. A second cancel of the caller stops this wait; the actor is
+    killed either way.
+
+    Args:
+        actor: The sandbox's actor.
+        start_ref: Its ``start`` call.
+    """
+    try:
+        ray.cancel(start_ref)
+        try:
+            await asyncio.wait_for(start_ref, _ABANDON_START_SECONDS)
+        except Exception:
+            # Cancelled, as is usual, failed, or too slow to wait for.
+            return
+        # The start finished before the cancel reached it: the sandbox exists.
+        try:
+            await asyncio.wait_for(actor.terminate.remote(), _ABANDON_START_SECONDS)
+        except Exception:
+            logger.warning(
+                "Failed to delete a sandbox whose creation was cancelled",
+                exc_info=True,
+            )
+    finally:
+        ray.kill(actor)
+
 
 async def _push_startup_files(sandbox, startup_files) -> None:
     """Copy every ``copy=False`` file into the Sandbox before it runs."""
@@ -626,7 +667,12 @@ class _Sandbox:
         )
 
         logger.info("Creating sandbox from image %s", resolved.reference)
-        started = await actor.start.remote()
+        start_ref = actor.start.remote()
+        try:
+            started = await start_ref
+        except asyncio.CancelledError:
+            await _abandon_start(actor, start_ref)
+            raise
         sandbox = _Sandbox(actor, started["instance_id"], None, readiness_probe)
 
         # Modal's precedence: create(*args) overrides the image's CMD, and the

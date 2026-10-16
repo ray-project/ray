@@ -22,10 +22,18 @@ Only running sandboxes pin entries, and only the leaf they mount: a leaf is
 self-contained, so its base and intermediate layers may be evicted while it
 runs, at the cost of rebuilding them when another image needs them.
 
-Locking: a build holds its leaf's lock throughout, and at most one ancestor
-layer's lock at a time, only while producing that layer. A builder therefore
-only ever waits, holding nothing but its own leaf, for a strictly shallower
-entry, so no cycle can form.
+Locking: each entry has a build lock and a short lock. A build holds its
+leaf's build lock throughout, and at most one ancestor layer's at a time,
+only while producing that layer. A builder therefore only ever waits, holding
+nothing but its own leaf, for a strictly shallower entry, so no cycle can
+form. Pins and eviction take the short lock, which a build holds only to swap
+a finished entry in, so a ready image never waits for a build of itself.
+
+A build that dies leaves its work copy and its pin on the image it started
+from; the build's locked owner file tells a later sweep so (see
+``_internal/image_layers.sweep_stale_work_dirs``). Build sandboxes are
+ordinary sandboxes: the backend reclaims them as it does any sandbox whose
+owner died.
 """
 
 import contextlib
@@ -44,23 +52,26 @@ import uuid
 from collections import deque
 from typing import BinaryIO, Callable, Deque, Dict, List, Optional, Set, Tuple
 
+from ray.experimental.sandbox._internal import image_metrics
 from ray.experimental.sandbox._internal.erofs_reader import ErofsError, ErofsImage
 from ray.experimental.sandbox._internal.image_layers import (
     LayerInfo,
     apply_layer_to_erofs,
     archive_path_from_image,
     base_build_id,
+    build_token,
     claim_epoch,
     layer_reference,
     load_build_env_key,
     normalize_overlay_diff,
+    own_work_dir,
     prepare_copy_layer,
     read_epoch,
     read_layer_json,
     require_incremental_mkfs_erofs,
     sweep_stale_work_dirs,
+    verify_erofs_image,
     work_reference,
-    write_builder_file,
     write_layer_json,
 )
 from ray.experimental.sandbox._internal.image_utils import (
@@ -69,9 +80,12 @@ from ray.experimental.sandbox._internal.image_utils import (
     ROOTFS_IMAGE,
     BuiltImageEvictedError,
     _mark_image_in_use,
+    entry_build_lock_path,
+    entry_lock_path,
     evict_least_recently_used_images,
     expected_extract_marker,
     get_platform_arch,
+    hold_lock,
     image_cache_max_bytes,
     sanitize_image_name,
 )
@@ -108,6 +122,12 @@ _SLOTS_DIR = ".build-slots"
 # Caps for each build sandbox; unset, a build may use the whole node.
 _BUILD_CPU_ENV = "RAY_SANDBOX_IMAGE_BUILD_CPU"
 _BUILD_MEMORY_ENV = "RAY_SANDBOX_IMAGE_BUILD_MEMORY"
+# The network build sandboxes get: "public", as Modal's builds have, or
+# "none" for nodes that must not reach out while building.
+_BUILD_NETWORK_ENV = "RAY_SANDBOX_IMAGE_BUILD_NETWORK"
+_BUILD_NETWORKS = ("public", "none")
+# Set to 0 to publish built images without checking them with fsck.erofs.
+_VERIFY_ENV = "RAY_SANDBOX_IMAGE_BUILD_VERIFY"
 # A hit refreshes the LRU time of the layers below the image at most this
 # often, rather than writing to every one of them on every create.
 _ANCESTOR_TOUCH_SECONDS = 60.0
@@ -120,6 +140,11 @@ _OUTPUT_TAIL_BYTES = 64 * 1024
 _OUTPUT_DRAIN_SECONDS = 5.0
 _MARKER = ".extracted"
 _IMAGE_CONFIG = ".image_config.json"
+# How often a process looks for the work copies of builds that died, per
+# image cache.
+_SWEEP_INTERVAL_SECONDS = 60.0
+_sweep_lock = threading.Lock()
+_last_sweep: Dict[str, float] = {}
 
 
 def _step_timeout() -> float:
@@ -146,18 +171,30 @@ def _build_concurrency() -> int:
     return _DEFAULT_CONCURRENCY
 
 
-def _build_limits() -> Dict:
-    """``SandboxConfig`` caps for build sandboxes, from the environment.
+def _build_sandbox_settings() -> Dict:
+    """``SandboxConfig`` fields for build sandboxes, from the environment.
 
-    Deliberately not the sandbox's own ``cpu``/``memory``: a small sandbox on
-    a big image would then fail a build -- ``pip install torch`` in 512 MiB --
-    that Modal, which builds with its own resources, runs fine.
+    Their network, and their caps. Deliberately not the sandbox's own
+    ``cpu``/``memory``: a small sandbox on a big image would then fail a
+    build -- ``pip install torch`` in 512 MiB -- that Modal, which builds with
+    its own resources, runs fine.
     """
-    limits: Dict = {}
+    settings: Dict = {"network": "public"}
+    network = os.environ.get(_BUILD_NETWORK_ENV)
+    if network:
+        if network in _BUILD_NETWORKS:
+            settings["network"] = network
+        else:
+            logger.warning(
+                "Ignoring %s=%r: expected one of %s.",
+                _BUILD_NETWORK_ENV,
+                network,
+                ", ".join(_BUILD_NETWORKS),
+            )
     cpu = os.environ.get(_BUILD_CPU_ENV)
     if cpu:
         try:
-            limits["cpu"] = float(cpu)
+            settings["cpu"] = float(cpu)
         except ValueError:
             logger.warning(
                 "Ignoring %s=%r: expected a number of CPUs.", _BUILD_CPU_ENV, cpu
@@ -166,14 +203,14 @@ def _build_limits() -> Dict:
     if memory:
         try:
             parse_memory_bytes(memory)
-            limits["memory"] = memory
+            settings["memory"] = memory
         except (TypeError, ValueError):
             logger.warning(
                 "Ignoring %s=%r: expected a size such as '8Gi'.",
                 _BUILD_MEMORY_ENV,
                 memory,
             )
-    return limits
+    return settings
 
 
 def _now_iso() -> str:
@@ -182,6 +219,50 @@ def _now_iso() -> str:
 
 def _hash(*parts: str) -> str:
     return "sha256:" + hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
+
+
+class _BuildCancelled(SandboxImageBuildError):
+    """The build was cancelled (see :meth:`ImageBuilder.cancel`)."""
+
+    def __init__(
+        self,
+        message: str = "The image build was cancelled.",
+        image_id: Optional[str] = None,
+    ):
+        super().__init__(message, image_id)
+
+
+class _BuildRun:
+    """One :meth:`ImageBuilder.build` call in progress, for ``cancel`` to reach."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._cancelled = False
+        # Stops the command the build is running in a build sandbox, if any.
+        self._stop: Optional[Callable[[], None]] = None
+
+    def cancel(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            stop = self._stop
+        if stop is not None:
+            stop()
+
+    def check(self) -> None:
+        """Raise ``_BuildCancelled`` if the build was cancelled."""
+        if self._cancelled:
+            raise _BuildCancelled()
+
+    def running(self, stop: Optional[Callable[[], None]]) -> None:
+        """Set what stops the command now running, or None once it ended.
+
+        A cancel that came before the command started stops it at once.
+        """
+        with self._lock:
+            self._stop = stop
+            cancelled = self._cancelled
+        if stop is not None and cancelled:
+            stop()
 
 
 class _Rebase(Exception):
@@ -231,12 +312,40 @@ class ImageBuilder:
         self._backend = backend
         # Read on the first plan with build-only environment values.
         self._build_env_key: Optional[bytes] = None
+        # The builds in progress, by the thread running each.
+        self._runs: Dict[int, _BuildRun] = {}
+        self._runs_lock = threading.Lock()
 
     @property
     def images_dir(self) -> str:
         return self._image_manager.images_dir
 
     # -- public ------------------------------------------------------------
+
+    def cancel(self) -> None:
+        """Cancel the builds this builder is running; callable from any thread.
+
+        Each build stops at its next step, and at once if it is running a
+        command (killed inside its build sandbox) or waiting for a build slot
+        or for another build of the same image. A build that is exporting or
+        applying a layer finishes that first. What a cancelled build made is
+        cleaned up as after a failed step -- its build sandboxes deleted, its
+        work copy removed, its pins released -- and its :meth:`build` call
+        raises ``SandboxImageBuildError``. Layers it already published stay
+        cached. Builds that start after this call are not affected.
+
+        May block for a few seconds, killing the commands the builds run.
+        """
+        with self._runs_lock:
+            runs = list(self._runs.values())
+        for run in runs:
+            run.cancel()
+
+    def _check_cancelled(self) -> None:
+        """Raise ``_BuildCancelled`` if the calling thread's build was cancelled."""
+        run = self._runs.get(threading.get_ident())
+        if run is not None:
+            run.check()
 
     def build(
         self,
@@ -265,16 +374,46 @@ class ImageBuilder:
             The image's reference, for ``SandboxConfig.image``.
 
         Raises:
-            SandboxImageBuildError: A step failed.
+            SandboxImageBuildError: A step failed, or :meth:`cancel` cancelled
+                the build.
             SandboxCreationError: The node cannot build (no runsc, an old
                 mkfs.erofs) or the base cannot be pulled.
         """
+        run = _BuildRun()
+        thread = threading.get_ident()
+        with self._runs_lock:
+            self._runs[thread] = run
+        try:
+            return self._build(
+                base,
+                plan,
+                timeout_seconds=timeout_seconds,
+                base_force_token=base_force_token,
+                rootless=rootless,
+                ignore_cgroups=ignore_cgroups,
+            )
+        finally:
+            with self._runs_lock:
+                self._runs.pop(thread, None)
+
+    def _build(
+        self,
+        base: str,
+        plan: ImageBuildPlan,
+        *,
+        timeout_seconds: float,
+        base_force_token: Optional[str],
+        rootless: bool,
+        ignore_cgroups: bool,
+    ) -> str:
+        self._maybe_sweep()
         if base_force_token is not None:
             key = self._base_key(base)
             with self._lock(key):
                 claim_epoch(self.images_dir, key, base_force_token)
         chain = self._resolve_chain(base, plan)
         if self._leaf_ready(chain):
+            image_metrics.count_request("hit")
             return self._hit(chain)
         require_incremental_mkfs_erofs()
         # A build of this very image may be under way: wait for it before
@@ -285,6 +424,7 @@ class ImageBuilder:
             pass
         chain = self._resolve_chain(base, plan)
         if self._leaf_ready(chain):
+            image_metrics.count_request("waited")
             return self._hit(chain)
         with self._build_slot():
             return self._build_locked(
@@ -295,9 +435,33 @@ class ImageBuilder:
                 sandbox_options={
                     "rootless": rootless,
                     "_ignore_cgroups": ignore_cgroups,
-                    **_build_limits(),
+                    **_build_sandbox_settings(),
                 },
             )
+
+    def _maybe_sweep(self) -> None:
+        """Start ``sweep_stale_work_dirs`` in the background, at most once a
+        minute per process and image cache.
+
+        A build that died keeps a pin on the image it started from, and with
+        it that image out of eviction's reach. Sweeping on every build, cache
+        hits included, frees it once any sandbox on the node starts on a built
+        image, not only once another build has to run. A build never waits
+        for it.
+        """
+        images_dir = self.images_dir
+        with _sweep_lock:
+            now = time.monotonic()
+            last = _last_sweep.get(images_dir, float("-inf"))
+            if now - last < _SWEEP_INTERVAL_SECONDS:
+                return
+            _last_sweep[images_dir] = now
+        threading.Thread(
+            target=sweep_stale_work_dirs,
+            args=(images_dir,),
+            name="sandbox-image-build-sweep",
+            daemon=True,
+        ).start()
 
     def _hit(self, chain: _Chain) -> str:
         """Use the cached image of ``chain``, refreshing it and its layers for LRU.
@@ -344,11 +508,11 @@ class ImageBuilder:
                 except OSError:
                     f.close()
                     continue
+                waited = 0.0
                 if waiting_since is not None:
-                    logger.info(
-                        "Got an image build slot after %.1fs",
-                        time.monotonic() - waiting_since,
-                    )
+                    waited = time.monotonic() - waiting_since
+                    logger.info("Got an image build slot after %.1fs", waited)
+                image_metrics.observe_slot_wait(waited)
                 try:
                     yield
                 finally:
@@ -362,6 +526,7 @@ class ImageBuilder:
                     limit,
                     _CONCURRENCY_ENV,
                 )
+            self._check_cancelled()
             time.sleep(delay)
             delay = min(delay * 2, 1.0)
 
@@ -387,6 +552,7 @@ class ImageBuilder:
                     continue
                 chain = current
                 if self._leaf_ready(chain):
+                    image_metrics.count_request("waited")
                     return layer_reference(chain.leaf)
                 sweep_stale_work_dirs(self.images_dir)
                 started = time.time()
@@ -409,12 +575,15 @@ class ImageBuilder:
                             "building it again",
                             rebase.key[:12],
                         )
+                took = time.time() - started
                 logger.info(
                     "Built image %s (%d layers) in %.1fs",
                     chain.leaf[:12],
                     len(plan.steps),
-                    time.time() - started,
+                    took,
                 )
+                image_metrics.count_request("built")
+                image_metrics.observe_build(took)
                 return layer_reference(chain.leaf)
         raise SandboxCreationError(
             "Image layer keys kept changing under concurrent force_build "
@@ -493,7 +662,13 @@ class ImageBuilder:
 
     @contextlib.contextmanager
     def _lock(self, key_or_ref: str, waiting: Optional[str] = None):
-        """The entry's flock: the one pulls and eviction take for it too.
+        """The entry's build lock, held while producing it.
+
+        Only producers take it -- builds, and pulls of a registry image -- so
+        one entry is produced once. Sandboxes pinning the published entry,
+        and eviction, take the entry's short lock instead, which a build
+        holds only for the swap in :meth:`_publish`: a ready image never
+        waits for a build of itself.
 
         ``key_or_ref`` is a layer key or an image reference. With
         ``waiting`` -- what a build holding the lock is building, "image" or
@@ -501,8 +676,8 @@ class ImageBuilder:
         waiting on another build does not look stuck.
         """
         ref = key_or_ref if "@" in key_or_ref else layer_reference(key_or_ref)
-        os.makedirs(self.images_dir, mode=0o777, exist_ok=True)
-        path = os.path.join(self.images_dir, f"{sanitize_image_name(ref)}.lock")
+        path = entry_build_lock_path(self.images_dir, sanitize_image_name(ref))
+        os.makedirs(os.path.dirname(path), mode=0o777, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             try:
                 fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -513,7 +688,17 @@ class ImageBuilder:
                         waiting,
                         ref.rsplit("@", 1)[-1][:12],
                     )
-                fcntl.flock(f, fcntl.LOCK_EX)
+                # Polled rather than blocking, so that a cancelled build stops
+                # waiting.
+                delay = 0.05
+                while True:
+                    self._check_cancelled()
+                    time.sleep(delay)
+                    try:
+                        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        delay = min(delay * 2, 0.5)
             try:
                 yield
             finally:
@@ -714,13 +899,16 @@ class ImageBuilder:
         work_dir = os.path.join(self.images_dir, sanitize_image_name(work_ref))
         work_image = os.path.join(work_dir, ROOTFS_IMAGE)
         # Pins the work copy, and the image it starts from, for this build.
-        token = f"build-{uuid.uuid4().hex[:12]}"
+        token = build_token()
         start_ref: Optional[str] = None
         # Build sandboxes still being deleted, with the image each one runs on.
         teardowns: List[Tuple[threading.Thread, str]] = []
         os.makedirs(work_dir)
+        owner = None
         try:
-            write_builder_file(work_dir)
+            # Held until the work copy is gone: if this process dies first,
+            # a sweep removes the work copy and releases the token's pins.
+            owner = own_work_dir(work_dir, token)
             _mark_image_in_use(work_dir, token)
             if max_bytes > 0:
                 evict_least_recently_used_images(
@@ -750,7 +938,8 @@ class ImageBuilder:
 
             def work_ready() -> str:
                 """Wait for the copy; the work image is usable from here on."""
-                copier.wait()
+                with image_metrics.phase("copy"):
+                    copier.wait()
                 marker = os.path.join(work_dir, _MARKER)
                 if not os.path.exists(marker):
                     with open(marker, "w", encoding="utf-8") as f:
@@ -771,6 +960,7 @@ class ImageBuilder:
 
             run_image = start_ref
             for index in range(start + 1, n + 1):
+                self._check_cancelled()
                 step = plan.steps[index - 1]
                 key = chain.keys[index]
                 is_leaf = index == n
@@ -813,7 +1003,8 @@ class ImageBuilder:
                             before_apply()
                             # Applied before publishing: once published, the
                             # entry is evictable and the diff may vanish.
-                            apply_layer_to_erofs(work_image, layer)
+                            with image_metrics.phase("apply"):
+                                apply_layer_to_erofs(work_image, layer)
                             _apply_image_env(step, work_dir)
                             meta = self._layer_meta(
                                 chain,
@@ -837,7 +1028,8 @@ class ImageBuilder:
                     link, meta = reused
                     work_ready()
                     before_apply()
-                    apply_layer_to_erofs(work_image, link)
+                    with image_metrics.phase("apply"):
+                        apply_layer_to_erofs(work_image, link)
                     _apply_image_env(step, work_dir)
                     os.remove(link)
                     parent_build_id = meta["build_id"]
@@ -846,8 +1038,10 @@ class ImageBuilder:
                         self._publish_leaf(key, work_dir, None, meta, max_bytes)
                 run_image = work_ref
         finally:
-            for thread, _ in teardowns:
-                thread.join()
+            # Not waited for: the image is published, and only a build
+            # sandbox that ran on the start image can still be going away
+            # (those on the work copy were waited for before each apply).
+            # It holds its own pin on that image until it is gone.
             if start_ref is not None:
                 self._image_manager.release_image(start_ref, token)
             shutil.rmtree(work_dir, ignore_errors=True)
@@ -855,6 +1049,9 @@ class ImageBuilder:
             # uses that name again.
             with contextlib.suppress(OSError):
                 os.remove(f"{work_dir}.lock")
+            # Last: until the work copy is gone, a sweep must see it owned.
+            if owner is not None:
+                owner.close()
 
     def _reusable_layer(
         self, key: str, step: BuildStep, parent_build_id: str, work_dir: str
@@ -1002,34 +1199,48 @@ class ImageBuilder:
             env={**dict(step.env), **dict(step.build_env)},
             workdir=step.workdir,
             readonly=False,
-            network="public",
             capabilities=list(DOCKER_DEFAULT_CAPABILITIES),
             timeout_seconds=timeout_seconds,
             **sandbox_options,
         )
-        sandbox_id = self._backend.create_sandbox(config)
+        with image_metrics.phase("sandbox_create"):
+            sandbox_id = self._backend.create_sandbox(config)
         deleter = None
         raw = os.path.join(work_dir, f"upper-{key[:16]}.tar")
         # In the build's private directory, which no sandbox mounts: runsc
         # writes it from the host.
         pid_file = os.path.join(work_dir, f"pid-{key[:16]}")
         try:
-            for command in step.commands:
-                self._exec(sandbox_id, step, command, key, pid_file)
-            self._backend.export_rootfs_upper(sandbox_id, raw)
+            hint = (
+                f"\n(Build steps run without network access: {_BUILD_NETWORK_ENV}"
+                "=none on this node.)"
+                if config.network == "none"
+                else ""
+            )
+            with image_metrics.phase("commands"):
+                for command in step.commands:
+                    self._check_cancelled()
+                    self._exec(sandbox_id, step, command, key, pid_file, hint)
+            self._check_cancelled()
+            with image_metrics.phase("export"):
+                self._backend.export_rootfs_upper(sandbox_id, raw)
             # Deleting a sandbox that wrote a lot takes a while (runsc tears
             # its memory down), and nothing from here on needs it gone: its
             # changes are in the export. The build waits for it only before
-            # rewriting an image the sandbox maps.
+            # rewriting an image the sandbox maps, and may return before it
+            # is done. Not a daemon, so a process that exits right after a
+            # build still deletes the sandbox rather than leaving it running.
             deleter = threading.Thread(
-                target=self._delete_quietly, args=(sandbox_id,), daemon=True
+                target=self._delete_quietly,
+                args=(sandbox_id,),
+                name=f"delete-build-sandbox-{sandbox_id}",
             )
             deleter.start()
             teardowns.append((deleter, image))
             work_ready()
             with ErofsImage(os.path.join(work_dir, ROOTFS_IMAGE)) as erofs:
                 root = erofs.stat(erofs.root_nid)
-            with open(raw, "rb") as src:
+            with open(raw, "rb") as src, image_metrics.phase("normalize"):
                 return normalize_overlay_diff(src, layer, root)
         finally:
             if deleter is None:
@@ -1038,7 +1249,13 @@ class ImageBuilder:
                 os.remove(raw)
 
     def _exec(
-        self, sandbox_id: str, step: RunStep, command: str, key: str, pid_file: str
+        self,
+        sandbox_id: str,
+        step: RunStep,
+        command: str,
+        key: str,
+        pid_file: str,
+        hint: str = "",
     ) -> None:
         """Run one of ``step``'s commands, logging its output as it comes.
 
@@ -1048,10 +1265,12 @@ class ImageBuilder:
             command: The command.
             key: The layer's key, for the log prefix and errors.
             pid_file: Where runsc records the command's pid in the sandbox.
+            hint: Ends the message of a failure, after the output.
 
         Raises:
-            SandboxImageBuildError: The command failed or timed out; the
-                message carries the end of its output.
+            SandboxImageBuildError: The command failed or timed out, and the
+                message carries the end of its output; or the build was
+                cancelled.
         """
         argv = self._backend.exec_argv(
             sandbox_id, list(step.shell) + [command], pid_file=pid_file
@@ -1069,19 +1288,27 @@ class ImageBuilder:
         timed_out = threading.Event()
 
         def stop() -> None:
-            timed_out.set()
             self._kill_in_sandbox(sandbox_id, pid_file)
             proc.kill()
 
+        def time_out() -> None:
+            timed_out.set()
+            stop()
+
         # A timer, not a polling watchdog: a command's end is seen at once
-        # rather than on the next poll.
-        timer = threading.Timer(timeout, stop)
+        # rather than on the next poll. A cancel stops it the same way.
+        timer = threading.Timer(timeout, time_out)
         timer.daemon = True
         timer.start()
+        run = self._runs.get(threading.get_ident())
+        if run is not None:
+            run.running(stop)
         try:
             returncode = proc.wait()
         finally:
             timer.cancel()
+            if run is not None:
+                run.running(None)
             with contextlib.suppress(OSError):
                 os.remove(pid_file)
         # The runsc exec client ends with the command, but anything the
@@ -1089,16 +1316,18 @@ class ImageBuilder:
         # until the sandbox goes: take what came rather than wait for that.
         reader.join(_OUTPUT_DRAIN_SECONDS)
         text = output.text()
+        if run is not None:
+            run.check()
         if timed_out.is_set():
             raise SandboxImageBuildError(
                 f"Image build step timed out after {timeout:.0f}s "
-                f"({_BUILD_TIMEOUT_ENV}): {command}\n{text}",
+                f"({_BUILD_TIMEOUT_ENV}): {command}\n{text}{hint}",
                 key,
             )
         if returncode != 0:
             raise SandboxImageBuildError(
                 f"Image build step failed with exit code {returncode}: {command}\n"
-                f"{text}",
+                f"{text}{hint}",
                 key,
             )
 
@@ -1169,8 +1398,13 @@ class ImageBuilder:
     ) -> None:
         """Atomically replace entry ``key`` with ``files`` and ``meta``.
 
-        Callers hold the entry's lock. As with a re-pull, sandboxes running
-        on the entry being replaced keep their pins and their open image.
+        Callers hold the entry's build lock. The swap itself happens under
+        the entry's short lock, the one pins and eviction take, held from
+        reading the current users to recording them on the new entry: a pin
+        can't land in between and be lost, and eviction can't see the new
+        entry before its pins are carried over. As with a re-pull, sandboxes
+        running on the entry being replaced keep their pins and their open
+        image.
         """
         target = self._entry_dir(key)
         tmp = f"{target}.tmp.{uuid.uuid4().hex}"
@@ -1181,18 +1415,19 @@ class ImageBuilder:
             write_layer_json(tmp, meta)
             with open(os.path.join(tmp, _MARKER), "w", encoding="utf-8") as f:
                 f.write(expected_extract_marker())
-            try:
-                users = os.listdir(os.path.join(target, _USERS_SUBDIR))
-            except OSError:
-                users = []
-            if os.path.exists(target):
-                shutil.rmtree(target, ignore_errors=True)
-            os.replace(tmp, target)
+            with hold_lock(entry_lock_path(self.images_dir, os.path.basename(target))):
+                try:
+                    users = os.listdir(os.path.join(target, _USERS_SUBDIR))
+                except OSError:
+                    users = []
+                if os.path.exists(target):
+                    shutil.rmtree(target, ignore_errors=True)
+                os.replace(tmp, target)
+                for user in users:
+                    _mark_image_in_use(target, user)
         except BaseException:
             shutil.rmtree(tmp, ignore_errors=True)
             raise
-        for user in users:
-            _mark_image_in_use(target, user)
 
     def _publish_leaf(
         self,
@@ -1202,7 +1437,15 @@ class ImageBuilder:
         meta: Dict,
         max_bytes: int,
     ) -> None:
-        """Move the finished image into the leaf entry (whose lock the caller holds)."""
+        """Move the finished image into the leaf entry (whose lock the caller holds).
+
+        The image is checked first: every sandbox on the node that uses it
+        would mount a bad one, and nothing would rebuild it while it stays
+        cached.
+        """
+        if os.environ.get(_VERIFY_ENV, "1") != "0":
+            with image_metrics.phase("verify"):
+                verify_erofs_image(os.path.join(work_dir, ROOTFS_IMAGE), key)
         if max_bytes > 0:
             evict_least_recently_used_images(
                 self.images_dir,

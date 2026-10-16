@@ -956,5 +956,95 @@ def test_dir_size_counts_hard_links_once(tmp_path):
     assert image_utils._dir_size_bytes(str(tree)) == 1010
 
 
+def _hold(path, seconds, ready):
+    import fcntl
+    import time
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        ready.set()
+        time.sleep(seconds)
+
+
+def _holding(path, seconds):
+    import multiprocessing
+
+    ready = multiprocessing.Event()
+    proc = multiprocessing.Process(target=_hold, args=(path, seconds, ready))
+    proc.start()
+    ready.wait()
+    return proc
+
+
+def test_pinning_a_ready_image_does_not_wait_for_a_build_of_it(tmp_path):
+    """Only the short entry lock guards pins; a producer's build lock doesn't."""
+    import time
+
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = str(tmp_path / "images")
+    entry = pull_and_extract_container_image(str(local_tar), images_dir=images_dir)
+    name = os.path.basename(entry)
+
+    proc = _holding(image_utils.entry_build_lock_path(images_dir, name), 2.0)
+    start = time.monotonic()
+    pull_and_extract_container_image(
+        str(local_tar), images_dir=images_dir, instance_id="sb-1"
+    )
+    assert time.monotonic() - start < 0.5
+    assert os.path.exists(os.path.join(entry, ".users", "sb-1"))
+    proc.join()
+
+    # The short lock still guards the pin itself.
+    proc = _holding(image_utils.entry_lock_path(images_dir, name), 1.0)
+    start = time.monotonic()
+    pull_and_extract_container_image(
+        str(local_tar), images_dir=images_dir, instance_id="sb-2"
+    )
+    assert time.monotonic() - start >= 0.8
+    proc.join()
+
+
+def test_concurrent_pulls_of_one_image_extract_it_once(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    local_tar = tmp_path / "sample.tar"
+    _write_sample_tar(local_tar)
+    images_dir = str(tmp_path / "images")
+    calls = []
+    real = image_utils._extract_image_layers
+
+    def slow_extract(*args, **kwargs):
+        calls.append(1)
+        time.sleep(0.5)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(image_utils, "_extract_image_layers", slow_extract)
+    results = []
+    threads = [
+        threading.Thread(
+            target=lambda i=i: results.append(
+                pull_and_extract_container_image(
+                    str(local_tar), images_dir=images_dir, instance_id=f"sb-{i}"
+                )
+            )
+        )
+        for i in range(3)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    assert len(calls) == 1
+    assert len(set(results)) == 1 and len(results) == 3
+    assert sorted(os.listdir(os.path.join(results[0], ".users"))) == [
+        "sb-0",
+        "sb-1",
+        "sb-2",
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

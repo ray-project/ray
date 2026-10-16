@@ -22,12 +22,16 @@ explicitly: ``mkfs.erofs`` gives a directory the tar leaves implicit the
 *builder's* uid and mode 0777, replacing the image's own.
 """
 
+import contextlib
 import errno
+import fcntl
+import glob
 import hashlib
 import json
 import logging
 import mmap
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -37,7 +41,7 @@ import uuid
 from collections import OrderedDict, deque
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import BinaryIO, Deque, Dict, List, Optional, Tuple
+from typing import IO, BinaryIO, Deque, Dict, List, Optional, Tuple
 
 from ray.experimental.sandbox._internal.erofs_reader import (
     ErofsImage,
@@ -45,8 +49,12 @@ from ray.experimental.sandbox._internal.erofs_reader import (
 )
 from ray.experimental.sandbox._internal.image_utils import (
     _MKFS_EROFS_MIN_VERSION,
+    _USERS_SUBDIR,
     LAYER_REFERENCE_PREFIX,
+    _release_image_use,
+    entry_lock_path,
     mkfs_erofs_path,
+    mkfs_erofs_reproducible_flags,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -64,7 +72,13 @@ LAYER_JSON_FORMAT = 1
 EPOCHS_DIR = ".epochs"
 # Work copies of an image being built: ``raylayer@<leaf key>.work.<uuid>``.
 WORK_INFIX = ".work."
+# A work copy's owner file, which its build keeps locked (see own_work_dir).
 BUILDER_FILE = ".builder"
+_BUILD_TOKEN_PREFIX = "build-"
+_BUILD_TOKEN = re.compile(r"build-[0-9a-f]{12}")
+# A work copy with no owner file this old is one whose build died before it
+# could take ownership; a younger one may be taking it right now.
+_UNOWNED_WORK_DIR_GRACE_SECONDS = 300.0
 # The node's secret for keying build-only environment values (see
 # ``image_build.step_key``). Dot-prefixed like EPOCHS_DIR, so no image maps
 # onto it, and a plain file, so eviction passes it by.
@@ -73,8 +87,7 @@ BUILD_ENV_KEY_FILE = ".build_env_key"
 # The erofs-utils release that added ``mkfs.erofs --incremental``.
 _MKFS_EROFS_INCREMENTAL_VERSION = "1.8"
 _OPAQUE_XATTR = "SCHILY.xattr.trusted.overlay.opaque"
-_OVERLAY_XATTR_PREFIX = "SCHILY.xattr.trusted.overlay."
-_XATTR_PREFIX = "SCHILY.xattr."
+_CAPABILITY_XATTR = "SCHILY.xattr.security.capability"
 _WHITEOUT_PREFIX = ".wh."
 _OPAQUE_MARKER = ".wh..wh..opq"
 _COPY_BUFSIZE = 1 << 20
@@ -147,7 +160,9 @@ def apply_layer_to_erofs(image_path: str, layer_path: str) -> None:
     tarball's order: sorting spools the data through a temporary file first,
     which measured several times slower. The block size and the flat data
     layout match :func:`~ray.experimental.sandbox._internal.image_utils.build_erofs_image`,
-    as gVisor's EROFS reader requires.
+    as gVisor's EROFS reader requires. A fixed build time keeps the result
+    the same bytes wherever the same layers are applied (see
+    ``mkfs_erofs_reproducible_flags``); the UUID stays the base image's.
 
     Args:
         image_path: The EROFS image, modified in place.
@@ -168,6 +183,7 @@ def apply_layer_to_erofs(image_path: str, layer_path: str) -> None:
             "--ovlfs-strip=1",
             f"-b{mmap.PAGESIZE}",
             "-E^inline_data",
+            *mkfs_erofs_reproducible_flags(),
             image_path,
             layer_path,
         ],
@@ -179,6 +195,61 @@ def apply_layer_to_erofs(image_path: str, layer_path: str) -> None:
             "mkfs.erofs failed to apply an image layer: "
             f"{(res.stderr or res.stdout).strip()[-500:]}"
         )
+
+
+def fsck_erofs_path() -> Optional[str]:
+    """``fsck.erofs`` from the erofs-utils that ``mkfs.erofs`` came from, or None.
+
+    erofs-utils installs both; the one beside ``mkfs.erofs`` matches its
+    version, so it is preferred over another found on PATH.
+    """
+    mkfs = mkfs_erofs_path()
+    if mkfs is not None:
+        sibling = os.path.join(os.path.dirname(mkfs), "fsck.erofs")
+        if os.access(sibling, os.X_OK):
+            return sibling
+    return shutil.which("fsck.erofs")
+
+
+def verify_erofs_image(image_path: str, key: Optional[str] = None) -> bool:
+    """Check a finished image with ``fsck.erofs`` before any sandbox mounts it.
+
+    Checks the superblock, every inode and how every file's data is laid
+    out (``--extract`` with no target), which catches an image cut short or
+    corrupted on its way to disk. It reads metadata rather than data, so it
+    takes tens of milliseconds for a 250 MB image.
+
+    Args:
+        image_path: The EROFS image.
+        key: The layer the image is for, for the error.
+
+    Returns:
+        False if the node has no ``fsck.erofs``, so nothing was checked.
+
+    Raises:
+        SandboxImageBuildError: The image failed the check.
+    """
+    fsck = fsck_erofs_path()
+    if fsck is None:
+        return False
+    try:
+        res = subprocess.run(
+            [fsck, "--extract", image_path],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired as err:
+        raise SandboxImageBuildError(
+            "fsck.erofs did not finish checking the built image", key
+        ) from err
+    if res.returncode != 0:
+        raise SandboxImageBuildError(
+            "The built image failed fsck.erofs, so it was not cached: "
+            f"{(res.stderr or res.stdout).strip()[-500:]}",
+            key,
+        )
+    return True
 
 
 # -- writing layers ---------------------------------------------------------
@@ -251,6 +322,38 @@ def _marker(name: str, mtime: float) -> tarfile.TarInfo:
     return info
 
 
+def _strip_xattrs(member: tarfile.TarInfo, rel: str, dropped: List[str]) -> None:
+    """Clear ``member``'s PAX records, its xattrs included.
+
+    gVisor's EROFS reader refuses any inode that carries an xattr ("Operation
+    not supported"), so a file keeping one would be unreadable in every
+    sandbox on the image -- ``ping`` after ``apt-get install iputils-ping``,
+    which gives it ``security.capability``, say. Pulled images carry none
+    either. The other PAX records name the original path and link target,
+    which would otherwise win over the names rewritten here; tarfile writes
+    fresh ones where the rewritten entry needs them.
+
+    Args:
+        member: The entry, modified in place.
+        rel: Its path, for the record of dropped capabilities.
+        dropped: Paths whose file capabilities were dropped; extended.
+    """
+    if _CAPABILITY_XATTR in member.pax_headers:
+        dropped.append(rel)
+    member.pax_headers = {}
+
+
+def _warn_dropped_capabilities(dropped: List[str]) -> None:
+    if dropped:
+        logger.warning(
+            "Dropped file capabilities from %d file(s) in an image layer, "
+            "first /%s: gVisor's EROFS root filesystem cannot serve them, "
+            "and a file carrying one would be unreadable.",
+            len(dropped),
+            dropped[0],
+        )
+
+
 def _relative(name: str) -> str:
     """A member name relative to the root: no ``./`` prefix, no slashes at
     the ends, and "" for the root itself (which tarfile reads as ``.``)."""
@@ -274,8 +377,9 @@ def normalize_overlay_diff(src: BinaryIO, dst_path: str, root: ErofsStat) -> Lay
       sets it on every directory created in the upper layer, not only on one
       that replaced a deleted directory; either way it becomes the directory
       plus ``<dir>/.wh..wh..opq``, which hides nothing for a new directory.
-    * Other ``trusted.overlay.*`` xattrs are overlay bookkeeping and are dropped;
-      every other xattr (``security.capability``, say) is kept.
+    * Every other xattr is dropped: overlay bookkeeping, and the rest too,
+      since gVisor cannot read a file that carries one (see
+      :func:`_strip_xattrs`).
     * The root entry describes the upper layer's own root rather than the
       image's, so it is replaced by ``root``.
 
@@ -291,6 +395,7 @@ def normalize_overlay_diff(src: BinaryIO, dst_path: str, root: ErofsStat) -> Lay
         The layer's sha256 and size.
     """
     whiteouts = set()
+    dropped: List[str] = []
     with open(dst_path, "wb") as f:
         hasher = _HashingWriter(f)
         with tarfile.open(fileobj=src, mode="r|") as tin, _open_layer_writer(
@@ -313,14 +418,7 @@ def normalize_overlay_diff(src: BinaryIO, dst_path: str, root: ErofsStat) -> Lay
                     )
                     continue
                 opaque = member.isdir() and member.pax_headers.get(_OPAQUE_XATTR) == "y"
-                # Only xattrs survive: the original's path/linkpath records would
-                # otherwise win over the names rewritten below.
-                member.pax_headers = {
-                    k: v
-                    for k, v in member.pax_headers.items()
-                    if k.startswith(_XATTR_PREFIX)
-                    and not k.startswith(_OVERLAY_XATTR_PREFIX)
-                }
+                _strip_xattrs(member, rel, dropped)
                 member.name = rel
                 if member.islnk():
                     member.linkname = _relative(member.linkname)
@@ -332,6 +430,7 @@ def normalize_overlay_diff(src: BinaryIO, dst_path: str, root: ErofsStat) -> Lay
                         _marker(os.path.join(rel, _OPAQUE_MARKER), member.mtime)
                     )
         info = hasher.info()
+    _warn_dropped_capabilities(dropped)
     return info
 
 
@@ -464,6 +563,7 @@ def prepare_copy_layer(image: ErofsImage, src_path: str, dst_path: str) -> Layer
             placed.append((member, os.path.join(resolved_parent, base)))
         explicit_dirs = {name for member, name in placed if member.isdir()}
         root = image.stat(image.root_nid)
+        dropped: List[str] = []
         with open(dst_path, "wb") as f:
             hasher = _HashingWriter(f)
             with _open_layer_writer(hasher) as tout:
@@ -472,15 +572,12 @@ def prepare_copy_layer(image: ErofsImage, src_path: str, dst_path: str) -> Layer
                     if name not in explicit_dirs:
                         tout.addfile(header)
                 for member, name in placed:
+                    _strip_xattrs(member, name, dropped)
                     member.name = name
-                    member.pax_headers = {
-                        k: v
-                        for k, v in member.pax_headers.items()
-                        if k.startswith(_XATTR_PREFIX)
-                    }
                     tout.addfile(
                         member, tin.extractfile(member) if member.isreg() else None
                     )
+            _warn_dropped_capabilities(dropped)
             return hasher.info()
 
 
@@ -646,53 +743,142 @@ def base_build_id(image_dir: str, base_key: str) -> str:
         return f"base:{base_key}"
 
 
-def write_builder_file(work_dir: str) -> None:
-    """Record which process owns a work copy, for :func:`sweep_stale_work_dirs`."""
-    with open(os.path.join(work_dir, BUILDER_FILE), "w", encoding="utf-8") as f:
-        json.dump(
-            {"pid": os.getpid(), "start_time": _process_start_time(os.getpid())}, f
-        )
+def build_token() -> str:
+    """A fresh in-use token for one build (see :func:`own_work_dir`)."""
+    return f"{_BUILD_TOKEN_PREFIX}{uuid.uuid4().hex[:12]}"
 
 
-def _process_start_time(pid: int) -> Optional[str]:
+def own_work_dir(work_dir: str, token: str) -> IO[str]:
+    """Take ownership of a new work copy, and return its owner file open.
+
+    The builder keeps the file, and so its ``flock``, until the work copy is
+    gone. The kernel drops the lock when the builder exits or crashes, which
+    is how :func:`sweep_stale_work_dirs` tells a dead build's work copy from a
+    live one -- as the sandbox backend tells a dead owner's bundle. The file
+    is locked before it takes its name, so a sweep never takes a work copy
+    that is being created.
+
+    Args:
+        work_dir: The new work copy's directory.
+        token: The build's in-use token (:func:`build_token`), which pins the
+            work copy and the image the build starts from.
+
+    Returns:
+        The owner file. Close it only once the work copy is removed.
+    """
+    path = os.path.join(work_dir, BUILDER_FILE)
+    owner = open(f"{path}.tmp", "x", encoding="utf-8")
     try:
-        with open(f"/proc/{pid}/stat", "r", encoding="utf-8") as f:
-            # Field 22, after the parenthesized command, which may hold spaces.
-            return f.read().rsplit(")", 1)[1].split()[19]
-    except (OSError, IndexError):
-        return None
+        fcntl.flock(owner, fcntl.LOCK_EX)
+        json.dump({"pid": os.getpid(), "token": token}, owner)
+        owner.flush()
+        os.rename(f"{path}.tmp", path)
+    except BaseException:
+        owner.close()
+        raise
+    return owner
 
 
-def _builder_alive(work_dir: str) -> bool:
-    try:
-        with open(os.path.join(work_dir, BUILDER_FILE), "r", encoding="utf-8") as f:
-            owner = json.load(f)
-        pid = int(owner["pid"])
-    except (OSError, ValueError, KeyError, TypeError):
-        # Unreadable: either being written right now or garbage. Only call it
-        # stale once it is old enough not to be the former.
-        try:
-            return time.time() - os.path.getmtime(work_dir) < 300
-        except OSError:
-            return False
-    start = _process_start_time(pid)
-    return start is not None and start == owner.get("start_time")
+def sweep_stale_work_dirs(images_dir: str) -> List[str]:
+    """Remove the work copies of builds that died, and release their pins.
 
+    A build that dies mid-way leaves its work copy, and its pin on the image
+    it started from, which keeps that image from ever being evicted; nothing
+    else releases either. A live build holds its work copy's owner file
+    locked (see :func:`own_work_dir`), so a work copy whose lock this sweep
+    can take is a dead build's. The sweep holds the lock while it removes the
+    work copy, so no other sweep removes it too.
 
-def sweep_stale_work_dirs(images_dir: str) -> None:
-    """Remove work copies whose builder process is gone.
+    Args:
+        images_dir: The image cache.
 
-    A builder that dies mid-build leaves its work copy pinned by its own
-    token, which nothing else ever releases; this is what does.
+    Returns:
+        The names of the work copies removed.
     """
     try:
         names = os.listdir(images_dir)
     except OSError:
-        return
+        return []
+    swept = []
     for name in names:
         if not name.startswith("raylayer_") or WORK_INFIX not in name:
             continue
-        path = os.path.join(images_dir, name)
-        if os.path.isdir(path) and not _builder_alive(path):
-            logger.info("Removing the work copy of a build that died: %s", name)
-            shutil.rmtree(path, ignore_errors=True)
+        try:
+            if _sweep_if_unowned(images_dir, name):
+                swept.append(name)
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Failed to remove the work copy of a build that died: %s",
+                name,
+                exc_info=True,
+            )
+    if swept:
+        logger.info("Removed the work copies of builds that died: %s", swept)
+    return swept
+
+
+def _sweep_if_unowned(images_dir: str, name: str) -> bool:
+    """Remove one work copy if no build owns it, and return whether it did."""
+    work_dir = os.path.join(images_dir, name)
+    if os.path.islink(work_dir) or not os.path.isdir(work_dir):
+        return False
+    try:
+        owner = open(os.path.join(work_dir, BUILDER_FILE), encoding="utf-8")
+    except FileNotFoundError:
+        # A build takes ownership right after creating the directory, so
+        # one without an owner file this old died before it could.
+        try:
+            age = time.time() - os.path.getmtime(work_dir)
+        except OSError:
+            return False
+        if age < _UNOWNED_WORK_DIR_GRACE_SECONDS:
+            return False
+        _remove_work_dir(images_dir, work_dir, keep=None)
+        return True
+    except OSError:
+        return False
+    with owner:
+        try:
+            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return False  # Its build is alive.
+        if os.fstat(owner.fileno()).st_nlink == 0:
+            return False  # Its build removed it since we opened the file.
+        try:
+            record = json.load(owner)
+        except ValueError:
+            record = None
+        token = record.get("token") if isinstance(record, dict) else None
+        if isinstance(token, str) and _BUILD_TOKEN.fullmatch(token):
+            # The token is the build's alone, so whatever entry holds it --
+            # the image the build started from, wherever a republish carried
+            # the pin -- holds it for this build. Pins inside the work copy go
+            # with it.
+            pattern = os.path.join(glob.escape(images_dir), "*", _USERS_SUBDIR, token)
+            for pin in glob.glob(pattern):
+                _release_image_use(os.path.dirname(os.path.dirname(pin)), token)
+        _remove_work_dir(images_dir, work_dir, keep=BUILDER_FILE)
+    return True
+
+
+def _remove_work_dir(images_dir: str, work_dir: str, keep: Optional[str]) -> None:
+    """Remove a work copy, its owner file ``keep`` last.
+
+    A sweep cut short -- with the process running it, say -- leaves the owner
+    file, and so the work copy, for a later sweep to finish.
+    """
+    if keep is not None:
+        with os.scandir(work_dir) as entries:
+            for entry in entries:
+                if entry.name == keep:
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+                else:
+                    with contextlib.suppress(OSError):
+                        os.unlink(entry.path)
+    shutil.rmtree(work_dir, ignore_errors=True)
+    # Pulls of the work copy made its short lock file; nothing else ever uses
+    # that name again.
+    with contextlib.suppress(OSError):
+        os.remove(entry_lock_path(images_dir, os.path.basename(work_dir)))

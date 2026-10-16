@@ -339,6 +339,14 @@ Sandboxes boot from OCI container images. The image manager pulls an image strai
 
 The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before pulling or building an image it doesn't have, Ray evicts the least recently used images until the cache fits under the cap. Built images and their layers count toward the same cap. A built image is evicted in two steps: first its root filesystem goes, while its layers stay, so the next sandbox that needs it rebuilds it from the cached layers without running any build step again. Its layers go only if the cache is still over the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
 
+Ray exports metrics about the cache and the image builds that the next section describes, through the same [metrics system](../ray-observability/user-guides/add-app-metrics.md) as application metrics:
+
+* `ray_sandbox_image_requests`: images that sandboxes asked for, by `result`: `hit` (cached), `waited` (another build on the node made it), or `built`.
+* `ray_sandbox_image_build_seconds` and `ray_sandbox_image_phase_seconds`: how long builds take, in total and by `phase` (`sandbox_create`, `commands`, `export`, `normalize`, `copy`, `apply`, `verify`).
+* `ray_sandbox_image_slot_wait_seconds`: how long builds wait for one of the node's build slots.
+* `ray_sandbox_image_evictions`: evictions by `kind`: `whole`, or `demote` for a built image reduced to its layers.
+* `ray_sandbox_image_cache_bytes`: the cache's size as of its last eviction check.
+
 ### Build images
 
 The Modal-compatible `Image` can add build steps on top of a base image, such as `run_commands()`, `pip_install()`, `apt_install()`, `uv_pip_install()`, and `add_local_dir(..., copy=True)`. The node that runs a sandbox builds the image the first time it needs it, then caches it like any other image:
@@ -357,8 +365,9 @@ sandbox = modal.Sandbox.create(image=image, timeout=300)
 
 Each build step becomes a cached layer:
 
-* The step runs in a short-lived build sandbox on the image so far, with public network access, as root, and with the image's environment and working directory.
+* The step runs in a short-lived build sandbox on the image so far, with public network access and with the image's environment and working directory. It runs as root even when the base image sets a `USER`, as on Modal.
 * Ray records what the step changed, as an OCI layer, and appends it to the image.
+* Ray checks each finished image with `fsck.erofs` before caching it, which takes tens of milliseconds. Set `RAY_SANDBOX_IMAGE_BUILD_VERIFY=0` on worker nodes to skip the check.
 * A layer's cache key covers the base image, every earlier step, and the step itself, including the content of any copied files. Two images that share their first steps therefore share those layers, and changing the last step only rebuilds the last step.
 * Later sandboxes on the node, and other images with the same leading steps, reuse the cached layers. A sandbox on a fully cached image starts as fast as one on a pulled image.
 
@@ -366,13 +375,15 @@ The commands match Modal's image builder version 2025.06, so a step installs wha
 
 A few things differ from Modal:
 
-* **Builds happen per node.** Each node builds the images its sandboxes need, so the first sandbox on a node waits for the build. Build output goes to the sandbox actor's log. A node builds at most two images at a time; set `RAY_SANDBOX_IMAGE_BUILD_CONCURRENCY` on worker nodes to change that, or to `0` for no limit. Each build step may run for an hour; set `RAY_SANDBOX_IMAGE_BUILD_TIMEOUT_SECONDS` to change that. Build sandboxes may use the whole node; set `RAY_SANDBOX_IMAGE_BUILD_CPU` (CPUs) and `RAY_SANDBOX_IMAGE_BUILD_MEMORY` (for example `8Gi`) to cap them.
+* **Builds happen per node.** Each node builds the images its sandboxes need, so the first sandbox on a node waits for the build. Build output goes to the sandbox actor's log. A node builds at most two images at a time; set `RAY_SANDBOX_IMAGE_BUILD_CONCURRENCY` on worker nodes to change that, or to `0` for no limit. Each build step may run for an hour; set `RAY_SANDBOX_IMAGE_BUILD_TIMEOUT_SECONDS` to change that. Build sandboxes may use the whole node; set `RAY_SANDBOX_IMAGE_BUILD_CPU` (CPUs) and `RAY_SANDBOX_IMAGE_BUILD_MEMORY` (for example `8Gi`) to cap them. They have public network access, as on Modal; set `RAY_SANDBOX_IMAGE_BUILD_NETWORK=none` to build without it, in which case any step that downloads something fails.
 * **Nodes can build different files from one image definition.** Modal builds each image once and runs the result everywhere. Here each node runs the build steps itself, so a step whose inputs change over time can produce different files on different nodes, or on one node after its cache evicted the step. Steps that copy local files always produce the same files on every node. Other steps produce the same files when you pin what they fetch:
   * Base images: reference them by digest alone, such as `Image.from_registry("python@sha256:...")`. A tag resolves when a node first pulls it, and again after the node evicts it.
   * Python packages: pin exact versions (`pip_install("numpy==2.1.3")`), install from a requirements file with `--require-hashes`, or use `uv_sync(frozen=True)` with a `uv.lock`. Set `uv_version=` rather than relying on `uv`'s `latest` tag.
   * Debian packages: `apt-get update` fetches whatever the mirror holds at build time. Pin package versions, or point apt at a snapshot mirror such as `snapshot.debian.org`.
 * **`force_build=True` rebuilds once per `Image` object on each node, not on every sandbox.** As on Modal, a rebuilt layer also invalidates the layers built on it in other images.
-* **Steps can't use Modal Secrets, volumes, or GPUs.** The `env=` argument of a build step reaches only that step, as Modal's does.
+* **Steps can't use Modal Secrets, volumes, or GPUs.** The `env=` argument of a build step reaches only that step, as Modal's does. Its values never enter the image's config or the cache's metadata. Anything the step writes to a file stays in the cached layer, though, and anything it prints goes to the sandbox actor's log, so make sure a step that uses a credential doesn't write or print it.
+* **Images keep no extended attributes.** gVisor can't read a file that carries one in an image, so the builder drops extended attributes, including the file capabilities that `setcap` or some `apt` packages set. Pulled images keep none either. A program that relies on a file capability, rather than running as root, doesn't get it in the sandbox.
+* **Sparse files take their full size.** A file that a step creates with `truncate` or `fallocate` keeps its size but loses its holes, so a 10 GiB sparse file takes 10 GiB in the cached layer and in the image.
 * **Some builders aren't available yet.** Dockerfile parsing (`dockerfile_commands()`, `from_dockerfile()`) and `run_function()` aren't supported yet.
 
 ### Route Docker Hub pulls through a mirror

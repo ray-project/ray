@@ -6,11 +6,15 @@ commands script the overlay diff it "produces" (see :class:`FakeBackend`).
 The end-to-end path through runsc is in test_modal_image_build_integration.
 """
 
+import contextlib
+import fcntl
+import glob
 import hashlib
 import io
 import json
 import os
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -22,14 +26,18 @@ import uuid
 import pytest
 
 from ray.experimental.sandbox import image_builder as image_builder_module
-from ray.experimental.sandbox._internal import image_layers
+from ray.experimental.sandbox._internal import image_layers, image_metrics
 from ray.experimental.sandbox._internal.erofs_reader import ErofsImage
 from ray.experimental.sandbox._internal.image_utils import (
     LAYER_TAR,
     ROOTFS_IMAGE,
     BuiltImageEvictedError,
+    _mark_image_in_use,
+    entry_build_lock_path,
     evict_least_recently_used_images,
     mkfs_erofs_path,
+    mkfs_erofs_reproducible_flags,
+    sanitize_image_name,
 )
 from ray.experimental.sandbox.exceptions import SandboxImageBuildError
 from ray.experimental.sandbox.image_build import (
@@ -48,6 +56,7 @@ from ray.experimental.sandbox.runtime import SandboxRuntime
 @pytest.fixture(autouse=True)
 def _needs_incremental_mkfs():
     mkfs_erofs_path.cache_clear()
+    mkfs_erofs_reproducible_flags.cache_clear()
     image_layers.mkfs_erofs_supports_incremental.cache_clear()
     if not image_layers.mkfs_erofs_supports_incremental():
         pytest.skip("needs mkfs.erofs 1.8+ (erofs-utils) with --incremental")
@@ -137,13 +146,33 @@ def _read(image_path, path):
     return res.stdout
 
 
+# What ``setcap cap_net_raw+ep`` and a user xattr leave on a file.
+_CAP_XATTRS = {
+    "SCHILY.xattr.security.capability": "\x01\x00\x00\x02\x00\x20\x00\x00"
+    "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+    "SCHILY.xattr.user.note": "kept?",
+}
+
+
+def _xattr_size(image, path):
+    res = subprocess.run(
+        ["dump.erofs", f"--path={path}", image], capture_output=True, text=True
+    )
+    line = next(line for line in res.stdout.splitlines() if "Xattr size" in line)
+    return int(line.rsplit(":", 1)[1])
+
+
 class FakeBackend:
     """Stands in for gVisor: a step's commands describe the diff it makes.
 
     ``put <path> <content>`` writes a file, ``del <path>`` deletes one, and
-    ``fail`` exits 1. ``export_rootfs_upper`` writes what gVisor would: the
+    ``fail`` exits 1. ``dir <path>`` makes a directory, ``link <path>
+    <target>`` a hard link, ``sym <path> <target>`` a symlink and ``fifo
+    <path>`` a fifo. ``export_rootfs_upper`` writes what gVisor would: the
     root entry, every ancestor directory, one character-device whiteout with
-    every further deletion a hard link to it, and opaque new directories.
+    every further deletion a hard link to it, and opaque new directories. A
+    hard link's target is in the same export: gVisor copies a lower file up
+    when something links to it, so ``put`` it first.
     """
 
     def __init__(self, image_manager):
@@ -200,7 +229,7 @@ class FakeBackend:
             written = set()
             for op in self._ops[sandbox_id]:
                 words = op.split(" ", 2)
-                if words[0] not in ("put", "del"):
+                if words[0] not in ("put", "del", "cap", "dir", "link", "sym", "fifo"):
                     continue
                 target = "./" + words[1].lstrip("/")
                 parts = target.split("/")[1:-1]
@@ -219,6 +248,33 @@ class FakeBackend:
                         )
                 if words[0] == "put":
                     _tar_add(tar, target, data=words[2].encode())
+                elif words[0] == "cap":
+                    _tar_add(
+                        tar, target, data=words[2].encode(), mode=0o755, pax=_CAP_XATTRS
+                    )
+                elif words[0] == "dir" and target not in written:
+                    # New, or replacing a file: gVisor marks it opaque.
+                    written.add(target)
+                    _tar_add(
+                        tar,
+                        target,
+                        type=tarfile.DIRTYPE,
+                        mode=0o755,
+                        pax={"SCHILY.xattr.trusted.overlay.opaque": "y"},
+                    )
+                elif words[0] == "link":
+                    _tar_add(
+                        tar,
+                        target,
+                        type=tarfile.LNKTYPE,
+                        linkname="./" + words[2].lstrip("/"),
+                    )
+                elif words[0] == "sym":
+                    _tar_add(
+                        tar, target, type=tarfile.SYMTYPE, linkname=words[2], mode=0o777
+                    )
+                elif words[0] == "fifo":
+                    _tar_add(tar, target, type=tarfile.FIFOTYPE)
                 elif words[0] == "del":
                     if whiteout is None:
                         whiteout = target
@@ -317,9 +373,13 @@ def test_normalize_turns_overlay_encoding_into_an_oci_layer(
         members["etc/new-link"].islnk()
         and members["etc/new-link"].linkname == "etc/new"
     )
-    xattrs = members["etc/new"].pax_headers
-    assert xattrs.get("SCHILY.xattr.user.keep") == "1"
-    assert not any("trusted.overlay" in key for key in xattrs)
+    # No xattr survives, not even an ordinary one: gVisor can't read an
+    # inode that carries any.
+    assert not any(
+        key.startswith("SCHILY.xattr.")
+        for m in members.values()
+        for key in m.pax_headers
+    )
 
 
 def test_applying_a_layer_deletes_replaces_and_keeps_metadata(
@@ -516,6 +576,34 @@ def test_concurrent_builds_of_one_image_build_it_once(builder, base_tar):
     assert builder._backend.runs == ["put /a 1", "put /b 2"]
 
 
+def test_layers_replace_link_and_make_special_files(builder, base_tar):
+    # In the form `runsc tar rootfs-upper` exports each one (checked against
+    # gVisor; the end-to-end check is in test_modal_image_build_integration).
+    plan = ImageBuildPlan(
+        (
+            _run("put /m/dir2file/inner x", "put /m/file2dir f", "put /m/lower hl"),
+            _run(
+                "put /m/dir2file now",
+                "dir /m/file2dir",
+                "put /m/file2dir/inner i",
+                "put /m/lower hl",
+                "link /m/hardlink /m/lower",
+                "sym /m/symlink lower",
+                "fifo /m/fifo",
+            ),
+        )
+    )
+    image = _image_file(builder, builder.build(base_tar, plan))
+    assert _read(image, "/m/dir2file") == b"now"
+    assert _ls(image, "/m/file2dir") == ["inner"]
+    assert _read(image, "/m/hardlink") == b"hl"
+    with ErofsImage(image) as erofs:
+        assert erofs.lstat("/m/hardlink").nid == erofs.lstat("/m/lower").nid
+        symlink = erofs.lstat("/m/symlink")
+        assert symlink.is_symlink and erofs.readlink(symlink.nid) == "lower"
+        assert stat.S_ISFIFO(erofs.lstat("/m/fifo").mode)
+
+
 def test_copy_steps_need_no_sandbox(builder, base_tar, tmp_path):
     archive = tmp_path / "c.tar"
     _copy_archive(archive, [("bin/x", b"x", 0o755)])
@@ -537,13 +625,320 @@ def test_image_env_edits_the_image_config(builder, base_tar):
     assert config["config"]["Env"] == ["A=one", "PATH=/x:one:one"]
 
 
-def test_a_stale_work_copy_is_swept(builder, base_tar):
-    dead = os.path.join(builder.images_dir, "raylayer_abc.work.dead")
-    os.makedirs(dead)
-    with open(os.path.join(dead, image_layers.BUILDER_FILE), "w") as f:
-        json.dump({"pid": 2**22 + 7, "start_time": "1"}, f)
-    builder.build(base_tar, ImageBuildPlan((_run("put /a 1"),)))
-    assert not os.path.exists(dead)
+# Builds an image whose one step hangs, in a process of its own to SIGKILL.
+# This file is loaded by path, for FakeBackend: CI may import ray from an
+# installed wheel that has no tests package.
+_DIE_MID_BUILD = """
+import importlib.util
+import sys
+
+import ray  # noqa: F401
+from ray.experimental.sandbox.image_build import ImageBuildPlan
+from ray.experimental.sandbox.image_builder import ImageBuilder
+from ray.experimental.sandbox.image_manager import ImageManager
+
+spec = importlib.util.spec_from_file_location("builder_tests", sys.argv[3])
+tests = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(tests)
+manager = ImageManager(images_dir=sys.argv[1])
+ImageBuilder(manager, tests.FakeBackend(manager)).build(
+    sys.argv[2], ImageBuildPlan((tests._run("hang"),))
+)
+"""
+
+
+def _build_pins(entry):
+    try:
+        users = os.listdir(os.path.join(entry, ".users"))
+    except FileNotFoundError:
+        return []
+    return [user for user in users if user.startswith("build-")]
+
+
+def _work_copies(images_dir):
+    try:
+        names = os.listdir(images_dir)
+    except FileNotFoundError:
+        return []
+    return [name for name in names if image_layers.WORK_INFIX in name]
+
+
+def _step_pid(images_dir):
+    """The pid a hanging build step recorded, once it has."""
+    for name in _work_copies(images_dir):
+        work = os.path.join(images_dir, name)
+        for pid_file in glob.glob(os.path.join(work, "pid-*")):
+            with contextlib.suppress(OSError):
+                with open(pid_file) as f:
+                    text = f.read().strip()
+                if text:
+                    return int(text)
+    return None
+
+
+def test_a_sweep_reclaims_what_a_killed_build_left(builder, base_tar, tmp_path):
+    base_dir = builder._image_manager.get_image_dir(base_tar)
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            _DIE_MID_BUILD,
+            builder.images_dir,
+            base_tar,
+            os.path.abspath(__file__),
+        ],
+        cwd=str(tmp_path),
+    )
+    step_pid = None
+    try:
+        deadline = time.monotonic() + 60
+        while step_pid is None:
+            assert proc.poll() is None, "the build ended before it was killed"
+            assert time.monotonic() < deadline, "the build never reached its step"
+            if _build_pins(base_dir):
+                step_pid = _step_pid(builder.images_dir)
+            time.sleep(0.05)
+    finally:
+        proc.kill()
+        proc.wait()
+    # In a real sandbox the step dies with its sandbox; here it is a process
+    # group of its own.
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(step_pid, signal.SIGKILL)
+    [name] = _work_copies(builder.images_dir)
+    assert _build_pins(base_dir)
+
+    assert image_layers.sweep_stale_work_dirs(builder.images_dir) == [name]
+    assert _work_copies(builder.images_dir) == []
+    assert _build_pins(base_dir) == []
+
+
+def test_a_sweep_takes_only_work_copies_nobody_owns(builder, base_tar):
+    entry = builder._image_manager.pull_image(base_tar, instance_id="sandbox-a")
+    name = "raylayer_k.work.live"
+    work = os.path.join(builder.images_dir, name)
+    os.makedirs(work)
+    token = image_layers.build_token()
+    owner = image_layers.own_work_dir(work, token)
+    _mark_image_in_use(entry, token)
+
+    assert image_layers.sweep_stale_work_dirs(builder.images_dir) == []
+    assert os.path.isdir(work) and _build_pins(entry) == [token]
+    # What the kernel does when the build's process dies.
+    owner.close()
+    assert image_layers.sweep_stale_work_dirs(builder.images_dir) == [name]
+    assert not os.path.exists(work)
+    assert os.listdir(os.path.join(entry, ".users")) == ["sandbox-a"]
+
+
+@pytest.mark.parametrize(
+    "record", [{"token": "*"}, {"token": "build-../../x"}, {"pid": 1}, "{"]
+)
+def test_a_sweep_releases_no_pin_a_bad_owner_file_names(builder, base_tar, record):
+    entry = builder._image_manager.pull_image(base_tar, instance_id="sandbox-a")
+    name = "raylayer_k.work.bad"
+    work = os.path.join(builder.images_dir, name)
+    os.makedirs(work)
+    with open(os.path.join(work, image_layers.BUILDER_FILE), "w") as f:
+        f.write(record if isinstance(record, str) else json.dumps(record))
+
+    assert image_layers.sweep_stale_work_dirs(builder.images_dir) == [name]
+    assert os.listdir(os.path.join(entry, ".users")) == ["sandbox-a"]
+
+
+def test_a_work_copy_with_no_owner_is_swept_only_once_old(builder):
+    name = "raylayer_k.work.new"
+    work = os.path.join(builder.images_dir, name)
+    os.makedirs(work)
+    # Its build may be about to take ownership.
+    assert image_layers.sweep_stale_work_dirs(builder.images_dir) == []
+    old = time.time() - 400
+    os.utime(work, (old, old))
+    assert image_layers.sweep_stale_work_dirs(builder.images_dir) == [name]
+
+
+def _build_in_thread(builder, base_tar, plan):
+    """Run ``builder.build`` in a thread; its result or error lands in the dict."""
+    outcome = {}
+
+    def target():
+        try:
+            outcome["ref"] = builder.build(base_tar, plan)
+        except BaseException as err:  # noqa: BLE001
+            outcome["error"] = err
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    return thread, outcome
+
+
+def _wait_until(predicate, timeout=30.0):
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < deadline, "timed out waiting"
+        time.sleep(0.02)
+
+
+def test_a_cancelled_build_kills_its_step_and_cleans_up(builder, base_tar):
+    base_dir = builder._image_manager.get_image_dir(base_tar)
+    thread, outcome = _build_in_thread(
+        builder, base_tar, ImageBuildPlan((_run("hang"),))
+    )
+    _wait_until(lambda: _step_pid(builder.images_dir) is not None)
+    pid = _step_pid(builder.images_dir)
+
+    started = time.monotonic()
+    builder.cancel()
+    thread.join(30)
+    assert not thread.is_alive()
+    # At once, not at the step's hour-long timeout.
+    assert time.monotonic() - started < 10
+    assert isinstance(outcome.get("error"), SandboxImageBuildError)
+    assert "cancelled" in str(outcome["error"])
+    # Killed inside its build sandbox, which is then deleted.
+    assert builder._backend.killed == [pid]
+    [(sandbox_id, _)] = builder._backend.created
+    assert ("delete-end", sandbox_id) in builder._backend.events
+    assert _work_copies(builder.images_dir) == []
+    assert _build_pins(base_dir) == []
+    # Builds that start afterwards are not cancelled.
+    ref = builder.build(base_tar, ImageBuildPlan((_run("put /a 1"),)))
+    assert _read(_image_file(builder, ref), "/a") == b"1"
+
+
+@pytest.mark.parametrize("waiting_for", ["a build slot", "another build"])
+def test_a_cancel_reaches_a_build_that_is_waiting(
+    builder, base_tar, monkeypatch, waiting_for
+):
+    plan = ImageBuildPlan((_run("put /a 1"),))
+    if waiting_for == "a build slot":
+        monkeypatch.setenv("RAY_SANDBOX_IMAGE_BUILD_CONCURRENCY", "1")
+        held = os.path.join(builder.images_dir, ".build-slots", "0")
+    else:
+        leaf = builder._resolve_chain(base_tar, plan).leaf
+        held = entry_build_lock_path(
+            builder.images_dir, sanitize_image_name(image_layers.layer_reference(leaf))
+        )
+    os.makedirs(os.path.dirname(held), exist_ok=True)
+    with open(held, "a") as f:
+        # As a build of something else, or of this very image, holds it.
+        fcntl.flock(f, fcntl.LOCK_EX)
+        thread, outcome = _build_in_thread(builder, base_tar, plan)
+        _wait_until(lambda: builder._runs)
+        time.sleep(0.2)
+        builder.cancel()
+        thread.join(10)
+        assert not thread.is_alive()
+    assert "cancelled" in str(outcome.get("error"))
+    assert builder._backend.runs == []
+
+
+@pytest.mark.parametrize("verify", ["1", "0"])
+def test_a_built_image_is_checked_before_it_is_published(
+    builder, base_tar, monkeypatch, verify
+):
+    if image_layers.fsck_erofs_path() is None:
+        pytest.skip("needs fsck.erofs (erofs-utils)")
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_BUILD_VERIFY", verify)
+    real_apply = image_builder_module.apply_layer_to_erofs
+
+    def apply_and_cut_short(image, layer):
+        real_apply(image, layer)
+        # As a write that never reached the disk would leave it.
+        os.truncate(image, os.path.getsize(image) - 4096)
+
+    monkeypatch.setattr(
+        image_builder_module, "apply_layer_to_erofs", apply_and_cut_short
+    )
+    plan = ImageBuildPlan((_run("put /a 1"),))
+    leaf = builder._resolve_chain(base_tar, plan).leaf
+    if verify == "0":
+        # Turned off, the image is published unchecked.
+        builder.build(base_tar, plan)
+        assert builder._has_rootfs(leaf)
+        return
+    with pytest.raises(SandboxImageBuildError, match="fsck.erofs"):
+        builder.build(base_tar, plan)
+    assert not builder._has_rootfs(leaf)
+    assert _work_copies(builder.images_dir) == []
+
+
+class _Recorder:
+    """Stands in for a ``ray.util.metrics`` metric."""
+
+    def __init__(self):
+        self.calls = []
+
+    def inc(self, value=1.0, tags=None):
+        self.calls.append(tags)
+
+    def observe(self, value, tags=None):
+        self.calls.append(tags)
+
+    def set(self, value, tags=None):
+        self.calls.append(value)
+
+
+def test_builds_hits_and_evictions_are_measured(builder, base_tar, monkeypatch):
+    metrics = {
+        name: _Recorder()
+        for name in (
+            "requests",
+            "build_seconds",
+            "phase_seconds",
+            "slot_wait_seconds",
+            "evictions",
+            "cache_bytes",
+        )
+    }
+    monkeypatch.setattr(image_metrics, "_get", lambda: metrics)
+    plan = ImageBuildPlan((_run("put /a 1"),))
+    builder.build(base_tar, plan)
+    builder.build(base_tar, plan)
+
+    assert [tags["result"] for tags in metrics["requests"].calls] == ["built", "hit"]
+    assert len(metrics["build_seconds"].calls) == 1
+    assert len(metrics["slot_wait_seconds"].calls) == 1
+    phases = {tags["phase"] for tags in metrics["phase_seconds"].calls}
+    assert {"sandbox_create", "commands", "export", "normalize", "copy"} <= phases
+    assert "apply" in phases
+    evict_least_recently_used_images(builder.images_dir, 1)
+    kinds = {tags["kind"] for tags in metrics["evictions"].calls}
+    assert kinds == {"demote", "whole"}
+    assert metrics["cache_bytes"].calls[-1] >= 0
+
+
+def test_metrics_do_nothing_outside_ray():
+    assert image_metrics._get() is None
+    image_metrics.count_request("hit")
+    with image_metrics.phase("apply"):
+        pass
+
+
+def test_builds_sweep_in_the_background_at_most_once_a_minute(
+    builder, base_tar, monkeypatch
+):
+    calls = []
+    monkeypatch.setattr(image_builder_module, "sweep_stale_work_dirs", calls.append)
+    monkeypatch.setattr(image_builder_module, "_last_sweep", {})
+
+    def wait_for(count):
+        deadline = time.monotonic() + 10
+        while len(calls) < count and time.monotonic() < deadline:
+            time.sleep(0.01)
+        time.sleep(0.1)
+        assert calls == [builder.images_dir] * count
+
+    plan = ImageBuildPlan((_run("put /a 1"),))
+    # A miss sweeps in the background, and again before it evicts.
+    builder.build(base_tar, plan)
+    # A hit within the minute starts no sweep.
+    builder.build(base_tar, plan)
+    wait_for(2)
+    image_builder_module._last_sweep[builder.images_dir] -= 61
+    # A hit a minute on does.
+    builder.build(base_tar, plan)
+    wait_for(3)
 
 
 def test_layer_metadata_never_holds_build_env_values(builder, base_tar):
@@ -634,12 +1029,31 @@ def test_teardown_overlaps_the_build_unless_it_maps_the_work_copy(
     builder.build(base_tar, ImageBuildPlan((_run("put /a 1"), _run("put /b 2"))))
     (on_base, _), (on_work, work_ref) = backend.created
     assert ".work." in work_ref
+    _wait_until(lambda: ("delete-end", on_base) in backend.events)
     events = backend.events
     applies = [i for i, (kind, _) in enumerate(events) if kind == "apply"]
     # The first sandbox ran on the base: its deletion runs behind the apply.
     assert applies[0] < events.index(("delete-end", on_base))
     # The second ran on the work copy, which the apply rewrites: waited for.
     assert events.index(("delete-end", on_work)) < applies[1]
+
+
+def test_a_build_returns_once_its_image_is_published(builder, base_tar):
+    backend = builder._backend
+    backend.delete_delay = 3.0
+    base_dir = builder._image_manager.get_image_dir(base_tar)
+    started = time.monotonic()
+    ref = builder.build(base_tar, ImageBuildPlan((_run("put /a 1"),)))
+    # Before its build sandbox is deleted, which is slow after a big step.
+    assert time.monotonic() - started < 3.0
+    [(sandbox_id, _)] = backend.created
+    assert ("delete-end", sandbox_id) not in backend.events
+    assert _read(_image_file(builder, ref), "/a") == b"1"
+    assert _work_copies(builder.images_dir) == [] and _build_pins(base_dir) == []
+    # The sandbox keeps its own pin on the image it ran on until it is gone.
+    assert sandbox_id in os.listdir(os.path.join(base_dir, ".users"))
+    _wait_until(lambda: ("delete-end", sandbox_id) in backend.events)
+    assert sandbox_id not in os.listdir(os.path.join(base_dir, ".users"))
 
 
 def test_layer_metadata_records_the_layer_digest(builder, base_tar):
@@ -795,6 +1209,60 @@ def test_rebases_are_bounded(builder, base_tar, monkeypatch):
     assert _read(_image_file(builder, ref), "/a") == b"1"
 
 
+# -- files gVisor can read, and images that come out the same ------------------
+
+
+def test_built_files_carry_no_xattrs(builder, base_tar, tmp_path, caplog):
+    # gVisor's EROFS reader refuses an inode with any xattr, so a file that
+    # kept its capability would be unreadable in the sandbox.
+    archive = tmp_path / "c.tar"
+    with tarfile.open(archive, "w", format=tarfile.PAX_FORMAT) as tar:
+        _tar_add(tar, "opt/copied", data=b"c", mode=0o755, pax=_CAP_XATTRS)
+    plan = ImageBuildPlan(
+        (
+            _run("cap /usr/bin/pinger p"),
+            CopyStep("dcap", archive.read_bytes(), "COPY copied"),
+        )
+    )
+    with caplog.at_level("WARNING"):
+        ref = builder.build(base_tar, plan)
+    image = _image_file(builder, ref)
+    assert _read(image, "/usr/bin/pinger") == b"p"
+    assert _xattr_size(image, "/usr/bin/pinger") == 0
+    assert _xattr_size(image, "/opt/copied") == 0
+    warnings = [
+        r.getMessage() for r in caplog.records if "file capabilities" in r.getMessage()
+    ]
+    assert any("/usr/bin/pinger" in w for w in warnings)
+    assert any("/opt/copied" in w for w in warnings)
+
+
+def test_the_same_build_gives_the_same_bytes_everywhere(tmp_path, base_tar):
+    archive = tmp_path / "c.tar"
+    _copy_archive(archive, [("srv/app.py", b"print(1)\n", 0o644)])
+    plan = ImageBuildPlan(
+        (
+            _run("put /a 1", "del /etc/issue"),
+            CopyStep("d1", archive.read_bytes(), "COPY"),
+        )
+    )
+    digests = []
+    for node in ("node-a", "node-b"):
+        manager = ImageManager(images_dir=str(tmp_path / node))
+        builder = ImageBuilder(manager, FakeBackend(manager))
+        ref = builder.build(base_tar, plan)
+        base_image = os.path.join(manager.get_image_dir(base_tar), ROOTFS_IMAGE)
+        digests.append(
+            [
+                hashlib.sha256(open(p, "rb").read()).hexdigest()
+                for p in (base_image, _image_file(builder, ref))
+            ]
+        )
+        time.sleep(1.1)  # a later clock second
+    # Both the pulled base and the built image.
+    assert digests[0] == digests[1]
+
+
 # -- cache policy and resource bounds ----------------------------------------
 
 
@@ -913,6 +1381,25 @@ def test_build_sandboxes_are_uncapped_by_default(builder, base_tar):
     builder.build(base_tar, ImageBuildPlan((_run("put /a 1"),)))
     (config,) = builder._backend.configs
     assert (config.cpu, config.memory) == (0.0, 0)
+
+
+@pytest.mark.parametrize(
+    "setting, network", [(None, "public"), ("none", "none"), ("host", "public")]
+)
+def test_build_sandboxes_take_the_node_network(
+    builder, base_tar, monkeypatch, setting, network
+):
+    if setting is not None:
+        monkeypatch.setenv("RAY_SANDBOX_IMAGE_BUILD_NETWORK", setting)
+    builder.build(base_tar, ImageBuildPlan((_run("put /a 1"),)))
+    (config,) = builder._backend.configs
+    assert config.network == network
+
+
+def test_a_step_failing_without_network_says_why(builder, base_tar, monkeypatch):
+    monkeypatch.setenv("RAY_SANDBOX_IMAGE_BUILD_NETWORK", "none")
+    with pytest.raises(SandboxImageBuildError, match="BUILD_NETWORK=none"):
+        builder.build(base_tar, ImageBuildPlan((_run("fail"),)))
 
 
 def test_runtime_rebuilds_an_image_evicted_before_its_sandbox_pinned_it(

@@ -848,7 +848,8 @@ class Image:
 
         Args:
             *commands: Shell commands, or lists of them.
-            env: Variables for these commands only.
+            env: Variables for these commands only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             volumes: Unsupported.
             gpu: Unsupported.
@@ -894,7 +895,8 @@ class Image:
             pre: Pass ``--pre``.
             extra_options: Appended to the command as is.
             force_build: As for :meth:`run_commands`.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -930,7 +932,8 @@ class Image:
         Args:
             *packages: Package names, or lists of them.
             force_build: As for :meth:`run_commands`.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -979,7 +982,8 @@ class Image:
             pre: Pass ``--pre``.
             extra_options: Appended to the command as is.
             force_build: As for :meth:`run_commands`.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -1040,7 +1044,8 @@ class Image:
             pre: Pass ``--pre``.
             extra_options: Appended to the command as is.
             force_build: As for :meth:`run_commands`.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -1094,7 +1099,8 @@ class Image:
             extra_options: Appended to the command as is.
             force_build: As for :meth:`run_commands`.
             uv_version: The ``ghcr.io/astral-sh/uv`` tag; ``latest`` by default.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -1178,7 +1184,8 @@ class Image:
             frozen: With a ``uv.lock``, install exactly what it pins.
             extra_options: Appended to the command as is.
             uv_version: The ``ghcr.io/astral-sh/uv`` tag; ``latest`` by default.
-            env: Variables for the sync only.
+            env: Variables for the sync only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -1249,7 +1256,8 @@ class Image:
             poetry_version: Poetry to install; ``"latest"``, a version, or
                 None to use the one already in the image.
             old_installer: Use Poetry's old installer.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 
@@ -1294,7 +1302,8 @@ class Image:
             spec_file: A local environment file, copied into the image.
             channels: Channels to install from, in order.
             force_build: As for :meth:`run_commands`.
-            env: Variables for the install only.
+            env: Variables for the install only. Kept out of the image, but
+                not out of what the step writes to files or prints.
             secrets: Unsupported.
             gpu: Unsupported.
 

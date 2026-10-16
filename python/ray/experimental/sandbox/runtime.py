@@ -78,6 +78,17 @@ class SandboxRuntime:
             ignore_cgroups=_ignore_cgroups,
         )
 
+    def cancel_builds(self) -> None:
+        """Cancel the image builds this runtime is running; callable from any thread.
+
+        Each :meth:`build_image` call in progress -- including the build a
+        ``create(build=...)`` runs -- stops, cleans up what it made, and
+        raises :class:`~ray.experimental.sandbox.exceptions.SandboxImageBuildError`.
+        A build running a step's command stops at once; see
+        :meth:`ImageBuilder.cancel`. May block for a few seconds.
+        """
+        self._image_builder.cancel()
+
     def pull_image(self, image: str, timeout_seconds: float = 120.0) -> str:
         """Download and extract container image into local cache.
 
