@@ -176,6 +176,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                 "backpressure_config": {
                                     "status_code": 503,
                                     "retry_after_s": None,
+                                    "retry_after_policy": "static",
                                 },
                                 "user_config": None,
                                 "autoscaling_config": {

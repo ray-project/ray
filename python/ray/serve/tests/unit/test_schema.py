@@ -333,6 +333,19 @@ class TestDeploymentSchema:
         assert isinstance(schema.backpressure_config, BackpressureConfig)
         assert schema.backpressure_config.status_code == 429
         assert schema.backpressure_config.retry_after_s == 7
+        assert schema.backpressure_config.retry_after_policy == "static"
+
+        deployment_schema["backpressure_config"] = {
+            "retry_after_policy": "queue_drain_rate",
+            "retry_after_s": 5,
+        }
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.backpressure_config.retry_after_policy == "queue_drain_rate"
+        assert schema.backpressure_config.retry_after_s == 5
+
+        deployment_schema["backpressure_config"] = {"retry_after_policy": "auto"}
+        with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
 
         deployment_schema["backpressure_config"] = {"status_code": 404}
         with pytest.raises(ValidationError):

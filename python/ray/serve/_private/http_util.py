@@ -972,6 +972,10 @@ def retry_after_headers(
     (RFC 9110 `delay-seconds`), so the value is rounded up to avoid
     suggesting a retry earlier than configured, and clamped at 0 so an
     invalid header is never emitted on the wire.
+
+    This only formats the value. Jitter is applied once by the rejecting
+    component (see `compute_retry_after_decision`), which already passes an
+    integer, so the header matches the value it logged.
     """
     if retry_after_s is None:
         return None

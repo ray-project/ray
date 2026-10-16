@@ -386,6 +386,17 @@ class TestBackpressureHTTPResponse:
         # helper clamps at 0 so an invalid header is never sent on the wire.
         assert retry_after_headers(-5) == [(b"retry-after", b"0")]
 
+    def test_retry_after_headers_adds_no_jitter(self, monkeypatch):
+        """Jitter is applied once where the rejection is decided; formatting
+        the header must not draw another random number."""
+
+        def fail():
+            raise AssertionError("retry_after_headers must not sample jitter")
+
+        monkeypatch.setattr("ray.serve._private.backpressure.random.random", fail)
+        for value in (1, 7, 60):
+            assert retry_after_headers(value) == [(b"retry-after", str(value).encode())]
+
     def test_deployment_unavailable_error_stays_503_without_headers(self):
         exc = DeploymentUnavailableError(DeploymentID(name="d", app_name="app"))
         status = get_http_response_status(exc, None, "req-1")
