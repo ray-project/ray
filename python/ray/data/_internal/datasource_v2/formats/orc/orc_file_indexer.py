@@ -23,9 +23,9 @@ stripe splitting buys nothing.
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
-from collections.abc import Iterable, Iterator
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
@@ -42,10 +42,10 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 )
 
 if TYPE_CHECKING:
+    from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
-    from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 
 logger = logging.getLogger(__name__)
 
