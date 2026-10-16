@@ -35,11 +35,11 @@ agent-development
 
 Ray is more than a framework for distributed applications. It's also an active community of developers, researchers, and folks who love machine learning.
 
+You can join (and Star!) us [on GitHub](https://github.com/ray-project/ray).
+
 :::{tip}
 Ask questions on [our forum](https://discuss.ray.io/)! The community is extremely active in helping people succeed in building their Ray applications.
 :::
-
-You can join (and Star!) us [on GitHub](https://github.com/ray-project/ray).
 
 ## Contributing to Ray
 

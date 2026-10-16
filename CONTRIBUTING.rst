@@ -6,8 +6,8 @@ Reporting bugs and asking questions
 
 You can post questions or issues or feedback through the following channels:
 
-1. `Discourse forum`_: For discussions about development and questions about usage.
-2. `GitHub Issues`_: For bug reports and feature requests.
+1. `GitHub Issues`_: For bug reports and feature requests.
+2. `Discourse forum`_: For discussions about development and questions about usage.
 3. `StackOverflow`_
 
 Finding issues to work on
@@ -21,16 +21,15 @@ To contribute a patch:
 We welcome contributions! See `Getting Involved`_. To set up your development environment, see
 the `Setting up your development environment`_ section.
 
-
-.. _`Discourse forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
-.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Getting Involved`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html
 .. _`Setting up your development environment`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#setting-up-your-development-environment
 .. _`What can I work on?`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#what-can-i-work-on
 .. _`PR review process`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#pr-review-process
 .. _`AI-assisted contributions`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#ai-assisted-contributions
 .. _`CODEOWNERS`: https://github.com/ray-project/ray/blob/master/.github/CODEOWNERS
+.. _`Discourse forum`: https://discuss.ray.io/
+.. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 
 PR Review Process
 -----------------
