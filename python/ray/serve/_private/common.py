@@ -798,8 +798,18 @@ class RequestMetadata:
     # Application name.
     app_name: str = ""
 
-    # Multiplexed model ID.
+    # Multiplexed model ID (single value; kept for backwards compatibility).
     multiplexed_model_id: str = ""
+
+    # Ordered list of candidate multiplexed model IDs. The router will try to
+    # route to replicas that have any of these models loaded, respecting the
+    # order (first match wins). When both this field and `multiplexed_model_id`
+    # are set, the single value will be prepended to this list.
+    #
+    # Example use case: the caller knows several model IDs that can satisfy the
+    # request and wants the router to pick whichever replica already has one
+    # of them loaded, avoiding model-loading latency.
+    candidate_multiplexed_model_ids: Optional[List[str]] = None
 
     # Session ID.
     session_id: str = ""

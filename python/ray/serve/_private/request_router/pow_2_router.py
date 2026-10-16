@@ -64,7 +64,10 @@ class PowerOfTwoChoicesRequestRouter(
         """
         if (
             pending_request is not None
-            and pending_request.metadata.multiplexed_model_id
+            and (
+                pending_request.metadata.multiplexed_model_id
+                or pending_request.metadata.candidate_multiplexed_model_ids
+            )
         ):
             # Get candidates for multiplexed model ID.
             candidate_replica_ids = self.apply_multiplex_routing(
