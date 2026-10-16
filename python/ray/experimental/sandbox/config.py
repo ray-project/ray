@@ -13,14 +13,40 @@ VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 
-# The egress allowlist that permits every destination: what an "open"
-# network policy becomes when a sandbox created with an allowlist is widened
-# back at runtime.
+# The egress allowlist that permits every destination the control-plane
+# guard leaves open (EGRESS_ALWAYS_DENIED and the cluster's own addresses
+# stay closed): private networks included, unlike the default.
 ALLOW_ALL_CIDRS = ("0.0.0.0/0", "::/0")
 
 # The cidr_allowlist entry for the public internet: every destination outside
 # INTERNET_EXCLUDED_IPV4, plus IPv6 global unicast (INTERNET_IPV6).
 INTERNET = "internet"
+
+# The egress allowlist of a network="public" sandbox created without one: the
+# public internet only, so nothing on the cluster's private networks (nodes,
+# pods, services, kubelets, the Kubernetes API) is reachable by default.
+DEFAULT_PUBLIC_ALLOWLIST = (INTERNET,)
+
+# Destinations no allowlist entry opens, ahead of every other rule but DNS:
+# "this network", loopback, and link-local, which holds the cloud instance
+# metadata services (169.254.169.254, EKS Pod Identity's 169.254.170.23).
+# The IPv6 entries are link-local, loopback, IPv4-mapped addresses, and AWS's
+# IPv6 metadata address; slirp4netns gives sandboxes no IPv6 today, so they
+# only keep that true if it ever does.
+EGRESS_ALWAYS_DENIED = (
+    "0.0.0.0/8",
+    "127.0.0.0/8",
+    "169.254.0.0/16",
+    "::1/128",
+    "::ffff:0:0/96",
+    "fd00:ec2::254/128",
+    "fe80::/10",
+)
+
+# Environment variable with more destinations to treat like
+# EGRESS_ALWAYS_DENIED: comma-separated IP addresses or networks, such as a
+# Kubernetes API server's endpoint addresses or an external GCS Redis.
+EGRESS_DENY_ENV_VAR = "RAY_SANDBOX_EGRESS_DENY"
 
 # IPv4 networks that aren't the public internet: private (RFC 1918), shared
 # (RFC 6598), loopback, link-local, the other special-purpose ranges in the
@@ -232,32 +258,40 @@ class SandboxConfig:
             slirp4netns: ports and loopback are per-sandbox, nothing in the
             sandbox is reachable from the host or from other sandboxes, and
             /etc/resolv.conf is generated from ``dns``, inheriting nothing
-            from the host resolver. The sandbox can still reach any network
-            address the node can reach, including other Ray nodes and
-            internal services, so use "none" for untrusted code. Requires
-            the ``slirp4netns`` binary on the node. "host" gives full host network
-            identity — the host's resolv.conf, internal networks, and a
+            from the host resolver. Egress is filtered by ``cidr_allowlist``
+            (the public internet only by default), and the cluster's control
+            plane is never reachable: instance metadata, loopback, the
+            Kubernetes API service, this worker's addresses, and every Ray
+            node's address stay closed whatever the allowlist says.
+            Requires the ``slirp4netns`` and ``nft`` binaries on the node.
+            "host" gives full host network identity — the host's
+            resolv.conf, internal networks, every Ray port on the node, and a
             port space shared with the worker and every other host-mode
-            sandbox.
+            sandbox — so it suits only trusted code.
             "sandbox" uses gVisor's netstack and requires ``rootless=False``.
         dns: Nameserver IPs for a generated /etc/resolv.conf, mounted
             read-only (like ``docker --dns``); useful when public DNS is
             blocked. Defaults to ``DEFAULT_PUBLIC_DNS`` for "public";
             overrides the host file for "host". Only valid with those modes.
         cidr_allowlist: Egress allowlist for network="public". None
-            (default) leaves egress unrestricted; a list restricts every
-            protocol to the listed destinations, enforced by an nftables
-            ruleset in the sandbox's private network namespace that code
-            inside the sandbox cannot see or change. An entry is an IPv4 or
-            IPv6 address or network, or ``internet`` for every public
-            address, optionally with a TCP and UDP port or port range
-            (``10.0.1.5:8000``, ``[2001:db8::1]:443``, ``internet:443``); see
-            ``parse_cidr_allowlist_entry``. The one exception: UDP and TCP
-            port 53 to the resolvers in ``dns`` stays open so names still
-            resolve. ``[]`` allows nothing but DNS. Entries are normalized
-            (``10.0.1.5/24`` -> ``10.0.1.0/24``), and host names are
-            rejected. Requires the ``nft`` binary on the node. Only valid
-            with network="public".
+            (default) means ``DEFAULT_PUBLIC_ALLOWLIST``, the public
+            internet only. A list restricts every protocol to the listed
+            destinations, enforced by an nftables ruleset in the sandbox's
+            private network namespace that code inside the sandbox cannot
+            see or change. An entry is an IPv4 or IPv6 address or network,
+            or ``internet`` for every public address, optionally with a TCP
+            and UDP port or port range (``10.0.1.5:8000``,
+            ``[2001:db8::1]:443``, ``internet:443``); see
+            ``parse_cidr_allowlist_entry``. UDP and TCP port 53 to the
+            resolvers in ``dns`` stays open so names still resolve, and
+            ``[]`` allows nothing but DNS. No entry opens the control-plane
+            guard: ``EGRESS_ALWAYS_DENIED``, the Kubernetes API service, and
+            the networks in ``RAY_SANDBOX_EGRESS_DENY`` are always closed,
+            and this worker's and every Ray node's addresses are closed to
+            all but entries naming one address and its ports
+            (``10.0.3.7:8000``, say, for a model server on a Ray node).
+            Entries are normalized (``10.0.1.5/24`` -> ``10.0.1.0/24``), and
+            host names are rejected. Only valid with network="public".
         capabilities: Linux capabilities for the container process. None
             (default) keeps the runtime default (what ``runsc spec`` emits);
             otherwise the bounding/effective/permitted sets are written

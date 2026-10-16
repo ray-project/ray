@@ -11,6 +11,7 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
+from ray.experimental.sandbox._internal import egress_guard
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import (
     GVisorSandboxBackend,
@@ -614,11 +615,15 @@ def test_create_sandbox_requires_slirp4netns(monkeypatch):
 
 
 def test_render_egress_ruleset_pins_the_policy():
-    """The ruleset is the enforcement, so pin its exact text: default drop,
-    loopback, one accept per network in its family, and DNS to the resolvers
-    on port 53 only."""
+    """The ruleset is the enforcement, so pin its exact text: default drop;
+    loopback and DNS to the resolvers on port 53 first; then the guard's
+    always-denied networks; then the cluster's addresses; then one accept per
+    allowed network in its family."""
     text = _render_egress_ruleset(
-        ["52.0.0.0/8", "10.0.1.5/24", "2001:db8::/32"], ["8.8.8.8"]
+        ["52.0.0.0/8", "10.0.1.5/24", "2001:db8::/32"],
+        ["8.8.8.8"],
+        denied=["169.254.0.0/16", "127.0.0.1/32", "127.0.0.0/8", "fe80::/10"],
+        cluster=["10.0.0.84/32", "10.0.0.85/32"],
     )
     assert text == (
         "flush ruleset\n"
@@ -626,81 +631,122 @@ def test_render_egress_ruleset_pins_the_policy():
         "    chain output {\n"
         "        type filter hook output priority 0; policy drop;\n"
         '        oif "lo" accept\n'
+        "        ip daddr 8.8.8.8 udp dport 53 accept\n"
+        "        ip daddr 8.8.8.8 tcp dport 53 accept\n"
+        "        ip daddr { 127.0.0.0/8, 169.254.0.0/16 } drop\n"
+        "        ip6 daddr { fe80::/10 } drop\n"
+        "        ip daddr { 10.0.0.84/31 } drop\n"
         "        ip daddr 52.0.0.0/8 accept\n"
         "        ip daddr 10.0.1.0/24 accept\n"
         "        ip6 daddr 2001:db8::/32 accept\n"
-        "        ip daddr 8.8.8.8 udp dport 53 accept\n"
-        "        ip daddr 8.8.8.8 tcp dport 53 accept\n"
         "    }\n"
         "}\n"
     )
 
 
 def test_render_egress_ruleset_ports_and_internet():
-    """A port entry accepts only that port, for TCP and UDP. "internet" is
-    every address outside the non-public IPv4 networks, plus IPv6 global
-    unicast."""
+    """A port entry accepts only that port, for TCP and UDP; one naming a
+    single address goes ahead of the cluster's addresses, but after the
+    always-denied networks. "internet" is every address outside the
+    non-public IPv4 networks, plus IPv6 global unicast."""
     text = _render_egress_ruleset(
-        ["10.0.0.5:8000", "[2001:db8::1]:443-444", "internet"], ["8.8.8.8"]
+        [
+            "10.0.0.5:8000",
+            "[2001:db8::1]:443-444",
+            "169.254.169.254:80",
+            "10.0.0.0/8:22",
+            "internet",
+        ],
+        ["8.8.8.8"],
+        denied=["169.254.0.0/16"],
+        cluster=["10.0.0.5/32"],
     )
-    rules = [line.strip() for line in text.splitlines() if line.endswith(" accept")]
+    rules = [line.strip() for line in text.splitlines()[5:-2]]
     not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
     assert rules == [
-        'oif "lo" accept',
+        "ip daddr 8.8.8.8 udp dport 53 accept",
+        "ip daddr 8.8.8.8 tcp dport 53 accept",
+        "ip daddr { 169.254.0.0/16 } drop",
         "ip daddr 10.0.0.5/32 tcp dport 8000 accept",
         "ip daddr 10.0.0.5/32 udp dport 8000 accept",
         "ip6 daddr 2001:db8::1/128 tcp dport 443-444 accept",
         "ip6 daddr 2001:db8::1/128 udp dport 443-444 accept",
+        # Pinned too, but the always-denied drop above already took it.
+        "ip daddr 169.254.169.254/32 tcp dport 80 accept",
+        "ip daddr 169.254.169.254/32 udp dport 80 accept",
+        "ip daddr { 10.0.0.5/32 } drop",
+        # A network with a port is not pinned: the cluster stays closed.
+        "ip daddr 10.0.0.0/8 tcp dport 22 accept",
+        "ip daddr 10.0.0.0/8 udp dport 22 accept",
         f"{not_public} accept",
         "ip6 daddr 2000::/3 accept",
-        "ip daddr 8.8.8.8 udp dport 53 accept",
-        "ip daddr 8.8.8.8 tcp dport 53 accept",
     ]
     assert "ip daddr != 10.0.0.0/8" in not_public
     assert "ip daddr != 198.18.0.0/15" in not_public
 
 
 def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
-    text = _render_egress_ruleset([], ["8.8.8.8", "1.1.1.1"])
+    text = _render_egress_ruleset(
+        [], ["8.8.8.8", "1.1.1.1"], denied=["169.254.0.0/16"], cluster=[]
+    )
     assert "ip daddr 8.8.8.8 udp dport 53 accept" in text
     assert "ip daddr 1.1.1.1 tcp dport 53 accept" in text
     # Loopback plus two resolvers times two protocols: nothing else.
     assert text.count(" accept") == 5
     with pytest.raises(ValueError, match="dns"):
-        _render_egress_ruleset([], ["resolver.internal"])
+        _render_egress_ruleset([], ["resolver.internal"], denied=[], cluster=[])
 
 
-def test_write_egress_ruleset_defaults_to_public_dns(tmp_path):
+def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("KUBERNETES_SERVICE_HOST", "10.96.0.1")
     path = _write_egress_ruleset(str(tmp_path), ["10.0.0.0/8"], None)
     assert path == str(tmp_path / "egress.nft")
     text = (tmp_path / "egress.nft").read_text()
     assert "ip daddr 10.0.0.0/8 accept" in text
     for server in DEFAULT_PUBLIC_DNS:
         assert f"ip daddr {server} udp dport 53 accept" in text
+    (always_denied,) = [line for line in text.splitlines() if "169.254" in line]
+    assert "10.96.0.1/32" in always_denied and always_denied.endswith(" drop")
     # Written atomically: no temp file remains.
     assert [p.name for p in tmp_path.iterdir()] == ["egress.nft"]
 
 
-def test_build_run_command_public_allowlist_installs_ruleset_before_runsc():
-    """The ruleset goes in once the tap is up and before runsc starts, and a
-    failed install aborts the start instead of leaving egress open."""
-    script = _run_argv("public", cidr_allowlist=["10.0.0.0/8"])[2]
+def test_write_egress_ruleset_writes_nothing_without_the_guard(tmp_path, monkeypatch):
+    """No ruleset is written when the cluster's addresses can't be read, so
+    the sandbox never starts without them."""
+
+    def unavailable():
+        raise ConnectionError("GCS unavailable")
+
+    monkeypatch.setattr(egress_guard, "cluster_addresses", unavailable)
+    with pytest.raises(ConnectionError):
+        _write_egress_ruleset(str(tmp_path), ["internet"], None)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_build_run_command_public_installs_ruleset_before_runsc():
+    """Every public sandbox gets its ruleset once the tap is up and before
+    runsc starts, and a failed install aborts the start instead of leaving
+    egress open."""
     install = (
         "nsenter --preserve-credentials -U -n -t $NSPID -- nft -f /tmp/rd/egress.nft || "
-        '{ echo "egress allowlist install failed" >&2; exit 1; }; '
+        '{ echo "egress ruleset install failed" >&2; exit 1; }; '
     )
-    assert install in script
-    tap_ready = script.index("[ -s /tmp/rd/slirp4netns.ready ] ||")
-    runsc_start = script.index(
-        "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc"
-    )
-    assert tap_ready < script.index(install) < runsc_start
-    # Without an allowlist the chain is untouched.
-    assert "nft" not in _run_argv("public")[2]
+    for cidr_allowlist in (None, ["10.0.0.0/8"]):
+        script = _run_argv("public", cidr_allowlist=cidr_allowlist)[2]
+        assert install in script
+        tap_ready = script.index("[ -s /tmp/rd/slirp4netns.ready ] ||")
+        runsc_start = script.index(
+            "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc"
+        )
+        assert tap_ready < script.index(install) < runsc_start
 
 
-def test_create_sandbox_requires_nft_for_allowlist(monkeypatch):
-    """A missing nft fails fast, before the image pull, with remediation."""
+def test_create_sandbox_requires_nft_for_public(monkeypatch):
+    """A missing nft fails a public sandbox fast, before the image pull, with
+    remediation, whether or not it has an allowlist."""
 
     class _NoPullImageManager:
         def pull_image(self, *args, **kwargs):
@@ -711,44 +757,95 @@ def test_create_sandbox_requires_nft_for_allowlist(monkeypatch):
         lambda name: None if name == "nft" else f"/usr/bin/{name}",
     )
     backend = GVisorSandboxBackend(image_manager=_NoPullImageManager())
-    cfg = GVisorSandboxConfig(
-        image="busybox:latest",
-        shell="/bin/sh",
-        network="public",
-        cidr_allowlist=["10.0.0.0/8"],
-    )
     with pytest.raises(SandboxCreationError, match="nft"):
-        backend.create_sandbox(cfg)
+        backend.create_sandbox(_public_config())
 
 
-def test_set_egress_allowlist_requires_an_existing_allowlist(tmp_path):
-    """Only a sandbox created with an allowlist can be changed, and the change
-    never runs without the namespace holder pid (`flush ruleset` must not run
-    anywhere but inside the sandbox's own namespace)."""
+class _StubImageManager:
+    """Just enough of an image manager to reach the run command."""
+
+    def __init__(self):
+        self.released = []
+
+    def pull_image(self, *args, **kwargs):
+        return None
+
+    def get_workdir(self, image):
+        return None
+
+    def prepare_oci_bundle(self, **kwargs):
+        return None
+
+    def release_image(self, image, instance_id):
+        self.released.append(instance_id)
+
+
+def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypatch):
+    """A public sandbox created without an allowlist runs under the default,
+    the public internet behind the guard; if the guard can't be read, the
+    sandbox doesn't start."""
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor._RAY_SANDBOX_DIR", str(tmp_path)
+    )
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.shutil.which",
+        lambda name: f"/usr/bin/{name}",
+    )
+
+    class _Started(Exception):
+        pass
+
+    def fake_popen(args, **kwargs):
+        raise _Started(args)
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.Popen", fake_popen
+    )
+    backend = GVisorSandboxBackend(image_manager=_StubImageManager())
+    with pytest.raises(_Started):
+        backend.create_sandbox(_public_config())
+    (root_dir,) = tmp_path.iterdir()
+    text = (root_dir / "egress.nft").read_text()
+    not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
+    assert f"{not_public} accept" in text
+    assert "169.254.0.0/16" in text
+
+    def unavailable():
+        raise ConnectionError("GCS unavailable")
+
+    monkeypatch.setattr(egress_guard, "cluster_addresses", unavailable)
+    images = _StubImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    with pytest.raises(SandboxCreationError, match="GCS unavailable"):
+        backend.create_sandbox(_public_config())
+    assert len(images.released) == 1
+
+
+def test_set_egress_allowlist_needs_a_public_sandbox(tmp_path):
+    """Only a network="public" sandbox has an allowlist, and the change never
+    runs without the namespace holder (`flush ruleset` must not run anywhere
+    but inside the sandbox's own namespace)."""
     backend = GVisorSandboxBackend(image_manager=object())
     with pytest.raises(SandboxNotFoundError):
         backend.set_egress_allowlist("nope", ["10.0.0.0/8"])
 
-    backend._sandbox_metadata["sb-open"] = {
+    backend._sandbox_metadata["sb-none"] = {
         "root_dir": str(tmp_path),
-        "config": _public_config(),
+        "config": GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh"),
         "egress_allowlist": None,
     }
-    with pytest.raises(SandboxError, match="without a cidr_allowlist"):
-        backend.set_egress_allowlist("sb-open", ["10.0.0.0/8"])
+    with pytest.raises(SandboxError, match="only network='public'"):
+        backend.set_egress_allowlist("sb-none", ["10.0.0.0/8"])
 
-    cfg = GVisorSandboxConfig(
-        image="busybox:latest", shell="/bin/sh", network="public", cidr_allowlist=[]
-    )
-    backend._sandbox_metadata["sb-allow"] = {
+    backend._sandbox_metadata["sb-public"] = {
         "root_dir": str(tmp_path),
-        "config": cfg,
-        "egress_allowlist": [],
+        "config": _public_config(),
+        "egress_allowlist": ["internet"],
     }
     with pytest.raises(ValueError, match="example.com"):
-        backend.set_egress_allowlist("sb-allow", ["example.com"])
+        backend.set_egress_allowlist("sb-public", ["example.com"])
     with pytest.raises(SandboxError, match="namespace holder"):
-        backend.set_egress_allowlist("sb-allow", ["10.0.0.0/8"])
+        backend.set_egress_allowlist("sb-public", ["10.0.0.0/8"])
     assert not (tmp_path / "egress.nft").exists()
 
 
@@ -1000,7 +1097,7 @@ _CONNECT_PROBE = (
 )
 
 
-def test_netns_egress_allowlist_enforced(ensure_nft_egress):
+def test_netns_egress_allowlist_enforced(ensure_slirp4netns):
     """Only allowlisted destinations are reachable, DNS to the resolvers stays
     open although they are not listed, and everything else is dropped."""
     backend = GVisorSandboxBackend()
@@ -1048,7 +1145,7 @@ def _probe(host: str, port: int) -> str:
     )
 
 
-def test_netns_egress_ports_and_internet(ensure_nft_egress):
+def test_netns_egress_ports_and_internet(ensure_slirp4netns):
     """A port entry opens one port on an address that is otherwise closed, and
     "internet" reaches public addresses but not the node's own network."""
     host = _host_ip()
@@ -1082,7 +1179,54 @@ def test_netns_egress_ports_and_internet(ensure_nft_egress):
             listener.close()
 
 
-def test_netns_egress_allowlist_runtime_update(ensure_nft_egress):
+def test_netns_default_policy_keeps_the_control_plane_closed(ensure_slirp4netns):
+    """A public sandbox created without an allowlist reaches the internet but
+    not the worker's own address, where Ray's ports listen, nor instance
+    metadata or the Kubernetes API. No allowlist opens those: not even
+    allow-all, and the worker opens only to an entry naming its address and
+    port."""
+    host = _host_ip()
+    listener = socket.create_server((host, 0))
+    port = listener.getsockname()[1]
+    targets = {
+        "worker": (host, port),
+        "metadata": ("169.254.169.254", 80),
+        "internet": ("1.1.1.1", 443),
+    }
+    if os.environ.get("KUBERNETES_SERVICE_HOST"):
+        targets["kubernetes"] = (
+            os.environ["KUBERNETES_SERVICE_HOST"],
+            int(os.environ.get("KUBERNETES_SERVICE_PORT", "443")),
+        )
+    closed = {name: "timeout" for name in targets if name != "internet"}
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image="python:3.10-slim", network="public")
+    )
+
+    def reach() -> dict:
+        return {
+            name: backend.exec_command(sb, _probe(h, p), timeout=60).stdout.strip()
+            for name, (h, p) in targets.items()
+        }
+
+    try:
+        assert reach() == {**closed, "internet": "open"}
+        # A cluster that rewrites Service IPs at connect time, as Cilium does,
+        # sends the Kubernetes API Service to the API server's own address,
+        # which allow-all opens unless RAY_SANDBOX_EGRESS_DENY lists it.
+        targets.pop("kubernetes", None)
+        closed.pop("kubernetes", None)
+        backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
+        assert reach() == {**closed, "internet": "open"}
+        backend.set_egress_allowlist(sb, ["internet", f"{host}:{port}"])
+        assert reach() == {**closed, "worker": "open", "internet": "open"}
+    finally:
+        backend.delete_sandbox(sb)
+        listener.close()
+
+
+def test_netns_egress_allowlist_runtime_update(ensure_slirp4netns):
     """A sandbox created with an allowlist can be widened and narrowed while
     it runs; each change applies to the next connection."""
     backend = GVisorSandboxBackend()
@@ -1113,7 +1257,7 @@ def _nft_ruleset(*nsenter_target: str) -> tuple:
 
 
 def test_netns_egress_allowlist_update_refuses_a_reused_holder_pid(
-    ensure_nft_egress,
+    ensure_slirp4netns,
 ):
     """Once the namespace holder exits, its pid can name another process. An
     update must then be refused, leaving that process's ruleset alone, whether

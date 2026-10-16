@@ -48,7 +48,7 @@ from typing import Any, AsyncIterator, Callable, Dict, List, NoReturn, Optional,
 import grpc
 from grpc import StatusCode
 
-from ray.experimental.sandbox.config import ALLOW_ALL_CIDRS, normalize_cidr_allowlist
+from ray.experimental.sandbox.config import INTERNET, normalize_cidr_allowlist
 from ray.experimental.sandbox.http._proto import (
     sandbox_control_pb2 as api_pb2,
     sandbox_exec_pb2 as sr_pb2,
@@ -170,8 +170,10 @@ def _network_policy(definition: Any) -> Tuple[str, Optional[List[str]]]:
     """Map a sandbox definition's network access to (network mode, egress allowlist).
 
     BLOCKED (and the deprecated ``block_network`` flag) is ``network="none"``;
-    OPEN is ``"public"`` with no destination filter; ALLOWLIST is ``"public"``
-    with the listed CIDRs enforced by the runtime. What the runtime cannot
+    OPEN is ``"public"`` with the runtime's default allowlist, the public
+    internet only, as a Modal sandbox has; ALLOWLIST is ``"public"`` with the
+    listed CIDRs enforced by the runtime. Either way the cluster's control
+    plane (instance metadata, the Kubernetes API, Ray nodes) stays closed. What the runtime cannot
     enforce is refused, never widened: a sandbox must not run with fewer
     restrictions than its client believes it has. An inbound allowlist needs
     no mapping: the facade exposes no inbound path, so it holds trivially.
@@ -190,13 +192,13 @@ def _network_policy(definition: Any) -> Tuple[str, Optional[List[str]]]:
 def _requested_allowlist(access: Any) -> List[str]:
     """The egress allowlist a TaskSetNetworkAccess request asks for.
 
-    The SDK sends OPEN for "no restriction", which on a sandbox created with
-    an allowlist is the allow-all list; BLOCKED is not a runtime policy
-    (block_network is a creation-time choice) and is refused.
+    The SDK sends OPEN for "no restriction", which is the creation default:
+    the public internet. BLOCKED is not a runtime policy (block_network is a
+    creation-time choice) and is refused.
     """
     access_type = access.network_access_type
     if access_type == api_pb2.NetworkAccess.OPEN:
-        return list(ALLOW_ALL_CIDRS)
+        return [INTERNET]
     if access_type != api_pb2.NetworkAccess.ALLOWLIST:
         raise _RpcError(
             StatusCode.INVALID_ARGUMENT,

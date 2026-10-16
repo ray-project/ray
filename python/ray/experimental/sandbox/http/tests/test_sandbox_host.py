@@ -190,6 +190,24 @@ def test_cidr_allowlist_passed_through_and_reported() -> None:
     assert asyncio.run(host.describe())["cidr_allowlist"] == ["10.0.0.0/8"]
 
 
+def test_default_public_allowlist_is_reported_and_changeable() -> None:
+    """A public sandbox created without an allowlist runs under the default,
+    the public internet, and reports it; one without network has none."""
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime, spec_overrides={"network": "public"})
+    asyncio.run(host.boot())
+
+    (create_call,) = runtime.create_calls
+    assert create_call["cidr_allowlist"] is None
+    assert asyncio.run(host.describe())["cidr_allowlist"] == ["internet"]
+    info = asyncio.run(host.set_network_access(["internet:443"]))
+    assert info["cidr_allowlist"] == ["internet:443"]
+
+    no_network = _make_host(FakeSandboxRuntime(), spec_overrides={"network": "none"})
+    asyncio.run(no_network.boot())
+    assert asyncio.run(no_network.describe())["cidr_allowlist"] is None
+
+
 def test_set_network_access_updates_runtime_and_info() -> None:
     runtime = FakeSandboxRuntime()
     host = _make_host(
@@ -217,14 +235,14 @@ def test_set_network_access_updates_runtime_and_info() -> None:
 
 
 def test_set_network_access_conflicts() -> None:
-    """A sandbox created without an allowlist has a fixed policy, and nothing
+    """Only a network="public" sandbox has an allowlist to change, and nothing
     is changed before the sandbox runs."""
     runtime = FakeSandboxRuntime()
-    fixed = _make_host(runtime, spec_overrides={"network": "public"})
-    asyncio.run(fixed.boot())
-    result = asyncio.run(fixed.set_network_access(["10.0.0.0/8"]))
+    no_network = _make_host(runtime, spec_overrides={"network": "none"})
+    asyncio.run(no_network.boot())
+    result = asyncio.run(no_network.set_network_access(["10.0.0.0/8"]))
     assert result["error_code"] == "conflict"
-    assert "without a cidr_allowlist" in result["message"]
+    assert "only network='public'" in result["message"]
 
     not_running = _make_host(
         FakeSandboxRuntime(),

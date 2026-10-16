@@ -86,7 +86,9 @@ class SandboxRuntime:
                 (public resolvers by default for "public").
             cidr_allowlist: Optional egress allowlist for network="public":
                 only the listed IPv4/IPv6 networks are reachable (plus DNS
-                to the ``dns`` resolvers); see
+                to the ``dns`` resolvers). None means the public internet
+                only, and the cluster's control plane stays closed whatever
+                the list says; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
                 Change it later with :meth:`set_egress_allowlist`.
             capabilities: Linux capabilities, written exactly (None keeps
@@ -287,12 +289,12 @@ class SandboxRuntime:
         return self._backend.get_status(instance_id)
 
     def set_egress_allowlist(self, instance_id: str, cidrs: List[str]) -> None:
-        """Replace the egress allowlist of a sandbox created with one.
+        """Replace the egress allowlist of a network="public" sandbox.
 
         The new list takes effect for the next packet of every flow; flows
-        it no longer permits stall rather than being reset. A sandbox
-        created without ``cidr_allowlist`` cannot be changed (pass
-        ``["0.0.0.0/0", "::/0"]`` at creation to start open).
+        it no longer permits stall rather than being reset. No list opens
+        the cluster's control plane; ``ALLOW_ALL_CIDRS`` opens everything
+        else, private networks included.
 
         Args:
             instance_id: Unique identifier of the sandbox instance.

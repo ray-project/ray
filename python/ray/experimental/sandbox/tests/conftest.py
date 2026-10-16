@@ -117,7 +117,8 @@ def _public_netns_supported() -> bool:
 def _nft_in_userns_supported() -> bool:
     """Whether an unprivileged user+network namespace here can load a ruleset.
 
-    That is exactly what the cidr_allowlist path does before runsc starts.
+    That is exactly what every network="public" sandbox does before runsc
+    starts.
     It fails where nf_tables is missing from the kernel or the namespace
     cannot be created.
     """
@@ -141,34 +142,26 @@ def _nft_in_userns_supported() -> bool:
 
 
 @pytest.fixture(scope="session")
-def ensure_nft_egress(ensure_slirp4netns):
-    """The network="public" prerequisites plus an nft that works in a netns.
+def ensure_slirp4netns(ensure_runsc):
+    """slirp4netns, nft, and a host that can run the network="public" path.
 
-    Only the cidr_allowlist tests request it; they skip where the nftables
-    package is missing or the kernel cannot load a ruleset from an
-    unprivileged namespace.
+    Requested rather than autouse, so only the netns tests skip when the
+    environment forbids the per-sandbox user+network namespace the path
+    relies on, or can't load its egress ruleset there (the nftables package
+    is missing, or the kernel can't load a ruleset from an unprivileged
+    namespace). slirp4netns and runsc are installed first because the
+    support probe boots a real sandbox.
     """
+    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
+    _install_on_path("slirp4netns", _SLIRP4NETNS_URL.format(arch=arch))
     if not shutil.which("nft"):
-        pytest.skip("cidr_allowlist needs the nft binary (nftables package)")
+        pytest.skip('network="public" needs the nft binary (nftables package)')
     if not _nft_in_userns_supported():
         pytest.skip(
             "nft cannot load a ruleset inside an unprivileged user+network "
             "namespace here (nf_tables missing from the kernel, or namespaces "
             "restricted)"
         )
-
-
-@pytest.fixture(scope="session")
-def ensure_slirp4netns(ensure_runsc):
-    """slirp4netns plus a host that can actually run the network="public" path.
-
-    Requested rather than autouse, so only the netns tests skip when the
-    environment forbids the per-sandbox user+network namespace the path
-    relies on. slirp4netns and runsc are installed first because the support
-    probe boots a real sandbox.
-    """
-    arch = "aarch64" if platform.machine().lower() in ("aarch64", "arm64") else "x86_64"
-    _install_on_path("slirp4netns", _SLIRP4NETNS_URL.format(arch=arch))
     if not _public_netns_supported():
         pytest.skip(
             'network="public" needs a per-sandbox user+network namespace this '

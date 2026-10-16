@@ -10,6 +10,7 @@ from ray.experimental.sandbox.backend.base import (
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
     ALLOW_ALL_CIDRS,
+    DEFAULT_PUBLIC_ALLOWLIST,
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
     parse_memory_bytes,
@@ -76,7 +77,8 @@ def create(
             (public resolvers by default for "public").
         cidr_allowlist: Optional egress allowlist for network="public": only
             the listed IPv4/IPv6 networks are reachable (plus DNS to the
-            ``dns`` resolvers); see
+            ``dns`` resolvers). None means the public internet only, and the
+            cluster's control plane stays closed whatever the list says; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none). Use
@@ -124,6 +126,7 @@ def create(
 __all__ = [
     "create",
     "ALLOW_ALL_CIDRS",
+    "DEFAULT_PUBLIC_ALLOWLIST",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",

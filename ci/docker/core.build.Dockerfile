@@ -31,8 +31,8 @@ RUN <<EOF
 set -euo pipefail
 
 apt-get update -qq
-# nftables: `nft` installs the egress allowlist ruleset of cidr_allowlist
-# sandboxes; the sandbox tests skip those cases without it.
+# nftables: `nft` installs every network="public" sandbox's egress ruleset;
+# the sandbox tests skip the public-network cases without it.
 apt-get install -y -qq --no-install-recommends autoconf automake libtool pkg-config uuid-dev nftables
 git clone -q --depth 1 --branch v1.9.4 https://github.com/erofs/erofs-utils.git /tmp/erofs-utils
 cd /tmp/erofs-utils

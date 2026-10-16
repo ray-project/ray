@@ -39,9 +39,9 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 * **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
-* **nftables (`cidr_allowlist` only)**: The `nft` binary on the `$PATH`, and `nf_tables` in the node's kernel. Ray installs each allowlisted sandbox's egress ruleset with it inside the sandbox's private network namespace.
+* **nftables (`network="public"` only)**: The `nft` binary on the `$PATH`, and `nf_tables` in the node's kernel. Ray installs each `public` sandbox's egress ruleset with it inside the sandbox's private network namespace, and creation fails without it.
 
-To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. `nftables`, needed only for `cidr_allowlist`, is a standard package everywhere (`apt-get install nftables`). On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
+To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. `nftables` is a standard package everywhere (`apt-get install nftables`). On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
 
 For example, the following Dockerfile adds all three tools to a Ray image for nodes with 4 KiB pages. Ray's images are based on Ubuntu 22.04, whose `erofs-utils` is too old, so it builds erofs-utils from source. It does so in a separate stage, so the build tools stay out of the final image. On an Ubuntu 24.04 or Debian 13 base image, `apt-get install erofs-utils` instead:
 
@@ -367,12 +367,12 @@ Sandboxes support four network modes. The default is `none`, which follows the s
 | Mode | Network access | `/etc/resolv.conf` | Security property |
 | --- | --- | --- | --- |
 | `none` *(default)* | None | untouched | No egress. This is the recommended setting for untrusted code. |
-| `public` | Internet egress from a network namespace private to the sandbox, bridged by [slirp4netns](https://github.com/rootless-containers/slirp4netns) | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Ports and loopback are per-sandbox: a bind on `0.0.0.0` can't collide with, be reached by, or reach other sandboxes or node-local services, and there's no inbound path from the node or cluster. The sandbox inherits nothing from the host's resolver configuration. The sandbox can still reach any network address the node can reach, including other Ray nodes and internal services, unless you restrict it with `cidr_allowlist`. The sandbox's own address is `198.18.0.100` (RFC 2544 benchmarking space, chosen not to overlap pod or service ranges). Requires `slirp4netns` on the node. |
-| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks and node-local services. |
+| `public` | Internet egress from a network namespace private to the sandbox, bridged by [slirp4netns](https://github.com/rootless-containers/slirp4netns) | Generated from `dns` (default `8.8.8.8`, `1.1.1.1`), mounted read-only | Ports and loopback are per-sandbox: a bind on `0.0.0.0` can't collide with, be reached by, or reach other sandboxes or node-local services, and there's no inbound path from the node or cluster. The sandbox inherits nothing from the host's resolver configuration. Egress reaches the public internet only, unless `cidr_allowlist` says otherwise, and never the cluster's control plane: instance metadata, the Kubernetes API, and every Ray node stay closed. The sandbox's own address is `198.18.0.100` (RFC 2544 benchmarking space, chosen not to overlap pod or service ranges). Requires `slirp4netns` and `nft` on the node. |
+| `host` | Full host network identity | Host's own file, mounted read-only (`dns=` overrides it) | Strictly more permissive than `public`. The sandbox can reach anything the node can reach, including internal networks, node-local services, every Ray port, the Kubernetes API, and instance metadata. Use it only for trusted code. |
 | `sandbox` | gVisor netstack | untouched | Requires `rootless=False`. runsc doesn't support the sandbox netstack in rootless mode. |
 
 :::{warning}
-`public` isolates sandboxes from each other and from the node's own services, not from the network the node sits on. slirp4netns relays every outbound connection through the node, so a `public` sandbox can reach other Ray nodes, including the head node's GCS and dashboard ports, other Kubernetes Pods, and any internal service the node can reach. Use `network="none"` for untrusted code that needs no network, or `cidr_allowlist` to limit a `public` sandbox to the addresses it needs; see [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist).
+`public` keeps a sandbox off the cluster, not off the internet. slirp4netns relays every outbound connection through the node, and the sandbox's egress ruleset decides which ones leave: by default only those to public addresses, and never those to the cluster's control plane. Code in a `public` sandbox can still send data anywhere on the internet. Use `network="none"` for untrusted code that needs no network, or `cidr_allowlist` to limit a `public` sandbox to the addresses it needs; see [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist).
 :::
 
 To give a sandbox internet access, use `network="public"`. Pair it with `DOCKER_DEFAULT_CAPABILITIES` so standard images behave the way they do under Docker, because `apt-get`, `tar` ownership restore, and similar operations all need those capabilities:
@@ -391,7 +391,7 @@ sb = sandbox.create(
 
 ### Restrict egress to an allowlist
 
-Pass `cidr_allowlist` with `network="public"` to let a sandbox reach only the listed destinations. Every other destination is dropped, for every protocol:
+A `public` sandbox reaches only the destinations in its egress allowlist, `["internet"]` unless you pass `cidr_allowlist`. Every other destination is dropped, for every protocol:
 
 ```python
 sb = sandbox.create(
@@ -403,20 +403,23 @@ sb = sandbox.create(
 )
 ```
 
-Ray enforces the allowlist with an nftables ruleset in the sandbox's private network namespace, installed after slirp4netns brings the namespace up and before gVisor starts. Code inside the sandbox can't see or change the ruleset: gVisor's host networking passes only IPv4 and IPv6 stream and datagram sockets through to the namespace, and its netlink emulation has no netfilter path, so not even `CAP_NET_ADMIN` inside the sandbox reaches the rules. If the ruleset fails to install, sandbox creation fails rather than starting with open egress.
+Ray enforces the allowlist with an nftables ruleset in the sandbox's private network namespace, installed after slirp4netns brings the namespace up and before gVisor starts. Code inside the sandbox can't see or change the ruleset; see [Security and isolation model](#security-and-isolation-model) for why. If the ruleset fails to install, sandbox creation fails rather than starting with open egress.
 
 Keep these semantics in mind:
 
+* **The cluster's control plane stays closed.** Ahead of the allowlist, the ruleset drops link-local addresses, which hold cloud instance metadata such as `169.254.169.254`, plus loopback, the Kubernetes API Service (`KUBERNETES_SERVICE_HOST`), and the networks in `RAY_SANDBOX_EGRESS_DENY`, a comma-separated list you can set on worker nodes. No entry opens those. It also drops the worker's own addresses, every Ray node's address, and the GCS host's, where GCS, the raylets, the dashboard and its agents, the Ray client server, and Serve listen. Only an entry naming one address and its ports, such as `10.0.0.84:8000`, opens a Ray node's address, and only on those ports. Ray reads the node list when the sandbox starts and on each allowlist change, so a node that joins later is closed by the allowlist alone, as the default `["internet"]` closes it.
+* **Allowing private networks reopens the rest of the cluster.** A list such as `["10.0.0.0/8"]` or `["0.0.0.0/0", "::/0"]` reaches other Pods and Services, and the kubelets on the Kubernetes nodes' own addresses, which Ray can't see from inside a Pod. In a cluster that rewrites Service IPs to Pod IPs at connect time, as Cilium does, it also reaches the Kubernetes API, because a connection to the API's Service leaves for the API server's own address. Add those addresses, such as the node network and the `kubernetes` Endpoints, to `RAY_SANDBOX_EGRESS_DENY`, or list only the destinations the sandbox needs.
 * **DNS stays reachable.** UDP and TCP port 53 to the resolvers in `dns` (the public defaults unless you set it) are the one implicit exception, so names still resolve. Everything else to those resolvers is dropped like any other unlisted destination. Put the resolver addresses in the allowlist if the sandbox needs more than DNS from them. Public resolvers forward queries for any domain, so code in the sandbox can still send data out inside DNS queries. If no data may leave the sandbox, use `network="none"`.
 * **`[]` allows nothing but DNS.** Use it as the strictest `public` sandbox, or as the starting point for a policy you widen later.
 * **Entries are IP literals, with optional ports.** An entry is an IPv4 or IPv6 address or network, such as `10.0.1.0/24`. Add `:port` or `:low-high` to allow only those TCP and UDP ports, such as `10.0.1.5:8000`, and put an IPv6 destination with a port in brackets, such as `[2001:db8::1]:443`. Ray normalizes `10.0.1.5/24` to `10.0.1.0/24` and rejects host names. Domain-based allowlists need a TLS-inspecting proxy, which Ray doesn't provide.
-* **`internet` is every public address.** It leaves out private, shared, loopback, link-local, multicast, and the other special-purpose IPv4 networks, and allows IPv6 global unicast. Those networks hold your cluster's nodes, Pods, and Services, so `["internet"]` reaches the internet but not the cluster. `internet:443` allows only HTTPS. To also reach one service in the cluster, list its address and port. For example, `["internet", "10.0.0.84:8000"]` reaches a model server on a node without reaching that node's Ray ports. In a cluster that rewrites Service IPs to Pod IPs at connect time, as Cilium does, list the Pod's address.
-* **Change it at runtime.** `SandboxRuntime.set_egress_allowlist(instance_id, cidrs)` replaces the ruleset atomically for a sandbox that was created with `cidr_allowlist`. Pass `["0.0.0.0/0", "::/0"]` at creation to start open and narrow later. Connections the new list no longer permits stall from their next packet rather than being reset. A sandbox created without `cidr_allowlist` has a fixed policy.
-* **Node requirements.** The `nft` binary must be on the `$PATH` and the kernel must provide `nf_tables`; creation fails with a clear error otherwise.
+* **`internet` is every public address.** It leaves out private, shared, loopback, link-local, multicast, and the other special-purpose IPv4 networks, and allows IPv6 global unicast. Those networks hold your cluster's nodes, Pods, and Services, so `["internet"]`, the default, reaches the internet but not the cluster. `internet:443` allows only HTTPS. To also reach one service in the cluster, list its address and port. For example, `["internet", "10.0.0.84:8000"]` reaches a model server on a node without reaching that node's Ray ports. In a cluster that rewrites Service IPs to Pod IPs at connect time, as Cilium does, list the Pod's address.
+* **Open everything but the control plane.** `["0.0.0.0/0", "::/0"]` (`ALLOW_ALL_CIDRS`) allows every destination outside the control-plane guard, private networks included.
+* **Change it at runtime.** `SandboxRuntime.set_egress_allowlist(instance_id, cidrs)` replaces the ruleset atomically for any `public` sandbox. Connections the new list no longer permits stall from their next packet rather than being reset.
+* **Node requirements.** Every `public` sandbox needs the `nft` binary on the `$PATH` and `nf_tables` in the kernel; creation fails with a clear error otherwise.
 
 ### DNS in locked-down networks
 
-Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `public` DNS settings can't resolve queries. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
+Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `public` DNS settings can't resolve queries. Pass your internal resolver instead with `network="public", dns=["10.0.0.2"]`. If that isn't an option, fall back to `network="host"`, which uses the host's `/etc/resolv.conf`, at the cost of full host network identity, the cluster's control plane included. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
 ## Architecture
 
@@ -472,8 +475,23 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **System call interception**: gVisor's Sentry application kernel intercepts system calls in user space, isolating untrusted code from the host Linux kernel.
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
-* **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity, and `cidr_allowlist` narrows that egress to the networks the workload needs; see [Networking and DNS](#networking-and-dns).
+* **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress to the public internet without handing over the host's resolver configuration or network identity, and never to the cluster's control plane: instance metadata, the Kubernetes API, and the Ray nodes stay closed whatever `cidr_allowlist` says; see [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist).
 * **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
+
+### Why nftables inside the sandbox netns is the right enforcement point
+
+Inside the sandbox's private user + net namespace, the host-side launch script has CAP_NET_ADMIN over that child network namespace (without needing CAP_NET_ADMIN on the Kubernetes worker pod itself).
+
+runsc runs inside that child netns with --network=host. That means gVisor's hostinet creates real Linux kernel AF_INET/AF_INET6 sockets inside the child netns, so every packet from the sandbox passes through the Linux kernel's nf_tables output chain before reaching slirp4netns's tap0.
+
+**Why sandbox code cannot tamper with the rules (even with CAP_NET_ADMIN):** gVisor's Sentry intercepts all syscalls inside the sandbox. Even if the container process has CAP_NET_ADMIN or CAP_NET_RAW, gVisor's hostinet (without --net-raw) never forwards AF_NETLINK (NETLINK_NETFILTER / NETLINK_ROUTE) or AF_PACKET sockets to the host kernel. Running nft flush ruleset or iptables -F inside the sandbox talks only to gVisor's internal Sentry stub, never touching the host kernel netns where the rules live.
+
+A Kubernetes NetworkPolicy can't do this job. slirp4netns relays each sandbox connection through the Pod's own sockets, so a policy on the Pod sees sandbox traffic and the Ray worker's own traffic as the same Pod's.
+
+### Limits of network containment
+
+* **Control-plane endpoints on public addresses** are part of the internet. A `public` sandbox can reach a public Kubernetes API endpoint, for example, though with no credentials: Ray passes none into the sandbox.
+* **Defense in depth.** Run clusters that host sandboxes with Ray's token authentication (`RAY_AUTH_MODE=token`), so Ray's own ports refuse callers without the cluster's token, and set `automountServiceAccountToken: false` on worker Pods that don't call the Kubernetes API.
 
 ## HTTP API service
 
@@ -497,14 +515,14 @@ All endpoints sit under `/api/v1`. Except for `GET /health`, they require `Autho
 | `PUT /sandboxes/{id}/files?path=/abs/path` | Write the raw request body to a file in the sandbox. Returns `413` above `max_file_bytes`, and `409 write_failed` when the sandbox can't write the path, such as a directory or a read-only root filesystem. Pass `append=true` to extend the file, which lets clients chunk large uploads under proxy body-size limits. |
 | `GET /sandboxes/{id}/files?path=/abs/path` | Read a file from the sandbox as `application/octet-stream`. |
 
-Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..."}}`. The codes are `401 unauthorized`, `404 sandbox_not_found`, `404 exec_not_found`, `404 file_not_found`, `409 conflict`, `409 unschedulable`, `409 write_failed`, `400 invalid_request`, `413 payload_too_large`, `503 sandbox_unavailable` for an actor that's briefly unreachable, such as during a restart, and FastAPI's native `422` for schema violations. The full OpenAPI schema is served at `/openapi.json`.
+Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..."}}`. The codes are `401 unauthorized`, `403 forbidden` for a network mode or `rootless: false` the server doesn't allow, `404 sandbox_not_found`, `404 exec_not_found`, `404 file_not_found`, `409 conflict`, `409 unschedulable`, `409 write_failed`, `400 invalid_request`, `413 payload_too_large`, `503 sandbox_unavailable` for an actor that's briefly unreachable, such as during a restart, and FastAPI's native `422` for schema violations. The full OpenAPI schema is served at `/openapi.json`.
 
 Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
 * **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
-* **Network modes**: These are the Python API's modes, which Ray validates: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
+* **Network modes**: The server accepts `none` (the default) and `public` unless its `allowed_network_modes` setting adds `host` or `sandbox`, and accepts `rootless: false` only with `allow_rootful`. Other requests get `403 forbidden`, because `host` hands the sandbox the node's network and every Ray port on it. See [Networking and DNS](#networking-and-dns).
 
 ### Self-hosted quickstart
 
@@ -512,7 +530,7 @@ On a Linux machine or cluster with `runsc` on `PATH`:
 
 ```bash
 pip install "ray[serve]"
-export RAY_SANDBOX_API_TOKEN=dev-token   # Optional. Unset disables app-level auth.
+export RAY_SANDBOX_API_TOKEN=dev-token   # Required: build_app refuses to build without it.
 serve run ray.experimental.sandbox.http.app:build_app
 ```
 
@@ -547,6 +565,7 @@ Then deploy the builder as the service's application:
 # service.yaml
 name: ray-sandbox-api
 image_uri: <your-registry>/ray-sandbox-api:latest
+query_auth_token_enabled: false
 applications:
   - name: sandbox-api
     import_path: ray.experimental.sandbox.http.app:build_app
@@ -555,10 +574,10 @@ applications:
 ```
 
 ```bash
-anyscale service deploy -f service.yaml
+anyscale service deploy -f service.yaml --env RAY_SANDBOX_API_TOKEN=$(openssl rand -hex 32)
 ```
 
-Anyscale services require their own bearer token at the platform edge, so leave `RAY_SANDBOX_API_TOKEN` unset and hand clients the service's base URL and token. Consumers such as the [Harbor](https://harborframework.com) `ray-sandbox` environment take exactly that pair as `RAY_SANDBOX_API_URL` and `RAY_SANDBOX_API_KEY`.
+The app checks `RAY_SANDBOX_API_TOKEN` itself, so turn off the service's own token check, as `query_auth_token_enabled: false` does: both read the same `Authorization` header. The service's check also misses traffic from inside the cluster, because Serve's proxies listen on every node's address. Hand clients the service's base URL and the API token. Consumers such as the [Harbor](https://harborframework.com) `ray-sandbox` environment take exactly that pair as `RAY_SANDBOX_API_URL` and `RAY_SANDBOX_API_KEY`. To rely on a platform edge alone, pass `allow_unauthenticated: true` in `args`, but only where nothing else on the cluster's network can reach Serve's proxies.
 
 ### Local development loop on macOS
 
@@ -598,7 +617,7 @@ The facade serves the client SDK's original sandbox API. The SDK's 1.6 release m
 
 With `RAY_SANDBOX_API_TOKEN` set, every call must present the token, either as the client SDK's token secret, with any value as the token ID, or as an `authorization: Bearer <token>` header. Calls without it fail with `UNAUTHENTICATED`. The SDK's anonymous client sends no credentials, so give clients token credentials instead. Use an opaque random token like the one in the preceding example, and don't reuse the Ray cluster's own authentication token.
 
-Without a token, the facade serves only loopback addresses such as `127.0.0.1`. Sandboxes with network access can reach any address their node can, including the facade's, so an unauthenticated facade on a network address would also serve the code running inside them. Pass `--allow-unauthenticated` only when nothing but an authenticating proxy can reach the facade. A relay that exposes a loopback facade to other machines still needs a token.
+Without a token, the facade serves only loopback addresses such as `127.0.0.1`. Other Pods and processes on the cluster's network can reach a facade on a network address, and a `network="host"` sandbox on its node can too. Pass `--allow-unauthenticated` only when nothing but an authenticating proxy can reach the facade. A relay that exposes a loopback facade to other machines still needs a token.
 
 The token isn't scoped to a client. Anyone who has it controls every sandbox in the facade's Ray namespace, which the REST API shares by default: they can create sandboxes, run commands in them, read and write their files, and terminate them. The facade serves plaintext HTTP/2, so the token crosses the network unencrypted unless TLS terminates in front of the facade.
 
@@ -607,7 +626,7 @@ Keep these limits in mind:
 * **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step.
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
 * **State**: The facade keeps exec state in memory, so run one facade process per cluster.
-* **Network**: `block_network=True` maps to `network="none"` and `outbound_cidr_allowlist` to `cidr_allowlist`, enforced as described in [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist). `_experimental_set_outbound_network_policy` works for sandboxes created with an allowlist (create with `outbound_cidr_allowlist=["0.0.0.0/0"]` to start open); on any other sandbox it fails with `FAILED_PRECONDITION`. The facade rejects `outbound_domain_allowlist` with `INVALID_ARGUMENT` because it has no TLS-inspecting proxy, and it accepts `inbound_cidr_allowlist` as a no-op because sandboxes have no inbound path at all.
+* **Network**: `block_network=True` maps to `network="none"`, the default to `network="public"` with the default `["internet"]` allowlist, and `outbound_cidr_allowlist` to `cidr_allowlist`, enforced as described in [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist). `_experimental_set_outbound_network_policy` works on any sandbox with network access, and open access means `["internet"]`; on a `block_network=True` sandbox it fails with `FAILED_PRECONDITION`. The facade rejects `outbound_domain_allowlist` with `INVALID_ARGUMENT` because it has no TLS-inspecting proxy, and it accepts `inbound_cidr_allowlist` as a no-op because sandboxes have no inbound path at all.
 
 #### Serve the facade with Ray Serve
 
@@ -623,7 +642,7 @@ applications:
     import_path: ray.experimental.sandbox.http.grpc_app:build_app
 ```
 
-The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where sandboxes with network access can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
+The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where other Pods and processes on the cluster's network can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
 
 Clients use the address of Serve's gRPC proxy as their server URL. By default, the facade gives each client `https://` plus the host it dialed as its command-router URL, which suits a TLS endpoint on port 443 in front of the proxy. For any other setup, set `advertise_url` in the application's `args`, such as `http://127.0.0.1:9000` for clients of a local proxy.
 
@@ -682,8 +701,8 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
 * **`slirp4netns` not found for `network="public"`**: Install the slirp4netns package (or a [static build](https://github.com/rootless-containers/slirp4netns/releases)) on worker nodes.
 * **`public` sandboxes fail to start with a tap or namespace error**: slirp4netns needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The slirp4netns error appears in the sandbox's `runsc.stderr.log` and in the creation error message.
-* **`nft` not found for `cidr_allowlist`**: Install the nftables package on worker nodes.
-* **`egress allowlist install failed` with `Protocol not supported`**: The node kernel has no `nf_tables`. Load the module on the node (`modprobe nf_tables`) or use a kernel that includes it; a user namespace can't load it on its own. Check that `unshare -Urn nft list ruleset` succeeds as the Ray user.
+* **`nft` not found for `network="public"`**: Install the nftables package on worker nodes.
+* **`egress ruleset install failed` with `Protocol not supported`**: The node kernel has no `nf_tables`. Load the module on the node (`modprobe nf_tables`) or use a kernel that includes it; a user namespace can't load it on its own. Check that `unshare -Urn nft list ruleset` succeeds as the Ray user.
 
 ## Next steps
 

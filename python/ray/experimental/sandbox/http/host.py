@@ -48,7 +48,10 @@ from typing import (
     Union,
 )
 
-from ray.experimental.sandbox.config import normalize_cidr_allowlist
+from ray.experimental.sandbox.config import (
+    DEFAULT_PUBLIC_ALLOWLIST,
+    normalize_cidr_allowlist,
+)
 from ray.experimental.sandbox.exceptions import SandboxError, SandboxTimeoutError
 from ray.experimental.sandbox.http.schemas import DOCKER_DEFAULT_CAPABILITIES
 from ray.util.annotations import DeveloperAPI
@@ -444,7 +447,7 @@ class SandboxHost:
             "ttl_seconds": ttl_seconds,
             "expires_at": expires_at.isoformat() if expires_at else None,
             "network": self._spec.get("network", "none"),
-            "cidr_allowlist": self._spec.get("cidr_allowlist"),
+            "cidr_allowlist": self._egress_allowlist(),
             "labels": dict(self._spec.get("labels") or {}),
             "error": self._error,
         }
@@ -608,24 +611,30 @@ class SandboxHost:
     # Network policy
     # ------------------------------------------------------------------
 
+    def _egress_allowlist(self) -> Optional[List[str]]:
+        """The allowlist in force: None unless network="public"."""
+        if self._spec.get("network", "none") != "public":
+            return None
+        cidrs = self._spec.get("cidr_allowlist")
+        return list(cidrs if cidrs is not None else DEFAULT_PUBLIC_ALLOWLIST)
+
     async def set_network_access(self, cidr_allowlist: List[str]) -> Dict[str, Any]:
         """Replace the sandbox's egress allowlist.
 
-        Only a sandbox created with ``cidr_allowlist`` can be changed; the
-        runtime keeps its ruleset and swaps it atomically. Returns the
-        updated info, or an ``error_code`` dict like the other methods.
+        Only a network="public" sandbox has one; the runtime keeps its
+        ruleset and swaps it atomically. Returns the updated info, or an
+        ``error_code`` dict like the other methods.
         """
         error = self._not_running_error()
         if error is not None:
             return error
-        if self._spec.get("cidr_allowlist") is None:
+        if self._egress_allowlist() is None:
             return {
                 "error_code": "conflict",
                 "message": (
-                    f"sandbox {self._sandbox_id} was created without a "
-                    "cidr_allowlist, so its egress policy is fixed; create it "
-                    "with one (['0.0.0.0/0', '::/0'] for open egress) to "
-                    "change it later"
+                    f"sandbox {self._sandbox_id} has network="
+                    f"{self._spec.get('network', 'none')!r}, which has no "
+                    "egress allowlist; only network='public' sandboxes do"
                 ),
             }
         try:
