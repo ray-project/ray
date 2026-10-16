@@ -291,18 +291,25 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
         # If no accelerator ids are set, skip overriding the environment variable.
         if not override_on_zero and len(accelerator_ids) == 0:
             continue
-        env_var = ray._private.accelerators.get_accelerator_manager_for_resource(
-            resource_name
-        ).get_visible_accelerator_ids_env_var()
+        accelerator_manager = (
+            ray._private.accelerators.get_accelerator_manager_for_resource(
+                resource_name
+            )
+        )
+        env_var = accelerator_manager.get_visible_accelerator_ids_env_var()
         # Some accelerator families (e.g. Apple Silicon MPS) have no visible-devices
         # env var: there is only ever one device (id "0"), so there is nothing to
         # select, override, or reset. Skip env var handling for them.
         if env_var is None:
             continue
-        original_visible_accelerator_env_vars[env_var] = os.environ.get(env_var, None)
-        ray._private.accelerators.get_accelerator_manager_for_resource(
-            resource_name
-        ).set_current_process_visible_accelerator_ids(accelerator_ids)
+        env_before = dict(os.environ)
+        original_visible_accelerator_env_vars[env_var] = env_before.get(env_var)
+        accelerator_manager.set_current_process_visible_accelerator_ids(accelerator_ids)
+        # Also save any other env vars the manager changed so the post-task
+        # reset restores the worker's full environment.
+        for key in env_before.keys() | os.environ.keys():
+            if env_before.get(key) != os.environ.get(key):
+                original_visible_accelerator_env_vars[key] = env_before.get(key)
     return original_visible_accelerator_env_vars
 
 
