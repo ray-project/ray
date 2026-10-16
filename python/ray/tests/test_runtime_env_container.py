@@ -55,6 +55,23 @@ def test_log_file_exists(podman_docker_cluster, use_image_uri_api):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.parametrize("use_image_uri_api", [True, False])
+def test_runtime_resources_mounts(podman_docker_cluster, use_image_uri_api):
+    """Container sees only the runtime_env resources its task uses, read-only."""
+
+    container_id = podman_docker_cluster
+    cmd = [
+        "python",
+        "tests/test_runtime_resources_mounts.py",
+        "--image",
+        NESTED_IMAGE_NAME,
+    ]
+    if use_image_uri_api:
+        cmd.append("--use-image-uri-api")
+    run_in_container([cmd], container_id)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
+@pytest.mark.parametrize("use_image_uri_api", [True, False])
 def test_ray_env_vars(podman_docker_cluster, use_image_uri_api):
     """Test that env vars with prefix 'RAY_' are propagated to container."""
 
