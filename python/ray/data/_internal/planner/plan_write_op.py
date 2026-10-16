@@ -3,6 +3,8 @@ import uuid
 from types import MethodType
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
+import pyarrow as pa
+
 from ray.data._internal.execution.bundle_queue import EstimateBytes, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -153,12 +155,16 @@ def _plan_write_op_internal(
     inferred_schema = None
     if needs_input_schema:
         inferred_schema = op.input_dependencies[0].infer_schema()
-        if inferred_schema is not None:
+        if isinstance(inferred_schema, pa.Schema):
             # Use the write's schema, not the fused operator's input schema.
             write_start = on_start
 
             def on_start(_schema):
                 write_start(inferred_schema)
+
+        else:
+            # Other schema types need runtime Arrow schema extraction from blocks.
+            inferred_schema = None
 
     min_bytes_per_bundle = (
         datasink.min_bytes_per_write if isinstance(datasink, Datasink) else None

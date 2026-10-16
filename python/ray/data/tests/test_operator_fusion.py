@@ -791,10 +791,10 @@ def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
 
 @pytest.mark.parametrize(
     "input_type",
-    ["materialized", "read", "filter", "project", "batches"],
+    ["materialized", "read", "filter", "project", "batches", "pandas"],
 )
 def test_write_start_receives_transformed_schema(
-    ray_start_regular_shared_2_cpus, input_type
+    ray_start_regular_shared_2_cpus, restore_data_context, input_type
 ):
     import pyarrow as pa
 
@@ -828,7 +828,12 @@ def test_write_start_receives_transformed_schema(
         def on_write_complete(self, write_result):
             self.rows_written = sum(write_result.write_returns)
 
-    if input_type == "filter":
+    if input_type == "pandas":
+        DataContext.get_current().enable_pandas_block = True
+        ds = ray.data.from_pandas(pd.DataFrame({"id": range(8), "added": range(1, 9)}))
+        schema = ds._logical_plan.dag.infer_schema()
+        assert schema is not None and not isinstance(schema, pa.Schema)
+    elif input_type == "filter":
         # Row-based filtering preserves Arrow types, including int32.
         ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
         ds = ds.filter(lambda row: row["id"] >= 0)
@@ -847,7 +852,7 @@ def test_write_start_receives_transformed_schema(
             lambda batch: batch.assign(added=batch["id"] + 1), batch_format="pandas"
         )
         assert ds._logical_plan.dag.infer_schema() is None
-    elif input_type != "filter":
+    elif input_type not in ("filter", "pandas"):
         ds = ds.map(lambda row: dict(row, added=row["id"] + 1))
     sink = SchemaCheckingDatasink()
     ds.write_datasink(sink)
