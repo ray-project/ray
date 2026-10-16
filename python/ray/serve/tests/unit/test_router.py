@@ -169,7 +169,7 @@ class FakeReplica(RunningReplica):
     def is_cross_language(self) -> bool:
         return self._is_cross_language
 
-    def get_queue_len(self, *, deadline_s: float) -> int:
+    async def get_queue_len(self, *, deadline_s: float) -> int:
         raise NotImplementedError
 
     async def reserve_slot(
@@ -213,7 +213,7 @@ class FakeReplica(RunningReplica):
         else:
             return FakeReplicaResult(self._replica_id, is_generator_object=False)
 
-    def try_send_request(
+    async def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> FakeReplicaResult:
         # Raise immediately if we're simulating send-time failure (e.g. ActorDiedError).

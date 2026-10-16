@@ -1431,7 +1431,15 @@ class RequestRouter(ABC):
         return replica
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        """Compatibility shim for RunningReplicaInfo datatype."""
+        """Compatibility shim for RunningReplicaInfo datatype.
+
+        NOTE: Actor handles are now resolved lazily on first use rather than
+        eagerly during construction (see issue #65782).  ValueError from
+        ``ray.get_actor`` no longer happens here; it is deferred to the first
+        request send / queue-length probe / slot reservation where it is
+        handled by the caller.  The ``try/except`` below is kept as a
+        defensive guard against unexpected construction-time errors.
+        """
         replica_wrappers = []
         for r in running_replicas:
             # Reuse existing wrapper for known replicas to avoid O(n) create_replica_wrapper
@@ -1443,16 +1451,13 @@ class RequestRouter(ABC):
             else:
                 try:
                     replica_wrappers.append(self.create_replica_wrapper(r))
-                except ValueError:
-                    # NOTE(abrar): ValueError is raised when the actor handle is not found
-                    # by ray.get_actor.
-
-                    # Actor has died (e.g., due to node failure) but controller hasn't
-                    # detected it yet. Skip this replica; controller will send an update
-                    # when it detects the failure.
-                    logger.warning(
-                        f"Failed to get handle to replica {r.replica_id} during router "
-                        "update. The replica actor may have died. Skipping this replica."
+                except Exception:
+                    # Defensive: replica-wrapper construction should never
+                    # fail after the lazy-resolution refactor, but if it does
+                    # the controller will send an update on the next tick.
+                    logger.exception(
+                        f"Failed to create wrapper for replica {r.replica_id} "
+                        "during router update. Skipping this replica."
                     )
         return self.update_replicas(replica_wrappers)
 

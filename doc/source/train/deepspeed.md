@@ -23,8 +23,6 @@ Use your existing DeepSpeed training code with the Ray Train `TorchTrainer`. The
 ```{testcode}
 :skipif: True
 
-import tempfile
-
 import deepspeed
 import ray
 from deepspeed.accelerator import get_accelerator
@@ -55,15 +53,8 @@ def train_func():
         # Training logic that computes `loss`
         ...
 
-        # Save a checkpoint so that Ray Train can resume training after a failure.
-        # Each worker saves its own ZeRO shards, and Ray Train merges them into
-        # one checkpoint directory in persistent storage.
-        with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
-            model.save_checkpoint(temp_checkpoint_dir)
-            ray.train.report(
-                metrics={"loss": loss.item(), "epoch": epoch},
-                checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
-            )
+        # Report metrics to Ray Train
+        ray.train.report(metrics={"loss": loss})
 
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig

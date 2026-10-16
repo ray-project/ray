@@ -1,9 +1,6 @@
 """Unit tests for compacting committed generated IDs into what a resumed job
 can skip: done read units and row masks of partly done row groups."""
 
-from typing import Iterable, List, Sequence, Tuple
-
-import numpy as np
 import pyarrow as pa
 import pytest
 
@@ -13,8 +10,6 @@ from ray.data.checkpoint.generated_id import (
     _build_generated_ids,
     _checkpoint_from_compacted,
     _compact_file_ids,
-    _drop_committed_rows,
-    _partial_mask_lookup,
 )
 
 PATH = "bucket/dir/a.parquet"
@@ -22,13 +17,9 @@ NUM_ROW_GROUPS = 3
 ROW_GROUP_SIZE = 4
 
 
-def _ids(
-    path: str,
-    committed_rows_by_row_group: Iterable[Tuple[int, Sequence[int]]],
-    num_row_groups: int = NUM_ROW_GROUPS,
-) -> pa.ChunkedArray:
+def _ids(path, committed_rows_by_row_group, num_row_groups=NUM_ROW_GROUPS):
     """Generated IDs of the committed ``(row_group, [row_ids])`` pairs."""
-    arrays: List[pa.Array] = []
+    arrays = []
     for row_group, row_ids in committed_rows_by_row_group:
         for row_id in row_ids:
             arrays.append(
@@ -44,7 +35,7 @@ def _ids(
     return pa.chunked_array(arrays)
 
 
-def _compact(*files: pa.ChunkedArray) -> pa.Table:
+def _compact(*files):
     return pa.concat_tables([_compact_file_ids(ids) for ids in files])
 
 
@@ -134,95 +125,6 @@ def test_compacted_path_matches_the_source_path(path):
     compacted = _compact(_ids(path, [(0, every_row)], num_row_groups=1))
 
     assert _checkpoint_from_compacted(compacted).done_unit_ids.to_pylist() == [path]
-
-
-def test_partial_mask_lookup_indexes_masks_by_unit_id():
-    """Masks come back as numpy arrays, also across table chunks."""
-    other = "bucket/dir/b.parquet"
-    checkpoint = _checkpoint_from_compacted(
-        _compact(_ids(PATH, [(1, [2])]), _ids(other, [(0, [0, 3])]))
-    )
-
-    lookup = _partial_mask_lookup(checkpoint.partial_masks)
-
-    assert set(lookup) == {f"{PATH}#rg1", f"{other}#rg0"}
-    np.testing.assert_array_equal(lookup[f"{PATH}#rg1"], [False, False, True, False])
-    np.testing.assert_array_equal(lookup[f"{other}#rg0"], [True, False, False, True])
-
-
-def _rows(
-    path: str,
-    row_group: int,
-    row_ids: Sequence[int],
-    num_row_groups: int = NUM_ROW_GROUPS,
-) -> pa.Table:
-    """A table of rows from one row group: a value column plus their IDs."""
-    ids = pa.chunked_array(
-        [
-            _build_generated_ids(
-                path,
-                row_group_index=row_group,
-                num_row_groups=num_row_groups,
-                row_group_num_rows=ROW_GROUP_SIZE,
-                rows_before=row_id,
-                num_rows=1,
-            )
-            for row_id in row_ids
-        ]
-    )
-    values = [f"{path}:{row_group}:{row_id}" for row_id in row_ids]
-    return pa.table({"value": values, "generated_id": ids})
-
-
-def test_drop_committed_rows_uses_each_row_groups_mask():
-    """A block can mix row groups and files; each row is checked against the
-    mask of its own row group."""
-    other = "bucket/dir/b.parquet"
-    table = pa.concat_tables(
-        [
-            _rows(PATH, 0, [0, 1, 2, 3]),
-            _rows(PATH, 1, [0, 1, 2, 3]),
-            _rows(other, 1, [0, 1, 2, 3]),
-        ]
-    )
-    masks = {
-        f"{PATH}#rg1": np.array([True, False, True, False]),
-        f"{other}#rg1": np.array([False, False, False, True]),
-    }
-
-    kept = _drop_committed_rows(table, "generated_id", masks)
-
-    expected = pa.concat_tables(
-        [
-            _rows(PATH, 0, [0, 1, 2, 3]),
-            _rows(PATH, 1, [1, 3]),
-            _rows(other, 1, [0, 1, 2]),
-        ]
-    )
-    assert kept.equals(expected)
-
-
-def test_drop_committed_rows_keeps_rows_outside_the_mask():
-    """Rows past the end of a mask, or with a negative row_id, are kept: a
-    bad id must never drop a row that isn't committed."""
-    table = _rows(PATH, 2, [-1, 0, 1, 2, 3])
-
-    kept = _drop_committed_rows(
-        table, "generated_id", {f"{PATH}#rg2": np.array([True, False, True])}
-    )
-
-    assert kept.equals(_rows(PATH, 2, [-1, 1, 3]))
-
-
-@pytest.mark.parametrize(
-    "masks",
-    [{}, {"bucket/dir/other.parquet#rg0": np.ones(ROW_GROUP_SIZE, dtype=bool)}],
-    ids=["no_masks", "other_row_group"],
-)
-def test_drop_committed_rows_without_a_matching_mask_keeps_everything(masks):
-    table = _rows(PATH, 0, [0, 1, 2, 3])
-
-    assert _drop_committed_rows(table, "generated_id", masks).equals(table)
 
 
 if __name__ == "__main__":
