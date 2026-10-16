@@ -87,6 +87,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         self._requests = set()
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
+        # Unmaterialized CR capacity has no instance/GCS idle report.
+        self._uncreated_unused_since: Dict[NodeType, Tuple[int, float]] = {}
 
         # Below are states for idle-cluster termination tracking.
         # Monotonic timestamp when no driver was first observed; None resets it.
@@ -234,6 +236,72 @@ class KubeRayProvider(ICloudInstanceProvider):
         periodic sync with the API server.
         """
         return self._ippr_provider.get_ippr_statuses()
+
+    def reconcile_uncreated_replicas(
+        self,
+        cluster_shape: Dict[NodeType, int],
+        idle_timeouts: Dict[NodeType, Optional[float]],
+        cancelled_requests: Dict[NodeType, int],
+    ) -> None:
+        """Withdraw excess CR replicas for which no Pod has been observed.
+
+        Never reduce below observed Pods: those require explicit workersToDelete
+        selected by the scheduler. REQUESTED cancellations already waited for the
+        idle timeout; CR-only capacity gets its own continuous-unused timer.
+        """
+        self._sync_with_api_server()
+        observed = defaultdict(int)
+        for instance in self._cached_instances.values():
+            if instance.node_kind == NodeKind.WORKER:
+                observed[instance.node_type] += 1
+        now = time.monotonic()
+        unused_since = {}
+        patches = []
+        for index, group in enumerate(
+            self._ray_cluster["spec"].get("workerGroupSpecs", [])
+        ):
+            node_type = group["groupName"]
+            hosts = group.get("numOfHosts", 1)
+            desired = max(
+                cluster_shape.get(node_type, 0),
+                observed[node_type],
+                group.get("minReplicas", 0) * hosts,
+            )
+            target = (desired + hosts - 1) // hosts
+            current = group.get("replicas", 1)
+            excess = current - target
+            timeout = idle_timeouts.get(node_type)
+            cancelled_replicas = cancelled_requests.get(node_type, 0) // hosts
+            if excess <= 0 or (timeout is None and cancelled_replicas == 0):
+                continue
+            previous_excess, since = self._uncreated_unused_since.get(
+                node_type, (excess, now)
+            )
+            if previous_excess != excess:
+                since = now
+            unused_since[node_type] = (excess, since)
+            # Only the explicitly cancelled requests may bypass this timer.
+            if timeout is None or now - since <= timeout:
+                target = max(target, current - cancelled_replicas)
+            if target < current:
+                path = f"/spec/workerGroupSpecs/{index}/replicas"
+                patches.append({"op": "test", "path": path, "value": current})
+                patches.append(worker_replica_patch(str(index), target))
+        if patches:
+            resource_version = self._ray_cluster.get("metadata", {}).get(
+                "resourceVersion"
+            )
+            if resource_version is not None:
+                patches.insert(
+                    0,
+                    {
+                        "op": "test",
+                        "path": "/metadata/resourceVersion",
+                        "value": resource_version,
+                    },
+                )
+            self._patch(f"rayclusters/{self._cluster_name}", patches)
+        self._uncreated_unused_since = unused_since
 
     def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
         """Execute IPPR resize requests via the underlying IPPR provider.

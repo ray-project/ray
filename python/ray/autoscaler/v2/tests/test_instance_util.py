@@ -38,6 +38,7 @@ class InstanceUtilTest(unittest.TestCase):
         all_status.remove(Instance.QUEUED)
 
         assert g[Instance.REQUESTED] == {
+            Instance.TERMINATED,
             Instance.ALLOCATED,
             Instance.QUEUED,
             Instance.ALLOCATION_FAILED,

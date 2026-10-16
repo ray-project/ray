@@ -69,6 +69,20 @@ After the sync phase, the Reconciler performs the `following steps <https://gith
 6. Send accumulated scaling decisions (steps 1–5) to the Instance Manager with `Reconciler._update_instance_manager <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/instance_manager/reconciler.py#L1157-L1193>`__.
 7. `Sleep briefly (5s by default) <https://github.com/ray-project/ray/blob/03491225d59a1ffde99c3628969ccf456be13efd/python/ray/autoscaler/v2/monitor.py#L178>`__, then return to the sync phase.
 
+Pending instances do not have a GCS idle report. The scheduler instead tracks how
+long each pending instance has continuously been unused by resource demands and
+cluster constraints. Once this exceeds the configured idle timeout, surplus
+queued or allocated instances can be cancelled or terminated, while preserving
+the minimum worker count. Demand returning to an instance resets its idle timer.
+In-flight launch requests can also be cancelled when the provider supports it.
+
+For KubeRay, the scheduler returns the desired node count by worker group as well
+as individual launch and termination decisions. The provider uses this shape to
+withdraw excess ``replicas`` for which no Pod has been observed, after the idle
+timeout. Existing Pods require explicit termination decisions and
+``workersToDelete``. Thus a group with ``minReplicas=0`` and no resource demands
+can shrink to zero even if its worker Pods have not yet been created.
+
 .. warning::
 
    If any error occurs, such as an error from the cloud instance provider or a timeout in the sync phase, the current reconciliation is aborted and the loop jumps to step 7 to wait for the next reconciliation.

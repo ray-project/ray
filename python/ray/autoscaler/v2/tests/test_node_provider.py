@@ -392,6 +392,95 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         # no-driver annotation is set; mirror that for the dispatch tests.
         self.provider._ray_cluster = raycluster_cr
 
+    def test_reconcile_uncreated_replicas(self):
+        group = self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]
+        group.update(replicas=16, minReplicas=0)
+        self.mock_client._ray_cluster.setdefault("metadata", {})[
+            "resourceVersion"
+        ] = "100"
+        self.mock_client._pod_list["items"] = [
+            pod
+            for pod in self.mock_client._pod_list["items"]
+            if pod["metadata"]["labels"]["ray.io/node-type"] == "head"
+        ]
+        with mock.patch("time.monotonic", return_value=0):
+            self.provider.reconcile_uncreated_replicas({}, {"small-group": 10}, {})
+        assert not self.mock_client._patches
+        with mock.patch("time.monotonic", return_value=11):
+            self.provider.reconcile_uncreated_replicas({}, {"small-group": 10}, {})
+        patches = self.mock_client.get_patches("rayclusters/test")
+        assert patches[0] == {
+            "op": "test",
+            "path": "/metadata/resourceVersion",
+            "value": "100",
+        }
+        assert patches[-1] == {
+            "op": "replace",
+            "path": "/spec/workerGroupSpecs/0/replicas",
+            "value": 0,
+        }
+
+    def test_uncreated_replicas_preserve_observed_and_required_capacity(self):
+        group = self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]
+        group.update(replicas=16, minReplicas=2)
+        for now in [0, 11]:
+            with mock.patch("time.monotonic", return_value=now):
+                self.provider.reconcile_uncreated_replicas(
+                    {"small-group": 3}, {"small-group": 10}, {}
+                )
+        assert self.mock_client.get_patches("rayclusters/test")[-1]["value"] == 3
+        group["minReplicas"] = 0
+        self.provider._uncreated_unused_since.clear()
+        for now in [20, 31]:
+            with mock.patch("time.monotonic", return_value=now):
+                self.provider.reconcile_uncreated_replicas({}, {"small-group": 10}, {})
+        # The observed pending Pod requires an explicit termination request.
+        assert self.mock_client.get_patches("rayclusters/test")[-1]["value"] == 1
+
+    def test_uncreated_replicas_reset_idle_timer(self):
+        group = self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]
+        group.update(replicas=16, minReplicas=0)
+        for now, desired in [(0, 1), (9, 16), (11, 1), (20, 1)]:
+            with mock.patch("time.monotonic", return_value=now):
+                self.provider.reconcile_uncreated_replicas(
+                    {"small-group": desired}, {"small-group": 10}, {}
+                )
+            assert not self.mock_client._patches
+
+    def test_cancel_requested_replicas_without_another_idle_wait(self):
+        group = self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]
+        group.update(replicas=16, minReplicas=0)
+        self.provider.reconcile_uncreated_replicas(
+            {"small-group": 1}, {"small-group": 10}, {"small-group": 15}
+        )
+        assert self.mock_client.get_patches("rayclusters/test")[-1]["value"] == 1
+
+    def test_uncreated_replicas_minimum_and_multihost(self):
+        group = self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]
+        for minimum, hosts, desired, expected in [(2, 1, 0, 2), (0, 2, 3, 2)]:
+            with self.subTest(minimum=minimum, hosts=hosts):
+                group.update(replicas=16, minReplicas=minimum, numOfHosts=hosts)
+                self.provider._uncreated_unused_since.clear()
+                for now in [0, 11]:
+                    with mock.patch("time.monotonic", return_value=now):
+                        self.provider.reconcile_uncreated_replicas(
+                            {"small-group": desired}, {"small-group": 10}, {}
+                        )
+                assert (
+                    self.mock_client.get_patches("rayclusters/test")[-1]["value"]
+                    == expected
+                )
+
+    def test_uncreated_replicas_without_idle_timeout(self):
+        group = self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]
+        group.update(replicas=16, minReplicas=0)
+        for now in [0, 100]:
+            with mock.patch("time.monotonic", return_value=now):
+                self.provider.reconcile_uncreated_replicas(
+                    {}, {"small-group": None}, {}
+                )
+        assert not self.mock_client._patches
+
     def test_get_nodes(self):
         nodes = self.provider.get_non_terminated()
         errors = self.provider.poll_errors()

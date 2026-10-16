@@ -85,6 +85,8 @@ class SchedulingRequest:
     ippr_specs: Optional[IPPRSpecs] = None
     # Latest per-pod IPPR statuses keyed by cloud_instance_id (pod name).
     ippr_statuses: Dict[str, IPPRStatus] = field(default_factory=dict)
+    # Only providers that can cancel an in-flight launch may retire REQUESTED nodes.
+    supports_launch_cancellation: bool = False
 
 
 @dataclass
@@ -107,6 +109,8 @@ class SchedulingReply:
     infeasible_cluster_resource_constraints: List[ClusterResourceConstraint] = field(
         default_factory=list
     )
+    # Desired number of nodes by type, including launches and excluding terminations.
+    cluster_shape: Dict[NodeType, int] = field(default_factory=dict)
 
 
 class IResourceScheduler(ABC):
@@ -904,6 +908,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
     def __init__(self, event_logger: Optional[AutoscalerEventLogger] = None):
         self._event_logger = event_logger
+        self._pending_unused_since: Dict[str, float] = {}
 
     @dataclass
     class ScheduleContext:
@@ -1229,12 +1234,14 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
         # not needed by min_worker count, etc.)
+        self._update_pending_idle_durations(ctx, request.supports_launch_cancellation)
         ResourceDemandScheduler._enforce_idle_termination(ctx)
 
         cluster_resources = ctx.get_cluster_resources()
 
         # Compute the number of nodes to launch.
         reply = SchedulingReply(
+            cluster_shape=dict(ctx.get_cluster_shape()),
             infeasible_resource_requests=infeasible_requests,
             infeasible_gang_resource_requests=infeasible_gang_requests,
             infeasible_cluster_resource_constraints=infeasible_constraints,
@@ -2078,6 +2085,36 @@ class ResourceDemandScheduler(IResourceScheduler):
                     details=f"node from {node.node_type} has outdated config",
                 )
 
+        ctx.update(nodes)
+
+    def _update_pending_idle_durations(
+        self,
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        supports_launch_cancellation: bool,
+    ) -> None:
+        """Measure continuous lack of demand, rather than pending instance age.
+
+        Pending nodes have no GCS idle report. Start their idle clock only after
+        scheduling demands, and reset it whenever they are needed again.
+        """
+        now = time.monotonic()
+        unused_since = {}
+        nodes = ctx.get_nodes()
+        cancellable = {Instance.QUEUED, Instance.ALLOCATED, Instance.RAY_INSTALLING}
+        if supports_launch_cancellation:
+            cancellable.add(Instance.REQUESTED)
+        for node in nodes:
+            if (
+                node.status != SchedulingNodeStatus.SCHEDULABLE
+                or node.node_kind == NodeKind.HEAD
+                or node.im_instance_status not in cancellable
+                or any(node.sched_requests.values())
+            ):
+                continue
+            since = self._pending_unused_since.get(node.im_instance_id, now)
+            unused_since[node.im_instance_id] = since
+            node.idle_duration_ms = int((now - since) * 1000)
+        self._pending_unused_since = unused_since
         ctx.update(nodes)
 
     @staticmethod

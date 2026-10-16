@@ -11,6 +11,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from ray._common.utils import binary_to_hex
+from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider import (
+    KubeRayProvider,
+)
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig, Provider
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -31,6 +34,7 @@ from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer impor
 from ray.autoscaler.v2.scheduler import IResourceScheduler, SchedulingReply
 from ray.autoscaler.v2.tests.util import MockSubscriber, create_instance
 from ray.core.generated.autoscaler_pb2 import (
+    AutoscalingState,
     ClusterResourceState,
     GangResourceRequest,
     NodeState,
@@ -129,6 +133,76 @@ def setup():
 
 
 class TestReconciler:
+    @staticmethod
+    @pytest.mark.parametrize("patch_fails", [False, True])
+    def test_cancel_kuberay_requested_instance(setup, patch_fails):
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+        TestReconciler._add_instances(
+            instance_storage,
+            [
+                create_instance(
+                    "pending",
+                    status=Instance.REQUESTED,
+                    instance_type="worker",
+                    launch_request_id="launch",
+                ),
+                create_instance(
+                    "head",
+                    status=Instance.RAY_RUNNING,
+                    node_kind=NodeKind.HEAD,
+                    ray_node_id=binary_to_hex(b"head"),
+                ),
+            ],
+        )
+        provider = MagicMock(spec=KubeRayProvider)
+        scheduler = MagicMock()
+        scheduler.schedule.return_value = SchedulingReply(
+            to_terminate=[
+                TerminationRequest(
+                    instance_id="pending",
+                    instance_type="worker",
+                    instance_status=Instance.REQUESTED,
+                    cause=TerminationRequest.IDLE,
+                )
+            ]
+        )
+        if patch_fails:
+            provider.reconcile_uncreated_replicas.side_effect = RuntimeError(
+                "patch failed"
+            )
+
+        def scale():
+            Reconciler._scale_cluster(
+                autoscaling_state=AutoscalingState(),
+                instance_manager=instance_manager,
+                cloud_resource_monitor=cloud_resource_monitor,
+                ray_state=ClusterResourceState(
+                    node_states=[
+                        NodeState(
+                            node_id=b"head",
+                            status=NodeStatus.RUNNING,
+                        )
+                    ]
+                ),
+                scheduler=scheduler,
+                autoscaling_config=MockAutoscalingConfig(),
+                cloud_provider=provider,
+            )
+
+        if patch_fails:
+            with pytest.raises(RuntimeError, match="patch failed"):
+                scale()
+        else:
+            scale()
+        instances, _ = instance_storage.get_instances()
+        assert instances["pending"].status == (
+            Instance.REQUESTED if patch_fails else Instance.TERMINATED
+        )
+        provider.reconcile_uncreated_replicas.assert_called_once_with(
+            {}, {}, {"worker": 1}
+        )
+        assert scheduler.schedule.call_args[0][0].supports_launch_cancellation
+
     @staticmethod
     def _add_instances(instance_storage, instances):
         for instance in instances:

@@ -212,6 +212,8 @@ class InstanceUtil:
             },
             # When in this status, a launch request to the node provider is made.
             Instance.REQUESTED: {
+                # A provider with launch cancellation support has withdrawn the request.
+                Instance.TERMINATED,
                 # Cloud provider allocated a cloud instance for the instance.
                 # This happens when the cloud instance first appears in the list of
                 # running cloud instances from the cloud instance provider.

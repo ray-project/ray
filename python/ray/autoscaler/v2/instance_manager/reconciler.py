@@ -1237,6 +1237,7 @@ class Reconciler:
         )
 
         if isinstance(cloud_provider, KubeRayProvider):
+            sched_request.supports_launch_cancellation = True
             sched_request.ippr_specs = cloud_provider.get_ippr_specs()
             sched_request.ippr_statuses = cloud_provider.get_ippr_statuses()
 
@@ -1269,11 +1270,33 @@ class Reconciler:
         # Scale the clusters if needed.
         to_launch = reply.to_launch
         to_terminate = reply.to_terminate
+        if isinstance(cloud_provider, KubeRayProvider):
+            cancelled_requests = defaultdict(int)
+            for termination in to_terminate:
+                if termination.instance_status == IMInstance.REQUESTED:
+                    cancelled_requests[termination.instance_type] += 1
+            # Withdraw unmaterialized replicas before marking requests terminated.
+            # Existing Pods are still deleted through the normal termination path.
+            cloud_provider.reconcile_uncreated_replicas(
+                reply.cluster_shape,
+                {
+                    name: (
+                        config.idle_timeout_s
+                        if config.idle_timeout_s is not None
+                        else sched_request.idle_timeout_s
+                    )
+                    for name, config in sched_request.node_type_configs.items()
+                },
+                cancelled_requests,
+            )
         updates = {}
         # Add terminating instances.
         for terminate_request in to_terminate:
             instance_id = terminate_request.instance_id
-            if terminate_request.instance_status == IMInstance.QUEUED:
+            if terminate_request.instance_status == IMInstance.QUEUED or (
+                terminate_request.instance_status == IMInstance.REQUESTED
+                and isinstance(cloud_provider, KubeRayProvider)
+            ):
                 # QUEUED instances have no cloud resources allocated yet.
                 # Cancel the allocation request by transitioning directly to TERMINATED.
                 updates[terminate_request.instance_id] = IMInstanceUpdateEvent(

@@ -1390,6 +1390,118 @@ def test_outdated_nodes(disable_launch_config_check):
         assert to_launch == {}
 
 
+@pytest.mark.parametrize(
+    "status",
+    [Instance.QUEUED, Instance.REQUESTED, Instance.ALLOCATED, Instance.RAY_INSTALLING],
+)
+@pytest.mark.parametrize("demand", ["none", "tasks", "gang", "constraint", "min"])
+def test_unused_pending_instances(status, demand):
+    scheduler = ResourceDemandScheduler()
+    config = NodeTypeConfig(
+        name="worker",
+        resources={"CPU": 1},
+        min_worker_nodes=1 if demand == "min" else 0,
+        max_worker_nodes=16,
+    )
+    request = sched_request(
+        node_type_configs={"worker": config},
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id=f"i-{i}",
+                    instance_type="worker",
+                    status=status,
+                    node_kind=NodeKind.WORKER,
+                )
+            )
+            for i in range(16)
+        ],
+        idle_timeout_s=10,
+        resource_requests=[ResourceRequestUtil.make({"CPU": 1})]
+        if demand == "tasks"
+        else [],
+        gang_resource_requests=[[ResourceRequestUtil.make({"CPU": 1})]]
+        if demand == "gang"
+        else [],
+        cluster_resource_constraints=[ResourceRequestUtil.make({"CPU": 1})]
+        if demand == "constraint"
+        else [],
+    )
+    request.supports_launch_cancellation = True
+    with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=0):
+        assert not scheduler.schedule(request).to_terminate
+    with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=10):
+        assert not scheduler.schedule(request).to_terminate
+    with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=11):
+        reply = scheduler.schedule(request)
+    retained = 0 if demand == "none" else 1
+    assert len(reply.to_terminate) == 16 - retained
+    assert reply.cluster_shape.get("worker", 0) == retained
+    assert not reply.to_launch
+    assert all(t.cause == TerminationRequest.IDLE for t in reply.to_terminate)
+
+
+def test_pending_idle_clock_resets_when_demand_returns():
+    scheduler = ResourceDemandScheduler()
+    request = sched_request(
+        node_type_configs={
+            "worker": NodeTypeConfig(
+                name="worker",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=1,
+            )
+        },
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="pending",
+                    instance_type="worker",
+                    status=Instance.ALLOCATED,
+                    node_kind=NodeKind.WORKER,
+                )
+            )
+        ],
+        idle_timeout_s=10,
+    )
+    for now, needed in [(0, False), (9, True), (11, False), (20, False)]:
+        request.resource_requests = ResourceRequestUtil.group_by_count(
+            [ResourceRequestUtil.make({"CPU": 1})] if needed else []
+        )
+        with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=now):
+            assert not scheduler.schedule(request).to_terminate
+    with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=22):
+        assert len(scheduler.schedule(request).to_terminate) == 1
+
+
+def test_requested_launch_requires_cancellation_support():
+    scheduler = ResourceDemandScheduler()
+    request = sched_request(
+        node_type_configs={
+            "worker": NodeTypeConfig(
+                name="worker",
+                resources={"CPU": 1},
+                min_worker_nodes=0,
+                max_worker_nodes=1,
+            )
+        },
+        instances=[
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id="pending",
+                    instance_type="worker",
+                    status=Instance.REQUESTED,
+                    node_kind=NodeKind.WORKER,
+                )
+            )
+        ],
+        idle_timeout_s=10,
+    )
+    for now in [0, 100]:
+        with patch("ray.autoscaler.v2.scheduler.time.monotonic", return_value=now):
+            assert not scheduler.schedule(request).to_terminate
+
+
 @pytest.mark.parametrize("idle_timeout_s", [1, 2, 10])
 @pytest.mark.parametrize("has_resource_constraints", [True, False])
 @pytest.mark.parametrize("has_resource_requests", [True, False])
