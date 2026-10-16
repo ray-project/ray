@@ -318,6 +318,38 @@ steps:
       - forge
       - ray-wheel-build(python=3.10)
 
+  # Experimental: non-blocking until it has been stable for an agreed period.
+  - label: ":ray: core: free-threaded wheel tests (experimental)"
+    key: core-free-threaded-wheel-tests
+    tags:
+      - linux_wheels
+      - skip-on-premerge
+    instance_type: medium
+    soft_fail: true
+    commands:
+      - set -o pipefail
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
+        --wanda-image-name=ray-wheel-py3.15t
+        --file-glob='*.whl'
+        --output-dir=.whl-ft
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
+        --wanda-image-name=ray-wheel-py3.15
+        --file-glob='*.whl'
+        --output-dir=.whl-regular
+      # The manylinux image provides python3.15t; ship the inputs over stdin so this
+      # does not depend on the docker daemon sharing the agent's filesystem.
+      - tar -c ci/build/test-free-threaded-wheel.sh ci/build/free_threaded_import_smoke.py
+        python/ray/tests pytest.ini .whl-ft .whl-regular |
+        docker run -i --rm --shm-size=2.5gb
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-manylinux-x86_64
+        /bin/bash -c "mkdir /tmp/work && tar -x -C /tmp/work &&
+        /tmp/work/ci/build/test-free-threaded-wheel.sh /tmp/work/.whl-ft /tmp/work/.whl-regular"
+    depends_on:
+      - manylinux-x86_64
+      - forge
+      - ray-wheel-build-experimental(python=3.15t)
+      - ray-wheel-build-experimental(python=3.15)
+
   # Premerge runs only the lowest and highest supported Python versions. The
   # intermediate versions are covered by the postmerge-only step below.
   - label: ":ray: core: minimal tests {{array.python}}"

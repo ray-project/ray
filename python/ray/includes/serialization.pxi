@@ -128,25 +128,6 @@ cdef class SubBuffer:
         buffer.strides = self._strides.data()
         buffer.suboffsets = self.suboffsets
 
-    def __getsegcount__(self, Py_ssize_t *len_out):
-        if len_out != NULL:
-            len_out[0] = <Py_ssize_t> self.size
-        return 1
-
-    def __getreadbuffer__(self, Py_ssize_t idx, void ** p):
-        if idx != 0:
-            raise SystemError("accessing non-existent buffer segment")
-        if p != NULL:
-            p[0] = self.buf
-        return self.size
-
-    def __getwritebuffer__(self, Py_ssize_t idx, void ** p):
-        if idx != 0:
-            raise SystemError("accessing non-existent buffer segment")
-        if p != NULL:
-            p[0] = self.buf
-        return self.size
-
 
 @contextlib.contextmanager
 def _temporarily_disable_gc():

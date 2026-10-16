@@ -19,6 +19,26 @@ py_test(
 )
 
 py_library(
+    name = "free_threaded_import_smoke",
+    srcs = ["free_threaded_import_smoke.py"],
+    visibility = ["//visibility:public"],
+)
+
+py_test(
+    name = "free_threaded_import_smoke_test",
+    size = "small",
+    srcs = ["free_threaded_import_smoke_test.py"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":free_threaded_import_smoke",
+        ci_require("pytest"),
+    ],
+)
+
+py_library(
     name = "build_common",
     srcs = ["build_common.py"],
     visibility = ["//visibility:public"],

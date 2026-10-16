@@ -31,8 +31,11 @@ set -euo pipefail
 export BAZELISK_HOME=$DOWNLOAD_CACHE/bazelisk
 REPOSITORY_CACHE=$DOWNLOAD_CACHE/repo
 
+# "3.15t" is the free-threaded build: cp315-cp315t.
 PY_CODE="${PYTHON_VERSION//./}"
-PY_BIN="cp${PY_CODE}-cp${PY_CODE}"
+PY_BIN="cp${PY_CODE%t}-cp${PY_CODE}"
+
+[[ -d "/opt/python/${PY_BIN}" ]] || sudo manylinux-interpreters ensure "${PY_BIN}"
 
 export RAY_BUILD_ENV="manylinux_py${PY_BIN}"
 

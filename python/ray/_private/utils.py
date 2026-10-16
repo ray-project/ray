@@ -1368,6 +1368,7 @@ def check_version_info(
     this_process_address: str,
     raise_on_mismatch: bool = True,
     python_version_match_level: Optional[str] = None,
+    this_process_version_info: Optional[Tuple[str, str]] = None,
 ):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
@@ -1379,6 +1380,8 @@ def check_version_info(
             try to match. Note if "minor" and the patch is different, we will still log
             a warning. Default value is `RAY_DEFAULT_PYTHON_VERSION_MATCH_LEVEL` if it
             exists, otherwise "patch"
+        this_process_version_info: (Ray version, Python version) of the process to
+            check, if it is not the current one.
 
     Behavior:
         - We raise or log a warning, based on raise_on_mismatch, if:
@@ -1405,7 +1408,7 @@ def check_version_info(
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
     )
-    my_version_info = compute_version_info()
+    my_version_info = this_process_version_info or compute_version_info()
 
     # Calculate: ray_matches, python_matches, python_full_matches
     ray_matches = cluster_version_info[0] == my_version_info[0]
@@ -1662,6 +1665,13 @@ def remove_ray_internal_flags_from_env(env: dict):
         env.pop(flag, None)
 
 
+def expand_env_value(value: str) -> str:
+    """Replace ${X} in an env var value with the current environment variable."""
+    expanded = os.path.expandvars(value)
+    # Replace non-existant env vars with an empty string.
+    return re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
+
+
 def update_envs(env_vars: Dict[str, str]):
     """
     When updating the environment variable, if there is ${X},
@@ -1671,10 +1681,7 @@ def update_envs(env_vars: Dict[str, str]):
         return
 
     for key, value in env_vars.items():
-        expanded = os.path.expandvars(value)
-        # Replace non-existant env vars with an empty string.
-        result = re.sub(r"\$\{[A-Z0-9_]+\}", "", expanded)
-        os.environ[key] = result
+        os.environ[key] = expand_env_value(value)
 
 
 def parse_pg_formatted_resources_to_original(

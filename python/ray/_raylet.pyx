@@ -1142,7 +1142,7 @@ cdef class StreamingGeneratorExecutionContext:
         function_descriptor: FunctionDescriptor,
         title: str,
         actor: object,
-        actor_id: ActorID,
+        actor_id: Optional[ActorID],
         name_of_concurrency_group_to_execute: str,
         return_size: int,
         uint64_t attempt_number,
