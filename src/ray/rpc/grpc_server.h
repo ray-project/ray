@@ -98,20 +98,22 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
-  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// \param[in] bind_address IP this server is associated with. Loopback binds to
+  /// localhost; anything else binds to all interfaces unless
+  /// grpc_server_bind_to_node_ip is set, in which case it binds to this IP only.
+  /// \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
   /// \param[in] auth_token Authentication token that clients must present when making
   /// RPCs to the server. If nullptr, no authentication token is required.
   GrpcServer(std::string name,
              const uint32_t port,
-             bool listen_to_localhost_only,
+             std::string bind_address,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
              std::shared_ptr<const AuthenticationToken> auth_token = nullptr)
       : name_(std::move(name)),
         port_(port),
-        listen_to_localhost_only_(listen_to_localhost_only),
+        bind_address_(std::move(bind_address)),
         is_shutdown_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
@@ -178,9 +180,8 @@ class GrpcServer {
   /// Port of this server.
   int port_;
 
-  /// Listen to localhost (127.0.0.1) only if it's true, otherwise listen to all network
-  /// interfaces (0.0.0.0)
-  const bool listen_to_localhost_only_;
+  /// IP this server is associated with; see Run() for how it maps to a bind address.
+  const std::string bind_address_;
 
   /// Token representing ID of this cluster.
   ClusterID cluster_id_;

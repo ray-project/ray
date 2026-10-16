@@ -1290,3 +1290,6 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+/// If true, gRPC servers bind only to their node IP instead of 0.0.0.0.
+RAY_CONFIG(bool, grpc_server_bind_to_node_ip, false)
