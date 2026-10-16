@@ -16,3 +16,6 @@ typer
 meson
 pybind11
 hf_transfer
+# For KV-aware routing (dynamo.llm.SelectionService)
+ai-dynamo-runtime==1.5.1
+fastokens
