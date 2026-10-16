@@ -627,6 +627,7 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
         gen: ObjectRefGenerator,
         inputs: RefBundle,
         task_done_callback: Optional[Callable[[], None]] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -763,6 +764,7 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                 task_index, output
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
+            task_resource_request=task_resource_request,
             operator_name=self.name,
             lineage_task_id=lineage_task_id,
             reconstruction_plan_id=reconstruction_plan_id,

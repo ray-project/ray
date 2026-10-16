@@ -7,13 +7,26 @@ from typing import TYPE_CHECKING, Callable, Dict, List, Optional
 from .base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
     AutoscalingCoordinator,
+    NodeResources,
+    ResourceDict,
 )
 from .base_cluster_autoscaler import ClusterAutoscaler
-from .default_autoscaling_coordinator import DefaultAutoscalingCoordinator
+from .default_autoscaling_coordinator import (
+    DEFAULT_SUBCLUSTER,
+    SUBCLUSTER_LABEL_KEY,
+    DefaultAutoscalingCoordinator,
+    cluster_node_resources_by_subcluster,
+)
 from .resource_utilization_gauge import (
     ClusterUtil,
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
+)
+from .shape_requests import (
+    ScaleUpKeepAlive,
+    build_request,
+    collect_active_requests,
+    select_over_utilized_shapes,
 )
 from .supports_cluster_autoscaling import SupportsClusterAutoscaling
 from .throughput_solver import allocate_resources, compute_optimal_throughput
@@ -43,26 +56,36 @@ SHUFFLE_OP_TYPES = (AllToAllOperator, HashShufflingOperatorBase, ShuffleMapOp)
 _OBJECT_STORE_ALL_TO_ALL_TYPES = (AllToAllOperator, ShuffleMapOp)
 
 
-def _to_resource_bundle(resources: ExecutionResources) -> Dict[str, float]:
-    """Convert ExecutionResources to a resource bundle dict for the autoscaler.
+def _requester_node_resources(subcluster: Optional[str]) -> NodeResources:
+    """Worker nodes of one subcluster; empty when the cluster view is unavailable.
 
-    Excludes object_store_memory and filters out zero values.
+    An empty view means "unknown": the caller makes no shape decision this tick
+    instead of failing the execution, and the coordinator keeps its own last view.
     """
-    resource_dict = resources.copy(object_store_memory=0).to_resource_dict()
-    return {k: v for k, v in resource_dict.items() if v > 0}
+    # TODO: the coordinator already caches this view; exposing it (refreshing on
+    # demand, like `get_reserved_resources(recompute=True)`) would give the shape
+    # check one source of truth instead of refetching cluster state every tick.
+    try:
+        by_subcluster = cluster_node_resources_by_subcluster()
+    except Exception as e:
+        logger.warning(f"Failed to get cluster nodes: {e}")
+        return {}
+    return by_subcluster.get(subcluster, {})
 
 
 class RateBasedClusterAutoscaler(ClusterAutoscaler):
     """Rate-based cluster autoscaler.
 
     This autoscaler uses per-operator throughput rates to compute optimal resource
-    allocations and scales the cluster accordingly.
+    allocations and scales the cluster accordingly. Requests carry the exact
+    resource shapes its in-flight tasks and actors need -- custom resources
+    included -- and a shape that saturates the worker groups able to host it
+    scales up on its own (see ``shape_requests``).
 
-    This autoscaler only scales up the cluster. It relies on idle termination to scale
-    down. To let idle termination see idle nodes, the last explicit resource request
-    is kept alive for only a bounded grace window once utilization drops below the
-    scale-up threshold; after that an empty request is sent (keeping the requester
-    registration alive) so the cluster autoscaler can release leased resources.
+    This autoscaler only scales up the cluster. It relies on idle termination to
+    scale down: demand is released as the work behind it finishes, and only a
+    bounded grace window of scale-up demand is kept alive once utilization drops
+    below the scale-up threshold, so idle nodes can be reclaimed.
     """
 
     # Default scaling up factor for cluster autoscaling.
@@ -138,6 +161,7 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         low_util_request_release_delay_s: float = DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S,  # noqa: E501
         label_selector: Optional[Dict[str, str]] = None,
         get_time: Callable[[], float] = time.monotonic,
+        get_node_resources: Optional[Callable[[], NodeResources]] = None,
     ):
         """Initialize the cluster autoscaler.
 
@@ -165,17 +189,18 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
                 autoscaling requests. This is exposed as a seam for testing.
             autoscaling_request_expire_time_s: The number of seconds before requested
                 resources expire. This is exposed as a seam for testing.
-            low_util_request_release_delay_s: How long the last non-empty explicit
-                request is kept alive, measured from when it was sent, and not from
-                when utilization dropped. After that, an empty request is sent (the
-                requester registration stays alive) so the cluster autoscaler can
-                release leased resources and idle termination can reclaim nodes.
+            low_util_request_release_delay_s: How long scale-up demand is kept
+                alive after it was last requested, so idle termination doesn't
+                reclaim a node the moment it arrives.
             label_selector: Label selector pinning this requester to a single
                 subcluster. Forwarded to the `DefaultAutoscalingCoordinator` as
                 `subcluster_selector` so node bucketing, remaining-resource
                 eligibility, and bundle stamping are scoped to the subcluster.
             get_time: A function that returns the current time in seconds. This is
                 exposed as a seam for testing.
+            get_node_resources: Returns the cluster's worker nodes, keyed by node
+                id. Defaults to this requester's subcluster. Exposed as a seam for
+                testing.
         """
         assert all(
             isinstance(op, SupportsClusterAutoscaling) for op in ops
@@ -195,6 +220,15 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             op for op in ops if not isinstance(op, SHUFFLE_OP_TYPES)
         ]
         self._shuffle_ops = [op for op in ops if isinstance(op, SHUFFLE_OP_TYPES)]
+        self._ops = list(ops)
+        # The shape check measures demand against the worker groups that can host
+        # it, scoped to this requester's subcluster.
+        self._subcluster = (label_selector or {}).get(
+            SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER
+        )
+        self._get_node_resources = get_node_resources or (
+            lambda: _requester_node_resources(self._subcluster)
+        )
         self._execution_id = execution_id
         self._max_cluster_limits = max_cluster_limits
         self._utility_calculator = utility_calculator
@@ -208,16 +242,15 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         )
         self._autoscaling_request_expire_time_s = autoscaling_request_expire_time_s
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
-        self._low_util_request_release_delay_s = low_util_request_release_delay_s
         self._get_time = get_time
         self._last_request_time = 0.0
         self._requester_id = f"data-{execution_id}"
         self._last_resource_request = []
-        # Track the last non-empty explicit request so low-utilization heartbeats
-        # can keep it alive briefly without keeping explicit autoscaler demand
-        # pinned until dataset completion.
-        self._last_non_empty_resource_request: List[Dict[str, float]] = []
-        self._last_non_empty_request_time: Optional[float] = None
+        # Keeps the scale-up copies alive once utilization drops, so idle
+        # termination doesn't reclaim a node the moment it arrives.
+        self._scale_up_keep_alive = ScaleUpKeepAlive(
+            release_delay_s=low_util_request_release_delay_s
+        )
 
         # Log the initialized values.
         logger.debug("=== Rate-Based Autoscaler: Initialized ===")
@@ -293,9 +326,32 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         # cluster autoscaler can release leased resources.
         utilization = self._utility_calculator.get()
         self._log_cluster_utilization(utilization)
-        if self._is_cluster_utilization_low(utilization):
+
+        active_requests_by_op = collect_active_requests(self._ops)
+        active_requests = [
+            request
+            for requests in active_requests_by_op.values()
+            for request in requests
+        ]
+
+        # A shape at its own utilization threshold triggers scaling even when
+        # every standard resource looks idle.
+        over_utilized_shapes = select_over_utilized_shapes(
+            active_requests,
+            self._get_node_resources(),
+            self._cluster_scaling_up_util_threshold,
+        )
+        if over_utilized_shapes:
+            logger.debug(
+                "Resource shape(s) above their utilization threshold: %s",
+                [dict(shape) for shape in over_utilized_shapes],
+            )
+
+        if self._is_cluster_utilization_low(utilization) and not over_utilized_shapes:
             logger.debug("Cluster utilization is low -- skipping cluster autoscaling. ")
-            self._send_resource_request(None)
+            self._send_resource_request(
+                self._scale_up_keep_alive.low_utilization_request(active_requests, now)
+            )
             return self._last_resource_request
 
         # Get the current resources allocated to the cluster. This requires an RPC
@@ -342,23 +398,31 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
             )
 
         # 2. Construct the resource request for the autoscaling coordinator.
-        resource_request = self._construct_resource_request(bundle_counts)
+        plan = build_request(
+            active_requests_by_op=active_requests_by_op,
+            bundle_counts=bundle_counts,
+            over_utilized_shapes=over_utilized_shapes,
+        )
 
         # 3. Pad the resource request to indirectly request object store memory if
-        # needed.
+        # needed. The padding is scale-up demand too, so it is held with the rest.
         if self._should_pad_resource_request_for_object_store_memory(utilization):
             logger.debug("Padding resource request for object store memory")
-            self._pad_resource_request_for_object_store_memory(
-                resource_request,
-                current_resources=current_resources,
-                max_resources_after_scaling=max_resources_after_scaling,
+            plan.scale_up.extend(
+                self._pad_resource_request_for_object_store_memory(
+                    plan.request,
+                    current_resources=current_resources,
+                    max_resources_after_scaling=max_resources_after_scaling,
+                )
             )
 
         # 4. Send the resource request to the autoscaling coordinator.
-        self._log_resource_request(resource_request)
-        self._send_resource_request(resource_request)
+        self._log_resource_request(plan.request)
+        # Only what was added on top of the in-flight demand is held.
+        self._scale_up_keep_alive.record(plan.scale_up, now)
+        self._send_resource_request(plan.request)
 
-        return resource_request
+        return plan.request
 
     def _log_cluster_utilization(self, utilization: ClusterUtil) -> None:
         threshold = self._cluster_scaling_up_util_threshold
@@ -521,16 +585,6 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
     ) -> Dict[SupportsClusterAutoscaling, int | None]:
         return {op: op.get_max_concurrency_limit() for op in self._non_shuffle_ops}
 
-    def _construct_resource_request(
-        self, bundle_counts: Dict[SupportsClusterAutoscaling, int]
-    ) -> List[Dict[str, float]]:
-        resource_request = []
-        for op, count in bundle_counts.items():
-            resource_request.extend(
-                [_to_resource_bundle(op.min_scheduling_resources())] * count
-            )
-        return resource_request
-
     def _should_pad_resource_request_for_object_store_memory(
         self, utilization: ClusterUtil
     ) -> bool:
@@ -567,11 +621,22 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         *,
         current_resources: ExecutionResources,
         max_resources_after_scaling: ExecutionResources,
-    ) -> None:
+    ) -> List[Dict[str, float]]:
         """Pad the resource request to implicitly request more object store memory.
 
         Ray doesn't let you direcly request more object store memory, so we need to
         implicity request object store memory by requesting more logical CPUs.
+
+        Args:
+            resource_request: The resource request to pad in place with extra CPU
+                bundles.
+            current_resources: The resources currently allocated to the cluster.
+            max_resources_after_scaling: The upper bound on resources the request
+                is allowed to scale up to.
+
+        Returns:
+            The padding bundles, so the caller can hold them with the rest of the
+            scale-up demand.
         """
         # Compute the number of logical CPUs in the request.
         num_cpus_in_request: float = 0
@@ -592,7 +657,9 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         num_cpus_to_add = max(
             0, math.ceil(desired_num_cpus_in_request - num_cpus_in_request)
         )
-        resource_request.extend([{"CPU": 1.0}] * num_cpus_to_add)
+        padding = [{"CPU": 1.0}] * num_cpus_to_add
+        resource_request.extend(padding)
+        return padding
 
     @staticmethod
     def _log_resource_request(resource_request: List[Dict[str, float]]) -> None:
@@ -617,42 +684,21 @@ class RateBasedClusterAutoscaler(ClusterAutoscaler):
         else:
             logger.debug("Sending empty resource request")
 
-    def _should_keep_non_empty_request(self, now: float) -> bool:
-        return (
-            self._last_non_empty_request_time is not None
-            and now - self._last_non_empty_request_time
-            < self._low_util_request_release_delay_s
-        )
-
     def _send_resource_request(
         self,
-        resource_request: Optional[List[Dict[str, float]]],
+        resource_request: List[ResourceDict],
     ):
         now = self._get_time()
-        update_non_empty_request_state = True
-        if resource_request is None:
-            if self._should_keep_non_empty_request(now):
-                resource_request = self._last_non_empty_resource_request
-                update_non_empty_request_state = False
-            else:
-                # Renew our registration on AutoscalingCoordinator without
-                # keeping explicit autoscaler demand alive.
-                resource_request = []
-
         self._last_resource_request = [r.copy() for r in resource_request]
         self._autoscaling_coordinator.request_resources(
             resources=[r.copy() for r in resource_request],
             expire_after_s=self._autoscaling_request_expire_time_s,
+            # Custom resources travel in the bundles above. They are deliberately
+            # not added here: the coordinator rejects any change to
+            # ``request_remaining`` on an ongoing request, so a set that grew with
+            # the first custom resource would make that request fail silently.
             request_remaining=STANDARD_RESOURCE_TYPES,
         )
-        if resource_request and update_non_empty_request_state:
-            self._last_non_empty_resource_request = [
-                bundle.copy() for bundle in resource_request
-            ]
-            self._last_non_empty_request_time = now
-        elif not resource_request:
-            self._last_non_empty_resource_request = []
-            self._last_non_empty_request_time = None
         self._last_request_time = now
 
     def on_executor_shutdown(self):

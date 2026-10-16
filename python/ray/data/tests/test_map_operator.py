@@ -796,6 +796,41 @@ def test_map_operator_default_num_cpus(
         assert op._ray_remote_args[key] == value
 
 
+def test_map_operator_resource_requests_track_inflight_tasks(ray_start_regular_shared):
+    """Exact requests are reported while a task is in flight and released after."""
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[np.ones(1024)]])
+    )
+    transformer = create_map_transformer_from_block_fn(_mul2_transform)
+
+    op = MapOperator.create(
+        transformer,
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestResourceRequests",
+        compute_strategy=TaskPoolStrategy(),
+        # Schedule on the first bundle so the task is in flight right away.
+        min_rows_per_bundle=1,
+        ray_remote_args={"num_cpus": 1},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+
+    # Adding input submits the task immediately.
+    op.add_input(input_op.get_next(), 0)
+    requests = op.get_resource_requests()
+    assert len(requests) == 1
+    assert requests[0] == {"CPU": 1}
+
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+    while op.has_next():
+        op.get_next()
+
+    # No leak: the request is dropped once the task completes.
+    assert op.get_resource_requests() == []
+    assert op.has_completed()
+
+
 if __name__ == "__main__":
     import sys
 
