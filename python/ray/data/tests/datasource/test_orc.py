@@ -910,6 +910,234 @@ def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(
     assert rows[-1] == {"id": 19, "extra": "late"}
 
 
+def test_read_orc_merge_schema_discovers_column_after_default_sample(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    from ray.data._internal.logical.operators.read_operator import ListFiles
+    from ray.data.expressions import col
+
+    for i in range(17):
+        path = os.path.join(tmp_path, f"part-{i:02d}.orc")
+        if i == 16:
+            table = pa.table({"id": [16], "campaign_id": ["campaign-16"]})
+        else:
+            table = pa.table({"id": [i]})
+        _write_orc(path, table)
+
+    restore_data_context.use_datasource_v2 = True
+    path_str = str(tmp_path)
+    bounded = ray.data.read_orc(path_str)
+    assert "campaign_id" not in bounded.schema().names
+
+    merged = ray.data.read_orc(path_str, merge_schema=True)
+    assert "campaign_id" in merged.schema().names
+
+    list_files = merged._logical_plan.dag.input_dependencies[0]
+    assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
+    assert sum(len(block) for block in list_files.prelisted_file_infos) == 17
+
+    rows = sorted(merged.take_all(), key=lambda row: row["id"])
+    assert len(rows) == 17
+    assert all(row["campaign_id"] is None for row in rows[:16])
+    assert rows[16]["campaign_id"] == "campaign-16"
+
+    selected = merged.filter(expr=col("campaign_id") == "campaign-16").select_columns(
+        ["id", "campaign_id"]
+    )
+    assert selected.take_all() == [{"id": 16, "campaign_id": "campaign-16"}]
+
+
+def test_read_orc_merge_schema_warns_for_large_candidate_set(
+    ray_start_regular_shared, tmp_path, restore_data_context, monkeypatch, caplog
+):
+    import importlib
+    import logging
+
+    first = os.path.join(tmp_path, "a.orc")
+    second = os.path.join(tmp_path, "b.orc")
+    _write_orc(first, pa.table({"id": [1]}))
+    _write_orc(second, pa.table({"id": [2]}))
+
+    restore_data_context.use_datasource_v2 = True
+    read_api = importlib.import_module("ray.data.read_api")
+    monkeypatch.setattr(read_api, "_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT", 1)
+    monkeypatch.setattr(read_api.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(read_api.logger, "propagate", False)
+
+    with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
+        ray.data.read_orc([str(first), str(second)], merge_schema=True)
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "ray.data.read_api"
+        and "candidate files" in record.getMessage()
+    ]
+    assert len(messages) == 1
+    assert "2 candidate files" in messages[0]
+
+
+def test_read_orc_merge_schema_fails_on_incompatible_file_outside_sample(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    for i in range(16):
+        _write_orc(os.path.join(tmp_path, f"f{i:02d}.orc"), pa.table({"id": [i]}))
+    _write_orc(
+        os.path.join(tmp_path, "f16.orc"),
+        pa.table({"id": ["string_id"]}),
+    )
+
+    restore_data_context.use_datasource_v2 = True
+    assert ray.data.read_orc(str(tmp_path)).schema().names == ["id"]
+    with pytest.raises((pa.ArrowTypeError, pa.ArrowInvalid), match="f16.orc"):
+        ray.data.read_orc(str(tmp_path), merge_schema=True)
+
+
+def test_read_orc_merge_schema_prelisted_blocks_feed_one_listing_task(
+    ray_start_regular_shared, tmp_path, restore_data_context, monkeypatch
+):
+    from ray.data._internal.datasource_v2.common import listing_utils
+    from ray.data._internal.logical.operators.read_operator import ListFiles
+
+    monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
+    _write_orc(os.path.join(tmp_path, "a.orc"), pa.table({"id": [1]}))
+    _write_orc(os.path.join(tmp_path, "b.orc"), pa.table({"id": [2], "later": [3]}))
+
+    restore_data_context.use_datasource_v2 = True
+    ds = ray.data.read_orc(str(tmp_path), merge_schema=True)
+    list_files = ds._logical_plan.dag.input_dependencies[0]
+
+    assert isinstance(list_files, ListFiles)
+    assert list_files.prelisted_file_infos is not None
+    assert len(list_files.prelisted_file_infos) == 2
+    rows = sorted(ds.take_all(), key=lambda row: row["id"])
+    assert rows[0]["later"] is None
+    assert rows[1]["later"] == 3
+
+
+def test_read_orc_merge_schema_excludes_files_appended_after_planning(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    _write_orc(os.path.join(tmp_path, "a.orc"), pa.table({"id": [1]}))
+
+    restore_data_context.use_datasource_v2 = True
+    ds = ray.data.read_orc(str(tmp_path), merge_schema=True)
+    _write_orc(os.path.join(tmp_path, "b.orc"), pa.table({"id": [2], "later": [3]}))
+
+    assert ds.schema().names == ["id"]
+    assert [row["id"] for row in ds.take_all()] == [1]
+    assert ds.count() == 1
+
+
+def test_read_orc_merge_schema_applies_initial_path_filters(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    keep = os.path.join(tmp_path, "keep.orc")
+    missing = os.path.join(tmp_path, "missing.orc")
+    _write_orc(keep, pa.table({"id": [1]}))
+    with open(os.path.join(tmp_path, "ignore.txt"), "w") as f:
+        f.write("text data")
+
+    restore_data_context.use_datasource_v2 = True
+    ds = ray.data.read_orc(
+        [str(keep), str(missing)],
+        merge_schema=True,
+        ignore_missing_paths=True,
+    )
+
+    assert ds.schema().names == ["id"]
+    assert [row["id"] for row in ds.take_all()] == [1]
+
+    ds_dir = ray.data.read_orc(
+        str(tmp_path), merge_schema=True, file_extensions=["orc"]
+    )
+    assert ds_dir.schema().names == ["id"]
+    assert ds_dir.count() == 1
+
+
+def test_read_orc_merge_schema_partition_filtered_count(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.data.expressions import col
+
+    for year, count in (("2024", 2), ("2025", 3)):
+        part = tmp_path / f"year={year}"
+        part.mkdir()
+        _write_orc(str(part / "data.orc"), pa.table({"id": list(range(count))}))
+
+    restore_data_context.use_datasource_v2 = True
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        merge_schema=True,
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    )
+    assert ds.count() == 5
+    assert ds.filter(expr=col("year") == "2025").count() == 3
+
+
+def test_read_orc_merge_schema_lineage_retains_candidates(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    _write_orc(os.path.join(tmp_path, "a.orc"), pa.table({"id": [1]}))
+
+    restore_data_context.use_datasource_v2 = True
+    ds = ray.data.read_orc(str(tmp_path), merge_schema=True)
+    restored = ray.data.Dataset.deserialize_lineage(ds.serialize_lineage())
+    _write_orc(os.path.join(tmp_path, "b.orc"), pa.table({"id": [2]}))
+
+    assert [row["id"] for row in restored.take_all()] == [1]
+
+
+def test_read_orc_merge_schema_rejects_v1(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    path = os.path.join(tmp_path, "a.orc")
+    _write_orc(path, pa.table({"id": [1]}))
+
+    restore_data_context.use_datasource_v2 = False
+    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
+        ray.data.read_orc(str(path), merge_schema=True)
+
+    ds_v1 = ray.data.read_orc(str(path), merge_schema=False)
+    assert ds_v1.count() == 1
+
+
+def test_read_orc_merge_schema_single_file_and_few_files(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    restore_data_context.use_datasource_v2 = True
+    single_path = os.path.join(tmp_path, "single.orc")
+    _write_orc(single_path, pa.table({"id": [42], "name": ["test"]}))
+
+    ds_default = ray.data.read_orc(single_path)
+    ds_merged = ray.data.read_orc(single_path, merge_schema=True)
+
+    assert ds_default.schema().names == ds_merged.schema().names == ["id", "name"]
+    assert ds_default.take_all() == ds_merged.take_all() == [{"id": 42, "name": "test"}]
+
+
+def test_read_orc_merge_schema_with_include_paths(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    restore_data_context.use_datasource_v2 = True
+    p1 = os.path.join(tmp_path, "f1.orc")
+    p2 = os.path.join(tmp_path, "f2.orc")
+    _write_orc(p1, pa.table({"id": [1]}))
+    _write_orc(p2, pa.table({"id": [2], "extra": ["val"]}))
+
+    ds = ray.data.read_orc(str(tmp_path), merge_schema=True, include_paths=True)
+    assert "path" in ds.schema().names
+    assert "extra" in ds.schema().names
+    rows = sorted(ds.take_all(), key=lambda r: r["id"])
+    assert len(rows) == 2
+    assert rows[0]["extra"] is None
+    assert rows[1]["extra"] == "val"
+    assert rows[0]["path"].endswith("f1.orc")
+    assert rows[1]["path"].endswith("f2.orc")
+
+
 if __name__ == "__main__":
     import sys
 
