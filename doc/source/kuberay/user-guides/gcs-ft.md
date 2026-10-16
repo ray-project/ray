@@ -388,9 +388,8 @@ probe count. Other platforms use OS timing defaults.
 Invalid configuration and failure to enable keepalive fail the connection
 attempt without retries. On POSIX, failure to tune a timing option instead logs
 a warning and continues with keepalive enabled. Successful options remain
-applied; rejected options retain their previous values. In that case, the
-requested detection window may not apply. Windows uses a combined enable/tune
-operation and any failure still fails the connection attempt.
+applied; rejected options retain their previous values. Windows uses a combined
+enable/tune operation and any failure still fails the connection attempt.
 ```
 
 ```{warning}

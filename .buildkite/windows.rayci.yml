@@ -68,8 +68,6 @@ steps:
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --parallelism-per-worker 2
-        || true
-      - sleep 18000 # 5 hours
     depends_on:
       - windowsbuild
       - block-windows-tests
