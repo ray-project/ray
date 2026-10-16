@@ -2190,6 +2190,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         would be inherited by the remaining unneeded pending nodes of the same
         type, which may have been unneeded for much shorter.
 
+        Only the idle terminations are released: nodes terminated for other causes
+        (e.g. outdated, max_worker_nodes) are terminated before the unneeded pending
+        nodes are counted, so they never take a duration in this round.
+
         Args:
             ctx: The schedule context, after idle termination is enforced.
         """

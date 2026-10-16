@@ -1918,6 +1918,45 @@ def test_idle_termination_pending_nodes_count_changes():
     ]
 
 
+def test_idle_termination_pending_nodes_after_max_workers_termination():
+    """
+    Test that the pending nodes terminated for max_worker_nodes don't take away
+    the idle durations of the remaining unneeded pending nodes, since they are
+    terminated before the unneeded pending nodes are counted.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    idle_timeout_s = 10
+
+    def _schedule(now_s: float, instance_ids: List[str], max_workers: int):
+        configs = _pending_idle_test_configs()
+        configs["type_cpu"].max_worker_nodes = max_workers
+        request = sched_request(
+            node_type_configs=configs,
+            instances=[_pending_instance(i, Instance.ALLOCATED) for i in instance_ids],
+            idle_timeout_s=idle_timeout_s,
+            disable_launch_config_check=True,
+        )
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+        return to_terminate
+
+    # All 3 pending nodes are unneeded since t=0.
+    instance_ids = ["i-1", "i-2", "i-3"]
+    assert _schedule(0, instance_ids, max_workers=3) == []
+
+    # Lowering max_worker_nodes terminates 1 of them.
+    to_terminate = _schedule(5, instance_ids, max_workers=2)
+    assert len(to_terminate) == 1
+    assert to_terminate[0][2] == TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE
+    instance_ids.remove(to_terminate[0][0])
+
+    # Both remaining pending nodes keep their durations since t=0.
+    to_terminate = _schedule(11, instance_ids, max_workers=2)
+    assert sorted(to_terminate) == sorted(
+        (i, "", TerminationRequest.Cause.IDLE) for i in instance_ids
+    )
+
+
 def test_gang_scheduling():
     """
     Test that gang scheduling works.
