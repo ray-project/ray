@@ -56,6 +56,9 @@ _AZURE_STORAGE_SAS_TOKEN_OPTION = "azure_storage_sas_token"
 # SAS environment variable, so a Unity Catalog SAS cannot reach it by any route.
 _AZURE_SAS_PYARROW_VERSION_MIN = "20.0.0"
 
+# PyIceberg introduced Basic and noop REST auth managers in 0.10.0.
+_GRAVITINO_PYICEBERG_VERSION_MIN = "0.10.0"
+
 
 def _check_azure_sas_pyarrow_support() -> None:
     """Raise if pyarrow is too old to authenticate with a vended Azure SAS.
@@ -612,6 +615,10 @@ class GravitinoCatalog(Catalog):
     It performs no metadata requests and does not require the Gravitino Python
     SDK. Ray and PyIceberg handle table access and data operations.
 
+    Resolving tables requires PyIceberg 0.10.0 or later for REST authentication,
+    including the default anonymous ``noop`` configuration. Install it with
+    ``pip install -U "pyiceberg>=0.10.0"``.
+
     Args:
         iceberg_rest_uri: Gravitino Iceberg REST endpoint, for example
             ``"http://gravitino:9001/iceberg/"``.
@@ -735,6 +742,24 @@ class GravitinoCatalog(Catalog):
             raise RuntimeError(
                 "This GravitinoCatalog was deserialized without its authentication "
                 "configuration. Recreate it before calling resolve()."
+            )
+        from ray.data._internal.util import _check_import
+
+        _check_import(
+            self,
+            module="pyiceberg",
+            package=f'"pyiceberg>={_GRAVITINO_PYICEBERG_VERSION_MIN}"',
+        )
+        import pyiceberg
+
+        if parse_version(pyiceberg.__version__) < parse_version(
+            _GRAVITINO_PYICEBERG_VERSION_MIN
+        ):
+            raise ImportError(
+                f"GravitinoCatalog requires pyiceberg >= "
+                f"{_GRAVITINO_PYICEBERG_VERSION_MIN}, but "
+                f"{pyiceberg.__version__} is installed. Upgrade with "
+                f'`pip install -U "pyiceberg>={_GRAVITINO_PYICEBERG_VERSION_MIN}"`.'
             )
         catalog_kwargs = dict(self.iceberg_rest_catalog_kwargs or {})
         catalog_kwargs.update(

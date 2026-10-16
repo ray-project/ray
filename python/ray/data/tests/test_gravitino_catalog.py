@@ -154,6 +154,41 @@ def test_append_api_wiring(catalog):
     )
 
 
+@pytest.mark.parametrize("version", ["0.9.1", "0.10.0rc1"])
+@pytest.mark.parametrize("mode", list(CatalogAccessMode))
+def test_old_pyiceberg_rejected_before_io(catalog, monkeypatch, version, mode):
+    import pyiceberg
+
+    monkeypatch.setattr(pyiceberg, "__version__", version)
+    with (
+        mock.patch(
+            "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource",
+            side_effect=AssertionError("The datasource must not be created."),
+        ) as datasource,
+        mock.patch(
+            "ray.data.dataset.IcebergDatasink",
+            side_effect=AssertionError("The datasink must not be created."),
+        ) as sink,
+        mock.patch(
+            "requests.sessions.Session.request",
+            side_effect=AssertionError("No HTTP request is allowed."),
+        ) as request,
+    ):
+        with pytest.raises(ImportError) as caught:
+            if mode is CatalogAccessMode.READ:
+                ray.data.read_iceberg(table_identifier="cat.db.tbl", catalog=catalog)
+            else:
+                dataset = object.__new__(ray.data.Dataset)
+                dataset._current_executor = None
+                dataset.write_iceberg("cat.db.tbl", catalog=catalog)
+        assert "requires pyiceberg >= 0.10.0" in str(caught.value)
+        assert f"{version} is installed" in str(caught.value)
+        assert 'pip install -U "pyiceberg>=0.10.0"' in str(caught.value)
+        datasource.assert_not_called()
+        sink.assert_not_called()
+        request.assert_not_called()
+
+
 def test_resolution_uses_neither_network_nor_metadata_client(catalog, monkeypatch):
     original_import = builtins.__import__
 
@@ -258,10 +293,15 @@ def test_anonymous_catalog_roundtrip(catalog):
         ),
     ],
 )
-def test_actual_pyiceberg_auth_configuration(rest_auth, expected):
+def test_actual_pyiceberg_auth_configuration(rest_auth, expected, monkeypatch):
     """Exercise the installed PyIceberg API rather than only asserting kwargs."""
     from pyiceberg.catalog import load_catalog
 
+    # An inherited token must not override explicit authentication or noop.
+    monkeypatch.setattr(
+        "pyiceberg.catalog._ENV_CONFIG.get_catalog_config",
+        lambda name: {"token": "inherited-token"},
+    )
     observed = []
 
     class Handler(BaseHTTPRequestHandler):
