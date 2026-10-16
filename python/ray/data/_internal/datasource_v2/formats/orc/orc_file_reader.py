@@ -14,6 +14,9 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
 )
+from ray.data._internal.datasource_v2.formats.orc.orc_batch_size_estimator import (
+    estimate_batch_size,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
@@ -87,17 +90,31 @@ class OrcFileReader(FileReader):
 
     @override
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
-        """Use an explicit row count, previous batch feedback, or the default.
-
-        ORC has no usable row-width statistics on the manifest. Fall back
-        without sampling data; feedback applies only to subsequent read()
-        calls on this instance, as in the Parquet DSV2 reader.
-        """
+        """Use explicit rows, cached feedback, footer statistics, or the default."""
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
         if self._sampled_batch_size is not None:
             return self._sampled_batch_size
-        return _ARROW_DEFAULT_BATCH_SIZE
+        if self._target_block_size is None:
+            return _ARROW_DEFAULT_BATCH_SIZE
+
+        batch_size = _ARROW_DEFAULT_BATCH_SIZE
+        fragment = next(dataset.get_fragments(), None)
+        if fragment is not None:
+            excluded = {column.name for column in self._synthesized_columns}
+            if self._partition_parser is not None:
+                excluded.update(self._partition_parser(fragment.path))
+            estimated = estimate_batch_size(
+                fragment,
+                self._columns,
+                self._target_block_size,
+                schema=self._file_dataset_schema,
+                excluded_columns=tuple(excluded),
+            )
+            if estimated is not None:
+                batch_size = estimated
+        self._sampled_batch_size = batch_size
+        return batch_size
 
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:

@@ -1286,12 +1286,13 @@ def test_orc_reader_batch_sizing_feedback(tmp_path, orc_read_requests, kind):
     reader = scanner.create_reader()
 
     first = list(reader.read(_manifest(path)))
-    assert len(first) == 1
+    initial_size = {"narrow": 8, "wide": 1, "nested": 2}[kind]
+    assert first[0].num_rows == initial_size
     expected_size = max(math.ceil(128 / (first[0].nbytes / first[0].num_rows)), 1)
     second = list(reader.read(_manifest(path)))
 
     assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
-        _ARROW_DEFAULT_BATCH_SIZE,
+        initial_size,
         expected_size,
     ]
     assert second[0].num_rows == expected_size
@@ -1301,10 +1302,10 @@ def test_orc_reader_batch_sizing_feedback(tmp_path, orc_read_requests, kind):
     assert orc_read_requests["dataset_scans"] == []
     assert len(orc_read_requests["datasets"]) == 2
 
-    # A different reader does not inherit the observed width.
+    # A different reader starts with metadata, not another reader's feedback.
     fresh = list(scanner.create_reader().read(_manifest(path)))
     assert pa.concat_tables(fresh).equals(table)
-    assert orc_read_requests["scans"][-1]["batch_size"] == _ARROW_DEFAULT_BATCH_SIZE
+    assert orc_read_requests["scans"][-1]["batch_size"] == initial_size
 
 
 @pytest.mark.parametrize(
@@ -1387,12 +1388,16 @@ def test_orc_reader_batch_sizing_single_scan_is_fixed(tmp_path, orc_read_request
         }
     )
     _write_orc(path, table)
-    reader = OrcScanner(schema=table.schema, target_block_size=128).create_reader()
+    reader = OrcScanner(schema=table.schema, target_block_size=65536).create_reader()
     batches = list(reader.read(_manifest(path)))
-    assert [batch.num_rows for batch in batches] == [_ARROW_DEFAULT_BATCH_SIZE, 11]
+    initial_size = orc_read_requests["scans"][0]["batch_size"]
+    assert 1 < initial_size < _ARROW_DEFAULT_BATCH_SIZE
+    assert len(batches) > 1
+    assert all(batch.num_rows == initial_size for batch in batches[:-1])
+    assert batches[-1].num_rows <= initial_size
     assert pa.concat_tables(batches).equals(table)
     assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
-        _ARROW_DEFAULT_BATCH_SIZE
+        initial_size
     ]
     assert orc_read_requests["dataset_scans"] == []
 
@@ -1405,16 +1410,116 @@ def test_orc_reader_batch_sizing_fragments_are_fixed(
         DataContext.get_current().execution_options, "preserve_order", preserve_order
     )
     paths = [tmp_path / "first.orc", tmp_path / "second.orc"]
-    tables = [pa.table({"id": [i] * 7, "payload": ["x" * 512] * 7}) for i in range(2)]
+    tables = [
+        pa.table({"id": [i] * 7, "payload": ["x" * width] * 7})
+        for i, width in enumerate([512, 1])
+    ]
     for path, table in zip(paths, tables):
         _write_orc(path, table)
     reader = OrcScanner(schema=tables[0].schema, target_block_size=128).create_reader()
     batches = list(reader.read(_manifest(*paths)))
-    assert pa.concat_tables(batches).equals(pa.concat_tables(tables))
+    result = pa.concat_tables(batches)
+    expected = pa.concat_tables(tables)
+    if preserve_order:
+        assert result.equals(expected)
+    else:
+        assert result.sort_by("id").equals(expected.sort_by("id"))
     assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
-        _ARROW_DEFAULT_BATCH_SIZE,
-        _ARROW_DEFAULT_BATCH_SIZE,
+        1,
+        1,
     ]
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_orc_reader_initial_estimate_is_cached(
+    tmp_path, monkeypatch, orc_read_requests, available
+):
+    from ray.data._internal.datasource_v2.formats.orc import orc_file_reader
+
+    path = tmp_path / "data.orc"
+    table = pa.table({"payload": ["x" * 4096] * 256})
+    _write_orc(path, table)
+    original = orc_file_reader.estimate_batch_size
+    estimate = Mock(wraps=original) if available else Mock(return_value=None)
+    monkeypatch.setattr(orc_file_reader, "estimate_batch_size", estimate)
+    reader = OrcScanner(
+        schema=table.schema, target_block_size=65536, limit=0
+    ).create_reader()
+    for _ in range(2):
+        assert list(reader.read(_manifest(path))) == []
+    estimate.assert_called_once()
+    expected = 16 if available else _ARROW_DEFAULT_BATCH_SIZE
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
+        expected,
+        expected,
+    ]
+
+
+@pytest.mark.parametrize("batch_size,target", [(7, 65536), (None, None)])
+def test_orc_reader_overrides_do_not_open_estimation_metadata(
+    tmp_path, monkeypatch, batch_size, target
+):
+    path = tmp_path / "data.orc"
+    table = pa.table({"payload": ["x" * 4096] * 32})
+    _write_orc(path, table)
+    estimate = Mock(side_effect=AssertionError("Unnecessary metadata estimation"))
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
+    reader = OrcScanner(
+        schema=table.schema, batch_size=batch_size, target_block_size=target
+    ).create_reader()
+    assert pa.concat_tables(list(reader.read(_manifest(path)))).equals(table)
+    estimate.assert_not_called()
+
+
+def test_orc_reader_initial_estimate_excludes_replaced_columns(
+    tmp_path, orc_read_requests
+):
+    directory = tmp_path / "year=2024"
+    directory.mkdir()
+    path = directory / "data.orc"
+    table = pa.table(
+        {"id": range(256), "year": ["x" * 4096] * 256, "path": ["y" * 4096] * 256}
+    )
+    _write_orc(path, table)
+    reader = OrcScanner(
+        schema=table.schema,
+        target_block_size=65536,
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        synthesized_columns=(PathColumn(),),
+    ).create_reader()
+    result = pa.concat_tables(list(reader.read(_manifest(path))))
+    assert orc_read_requests["scans"][0]["batch_size"] == 256
+    assert result.column("year").to_pylist() == ["2024"] * 256
+    assert result.column("path").to_pylist() == [str(path)] * 256
+
+
+@pytest.mark.parametrize("limit", [None, 1])
+def test_orc_reader_early_stop_releases_estimation_input(tmp_path, monkeypatch, limit):
+    path = tmp_path / "data.orc"
+    table = pa.table({"payload": ["x" * 4096] * 256})
+    _write_orc(path, table)
+    sources = []
+    original = orc.ORCFile
+
+    def tracked_file(source):
+        sources.append(source)
+        return original(source)
+
+    monkeypatch.setattr(orc, "ORCFile", tracked_file)
+    reader = OrcScanner(
+        schema=table.schema, target_block_size=65536, limit=limit
+    ).create_reader()
+    batches = reader.read(_manifest(path))
+    try:
+        first = next(batches)
+        assert first.num_rows == (16 if limit is None else 1)
+        assert len(sources) == 1
+        assert all(source.closed for source in sources)
+    finally:
+        batches.close()
 
 
 def test_orc_reader_batch_sizing_retry_keeps_scan_parameters(
@@ -1447,6 +1552,27 @@ def test_orc_reader_batch_sizing_retry_keeps_scan_parameters(
     retry_sleep.assert_called_once()
     assert observed_sizes[0] == observed_sizes[1] > 1
     assert reader._sampled_batch_size == 1
+    assert pa.concat_tables(batches).equals(table)
+
+
+def test_orc_reader_local_width_changes_keep_scan_fixed(tmp_path, orc_read_requests):
+    path = tmp_path / "varying-width.orc"
+    payload = [
+        f"{index:08d}" + "x" * (4088 if index < 1024 else 56) for index in range(2048)
+    ]
+    table = pa.table({"id": range(2048), "payload": payload})
+    _write_orc(
+        path, table, compression="uncompressed", dictionary_key_size_threshold=0.0
+    )
+    target = 65536
+    reader = OrcScanner(schema=table.schema, target_block_size=target).create_reader()
+    batches = list(reader.read(_manifest(path)))
+    assert [request["batch_size"] for request in orc_read_requests["scans"]] == [32]
+    assert all(batch.num_rows == 32 for batch in batches)
+    assert batches[0].nbytes > target
+    assert batches[-1].nbytes < target
+    last_width = batches[-1].nbytes / batches[-1].num_rows
+    assert reader._sampled_batch_size == math.ceil(target / last_width) > 32
     assert pa.concat_tables(batches).equals(table)
 
 
