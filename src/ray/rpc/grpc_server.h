@@ -102,6 +102,7 @@ class GrpcServer {
   /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
   /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
   /// \param[in] keepalive_time_ms Connection keepalive time (ms).
+  /// \param[in] metric_context The Boost I/O context used to record metrics.
   /// \param[in] auth_token Authentication token that clients must present when making
   /// RPCs to the server. If nullptr, no authentication token is required.
   GrpcServer(std::string name,

@@ -65,6 +65,15 @@ class InstrumentedIOContextWithThread {
       : InstrumentedIOContextWithThread(
             thread_name, enable_lag_probe, used_for_health_check, unused_io_context_) {}
 
+  /**
+   * Constructor.
+   * @param thread_name The name of the thread.
+   * @param enable_lag_probe If true, enables the lag probe. It posts tasks to the
+   * io_context so that a run() will never return.
+   * @param used_for_health_check Whether this io_context's health should count
+   * toward the owning component's health check.
+   * @param metric_context The Boost I/O context used to record metrics.
+   */
   InstrumentedIOContextWithThread(const std::string &thread_name,
                                   bool enable_lag_probe,
                                   bool used_for_health_check,
