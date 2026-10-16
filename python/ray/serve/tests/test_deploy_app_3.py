@@ -793,7 +793,9 @@ def test_surge_rolling_update_follows_autoscaling_mid_rollout(
             "min_replicas": 0,
             "max_replicas": 4,
             "target_ongoing_requests": 1,
-            "upscale_delay_s": 0,
+            # Under direct ingress a request moving from the handle to a replica can
+            # briefly count twice; the delay keeps that from raising the target.
+            "upscale_delay_s": 2,
             "downscale_delay_s": 2,
             "downscale_to_zero_delay_s": 2,
             "metrics_interval_s": 0.1,
