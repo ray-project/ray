@@ -789,7 +789,18 @@ def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
-@pytest.mark.parametrize("input_type", ["materialized", "read", "shuffle", "filter"])
+@pytest.mark.parametrize(
+    "input_type",
+    [
+        "materialized",
+        "read",
+        "shuffle",
+        "filter",
+        "project",
+        "batches",
+        "shuffle_project",
+    ],
+)
 def test_write_start_receives_transformed_schema(
     ray_start_regular_shared_2_cpus, restore_data_context, input_type
 ):
@@ -800,7 +811,7 @@ def test_write_start_receives_transformed_schema(
 
     expected_schema = pa.schema([("id", pa.int64()), ("added", pa.int64())])
     if input_type == "filter":
-        expected_schema = pa.schema([("id", pa.int64())])
+        expected_schema = pa.schema([("id", pa.int32())])
 
     class SchemaCheckingDatasink(Datasink):
         def __init__(self):
@@ -826,10 +837,10 @@ def test_write_start_receives_transformed_schema(
             self.rows_written = sum(write_result.write_returns)
 
     if input_type == "filter":
-        # Row-based filtering rebuilds Arrow blocks, promoting int32 to int64.
+        # Row-based filtering preserves Arrow types, including int32.
         ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
         ds = ds.filter(lambda row: row["id"] >= 0)
-    elif input_type == "materialized":
+    elif input_type in ("materialized", "project", "batches", "shuffle_project"):
         ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
     else:
         ds = ray.data.range(8, override_num_blocks=2)
@@ -837,13 +848,32 @@ def test_write_start_receives_transformed_schema(
             DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
             ds = ds.repartition(2, keys=["id"])
 
-    if input_type != "filter":
+    if input_type in ("project", "shuffle_project"):
+        from ray.data.expressions import col
+
+        if input_type == "shuffle_project":
+            DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+            ds = ds.repartition(2, keys=["id"])
+        ds = ds.with_column("added", col("id") + 1)
+        assert ds._logical_plan.dag.infer_schema() == expected_schema
+    elif input_type == "batches":
+        ds = ds.map_batches(
+            lambda batch: batch.assign(added=batch["id"] + 1), batch_format="pandas"
+        )
+        assert ds._logical_plan.dag.infer_schema() is None
+    elif input_type != "filter":
         ds = ds.map(lambda row: dict(row, added=row["id"] + 1))
     sink = SchemaCheckingDatasink()
     ds.write_datasink(sink)
 
     assert sink.start_calls == 1
     assert sink.rows_written == 8
+    if input_type in ("project", "shuffle_project"):
+        assert "Project->Write" in ds._write_ds.stats()
+    elif input_type == "filter":
+        assert "Filter(<lambda>)->Write" in ds._write_ds.stats()
+    elif input_type == "batches":
+        assert "MapBatches(<lambda>)->Write" not in ds._write_ds.stats()
 
 
 @pytest.mark.parametrize("instance_hook", [False, True])
@@ -883,8 +913,9 @@ def test_write_fusion_with_default_start_hook(
         assert "ReadRange->Map(<lambda>)->Write" in ds._write_ds.stats()
 
 
+@pytest.mark.parametrize("transform", ["map", "project", "shuffle_project"])
 def test_write_fusion_with_custom_file_start_hook(
-    ray_start_regular_shared_2_cpus, tmp_path
+    ray_start_regular_shared_2_cpus, restore_data_context, tmp_path, transform
 ):
     import pyarrow.dataset as pads
 
@@ -908,9 +939,18 @@ def test_write_fusion_with_custom_file_start_hook(
 
     path = tmp_path / "output"
     sink = SchemaCheckingCSVDatasink(str(path))
-    ds = ray.data.range(8, override_num_blocks=2).map(
-        lambda row: dict(row, added=row["id"] + 1)
-    )
+    if transform == "map":
+        ds = ray.data.range(8, override_num_blocks=2).map(
+            lambda row: dict(row, added=row["id"] + 1)
+        )
+    else:
+        from ray.data.expressions import col
+
+        ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
+        if transform == "shuffle_project":
+            DataContext.get_current().shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+            ds = ds.repartition(2, keys=["id"])
+        ds = ds.with_column("added", col("id") + 1)
     ds.write_datasink(sink)
 
     # File setup runs first without a schema, then Write initializes with its input.
@@ -918,6 +958,8 @@ def test_write_fusion_with_custom_file_start_hook(
     assert sink.start_schemas[0] is None
     assert sink.start_schemas[1].names == ["id", "added"]
     assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
+    if transform != "map":
+        assert "Project->Write" in ds._write_ds.stats()
     rows = pads.dataset(str(path), format="csv").to_table().to_pylist()
     assert sorted(rows, key=lambda row: row["id"]) == [
         {"id": i, "added": i + 1} for i in range(8)

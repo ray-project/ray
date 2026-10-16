@@ -1,5 +1,6 @@
 import itertools
 import logging
+from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.compute import (
@@ -144,17 +145,19 @@ class FuseOperators(Rule):
         if has_downstream_limit:
             return False
 
-        # A non-file-datasink write defers `on_write_start` to the map op (e.g.
-        # Iceberg schema evolution), which the fused reduce never runs. File
-        # datasinks run it driver-side in `Dataset.write_datasink`, so they're
-        # safe; non-write maps have no such hook.
-        # TODO: support non-file-datasink writes by running the map's `on_start`
-        # hook in the fused reduce op.
-        logical_op = self._op_map.get(dag)
-        if isinstance(logical_op, Write) and not isinstance(
-            logical_op.datasink_or_legacy_datasource, _FileDatasink
-        ):
-            return False
+        # The fused reduce doesn't run on_start. Check the original operators,
+        # since map fusion replaces the logical Write with an AbstractMap.
+        # Only the default file hook has already run in Dataset.write_datasink.
+        for logical_op in dag._logical_operators:
+            if isinstance(logical_op, Write):
+                sink = logical_op.datasink_or_legacy_datasource
+                on_start = getattr(sink, "on_write_start", None)
+                if not (
+                    isinstance(sink, _FileDatasink)
+                    and type(on_start) is MethodType
+                    and on_start.__func__ is _FileDatasink.on_write_start
+                ):
+                    return False
 
         # The sole upstream must be a hash-shuffle reduce (object-store or disk-based)
         # that hasn't already fused with a map.
