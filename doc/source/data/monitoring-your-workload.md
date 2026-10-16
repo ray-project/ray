@@ -291,9 +291,15 @@ These metrics track task execution and scheduling.
   - Average task completion time in seconds including throttling. This includes Ray Core and Ray Data backpressure.
 * - `average_task_completion_excl_backpressure_time_s`
   - Average task completion time in seconds excluding throttling.
-* - `average_max_uss_per_task`
-  - Average Unique Set Size (USS) memory usage of tasks. USS is the amount of memory unique to a process, which is freed when the process terminates.
+* - `max_uss_bytes`
+  - Distribution of estimated peak unique set size (USS) across tasks, in bytes. USS is memory unique to a worker process. Ray Data logs this distribution as `max_uss_bytes` and exports its mean and maximum as the `data_max_uss_bytes_mean` and `data_max_uss_bytes_max` gauges.
 ```
+
+:::{note}
+Ray Data estimates task unique set size only on Linux by subtracting shared memory from resident set size. This estimate can underestimate some allocations, such as PyTorch tensors. These samples aren't available on macOS or Windows.
+
+In Ray Data logs, a `max_uss_bytes.num_samples` value of `0` means no measurements are available. Treat the empty distribution's `mean` of `0.0` as unavailable memory usage.
+:::
 
 #### Actor metrics
 
