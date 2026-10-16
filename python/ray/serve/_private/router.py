@@ -1050,7 +1050,7 @@ class AsyncioRouter:
                     self._enable_strict_max_ongoing_requests
                     and not replica.is_cross_language
                 )
-                result = replica.try_send_request(pr, with_rejection=with_rejection)
+                result = await replica.try_send_request(pr, with_rejection=with_rejection)
                 # Proactively update the queue length cache.
                 self._active_request_router.on_send_request(replica.replica_id)
 
@@ -1437,7 +1437,7 @@ class AsyncioRouter:
                 await self._resolve_args_with_metrics(pr)
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
-            result = replica.try_send_request(pr, with_rejection=False)
+            result = await replica.try_send_request(pr, with_rejection=False)
         except BaseException:
             # Dispatch failed; release the reservation before re-raising.
             await self._release_slot_and_refresh_cache(selection, replica, force=True)
@@ -1642,7 +1642,7 @@ class AsyncioRouter:
             )
             replica_pr.resolved = True
             try:
-                result = replica.try_send_request(replica_pr, with_rejection=False)
+                result = await replica.try_send_request(replica_pr, with_rejection=False)
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
                 # Skip this replica and continue broadcasting to healthy replicas.

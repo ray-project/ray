@@ -1,7 +1,9 @@
+import asyncio
 import json
+import threading
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Optional, Tuple
 
 from starlette.types import Scope
 
@@ -676,6 +678,19 @@ class RunningReplicaInfo:
     port: Optional[int] = None
     backend_http_port: Optional[int] = None
 
+    # ------------------------------------------------------------------
+    # Process-level actor handle cache
+    # ------------------------------------------------------------------
+    # All RunningReplica / Router instances in the same Python worker process
+    # share this cache so we never call ray.get_actor() twice for the same
+    # named actor.  The cache is keyed by (actor_name, namespace).
+    _actor_handle_cache: ClassVar[Dict[Tuple[str, str], ActorHandle]] = {}
+    # Guards both the cache dict and the in-flight coroutine map below.
+    _cache_lock: ClassVar[threading.Lock] = threading.Lock()
+    # Single-flight: track async resolution tasks per key so multiple
+    # coroutines awaiting the same handle share one GCS round-trip.
+    _inflight_resolutions: ClassVar[Dict[Tuple[str, str], asyncio.Task]] = {}
+
     def __post_init__(self):
         # Set hash value when object is constructed.
         # We use _actor_id to hash the ActorHandle object
@@ -717,9 +732,96 @@ class RunningReplicaInfo:
             ]
         )
 
+    # -- actor handle resolution -----------------------------------------
+
+    def _cache_key(self) -> Tuple[str, str]:
+        return (self.actor_name, SERVE_NAMESPACE)
+
     def get_actor_handle(self) -> ActorHandle:
-        actor_handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
-        return actor_handle
+        """Synchronous actor-handle lookup with process-level caching.
+
+        First checks the per-process cache; on miss performs one blocking
+        ``ray.get_actor()`` (off the caller's event loop) and stores the
+        result so subsequent lookups in the same worker are free.
+        """
+        key = self._cache_key()
+        with self._cache_lock:
+            cached = self._actor_handle_cache.get(key)
+            if cached is not None:
+                return cached
+
+        handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
+
+        with self._cache_lock:
+            # Re-check: another thread may have populated the cache while
+            # we were blocked in ray.get_actor().
+            cached = self._actor_handle_cache.get(key)
+            if cached is not None:
+                return cached
+            self._actor_handle_cache[key] = handle
+
+        return handle
+
+    async def get_actor_handle_async(self) -> ActorHandle:
+        """Async actor-handle lookup with process-level caching and
+        single-flight coalescing.
+
+        If a cached handle exists it is returned immediately.  Otherwise
+        this coroutine joins any in-flight resolution task for the same
+        key (single-flight) or spawns a new one that runs ``ray.get_actor``
+        in a thread-pool executor so it does not block the event loop.
+        """
+        key = self._cache_key()
+
+        with self._cache_lock:
+            cached = self._actor_handle_cache.get(key)
+            if cached is not None:
+                return cached
+
+            loop = asyncio.get_running_loop()
+            inflight = self._inflight_resolutions.get(key)
+            if inflight is not None and not inflight.done():
+                # Another coroutine is already resolving this handle.
+                return await inflight
+
+            # Start a fresh resolution task that runs blocking ray.get_actor
+            # in the default executor (a thread pool).
+            inflight = loop.run_in_executor(None, self.get_actor_handle)
+            self._inflight_resolutions[key] = inflight
+
+        try:
+            return await inflight
+        finally:
+            # Clean up the in-flight map.  We intentionally keep the
+            # cache entry (populated by the thread in get_actor_handle)
+            # so subsequent lookups hit the fast path.
+            with self._cache_lock:
+                existing = self._inflight_resolutions.get(key)
+                if existing is inflight:
+                    del self._inflight_resolutions[key]
+
+    @classmethod
+    def invalidate_actor_handle(cls, actor_name: str) -> None:
+        """Remove a cached actor handle (e.g. when the replica dies).
+
+        Safe to call from any thread.
+        """
+        key = (actor_name, SERVE_NAMESPACE)
+        with cls._cache_lock:
+            cls._actor_handle_cache.pop(key, None)
+
+    @classmethod
+    def clear_actor_handle_cache(cls) -> None:
+        """Clear the entire process-level cache.  Used in tests and on
+        controller restart / shutdown to drop stale handles."""
+        with cls._cache_lock:
+            cls._actor_handle_cache.clear()
+            # Cancel any in-flight resolutions; their results will be
+            # discarded since the cache is now empty.
+            for task in list(cls._inflight_resolutions.values()):
+                if not task.done():
+                    task.cancel()
+            cls._inflight_resolutions.clear()
 
 
 @dataclass(frozen=True)

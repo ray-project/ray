@@ -183,29 +183,132 @@ class gRPCReplicaWrapper(ReplicaWrapper):
 class RunningReplica:
     """Contains info on a running replica.
     Also defines the interface for a request router to talk to a replica.
+
+    Actor-handle resolution is lazy: the underlying ``ray.get_actor()`` call
+    does not happen at construction time but on the first method that needs
+    it (``get_queue_len``, ``try_send_request``, ``reserve_slot``,
+    ``push_proxy_handle``, or the ``actor_id`` property).  This moves the
+    GCS lookup off the Serve-router update path, which previously caused an
+    O(Routers * Replicas) GCS storm under high-concurrency workloads
+    (see issue #65782).
+
+    The resolved handle is cached on the instance after first use, and the
+    per-process cache in :class:`RunningReplicaInfo` ensures that multiple
+    ``RunningReplica`` instances in the same worker share a single handle.
     """
 
     def __init__(self, replica_info: RunningReplicaInfo):
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
-        # Fetch and cache the actor handle once per RunningReplica instance.
-        # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
-        actor_handle = replica_info.get_actor_handle()
-        if replica_info.is_cross_language:
-            self._actor_handle: Union[
-                ActorHandle, JavaActorHandleProxy
-            ] = JavaActorHandleProxy(actor_handle)
-        else:
-            self._actor_handle = actor_handle
+        # ------------------------------------------------------------------
+        # Lazy actor-handle resolution
+        # ------------------------------------------------------------------
+        # Do NOT eagerly call replica_info.get_actor_handle() here.  That was
+        # the original O(Routers * Replicas) GCS storm source.  Instead we
+        # resolve on first use and cache.
+        self._actor_handle: Optional[Union[ActorHandle, JavaActorHandleProxy]] = None
+        self._handle_resolved: bool = False
+        self._handle_resolve_lock = asyncio.Lock()
 
         # Lazily created
         self._channel = None
         self._stub = None
 
-        # Replica wrappers
-        self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
+        # Replica wrappers (also lazy: they need a resolved handle)
+        self._actor_replica_wrapper: Optional[ActorReplicaWrapper] = None
         self._grpc_replica_wrapper: Optional[gRPCReplicaWrapper] = None
+
+    # ------------------------------------------------------------------
+    # Lazy handle resolution helpers
+    # ------------------------------------------------------------------
+
+    async def _ensure_actor_handle(self) -> Union[ActorHandle, JavaActorHandleProxy]:
+        """Async: resolve and cache the actor handle.  Uses the
+        single-flight, thread-pool-backed ``get_actor_handle_async`` so it
+        never blocks the event loop.
+
+        If a subclass has already populated ``_actor_handle`` directly (e.g.
+        test doubles), this method returns it as-is without re-resolving.
+        """
+        if self._actor_handle is not None:
+            # Either previously resolved, or injected by a subclass (e.g.
+            # FakeRunningReplicaForSlotReservation).  Trust it.
+            self._handle_resolved = True
+            return self._actor_handle
+
+        async with self._handle_resolve_lock:
+            # Re-check inside the lock: another coroutine may have resolved
+            # the handle while we were waiting, or a subclass may have
+            # populated it directly.
+            if self._actor_handle is not None:
+                self._handle_resolved = True
+                return self._actor_handle
+
+            try:
+                handle = await self._replica_info.get_actor_handle_async()
+            except Exception:
+                # If resolution fails (actor died, GCS error, ...), clear
+                # whatever partial state we may have cached and re-raise.
+                self._replica_info.invalidate_actor_handle(
+                    self._replica_info.actor_name
+                )
+                self._handle_resolved = False
+                self._actor_handle = None
+                raise
+
+            if self._replica_info.is_cross_language:
+                self._actor_handle = JavaActorHandleProxy(handle)
+            else:
+                self._actor_handle = handle
+            self._handle_resolved = True
+
+        return self._actor_handle
+
+    def _get_actor_handle_sync(self) -> Union[ActorHandle, JavaActorHandleProxy]:
+        """Sync: resolve and cache the actor handle.  Uses the process-level
+        cached ``get_actor_handle`` (which itself is thread-safe).
+
+        Only called from paths that cannot be async (e.g. ``actor_id`` property,
+        ``push_proxy_handle``'s caller-side fire-and-forget).
+
+        If a subclass has already populated ``_actor_handle`` directly, this
+        method returns it as-is.
+        """
+        if self._actor_handle is not None:
+            self._handle_resolved = True
+            return self._actor_handle
+
+        handle = self._replica_info.get_actor_handle()
+        if self._replica_info.is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(handle)
+        else:
+            self._actor_handle = handle
+        self._handle_resolved = True
+
+        return self._actor_handle
+
+    async def _get_or_create_actor_replica_wrapper(self) -> ActorReplicaWrapper:
+        """Lazily create and cache the ``ActorReplicaWrapper``.  Requires a
+        resolved actor handle.
+        """
+        if self._actor_replica_wrapper is not None:
+            return self._actor_replica_wrapper
+        handle = await self._ensure_actor_handle()
+        self._actor_replica_wrapper = ActorReplicaWrapper(handle)
+        return self._actor_replica_wrapper
+
+    def invalidate(self) -> None:
+        """Drop cached actor handle and wrappers.  Called when the replica
+        is known to have died so that subsequent lookups go back to GCS.
+        """
+        self._actor_handle = None
+        self._handle_resolved = False
+        self._actor_replica_wrapper = None
+        self._grpc_replica_wrapper = None
+        # Also drop the process-level cache entry so a fresh ray.get_actor
+        # is forced next time.
+        self._replica_info.invalidate_actor_handle(self._replica_info.actor_name)
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
         """Update mutable fields from a new RunningReplicaInfo.
@@ -232,8 +335,15 @@ class RunningReplica:
 
     @property
     def actor_id(self) -> ray.ActorID:
-        """Actor ID of this replica."""
-        return self._actor_handle._actor_id
+        """Actor ID of this replica.
+
+        This property is occasionally accessed synchronously (e.g. from the
+        gRPC wrapper constructor before any await).  Resolves the actor
+        handle synchronously with the process-level cache to keep the fast
+        path cheap.
+        """
+        handle = self._get_actor_handle_sync()
+        return handle._actor_id
 
     @property
     def node_id(self) -> str:
@@ -302,41 +412,57 @@ class RunningReplica:
 
         return self._stub
 
-    def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
+    async def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
+        """Return the appropriate replica wrapper for this request.
+
+        Resolves the actor handle lazily on demand (async).
+        """
         if self._grpc_replica_wrapper is None:
+            actor_id = self.actor_id  # sync, cheap after first resolve
             self._grpc_replica_wrapper = gRPCReplicaWrapper(
-                self.stub, self._actor_handle._actor_id
+                self.stub, actor_id
             )
 
-        return (
-            self._actor_replica_wrapper
-            if pr.metadata._by_reference
-            else self._grpc_replica_wrapper
-        )
+        if pr.metadata._by_reference:
+            return await self._get_or_create_actor_replica_wrapper()
+        return self._grpc_replica_wrapper
 
     def push_proxy_handle(self, handle: ActorHandle):
-        """When on proxy, push proxy's self handle to replica"""
-        self._actor_handle.push_proxy_handle.remote(handle)
+        """When on proxy, push proxy's self handle to replica.
+
+        Called eagerly by proxy actors right after a new replica appears.
+        Uses the sync handle resolver (with process-level caching) since
+        callers don't await this fire-and-forget RPC.
+        """
+        actor_handle = self._get_actor_handle_sync()
+        actor_handle.push_proxy_handle.remote(handle)
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
         """Returns current queue len for the replica.
         `deadline_s` is passed to verify backoff for testing.
+
+        Resolves the actor handle lazily on first call.
         """
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
-        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
+        actor_handle = await self._ensure_actor_handle()
+        obj_ref = actor_handle.get_num_ongoing_requests.remote()
         try:
             return await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
             raise
 
-    def try_send_request(
+    async def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> ReplicaResult:
-        """Try to send the request to this replica. It may be rejected."""
-        wrapper = self._get_replica_wrapper(pr)
+        """Try to send the request to this replica. It may be rejected.
+
+        Resolves the actor handle lazily on first call (async, single-flight,
+        thread-pool backed so the event loop stays free).
+        """
+        wrapper = await self._get_replica_wrapper(pr)
         if self._replica_info.is_cross_language:
             assert not with_rejection, "Request rejection not supported for Java."
             return wrapper.send_request_java(pr)
@@ -351,23 +477,26 @@ class RunningReplica:
         Returns a unique token that can be used to release the slot later.
         This is used in the choose_replica/dispatch pattern to track
         reservations that haven't been dispatched yet.
+
+        Resolves the actor handle lazily on first call.
         """
         if self._replica_info.is_cross_language:
             raise RuntimeError("Slot reservation not supported for Java.")
 
+        actor_handle = await self._ensure_actor_handle()
         slot_token = str(uuid.uuid4())
-        obj_ref = self._actor_handle.reserve_slot.remote(request_metadata, slot_token)
+        obj_ref = actor_handle.reserve_slot.remote(request_metadata, slot_token)
         try:
             accepted, num_ongoing_requests = await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
-            self._actor_handle.release_slot.remote(slot_token)
+            actor_handle.release_slot.remote(slot_token)
             raise
         except Exception:
             # The actor may have reserved the slot before the reply was lost
             # (e.g. ActorUnavailableError). `release_slot` is idempotent for unknown
             # tokens, so this is safe even when the reservation never actually happened.
-            self._actor_handle.release_slot.remote(slot_token)
+            actor_handle.release_slot.remote(slot_token)
             raise
 
         return slot_token, ReplicaQueueLengthInfo(
@@ -382,13 +511,14 @@ class RunningReplica:
         reserving a slot (e.g., due to an error or cancellation).
 
         Returns the replica's reported num_ongoing_requests after the release.
+
+        Resolves the actor handle lazily on first call.
         """
         if self._replica_info.is_cross_language:
             raise RuntimeError("Slot reservation not supported for Java.")
 
-        _, num_ongoing_requests = await self._actor_handle.release_slot.remote(
-            slot_token
-        )
+        actor_handle = await self._ensure_actor_handle()
+        _, num_ongoing_requests = await actor_handle.release_slot.remote(slot_token)
         return num_ongoing_requests
 
 
