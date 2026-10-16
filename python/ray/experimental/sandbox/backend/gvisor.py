@@ -88,6 +88,53 @@ def _lookup_db_entry(text: str, name: str) -> Optional[List[str]]:
     return None
 
 
+# How long a timed-out command gets to release its output pipes after it and
+# the processes it started are killed.
+_EXEC_KILL_GRACE_SECONDS = 5.0
+
+# The most times a timed-out command's processes are listed and killed.
+_EXEC_KILL_ROUNDS = 5
+
+
+def _exec_processes(procfs_dump: str, root_pid: int) -> List[int]:
+    """Live PIDs of an exec'd command and of every process it started.
+
+    runsc exec makes the command a session leader. The processes it starts
+    stay in its session when they move to a process group of their own, or
+    are reparented because their parent exited. A process that left the
+    session with setsid() is still found through its parent while the
+    parent lives.
+
+    Args:
+        procfs_dump: What ``runsc trace procfs <sandbox-id>`` prints: a
+            header, then a JSON object per process. Zombies aren't listed.
+        root_pid: The command's PID inside the sandbox.
+
+    Returns:
+        The PIDs in ascending order, which usually puts parents first.
+    """
+    children: Dict[int, List[int]] = {}
+    pending = []
+    for line in procfs_dump.splitlines():
+        try:
+            entry = json.loads(line)
+            pid, ppid = entry["status"]["pid"], entry["status"]["ppid"]
+            sid = entry["stat"]["sid"]
+        except (ValueError, KeyError, TypeError):
+            # The header and the blank lines between objects.
+            continue
+        children.setdefault(ppid, []).append(pid)
+        if sid == root_pid:
+            pending.append(pid)
+    found = set()
+    while pending:
+        pid = pending.pop()
+        if pid not in found:
+            found.add(pid)
+            pending.extend(children.get(pid, []))
+    return sorted(found)
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -363,10 +410,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             exec_env.update(env)
 
         exec_cwd = cwd or meta["cwd"]
+        # The command's PID inside the sandbox, to kill it if it times out.
+        pid_file = os.path.join(meta["root_dir"], f".exec-{uuid.uuid4().hex}.pid")
 
         # Production execution against running container via `runsc exec`
         runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", "-cwd", exec_cwd])
+        runsc_args.extend(["exec", "-cwd", exec_cwd, "-internal-pid-file", pid_file])
         if user is not None:
             runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
         if env:
@@ -386,28 +435,96 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
             )
-            stdout_str, stderr_str = proc.communicate(timeout=timeout)
-            duration = time.time() - start_time
-
-            return ExecResult(
-                exit_code=proc.returncode,
-                stdout=stdout_str,
-                stderr=stderr_str,
-                duration_seconds=duration,
-            )
-        except subprocess.TimeoutExpired as err:
-            proc.kill()
-            proc.communicate()
-            duration = time.time() - start_time
-
-            raise SandboxTimeoutError(
-                f"gVisor exec command timed out after {timeout} seconds."
-            ) from err
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as err:
+                # Killing `runsc exec` alone leaves the command running in the
+                # sandbox, with its output pipes open until it exits.
+                self._kill_exec(config, sandbox_id, pid_file)
+                proc.kill()
+                try:
+                    proc.communicate(timeout=_EXEC_KILL_GRACE_SECONDS)
+                except subprocess.TimeoutExpired:
+                    # A process that escaped the kill still holds the pipes.
+                    proc.stdout.close()
+                    proc.stderr.close()
+                    proc.wait()
+                raise SandboxTimeoutError(
+                    f"gVisor exec command timed out after {timeout} seconds."
+                ) from err
+        except SandboxTimeoutError:
+            raise
         except Exception as err:
-            duration = time.time() - start_time
             raise SandboxExecError(f"gVisor exec failed: {err}") from err
+        finally:
+            try:
+                os.remove(pid_file)
+            except OSError:
+                pass
+
+        # Commands may print bytes that aren't UTF-8, and decoding them
+        # strictly would fail the whole exec.
+        return ExecResult(
+            exit_code=proc.returncode,
+            stdout=stdout.decode("utf-8", errors="replace"),
+            stderr=stderr.decode("utf-8", errors="replace"),
+            duration_seconds=time.time() - start_time,
+        )
+
+    def _kill_exec(self, config: SandboxConfig, sandbox_id: str, pid_file: str) -> None:
+        """SIGKILL an exec'd command and every process it started.
+
+        The processes come from ``runsc trace procfs``, the only runsc
+        command that reports sessions. ``runsc ps`` has no session column,
+        and its PGID column and ``runsc kill --pgid`` arrived in April 2026
+        and cover one process group, so each process is killed by PID.
+        """
+        try:
+            with open(pid_file, encoding="utf-8") as f:
+                root_pid = int(f.read())
+        except (OSError, ValueError):
+            # The command hadn't started yet.
+            return
+        base_args = self._runsc_base_args(config)
+
+        def kill(pid: int) -> None:
+            try:
+                subprocess.run(
+                    base_args + ["kill", "--pid", str(pid), sandbox_id, "SIGKILL"],
+                    capture_output=True,
+                    timeout=10,
+                )
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+
+        # List before killing anything: a child that left the command's
+        # session with setsid() is found only through its parent, and killing
+        # the parent first would reparent it out of reach. A process can start
+        # another between a listing and its own kill, so list again until no
+        # process of the command is left.
+        for _ in range(_EXEC_KILL_ROUNDS):
+            pids = None
+            try:
+                dump = subprocess.run(
+                    base_args + ["trace", "procfs", sandbox_id],
+                    capture_output=True,
+                    text=True,
+                    errors="replace",
+                    timeout=10,
+                )
+                if dump.returncode == 0:
+                    pids = _exec_processes(dump.stdout, root_pid)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            if pids is None:
+                # Without a listing, stop at least the command itself.
+                kill(root_pid)
+                return
+            if not pids:
+                return
+            for pid in pids:
+                kill(pid)
 
     def write_file(
         self,

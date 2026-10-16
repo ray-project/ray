@@ -1,7 +1,9 @@
+import json
 import os
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -10,13 +12,17 @@ import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
 from ray.experimental.sandbox.backend.base import SandboxStatus
-from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.backend.gvisor import (
+    GVisorSandboxBackend,
+    _exec_processes,
+)
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
     SandboxExecError,
     SandboxNotFoundError,
+    SandboxTimeoutError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
@@ -255,6 +261,121 @@ def test_string_exec_shell_configuration():
         # Per-exec override beats the configured shell.
         result = runtime.exec(instance_id, "echo again", shell="/bin/sh")
         assert result.exit_code == 0
+    finally:
+        runtime.delete(instance_id)
+
+
+def _procfs_dump(*procs):
+    """What ``runsc trace procfs`` prints for (pid, ppid, pgid, sid) tuples."""
+    lines = ["PROCFS DUMP"]
+    for pid, ppid, pgid, sid in procs:
+        status, stat = {"pid": pid, "ppid": ppid}, {"pgid": pgid, "sid": sid}
+        lines += ["", json.dumps({"status": status, "stat": stat})]
+    return "\n".join(lines) + "\n"
+
+
+def test_exec_processes_follows_the_session_and_children():
+    dump = _procfs_dump(
+        (1, 0, 1, 1),  # The sandbox's init.
+        (2, 0, 2, 2),  # The command, a session leader.
+        (3, 2, 2, 2),  # Its child,
+        (4, 3, 4, 2),  # a grandchild in a group of its own,
+        (5, 1, 2, 2),  # and reparented children, in the command's group
+        (6, 1, 6, 2),  # or in a group of their own.
+        (7, 3, 7, 7),  # A child that called setsid(), and its child.
+        (8, 7, 7, 7),
+        (9, 1, 9, 9),  # A daemon: it called setsid() and its parent exited.
+        (10, 0, 10, 10),  # Another command and its child.
+        (11, 10, 10, 10),
+        (13, 1, 13, 12),  # The reparented child of a command that exited.
+    )
+    assert _exec_processes(dump, 2) == [2, 3, 4, 5, 6, 7, 8]
+    assert _exec_processes(dump, 10) == [10, 11]
+    assert _exec_processes(dump, 12) == [13]
+    assert _exec_processes("PROCFS DUMP\n", 2) == []
+    assert _exec_processes("loading sandbox: not found", 2) == []
+
+
+def test_exec_timeout_kills_the_command_and_its_children():
+    """A timed-out exec returns at its timeout and leaves nothing running.
+    Killing only `runsc exec` used to leave the command running, and the
+    exec returned only when it exited."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        start = time.monotonic()
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(instance_id, "sleep 30; echo done", timeout=1)
+        assert time.monotonic() - start < 10
+        assert "sleep 30" not in runtime.exec(instance_id, "ps").stdout
+        # The sandbox is still usable.
+        assert runtime.exec(instance_id, "echo ok").stdout == "ok\n"
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_background_jobs_that_outlive_the_shell():
+    """A background job holding the output pipes outlives the shell that
+    started it, so the exec times out. The job is reparented to PID 1, and
+    GNU timeout also moves to a process group of its own, but both stay in
+    the command's session, and the timeout kills them."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="python:3.10-slim")
+    try:
+        for command in ["sleep 1000 & exit", "timeout 1001 sleep 1001 & exit"]:
+            with pytest.raises(SandboxTimeoutError):
+                runtime.exec(instance_id, command, timeout=1)
+        # The image has no ps. A killed process left as a zombie has an
+        # empty cmdline.
+        cmdlines = runtime.exec(instance_id, r"cat /proc/[0-9]*/cmdline | tr '\0' ' '")
+        assert "sleep 100" not in cmdlines.stdout
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_a_setsid_child_of_the_command():
+    """A child that left the command's session with setsid() is found only
+    through its parent, so the processes are listed before any is killed."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="python:3.10-slim")
+    try:
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(instance_id, "setsid sleep 1002 & sleep 1000", timeout=1)
+        cmdlines = runtime.exec(instance_id, r"cat /proc/[0-9]*/cmdline | tr '\0' ' '")
+        assert "sleep 100" not in cmdlines.stdout
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_processes_started_during_the_kill():
+    """A child that keeps starting processes starts more between the listing
+    of the command's processes and its own kill. Those are killed too."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(
+                instance_id,
+                "sh -c 'while :; do sleep 1000 & done' & wait",
+                timeout=0.5,
+            )
+        # A killed process left as a zombie shows up as [sleep].
+        assert "sleep 1000" not in runtime.exec(instance_id, "ps").stdout
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_replaces_output_that_is_not_utf8():
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        result = runtime.exec(
+            instance_id, r"printf 'ok \377\376\r\n'; printf '\377' >&2"
+        )
+        assert result.exit_code == 0
+        # Like the bytes, line endings come back as printed.
+        assert result.stdout == "ok ��\r\n"
+        assert result.stderr == "�"
     finally:
         runtime.delete(instance_id)
 
