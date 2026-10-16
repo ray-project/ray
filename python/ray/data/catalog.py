@@ -616,7 +616,11 @@ class GravitinoCatalog(Catalog):
         iceberg_rest_uri: Gravitino Iceberg REST endpoint, for example
             ``"http://gravitino:9001/iceberg/"``.
         iceberg_rest_catalog_kwargs: Optional PyIceberg authentication and
-            storage properties for the REST endpoint.
+            storage properties for the REST endpoint. Supply authentication
+            explicitly here. If ``auth``, ``credential``, and ``token`` are
+            all absent, the provider sets ``auth={"type": "noop"}``.
+            Don't rely on PyIceberg configuration files or environment
+            variables as a fallback for these authentication properties.
 
     Example:
         >>> import ray
@@ -633,7 +637,12 @@ class GravitinoCatalog(Catalog):
         provider. Delta and Parquet access are unsupported.
         The REST service's dynamic catalog configuration binds the metalake;
         the catalog component of ``catalog.schema.table`` selects its warehouse.
-        Existence and authorization are checked during actual REST operations.
+        Table existence is checked during actual REST operations. Catalog
+        authorization depends on the REST service's deployment and configuration.
+        For Gravitino 1.3.1, catalog access control requires auxiliary REST mode,
+        ``gravitino.authorization.enable=true``, and the dynamic catalog
+        configuration provider. Standalone mode doesn't provide catalog
+        authorization.
         Catalog properties are omitted when this object is serialized; recreate
         configured instances before resolving from a deserialized object.
     """
