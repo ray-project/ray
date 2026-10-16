@@ -46,7 +46,13 @@ torch, _ = try_import_torch()
 
 
 class TestCatalog(unittest.TestCase):
-    def _check_model_outputs(self, model, framework, model_config_dict, input_space):
+    def _check_model_outputs(
+        self,
+        model: Encoder,
+        framework: str,
+        model_config_dict: dict,
+        input_space: gym.Space,
+    ):
         """Checks the model's outputs for the given input space.
 
         Args:

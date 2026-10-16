@@ -20,6 +20,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/ray_syncer/common.h"
@@ -68,13 +69,15 @@ class NodeState {
   /// \return If a snapshot is taken, return the message, otherwise std::nullopt.
   std::optional<RaySyncMessage> CreateSyncMessage(MessageType message_type);
 
-  /// Consume a message. Receiver will consume this message if it doesn't have
-  /// this message.
+  /// Consume received messages. A message is dropped if this node already has it
+  /// at the same or a newer version; the rest are stored and handed to their
+  /// receivers, one call per message type.
   ///
-  /// \param message The message received.
+  /// \param messages The messages received.
   ///
-  /// \return true if the local node doesn't have message with newer version.
-  bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
+  /// \return The messages that were new to this node, in the order given.
+  std::vector<std::shared_ptr<const RaySyncMessage>> ConsumeSyncMessages(
+      std::vector<std::shared_ptr<const RaySyncMessage>> messages);
 
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<

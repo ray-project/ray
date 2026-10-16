@@ -34,9 +34,10 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                 a multi-head attention unit. Denoted as `d` in [3].
             input_layernorm: Whether to prepend a LayerNorm before
                 everything else. Should be True for building a GTrXL.
-            output_activation (Optional[tf.nn.activation]): Optional tf.nn
-                activation function. Should be relu for GTrXL.
-            **kwargs:
+            output_activation: Optional tf.nn activation function. Should be
+                relu for GTrXL.
+            **kwargs: Additional keyword arguments, forwarded to the parent
+                `tf.keras.layers.Layer` constructor.
         """
         if log_once("relative_multi_head_attention"):
             deprecation_warning(
