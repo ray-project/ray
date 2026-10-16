@@ -543,6 +543,9 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     robust solution to this I was able to find. It would also be preferable
     to do this check when the decorator runs, rather than when the method is.
 
+    `func` may be wrapped by more than one decorator, so the whole
+    ``__wrapped__`` chain of the attribute is searched for it.
+
     Arguments:
         args: arguments to the function/method call.
         func: the unbound function that was called.
@@ -552,10 +555,11 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
     """
     if len(args) > 0:
         method = getattr(args[0], func.__name__, False)
-        if method:
+        while method:
             wrapped = getattr(method, "__wrapped__", False)
             if wrapped and wrapped == func:
                 return args[0]
+            method = wrapped
 
     return None
 
