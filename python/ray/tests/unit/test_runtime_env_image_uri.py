@@ -97,6 +97,22 @@ def test_mounts_token_path_from_env(auth_env, tmp_path, relative):
     assert TOKEN not in command
 
 
+def test_ignores_token_path_from_job_env_vars(auth_env, tmp_path):
+    token_path = tmp_path / ".ray" / "auth_token"
+    token_path.parent.mkdir()
+    token_path.write_text(TOKEN)
+    host_file = tmp_path / "host_file"
+    host_file.write_text("not a token")
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    reset_auth_token_state()
+    context = RuntimeEnvContext(env_vars={"RAY_AUTH_TOKEN_PATH": str(host_file)})
+
+    command = _container_command(context)
+
+    assert f"-v {token_path}:{token_path}:ro" in command
+    assert f"-v {host_file}" not in command
+
+
 def test_token_from_env_is_mounted_as_file(auth_env, tmp_path):
     auth_env.setenv("RAY_AUTH_MODE", "token")
     auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
@@ -168,7 +184,14 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     )
 
     argv, launcher_env = _launch(
-        context, run_options=["--cap-drop SYS_ADMIN", "--label 'a b'", "$(id)"]
+        context,
+        run_options=[
+            "--cap-drop SYS_ADMIN",
+            "--label 'a b'",
+            "$(id)",
+            "--env-host",
+            "--env RAY_RUNTIME_ENV_BEARER_TOKEN",
+        ],
     )
 
     assert argv[0] == "podman"
@@ -182,7 +205,9 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     assert argv[argv.index("RAY_RAYLET_PID") - 1] == "--env"
     assert launcher_env["RAY_RAYLET_PID"] == "1234"
     assert "RAY_AUTH_TOKEN" not in argv
-    assert "RAY_RUNTIME_ENV_BEARER_TOKEN" not in argv
+    # podman can't forward what it doesn't have, whatever run_options say.
+    assert "RAY_AUTH_TOKEN" not in launcher_env
+    assert "RAY_RUNTIME_ENV_BEARER_TOKEN" not in launcher_env
     assert TOKEN not in " ".join(argv)
     assert "STOLEN=${RAY_RUNTIME_ENV_BEARER_TOKEN}" in argv
     assert "bearer-secret" not in " ".join(argv)

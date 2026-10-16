@@ -121,10 +121,10 @@ def _modify_context_impl(
             token_path = str(token_dir / f"image_uri_auth_token_{token_digest}")
             _write_owner_only_file(token_path, token)
         else:
+            # Ignore the job's env_vars: a job-chosen path would mount any
+            # host file the Ray user can read into the container.
             token_path = os.path.abspath(
-                context.env_vars.get("RAY_AUTH_TOKEN_PATH")
-                or os.environ.get("RAY_AUTH_TOKEN_PATH")
-                or _get_default_token_path()
+                os.environ.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
             )
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])

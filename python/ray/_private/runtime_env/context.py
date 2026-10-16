@@ -124,11 +124,15 @@ class RuntimeEnvContext:
         # The job's env_vars go to the container only: podman runs with the
         # raylet's environment, so job values such as LD_PRELOAD can't affect
         # the host launcher. RAY_* vars are passed by name, so podman reads
-        # their values from that environment.
+        # their values from that environment. Node secrets are dropped from it,
+        # so run_options such as `--env-host` can't forward them either.
+        launcher_env = {
+            name: value
+            for name, value in launcher_env.items()
+            if name not in _NODE_SECRET_ENV_VARS
+        }
         container_env: Dict[str, Optional[str]] = {
-            name: None
-            for name in launcher_env
-            if name.startswith("RAY_") and name not in _NODE_SECRET_ENV_VARS
+            name: None for name in launcher_env if name.startswith("RAY_")
         }
         # Raw values: expanding ${VAR} against the host env would let a job
         # copy node secrets into its container.
