@@ -28,22 +28,13 @@ the `Setting up your development environment`_ section.
 .. _`Getting Involved`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html
 .. _`Setting up your development environment`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#setting-up-your-development-environment
 .. _`What can I work on?`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#what-can-i-work-on
+.. _`PR review process`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#pr-review-process
+.. _`AI-assisted contributions`: https://docs.ray.io/en/latest/ray-contribute/getting-involved.html#ai-assisted-contributions
+.. _`CODEOWNERS`: https://github.com/ray-project/ray/blob/master/.github/CODEOWNERS
 
 PR Review Process
 -----------------
 
-For contributors who are in the ray-project organization:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- When you first create a PR, add a reviewer to the `assignee` section.
-- Assignees will review your PR and add `@author-action-required` label if further actions are required.
-- Address their comments and remove `@author-action-required` label from the PR.
-- Repeat this process until assignees approve your PR.
-- Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add `test-ok` label if the build succeeds.
-- Committers will merge the PR once the build is passing.
-
-For contributors who are not in the ray-project organization:
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- Your PRs will have assignees shortly. Assignees or PRs will be actively engaging with contributors to merge the PR.
-- Please actively ping assignees after you address your comments!
+GitHub automatically requests reviews from the `CODEOWNERS`_ of the files you change. Address their comments and
+re-request review until they approve. A committer then adds the ``go`` label to run the full CI, and the PR merges
+once CI passes. See `PR review process`_ for details, and `AI-assisted contributions`_ if you used an AI coding agent.
