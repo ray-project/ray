@@ -323,6 +323,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._send_resource_request(None)
             return
 
+        # More nodes won't speed up a slow consumer.
+        if self._resource_utilization_calculator.is_blocked_on_consumer():
+            logger.debug("Blocked on a slow consumer -- skipping cluster autoscaling.")
+            self._send_resource_request(None)
+            return
+
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
         # to ensure existing nodes' resources are never crowded out by scale-up requests.
         # TODO(hchen): We scale up all nodes by the same delta for now.
