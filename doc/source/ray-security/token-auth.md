@@ -100,6 +100,12 @@ If no token is available from any source, behavior depends on `RAY_AUTH_MODE`:
 
 `ray start --head` logs a warning whenever it starts a cluster without token authentication, whether because no token is available or because you set `RAY_AUTH_MODE=disabled`.
 
+Worker nodes don't enable token authentication automatically. When you add a worker node with `ray start --address`, Ray ignores any available token unless you set `RAY_AUTH_MODE=token`, so the worker can't join a head node that has token authentication enabled. The join fails even if the worker runs on the same machine as the head node and `~/.ray/auth_token` exists. It also fails if you set `RAY_AUTH_TOKEN` without `RAY_AUTH_MODE`. To add the worker node, set `RAY_AUTH_MODE=token`:
+
+```bash
+RAY_AUTH_MODE=token ray start --address=<head-node-ip>:6379
+```
+
 If you set `RAY_AUTH_MODE=token` before a token exists, `ray start --head` raises an error instead of starting:
 
 ```bash
