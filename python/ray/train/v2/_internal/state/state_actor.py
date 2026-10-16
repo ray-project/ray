@@ -175,6 +175,9 @@ class TrainStateActor:
     def is_export_api_enabled(self) -> bool:
         return bool(self._export_loggers)
 
+    def is_nccl_hang_export_enabled(self) -> bool:
+        return self._get_export_logger("EXPORT_TRAIN_NCCL_HANG") is not None
+
     def _init_export_loggers(self) -> Dict[int, ExportEventLoggerAdapter]:
         """Build an export logger for each enabled Train export source type.
 

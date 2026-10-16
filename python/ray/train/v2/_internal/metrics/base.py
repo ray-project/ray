@@ -6,7 +6,6 @@ from ray.util.metrics import Gauge
 
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 RUN_ID_TAG_KEY = "ray_train_run_id"
-RUN_ATTEMPT_ID_TAG_KEY = "ray_train_run_attempt_id"
 
 T = TypeVar("T")
 E = TypeVar("E", bound=Enum)

@@ -6,6 +6,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.train import BackendConfig
 from ray.train._internal.data_config import DataConfig
+from ray.train.v2._internal.constants import GET_ACTOR_TIMEOUT_S
 from ray.train.v2._internal.execution.context import DistributedContext
 from ray.train.v2._internal.execution.scaling_policy.scaling_policy import (
     ResizeDecision,
@@ -44,24 +45,48 @@ from ray.train.v2.api.config import RunConfig, ScalingConfig
 logger = logging.getLogger(__name__)
 
 
-def export_nccl_hang_event(event: TrainNcclHangEvent) -> None:
-    """Hand a NCCL hang detector event to the state actor for export.
+class NcclHangEventExporter:
+    """Hands NCCL hang detector events to the state actor for export.
 
     Fire-and-forget and never raises, so exporting can't affect hang
     detection. The state actor is only looked up, never created: the
     controller's state manager creates it before any worker group starts.
 
-    Args:
-        event: The event to export.
+    The actor handle, and whether the actor exports these events at all, are
+    looked up on the first event and kept, so the detector's poll loop doesn't
+    query the GCS or send events to be dropped on every poll. The actor is
+    asked rather than this process's environment, as the export API can be
+    enabled in the actor's environment only.
     """
-    try:
-        state_actor = get_state_actor()
-        if state_actor is None:
-            logger.debug("No Train state actor to export the NCCL hang event to.")
-            return
-        state_actor.export_train_nccl_hang_event.remote(event)
-    except Exception:  # noqa: BLE001
-        logger.debug("Failed to export a NCCL hang event.", exc_info=True)
+
+    def __init__(self):
+        self._state_actor: Optional[ActorHandle] = None
+        # None until the actor has been asked.
+        self._enabled: Optional[bool] = None
+
+    def export(self, event: TrainNcclHangEvent) -> None:
+        """Export ``event`` if the state actor exports NCCL hang events.
+
+        Args:
+            event: The event to export.
+        """
+        try:
+            if self._enabled is None:
+                state_actor = get_state_actor()
+                if state_actor is None:
+                    logger.debug(
+                        "No Train state actor to export the NCCL hang event to."
+                    )
+                    return
+                self._enabled = ray.get(
+                    state_actor.is_nccl_hang_export_enabled.remote(),
+                    timeout=GET_ACTOR_TIMEOUT_S,
+                )
+                self._state_actor = state_actor
+            if self._enabled:
+                self._state_actor.export_train_nccl_hang_event.remote(event)
+        except Exception:  # noqa: BLE001
+            logger.debug("Failed to export a NCCL hang event.", exc_info=True)
 
 
 class TrainStateManager:

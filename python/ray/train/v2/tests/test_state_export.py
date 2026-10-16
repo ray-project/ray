@@ -24,7 +24,7 @@ from ray.train.v2._internal.state.state_actor import (
     get_or_create_state_actor,
     get_state_actor,
 )
-from ray.train.v2._internal.state.state_manager import export_nccl_hang_event
+from ray.train.v2._internal.state.state_manager import NcclHangEventExporter
 from ray.train.v2.tests.util import (
     create_mock_train_run,
     create_mock_train_run_attempt,
@@ -831,13 +831,14 @@ def test_export_only_train_run_enabled(enable_export_api_config):
 
 
 def test_export_nccl_hang_event_helper(enable_export_api_write):
-    """The helper the detector calls never creates the state actor and never
+    """The exporter the detector calls never creates the state actor and never
     raises, and forwards the event once the actor exists."""
-    export_nccl_hang_event(_create_nccl_hang_event())  # no actor: dropped
+    exporter = NcclHangEventExporter()
+    exporter.export(_create_nccl_hang_event())  # no actor: dropped
     assert get_state_actor() is None
 
     get_or_create_state_actor()
-    export_nccl_hang_event(_create_nccl_hang_event())
+    exporter.export(_create_nccl_hang_event())
     wait_for_condition(lambda: os.path.exists(_get_nccl_hang_export_file_path()))
     wait_for_condition(
         lambda: len(_get_exported_data(_get_nccl_hang_export_file_path())) == 1
@@ -851,7 +852,58 @@ def test_export_nccl_hang_event_helper_never_raises(monkeypatch):
         raise RuntimeError("GCS unavailable")
 
     monkeypatch.setattr(state_manager, "get_state_actor", boom)
-    export_nccl_hang_event(_create_nccl_hang_event())
+    NcclHangEventExporter().export(_create_nccl_hang_event())
+
+
+class _FakeMethod:
+    def __init__(self, result=None):
+        self.result = result
+        self.calls = []
+
+    def remote(self, *args):
+        self.calls.append(args)
+        return self.result
+
+
+class _FakeStateActor:
+    def __init__(self, enabled: bool):
+        self.is_nccl_hang_export_enabled = _FakeMethod(result=enabled)
+        self.export_train_nccl_hang_event = _FakeMethod()
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_export_nccl_hang_event_helper_looks_up_the_actor_once(monkeypatch, enabled):
+    """The actor and whether it exports are looked up on the first event only,
+    and nothing is sent to an actor that would drop it."""
+    from ray.train.v2._internal.state import state_manager
+
+    actor = _FakeStateActor(enabled)
+    lookups = []
+
+    def get_state_actor():
+        lookups.append(1)
+        return actor
+
+    monkeypatch.setattr(state_manager, "get_state_actor", get_state_actor)
+    monkeypatch.setattr(state_manager.ray, "get", lambda ref, timeout: ref)
+
+    exporter = NcclHangEventExporter()
+    for _ in range(3):
+        exporter.export(_create_nccl_hang_event())
+
+    assert len(lookups) == 1
+    assert len(actor.is_nccl_hang_export_enabled.calls) == 1
+    assert len(actor.export_train_nccl_hang_event.calls) == (3 if enabled else 0)
+
+
+def test_state_actor_reports_whether_nccl_hang_export_is_enabled(
+    enable_export_api_write,
+):
+    assert ray.get(get_or_create_state_actor().is_nccl_hang_export_enabled.remote())
+
+
+def test_state_actor_reports_nccl_hang_export_disabled(ray_start_4_cpus):
+    assert not ray.get(get_or_create_state_actor().is_nccl_hang_export_enabled.remote())
 
 
 if __name__ == "__main__":

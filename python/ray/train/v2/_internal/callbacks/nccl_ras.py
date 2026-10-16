@@ -30,6 +30,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import (
     Any,
@@ -40,6 +41,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Set,
     Tuple,
     Union,
@@ -81,7 +83,7 @@ from ray.train.v2._internal.state.schema import (
     StalledRanks,
     TrainNcclHangEvent,
 )
-from ray.train.v2._internal.state.state_manager import export_nccl_hang_event
+from ray.train.v2._internal.state.state_manager import NcclHangEventExporter
 from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
@@ -211,35 +213,45 @@ class RASReport:
     comm_rank_processes: Dict[str, Dict[int, Tuple[str, int]]]
     raw_json: str
 
-    @property
+    def op_skews(self, comm_id: str) -> Dict[str, int]:
+        """A communicator's per-op spread (max-min) across its ranks, this poll.
+
+        Args:
+            comm_id: A communicator in this report.
+
+        Returns:
+            ``{op_name: max_count - min_count for ranks}``.
+        """
+        rank_op_counts = defaultdict(list)
+        for op_counts in self.comm_op_counts[comm_id].values():
+            for op, count in op_counts.items():
+                rank_op_counts[op].append(count)
+        return {op: max(counts) - min(counts) for op, counts in rank_op_counts.items()}
+
+    @cached_property
     def comm_op_skews(self) -> Dict[str, Dict[str, int]]:
         """Per-communicator, per-op spread (max-min) across its ranks, this poll.
 
         Returns:
             ``{comm_id: {op_name: max_count - min_count for ranks}}``.
         """
-        skews: Dict[str, Dict[str, int]] = {}
-        for comm_id, ranks in self.comm_op_counts.items():
-            rank_op_counts = defaultdict(list)
-            for op_counts in ranks.values():
-                for op, count in op_counts.items():
-                    rank_op_counts[op].append(count)
-            skews[comm_id] = {
-                op: max(counts) - min(counts) for op, counts in rank_op_counts.items()
-            }
-        return skews
+        return {comm_id: self.op_skews(comm_id) for comm_id in self.comm_op_counts}
 
-    @property
+    def comm_running(self, comm_id: str) -> bool:
+        """Whether the communicator is in this report with every rank RUNNING."""
+        statuses = self.comm_rank_status.get(comm_id)
+        return bool(statuses) and all(
+            rank_status == "RUNNING" for rank_status in statuses.values()
+        )
+
+    @cached_property
     def mismatched_comms(self) -> Set[str]:
         """Communicator ids whose ranks have op counts that are mismatched and its ranks are RUNNING."""
         return {
             comm_id
             for comm_id, op_skews in self.comm_op_skews.items()
             if any(skews > 0 for skews in op_skews.values())
-            and all(
-                rank_status == "RUNNING"
-                for rank_status in self.comm_rank_status[comm_id].values()
-            )
+            and self.comm_running(comm_id)
         }
 
     def mismatched_op_ranks(self, comm_id: str) -> Dict[str, Dict[int, List[int]]]:
@@ -254,7 +266,7 @@ class RASReport:
         """
         rank_op_counts = self.comm_op_counts[comm_id]
         mismatched: Dict[str, Dict[int, List[int]]] = {}
-        for op, skew in self.comm_op_skews[comm_id].items():
+        for op, skew in self.op_skews(comm_id).items():
             if skew == 0:
                 continue
             ranks_by_count: Dict[int, List[int]] = defaultdict(list)
@@ -320,6 +332,27 @@ def compute_report_op_diff(
 _MISSING_COMMA_RE = re.compile(r'([\d"el])(\s*\n\s*)("[^"\n]*"\s*:)')
 
 
+def _parse_rank_processes(ranks: List[Dict[str, Any]]) -> Dict[int, Tuple[str, int]]:
+    """The ``(host, pid)`` of each of a communicator's ranks that reports one.
+
+    Only used to name ranks by Ray Train world rank, so a rank without a usable
+    host or pid is left out rather than failing the whole report.
+
+    Args:
+        ranks: The communicator's ``ranks`` entries.
+
+    Returns:
+        ``{comm_rank: (host, pid)}`` for the ranks with both.
+    """
+    processes: Dict[int, Tuple[str, int]] = {}
+    for rank in ranks:
+        try:
+            processes[rank["rank"]] = (str(rank["host"]), int(rank["pid"]))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return processes
+
+
 def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
     """Parse ``ncclras -f json`` output into a :class:`RASReport`.
 
@@ -373,9 +406,7 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
                 rank["rank"]: RASReport.rank_status(rank["status"])
                 for rank in comm["ranks"]
             }
-            comm_rank_processes[comm["hash"]] = {
-                rank["rank"]: (rank["host"], int(rank["pid"])) for rank in comm["ranks"]
-            }
+            comm_rank_processes[comm["hash"]] = _parse_rank_processes(comm["ranks"])
 
         return RASReport(
             timestamp=data["timestamp"],
@@ -777,7 +808,9 @@ def format_ranks(comm_ranks: Iterable[int], train_rank_of: Dict[int, int]) -> st
     """Name a communicator's ranks compactly, e.g. ``train ranks 0-3, 5``.
 
     Ranks are named by Ray Train world rank, falling back to the communicator
-    rank for ranks without a train worker. Consecutive ranks collapse into
+    rank for ranks without a train worker. Communicator ranks of the same
+    worker (one process driving several GPUs) name its world rank once.
+    Consecutive ranks collapse into
     ranges, and each list is cut after ``_MAX_RANKS_LOGGED`` runs so a
     1000-rank job stays one line.
 
@@ -790,8 +823,8 @@ def format_ranks(comm_ranks: Iterable[int], train_rank_of: Dict[int, int]) -> st
     """
     comm_ranks = list(comm_ranks)
     groups = [
-        ("train rank", [train_rank_of[r] for r in comm_ranks if r in train_rank_of]),
-        ("comm rank", [r for r in comm_ranks if r not in train_rank_of]),
+        ("train rank", {train_rank_of[r] for r in comm_ranks if r in train_rank_of}),
+        ("comm rank", {r for r in comm_ranks if r not in train_rank_of}),
     ]
     parts = []
     for noun, ranks in groups:
@@ -949,9 +982,17 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._confirmed_comms: Set[str] = set()
         # Whether the STOPPED event of the current attempt was exported.
         self._stop_exported: bool = False
+        self._exporter = NcclHangEventExporter()
 
-        # Run-level state gauges of the current attempt (see
-        # `NcclHangDetectorMetrics`), or None if they couldn't be created.
+        # The latest report's `launch_groups` per communicator, as both the
+        # log line and the exported event read them.
+        self._launch_groups_report: Optional[RASReport] = None
+        self._launch_groups_cache: Dict[
+            str, Tuple[Dict[int, int], List[Tuple[str, int, List[int]]]]
+        ] = {}
+
+        # Run-level state gauges (see `NcclHangDetectorMetrics`), shared by
+        # every attempt, or None if they couldn't be created yet.
         self._metrics: Optional[Dict[str, GaugeMetric]] = None
 
     def reset_detection_state(self):
@@ -979,14 +1020,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._retire_poller()
         if self._is_ras_degraded:
             return
-        try:
-            self._metrics = NcclHangDetectorMetrics.get_nccl_hang_detector_metrics(
-                worker_group._train_run_context.get_run_config().name,
-                self._run_id,
-                self._attempt_id,
-            )
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not create the hang detector metrics.", exc_info=True)
+        if self._metrics is None:
+            try:
+                self._metrics = NcclHangDetectorMetrics.get_nccl_hang_detector_metrics(
+                    worker_group._train_run_context.get_run_config().name,
+                    self._run_id,
+                )
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "Could not create the hang detector metrics.", exc_info=True
+                )
         self._ras_poller = RASPoller(worker_group, self._poll_interval_s)
         self._ras_poller.start()
 
@@ -1026,18 +1069,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self._poll_time_ms = int(time.time() * 1000)
             self.ras_history.append(result)
 
-            if result.mismatched_comms:
+            # A healthy report still ends (or holds) any open streak.
+            if result.mismatched_comms or self.comm_deadlock_count:
                 self.evaluate_comm_mismatch(result)
-            else:  # Healthy with no mismatches, so every frozen streak is over
-                recovered, recovered_messages = self.log_recovered_comms({})
-                self.reset_hang_counters()
-                if recovered:
-                    self.export_poll(
-                        result,
-                        [NcclHangTrigger.RECOVERED],
-                        recovered_messages,
-                        recovered=recovered,
-                    )
             self.prev_report = result
             self.record_state_metrics()
         except NCCLHangError:
@@ -1061,8 +1095,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if self.prev_report is None:
             return
 
-        # 1. Classify: which mismatched communicators made no progress this poll
+        # 1. Classify: which mismatched communicators made no progress this
+        # poll, and which stalled ones can no longer be observed
         frozen_counts = self.compute_frozen_streaks(report)
+        held_counts = self.held_streaks(report, frozen_counts)
+        stalled_counts = {**held_counts, **frozen_counts}
         confirmed_comm_hangs = [
             comm_id
             for comm_id, count in frozen_counts.items()
@@ -1070,15 +1107,15 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         ]
 
         # 2. Update state: a communicator that progressed drops its streak
-        recovered, recovered_messages = self.log_recovered_comms(frozen_counts)
-        self.comm_deadlock_count = frozen_counts
+        recovered, recovered_messages = self.log_recovered_comms(stalled_counts)
+        self.comm_deadlock_count = stalled_counts
         # A new streak's counts were already frozen at the previous poll, so
         # the stall is dated from it.
         self._stalled_since_ms = {
             comm_id: self._stalled_since_ms.get(comm_id, self._prev_poll_time_ms)
-            for comm_id in frozen_counts
+            for comm_id in stalled_counts
         }
-        self._confirmed_comms.intersection_update(frozen_counts)
+        self._confirmed_comms.intersection_update(stalled_counts)
 
         # 3. Act, reporting everything this poll found in one exported event
         triggers: List[NcclHangTrigger] = []
@@ -1095,13 +1132,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             ) = self.capture_confirmed_hangs(confirmed_comm_hangs, report)
             triggers.append(NcclHangTrigger.CONFIRMED)
             messages.append(headline)
-            # Communicators that reach the suspicion threshold on the same poll
-            # are still reported, with the report fetched for the confirmation.
+            # The other communicators' milestones on the same poll are still
+            # reported, with the report fetched for the confirmation.
             suspected = self.handle_suspected_hangs(
-                report, new_only=True, ras_text_report=ras_text_report
+                report,
+                frozen_counts,
+                confirmed=confirmed_comm_hangs,
+                ras_text_report=ras_text_report,
             )
         elif frozen_counts:
-            suspected = self.handle_suspected_hangs(report)
+            suspected = self.handle_suspected_hangs(report, frozen_counts)
         else:
             suspected = None
         if suspected is not None:
@@ -1158,6 +1198,36 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 frozen_counts[comm_id] = self.comm_deadlock_count.get(comm_id, 0) + 1
         return frozen_counts
 
+    def held_streaks(
+        self, report: RASReport, frozen_counts: Dict[str, int]
+    ) -> Dict[str, int]:
+        """Keep the streaks of stalled communicators that can't be observed.
+
+        A communicator stops being mismatched when its counts move, but also
+        when a rank leaves RUNNING (aborted or finalized, e.g. a rank that
+        crashed or exited early) or it drops out of the report. That is no
+        evidence of progress, so it isn't a recovery: the streak is held at
+        its count, neither advancing (no confirmation) nor warning again,
+        until progress is seen or the detector stops watching the attempt.
+        Streaks below the suspicion threshold were never reported, so they are
+        dropped as before, e.g. a process group destroyed mid-streak.
+
+        Args:
+            report: The current poll's report.
+            frozen_counts: This poll's advanced streaks.
+
+        Returns:
+            ``{comm_id: held count}`` for the suspected streaks that aren't in
+            ``frozen_counts`` and whose communicator isn't running.
+        """
+        return {
+            comm_id: count
+            for comm_id, count in self.comm_deadlock_count.items()
+            if count >= self._suspicion_polls
+            and comm_id not in frozen_counts
+            and not report.comm_running(comm_id)
+        }
+
     def log_recovered_comms(
         self, frozen_counts: Dict[str, int]
     ) -> Tuple[List[Tuple[str, int, float]], List[str]]:
@@ -1206,11 +1276,18 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             reason: Why the detector stops watching the attempt.
         """
         try:
+            hang_confirmed = bool(self._confirmed_comms)
             self.export_stopped(reason)
             self.reset_hang_counters()
             # The state is unknown from here on, so the gauges stop reporting
-            # a hang rather than keep the last one forever.
-            if self._metrics is not None:
+            # a hang rather than keep the last one forever. A confirmed hang
+            # the attempt is shut down with is kept, as the attempt's outcome,
+            # until the next attempt's first report: in fail mode the shutdown
+            # it raises follows within milliseconds, before any scrape.
+            keep_confirmed = (
+                hang_confirmed and reason == NcclHangStopReason.WORKER_GROUP_SHUTDOWN
+            )
+            if self._metrics is not None and not keep_confirmed:
                 for metric in self._metrics.values():
                     metric.reset()
         except Exception:  # noqa: BLE001
@@ -1330,18 +1407,21 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def handle_suspected_hangs(
         self,
         report: RASReport,
-        new_only: bool = False,
+        frozen_counts: Dict[str, int],
+        confirmed: Sequence[str] = (),
         ras_text_report: Optional[str] = None,
     ) -> Optional[Tuple[str, Optional[str]]]:
         """Warn about suspected hangs at the suspicion and periodic milestones.
 
         Args:
             report: The current poll's report.
-            new_only: Only warn about communicators newly reaching the suspicion
-                threshold (on a poll that confirmed other communicators), with
-                ``ras_text_report`` instead of fetching another report.
+            frozen_counts: The streaks that advanced this poll. Only these
+                reach a milestone; held streaks don't warn again.
+            confirmed: The communicators confirmed on this poll, which are left
+                out, as the confirmation describes them. If any, the warning
+                uses ``ras_text_report`` instead of fetching another report.
             ras_text_report: The report already fetched this poll, if
-                ``new_only``.
+                ``confirmed``.
 
         Returns:
             ``None`` if nothing was warned about, otherwise the warning's
@@ -1349,9 +1429,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """
         # A communicator first warns at the suspicion threshold, then every
         # `_periodic_warn_polls` after it.
+        advanced = {
+            comm_id: count
+            for comm_id, count in frozen_counts.items()
+            if comm_id not in confirmed
+        }
         new_suspicions = [
             comm_id
-            for comm_id, count in self.comm_deadlock_count.items()
+            for comm_id, count in advanced.items()
             if count == self._suspicion_polls
         ]
         if new_suspicions:
@@ -1365,12 +1450,17 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 "while their ranks disagree on how many collectives they have "
                 "launched. Continuing to monitor, this might be a transient stall."
             )
-        elif not new_only and any(
+        elif any(
             count > self._suspicion_polls
             and (count - self._suspicion_polls) % self._periodic_warn_polls == 0
-            for count in self.comm_deadlock_count.values()
+            for count in advanced.values()
         ):
-            stalled_comms = list(self.comm_deadlock_count)
+            # Every open episode, as the exported event lists them.
+            stalled_comms = [
+                comm_id
+                for comm_id, count in self.comm_deadlock_count.items()
+                if count >= self._suspicion_polls and comm_id not in confirmed
+            ]
             headline = (
                 f"NCCL hang still suspected! {len(stalled_comms)} "
                 "communicator(s) have made no progress."
@@ -1378,10 +1468,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         else:
             return None
 
-        if self._action == NCCL_RAS_ACTION_FAIL and not new_only:
-            remaining_polls = self._confirm_poll_counts - max(
-                self.comm_deadlock_count.values()
-            )
+        if self._action == NCCL_RAS_ACTION_FAIL and not confirmed:
+            remaining_polls = self._confirm_poll_counts - max(advanced.values())
             headline += (
                 " A NCCLHangError will be raised in "
                 f"{remaining_polls * self._poll_interval_s:.0f} seconds "
@@ -1396,7 +1484,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         ras_human_output: Optional[str] = None
         if not self._ras_text_logged:
             ras_human_output = (
-                ras_text_report if new_only else self.fetch_ras_human_report()
+                ras_text_report if confirmed else self.fetch_ras_human_report()
             )
             if ras_human_output:
                 logger.info(
@@ -1433,6 +1521,15 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         try:
             described_stalls = []
             for comm_id in stalled_comm_ids:
+                stalled_s = (
+                    self.comm_deadlock_count.get(comm_id, 0) * self._poll_interval_s
+                )
+                if comm_id not in report.comm_op_counts:
+                    described_stalls.append(
+                        f"  - Communicator {comm_id}, no progress for "
+                        f"{stalled_s:.0f}s before it left the `ncclras` report."
+                    )
+                    continue
                 train_rank_of, launch_groups = self.launch_groups(report, comm_id)
                 ranks_by_op: Dict[str, List[str]] = defaultdict(list)
                 for op, count, ranks in launch_groups:
@@ -1444,9 +1541,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     for op, counts in ranks_by_op.items()
                 ]
                 comm_ranks = format_ranks(report.comm_op_counts[comm_id], train_rank_of)
-                stalled_s = (
-                    self.comm_deadlock_count.get(comm_id, 0) * self._poll_interval_s
-                )
                 described_stalls.append(
                     f"  - Communicator {comm_id} over {comm_ranks}, "
                     f"no progress for {stalled_s:.0f}s. {'. '.join(ops)}"
@@ -1462,7 +1556,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     ) -> Tuple[Dict[int, int], List[Tuple[str, int, List[int]]]]:
         """Group a communicator's ranks by launch count, for each mismatched op.
 
-        Shared by the log line and the exported stalled ranks, so they agree.
+        Shared by the log line and the exported stalled ranks, so they agree,
+        and computed once per communicator of the latest report.
 
         Args:
             report: The current poll's report.
@@ -1473,18 +1568,23 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             ``[(op, launch_count, comm_ranks)]``, ordered by op, then by
             launch count from highest to lowest.
         """
-        workers = self._worker_group.get_workers() if self._worker_group else []
-        train_rank_of = translate_ras_ranks_to_train(
-            workers, report.comm_rank_processes.get(comm_id, {})
-        )
-        groups = [
-            (op, count, ranks)
-            for op, ranks_by_count in sorted(
-                report.mismatched_op_ranks(comm_id).items()
+        if report is not self._launch_groups_report:
+            self._launch_groups_report = report
+            self._launch_groups_cache = {}
+        if comm_id not in self._launch_groups_cache:
+            workers = self._worker_group.get_workers() if self._worker_group else []
+            train_rank_of = translate_ras_ranks_to_train(
+                workers, report.comm_rank_processes.get(comm_id, {})
             )
-            for count, ranks in sorted(ranks_by_count.items(), reverse=True)
-        ]
-        return train_rank_of, groups
+            groups = [
+                (op, count, ranks)
+                for op, ranks_by_count in sorted(
+                    report.mismatched_op_ranks(comm_id).items()
+                )
+                for count, ranks in sorted(ranks_by_count.items(), reverse=True)
+            ]
+            self._launch_groups_cache[comm_id] = (train_rank_of, groups)
+        return self._launch_groups_cache[comm_id]
 
     def stalled_ranks(self, report: RASReport, comm_id: str) -> List[StalledRanks]:
         """The communicator's Ray Train world ranks grouped by launch count.
@@ -1507,7 +1607,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     op=op,
                     launch_count=count,
                     world_ranks=sorted(
-                        train_rank_of[rank] for rank in ranks if rank in train_rank_of
+                        {train_rank_of[rank] for rank in ranks if rank in train_rank_of}
                     ),
                 )
                 for op, count, ranks in launch_groups
@@ -1546,7 +1646,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     stalled_since_ms=stalled_since_ms,
                     stall_duration_s=(now_ms - stalled_since_ms) / 1000,
                     stalled_ranks=(
-                        self.stalled_ranks(report, comm_id) if report else []
+                        self.stalled_ranks(report, comm_id)
+                        if report and comm_id in report.comm_op_counts
+                        else []
                     ),
                 )
             )
@@ -1643,7 +1745,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
     def _emit(self, event: TrainNcclHangEvent):
         """Hand an event to the Train state actor, fire-and-forget."""
-        export_nccl_hang_event(event)
+        self._exporter.export(event)
 
     def diagnostics_dir(self) -> Optional[str]:
         """Where the diagnostics of a confirmed hang are uploaded, if known."""

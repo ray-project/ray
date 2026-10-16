@@ -3,7 +3,6 @@ from typing import Dict, Union
 
 from ray.train.v2._internal.execution.controller.state import TrainControllerStateType
 from ray.train.v2._internal.metrics.base import (
-    RUN_ATTEMPT_ID_TAG_KEY,
     RUN_ID_TAG_KEY,
     RUN_NAME_TAG_KEY,
     EnumMetric,
@@ -80,9 +79,11 @@ class NcclHangDetectorState(IntEnum):
 class NcclHangDetectorMetrics:
     """Factory for the NCCL hang detector's run-level metrics.
 
-    Labelled by run and attempt only, never by communicator: communicator
-    hashes change on every restart and a job can have many, which would grow
-    an unbounded label set. Each value is the worst across the communicators.
+    Labelled by run only, never by attempt or communicator: attempt ids and
+    communicator hashes change on every restart and a job can have many, and
+    Ray metrics can't drop a label set, so each would grow the exported series
+    for the life of the controller. Each value is the worst across the
+    communicators of the current attempt.
     """
 
     # ===== Metric Names =====
@@ -91,13 +92,9 @@ class NcclHangDetectorMetrics:
 
     @classmethod
     def get_nccl_hang_detector_metrics(
-        cls, run_name: str, run_id: str, run_attempt_id: str
+        cls, run_name: str, run_id: str
     ) -> Dict[str, GaugeMetric]:
-        base_tags = {
-            RUN_NAME_TAG_KEY: run_name,
-            RUN_ID_TAG_KEY: run_id,
-            RUN_ATTEMPT_ID_TAG_KEY: run_attempt_id,
-        }
+        base_tags = {RUN_NAME_TAG_KEY: run_name, RUN_ID_TAG_KEY: run_id}
         return {
             cls.DETECTOR_STATE: GaugeMetric(
                 name=cls.DETECTOR_STATE,

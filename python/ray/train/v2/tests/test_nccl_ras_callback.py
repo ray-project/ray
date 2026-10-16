@@ -439,6 +439,19 @@ def test_parse_keeps_each_ranks_process():
     }
 
 
+def test_parse_without_a_ranks_process():
+    # The host and pid only name ranks, so a rank without them, or with a pid
+    # that isn't a number, keeps the report usable.
+    data = json.loads(HEALTHY_RAS_JSON)
+    ranks = data["communicators"][0]["ranks"]
+    del ranks[0]["host"]
+    ranks[1]["pid"] = "unknown"
+    report = parse_ras_schema(json.dumps(data))
+    assert report is not None
+    assert report.comm_rank_processes[data["communicators"][0]["hash"]] == {}
+    assert report.mismatched_comms == set()
+
+
 def test_parse_multicomm_ras_example():
     # Three communicators, but only 0x4e01... diverges
     report = parse_ras_schema(MULTI_COMM_RAS_JSON)
@@ -675,9 +688,10 @@ _STREAK_CASES = [
         [
             (_FROZEN, {}),
             (_FROZEN, {_COMM_A: 1}),
-            (create_healthy_report(), {}),
+            # The behind rank launched the missing collective.
+            (create_single_comm_report({1: 5, 2: 5}), {}),
         ],
-        id="healthy_poll_resets_streak",
+        id="caught_up_poll_resets_streak",
     ),
     pytest.param(
         2,
@@ -758,18 +772,18 @@ _STREAK_CASES = [
     ),
     pytest.param(
         2,
-        # A's process group is destroyed mid-streak: its streak is dropped and
-        # B keeps being evaluated on its own.
+        # A leaves the report while suspected, which is no sign of progress:
+        # its streak is held, not advanced, and B is evaluated on its own.
         [
             (create_report({_COMM_A: {2: 5, 3: 4}, _COMM_B: {0: 2, 1: 2}}), {}),
             (
                 create_report({_COMM_A: {2: 5, 3: 4}, _COMM_B: {0: 3, 1: 3}}),
                 {_COMM_A: 1},
             ),
-            (create_report({_COMM_B: {0: 6, 1: 4}}), {}),
-            (create_report({_COMM_B: {0: 9, 1: 6}}), {}),
+            (create_report({_COMM_B: {0: 6, 1: 4}}), {_COMM_A: 1}),
+            (create_report({_COMM_B: {0: 9, 1: 6}}), {_COMM_A: 1}),
         ],
-        id="removed_communicator_drops_its_streak",
+        id="removed_suspected_communicator_holds_its_streak",
     ),
 ]
 
@@ -1981,6 +1995,9 @@ def make_train_worker(world_rank: int, node_ip: str, pid: int) -> MagicMock:
         (range(1000), {r: r for r in range(1000)}, "train ranks 0-999"),
         ([0, 1], {}, "comm ranks 0-1 (no matching train worker)"),
         ([0, 4], {0: 1}, "train rank 1, comm rank 4 (no matching train worker)"),
+        # One worker driving two GPUs has two comm ranks, named once.
+        ([0, 1, 2], {0: 2, 1: 2, 2: 3}, "train ranks 2-3"),
+        ([0, 1], {0: 2, 1: 2}, "train rank 2"),
         # Past _MAX_RANKS_LOGGED runs the rest are counted, not named.
         (
             range(20),
@@ -2319,12 +2336,12 @@ def test_confirmed_without_diagnostics_has_no_directory(monkeypatch, emitted):
     assert emitted[-1].triggers == [CON] and emitted[-1].diagnostics_dir is None
 
 
-@pytest.mark.parametrize("progress", ["healthy", "advancing"])
+@pytest.mark.parametrize("progress", ["caught_up", "advancing"])
 def test_stall_that_recovers(monkeypatch, emitted, progress):
     stalled = create_single_comm_report({0: 5, 1: 4})
     resumed = (
-        create_healthy_report()
-        if progress == "healthy"
+        create_single_comm_report({0: 5, 1: 5})
+        if progress == "caught_up"
         else create_single_comm_report({0: 6, 1: 5})
     )
     reports = [stalled] * 14 + [resumed] * 3
@@ -2345,6 +2362,32 @@ def test_stall_that_recovers(monkeypatch, emitted, progress):
     assert recovered.communicators[0].stalled_ranks == []
     assert recovered.ras_text_report is None
     assert "resumed making progress" in recovered.message
+
+
+@pytest.mark.parametrize("ended", ["aborted", "finalized", "removed"])
+def test_stall_that_stops_running_is_not_recovered(monkeypatch, emitted, ended):
+    # A suspected communicator whose rank aborts or finalizes, or that leaves
+    # the report, made no progress: it is held as suspected, without warning
+    # again, until the detector stops watching the attempt.
+    stalled = create_single_comm_report({0: 5, 1: 4})
+    if ended == "removed":
+        gone = create_healthy_report()
+    else:
+        gone = create_single_comm_report({0: 5, 1: 4})
+        gone.comm_rank_status[_COMM_A][1] = (
+            "ABORT" if ended == "aborted" else "FINALIZE"
+        )
+    reports = [stalled] * 6 + [gone] * 20
+    callback = make_exporting_callback(monkeypatch, NCCL_RAS_ACTION_OBSERVE, reports)
+
+    poll(callback, 26)
+    assert callback.comm_deadlock_count == {_COMM_A: 5}
+    callback.before_worker_group_shutdown(MagicMock())
+
+    assert summary(emitted) == [
+        (5, ACTIVE, [SUS], [(_COMM_A, A_SUS, 4.0)]),
+        (27, STOPPED, [], [(_COMM_A, A_SUS, 25.0)]),
+    ]
 
 
 def test_stall_below_the_suspicion_threshold_exports_nothing(monkeypatch, emitted):
@@ -2426,10 +2469,15 @@ def test_staggered_stalls_confirm_and_suspect_on_one_poll(
         (9, ACTIVE, [CON, SUS], [(_COMM_A, A_CON, 8.0), (_COMM_B, A_SUS, 4.0)]),
     ]
     if action == NCCL_RAS_ACTION_OBSERVE:
-        # B is confirmed in turn, A staying CONFIRMED. (A's periodic warning
-        # falls on this poll too, but a confirming poll never logs one.)
+        # B is confirmed in turn, A staying CONFIRMED. A's periodic warning
+        # falls on this poll too and is still reported.
         expected.append(
-            (13, ACTIVE, [CON], [(_COMM_A, A_CON, 12.0), (_COMM_B, A_CON, 8.0)])
+            (
+                13,
+                ACTIVE,
+                [CON, SUS],
+                [(_COMM_A, A_CON, 12.0), (_COMM_B, A_CON, 8.0)],
+            )
         )
     assert summary(emitted) == expected
 
@@ -2442,6 +2490,29 @@ def test_staggered_stalls_confirm_and_suspect_on_one_poll(
     assert f"Communicator {_COMM_B} over" in caplog.text
     # No "will be raised in 0 seconds" for a suspicion on the confirming poll.
     assert "raised in 0 seconds" not in caplog.text
+
+
+def test_still_suspected_warning_lists_only_suspected_communicators(
+    monkeypatch, emitted, caplog, propagate_logs
+):
+    # B starts stalling 3 polls before A's periodic warning, below the
+    # suspicion threshold: neither the log nor the event lists it.
+    def report(i):
+        b_count = 4 + min(i, 9)
+        return create_report(
+            {_COMM_A: {0: 5, 1: 4}, _COMM_B: {0: b_count + 1, 1: b_count}}
+        )
+
+    reports = [report(i) for i in range(13)]
+    callback = make_exporting_callback(monkeypatch, NCCL_RAS_ACTION_OBSERVE, reports)
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        poll(callback, 13)
+
+    periodic = emitted[-1]
+    assert summary([periodic]) == [(13, ACTIVE, [SUS], [(_COMM_A, A_SUS, 12.0)])]
+    assert "1 communicator(s) have made no progress" in periodic.message
+    still_suspected = caplog.text[caplog.text.index("still suspected") :]
+    assert _COMM_B not in still_suspected
 
 
 def test_one_report_per_poll_for_communicators_suspected_together(monkeypatch, emitted):
@@ -2565,6 +2636,24 @@ def test_exported_stalled_ranks_are_train_world_ranks(monkeypatch, emitted):
     ]
 
 
+def test_exported_stalled_ranks_name_a_multi_gpu_worker_once(monkeypatch, emitted):
+    # Comm ranks 0 and 1 are both driven by train rank 2's process.
+    processes = {
+        _COMM_A: {0: ("10.0.0.1", 100), 1: ("10.0.0.1", 100), 2: ("10.0.0.2", 200)}
+    }
+    reports = [create_report({_COMM_A: {0: 5, 1: 5, 2: 4}}, processes=processes)] * 2
+    callback = make_translating_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, reports, _PAIR_WORKERS
+    )
+    poll(callback, 2)
+
+    [suspected] = emitted
+    assert suspected.communicators[0].stalled_ranks == [
+        StalledRanks(op="AllReduce", launch_count=5, world_ranks=[2]),
+        StalledRanks(op="AllReduce", launch_count=4, world_ranks=[3]),
+    ]
+
+
 def test_worker_group_start_reads_the_run_and_attempt_ids(monkeypatch):
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=100, reports=[]
@@ -2636,7 +2725,7 @@ def values(gauge):
 
 def test_state_metrics_follow_the_worst_communicator(monkeypatch, gauges):
     stalled = create_single_comm_report({0: 5, 1: 4})
-    reports = [stalled] * 4 + [create_healthy_report()]
+    reports = [stalled] * 4 + [create_single_comm_report({0: 5, 1: 5})]
     callback, _ = make_nccl_ras_callback(
         monkeypatch,
         NCCL_RAS_ACTION_OBSERVE,
@@ -2658,7 +2747,6 @@ def test_state_metrics_follow_the_worst_communicator(monkeypatch, gauges):
     assert state.history[0][1] == {
         "ray_train_run_name": "my_run",
         "ray_train_run_id": "run_1",
-        "ray_train_run_attempt_id": "attempt_1",
     }
 
 
@@ -2675,27 +2763,68 @@ def test_state_metrics_reset_when_the_worker_group_shuts_down(monkeypatch, gauge
     poll(callback, 3)
     callback.before_worker_group_shutdown(worker_group)
 
-    first_attempt_state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
-    assert values(first_attempt_state)[-2:] == [
+    state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
+    assert values(state)[-2:] == [
         float(NcclHangDetectorState.SUSPECTED),
         float(NcclHangDetectorState.HEALTHY),
     ]
     assert values(gauges[NcclHangDetectorMetrics.STALL_DURATION_S])[-1] == 0.0
 
-    # The restart's attempt reports under its own label.
+    # The restart reports into the same run-level series: no series per
+    # attempt is left behind.
     start_worker_group(callback, [create_healthy_report()], attempt_id="attempt_2")
     poll(callback, 1)
-    second_attempt_state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
-    assert second_attempt_state.history == [
-        (
-            float(NcclHangDetectorState.HEALTHY),
-            {
-                "ray_train_run_name": "my_run",
-                "ray_train_run_id": "run_1",
-                "ray_train_run_attempt_id": "attempt_2",
-            },
-        )
-    ]
+    assert gauges[NcclHangDetectorMetrics.DETECTOR_STATE] is state
+    assert {tuple(sorted(tags.items())) for _, tags in state.history} == {
+        (("ray_train_run_id", "run_1"), ("ray_train_run_name", "my_run"))
+    }
+    assert values(state)[-1] == float(NcclHangDetectorState.HEALTHY)
+
+
+def test_state_metrics_keep_a_confirmed_hang_past_the_shutdown(monkeypatch, gauges):
+    # In fail mode the shutdown follows the confirmation within milliseconds:
+    # CONFIRMED stays until the next attempt's first report.
+    reports = [create_single_comm_report({0: 5, 1: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2, reports=[]
+    )
+    worker_group = start_worker_group(callback, reports)
+    poll(callback, 2)
+    with pytest.raises(NCCLHangError):
+        poll(callback, 1)
+    callback.before_worker_group_shutdown(worker_group)
+
+    state = gauges[NcclHangDetectorMetrics.DETECTOR_STATE]
+    assert values(state)[-1] == float(NcclHangDetectorState.CONFIRMED)
+
+    start_worker_group(callback, [create_healthy_report()], attempt_id="attempt_2")
+    assert values(state)[-1] == float(NcclHangDetectorState.CONFIRMED)
+    poll(callback, 1)
+    assert values(state)[-1] == float(NcclHangDetectorState.HEALTHY)
+
+
+def test_state_metrics_created_once_per_run(monkeypatch, gauges):
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=10, reports=[]
+    )
+    created = []
+    original = NcclHangDetectorMetrics.get_nccl_hang_detector_metrics
+
+    def create(*args):
+        created.append(args)
+        if len(created) == 1:
+            raise RuntimeError("metrics agent down")
+        return original(*args)
+
+    monkeypatch.setattr(
+        NcclHangDetectorMetrics, "get_nccl_hang_detector_metrics", create
+    )
+    # A failed creation is retried by the next attempt, then kept.
+    for attempt_id in ("attempt_1", "attempt_2", "attempt_3"):
+        worker_group = start_worker_group(callback, [], attempt_id=attempt_id)
+        callback.before_worker_group_shutdown(worker_group)
+    assert created == [("my_run", "run_1")] * 2
+    assert callback._metrics is not None
 
 
 def test_state_metrics_never_affect_detection(monkeypatch, gauges):
