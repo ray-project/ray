@@ -76,6 +76,7 @@ class TesterContainer(Container):
         is_bisect_run: bool = False,
         run_flaky_tests: bool = False,
         cache_test_results: bool = False,
+        runs_per_test: int = 1,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -106,6 +107,7 @@ class TesterContainer(Container):
                 test_arg=test_arg,
                 run_flaky_tests=run_flaky_tests,
                 cache_test_results=cache_test_results,
+                runs_per_test=runs_per_test,
             )
             for i in range(len(chunks))
         ]
@@ -222,6 +224,7 @@ class TesterContainer(Container):
         test_arg: Optional[str] = None,
         run_flaky_tests: bool = False,
         cache_test_results: bool = False,
+        runs_per_test: int = 1,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = [
@@ -262,6 +265,8 @@ class TesterContainer(Container):
             test_cmd += "--cache_test_results=auto "
         if run_flaky_tests and RUN_PER_FLAKY_TEST > 1:
             test_cmd += f"--runs_per_test {RUN_PER_FLAKY_TEST} "
+        elif runs_per_test > 1:
+            test_cmd += f"--runs_per_test {runs_per_test} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(

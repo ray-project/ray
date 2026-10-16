@@ -138,6 +138,12 @@ bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
     help="Environment variables to set for the test.",
 )
 @click.option(
+    "--runs-per-test",
+    default=1,
+    type=int,
+    help=("Run each test target this many times, to surface flaky failures"),
+)
+@click.option(
     "--test-arg",
     type=str,
     help=("Arguments to pass to the test."),
@@ -224,6 +230,7 @@ def main(
     gpus: int,
     network: Optional[str],
     test_env: Tuple[str],
+    runs_per_test: int,
     test_arg: Optional[str],
     python_version: Optional[str],
     build_name: Optional[str],
@@ -294,6 +301,7 @@ def main(
         is_bisect_run=bisect_run_test_target is not None,
         run_flaky_tests=run_flaky_tests,
         cache_test_results=cache_test_results,
+        runs_per_test=runs_per_test,
     )
     sys.exit(0 if success else 42)
 
