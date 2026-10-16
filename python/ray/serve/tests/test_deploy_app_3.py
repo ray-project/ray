@@ -530,8 +530,12 @@ def test_surge_rolling_update_stops_after_health_check_failures(serve_instance):
     # once lets an old replica stop before the failure budget is spent. Once the
     # update is terminal, no replacement is running or started again.
     def check_settled():
-        assert set(_replica_states()) <= {"RUNNING"}, _replica_states()
-        assert set(_running_replica_pids(client)) <= set(initial_pids)
+        # One snapshot: separate reads can straddle a replacement's last health
+        # check, reporting the deployment settled while that replica still stops.
+        replicas = _deployment_details(client).replicas
+        states = Counter(ReplicaState(r.state).value for r in replicas)
+        assert set(states) <= {"RUNNING"}, states
+        assert {r.pid for r in replicas} <= set(initial_pids)
         return True
 
     wait_for_condition(check_settled, timeout=60)
@@ -708,9 +712,12 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
             # One replacement runs and one old replica stops; the allowance then
             # admits a third replacement, but neither pending one can be placed.
             def check_stalled():
-                states = _replica_states()
+                # One snapshot: separate reads can straddle the first replacement
+                # starting, just before which the counts already match the stall.
+                replicas = _deployment_details(client).replicas
+                states = Counter(ReplicaState(r.state).value for r in replicas)
                 assert states.get("RUNNING", 0) >= 3, states
-                running = _running_replica_pids(client)
+                running = [r.pid for r in replicas if r.state == "RUNNING"]
                 assert len(set(running) & set(initial_pids)) >= 2, running
                 return states == {"RUNNING": 3, "STARTING": 2} and (
                     len(set(running) - set(initial_pids)) == 1
