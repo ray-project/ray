@@ -116,11 +116,6 @@ class ObjectManagerTest : public ::testing::Test {
         [this](const ObjectID &object_id) -> std::string { return spilled_object_url_; },
         // pin_object
         [](const ObjectID &object_id) -> std::unique_ptr<RayObject> { return nullptr; },
-        // pin_and_report_moved_object
-        [this](const ObjectID &object_id, const rpc::Address &owner_address) {
-          pinned_moved_objects_.emplace_back(object_id, owner_address);
-          return pin_and_report_moved_object_result_;
-        },
         fake_plasma_client_,
         nullptr,
         [](const std::string &address,
@@ -201,14 +196,6 @@ class ObjectManagerTest : public ::testing::Test {
         remote_node_id, object_id, owner_address, data.size(), 0, 0, data);
   }
 
-  size_t NumMovedObjectsPinned() const {
-    return object_manager_->num_moved_objects_pinned_;
-  }
-
-  size_t NumMovedObjectsPinFailed() const {
-    return object_manager_->num_moved_objects_pin_failed_;
-  }
-
   rpc::FakeObjectManagerClient *GetRemoteClient(const NodeID &node_id) {
     auto it = object_manager_->remote_object_manager_clients_.find(node_id);
     if (it == object_manager_->remote_object_manager_clients_.end()) {
@@ -244,10 +231,6 @@ class ObjectManagerTest : public ::testing::Test {
   std::unique_ptr<FakeObjectDirectory> fake_object_directory_;
   std::unique_ptr<ObjectManager> object_manager_;
   std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
-
-  /// Calls to the pin_and_report_moved_object callback, and the result it returns.
-  std::vector<std::pair<ObjectID, rpc::Address>> pinned_moved_objects_;
-  bool pin_and_report_moved_object_result_ = true;
 };
 
 TEST_F(ObjectManagerTest, MarkObjectFailedReleasesPlaceholderAndWritesSentinel) {
@@ -354,35 +337,28 @@ TEST_F(ObjectManagerTest, MovePullRecordFollowsTheLastPull) {
   EXPECT_FALSE(object_manager_->IsMovePull(object_id));
 }
 
-/// The sealing chunk of a received move keeps the create reference; the pin runs
-/// on the main service with the owner from the push, and the reference is
-/// released only after it.
-TEST_F(ObjectManagerTest, ReceivedMoveIsPinnedBeforeRelease) {
+/// The sealing chunk of a received move keeps the create reference; it is
+/// released on the main service, behind the store's notification for the seal.
+TEST_F(ObjectManagerTest, ReceivedMoveIsReleasedOnTheMainService) {
   const ObjectID object_id = ObjectID::FromRandom();
   const NodeID remote_node_id = NodeID::FromRandom();
   const std::string data(100, 'x');
   StartActivePull(object_id, remote_node_id, data.size());
   object_manager_->MarkMovePull(object_id);
   rpc::Address owner_address;
-  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
 
   ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
   EXPECT_EQ(fake_plasma_client_->sealed_objects, std::vector<ObjectID>{object_id});
   EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
-  EXPECT_TRUE(pinned_moved_objects_.empty());
 
   io_context_.poll();
-  ASSERT_EQ(pinned_moved_objects_.size(), 1u);
-  EXPECT_EQ(pinned_moved_objects_[0].first, object_id);
-  EXPECT_EQ(pinned_moved_objects_[0].second.worker_id(), owner_address.worker_id());
   EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
-  EXPECT_EQ(NumMovedObjectsPinned(), 1u);
-  EXPECT_EQ(NumMovedObjectsPinFailed(), 0u);
 }
 
 /// The store's notification for the sealed object reaches the main service before
-/// the pin does, and cancels the pull. The cancel must not abort the sealed object.
-TEST_F(ObjectManagerTest, ReceivedMoveSurvivesPullCancelBeforePin) {
+/// the release does, and cancels the pull. The cancel must not abort the sealed
+/// object.
+TEST_F(ObjectManagerTest, ReceivedMoveSurvivesPullCancelBeforeRelease) {
   const ObjectID object_id = ObjectID::FromRandom();
   const NodeID remote_node_id = NodeID::FromRandom();
   const std::string data(100, 'x');
@@ -396,26 +372,8 @@ TEST_F(ObjectManagerTest, ReceivedMoveSurvivesPullCancelBeforePin) {
   EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
 
   io_context_.poll();
-  ASSERT_EQ(pinned_moved_objects_.size(), 1u);
   EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
   EXPECT_TRUE(fake_plasma_client_->aborted_objects.empty());
-}
-
-TEST_F(ObjectManagerTest, ReceivedMoveIsReleasedAfterPinFailure) {
-  const ObjectID object_id = ObjectID::FromRandom();
-  const NodeID remote_node_id = NodeID::FromRandom();
-  const std::string data(100, 'x');
-  StartActivePull(object_id, remote_node_id, data.size());
-  object_manager_->MarkMovePull(object_id);
-  pin_and_report_moved_object_result_ = false;
-  rpc::Address owner_address;
-
-  ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
-  io_context_.poll();
-  ASSERT_EQ(pinned_moved_objects_.size(), 1u);
-  EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
-  EXPECT_EQ(NumMovedObjectsPinned(), 0u);
-  EXPECT_EQ(NumMovedObjectsPinFailed(), 1u);
 }
 
 /// Without a move record the sealing chunk releases the create reference at
@@ -432,10 +390,7 @@ TEST_F(ObjectManagerTest, ReceivedCopyIsReleasedOnSeal) {
   EXPECT_EQ(fake_plasma_client_->released_objects, std::vector<ObjectID>{object_id});
 
   io_context_.poll();
-  EXPECT_TRUE(pinned_moved_objects_.empty());
   EXPECT_EQ(fake_plasma_client_->released_objects.size(), 1u);
-  EXPECT_EQ(NumMovedObjectsPinned(), 0u);
-  EXPECT_EQ(NumMovedObjectsPinFailed(), 0u);
 }
 
 }  // namespace ray
