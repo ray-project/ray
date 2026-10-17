@@ -4,7 +4,7 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set, Tuple, Union, cast
+from typing import Any, cast
 
 import ray
 from ray._private.grpc_utils import init_grpc_channel
@@ -50,7 +50,6 @@ class ReplicaWrapper(ABC):
     @abstractmethod
     def send_request_java(self, pr: PendingRequest) -> ReplicaResult:
         """Send request to Java replica."""
-        pass
 
     @abstractmethod
     def send_request_python(
@@ -65,7 +64,6 @@ class ReplicaWrapper(ABC):
         requests it's up to the caller to resolve it to its first (and
         only) ObjectRef.
         """
-        pass
 
 
 class ActorReplicaWrapper(ReplicaWrapper):
@@ -205,12 +203,12 @@ class RunningReplica:
         self._stub = None
 
         # Lazily resolved (populated on first access).
-        self._actor_handle: Optional[Union[ActorHandle, JavaActorHandleProxy]] = None
-        self._actor_replica_wrapper: Optional[ActorReplicaWrapper] = None
-        self._grpc_replica_wrapper: Optional[gRPCReplicaWrapper] = None
+        self._actor_handle: ActorHandle | JavaActorHandleProxy | None = None
+        self._actor_replica_wrapper: ActorReplicaWrapper | None = None
+        self._grpc_replica_wrapper: gRPCReplicaWrapper | None = None
 
     @property
-    def _resolved_actor_handle(self) -> Union[ActorHandle, JavaActorHandleProxy]:
+    def _resolved_actor_handle(self) -> ActorHandle | JavaActorHandleProxy:
         """Resolve and cache the actor handle on first use.
 
         This is the single point of entry that lazily performs the GCS named-actor
@@ -223,7 +221,7 @@ class RunningReplica:
                 self._actor_handle = JavaActorHandleProxy(actor_handle)
             else:
                 self._actor_handle = actor_handle
-        return cast(Union[ActorHandle, JavaActorHandleProxy], self._actor_handle)
+        return cast(ActorHandle | JavaActorHandleProxy, self._actor_handle)
 
     @property
     def _resolved_actor_replica_wrapper(self) -> ActorReplicaWrapper:
@@ -270,22 +268,22 @@ class RunningReplica:
         return self._replica_info.node_id  # type: ignore[return-value]
 
     @property
-    def availability_zone(self) -> Optional[str]:
+    def availability_zone(self) -> str | None:
         """Availability zone of the node this replica is running on."""
         return self._replica_info.availability_zone
 
     @property
-    def multiplexed_model_ids(self) -> Set[str]:
+    def multiplexed_model_ids(self) -> set[str]:
         """Set of model IDs on this replica."""
         return self._multiplexed_model_ids
 
     @property
-    def routing_stats(self) -> Dict[str, Any]:
+    def routing_stats(self) -> dict[str, Any]:
         """Dictionary of routing stats."""
         return self._replica_info.routing_stats
 
     @property
-    def replica_metadata(self) -> Dict[str, Any]:
+    def replica_metadata(self) -> dict[str, Any]:
         """Static per-replica metadata captured once when the replica became ready."""
         # Return a copy so callers can't mutate the RunningReplicaInfo's dict.
         return self._replica_info.replica_metadata.copy()
@@ -301,7 +299,7 @@ class RunningReplica:
         return self._replica_info.is_cross_language
 
     @property
-    def backend_http_endpoint(self) -> Optional[Tuple[str, int]]:
+    def backend_http_endpoint(self) -> tuple[str, int] | None:
         """Return (host, port) of the replica's backend HTTP server."""
         port = self._replica_info.backend_http_port
         host = self._replica_info.node_ip
@@ -372,7 +370,7 @@ class RunningReplica:
 
     async def reserve_slot(
         self, request_metadata: RequestMetadata
-    ) -> Tuple[str, ReplicaQueueLengthInfo]:
+    ) -> tuple[str, ReplicaQueueLengthInfo]:
         """Reserve a slot on this replica for an upcoming request.
 
         Returns a unique token that can be used to release the slot later.
@@ -436,28 +434,28 @@ class ReplicaSelection:
     node_ip: str
     """IP address of the node running this replica."""
 
-    port: Optional[int]
+    port: int | None
     """Port number for direct communication (if configured)."""
 
     node_id: str
     """Ray node ID where the replica is running."""
 
-    availability_zone: Optional[str]
+    availability_zone: str | None
     """Cloud availability zone of the replica's node."""
 
-    replica_metadata: Dict[str, Any]
+    replica_metadata: dict[str, Any]
     """Static, immutable per-replica metadata published by the deployment's
     ``record_replica_metadata`` hook (captured once when the replica became
     ready). Empty dict if the deployment does not define the hook."""
 
     # Internal fields (not part of public API)
     _replica: RunningReplica
-    _deployment_id: Optional[DeploymentID]
+    _deployment_id: DeploymentID | None
     _request_metadata: RequestMetadata
     _method_name: str
     # Token to be used for replica reservation;
     # Can be None when created via the pick-only path
-    _slot_token: Optional[str]
+    _slot_token: str | None
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
@@ -474,7 +472,7 @@ class ReplicaSelection:
             return f"{self.node_ip}:{self.port}"
         return self.node_ip
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize public fields to a dictionary."""
         return {
             "replica_id": self.replica_id,
@@ -498,7 +496,7 @@ class ReplicaSelection:
             )
         self._dispatched = True
 
-    async def _release_slot(self, *, force: bool = False) -> Optional[int]:
+    async def _release_slot(self, *, force: bool = False) -> int | None:
         """Internal: Release the reserved slot.
 
         Returns the replica's reported num_ongoing_requests after the release,
