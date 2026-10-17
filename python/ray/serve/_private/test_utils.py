@@ -1107,7 +1107,8 @@ def check_telemetry(
 ):
     storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
     report = cast(
-        Dict[str, Any], ray.get(storage_handle.get_report.remote())  # type: ignore[attr-defined]
+        Dict[str, Any],
+        ray.get(storage_handle.get_report.remote()),  # type: ignore[attr-defined]
     )
     print(report["extra_usage_tags"])
     assert tag.get_value_from_report(report) == expected
