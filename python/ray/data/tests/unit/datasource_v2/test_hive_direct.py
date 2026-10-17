@@ -7,6 +7,8 @@ import pyarrow.parquet as pq
 import pytest
 from pyarrow import orc
 
+from ray import cloudpickle
+from ray.data._internal.datasource_v2.formats.hive import hive_direct
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
 from ray.data._internal.datasource_v2.formats.hive.hive_direct import (
     HiveDirectDatasource,
@@ -18,6 +20,9 @@ from ray.data._internal.datasource_v2.formats.hive.hive_direct import (
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_schema import hive_type_to_arrow
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    SupportsMetadata,
+)
 
 
 def _metadata(file_format="parquet", table_type="EXTERNAL_TABLE", properties=None):
@@ -454,6 +459,212 @@ def test_native_reader_keeps_schema_nested_values_and_null_fill(tmp_path, file_f
         result.column("payload").to_pylist() == expected.column("payload").to_pylist()
     )
     assert result.column("missing").to_pylist() == [None, None]
+
+
+def _write_column_file(path, file_format, name, value):
+    table = pa.table({name: pa.array([value], type=pa.int64())})
+    return _write_table_file(path, file_format, table)
+
+
+def _write_table_file(path, file_format, table):
+    if file_format == "parquet":
+        pq.write_table(table, path)
+    else:
+        orc.write_table(table, path)
+    return path
+
+
+def _manifest_for_paths(paths):
+    return FileManifest.construct_manifest(
+        paths=[str(path) for path in paths],
+        sizes=[path.stat().st_size for path in paths],
+        chunk_metadatas=[None] * len(paths),
+    )
+
+
+def _track_sampled_paths(monkeypatch):
+    original_sample_files = hive_direct.sample_files
+    observed_sample_paths = []
+
+    def track_sample(indexer, paths, filesystem, pruners=None, max_files=16):
+        sample = original_sample_files(
+            indexer,
+            paths,
+            filesystem,
+            pruners=pruners,
+            max_files=max_files,
+        )
+        observed_sample_paths.extend(sample.paths.tolist())
+        return sample
+
+    monkeypatch.setattr(hive_direct, "sample_files", track_sample)
+    return observed_sample_paths
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_actual_file_uses_sampled_case_mapping(tmp_path, file_format):
+    path = _write_column_file(tmp_path / "part-000", file_format, "ID", 42)
+    declared = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    scanner = source.create_scanner(source.infer_schema(None))
+    reader = scanner.create_reader()
+    if file_format == "parquet":
+        assert isinstance(reader, SupportsMetadata)
+        restored_reader = cloudpickle.loads(cloudpickle.dumps(reader))
+        assert isinstance(restored_reader, SupportsMetadata)
+        assert [
+            metadata.num_rows
+            for metadata in restored_reader.read_metadata(_manifest_for_paths([path]))
+        ] == [1]
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths([path])))
+    )
+
+    assert source.column_renames == {"ID": "id"}
+    assert result.column("ID").to_pylist() == [42]
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_unsampled_file_case_change_fails_before_data_read(
+    tmp_path, file_format, monkeypatch
+):
+    sampled_paths = [
+        _write_column_file(tmp_path / f"part-{index:02d}", file_format, "id", index)
+        for index in range(16)
+    ]
+    late_path = _write_column_file(tmp_path / "part-99", file_format, "ID", 99)
+    observed_sample_paths = _track_sampled_paths(monkeypatch)
+    declared = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    assert len(observed_sample_paths) == 16
+    assert str(late_path) not in observed_sample_paths
+
+    scanner = source.create_scanner(source.infer_schema(None))
+    manifest = _manifest_for_paths([*sampled_paths, late_path])
+    with pytest.raises(ValueError, match="per-file column name changes"):
+        list(scanner.create_reader().read(manifest))
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_unprojected_unsampled_case_change_does_not_block_read(
+    tmp_path, file_format, monkeypatch
+):
+    def write(path, id_name, value):
+        return _write_table_file(
+            path,
+            file_format,
+            pa.table({id_name: [value], "name": [f"name-{value}"]}),
+        )
+
+    sampled_paths = [
+        write(tmp_path / f"part-{index:02d}", "id", index) for index in range(16)
+    ]
+    late_path = write(tmp_path / "part-99", "ID", 99)
+    observed_sample_paths = _track_sampled_paths(monkeypatch)
+    declared = pa.schema([("id", pa.int64()), ("name", pa.string())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    assert len(observed_sample_paths) == 16
+    assert str(late_path) not in observed_sample_paths
+    scanner = source.create_scanner(source.infer_schema(None)).prune_columns(["name"])
+
+    result = pa.concat_tables(
+        list(
+            scanner.create_reader().read(
+                _manifest_for_paths([*sampled_paths, late_path])
+            )
+        )
+    )
+
+    assert result.column("name").to_pylist() == [
+        f"name-{index}" for index in range(16)
+    ] + ["name-99"]
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_file_schema_metadata_read_uses_configured_io_retry(
+    tmp_path, file_format, monkeypatch
+):
+    import ray.data._internal.util as ray_util
+
+    path = _write_column_file(tmp_path / "part-000", file_format, "id", 42)
+    original_read = hive_direct._read_physical_schema
+    calls = 0
+
+    def fail_once(path, file_format, filesystem):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("temporary schema I/O error")
+        return original_read(path, file_format, filesystem)
+
+    def no_backoff(factory, description, **kwargs):
+        return ray_util.iterate_with_retry(
+            factory, description, max_backoff_s=0, **kwargs
+        )
+
+    monkeypatch.setattr(hive_direct, "_read_physical_schema", fail_once)
+    monkeypatch.setattr(hive_direct, "iterate_with_retry", no_backoff)
+    monkeypatch.setattr(ray_util.time, "sleep", lambda _: None)
+
+    schema = hive_direct._read_physical_schema_with_retry(
+        str(path), file_format, None, ["temporary schema I/O error"]
+    )
+
+    assert schema.names == ["id"]
+    assert calls == 2
+
+
+def test_sampled_orc_positional_layout_is_rejected(tmp_path):
+    _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
+    declared = pa.schema([("id", pa.int64())])
+
+    with pytest.raises(ValueError, match="positional ORC column mapping"):
+        HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+
+
+def test_orc_coln_layout_with_name_position_conflict_is_rejected(tmp_path):
+    path = tmp_path / "part-000"
+    physical = pa.Table.from_arrays(
+        [pa.array([42], type=pa.int64()), pa.array([7], type=pa.int64())],
+        names=["_col0", "id"],
+    )
+    orc.write_table(physical, path)
+    declared = pa.schema([("id", pa.int64()), ("_col0", pa.int64())])
+
+    with pytest.raises(ValueError, match="positional ORC column mapping"):
+        HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+
+
+def test_unsampled_orc_positional_layout_is_rejected_before_data_read(
+    tmp_path, monkeypatch
+):
+    sampled_paths = [
+        _write_column_file(tmp_path / f"part-{index:02d}", "orc", "id", index)
+        for index in range(16)
+    ]
+    late_path = _write_column_file(tmp_path / "part-99", "orc", "_col0", 99)
+    observed_sample_paths = _track_sampled_paths(monkeypatch)
+    declared = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    assert len(observed_sample_paths) == 16
+    assert str(late_path) not in observed_sample_paths
+
+    scanner = source.create_scanner(source.infer_schema(None))
+    manifest = _manifest_for_paths([*sampled_paths, late_path])
+    with pytest.raises(ValueError, match="positional ORC column mapping"):
+        list(scanner.create_reader().read(manifest))
+
+
+def test_orc_declared_col0_is_read_by_name(tmp_path):
+    path = _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
+    declared = pa.schema([("_col0", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    scanner = source.create_scanner(source.infer_schema(None))
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths([path])))
+    )
+
+    assert result.column("_col0").to_pylist() == [42]
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
