@@ -53,7 +53,7 @@ class TestLearner(unittest.TestCase):
         changed_parameter = None
         for module_id, parameters in module_state.items():
             for name, value in parameters.items():
-                if torch.is_tensor(value) and value.is_floating_point():
+                if isinstance(value, np.ndarray) and np.issubdtype(value.dtype, np.floating):
                     parameters[name] = value + 1.0
                     changed_parameter = (module_id, name)
                     break
@@ -67,11 +67,25 @@ class TestLearner(unittest.TestCase):
         self.assertEqual(restored_state[WEIGHTS_SEQ_NO], initial_seq_no + 1)
         module_id, parameter_name = changed_parameter
         self.assertTrue(
-            torch.equal(
+            np.array_equal(
                 restored_state[COMPONENT_RL_MODULE][module_id][parameter_name],
                 module_state[module_id][parameter_name],
             )
         )
+
+    def test_stale_module_state_does_not_downgrade_weights_seq_no(self):
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        module_state = learner.get_state()[COMPONENT_RL_MODULE]
+
+        # Unversioned module-only state updates each advance the version.
+        learner.set_state({COMPONENT_RL_MODULE: module_state})
+        learner.set_state({COMPONENT_RL_MODULE: module_state})
+        current_seq_no = learner.get_state()[WEIGHTS_SEQ_NO]
+        self.assertEqual(current_seq_no, 2)
+
+        # A stale positive version is ignored and must not overwrite the current version.
+        learner.set_state({COMPONENT_RL_MODULE: module_state, WEIGHTS_SEQ_NO: 1})
+        self.assertEqual(learner.get_state()[WEIGHTS_SEQ_NO], current_seq_no)
 
     def test_end_to_end_update(self):
         """Tests the end-to-end update process for a single-agent scenario.
