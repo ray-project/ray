@@ -260,9 +260,8 @@ NodeManager::NodeManager(
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
       ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
-      node_manager_server_("NodeManager",
-                           config.node_manager_port,
-                           IsLocalhost(config.node_manager_address)),
+      node_manager_server_(
+          "NodeManager", config.node_manager_port, config.node_manager_address),
       local_object_manager_(local_object_manager),
       leased_workers_(leased_workers),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),

@@ -64,8 +64,16 @@ void GrpcServer::Shutdown() {
 
 void GrpcServer::Run() {
   uint32_t specified_port = port_;
-  std::string server_address = BuildAddress(
-      (listen_to_localhost_only_ ? GetLocalhostIP() : GetAllInterfacesIP()), port_);
+  // Default (old) behavior: loopback addresses bind to localhost, everything else
+  // binds to all interfaces. With grpc_server_bind_to_node_ip, bind to the IP only.
+  std::string bind_ip = GetAllInterfacesIP();
+  if (!bind_address_.empty() && IsLocalhost(bind_address_)) {
+    bind_ip = GetLocalhostIP();
+  } else if (!bind_address_.empty() &&
+             RayConfig::instance().grpc_server_bind_to_node_ip()) {
+    bind_ip = bind_address_;
+  }
+  std::string server_address = BuildAddress(bind_ip, port_);
   grpc::ServerBuilder builder;
   // Disable the SO_REUSEPORT option. We don't need it in ray. If the option is enabled
   // (default behavior in grpc), we may see multiple workers listen on the same port and
