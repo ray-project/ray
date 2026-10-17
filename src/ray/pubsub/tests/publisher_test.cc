@@ -1044,6 +1044,55 @@ TEST_F(PublisherTest, TestNodeFailureWhenConnectionDoesntExist) {
   ASSERT_TRUE(publisher_->CheckNoLeaks());
 }
 
+TEST_F(PublisherTest, TestRegistrationSurvivesCleanupBeforeLongPoll) {
+  const auto channel = rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL;
+  const auto old_object_id = ObjectID::FromRandom();
+  ASSERT_TRUE(
+      publisher_->RegisterSubscription(channel, subscriber_id_, old_object_id.Binary())
+          .ok());
+  publisher_->Publish(GeneratePubMessage(old_object_id));
+
+  auto replies = std::make_shared<int>(0);
+  send_reply_callback = [replies](Status status,
+                                  std::function<void()> success,
+                                  std::function<void()> failure) { ++*replies; };
+  publisher_->ConnectToSubscriber(request_,
+                                  reply.mutable_publisher_id(),
+                                  reply.mutable_pub_messages(),
+                                  send_reply_callback);
+  ASSERT_EQ(*replies, 1);
+  ASSERT_EQ(reply.pub_messages_size(), 1);
+  request_.set_max_processed_sequence_id(reply.pub_messages(0).sequence_id());
+  reply.Clear();
+  publisher_->UnregisterSubscription(channel, subscriber_id_, old_object_id.Binary());
+
+  // The subscriber stops polling after its last subscription is removed, but its
+  // publisher-side record remains until the next cleanup.
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
+  const auto new_object_id = ObjectID::FromRandom();
+  ASSERT_TRUE(
+      publisher_->RegisterSubscription(channel, subscriber_id_, new_object_id.Binary())
+          .ok());
+  publisher_->Publish(GeneratePubMessage(new_object_id));
+
+  // Registration and long polling are separate RPCs. Cleanup between them must
+  // preserve the new subscription and the queued initial location snapshot.
+  publisher_->CheckDeadSubscribers();
+  publisher_->ConnectToSubscriber(request_,
+                                  reply.mutable_publisher_id(),
+                                  reply.mutable_pub_messages(),
+                                  send_reply_callback);
+  ASSERT_EQ(*replies, 2);
+  ASSERT_EQ(reply.pub_messages_size(), 1);
+  EXPECT_EQ(reply.pub_messages(0).key_id(), new_object_id.Binary());
+  EXPECT_EQ(reply.publisher_id(), kDefaultPublisherId.Binary());
+
+  // A subscriber that stops sending requests must still be cleaned up.
+  fake_clock_.AdvanceTime(absl::Milliseconds(subscriber_timeout_ms_));
+  publisher_->CheckDeadSubscribers();
+  ASSERT_TRUE(publisher_->CheckNoLeaks());
+}
+
 // Unregistration an entry.
 TEST_F(PublisherTest, TestUnregisterSubscription) {
   bool long_polling_connection_replied = false;

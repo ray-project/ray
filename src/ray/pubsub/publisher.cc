@@ -317,7 +317,7 @@ void SubscriberState::ConnectToSubscriber(
   RAY_CHECK(!long_polling_connection_);
   long_polling_connection_ = std::make_unique<LongPollConnection>(
       publisher_id, pub_messages, std::move(send_reply_callback));
-  last_connection_update_time_ms_ = clock_.SteadyNowMillis();
+  RefreshActivity();
   PublishIfPossible(/*force_noop=*/false);
 }
 
@@ -385,7 +385,7 @@ void SubscriberState::PublishIfPossible(bool force_noop) {
   // Clean up & update metadata.
   long_polling_connection_.reset();
   // Clean up & update metadata.
-  last_connection_update_time_ms_ = clock_.SteadyNowMillis();
+  RefreshActivity();
 }
 
 bool SubscriberState::CheckNoLeaks() const {
@@ -398,8 +398,7 @@ bool SubscriberState::ConnectionExists() const {
 }
 
 bool SubscriberState::IsActive() const {
-  return clock_.SteadyNowMillis() - last_connection_update_time_ms_ <
-         connection_timeout_ms_;
+  return clock_.SteadyNowMillis() - last_activity_time_ms_ < connection_timeout_ms_;
 }
 
 void Publisher::ConnectToSubscriber(
@@ -455,6 +454,9 @@ StatusSet<StatusT::InvalidArgument> Publisher::RegisterSubscription(
              .first;
   }
   SubscriberState *subscriber = it->second.get();
+  // Registration can arrive before the next long poll. Refresh an existing
+  // subscriber so cleanup cannot discard its new subscription in between.
+  subscriber->RefreshActivity();
   subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber);
   return StatusT::OK();
 }
