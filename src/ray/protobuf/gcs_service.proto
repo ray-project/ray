@@ -587,12 +587,16 @@ message InternalKVPutRequest {
   bytes value = 2;
   bool overwrite = 3;
   bytes namespace = 4;
+  // When set, replace the value only if the key exists and its bytes match.
+  optional bytes expected_value = 5;
 }
 
 message InternalKVPutReply {
   GcsStatus status = 1;
   // Refers to whether the key / value was actually added.
   bool added = 2;
+  // Whether a conditional replacement was applied.
+  bool updated = 3;
 }
 
 message InternalKVDelRequest {

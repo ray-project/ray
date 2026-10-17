@@ -49,6 +49,20 @@ class StoreClient {
                         bool overwrite,
                         Postable<void(bool)> callback) = 0;
 
+  /// Atomically replace an existing value if it matches the expected value.
+  ///
+  /// \param table_name The name of the table containing the key.
+  /// \param key The key whose value may be replaced.
+  /// \param expected_value The value that must currently be stored.
+  /// \param data The replacement value.
+  /// \param callback Called with true if the replacement was applied, or false if the
+  /// key is missing or its value does not match.
+  virtual void AsyncPutIfMatch(const std::string &table_name,
+                               const std::string &key,
+                               std::string expected_value,
+                               std::string data,
+                               Postable<void(bool)> callback) = 0;
+
   /// Get data from the given table asynchronously.
   ///
   /// \param table_name The name of the table to be read.

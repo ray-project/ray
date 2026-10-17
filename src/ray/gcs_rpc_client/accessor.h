@@ -659,6 +659,22 @@ class InternalKVAccessor {
                                   const int64_t timeout_ms,
                                   const rpc::OptionalItemCallback<bool> &callback);
 
+  /// Asynchronously replace an existing value if it matches the expected value.
+  ///
+  /// \param ns The namespace of the key.
+  /// \param key The key whose value may be replaced.
+  /// \param expected_value The value that must currently be stored.
+  /// \param value The replacement value.
+  /// \param timeout_ms The request timeout in milliseconds, or -1 for no timeout.
+  /// \param callback Called with true if the replacement was applied, or false if the
+  /// key is missing or its value does not match.
+  virtual void AsyncInternalKVPutIfMatch(const std::string &ns,
+                                         const std::string &key,
+                                         const std::string &expected_value,
+                                         const std::string &value,
+                                         const int64_t timeout_ms,
+                                         const rpc::OptionalItemCallback<bool> &callback);
+
   /// Asynchronously check the existence of a given key
   ///
   /// \param ns The namespace to check.

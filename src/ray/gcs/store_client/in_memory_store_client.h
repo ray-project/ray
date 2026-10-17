@@ -39,6 +39,12 @@ class InMemoryStoreClient : public StoreClient {
                 bool overwrite,
                 Postable<void(bool)> callback) override;
 
+  void AsyncPutIfMatch(const std::string &table_name,
+                       const std::string &key,
+                       std::string expected_value,
+                       std::string data,
+                       Postable<void(bool)> callback) override;
+
   void AsyncGet(const std::string &table_name,
                 const std::string &key,
                 ToPostable<rpc::OptionalItemCallback<std::string>> callback) override;

@@ -63,8 +63,15 @@ struct RedisCommand {
 
   std::vector<std::string> ToRedisArgs() const {
     std::vector<std::string> redis_args;
-    redis_args.reserve(2 + args.size());
+    redis_args.reserve(3 + args.size());
     redis_args.push_back(command);
+    if (command == "EVAL") {
+      redis_args.push_back(args.front());
+      redis_args.push_back("1");
+      redis_args.push_back(redis_key.ToString());
+      redis_args.insert(redis_args.end(), args.begin() + 1, args.end());
+      return redis_args;
+    }
     redis_args.push_back(redis_key.ToString());
     for (const auto &arg : args) {
       redis_args.push_back(arg);
@@ -148,6 +155,12 @@ class RedisStoreClient : public StoreClient {
                 std::string data,
                 bool overwrite,
                 Postable<void(bool)> callback) override;
+
+  void AsyncPutIfMatch(const std::string &table_name,
+                       const std::string &key,
+                       std::string expected_value,
+                       std::string data,
+                       Postable<void(bool)> callback) override;
 
   void AsyncGet(const std::string &table_name,
                 const std::string &key,

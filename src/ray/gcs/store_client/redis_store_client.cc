@@ -166,6 +166,27 @@ void RedisStoreClient::AsyncPut(const std::string &table_name,
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
 }
 
+void RedisStoreClient::AsyncPutIfMatch(const std::string &table_name,
+                                       const std::string &key,
+                                       std::string expected_value,
+                                       std::string data,
+                                       Postable<void(bool)> callback) {
+  static constexpr char kCompareAndSetScript[] =
+      "if redis.call('HGET', KEYS[1], ARGV[1]) ~= ARGV[2] then return 0 end "
+      "redis.call('HSET', KEYS[1], ARGV[1], ARGV[3]) return 1";
+  RedisCommand command{
+      "EVAL",
+      RedisKey{external_storage_namespace_, table_name},
+      {kCompareAndSetScript, key, std::move(expected_value), std::move(data)}};
+  RedisCallback write_callback =
+      [callback =
+           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
+        std::move(callback).Dispatch("RedisStoreClient.AsyncPutIfMatch",
+                                     reply->ReadAsInteger() != 0);
+      };
+  SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
+}
+
 void RedisStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
