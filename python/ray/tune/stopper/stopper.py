@@ -93,7 +93,9 @@ class CombinedStopper(Stopper):
         self._stoppers = stoppers
 
     def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
-        return any(s(trial_id, result) for s in self._stoppers)
+        # Call every stopper, not just up to the first that returns True, so
+        # stateful stoppers (e.g. ExperimentPlateauStopper) see every result.
+        return any([s(trial_id, result) for s in self._stoppers])
 
     def stop_all(self) -> bool:
         return any(s.stop_all() for s in self._stoppers)
