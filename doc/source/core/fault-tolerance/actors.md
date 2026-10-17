@@ -16,14 +16,14 @@ An actor can fail if its process dies or if its *owner* dies. The owner of an ac
 
 Ray can automatically restart actors that crash unexpectedly. The `max_restarts` option controls this behavior by setting the maximum number of times Ray restarts an actor. The default value of `max_restarts` is 0, meaning Ray doesn't restart the actor. If you set it to -1, Ray restarts the actor infinitely many times. When Ray restarts an actor, it recreates the actor's state by rerunning its constructor. After the specified number of restarts, subsequent actor methods raise a `RayActorError`.
 
-By default, actor tasks execute with at-most-once semantics, which corresponds to `max_task_retries=0` in the `@ray.remote` {func}`decorator <ray.remote>`. If you submit an actor task to an unreachable actor, Ray reports the error with `RayActorError`, a Python-level exception that's raised when you call `ray.get` on the future the task returns. Ray might raise this exception even though the task executed successfully. For example, this can happen if the actor dies immediately after executing the task.
+By default, actor tasks execute with at-most-once semantics, which corresponds to `max_task_retries=0` in the `@ray.remote` {func}`decorator <ray.remote>`. If an actor task fails because the actor is unreachable, Ray reports a `RayActorError` when you call `ray.get` on the task's returned object ref. During a known actor restart, submission ordering can delay local failure, as described in [Unavailable actors](#unavailable-actors). Ray might report this error even though the task executed successfully. For example, this can happen if the actor dies immediately after executing the task.
 
-Ray also offers at-least-once execution semantics for actor tasks, which you get by setting `max_task_retries=-1` or `max_task_retries > 0`. With at-least-once semantics, if you submit an actor task to an unreachable actor, Ray automatically retries the task. With this option, Ray raises a `RayActorError` to the application only if one of the following two conditions occurs:
+Ray also offers at-least-once execution semantics for actor tasks, which you get by setting `max_task_retries=-1` or `max_task_retries > 0`. With at-least-once semantics, Ray automatically retries an actor task that fails because the actor is unreachable. With this option, Ray raises a `RayActorError` to the application only if one of the following two conditions occurs:
 
 - The actor's `max_restarts` limit has been exceeded, and Ray can't restart the actor anymore.
 - The `max_task_retries` limit has been exceeded for this particular task.
 
-If the actor is restarting when you submit a task, that counts as one retry. To retry without limit, set `max_task_retries = -1`.
+If Ray already knows the actor is restarting before it sends a retryable task (`max_task_retries != 0`), Ray keeps the task queued until the actor reconnects or is permanently dead. Waiting in this queue doesn't consume the task's retry budget. If Ray attempts to send the task and the attempt fails with `ActorUnavailableError`, normal retry accounting applies. Ray retries with exponential backoff up to the `max_task_retries` limit, or without limit if `max_task_retries` is `-1`.
 
 Run the following code to experiment with this behavior.
 
@@ -33,7 +33,7 @@ Run the following code to experiment with this behavior.
 :end-before: __actor_restart_end__
 ```
 
-For at-least-once actors, Ray still guarantees execution ordering according to the initial submission order. For example, any tasks submitted after a failed actor task don't execute on the actor until Ray successfully retries the failed actor task. Ray doesn't attempt to re-execute any tasks that executed successfully before the failure, unless `max_task_retries` is nonzero and Ray needs the task for {ref}`object reconstruction <fault-tolerance-objects-reconstruction>`.
+When Ray retries actor tasks, execution order is no longer guaranteed, even for a synchronous, single-threaded actor. See {ref}`actor-task-order`. Ray doesn't attempt to re-execute any tasks that executed successfully before the failure, unless `max_task_retries` is nonzero and Ray needs the task for {ref}`object reconstruction <fault-tolerance-objects-reconstruction>`.
 
 :::{note}
 For {ref}`async or threaded actors <async-actors>`, {ref}`tasks might execute out of order <actor-task-order>`. When the actor restarts, Ray retries only *incomplete* tasks. Ray doesn't re-execute previously completed tasks.
@@ -102,7 +102,9 @@ The actor might or might not recover in the next calls. Those subsequent calls m
 
 As a best practice, if the caller gets an `ActorUnavailableError`, have it quarantine the actor and stop sending traffic to it. The caller can then periodically ping the actor until the actor raises `ActorDiedError` or returns OK.
 
-If a task has a nonzero `max_task_retries` and receives `ActorUnavailableError`, Ray retries the task up to `max_task_retries` times, or without limit if `max_task_retries` is `-1`. If the actor is restarting in its constructor, the task retry fails and consumes one retry. If retries remain, Ray retries again after `RAY_task_retry_delay_ms`, until it consumes all retries or the actor is ready to accept tasks. If the constructor takes a long time to run, consider increasing `max_task_retries` or `RAY_task_retry_delay_ms`.
+If Ray knows that an actor is restarting before it sends a retryable task (`max_task_retries != 0`), Ray keeps the task queued until the actor reconnects or is permanently dead. Waiting in this queue doesn't consume the task's retry budget. If Ray attempts to send the task and the attempt fails with `ActorUnavailableError`, normal retry accounting applies. Ray retries with exponential backoff up to the `max_task_retries` limit, or without limit if `max_task_retries` is `-1`.
+
+For initial tasks configured with `max_task_retries=0`, local failure during a known restart depends on submission ordering. With sequential submission, Ray can fail locally only consecutive dependency-ready zero-retry initial tasks at the safe front of each concurrency group's queue. An initial task with unresolved dependencies or a nonzero retry policy forms an ordering barrier, so a zero-retry initial task behind it remains queued. With out-of-order submission, Ray can select each dependency-ready zero-retry initial task independently. Retry attempts that Ray has already authorized remain buffered during the restart.
 
 ## Actor method exceptions
 
@@ -115,10 +117,10 @@ You can set `retry_exceptions` in the `@ray.method(retry_exceptions=...)` decora
 Retry behavior depends on the value of `retry_exceptions`:
 
 - `False`: Ray doesn't retry on user exceptions. This value is the default.
-- `True`: Ray retries a method on user exception up to `max_task_retries` times.
-- A list of exceptions: Ray retries a method on user exception up to `max_task_retries` times, only if the method raises an exception from these specific classes.
+- `True`: Ray retries a method on user exceptions according to `max_task_retries`. If `max_task_retries` is `-1`, Ray retries without limit.
+- A list of exceptions: Ray retries only exceptions from the specified classes according to `max_task_retries`. If `max_task_retries` is `-1`, Ray retries without limit.
 
-`max_task_retries` applies to both exceptions and actor crashes. Set this option on an actor to apply it to all of the actor's methods, or on a method to override the actor's value for that method. Ray searches for the first non-default value of `max_task_retries` in the following order:
+`max_task_retries` applies to both exceptions and actor crashes. Set this option on an actor to apply it to all of the actor's methods, or on a method to override the actor's value for that method. Ray resolves `max_task_retries` in the following order, using the first explicitly configured value, including `0`. If you don't configure a value, Ray uses the default value of `0`:
 
 1. The method call's value, for example, `actor.method.options(max_task_retries=2)`. Ray ignores this value if you don't set it.
 1. The method definition's value, for example, `@ray.method(max_task_retries=2)`. Ray ignores this value if you don't set it.
