@@ -331,6 +331,14 @@ void TaskReceiver::Stop() {
   if (normal_task_execution_queue_) {
     normal_task_execution_queue_->Stop();
   }
+  // The actor queues above stop the pools, but they are only created on the first
+  // actor task, so stop the pools here as well.
+  if (pool_manager_) {
+    pool_manager_->Stop();
+  }
+  if (fiber_state_manager_) {
+    fiber_state_manager_->Stop();
+  }
 }
 
 }  // namespace core
