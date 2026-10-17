@@ -412,10 +412,13 @@ async def test_candidate_model_ids_fallback_when_no_warm(router, monkeypatch):
     # r0 and r1 have 0 models, tied.
     ranked = _ranked_replica_unique_ids(ranks)
     assert ranked[0] in (["r0"], ["r1"])
-    # After timeout expires, falls back to all replicas.
+    # Advance time past the timeout.
     current_time = 102.5
-    request.routing_context = request.routing_context.__class__()
-    ranks = await router.choose_replicas(replicas, _make_request(candidate_model_ids=["model-alpha"]))
+    # Reuse the same request so its start time (100.0) remains anchored and
+    # the timeout really has elapsed.  First call after timeout: fewest-model
+    # fallback (exactly one retry).  Second call after timeout: all replicas.
+    await router.choose_replicas(replicas, request)
+    ranks = await router.choose_replicas(replicas, request)
     assert len(_ranked_replica_unique_ids(ranks)) == 3
 
 
