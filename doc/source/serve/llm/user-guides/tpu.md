@@ -110,7 +110,7 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 :::{tab-item} Dockerfile (vLLM-TorchTPU)
 
 ```dockerfile
-FROM us-docker.pkg.dev/cloud-tpu-images/torch-tpu/vllm-tpu:0.1.0
+FROM us-docker.pkg.dev/ml-oss-artifacts-transient/torch-tpu-docker-container/torchtpu-vllm-prod:latest
 
 ARG RAY_PACKAGE="ray[default,llm]"
 RUN pip install --no-cache-dir -U "${RAY_PACKAGE}"
