@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Shuffle Ray Data at different granularities: file order, local buffer shuffle, map_batches shuffle, block order, and global per-epoch shuffle."
+    description: "Shuffle Ray Data at different granularities: file order, local buffer shuffle, parallel window shuffle, map_batches shuffle, block order, and global per-epoch shuffle."
 ---
 
 (shuffling_data)=
@@ -60,6 +60,38 @@ for batch in ds.iter_batches(
 :::{tip}
 If throughput drops when you use `local_shuffle_buffer_size`, check the total time spent in batch creation. In the `ds.stats()` output, find `In batch formatting` under `Batch iteration time breakdown`. If this time is much larger than the time spent in other steps, decrease `local_shuffle_buffer_size`, or turn off the local shuffle buffer and only {ref}`shuffle the ordering of files <shuffling_file_order>`.
 :::
+
+(window_shuffle)=
+
+### Shuffle rows within parallel windows
+
+Use {meth}`~ray.data.Dataset.window_shuffle` to shuffle rows in parallel on Ray Data workers before consuming them. This alpha API manages seeds and uses Ray's optimized row selection for eligible tensor columns, so you don't need a custom shuffle function.
+
+By default, `window_size` is a target batch size, following `map_batches` grouping. A task can process multiple batches, and its final batch can be smaller, including in the middle of the dataset. Set `strict=True` to construct consecutive windows of exactly `window_size` rows with streaming repartition. Only the final window can be smaller. Both modes stream results without materializing the whole dataset.
+
+```{testcode}
+import ray
+
+ds = ray.data.range(1000, override_num_blocks=8)
+shuffled = ds.window_shuffle(
+    window_size=250,
+    seed=42,
+    compute=ray.data.TaskPoolStrategy(size=4),
+)
+for batch in shuffled.iter_batches(batch_size=32):
+    pass
+
+# Require exact consecutive windows, except for the final window.
+strict_shuffled = ds.window_shuffle(window_size=250, strict=True, seed=42)
+for batch in strict_shuffled.iter_batches(batch_size=32):
+    pass
+```
+
+Each shuffle batch receives an independent random permutation. Rows stay within that batch. Use window shuffle when this mixing scope meets your needs. A rolling local buffer can mix rows across successive output batches, while global shuffle mixes rows across the entire dataset. You can combine window shuffle with {ref}`file order shuffling <shuffling_file_order>`.
+
+For reproducible output, enable `DataContext.execution_options.preserve_order` and keep the input layout, mode, and task grouping fixed. {class}`~ray.data.RandomSeedConfig` controls reseeding between executions. Calling `materialize()` caches a particular shuffled order.
+
+Each window must fit in a shuffle task's memory. Budget for input, output, indices, and temporary arrays. The `memory` argument is a scheduling reservation rather than a hard memory cap. It doesn't include object-store usage or strict window-construction tasks. Strict mode adds intermediate window blocks, so measure its cost on your workload.
 
 (map_batches_shuffle)=
 

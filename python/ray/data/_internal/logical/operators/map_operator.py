@@ -44,6 +44,7 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "WindowShuffle",
     "CSE_TEMP_COLUMN_PREFIX",
 ]
 
@@ -293,6 +294,21 @@ class MapBatches(AbstractUDFMap):
         )
 
         object.__setattr__(self, "fn", make_torch_inference_callable(self.fn))
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class WindowShuffle(MapBatches, LogicalOperatorPreservesSchema):
+    """Shuffle target-sized batches or strict windows with batch-map execution.
+
+    Although this operation preserves rows and schema, it changes row order.
+    Limit pushdown must stop here, and fusion must not rebundle its windows.
+    """
+
+    can_modify_num_rows: bool = field(init=False, default=False)
+
+    def __post_init__(self):
+        super().__post_init__()
+        object.__setattr__(self, "_name", "WindowShuffle")
 
 
 @dataclass(frozen=True, repr=False, eq=False)

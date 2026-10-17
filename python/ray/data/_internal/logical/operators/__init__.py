@@ -29,6 +29,7 @@ from ray.data._internal.logical.operators.map_operator import (
     MapRows,
     Project,
     StreamingRepartition,
+    WindowShuffle,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
     Mix,
@@ -88,6 +89,7 @@ __all__ = [
     "StreamingRepartition",
     "StreamingSplit",
     "Union",
+    "WindowShuffle",
     "Write",
     "Zip",
 ]
