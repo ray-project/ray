@@ -301,6 +301,24 @@ def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
         ray.init(address=cluster.address)
 
 
+def test_ray_init_address_without_token_does_not_create_token(
+    setup_cluster_with_token_auth,
+):
+    """ray.init(address=...) with token auth on and no token fails, and no token
+    file gets created."""
+    from ray.exceptions import AuthenticationError
+
+    cluster = setup_cluster_with_token_auth["cluster"]
+    ray.shutdown()
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+    default_token_path = Path.home() / ".ray" / "auth_token"
+
+    with pytest.raises(AuthenticationError):
+        ray.init(address=cluster.address)
+    assert not default_token_path.exists()
+
+
 @pytest.mark.parametrize(
     "token,expected_status",
     [
@@ -379,34 +397,140 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-@pytest.mark.parametrize("is_head", [True, False])
-def test_ray_start_without_token_raises_error(is_head, request):
-    """Test that ray start fails when auth_mode=token but no token exists."""
-    # Set up environment with token auth enabled but no token
+def test_ray_start_head_creates_token():
+    """ray start --head with token auth on and no token writes an owner-only
+    ~/.ray/auth_token and comes up with auth on."""
     env = os.environ.copy()
     env["RAY_AUTH_MODE"] = "token"
     env.pop("RAY_AUTH_TOKEN", None)
     env.pop("RAY_AUTH_TOKEN_PATH", None)
 
-    # Ensure no default token file exists (already cleaned by fixture)
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
 
-    # When specifying an address, we need a head node to connect to
-    cluster_info = None
-    if not is_head:
-        cluster_info = request.getfixturevalue("setup_cluster_with_token_auth")
-        cluster = cluster_info["cluster"]
+    try:
+        _run_ray_start_and_verify_status(
+            ["--head", "--port=0"], env, expect_success=True
+        )
+
+        assert default_token_path.exists()
+        if sys.platform != "win32":
+            assert default_token_path.stat().st_mode & 0o777 == 0o600
+
+        set_auth_mode("token")
+        reset_auth_token_state()
+        ray.init(address="auto")
+
+        @ray.remote
+        def f():
+            return "ok"
+
+        assert ray.get(f.remote()) == "ok"
+    finally:
+        _cleanup_ray_start(env)
+
+
+_CREATE_TOKEN_WHEN_RELEASED = """
+import os, sys, time
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
+from ray._raylet import AuthenticationTokenLoader
+print("ready", flush=True)
+while not os.path.exists(sys.argv[1]):
+    time.sleep(0.001)
+ensure_token_if_auth_enabled(create_token_if_missing=True)
+print(AuthenticationTokenLoader.instance().get_raw_token(), flush=True)
+"""
+
+
+def test_concurrent_token_creation_agrees_on_one_token(tmp_path):
+    """Heads starting at the same moment in an empty HOME all end up with the
+    token on disk, so no cluster is left holding a stale one."""
+    num_processes = 8
+    for round_index in range(5):
+        home = tmp_path / f"home_{round_index}"
+        home.mkdir()
+        release_file = tmp_path / f"release_{round_index}"
+        env = {
+            **os.environ,
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "RAY_AUTH_MODE": "token",
+        }
+        env.pop("RAY_AUTH_TOKEN", None)
+        env.pop("RAY_AUTH_TOKEN_PATH", None)
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-c", _CREATE_TOKEN_WHEN_RELEASED, str(release_file)],
+                env=env,
+                stdout=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(num_processes)
+        ]
+        for proc in procs:
+            assert proc.stdout.readline().strip() == "ready"
+        release_file.touch()
+        tokens = [proc.communicate(timeout=60)[0].strip() for proc in procs]
+
+        token_on_disk = (home / ".ray" / "auth_token").read_text()
+        assert tokens == [token_on_disk] * num_processes
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Starts a new local cluster; not compatible with client mode",
+)
+def test_cluster_utils_head_creates_token():
+    """ray.cluster_utils.Cluster() builds Node(head=True) directly. With token
+    auth on and no token, the head creates ~/.ray/auth_token and starts."""
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+    from ray.cluster_utils import Cluster
+
+    set_auth_mode("token")
+    reset_auth_token_state()
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    assert not default_token_path.exists()
+
+    cluster = Cluster(initialize_head=True)
+    try:
+        assert default_token_path.exists()
+        ray.init(address=cluster.address)
+        assert get_authentication_mode() == AuthenticationMode.TOKEN
+
+        @ray.remote
+        def f():
+            return "ok"
+
+        assert ray.get(f.remote()) == "ok"
+    finally:
         ray.shutdown()
+        cluster.shutdown()
 
-    # Prepare arguments
-    if is_head:
-        args = ["--head", "--port=0"]
-    else:
-        args = [f"--address={cluster.address}"]
 
-    # Try to start node - should fail
-    _run_ray_start_and_verify_status(args, env, expect_success=False)
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+def test_ray_start_address_without_token_raises_error(setup_cluster_with_token_auth):
+    """ray start --address with token auth on and no token fails, and no token
+    file gets created."""
+    cluster = setup_cluster_with_token_auth["cluster"]
+    ray.shutdown()
+
+    env = os.environ.copy()
+    env["RAY_AUTH_MODE"] = "token"
+    env.pop("RAY_AUTH_TOKEN", None)
+    env.pop("RAY_AUTH_TOKEN_PATH", None)
+
+    default_token_path = Path.home() / ".ray" / "auth_token"
+    assert not default_token_path.exists()
+
+    _run_ray_start_and_verify_status(
+        [f"--address={cluster.address}"], env, expect_success=False
+    )
+    assert not default_token_path.exists()
 
 
 @pytest.mark.skipif(

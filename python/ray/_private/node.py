@@ -27,6 +27,9 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -171,6 +174,8 @@ class Node:
         self._localhost = get_localhost_ip()
         self._ray_params = ray_params
         self._config = ray_params._system_config or {}
+        if head:
+            ensure_token_if_auth_enabled(self._config, create_token_if_missing=True)
 
         # Configure log rotation parameters.
         self.max_bytes = int(os.getenv("RAY_ROTATION_MAX_BYTES", LOGGING_ROTATE_BYTES))

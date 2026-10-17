@@ -17,6 +17,8 @@
 #include <ray/api.h>
 #include <ray/api/metric.h>
 
+#include <cstdlib>
+
 #include "absl/flags/flag.h"
 #include "absl/flags/parse.h"
 
@@ -59,6 +61,11 @@ RAY_REMOTE(RAY_FUNC(MetricActor::FactoryCreate), &MetricActor::record_metric);
 int main(int argc, char **argv) {
   absl::ParseCommandLine(argc, argv);
   int total_time = absl::GetFlag(FLAGS_metric_time);
+  // Bazel leaves HOME unset, so `ray start --head` would read or write the real
+  // ~/.ray/auth_token, which other tests share. Use a HOME private to this test.
+  if (const char *test_tmpdir = std::getenv("TEST_TMPDIR")) {
+    setenv("HOME", test_tmpdir, /*overwrite=*/1);
+  }
   // Start ray cluster and ray runtime.
   ray::RayConfig config;
   ray::Init(config, argc, argv);
