@@ -54,7 +54,11 @@ from ray.rllib.offline import (
     OutputWriter,
     ShuffledInput,
 )
-from ray.rllib.policy.policy import Policy, PolicySpec
+from ray.rllib.policy.policy import (
+    PRESERVE_CURRENT_POLICY_CONFIG,
+    Policy,
+    PolicySpec,
+)
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -1422,7 +1426,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             # this might be from an older checkpoint (pre v1.0). Just warn here.
             validate_module_id(pid, error=False)
 
-            if pid not in self.policy_map:
+            policy_already_exists = pid in self.policy_map
+            if not policy_already_exists:
                 spec = policy_state.get("policy_spec", None)
                 if spec is None:
                     logger.warning(
@@ -1443,7 +1448,16 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                         config=policy_spec.config,
                     )
             if pid in self.policy_map:
-                self.policy_map[pid].set_state(policy_state)
+                policy = self.policy_map[pid]
+                if policy_already_exists and isinstance(policy, TorchPolicyV2):
+                    # This worker was constructed from the current trial config before
+                    # checkpoint state is restored. TorchPolicyV2 reconciles that
+                    # control plane with donor optimizer/schedule state in set_state().
+                    # Legacy TorchPolicy and TF policies use different restore paths
+                    # and keep their existing checkpoint-authority behavior.
+                    policy_state = dict(policy_state)
+                    policy_state[PRESERVE_CURRENT_POLICY_CONFIG] = True
+                policy.set_state(policy_state)
 
         # Also restore mapping fn and which policies to train.
         if "policy_mapping_fn" in state:
