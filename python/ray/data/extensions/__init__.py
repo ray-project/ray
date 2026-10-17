@@ -1,3 +1,4 @@
+from ray.data._internal.arrow_ops.transform_pyarrow import take_table
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
@@ -39,6 +40,8 @@ __all__ = [
     "FixedShapeTensorType",
     "FixedShapeTensorFormat",
     "create_arrow_fixed_shape_tensor_type",
+    # Arrow table operations.
+    "take_table",
     # Object array extension
     "ArrowPythonObjectArray",
     "ArrowPythonObjectType",

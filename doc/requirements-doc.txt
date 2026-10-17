@@ -59,6 +59,9 @@ xmltodict==0.13.0
 # in python/requirements/test-requirements.txt so the docs render against the same
 # numpy Ray tests its modules against; bump it to match when that pin moves.
 numpy==2.2.6
+# Import the pandas-backed Ray Data extension types for API documentation.
+# The docs depset constrains pandas to Ray Data's tested version.
+pandas
 # pyarrow is needed because rendered Ray Data docstrings import it. The version is
 # constrained to Ray Data's tested pyarrow (python/requirements/data/pyarrow-latest.txt)
 # by the docbuild depset in ci/raydepsets/configs/docs.depsets.yaml, so leave this
