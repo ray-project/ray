@@ -1,5 +1,11 @@
 from typing import TYPE_CHECKING, List
 
+import pyarrow as pa
+
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+    _parse_partition_values,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.datasource import PathPartitionFilter, PathPartitionParser
 from ray.data.datasource.path_util import _has_file_extension
@@ -62,3 +68,25 @@ class PartitionPredicatePruner(FilePruner):
 
     def should_include(self, path: str) -> bool:
         return self._parser.evaluate_predicate_on_partition(path, self._predicate)
+
+
+class SchemaAwarePartitionPredicatePruner(FilePruner):
+    """Prune typed path values while retaining files with unknown values.
+
+    The schema is the reader's logical schema, so path pruning compares the
+    same values as row filtering. Missing path keys may be physical columns
+    or logical nulls in root files and must be evaluated by the reader.
+    """
+
+    def __init__(
+        self, partitioning: "Partitioning", predicate: "Expr", schema: pa.Schema
+    ) -> None:
+        self.partitioning = partitioning
+        self.predicate = predicate
+        self.schema = schema
+
+    def should_include(self, path: str) -> bool:
+        values = _parse_partition_values(path, self.partitioning)
+        return (
+            _evaluate_path_predicate(self.predicate, values, self.schema) is not False
+        )

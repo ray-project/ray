@@ -11,8 +11,14 @@ import pyarrow.parquet as pq
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.formats.parquet.footer_reader import FooterReader
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    SchemaAwarePartitionPredicatePruner,
+)
+from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+    FooterReader,
+)
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
 
@@ -46,6 +52,109 @@ def _rg_can_fully_match(reader, metadata, rg_idx=0):
     """Run the fully-match guard the way ``_read_and_chunk`` does."""
     row_group = metadata.row_group(rg_idx)
     return reader._rg_can_fully_match(row_group, _filter_leaves(reader, metadata))
+
+
+@pytest.mark.parametrize("coalesce_bytes", [0, 1 << 20])
+def test_partition_filter_root_survivor_counts_are_not_file_counts(
+    tmp_path, coalesce_bytes
+):
+    root = tmp_path / "root.parquet"
+    table = pa.table({"id": list(range(100)), "year": ["2024"] + ["2023"] * 99})
+    path, size = _write(root, table, row_group_size=100)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = SchemaAwarePartitionPredicatePruner(
+        scheme, col("year") == "2024", table.schema
+    )
+    assert pruner.should_include(path)
+    chunks = _reader(
+        partitioning=scheme,
+        partition_pruner=pruner,
+        coalesce_bytes=coalesce_bytes,
+    )._read_and_chunk(FileInfo(path, size))
+    assert sum(group.num_rows for group in chunks.row_groups) == 100
+    assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+@pytest.mark.parametrize("physical_year", ["2023", "2024"])
+def test_path_value_overrides_physical_statistics_and_preserves_exact_counts(
+    tmp_path, physical_year
+):
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": list(range(40)), "year": [physical_year] * 40})
+    path, size = _write(path, table, row_group_size=20)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = SchemaAwarePartitionPredicatePruner(
+        scheme, col("year") == "2024", table.schema
+    )
+    reader = _reader(partitioning=scheme, partition_pruner=pruner)
+    chunks = reader._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert all(group.fully_matched for group in chunks.row_groups)
+    assert sum(group.num_rows for group in chunks.row_groups) == 40
+
+
+def test_partition_filter_keeps_physical_statistics_pruning(tmp_path):
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    table = pa.table({"id": list(range(100))})
+    path, size = _write(path, table, row_group_size=25)
+    schema = table.schema.append(pa.field("year", pa.string()))
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("year") == "2024", schema)
+    chunks = _reader(
+        filter_expr=col("id") >= 50, partitioning=scheme, partition_pruner=pruner
+    )._read_and_chunk(FileInfo(path, size))
+    assert [group.unit_ids for group in chunks.row_groups] == [(2,), (3,)]
+    assert all(group.fully_matched for group in chunks.row_groups)
+
+
+def test_unsampled_partition_column_does_not_use_overridden_statistics(tmp_path):
+    path = tmp_path / "year=2024" / "data.parquet"
+    path.parent.mkdir()
+    path, size = _write(
+        path, pa.table({"id": [1, 2], "year": ["2023", "2023"]}), row_group_size=1
+    )
+    chunks = _reader(
+        filter_expr=col("year") == "2024",
+        partitioning=Partitioning(PartitionStyle.HIVE),
+    )._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+def test_root_physical_condition_can_still_prove_exact_survivors(tmp_path):
+    table = pa.table({"id": list(range(40)), "year": ["2024"] * 40})
+    path, size = _write(tmp_path / "root.parquet", table, row_group_size=20)
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = SchemaAwarePartitionPredicatePruner(
+        scheme, col("year") == "2024", table.schema
+    )
+    chunks = _reader(partition_pruner=pruner)._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert all(group.fully_matched for group in chunks.row_groups)
+
+
+def test_root_statistics_with_different_logical_type_remain_unknown(tmp_path):
+    table = pa.table({"id": [1, 2], "year": ["2024", "2024"]})
+    path, size = _write(tmp_path / "root.parquet", table, row_group_size=1)
+    schema = pa.schema([("id", pa.int64()), ("year", pa.int64())])
+    scheme = Partitioning(PartitionStyle.HIVE, field_names=["year"])
+    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("year") == 2024, schema)
+    chunks = _reader(partition_pruner=pruner)._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 2
+    assert not any(group.fully_matched for group in chunks.row_groups)
+
+
+def test_declared_schema_cast_prevents_raw_statistics_pruning(tmp_path):
+    table = pa.table({"year": pa.array([2.50000001], type=pa.float64())})
+    path, size = _write(tmp_path / "root.parquet", table, row_group_size=1)
+    chunks = _reader(
+        filter_expr=col("year") == 2.5,
+        logical_schema=pa.schema([("year", pa.float32())]),
+    )._read_and_chunk(FileInfo(path, size))
+    assert len(chunks.row_groups) == 1
+    assert not chunks.row_groups[0].fully_matched
 
 
 class _FakeStatistics:

@@ -8,7 +8,7 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
     ArrowFileScanner,
 )
 from ray.data._internal.datasource_v2.common.file_pruners import (
-    PartitionPredicatePruner,
+    SchemaAwarePartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
@@ -24,27 +24,8 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.planner.plan_expression.expression_visitors import (
-    get_column_references,
-)
-from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-
-
-class _OrcPartitionPredicatePruner(PartitionPredicatePruner):
-    """Keep paths whose missing keys require evaluation by the ORC reader."""
-
-    def __init__(self, partitioning: Partitioning, predicate: Expr):
-        super().__init__(partitioning, predicate)
-        self._predicate_columns = set(get_column_references(predicate))
-
-    @override
-    def should_include(self, path: str) -> bool:
-        partitions = self._parser(path)
-        if not self._predicate_columns.issubset(partitions):
-            return True
-        return super().should_include(path)
 
 
 @DeveloperAPI
@@ -74,7 +55,9 @@ class OrcScanner(ArrowFileScanner):
     def pushed_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return _OrcPartitionPredicatePruner(self.partitioning, self.partition_predicate)
+        return SchemaAwarePartitionPredicatePruner(
+            self.partitioning, self.partition_predicate, self.schema
+        )
 
     @override
     def prune_input_split(self, input_split: FileManifest) -> FileManifest:

@@ -4,7 +4,10 @@ import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.common.file_pruners import FileExtensionPruner
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    FileExtensionPruner,
+    SchemaAwarePartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     sample_files,
@@ -13,6 +16,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    resolve_partitioning,
+)
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.read_units import (
@@ -20,7 +26,79 @@ from ray.data._internal.datasource_v2.interfaces.read_units import (
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
-from ray.data.datasource.partitioning import PathPartitionFilter
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    PartitionStyle,
+    PathPartitionFilter,
+)
+from ray.data.expressions import col, lit
+
+
+@pytest.mark.parametrize(
+    "data_type,value,matching,other",
+    [
+        (pa.int64(), 2024, "2024", "2023"),
+        (pa.float64(), 0.1, "0.1", "0.2"),
+        (pa.bool_(), True, "true", "false"),
+        (pa.string(), "a b", "a%20b", "other"),
+    ],
+)
+def test_schema_aware_partition_pruner_uses_logical_values(
+    tmp_path, data_type, value, matching, other
+):
+    scheme = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
+    pruner = SchemaAwarePartitionPredicatePruner(
+        scheme, col("key") == value, pa.schema([("key", data_type)])
+    )
+    assert pruner.should_include(str(tmp_path / "root"))
+    assert pruner.should_include(str(tmp_path / f"key={matching}" / "data"))
+    assert not pruner.should_include(str(tmp_path / f"key={other}" / "data"))
+
+
+def test_schema_aware_partition_pruner_preserves_unknown_and_errors(tmp_path):
+    scheme = Partitioning(
+        PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
+    )
+    schema = pa.schema([("year", pa.int64()), ("month", pa.int64())])
+    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("year") == 2024, schema)
+    assert pruner.should_include(str(tmp_path / "root"))
+    with pytest.raises(ValueError):
+        pruner.should_include(str(tmp_path / "year=invalid" / "data"))
+    untyped = SchemaAwarePartitionPredicatePruner(
+        Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        col("year") == 2024,
+        schema,
+    )
+    with pytest.raises(pa.ArrowInvalid):
+        untyped.should_include(str(tmp_path / "year=invalid" / "data"))
+    unknown = SchemaAwarePartitionPredicatePruner(
+        scheme, (col("year") == 2024) & (col("month") == 1), schema
+    )
+    assert unknown.should_include(str(tmp_path / "year=2024" / "data"))
+    for value in [True, False]:
+        constant = SchemaAwarePartitionPredicatePruner(scheme, lit(value), schema)
+        assert constant.should_include(str(tmp_path / "root")) is value
+
+
+def test_partition_discovery_preserves_config_and_validates_layout(tmp_path):
+    scheme = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
+    root = str(tmp_path / "root")
+    assert resolve_partitioning(None, [root]) is None
+    for paths in [[], [root]]:
+        resolved = resolve_partitioning(scheme, paths)
+        assert resolved is not None
+        assert resolved is not scheme
+        assert resolved.field_names is None
+    partition = str(tmp_path / "year=2024" / "data")
+    resolved = resolve_partitioning(scheme, [root, partition])
+    assert resolved is not None
+    assert resolved.field_names == ["year"]
+    assert scheme.field_names is None
+    assert resolve_partitioning(resolved, [root]) is not resolved
+    with pytest.raises(ValueError):
+        resolve_partitioning(
+            scheme, [root, partition, str(tmp_path / "month=01" / "data")]
+        )
 
 
 def _list_all(indexer, paths, **kwargs):
@@ -600,10 +678,12 @@ def test_prelisted_footer_indexer_passes_row_group_exclusions(monkeypatch):
     excluded = {"done.parquet", "keep.parquet#rg0"}
     indexer = FooterFileIndexer(ignore_missing_paths=False)
     captured = {}
+    pruners: list[FilePruner] = [FileExtensionPruner(["parquet"])]
 
     def capture(file_infos, **kwargs):
         captured["paths"] = [info.path for info in file_infos]
         captured["excluded"] = kwargs["excluded_read_unit_ids"]
+        captured["pruners"] = kwargs["pruners"]
         return iter(())
 
     monkeypatch.setattr(indexer, "_process_file_infos", capture)
@@ -612,11 +692,13 @@ def test_prelisted_footer_indexer_passes_row_group_exclusions(monkeypatch):
             infos,
             filesystem=LocalFileSystem(),
             excluded_read_unit_ids=excluded,
+            pruners=pruners,
         )
     )
 
     assert captured["paths"] == ["keep.parquet"]
     assert captured["excluded"] == excluded
+    assert captured["pruners"] == pruners
 
 
 def test_sample_files_can_discover_all_files(tmp_path):

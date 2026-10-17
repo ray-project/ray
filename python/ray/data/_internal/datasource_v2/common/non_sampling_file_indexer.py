@@ -192,6 +192,7 @@ class NonSamplingFileIndexer(FileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
@@ -200,6 +201,12 @@ class NonSamplingFileIndexer(FileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
+        if pruners:
+            file_infos = (
+                info
+                for info in file_infos
+                if all(pruner.should_include(info.path) for pruner in pruners)
+            )
         if excluded_read_unit_ids:
             file_infos = (
                 info for info in file_infos if info.path not in excluded_read_unit_ids
