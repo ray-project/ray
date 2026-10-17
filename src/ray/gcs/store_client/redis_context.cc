@@ -39,6 +39,7 @@ extern "C" {
 // TODO(pcm): Integrate into the C++ tree.
 #include "absl/functional/function_ref.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -235,6 +236,7 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                     RayConfig::instance().redis_retry_max_ms()),
       io_service_(io_service),
       redis_context_(context),
+      context_alive_(context->GetAliveToken()),
       pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
       start_time_(clock.Now()),
@@ -259,6 +261,54 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
   }
 }
 
+void RedisRequestContext::HandleFailure(RedisRequestContext *request_cxt,
+                                        bool reached_redis,
+                                        std::string_view error_msg) {
+  if (request_cxt->context_alive_.expired()) {
+    // The owning RedisAsyncContext is being destroyed and is flushing its
+    // pending callbacks; the event loop may be going away with it. There is
+    // nobody left to answer, and scheduling a retry timer would touch a
+    // dying io_context. Drop the request instead.
+    delete request_cxt;
+    return;
+  }
+  bool refunded = false;
+  if (!reached_redis) {
+    // The command never made it to Redis: the connection was gone, or hiredis
+    // accepted it on a context that then died. The attempt says nothing about
+    // the command, so give the retry back while the outage is young. The
+    // deadline belongs to the outage, not to this request, so every in-flight
+    // command expires at the same instant however long it had been retrying.
+    const absl::Time now = request_cxt->clock_.Now();
+    const absl::Time deadline = request_cxt->redis_context_->OutageDeadline(
+        now, absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms()));
+    if (now < deadline) {
+      ++request_cxt->pending_retries_;
+      refunded = true;
+    }
+  }
+  if (refunded) {
+    // During an outage every in-flight command comes through here once per
+    // backoff step, and nothing is being spent yet: one line per second is
+    // plenty.
+    RAY_LOG_EVERY_MS(WARNING, 1000)
+        << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+        << "] failed (" << error_msg
+        << "). Holding its retries while the reconnect is in flight.";
+  } else {
+    RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+                   << "] failed due to error " << error_msg << ". "
+                   << request_cxt->pending_retries_ << " retries left.";
+  }
+  auto delay = request_cxt->exp_back_off_.Current();
+  request_cxt->exp_back_off_.Next();
+  // Retry the request after a while.
+  execute_after(
+      request_cxt->io_service_,
+      [request_cxt]() { request_cxt->Run(); },
+      std::chrono::milliseconds(delay));
+}
+
 void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
                                           void *raw_reply,
                                           void *privdata) {
@@ -266,20 +316,17 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
   auto redis_reply = reinterpret_cast<redisReply *>(raw_reply);
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
-    auto error_msg = redis_reply ? redis_reply->str
-                                 : (async_context ? async_context->errstr
-                                                  : "Redis connection unavailable");
-    RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
-                   << "]"
-                   << " failed due to error " << error_msg << ". "
-                   << request_cxt->pending_retries_ << " retries left.";
-    auto delay = request_cxt->exp_back_off_.Current();
-    request_cxt->exp_back_off_.Next();
-    // Retry the request after a while.
-    execute_after(
-        request_cxt->io_service_,
-        [request_cxt]() { request_cxt->Run(); },
-        std::chrono::milliseconds(delay));
+    std::string error_msg =
+        redis_reply != nullptr     ? std::string(redis_reply->str, redis_reply->len)
+        : async_context != nullptr ? std::string(async_context->errstr)
+                                   : std::string("Redis connection unavailable");
+    // -NOAUTH is not about the command: it arrives for commands queued behind a
+    // reconnect AUTH that the server rejected, on a connection that rejection
+    // is already tearing down. The command never ran, so count it like a reply
+    // that never came.
+    const bool reached_redis =
+        redis_reply != nullptr && !absl::StartsWith(error_msg, "NOAUTH");
+    HandleFailure(request_cxt, reached_redis, error_msg);
   } else {
     // Measure while hiredis still owns the reply, and before anything is posted
     // to the io_service: `request_cxt` is deleted at the end of this branch, so
@@ -356,8 +403,10 @@ void RedisRequestContext::Run() {
 
   // A rejected submission has no hiredis callback. Use the owned Status for
   // diagnostics; the raw context may have been freed since submission returned.
-  RAY_LOG(ERROR) << "Redis command submission failed: " << status;
-  RedisResponseFn(nullptr, nullptr, this);
+  // HandleFailure logs it, rate-limited while the outage refunds retries: an
+  // unconditional line here would fire once per retry of every in-flight
+  // command for the whole grace period.
+  HandleFailure(this, /*reached_redis=*/false, status.message());
 }
 
 #define REDIS_CHECK_ERROR(CONTEXT, REPLY)       \
@@ -377,7 +426,11 @@ RedisContext::RedisContext(instrumented_io_context &io_service,
       context_(nullptr),
       ssl_context_(nullptr),
       redis_db_probe_timeout_milliseconds_(
-          RayConfig::instance().redis_db_probe_timeout_milliseconds()) {
+          RayConfig::instance().redis_db_probe_timeout_milliseconds()),
+      reconnect_backoff_(RayConfig::instance().redis_retry_base_ms(),
+                         RayConfig::instance().redis_retry_multiplier(),
+                         RayConfig::instance().redis_retry_max_ms()),
+      resolver_(io_service) {
   redisSSLContextError ssl_error;
   redisInitOpenSSL();
 
@@ -416,6 +469,10 @@ RedisContext::RedisContext(instrumented_io_context &io_service,
 }
 
 RedisContext::~RedisContext() {
+  // Expire the sentinel before tearing anything down, as ~RedisAsyncContext
+  // does: Disconnect() below re-enters hiredis teardown, and posted reconnect
+  // work or a flushed reconnect AUTH callback must see this object as gone.
+  alive_.reset();
   Disconnect();
   if (ssl_context_) {
     redisFreeSSLContext(ssl_context_);
@@ -424,8 +481,29 @@ RedisContext::~RedisContext() {
 }
 
 void RedisContext::Disconnect() {
+  // Stop any in-flight reconnect and keep the disconnect callback below from
+  // starting a new one: resetting the async context runs hiredis' teardown,
+  // which calls back into us, and this may be ~RedisContext.
+  disconnect_requested_ = true;
+  dropped_while_connecting_ = false;
+  reconnecting_ = false;
+  reconnect_pending_ = false;
+  resolver_.cancel();
   context_.reset();
   redis_async_context_.reset();
+  // Drop the retained connection parameters too. If a caller connects this
+  // object somewhere else next, a later reconnect must not dial the previous
+  // server with the previous credentials because `Connect()` saw a leftover
+  // address and skipped recording the new one.
+  address_.clear();
+  port_ = 0;
+  username_.clear();
+  password_.clear();
+  enable_ssl_ = false;
+  resolved_ip_.clear();
+  origin_address_.clear();
+  origin_port_ = 0;
+  via_sentinel_ = false;
 }
 
 Status SetRedisProbeTimeout(redisContext *context, int64_t timeout_ms) {
@@ -672,14 +750,33 @@ void RedisAsyncContextDisconnectCallback(const redisAsyncContext *context, int s
                      << ". Applied socket settings may differ; see connection setup "
                         "logs.";
   }
+  auto *async_context = reinterpret_cast<RedisAsyncContext *>(context->data);
   // Reset raw 'redisAsyncContext' to nullptr because hiredis will release this context.
-  reinterpret_cast<RedisAsyncContext *>(context->data)->ResetRawRedisAsyncContext();
+  async_context->ResetRawRedisAsyncContext();
+  // Let the owning RedisContext schedule a reconnect. The handler only posts
+  // work: we are still inside hiredis' teardown here.
+  async_context->NotifyDisconnected();
 }
 
-void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
-  redisAsyncContext *raw_redis_async_context =
-      redis_async_context->GetRawRedisAsyncContext();
+void RedisAsyncContextConnectCallback(const redisAsyncContext *context, int status) {
+  auto *async_context = reinterpret_cast<RedisAsyncContext *>(context->data);
+  if (status == REDIS_OK) {
+    async_context->NotifyConnected();
+    return;
+  }
+  // hiredis frees the context after a failed connect and does not run the
+  // disconnect callback for it: __redisAsyncFree only runs that one once
+  // REDIS_CONNECTED was set. Release here, or the next command dereferences
+  // freed memory.
+  RAY_LOG(WARNING) << "Redis async connect failed: " << context->errstr;
+  async_context->ResetRawRedisAsyncContext();
+  async_context->NotifyDisconnected();
+}
+
+void SetConnectionCallbacks(redisAsyncContext *raw_redis_async_context,
+                            RedisAsyncContext *redis_async_context) {
   raw_redis_async_context->data = redis_async_context;
+  redisAsyncSetConnectCallback(raw_redis_async_context, RedisAsyncContextConnectCallback);
   redisAsyncSetDisconnectCallback(raw_redis_async_context,
                                   RedisAsyncContextDisconnectCallback);
 }
@@ -912,12 +1009,14 @@ Status RedisContext::ConnectRedisCluster(const std::string &username,
   return Status::OK();
 }
 
-Status ConnectRedisSentinel(RedisContext &context,
-                            const std::string &username,
-                            const std::string &password,
-                            bool enable_ssl) {
-  RAY_LOG(INFO) << "Connect to Redis sentinel";
-
+/// Ask a Sentinel which node is currently the primary.
+///
+/// Split out of ConnectRedisSentinel so the reconnect path can re-resolve:
+/// after a failover the primary sits at a different address, and a client that
+/// keeps dialling the one it learned at startup never recovers.
+Status QuerySentinelForPrimary(redisContext *sentinel_context,
+                               std::string *out_ip,
+                               int *out_port) {
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
@@ -937,7 +1036,7 @@ Status ConnectRedisSentinel(RedisContext &context,
   //     7) "runid"
   //     8) "18a76cedbf445bd25bbd412c92e237137b5c7d4d"
   auto redis_reply = reinterpret_cast<redisReply *>(
-      ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
+      ::redisCommandArgv(sentinel_context, cmds.size(), argv.data(), argc.data()));
 
   if (redis_reply == nullptr) {
     return Status::RedisError("Failed to get redis sentinel masters info");
@@ -972,17 +1071,27 @@ Status ConnectRedisSentinel(RedisContext &context,
   }
   freeReplyObject(redis_reply);
   if (actual_ip.empty() || actual_port.empty()) {
-    RAY_LOG(ERROR)
-        << "Failed to get the ip and port of the primary node from Redis sentinel";
     return Status::RedisError(
         "Failed to get the ip and port of the primary node from Redis sentinel");
-  } else {
-    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: "
-                  << BuildAddress(actual_ip, actual_port);
-    context.Disconnect();
-    return context.Connect(
-        actual_ip, std::stoi(actual_port), username, password, enable_ssl);
   }
+  *out_ip = actual_ip;
+  *out_port = std::stoi(actual_port);
+  return Status::OK();
+}
+
+Status ConnectRedisSentinel(RedisContext &context,
+                            const std::string &username,
+                            const std::string &password,
+                            bool enable_ssl) {
+  RAY_LOG(INFO) << "Connect to Redis sentinel";
+  std::string actual_ip;
+  int actual_port = 0;
+  RAY_RETURN_NOT_OK(
+      QuerySentinelForPrimary(context.sync_context(), &actual_ip, &actual_port));
+  RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: "
+                << BuildAddress(actual_ip, actual_port);
+  context.Disconnect();
+  return context.Connect(actual_ip, actual_port, username, password, enable_ssl);
 }
 
 std::vector<std::string> ResolveDNS(instrumented_io_context &io_service,
@@ -1005,6 +1114,27 @@ Status RedisContext::Connect(const std::string &address,
                              const std::string &username,
                              const std::string &password,
                              bool enable_ssl) {
+  ++connect_depth_;
+  Status status = ConnectImpl(address, port, username, password, enable_ssl);
+  // Leave before posting, so the posted handler sees connect_depth_ == 0.
+  if (--connect_depth_ == 0 && dropped_while_connecting_.exchange(false) && status.ok()) {
+    io_service_.post(
+        [this, alive = std::weak_ptr<bool>(alive_)] {
+          if (alive.expired()) {
+            return;
+          }
+          OnAsyncDisconnected();
+        },
+        "RedisContext.DroppedWhileConnecting");
+  }
+  return status;
+}
+
+Status RedisContext::ConnectImpl(const std::string &address,
+                                 int port,
+                                 const std::string &username,
+                                 const std::string &password,
+                                 bool enable_ssl) {
   // Connect to the leader of the Redis cluster:
   //   1. Resolve the ip address from domain name.
   //      It might return multiple ip addresses
@@ -1025,6 +1155,11 @@ Status RedisContext::Connect(const std::string &address,
   // surfaces as itself rather than as a Redis connectivity error after DNS
   // resolution and the connect-retry budget.
   RAY_RETURN_NOT_OK(ValidateRedisTcpKeepaliveConfig());
+
+  // A previous Disconnect() (including the one ConnectRedisSentinel does
+  // before dialling the primary) parked the reconnect logic. Re-arm it.
+  disconnect_requested_ = false;
+
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
   // ResolveDNS may throw (boost resolver) when the name cannot be resolved
@@ -1099,7 +1234,12 @@ Status RedisContext::Connect(const std::string &address,
   }
   redis_async_context_.reset(
       new RedisAsyncContext(io_service_, std::move(async_context)));
-  SetDisconnectCallback(redis_async_context_.get());
+  redis_async_context_->SetDisconnectHandler([this] { OnAsyncDisconnected(); });
+  SetConnectionCallbacks(redis_async_context_->GetRawRedisAsyncContext(),
+                         redis_async_context_.get());
+  if (async_connected_hook_for_testing_) {
+    std::exchange(async_connected_hook_for_testing_, nullptr)(*redis_async_context_);
+  }
 
   // handle validation and primary connection for different types of redis
   auto is_sentinel = IsRedisSentinel();
@@ -1109,7 +1249,15 @@ Status RedisContext::Connect(const std::string &address,
   }
   Status status;
   if (is_sentinel.value()) {
+    // The nested Connect() below records the primary's own address. Remember
+    // that we got there through a Sentinel, and at which address, so a
+    // reconnect can ask again instead of dialling a demoted node.
     status = ConnectRedisSentinel(*this, username, password, enable_ssl);
+    if (status.ok()) {
+      via_sentinel_ = true;
+      origin_address_ = address;
+      origin_port_ = port;
+    }
   } else {
     status = ConnectRedisCluster(
         username, password, enable_ssl, BuildAddress(ip_addresses[0], port));
@@ -1118,8 +1266,401 @@ Status RedisContext::Connect(const std::string &address,
   // reconnect) starts from the clean precondition checked at the top.
   if (!status.ok()) {
     Disconnect();
+    return status;
+  }
+
+  // Retain what a reconnect needs. ConnectRedisSentinel/ConnectRedisCluster may
+  // have re-entered Connect() against the true primary, in which case those
+  // nested calls already recorded the final address; don't overwrite it.
+  if (address_.empty()) {
+    address_ = address;
+    port_ = port;
+    username_ = username;
+    password_ = password;
+    enable_ssl_ = enable_ssl;
+    resolved_ip_ = ip_addresses[0];
   }
   return status;
+}
+
+void RedisContext::OnAsyncDisconnected() {
+  if (disconnect_requested_) {
+    // Torn down on purpose. Do not resurrect it, and do not touch io_service_:
+    // this can run from ~RedisContext after the io_context is gone.
+    return;
+  }
+  if (connect_depth_ > 0) {
+    // Connect() is still running, possibly on another thread. It records the
+    // address only at the end, so let it pass the drop back to us then.
+    dropped_while_connecting_ = true;
+    return;
+  }
+  // Whatever connect was outstanding is settled now, one way or another.
+  reconnect_pending_ = false;
+  if (address_.empty()) {
+    // Never finished a successful Connect(), so there is nothing to restore.
+    return;
+  }
+  if (reconnecting_) {
+    // A reconnect attempt's connect just failed. Retries are driven by
+    // failure events like this one: schedule the next attempt here rather
+    // than keeping a poll timer alive across the in-flight connect.
+    ScheduleReconnectRetry();
+    return;
+  }
+  reconnecting_ = true;
+  reconnect_attempts_left_ = RayConfig::instance().redis_db_connect_retries();
+  reconnect_backoff_.Reset();
+  // Start the outage clock now, whether or not a command is in flight, so the
+  // grace period runs from the drop rather than from whichever command
+  // happens to fail first. A command flushed by hiredis before this callback
+  // may have stamped it a moment earlier already; that stamp stands.
+  if (redis_async_context_ != nullptr) {
+    redis_async_context_->OutageDeadline(
+        clock_.Now(),
+        absl::Milliseconds(RayConfig::instance().redis_reconnect_grace_period_ms()));
+  }
+  RAY_LOG(WARNING) << "Redis connection to " << BuildAddress(address_, port_)
+                   << " was lost. Attempting to reconnect in place.";
+  // Do not reconnect synchronously: hiredis is still tearing the old context
+  // down underneath us.
+  io_service_.post(
+      [this, alive = std::weak_ptr<bool>(alive_)] {
+        if (alive.expired()) {
+          return;
+        }
+        AttemptReconnect();
+      },
+      "RedisContext.Reconnect");
+}
+
+Status RedisContext::RefreshPrimaryFromSentinel(const std::string &sentinel_ip) {
+  // A short-lived synchronous connection: the Sentinel is the one address that
+  // survives a failover, and the stored sync context points at the old primary.
+  // This runs on the io_service thread that also serves GCS storage, so every
+  // step is bounded by a dedicated, short timeout rather than the 30s
+  // redis_db_probe_timeout_milliseconds used at startup: a Sentinel that
+  // accepts and then stalls must not park the io_context for long, once per
+  // attempt, during the very failover the GCS is trying to ride out.
+  const int64_t timeout_ms = RayConfig::instance().redis_reconnect_sentinel_timeout_ms();
+  auto connect_with_timeout = [timeout_ms](const std::string &host, int port) {
+    struct timeval timeout;
+    timeout.tv_sec = timeout_ms / 1000;
+    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+    return redisConnectWithTimeout(host.c_str(), port, timeout);
+  };
+  auto resp = ConnectWithoutRetries<redisContext>(
+      sentinel_ip, origin_port_, connect_with_timeout);
+  RAY_RETURN_NOT_OK(resp.first);
+  auto sentinel_context = std::move(resp.second);
+  if (enable_ssl_) {
+    if (ssl_context_ == nullptr) {
+      return Status::RedisError("SSL context is not initialized for encrypted Redis");
+    }
+    if (redisInitiateSSLWithContext(sentinel_context.get(), ssl_context_) != REDIS_OK) {
+      return Status::RedisError(
+          absl::StrCat("Failed to setup encrypted redis: ", sentinel_context->errstr));
+    }
+  }
+  RAY_RETURN_NOT_OK(
+      AuthenticateRedis(sentinel_context.get(), username_, password_, timeout_ms));
+
+  // AuthenticateRedis restores the socket to no-timeout (and skips the setup
+  // entirely without a password), so bound the query ourselves. The context is
+  // discarded right after, so there is nothing to restore.
+  RAY_RETURN_NOT_OK(SetRedisProbeTimeout(sentinel_context.get(), timeout_ms));
+  std::string primary_ip;
+  int primary_port = 0;
+  RAY_RETURN_NOT_OK(
+      QuerySentinelForPrimary(sentinel_context.get(), &primary_ip, &primary_port));
+  // Record what Sentinel reports, which may be a host name when Sentinel runs
+  // with announce-hostnames. The caller resolves it into resolved_ip_.
+  if (primary_ip != address_ || primary_port != port_) {
+    RAY_LOG(INFO) << "Redis Sentinel now reports the primary at "
+                  << BuildAddress(primary_ip, primary_port) << ", was "
+                  << BuildAddress(address_, port_) << ".";
+    address_ = primary_ip;
+    port_ = primary_port;
+  }
+  return Status::OK();
+}
+
+namespace {
+/// privdata for ReconnectAuthCallback and ReconnectPingCallback.
+/// Heap-allocated because hiredis may hold it past the RedisContext's lifetime
+/// (teardown flushes callbacks).
+struct ReconnectProbe {
+  RedisContext *context;
+  std::weak_ptr<bool> alive;
+};
+}  // namespace
+
+Status RedisContext::ConnectToResolvedAddress() {
+  auto resp =
+      ConnectWithoutRetries<redisAsyncContext>(resolved_ip_, port_, redisAsyncConnect);
+  RAY_RETURN_NOT_OK(resp.first);
+  auto async_context = std::move(resp.second);
+
+  if (enable_ssl_) {
+    if (ssl_context_ == nullptr) {
+      return Status::RedisError("SSL context is not initialized for encrypted Redis");
+    }
+    if (redisInitiateSSLWithContext(&async_context->c, ssl_context_) != REDIS_OK) {
+      return Status::RedisError(
+          absl::StrCat("Failed to setup encrypted redis: ", async_context->errstr));
+    }
+  }
+  // Startup proves the credentials on a synchronous probe before the async
+  // AUTH goes out; a reconnect has no such probe. Send AUTH with a reply
+  // callback, so a promoted primary that rejects the credentials reads as a
+  // failed attempt instead of a "Reconnected" log followed by -NOAUTH replies.
+  if (!password_.empty()) {
+    auto *probe = new ReconnectProbe{this, std::weak_ptr<bool>(alive_)};
+    int auth_status = username_.empty()
+                          ? redisAsyncCommand(async_context.get(),
+                                              &RedisContext::ReconnectAuthCallback,
+                                              probe,
+                                              "AUTH %s",
+                                              password_.c_str())
+                          : redisAsyncCommand(async_context.get(),
+                                              &RedisContext::ReconnectAuthCallback,
+                                              probe,
+                                              "AUTH %s %s",
+                                              username_.c_str(),
+                                              password_.c_str());
+    if (auth_status == REDIS_ERR) {
+      delete probe;
+      return Status::RedisError(std::string(async_context->errstr));
+    }
+  }
+
+  // Then a PING, whose reply ends the attempt. A completed TCP connect proves
+  // little: a proxy in front of a Redis that is down accepts the connection
+  // and closes it right away. Counting that as success reset the backoff and
+  // turned the outage into a tight loop of connects. Queued before Reset() so
+  // it stays ahead of any retried command in the pipeline.
+  auto *ping = new ReconnectProbe{this, std::weak_ptr<bool>(alive_)};
+  int ping_status = redisAsyncCommand(
+      async_context.get(), &RedisContext::ReconnectPingCallback, ping, "PING");
+  if (ping_status == REDIS_ERR) {
+    delete ping;
+    return Status::RedisError(std::string(async_context->errstr));
+  }
+
+  // Finish every mutation of the raw context before Reset() publishes it:
+  // from then on other threads may submit commands under the wrapper's lock,
+  // and hiredis is not thread-safe. Nothing below can fail, so the callbacks
+  // never outlive a context we abandon. Registering the connect callback asks
+  // hiredis to arm a write before our event hooks exist; Reset() re-arms it.
+  SetConnectionCallbacks(async_context.get(), redis_async_context_.get());
+
+  // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
+  // pointer to this RedisAsyncContext.
+  redis_async_context_->Reset(std::move(async_context));
+  return Status::OK();
+}
+
+void RedisContext::ReconnectAuthCallback(redisAsyncContext *async_context,
+                                         void *raw_reply,
+                                         void *privdata) {
+  std::unique_ptr<ReconnectProbe> probe(static_cast<ReconnectProbe *>(privdata));
+  if (probe->alive.expired()) {
+    // Flushed during teardown; the RedisContext is already gone.
+    return;
+  }
+  auto *reply = static_cast<redisReply *>(raw_reply);
+  // No reply means the connection died first, and the disconnect callback
+  // drives the retry. Success needs no action: the PING queued behind AUTH
+  // decides the attempt.
+  if (reply == nullptr || reply->type != REDIS_REPLY_ERROR) {
+    return;
+  }
+  RAY_LOG(WARNING) << "Redis rejected AUTH after a reconnect: " << reply->str
+                   << ". Tearing this connection down and retrying.";
+  // Runs from inside a hiredis callback, where redisAsyncDisconnect is the
+  // sanctioned teardown: it completes after the callback returns and then
+  // invokes the disconnect callback, which schedules the next attempt.
+  redisAsyncDisconnect(async_context);
+}
+
+void RedisContext::ReconnectPingCallback(redisAsyncContext *async_context,
+                                         void *raw_reply,
+                                         void *privdata) {
+  std::unique_ptr<ReconnectProbe> probe(static_cast<ReconnectProbe *>(privdata));
+  if (probe->alive.expired()) {
+    return;
+  }
+  auto *redis_context = probe->context;
+  auto *reply = static_cast<redisReply *>(raw_reply);
+  if (reply == nullptr) {
+    // The connection died before the PING was answered. The disconnect
+    // callback drives the retry.
+    return;
+  }
+  if (reply->type == REDIS_REPLY_ERROR) {
+    // -LOADING while Redis reads its data back in, or -NOAUTH behind a rejected
+    // AUTH (which has already started the teardown). Either way this server
+    // cannot take commands yet, so the attempt fails.
+    if (!absl::StartsWith(reply->str, "NOAUTH")) {
+      RAY_LOG(WARNING) << "Redis is not ready after a reconnect: " << reply->str
+                       << ". Tearing this connection down and retrying.";
+    }
+    redisAsyncDisconnect(async_context);
+    return;
+  }
+  redis_context->OnReconnectConfirmed();
+}
+
+void RedisContext::OnReconnectConfirmed() {
+  reconnect_pending_ = false;
+  if (!reconnecting_) {
+    return;
+  }
+  reconnecting_ = false;
+  reconnect_backoff_.Reset();
+  // Invalidate any retry timer still armed from this episode.
+  ++reconnect_epoch_;
+  // The outage is over; the next one gets a fresh grace period.
+  redis_async_context_->ClearOutage();
+  RAY_LOG(INFO) << "Reconnected to Redis at " << BuildAddress(address_, port_) << ".";
+}
+
+void RedisContext::ScheduleReconnectRetry() {
+  auto delay = reconnect_backoff_.Current();
+  reconnect_backoff_.Next();
+  execute_after(
+      io_service_,
+      [this, alive = std::weak_ptr<bool>(alive_), epoch = reconnect_epoch_] {
+        if (alive.expired()) {
+          return;
+        }
+        if (epoch != reconnect_epoch_) {
+          // This timer belongs to a reconnect episode that already ended in
+          // success. Without this check it would join the next episode as a
+          // second driver and spend its budget twice as fast.
+          return;
+        }
+        AttemptReconnect();
+      },
+      std::chrono::milliseconds(delay));
+}
+
+void RedisContext::AttemptReconnect() {
+  if (!reconnecting_) {
+    return;
+  }
+  if (reconnect_pending_) {
+    // An attempt issued earlier (its resolve or its connect) has not reported
+    // back yet; that report drives the next step. Only a stale timer from
+    // before the attempt started can get here, and it has nothing to add.
+    return;
+  }
+
+  if (reconnect_attempts_left_ <= 0) {
+    RAY_LOG(FATAL) << "Failed to reconnect to Redis at " << BuildAddress(address_, port_)
+                   << " after " << RayConfig::instance().redis_db_connect_retries()
+                   << " attempts.";
+  }
+  // Count the attempt we are about to make, not the one before it: decrementing
+  // first spends the budget on a try that never happens, so a configured 1
+  // would make zero attempts.
+  --reconnect_attempts_left_;
+
+  // From here until the resolve or the connect reports back, a stale retry
+  // timer must not start a second attempt.
+  reconnect_pending_ = true;
+
+  if (via_sentinel_) {
+    // Ask Sentinel where the primary lives now. The Sentinel's own address is
+    // commonly a name too (a Kubernetes Service), so it is looked up
+    // asynchronously first: the synchronous query would otherwise run
+    // getaddrinfo inside hiredis, which the connect timeout does not cover.
+    ResolveAsync(
+        origin_address_, origin_port_, [this](StatusOr<std::string> sentinel_ip) {
+          Status status = sentinel_ip.ok() ? RefreshPrimaryFromSentinel(*sentinel_ip)
+                                           : sentinel_ip.status();
+          if (!status.ok()) {
+            ContinueReconnect(status);
+            return;
+          }
+          ResolvePrimaryThenConnect();
+        });
+    return;
+  }
+  ResolvePrimaryThenConnect();
+}
+
+void RedisContext::ResolvePrimaryThenConnect() {
+  // Connect() resolved the name once. Behind a Kubernetes Service or any other
+  // name that can move, the address recorded then may now belong to nothing,
+  // so resolve again rather than retrying a stale IP forever. The same holds
+  // for a primary that Sentinel announces by host name, and the async connect
+  // below must be handed an IP: given a name, hiredis would run getaddrinfo
+  // synchronously on this io_context.
+  ResolveAsync(address_, port_, [this](StatusOr<std::string> ip) {
+    if (!ip.ok()) {
+      ContinueReconnect(ip.status());
+      return;
+    }
+    if (*ip != resolved_ip_ && *ip != address_) {
+      RAY_LOG(INFO) << "Redis address " << address_ << " now resolves to " << *ip
+                    << ", was " << resolved_ip_ << ".";
+    }
+    resolved_ip_ = *ip;
+    ContinueReconnect(Status::OK());
+  });
+}
+
+void RedisContext::ResolveAsync(const std::string &host,
+                                int port,
+                                std::function<void(StatusOr<std::string>)> done) {
+  boost::system::error_code parse_error;
+  boost::asio::ip::make_address(host, parse_error);
+  if (!parse_error) {
+    // A literal IP needs no lookup.
+    done(host);
+    return;
+  }
+  // Resolve asynchronously: this runs on the GCS io_context, and a resolver
+  // that blackholes during the outage must not stall it.
+  resolver_.async_resolve(
+      host,
+      std::to_string(port),
+      [this, alive = std::weak_ptr<bool>(alive_), host, port, done = std::move(done)](
+          const boost::system::error_code &ec,
+          const boost::asio::ip::tcp::resolver::results_type &results) {
+        if (alive.expired() || ec == boost::asio::error::operation_aborted) {
+          return;
+        }
+        if (!reconnecting_) {
+          // Disconnect() ended the episode while the lookup was in flight.
+          return;
+        }
+        if (ec || results.empty()) {
+          done(Status::RedisError(absl::StrCat("Failed to resolve DNS for ",
+                                               BuildAddress(host, port),
+                                               ": ",
+                                               ec ? ec.message() : "no addresses")));
+          return;
+        }
+        done(results.begin()->endpoint().address().to_string());
+      });
+}
+
+void RedisContext::ContinueReconnect(Status address_status) {
+  // Success here only means the connect was issued. `redisAsyncConnect` is
+  // non-blocking and reports a healthy context even when nothing is
+  // listening, so the connect callback is what decides: success ends the
+  // episode, failure comes back through OnAsyncDisconnected, which schedules
+  // the next attempt. Nothing needs to poll in the meantime.
+  Status status = address_status.ok() ? ConnectToResolvedAddress() : address_status;
+  if (status.ok()) {
+    return;
+  }
+  reconnect_pending_ = false;
+  RAY_LOG(WARNING) << "Redis reconnect attempt failed: " << status << ". "
+                   << reconnect_attempts_left_ << " attempts left.";
+  ScheduleReconnectRetry();
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
