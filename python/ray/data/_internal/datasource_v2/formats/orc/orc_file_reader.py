@@ -7,6 +7,7 @@ carries per-stripe :class:`FileChunk` metadata. Whole-file manifest rows
 unchanged, preserving compatibility with single-stripe files and any other
 listing path that still emits one row per file.
 """
+
 from __future__ import annotations
 
 import logging
@@ -240,9 +241,7 @@ class OrcFileReader(FileReader):
 
         # Build the logical schema used for projection/filter synthesis.
         out_schema = schema if schema is not None else file_schema
-        out_schema = pa.schema(
-            [f for f in out_schema if f.name not in synthesized]
-        )
+        out_schema = pa.schema([f for f in out_schema if f.name not in synthesized])
         for name, value in partitions.items():
             if out_schema.get_field_index(name) == -1:
                 out_schema = out_schema.append(
@@ -304,14 +303,10 @@ class OrcFileReader(FileReader):
             return
 
         # Pickled-object safety check on the columns we will decode.
-        decoded_schema = (
-            pa.schema(
-                [f for f in file_schema if f.name in physical_required]
-            )
+        decoded_schema = pa.schema(
+            [f for f in file_schema if f.name in physical_required]
         )
-        raise_on_pickle_object_columns(
-            pa.Table.from_batches([], schema=decoded_schema)
-        )
+        raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
 
         try:
             batch = of.read_stripe(stripe_idx, columns=physical_required)
@@ -357,10 +352,7 @@ class OrcFileReader(FileReader):
         # The whole-file path handles these in FileReader's outer iterator,
         # but the stripe-direct reader bypasses that iterator.
         for column in self._synthesized_columns:
-            if (
-                self._columns is not None
-                and column.name not in self._columns
-            ):
+            if self._columns is not None and column.name not in self._columns:
                 # Projection pushdown excluded this column; skip.
                 continue
             if column.name in table.column_names:
