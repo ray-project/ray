@@ -38,6 +38,23 @@ _TREE_EXIT_GRACE_SECONDS = 2.0
 # overlay state.
 _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 
+
+def runsc_env() -> Dict[str, str]:
+    """The environment for runsc CLI subprocesses: GOMAXPROCS=2 unless set.
+
+    Each runsc CLI call (run, exec, state, kill, delete, spec) is a Go
+    process, and Go sizes its runtime to every CPU it can see: on a many-core
+    node, dozens of concurrent calls then cost much more CPU than their work
+    (measured on a 64-core node, 64 `runsc exec` calls at a time: 0.023 CPU-s
+    per exec, 0.013 with GOMAXPROCS=2). gVisor's containerd shim runs runsc
+    with GOMAXPROCS=2 for this reason, and runsc doesn't pass the variable on
+    to the sandbox and gofer processes it starts.
+    """
+    env = dict(os.environ)
+    env.setdefault("GOMAXPROCS", "2")
+    return env
+
+
 # network="public" gives each sandbox a private user+network namespace pair
 # bridged by slirp4netns user-mode networking, the rootless-container shape:
 # a holder process (`unshare --user --map-root-user --net`) pins the
@@ -197,6 +214,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdout=subprocess.DEVNULL,
             stderr=stderr_file,
             start_new_session=True,
+            env=runsc_env(),
         )
         start_time = time.time()
         timeout = config.timeout_seconds
@@ -211,7 +229,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
 
                 state_args = self._runsc_base_args(config) + ["state", sandbox_id]
-                res = subprocess.run(state_args, capture_output=True, text=True)
+                res = subprocess.run(
+                    state_args, capture_output=True, text=True, env=runsc_env()
+                )
                 if res.returncode == 0:
                     try:
                         state_data = json.loads(res.stdout)
@@ -273,7 +293,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             kill_args = self._runsc_base_args(config)
             kill_args.extend(["kill", sandbox_id, "SIGKILL"])
             try:
-                subprocess.run(kill_args, capture_output=True, timeout=5)
+                subprocess.run(
+                    kill_args, capture_output=True, timeout=5, env=runsc_env()
+                )
             except subprocess.TimeoutExpired:
                 pass
 
@@ -392,6 +414,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                env=runsc_env(),
             )
             stdout_str, stderr_str = proc.communicate(timeout=timeout)
             duration = time.time() - start_time
@@ -450,6 +473,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         _, stderr_str = proc.communicate(input=content_bytes)
         if proc.returncode != 0:
@@ -471,6 +495,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=runsc_env(),
         )
         stdout, stderr = proc.communicate()
         if proc.returncode != 0:
@@ -509,7 +534,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """
         del_args = self._runsc_base_args(config) + ["delete", "-force", sandbox_id]
         try:
-            subprocess.run(del_args, capture_output=True, timeout=10)
+            subprocess.run(del_args, capture_output=True, timeout=10, env=runsc_env())
         except subprocess.TimeoutExpired:
             pass
 

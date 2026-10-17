@@ -15,7 +15,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
 from ray.experimental.sandbox.backend.base import SandboxStatus
-from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend, runsc_env
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -1032,6 +1032,30 @@ def test_resolve_exec_user(monkeypatch):
     monkeypatch.setattr(backend, "read_file", unreadable)
     with pytest.raises(SandboxExecError, match="cannot read /etc/passwd"):
         backend._resolve_exec_user("sb-1", "postfix")
+
+
+def test_runsc_env_caps_gomaxprocs_unless_set(monkeypatch):
+    """runsc CLI calls run with GOMAXPROCS=2, as gVisor's containerd shim
+    runs them, unless the worker's environment sets it."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    assert runsc_env()["GOMAXPROCS"] == "2"
+    monkeypatch.setenv("GOMAXPROCS", "8")
+    assert runsc_env()["GOMAXPROCS"] == "8"
+
+
+def test_runsc_run_starts_with_gomaxprocs(monkeypatch):
+    """A sandbox's attached `runsc run` gets runsc_env()'s GOMAXPROCS."""
+    monkeypatch.delenv("GOMAXPROCS", raising=False)
+    backend = GVisorSandboxBackend()
+    sandbox_id = backend.create_sandbox(
+        GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh")
+    )
+    try:
+        proc = backend._sandbox_metadata[sandbox_id]["proc"]
+        with open(f"/proc/{proc.pid}/environ", "rb") as f:
+            assert b"GOMAXPROCS=2" in f.read().split(b"\0")
+    finally:
+        backend.delete_sandbox(sandbox_id)
 
 
 if __name__ == "__main__":
