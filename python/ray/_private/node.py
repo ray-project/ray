@@ -27,6 +27,10 @@ from ray._common.network_utils import (
 )
 from ray._common.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._common.utils import try_to_create_directory
+from ray._private.gcs_passive_utils import (
+    is_refused_by_passive_gcs,
+    put_kv_passive_safe,
+)
 from ray._private.resource_and_label_spec import ResourceAndLabelSpec
 from ray._private.resource_isolation_config import ResourceIsolationConfig
 from ray._private.services import get_address, serialize_config
@@ -1310,7 +1314,11 @@ class Node:
         ]
 
     def start_api_server(
-        self, *, include_dashboard: Optional[bool], raise_on_failure: bool
+        self,
+        *,
+        include_dashboard: Optional[bool],
+        raise_on_failure: bool,
+        gcs_is_passive: bool = False,
     ):
         """Start the dashboard.
 
@@ -1321,6 +1329,8 @@ class Node:
             raise_on_failure: If true, this will raise an exception
                 if we fail to start the API server. Otherwise it will print
                 a warning if we fail to start the API server.
+            gcs_is_passive: Whether the GCS already rejected this node's writes
+                because it is passive.
         """
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
             "dashboard", unique=True, create_out=True, create_err=True
@@ -1342,18 +1352,27 @@ class Node:
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
             proxy_server_url=self._ray_params.proxy_server_url,
+            gcs_is_passive=gcs_is_passive,
+            tracing_startup_hook=self._ray_params.tracing_startup_hook,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            self.get_gcs_client().internal_kv_put(
-                b"webui:url",
-                self._webui_url.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_DASHBOARD,
-            )
+            # A passive head has no url to write: the dashboard defers its
+            # registration, so start_api_server() returns None for it.
+            # The dashboard head registers webui:url once this GCS is promoted.
+            if self._webui_url is not None:
+                put_kv_passive_safe(
+                    self.get_gcs_client(),
+                    b"webui:url",
+                    self._webui_url,
+                    overwrite=True,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    warning_message=True,
+                    logger=logger,
+                )
 
     def start_gcs_server(self):
         """Start the gcs server."""
@@ -1586,58 +1605,80 @@ class Node:
             process_info
         ]
 
-    def _write_cluster_info_to_kv(self):
+    def _write_cluster_info_to_kv(self) -> bool:
         """Write the cluster metadata to GCS.
         Cluster metadata is always recorded, but they are
         not reported unless usage report is enabled.
         Check `usage_stats_head.py` for more details.
+
+        Returns:
+            Whether a passive GCS rejected the writes.
         """
         # Make sure the cluster metadata wasn't reported before.
         import ray._common.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(
-            self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
-        )
-        # On restart with the RocksDB GCS backend, check_persisted_session_name()
-        # needs the previous session_name before GCS (and thus internal_kv) is
-        # back up. We bridge that gap by also writing session_name to a plain
-        # file in the GCS storage directory. Only done for the RocksDB backend;
-        # others are unaffected.
-        #
-        # Write the file BEFORE the internal_kv_put below so the two never
-        # disagree: if we crash in between, the next restart reads the file and
-        # the internal_kv_put inserts cleanly. A write failure here is fatal --
-        # the storage path also holds RocksDB's own files, so an unwritable path
-        # means GCS can't run anyway.
-        if self._is_rocksdb_gcs():
-            self._persist_rocksdb_session_name_file()
+        # A passive GCS rejects all of these writes with Status::GcsPassive. We let
+        # the server decide rather than checking is_gcs_leader() first: leadership
+        # is the server's fact, and the client-side cache starts out false and is
+        # only corrected by a CheckAlive that this path can easily outrun.
+        try:
+            ray_usage_lib.put_cluster_metadata(
+                self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
+            )
+            # On restart with the RocksDB GCS backend, check_persisted_session_name()
+            # needs the previous session_name before GCS (and thus internal_kv) is
+            # back up. We bridge that gap by also writing session_name to a plain
+            # file in the GCS storage directory. Only done for the RocksDB backend;
+            # others are unaffected.
+            #
+            # Write the file BEFORE the internal_kv_put below so the two never
+            # disagree: if we crash in between, the next restart reads the file and
+            # the internal_kv_put inserts cleanly. A write failure here is fatal --
+            # the storage path also holds RocksDB's own files, so an unwritable path
+            # means GCS can't run anyway. This file has no compare-and-set, so it
+            # must stay after a GCS write that a passive head is guaranteed to fail.
+            if self._is_rocksdb_gcs():
+                self._persist_rocksdb_session_name_file()
 
-        # Make sure GCS is up.
-        added = self.get_gcs_client().internal_kv_put(
-            b"session_name",
-            self._session_name.encode(),
-            False,
-            ray_constants.KV_NAMESPACE_SESSION,
-        )
-        if not added:
-            curr_val = self.get_gcs_client().internal_kv_get(
-                b"session_name", ray_constants.KV_NAMESPACE_SESSION
+            # Make sure GCS is up.
+            added = self.get_gcs_client().internal_kv_put(
+                b"session_name",
+                self._session_name.encode(),
+                False,
+                ray_constants.KV_NAMESPACE_SESSION,
             )
-            assert curr_val == self._session_name.encode("utf-8"), (
-                f"Session name {self._session_name} does not match "
-                f"persisted value {curr_val}. Perhaps there was an "
-                f"error connecting to the GCS storage backend."
-            )
+            if not added:
+                curr_val = self.get_gcs_client().internal_kv_get(
+                    b"session_name", ray_constants.KV_NAMESPACE_SESSION
+                )
+                assert curr_val == self._session_name.encode("utf-8"), (
+                    f"Session name {self._session_name} does not match "
+                    f"persisted value {curr_val}. Perhaps there was an "
+                    f"error connecting to the GCS storage backend."
+                )
 
-        # Add tracing_startup_hook to redis / internal kv manually
-        # since internal kv is not yet initialized.
-        if self._ray_params.tracing_startup_hook:
-            self.get_gcs_client().internal_kv_put(
-                b"tracing_startup_hook",
-                self._ray_params.tracing_startup_hook.encode(),
-                True,
-                ray_constants.KV_NAMESPACE_TRACING,
+            # Add tracing_startup_hook to redis / internal kv manually
+            # since internal kv is not yet initialized.
+            if self._ray_params.tracing_startup_hook:
+                self.get_gcs_client().internal_kv_put(
+                    b"tracing_startup_hook",
+                    self._ray_params.tracing_startup_hook.encode(),
+                    True,
+                    ray_constants.KV_NAMESPACE_TRACING,
+                )
+        except Exception as e:
+            if not is_refused_by_passive_gcs(e):
+                raise
+            # The cluster metadata describes the head that is currently active --
+            # it is rewritten with overwrite=True on every head start -- so a head
+            # promoted later must write its own. That replay belongs to the
+            # dashboard head, which unlike this one-shot path outlives `ray start`.
+            logger.warning(
+                "GCS is in passive mode. Skipping writing cluster metadata or "
+                "session_name to KV."
             )
+            return True
+        return False
 
     def start_head_processes(self):
         """Start head processes on the node."""
@@ -1649,7 +1690,10 @@ class Node:
 
         self.start_gcs_server()
         assert self.get_gcs_client() is not None
-        self._write_cluster_info_to_kv()
+        # A rejected write is the authoritative answer to "is this GCS passive?",
+        # unlike is_gcs_leader(), whose cache starts out false and is only
+        # corrected by a CheckAlive that may time out.
+        gcs_is_passive = self._write_cluster_info_to_kv()
 
         if not self._ray_params.no_monitor:
             self.start_monitor()
@@ -1666,6 +1710,7 @@ class Node:
         self.start_api_server(
             include_dashboard=self._ray_params.include_dashboard,
             raise_on_failure=raise_on_api_server_failure,
+            gcs_is_passive=gcs_is_passive,
         )
 
     def start_ray_processes(self):
