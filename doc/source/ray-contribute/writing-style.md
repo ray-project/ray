@@ -418,6 +418,32 @@ Look up the form here rather than deriving it. The `Train.Terms` and `Train.Capi
 | PyTorch, PyTorch Lightning, TensorFlow, Keras, JAX, DeepSpeed, Hugging Face, XGBoost, LightGBM, Horovod | Pytorch, Tensorflow, Jax, Deepspeed, HuggingFace | Framework names take each project's own casing. Write the package name in code style, such as `torch` or `lightgbm`. |
 | MLflow, W&B, Weights & Biases, TensorBoard | MLFlow, WandB, Tensorboard | Write `wandb` in code style when you mean the package. |
 
+(ray-tune-docs-style)=
+
+## Writing Ray Tune docs
+
+Ray Tune pages live under `doc/source/tune/`. The {ref}`Ray Tune key concepts <tune-60-seconds>` page defines the vocabulary: the trainable, the search space, the search algorithm, the scheduler, the trial, and the `Tuner` and `ResultGrid` classes. Use those names for them everywhere else in Tune docs.
+
+An experiment and a trial aren't interchangeable. An experiment is one `Tuner.fit()` call, named by `RunConfig(name=...)`, with its results in one experiment directory. A trial is one run of the trainable with one hyperparameter configuration, and an experiment runs many trials. Write "trial" when the sentence is about a single configuration, such as its checkpoints, its resources, or its status, and "experiment" when it's about the whole run, such as restoring it or naming its storage path.
+
+Write "scheduler" when the Tune context makes clear which scheduler you mean, and "trial scheduler" when a page also discusses Ray's task and actor scheduling or a Kubernetes scheduler.
+
+### Ray Tune terms
+
+Look up the form here rather than deriving it. The `Tune.Terms` and `Tune.Capitalization` Vale rules flag most of the "Not" column. To check a page by hand, run `vale doc/source/tune/`.
+
+| Use | Not | Note |
+|---|---|---|
+| trainable | Trainable, Tune Trainable | The generic concept is lowercase. Put the class in code style when you mean it, as in `Trainable`. |
+| function API, class API, function trainable, class trainable | Function API, Class API, Function Trainable | The two ways to define a trainable. Generic nouns stay lowercase. |
+| search space, search algorithm | Search Space, Search Algorithm, search alg | Searcher classes such as `OptunaSearch` keep code style, as does the `search_alg` argument. |
+| scheduler, trial scheduler | Trial Scheduler | Scheduler classes such as `ASHAScheduler` keep code style. |
+| trial, experiment | Tune Trial, Tune Experiment | See the distinction earlier in this section. |
+| configuration dictionary, trial directory, experiment directory | config dict, trial dir, experiment dir | Spell them out in prose. `config` and `logdir` keep code style. |
+| Bayesian optimization, median stopping rule | Bayesian Optimization, Median Stopping Rule | Techniques are generic nouns. The `bayesian-optimization` package keeps code style. |
+| Hyperband, ASHA, BOHB, Population Based Training, PB2 | HyperBand | Algorithm names follow the papers that introduced them. Class names such as `HyperBandScheduler` keep code style. |
+| Hyperopt, Optuna, Nevergrad, Ax, HEBO, ZOOpt | HyperOpt, hyperopt, AX | Library names take each project's own casing. Write the package name in code style, such as `hyperopt`. |
+
 (kubernetes-docs-style)=
 
 ## Writing Ray on Kubernetes and KubeRay docs
