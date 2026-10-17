@@ -1846,6 +1846,11 @@ def test_idle_termination_pending_nodes_with_min_worker():
         with patch("time.monotonic", return_value=now_s):
             _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
     assert len(to_terminate) == 1
+    # All 3 nodes are idle for longer than the timeouts, but min_worker_nodes=2
+    # only allows terminating 1 of them. Idle termination visits the pending
+    # nodes (i-2, i-3) before the running one (i-1), even though i-1 has been
+    # idle for longer, so the one terminated is pending and i-1 is kept. i-2 and
+    # i-3 have been unneeded for the same duration, so either may be picked.
     assert to_terminate[0][0] in ("i-2", "i-3")
 
 
