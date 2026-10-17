@@ -23,6 +23,7 @@ from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY,
     JobInfoStorageClient,
+    submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobErrorType, JobStatus
@@ -79,7 +80,11 @@ class JobSupervisor:
         # built from the creating head's address stays pinned to that address and
         # cannot reconnect after the head is replaced.
         gcs_client = ray._private.worker.global_worker.gcs_client
-        self._job_info_client = JobInfoStorageClient(gcs_client, logs_dir)
+        self._job_info_client = JobInfoStorageClient(
+            gcs_client,
+            logs_dir,
+            session_name=ray._private.worker.global_worker.node.session_name,
+        )
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -353,6 +358,31 @@ class JobSupervisor:
         driver_agent_http_address = f"http://{build_address(node.node_ip_address, node.dashboard_agent_listen_port)}"
         driver_node_id = ray.get_runtime_context().get_node_id()
 
+        # Initialize ray event recorder if enabled, so lifecycle events
+        # (RUNNING, SUCCEEDED, STOPPED, FAILED) from this process are captured.
+        if submission_job_events_enabled():
+            try:
+                from ray._raylet import EventRecorder
+
+                # The aggregator agent is served on the dashboard agent's gRPC
+                # server, which listens on metrics_agent_port.
+                EventRecorder.initialize(
+                    aggregator_port=node.metrics_agent_port,
+                    node_ip=node.node_ip_address,
+                    node_id_hex=driver_node_id,
+                    max_buffer_size=10000,
+                    metric_source="job_supervisor",
+                )
+                self._logger.info(
+                    "Initialized ray event recorder in JobSupervisor "
+                    f"(grpc_port={node.metrics_agent_port})."
+                )
+            except Exception:
+                self._logger.warning(
+                    "Failed to initialize ray event recorder in JobSupervisor.",
+                    exc_info=True,
+                )
+
         await self._job_info_client.put_status(
             self._job_id,
             JobStatus.RUNNING,
@@ -483,6 +513,16 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            # Flush any remaining events before the actor exits.
+            if submission_job_events_enabled():
+                try:
+                    from ray._raylet import EventRecorder
+
+                    EventRecorder.shutdown()
+                except Exception:
+                    self._logger.debug(
+                        "Failed to shutdown event recorder.", exc_info=True
+                    )
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 

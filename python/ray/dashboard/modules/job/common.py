@@ -34,6 +34,23 @@ JOB_ACTOR_NAME_TEMPLATE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}job_actor_" + "{job_i
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
 
+# Event type names (from RayEvent.EventType in
+# src/ray/protobuf/public/events_base_event.proto) for submission job events
+# emitted through the Python EventRecorder (One-Event framework).
+SUBMISSION_JOB_DEFINITION_EVENT_TYPE = "SUBMISSION_JOB_DEFINITION_EVENT"
+SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE = "SUBMISSION_JOB_LIFECYCLE_EVENT"
+
+
+def submission_job_events_enabled() -> bool:
+    """Whether submission job events should be emitted via the One-Event framework."""
+    # RAY_enable_ray_event must also be on, otherwise the C++ event recorder
+    # silently drops the events.
+    return ray_constants.RAY_ENABLE_RAY_EVENT and bool(
+        {SUBMISSION_JOB_DEFINITION_EVENT_TYPE, SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE}
+        & ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+    )
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -235,15 +252,18 @@ class JobInfoStorageClient:
         self,
         gcs_client: GcsClient,
         export_event_log_dir_root: Optional[str] = None,
+        session_name: str = "",
     ):
         """
         Initialize the JobInfoStorageClient which manages data in the internal KV store.
         Export Submission Job events are written when the KV store is updated if
         the feature flag is on and a export_event_log_dir_root is passed.
         export_event_log_dir_root doesn't need to be passed if the caller
-        is not modifying data in the KV store.
+        is not modifying data in the KV store. session_name is attached to
+        submission job events emitted via the One-Event framework.
         """
         self._gcs_client = gcs_client
+        self._session_name = session_name
         self._export_submission_job_event_logger: logging.Logger = None
         try:
             if (
@@ -286,12 +306,108 @@ class JobInfoStorageClient:
             timeout=timeout,
         )
         if added_num == 1 or overwrite:
-            # Write export event if data was updated in the KV store
-            try:
-                self._write_submission_job_export_event(job_id, job_info)
-            except Exception:
-                logger.exception("Error while writing job submission export event.")
+            if submission_job_events_enabled():
+                try:
+                    self._emit_submission_job_events(
+                        job_id, job_info, is_new=(added_num == 1)
+                    )
+                except Exception:
+                    logger.exception(
+                        "Error emitting submission job using One-Event framework."
+                    )
+            # The export event carries both definition and status transition
+            # fields; keep writing it unless both One-Events fully replace it.
+            if not (
+                submission_job_events_enabled()
+                and SUBMISSION_JOB_DEFINITION_EVENT_TYPE
+                in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+                and SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
+                in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+            ):
+                try:
+                    self._write_submission_job_export_event(job_id, job_info)
+                except Exception:
+                    logger.exception("Error while writing job submission export event.")
         return added_num == 1
+
+    def _emit_submission_job_events(
+        self, job_id: str, job_info: JobInfo, is_new: bool
+    ) -> None:
+        """Emit submission job events using the One-Event framework."""
+        from ray._common.observability import (
+            SubmissionJobDefinitionEventBuilder,
+            SubmissionJobLifecycleEventBuilder,
+            job_status_to_proto_state,
+        )
+        from ray._raylet import EventRecorder
+
+        # Emit definition event once per job (first write). A failure here
+        # shouldn't prevent the lifecycle event from being emitted.
+        if (
+            is_new
+            and SUBMISSION_JOB_DEFINITION_EVENT_TYPE
+            in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+        ):
+            try:
+                builder = SubmissionJobDefinitionEventBuilder(
+                    submission_id=job_id,
+                    entrypoint=job_info.entrypoint,
+                    serialized_runtime_env=(
+                        json.dumps(job_info.runtime_env)
+                        if job_info.runtime_env is not None
+                        else None
+                    ),
+                    metadata=job_info.metadata,
+                    entrypoint_num_cpus=job_info.entrypoint_num_cpus,
+                    entrypoint_num_gpus=job_info.entrypoint_num_gpus,
+                    entrypoint_memory=job_info.entrypoint_memory,
+                    entrypoint_resources=job_info.entrypoint_resources,
+                    session_name=self._session_name,
+                )
+                if not EventRecorder.emit(builder.build()):
+                    logger.warning(
+                        f"Failed to emit submission job definition event for {job_id}."
+                    )
+            except Exception:
+                logger.warning(
+                    "Error emitting submission job definition event.", exc_info=True
+                )
+
+        # Emit lifecycle event on every status change
+        if (
+            SUBMISSION_JOB_LIFECYCLE_EVENT_TYPE
+            not in ray_constants.RAY_ENABLE_PYTHON_RAY_EVENT_TYPES
+        ):
+            return
+
+        state = job_status_to_proto_state(job_info.status.name)
+        if state is None:
+            logger.error(
+                f"{job_info.status.name} is not a valid "
+                "SubmissionJobLifecycleEvent.State enum value. "
+                "Lifecycle event will not be emitted."
+            )
+            return
+
+        try:
+            builder = SubmissionJobLifecycleEventBuilder(
+                submission_id=job_id,
+                state=state,
+                message=job_info.message or "",
+                error_type=(job_info.error_type.value if job_info.error_type else None),
+                driver_node_id=job_info.driver_node_id,
+                driver_agent_http_address=job_info.driver_agent_http_address,
+                driver_exit_code=job_info.driver_exit_code,
+                session_name=self._session_name,
+            )
+            if not EventRecorder.emit(builder.build()):
+                logger.warning(
+                    f"Failed to emit submission job lifecycle event for {job_id}."
+                )
+        except Exception:
+            logger.warning(
+                "Error emitting submission job lifecycle event.", exc_info=True
+            )
 
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
