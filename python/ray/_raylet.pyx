@@ -2670,17 +2670,22 @@ cdef CRayStatus task_execution_handler(
         int64_t generator_backpressure_num_objects,
         int64_t num_objects_per_yield,
         optional[c_string] c_tensor_transport) nogil:
-    with gil, disable_client_hook():
+    with gil:
         # Async actor tasks run on a boost fiber stack; re-anchor CPython's
         # stack protection to it. The handler entry is close to the top of the
         # fiber stack, so a small used-stack upper bound suffices. Actor
         # creation tasks are excluded: they run on the regular task-execution
         # pthread, not a fiber, even for async actors.
+        #
+        # The reanchor must occur before any python call is made on this fiber.
+        # Otherwise, the new fiber stack address may trigger a py_Check due to
+        # stack depth since 3.14.
         if (<int>task_type == <int>TASK_TYPE_ACTOR_TASK
                 and CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync()):
             RayReanchorStackProtectionToCurrentFiberStack(32 * 1024)
 
+    with gil, disable_client_hook():
         # Initialize job_config if it hasn't already.
         # Setup system paths configured in job_config.
         maybe_initialize_job_config()
