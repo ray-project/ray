@@ -125,6 +125,7 @@ class TaskReceiverTest : public ::testing::Test {
   TaskReceiverTest()
       : actor_task_execution_arg_waiter_(std::make_unique<ActorTaskExecutionArgWaiter>(
             [](const std::vector<rpc::ObjectReference> &args,
+               const std::vector<bool> &is_move,
                const TaskID &task_id,
                int32_t attempt_number) {})) {
     auto execute_task = std::bind(&TaskReceiverTest::FakeExecuteTask,
