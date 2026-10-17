@@ -21,6 +21,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     ChatCompletionResponse,
     CompletionRequest,
     CompletionResponse,
+    ErrorInfo,
     ErrorResponse,
 )
 from ray.llm._internal.serve.core.ingress.utils import (
@@ -31,7 +32,7 @@ from ray.llm._internal.serve.core.ingress.utils import (
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.engines.vllm.kv_transfer.base import BaseConnectorBackend
+from ray.llm._internal.serve.engines.common.kv_transfer.base import BaseConnectorBackend
 from ray.llm._internal.serve.serving_patterns.data_parallel.dp_server import DPServer
 from ray.llm._internal.serve.utils.broadcast import broadcast
 from ray.serve._private.http_util import session_id_from_headers
@@ -39,6 +40,7 @@ from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(__name__)
+
 
 RequestType = Union[ChatCompletionRequest, CompletionRequest]
 
@@ -75,6 +77,7 @@ async def _pd_http_response(gen) -> Response:
     Returns a JSON response when the first chunk is an error or a complete
     (non-streaming) response, otherwise an SSE stream. Uses the same response
     helpers as ``OpenAiIngress`` so the wire format matches the standard path.
+
     """
     first, gen = await _peek_at_generator(gen)
     if isinstance(first, list):
@@ -404,7 +407,7 @@ class PDOrchestratorMixin:
         raw_request_info: Optional[RawRequestInfo],
         *,
         cancel_on_failure: bool = True,
-    ):
+    ) -> AsyncGenerator[Any, None]:
         """Run local decode while a remote prefill drains concurrently.
 
         While prefill is in flight, each decode chunk is raced against the
@@ -425,47 +428,101 @@ class PDOrchestratorMixin:
                 completion accounting fires when the response completes, so the
                 stream must be drained to exhaustion, never abandoned. Prefill
                 is clamped to a single token, so draining is bounded either way.
+
+        Yields:
+            Any: Decode response chunks, or a single ``ErrorResponse`` if the
+            remote prefill failed, was cancelled, or returned an error.
         """
         prefill_task = asyncio.create_task(_drain_prefill(prefill_resp))
         completed = False
         local_gen = None
         next_fut = None
+
+        def _prefill_error() -> Optional[ErrorResponse]:
+            """An error to surface to the client, if prefill finished badly.
+
+            Covers all three "prefill is done and it's bad" cases -- returned
+            an ``ErrorResponse``, raised, or got cancelled -- so a dead
+            prefill always aborts decode instead of leaving it to hang on KV
+            that will never arrive. Never raises itself: ``.exception()`` and
+            ``.cancelled()`` just report state, and the real exception object
+            is still awaited (and logged) by the ``finally`` block below.
+            """
+            if not prefill_task.done():
+                return None
+            if prefill_task.cancelled():
+                return ErrorResponse(
+                    error=ErrorInfo(
+                        message="Remote prefill was cancelled",
+                        type="internal_error",
+                        code=500,
+                    )
+                )
+            exc = prefill_task.exception()
+            if exc is not None:
+                return ErrorResponse(
+                    error=ErrorInfo(
+                        message=f"Remote prefill failed: {exc}",
+                        type="internal_error",
+                        code=500,
+                    )
+                )
+            result = prefill_task.result()
+            return result if isinstance(result, ErrorResponse) else None
+
         try:
             local_gen = await getattr(super(), method)(decode_request, raw_request_info)
             gen = local_gen.__aiter__()
-            while True:
-                # Surface a failed prefill as soon as it is observed.
-                if prefill_task.done() and isinstance(
-                    prefill_task.result(), ErrorResponse
-                ):
-                    err = prefill_task.result()
-                    logger.error("Remote prefill returned error: %s", err)
-                    yield err
-                    return
+
+            # Phase 1: race against prefill while it's still in flight.
+            while not prefill_task.done():
                 if next_fut is None:
                     next_fut = asyncio.ensure_future(gen.__anext__())
-                # Race the next decode chunk against the in-flight prefill;
-                # once prefill has completed (successfully), just stream.
-                awaitables = {next_fut}
-                if not prefill_task.done():
-                    awaitables.add(prefill_task)
-                done, _ = await asyncio.wait(
-                    awaitables, return_when=asyncio.FIRST_COMPLETED
+
+                await asyncio.wait(
+                    {next_fut, prefill_task}, return_when=asyncio.FIRST_COMPLETED
                 )
-                if next_fut in done:
+
+                if next_fut.done():
                     try:
                         chunk = next_fut.result()
                     except StopAsyncIteration:
+                        completed = True
                         break
-                    next_fut = None
+                    finally:
+                        if next_fut.done():
+                            next_fut = None
                     yield chunk
-                # else: prefill finished first; loop back to inspect it.
-            completed = True
+
+            err = _prefill_error()
+            if err is not None:
+                logger.error("Remote prefill returned error: %s", err)
+                yield err
+                return
+
+            # Phase 2: prefill is done, nothing left to race -- drain decode
+            # directly through the same iterator Phase 1 was pulling from.
+            if not completed:
+                if next_fut is not None:
+                    try:
+                        chunk = next_fut.result() if next_fut.done() else await next_fut
+                    except StopAsyncIteration:
+                        completed = True
+                    else:
+                        yield chunk
+                    finally:
+                        next_fut = None
+                if not completed:
+                    async for chunk in gen:
+                        yield chunk
+                    completed = True
+
         finally:
             if next_fut is not None and not next_fut.done():
                 next_fut.cancel()
                 with contextlib.suppress(BaseException):
                     await next_fut
+
             if not completed:
                 # Abort the local decode request if we bailed early.
                 if local_gen is not None:
@@ -652,11 +709,77 @@ async def _drain_prefill(prefill_resp) -> Optional[ErrorResponse]:
 
 
 # ---------------------------------------------------------------------------
+# Engine class selection (per llm_engine)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_pd_engine_class(llm_config: "LLMConfig"):
+    """Engine class for a PD server, chosen by ``llm_engine``.
+
+    SGLang must use ``SGLangServer``; everything else falls through to the base
+    LLMServer default (VLLMEngine). The generic PD servers don't set
+    ``_default_engine_cls``, so without this they would always pick VLLMEngine.
+    """
+    if llm_config.llm_engine == "SGLang":
+        from ray.llm._internal.serve.engines.sglang.sglang_engine import SGLangServer
+
+        return SGLangServer
+    from ray.llm._internal.serve.engines.vllm.vllm_engine import VLLMEngine
+
+    return VLLMEngine
+
+
+class _PDEngineSelectionMixin:
+    """Make a PD server pick its engine class from ``llm_config.llm_engine``.
+
+    Preserves the base ``RAYLLM_VLLM_ENGINE_CLS`` escape hatch (used by tests
+    that patch the engine class) and otherwise dispatches on the engine.
+    """
+
+    @classmethod
+    def _resolve_engine_class(cls, llm_config: "LLMConfig"):
+        return _resolve_pd_engine_class(llm_config)
+
+    def _get_default_engine_class(self):
+        import os
+
+        from ray._common.utils import import_attr
+        from ray.llm._internal.serve.constants import RAYLLM_VLLM_ENGINE_CLS_ENV
+
+        engine_cls_path = os.environ.get(RAYLLM_VLLM_ENGINE_CLS_ENV)
+        if engine_cls_path:
+            return import_attr(engine_cls_path)
+        return self._resolve_engine_class(self._llm_config)
+
+    @classmethod
+    def get_deployment_options(cls, llm_config: "LLMConfig"):
+        """Deployment options for the PD server, per engine.
+
+        The base ``LLMServer.get_deployment_options`` reads
+        ``engine_config.accelerator`` / ``placement_strategy`` — fields the
+        minimal ``SGLangEngineConfig`` does not carry. SGLang builds its bundles
+        from ``SGLangServer.get_deployment_options`` instead.
+
+        The SGLang branch is unconditional, which would drop DPServer's gang
+        scheduling for data_parallel_size>1 -- but the builder rejects that
+        combination up front (``_reject_sglang_data_parallel``), so it can't
+        reach here.
+        """
+        if llm_config.llm_engine == "SGLang":
+            from ray.llm._internal.serve.engines.sglang.sglang_engine import (
+                SGLangServer,
+            )
+
+            return SGLangServer.get_deployment_options(llm_config)
+        return super().get_deployment_options(llm_config)
+
+
+# ---------------------------------------------------------------------------
 # PDPrefillServer
 # ---------------------------------------------------------------------------
 
 
-class PDPrefillServer(LLMServer):
+class PDPrefillServer(_PDEngineSelectionMixin, LLMServer):
     """Prefill-side LLM server for P/D disaggregation.
 
     This is a standard LLMServer with an additional ``prewarm_prefill``
@@ -703,7 +826,7 @@ class PDPrefillServer(LLMServer):
 # ---------------------------------------------------------------------------
 
 
-class PDDecodeServer(PDOrchestratorMixin, LLMServer):
+class PDDecodeServer(_PDEngineSelectionMixin, PDOrchestratorMixin, LLMServer):
     """Decode-side LLM server that orchestrates remote prefill.
 
     This deployment owns a real engine (decode config) and holds a handle

@@ -5,13 +5,13 @@ from typing import Any
 import pytest
 
 from ray import serve
+from ray.llm._internal.serve.engines.common.kv_transfer.factory import (
+    KVConnectorBackendFactory,
+)
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
     BaseConnectorBackend,
     DefaultConnectorBackend,
     DefaultPDProtocolMixin,
-)
-from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
-    KVConnectorBackendFactory,
 )
 from ray.serve.llm import LLMConfig
 
