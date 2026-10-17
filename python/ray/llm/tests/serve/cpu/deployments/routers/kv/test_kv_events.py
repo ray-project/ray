@@ -122,15 +122,17 @@ class TestConfigureKvEvents:
             # Non-DP: offset the base port by the replica's node-local rank so
             # colocated replicas don't bind the same ZMQ PUB port.
             ({}, 2, 5559, 6559),
-            # DP: data_parallel_rank set -> offset 0 (the engine offsets the
-            # bound port by dp_rank itself), so local_rank must be ignored.
+            # DP: the engine adds dp_rank to the bound port itself, so the
+            # configured port is offset by local_rank - dp_rank.
             ({"data_parallel_rank": 2}, 2, 5557, 6557),
+            # A second DP group's rank on the same node.
+            ({"data_parallel_rank": 1}, 5, 5561, 6561),
         ],
     )
     def test_assign_replica_endpoint_offsets_port(
         self, engine_kwargs, local_rank, expected_port, expected_replay_port
     ):
-        """Per-replica endpoint offset: by node-local rank without DP, 0 with DP."""
+        """Per-replica endpoint offset so the engine binds base + local_rank."""
         llm_config = make_kv_aware_llm_config(engine_kwargs=dict(engine_kwargs))
         configure_kv_events_for_kv_routing(llm_config)  # base ports 5557 / 6557
         replica_context = SimpleNamespace(rank=SimpleNamespace(local_rank=local_rank))
@@ -139,6 +141,28 @@ class TestConfigureKvEvents:
         kv_events_config = llm_config.engine_kwargs["kv_events_config"]
         assert kv_events_config["endpoint"] == f"tcp://*:{expected_port}"
         assert kv_events_config["replay_endpoint"] == f"tcp://*:{expected_replay_port}"
+
+    def test_colocated_dp_groups_bind_distinct_ports(self):
+        """Ranks of two DP groups on one node bind distinct engine ports."""
+        dp_size = 4
+        bound_ports = set()
+        for local_rank in range(2 * dp_size):
+            dp_rank = local_rank % dp_size
+            llm_config = make_kv_aware_llm_config(
+                engine_kwargs={"data_parallel_rank": dp_rank}
+            )
+            configure_kv_events_for_kv_routing(llm_config)
+            replica_context = SimpleNamespace(
+                rank=SimpleNamespace(local_rank=local_rank)
+            )
+            with mock.patch(
+                "ray.serve.get_replica_context", return_value=replica_context
+            ):
+                assign_replica_kv_events_endpoint(llm_config)
+            endpoint = llm_config.engine_kwargs["kv_events_config"]["endpoint"]
+            # ZmqEventPublisher offsets the configured port by dp_rank.
+            bound_ports.add(int(endpoint.rsplit(":", 1)[1]) + dp_rank)
+        assert bound_ports == set(range(5557, 5557 + 2 * dp_size))
 
     def test_resolve_endpoint_is_node_routable(self, ray_instance):
         """The advertised endpoint is the replica's node IP."""

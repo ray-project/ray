@@ -93,12 +93,13 @@ def assign_replica_kv_events_endpoint(llm_config: LLMConfig) -> None:
     updated = dict(kv_events_config)
     endpoint = updated.pop("endpoint")
     replay_endpoint = updated.pop("replay_endpoint")
-    # With data parallelism the engine offsets ports by dp_rank under ZmqEventPublisher;
-    # otherwise offset by the replica's node-local rank so colocated replicas don't collide.
-    if llm_config.engine_kwargs.get("data_parallel_rank") is not None:
-        offset = 0
-    else:
-        offset = _get_replica_rank()
+    # Offset by the replica's node-local rank so colocated replicas don't
+    # collide. With data parallelism the engine adds its dp_rank under
+    # ZmqEventPublisher, so subtract it: ranks of different DP groups on one
+    # node share dp_ranks but not node-local ranks.
+    offset = _get_replica_rank() - (
+        llm_config.engine_kwargs.get("data_parallel_rank") or 0
+    )
     updated["endpoint"] = _get_offset_endpoint_port(endpoint, offset)
     updated["replay_endpoint"] = _get_offset_endpoint_port(replay_endpoint, offset)
     llm_config.update_engine_kwargs(kv_events_config=updated)
