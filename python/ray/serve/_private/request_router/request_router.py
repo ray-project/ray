@@ -6,17 +6,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from typing import (
-    AsyncGenerator,
-    Callable,
-    DefaultDict,
-    Deque,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-)
+from collections.abc import AsyncGenerator, Callable
 
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
@@ -67,10 +57,10 @@ class LocalityMixin:
 
     def __init__(
         self,
-        self_node_id: Optional[str] = None,
+        self_node_id: str | None = None,
         prefer_local_node_routing: bool = False,
         prefer_local_az_routing: bool = False,
-        self_availability_zone: Optional[str] = None,
+        self_availability_zone: str | None = None,
         *args,
         **kwargs,
     ):
@@ -81,10 +71,10 @@ class LocalityMixin:
         self._self_availability_zone = self_availability_zone
 
         # Colocated replicas (e.g. wrt node, AZ)
-        self._colocated_replica_ids: DefaultDict[
-            LocalityScope, Set[ReplicaID]
-        ] = defaultdict(set)
-        self._replica_id_set: Set[ReplicaID] = set()
+        self._colocated_replica_ids: defaultdict[LocalityScope, set[ReplicaID]] = (
+            defaultdict(set)
+        )
+        self._replica_id_set: set[ReplicaID] = set()
 
     def _discard_colocated_replica_ids_on_replica_actor_died(
         self, replica_id: ReplicaID
@@ -96,7 +86,7 @@ class LocalityMixin:
             id_set.discard(replica_id)
 
     def _update_colocated_replica_ids_with_replicas(
-        self, replicas: List[RunningReplica]
+        self, replicas: list[RunningReplica]
     ):
         """Update the colocated replica IDs based on the replicas.
         This is called when the replicas are updated.
@@ -118,8 +108,8 @@ class LocalityMixin:
 
     def apply_locality_routing(
         self,
-        pending_request: Optional[PendingRequest] = None,
-    ) -> Set[ReplicaID]:
+        pending_request: PendingRequest | None = None,
+    ) -> set[ReplicaID]:
         """Apply locality routing to the pending request.
 
         When the reqeust is None, return all replicas. Each call will try to
@@ -168,14 +158,14 @@ class LocalityMixin:
 
     def rank_replicas_via_locality(
         self,
-        replicas: List[RunningReplica],
-    ) -> List[List[RunningReplica]]:
+        replicas: list[RunningReplica],
+    ) -> list[list[RunningReplica]]:
         """Rank the replicas based on the locality preference.
         Rank 0 is the list of replicas that are on the same node.
         Rank 1 is the list of replicas that are on the same availability zone.
         Rank 2 is the list of all other replicas.
         """
-        ranked_replicas: List[List[RunningReplica]] = [[] for _ in range(3)]
+        ranked_replicas: list[list[RunningReplica]] = [[] for _ in range(3)]
         for replica in replicas:
             if replica.replica_id in self._colocated_replica_ids[LocalityScope.NODE]:
                 ranked_replicas[0].append(replica)
@@ -200,25 +190,25 @@ class MultiplexMixin:
     """
 
     # Provided by the composed RequestRouter.
-    _pending_requests_by_model_id: DefaultDict[str, Deque[PendingRequest]]
+    _pending_requests_by_model_id: defaultdict[str, deque[PendingRequest]]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._multiplexed_model_id_to_replica_ids: DefaultDict[
-            str, Set[ReplicaID]
-        ] = defaultdict(set)
+        self._multiplexed_model_id_to_replica_ids: defaultdict[str, set[ReplicaID]] = (
+            defaultdict(set)
+        )
 
         # When there is no match for a multiplexed model id, we will try to fall back
         # to all replicas immediately. This set is used to make sure we only fall back
         # once for concurrent requests for the same model id.
         # Whenever there is a match, we will remove the model id from this set.
-        self._multiplexed_model_id_fallback_match: Set[str] = set()
-        self._replica_id_set: Set[ReplicaID] = set()
-        self._replicas: Dict[ReplicaID, RunningReplica] = {}
+        self._multiplexed_model_id_fallback_match: set[str] = set()
+        self._replica_id_set: set[ReplicaID] = set()
+        self._replicas: dict[ReplicaID, RunningReplica] = {}
 
     def _get_effective_multiplexed_model_ids(
-        self, request_metadata: Optional[RequestMetadata]
-    ) -> List[str]:
+        self, request_metadata: RequestMetadata | None
+    ) -> list[str]:
         """Return an ordered, deduplicated list of multiplexed model IDs.
 
         Merges the legacy single ``multiplexed_model_id`` with the new
@@ -229,15 +219,15 @@ class MultiplexMixin:
         if request_metadata is None:
             return []
 
-        ids: List[str] = []
+        ids: list[str] = []
         if request_metadata.multiplexed_model_id:
             ids.append(request_metadata.multiplexed_model_id)
         if request_metadata.candidate_multiplexed_model_ids:
             ids.extend(request_metadata.candidate_multiplexed_model_ids)
 
         # Deduplicate while preserving order.
-        seen: Set[str] = set()
-        unique_ids: List[str] = []
+        seen: set[str] = set()
+        unique_ids: list[str] = []
         for mid in ids:
             if mid and mid not in seen:
                 seen.add(mid)
@@ -245,7 +235,7 @@ class MultiplexMixin:
         return unique_ids
 
     def _get_first_available_multiplexed_model_id(
-        self, request_metadata: Optional[RequestMetadata]
+        self, request_metadata: RequestMetadata | None
     ) -> str:
         """Return the first model ID in the effective list that has at least one
         replica loaded. Falls back to the first entry in the effective list (or
@@ -265,8 +255,8 @@ class MultiplexMixin:
 
     def _get_pending_request_matching_multiplexed_model_id(
         self,
-        request_metadata: Optional[RequestMetadata] = None,
-    ) -> Optional[PendingRequest]:
+        request_metadata: RequestMetadata | None = None,
+    ) -> PendingRequest | None:
         """Matching pending request based on the request metadata.
 
         Uses dict index for O(1) lookup by multiplexed_model_id.  When an
@@ -301,7 +291,7 @@ class MultiplexMixin:
             id_set.discard(replica_id)
 
     def _update_multiplexed_model_ids_with_replicas(
-        self, replicas: List[RunningReplica]
+        self, replicas: list[RunningReplica]
     ):
         """Update the multiplexed model IDs based on the replicas.
 
@@ -317,7 +307,7 @@ class MultiplexMixin:
             new_multiplexed_model_id_to_replica_ids
         )
 
-    def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[ReplicaID]:
+    def _get_replica_ids_with_fewest_multiplexed_models(self) -> set[ReplicaID]:
         """Get the set of replicas that have the fewest multiplexed models loaded."""
         candidates = set()
         sorted_replicas = sorted(
@@ -342,8 +332,8 @@ class MultiplexMixin:
 
     def apply_multiplex_routing(
         self,
-        pending_request: Optional[PendingRequest] = None,
-    ) -> Set[ReplicaID]:
+        pending_request: PendingRequest | None = None,
+    ) -> set[ReplicaID]:
         """Apply multiplex routing to the pending request.
 
         When the request is None, return all replicas. Each call will try to
@@ -444,9 +434,9 @@ class MultiplexMixin:
 
     def rank_replicas_via_multiplex(
         self,
-        replicas: List[RunningReplica],
+        replicas: list[RunningReplica],
         multiplexed_model_id: str,
-    ) -> List[List[RunningReplica]]:
+    ) -> list[list[RunningReplica]]:
         """Rank the replicas based on a single resolved multiplexed model ID.
 
         Rank 0 is the list of replicas that have the given multiplexed model ID
@@ -466,7 +456,7 @@ class MultiplexMixin:
             self._get_replica_ids_with_fewest_multiplexed_models()
         )
 
-        ranked_replicas: List[List[RunningReplica]] = [[] for _ in range(3)]
+        ranked_replicas: list[list[RunningReplica]] = [[] for _ in range(3)]
         for replica in replicas:
             if replica.replica_id in replica_ids_with_multiplexed_model:
                 ranked_replicas[0].append(replica)
@@ -492,7 +482,7 @@ class FIFOMixin:
     """
 
     # Provided by the composed RequestRouter.
-    _pending_requests_to_fulfill: Deque[PendingRequest]
+    _pending_requests_to_fulfill: deque[PendingRequest]
     _record_queue_wait_time: Callable[[PendingRequest], None]
     _remove_pending_request_from_indices: Callable[[PendingRequest], None]
     _cancel_routing_task_for_pending_request: Callable[[PendingRequest], None]
@@ -502,8 +492,8 @@ class FIFOMixin:
 
     def _get_pending_request_matching_metadata(
         self,
-        request_metadata: Optional[RequestMetadata] = None,
-    ) -> Optional[PendingRequest]:
+        request_metadata: RequestMetadata | None = None,
+    ) -> PendingRequest | None:
         """Matching pending request based on the request metadata.
 
         If multiplex mixin is used, this will be using the multiplexed model
@@ -519,7 +509,7 @@ class FIFOMixin:
     def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
-        request_metadata: Optional[RequestMetadata] = None,
+        request_metadata: RequestMetadata | None = None,
     ):
         """Assign the replica to the next pending request in FIFO order.
 
@@ -576,13 +566,12 @@ class RequestRouter(ABC):
         self,
         deployment_id: DeploymentID,
         handle_source: DeploymentHandleSource,
-        self_actor_id: Optional[str] = None,
-        self_actor_handle: Optional[ActorHandle] = None,
+        self_actor_id: str | None = None,
+        self_actor_handle: ActorHandle | None = None,
         use_replica_queue_len_cache: bool = False,
-        get_curr_time_s: Optional[Callable[[], float]] = None,
-        create_replica_wrapper_func: Optional[
-            Callable[[RunningReplicaInfo], RunningReplica]
-        ] = None,
+        get_curr_time_s: Callable[[], float] | None = None,
+        create_replica_wrapper_func: Callable[[RunningReplicaInfo], RunningReplica]
+        | None = None,
         initial_backoff_s: float = RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
         backoff_multiplier: float = RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
         max_backoff_s: float = RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -603,35 +592,35 @@ class RequestRouter(ABC):
 
         # Current replicas available to be routed.
         # Updated via `update_replicas`.
-        self._replica_id_set: Set[ReplicaID] = set()
-        self._replicas: Dict[ReplicaID, RunningReplica] = {}
+        self._replica_id_set: set[ReplicaID] = set()
+        self._replicas: dict[ReplicaID, RunningReplica] = {}
         # Cached list of replicas to avoid O(n) dict-to-list conversion on every
         # routing iteration. Updated only when replicas change via `update_replicas`.
-        self._replicas_list: List[RunningReplica] = []
+        self._replicas_list: list[RunningReplica] = []
         self._replica_queue_len_cache = ReplicaQueueLengthCache(
             get_curr_time_s=get_curr_time_s,
         )
 
         # Throttle state for router queue length gauge updates.
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
-        self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
+        self._queue_len_gauge_last_update: dict[ReplicaID, float] = {}
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
         # determine the loop to attach to. This class can be constructed for the handle
         # from a different loop than it uses for routing, so we need to construct it
         # lazily to avoid an error due to the event being attached to the wrong loop.
-        self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
-        self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._lazily_constructed_replicas_updated_event: asyncio.Event | None = None
+        self._lazily_fetched_loop: asyncio.AbstractEventLoop | None = None
 
         # Tasks running the routing loop. The size of this set may vary over time
         # as new tasks will be routed when a request comes in or new replicas are
         # added, but it will not exceed self.max_num_routing_tasks.
-        self._routing_tasks: Set[asyncio.Task] = set()
+        self._routing_tasks: set[asyncio.Task] = set()
         # Maps each pending request's future to the task currently routing it. An
         # internal request ID can be shared by dependent handle calls, while every
         # pending request has a distinct future.
-        self._routing_task_by_pending_request_future: Dict[
+        self._routing_task_by_pending_request_future: dict[
             asyncio.Future, asyncio.Task
         ] = {}
 
@@ -642,17 +631,17 @@ class RequestRouter(ABC):
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for routing tasks to know which multiplexed model IDs they
         # should be trying to get replicas for.
-        self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
-        self._pending_requests_to_route: Deque[PendingRequest] = deque()
+        self._pending_requests_to_fulfill: deque[PendingRequest] = deque()
+        self._pending_requests_to_route: deque[PendingRequest] = deque()
 
         # Dict indices for O(1) lookups of pending requests.
         # Maps internal_request_id -> PendingRequest for fast lookup by request ID.
-        self._pending_requests_by_id: Dict[str, PendingRequest] = {}
+        self._pending_requests_by_id: dict[str, PendingRequest] = {}
         # Maps multiplexed_model_id -> deque of PendingRequests for fast lookup by model.
         # Using deque allows O(1) popleft for cleaning done entries at the front.
-        self._pending_requests_by_model_id: DefaultDict[
-            str, Deque[PendingRequest]
-        ] = defaultdict(deque)
+        self._pending_requests_by_model_id: defaultdict[str, deque[PendingRequest]] = (
+            defaultdict(deque)
+        )
 
         # Prepare request router metrics.
         self.num_routing_tasks_gauge = metrics.Gauge(
@@ -755,9 +744,9 @@ class RequestRouter(ABC):
 
     def update_backoff_params(
         self,
-        initial_backoff_s: Optional[float],
-        backoff_multiplier: Optional[float],
-        max_backoff_s: Optional[float],
+        initial_backoff_s: float | None,
+        backoff_multiplier: float | None,
+        max_backoff_s: float | None,
     ) -> None:
         """Update the backoff parameters at runtime.
 
@@ -812,7 +801,6 @@ class RequestRouter(ABC):
         Initialize the state of the request router. Called by the Ray Serve framework with the
         contents of `RequestRouter.request_router_kwargs`.
         """
-        pass
 
     @property
     def supports_rejection_protocol(self) -> bool:
@@ -878,7 +866,7 @@ class RequestRouter(ABC):
         return min(self.num_pending_requests, self.max_num_routing_tasks)
 
     @property
-    def curr_replicas(self) -> Dict[ReplicaID, RunningReplica]:
+    def curr_replicas(self) -> dict[ReplicaID, RunningReplica]:
         """Current replicas available to be routed."""
         return self._replicas
 
@@ -947,7 +935,7 @@ class RequestRouter(ABC):
         # removes done entries during lookup, amortizing the cleanup cost.
 
     def _insert_pending_request_sorted(
-        self, queue: Deque[PendingRequest], pending_request: PendingRequest
+        self, queue: deque[PendingRequest], pending_request: PendingRequest
     ):
         """Insert a pending request into the queue maintaining sorted order by created_at.
 
@@ -1001,7 +989,7 @@ class RequestRouter(ABC):
                 self._replica_queue_len_cache.update(replica_id, new_queue_len)
                 self._update_router_queue_len_gauge(replica_id, new_queue_len)
 
-    def update_replicas(self, replicas: List[RunningReplica]):
+    def update_replicas(self, replicas: list[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
 
         When the set of replicas changes, we may spawn additional routing tasks
@@ -1059,9 +1047,9 @@ class RequestRouter(ABC):
 
     async def _probe_queue_lens(
         self,
-        replicas: List[RunningReplica],
+        replicas: list[RunningReplica],
         backoff_index: int,
-    ) -> List[Tuple[RunningReplica, Optional[int]]]:
+    ) -> list[tuple[RunningReplica, int | None]]:
         """Actively probe the queue length from each of the replicas.
 
         Sends an RPC to each replica to fetch its queue length, with a response deadline
@@ -1075,7 +1063,7 @@ class RequestRouter(ABC):
         This method also updates the local cache of replica queue lengths according to
         the responses.
         """
-        result: List[Tuple[RunningReplica, Optional[int]]] = []
+        result: list[tuple[RunningReplica, int | None]] = []
         if len(replicas) == 0:
             return result
 
@@ -1097,7 +1085,7 @@ class RequestRouter(ABC):
             queue_len_response_deadline_s = max_queue_len_response_deadline_s
 
         get_queue_len_tasks = []
-        task_to_replica: Dict[asyncio.Task, RunningReplica] = {}
+        task_to_replica: dict[asyncio.Task, RunningReplica] = {}
         for r in replicas:
             t = self._event_loop.create_task(
                 r.get_queue_len(deadline_s=queue_len_response_deadline_s)
@@ -1170,9 +1158,9 @@ class RequestRouter(ABC):
 
     async def _select_from_candidate_replicas(
         self,
-        candidates: List[RunningReplica],
+        candidates: list[RunningReplica],
         backoff_index: int,
-    ) -> Optional[RunningReplica]:
+    ) -> RunningReplica | None:
         """Chooses the best replica from the list of candidates.
 
         If none of the replicas can be routed, returns `None`.
@@ -1184,8 +1172,8 @@ class RequestRouter(ABC):
         one with the lowest queue length is chosen.
         """
         lowest_queue_len = math.inf
-        chosen_replica_id: Optional[ReplicaID] = None
-        not_in_cache: List[RunningReplica] = []
+        chosen_replica_id: ReplicaID | None = None
+        not_in_cache: list[RunningReplica] = []
         if self._use_replica_queue_len_cache:
             # Populate available queue lens from the cache.
             for r in candidates:
@@ -1230,8 +1218,8 @@ class RequestRouter(ABC):
 
     def _get_pending_request_matching_internal_request_id(
         self,
-        request_metadata: Optional[RequestMetadata] = None,
-    ) -> Optional[PendingRequest]:
+        request_metadata: RequestMetadata | None = None,
+    ) -> PendingRequest | None:
         """Get the pending request that matches on the internal request id.
 
         Uses dict index for O(1) lookup by internal_request_id.
@@ -1266,7 +1254,7 @@ class RequestRouter(ABC):
     def _fulfill_next_pending_request(
         self,
         replica: RunningReplica,
-        request_metadata: Optional[RequestMetadata] = None,
+        request_metadata: RequestMetadata | None = None,
     ):
         """Assign the replica to the next pending request, potentially not in
         order of when the request arrived.
@@ -1288,7 +1276,7 @@ class RequestRouter(ABC):
 
     def _get_next_pending_request_to_route(
         self,
-    ) -> Optional[PendingRequest]:
+    ) -> PendingRequest | None:
         while len(self._pending_requests_to_route) > 0:
             pr = self._pending_requests_to_route.popleft()
             if not pr.future.done():
@@ -1298,8 +1286,8 @@ class RequestRouter(ABC):
 
     async def _choose_replicas_with_backoff(
         self,
-        pending_request: Optional[PendingRequest] = None,
-    ) -> AsyncGenerator[List[RunningReplica], None]:
+        pending_request: PendingRequest | None = None,
+    ) -> AsyncGenerator[list[RunningReplica], None]:
         """Generator that repeatedly chooses available replicas.
         In the first iteration, only replicas colocated on the same node as this router
         will be considered. If those are occupied, the full set of replicas will be
@@ -1328,8 +1316,8 @@ class RequestRouter(ABC):
                         extra={"log_to_stderr": False},
                     )
 
-                chosen_replicas: List[
-                    List[RunningReplica]
+                chosen_replicas: list[
+                    list[RunningReplica]
                 ] = await self.choose_replicas(
                     candidate_replicas=self._replicas_list,
                     pending_request=pending_request,
@@ -1387,9 +1375,9 @@ class RequestRouter(ABC):
                 request_metadata = pending_request.metadata
                 routing_task = asyncio.current_task(loop=self._event_loop)
                 assert routing_task is not None
-                self._routing_task_by_pending_request_future[
-                    pending_request.future
-                ] = routing_task
+                self._routing_task_by_pending_request_future[pending_request.future] = (
+                    routing_task
+                )
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
@@ -1533,7 +1521,7 @@ class RequestRouter(ABC):
 
         return replica
 
-    def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+    def _update_running_replicas(self, running_replicas: list[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
         replica_wrappers = []
         for r in running_replicas:
@@ -1560,8 +1548,8 @@ class RequestRouter(ABC):
         return self.update_replicas(replica_wrappers)
 
     def select_available_replicas(
-        self, candidates: Optional[List[RunningReplica]] = None
-    ) -> List[RunningReplica]:
+        self, candidates: list[RunningReplica] | None = None
+    ) -> list[RunningReplica]:
         """Select available replicas from the list of candidates.
 
         This method is used to select replicas that are available to take more
@@ -1585,9 +1573,9 @@ class RequestRouter(ABC):
     @abstractmethod
     async def choose_replicas(
         self,
-        candidate_replicas: List[RunningReplica],
-        pending_request: Optional[PendingRequest] = None,
-    ) -> List[List[RunningReplica]]:
+        candidate_replicas: list[RunningReplica],
+        pending_request: PendingRequest | None = None,
+    ) -> list[list[RunningReplica]]:
         """Chooses a subset of candidate replicas from available replicas.
 
         This is the main function each request router should implement to
@@ -1605,13 +1593,12 @@ class RequestRouter(ABC):
             rank of replicas. The first rank is the most preferred and the last
             rank is the least preferred.
         """
-        pass
 
     def on_request_routed(
         self,
         pending_request: PendingRequest,
         replica_id: ReplicaID,
-        result: Optional[ReplicaResult],
+        result: ReplicaResult | None,
     ) -> None:
         """Called when a request is routed to a replica.
 
@@ -1622,7 +1609,6 @@ class RequestRouter(ABC):
         the request itself (for example, the direct-streaming LLM ingress
         router, which returns the replica to HAProxy).
         """
-        pass
 
     def on_request_completed(
         self,
@@ -1640,4 +1626,3 @@ class RequestRouter(ABC):
             internal_request_id: The internal unique identifier for the request
                 (from RequestMetadata.internal_request_id).
         """
-        pass
