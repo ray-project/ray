@@ -253,6 +253,14 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
                             }
                         }
                     )
+                    # Publish the freshly copied module weights before the updated mapping
+                    # function can route new episodes to this module. Learner.set_state
+                    # advances WEIGHTS_SEQ_NO for this unversioned state update, allowing
+                    # EnvRunners' pull-if-newer logic to apply the weights immediately.
+                    algorithm.env_runner_group.sync_weights(
+                        from_worker_or_learner_group=algorithm.learner_group,
+                        inference_only=True,
+                    )
 
                 algorithm.env_runner_group.foreach_env_runner(
                     lambda env_runner: env_runner.config.multi_agent(
