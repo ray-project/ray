@@ -1872,9 +1872,6 @@ def init(
 
         enable_token_auth_by_default()
 
-        # Setup and verify authentication for new cluster
-        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
-
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
         from ray._common.usage import usage_lib
 
