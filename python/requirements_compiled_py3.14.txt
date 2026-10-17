@@ -178,9 +178,12 @@ azure-mgmt-core==1.6.0
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
 azure-mgmt-network==29.0.0
     # via -r python/requirements/test-requirements.txt
 azure-mgmt-resource==24.0.0
+    # via -r python/requirements/test-requirements.txt
+azure-mgmt-resource-deployments==2.0.0
     # via -r python/requirements/test-requirements.txt
 azure-storage-blob==12.28.0
     # via
@@ -819,6 +822,7 @@ isodate==0.7.2
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
     #   azure-storage-blob
     #   msrest
 isoduration==20.11.0
@@ -2286,6 +2290,7 @@ typing-extensions==4.15.0
     #   azure-mgmt-compute
     #   azure-mgmt-network
     #   azure-mgmt-resource
+    #   azure-mgmt-resource-deployments
     #   azure-storage-blob
     #   botorch
     #   cfn-lint
