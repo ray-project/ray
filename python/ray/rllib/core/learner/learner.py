@@ -1629,6 +1629,10 @@ class Learner(Checkpointable):
         if COMPONENT_RL_MODULE in state:
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 self.module.set_state(state[COMPONENT_RL_MODULE])
+                # An unversioned module-state update is still a weight mutation. Advance the
+                # sequence number so EnvRunners' pull-if-newer sync does not skip these weights.
+                if weights_seq_no == 0:
+                    self._weights_seq_no += 1
 
         if COMPONENT_OPTIMIZER in state:
             self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
