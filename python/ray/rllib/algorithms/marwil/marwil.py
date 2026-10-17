@@ -396,8 +396,7 @@ class MARWILConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        if self.beta < 0.0 or self.beta > 1.0:
-            self._value_error("`beta` must be within 0.0 and 1.0!")
+        self._validate_beta()
 
         if self.postprocess_inputs is False and self.beta > 0.0:
             self._value_error(
@@ -430,6 +429,10 @@ class MARWILConfig(AlgorithmConfig):
                 f"Got burnin_len={self.burnin_len}, "
                 f"model.max_seq_len={self.model.get('max_seq_len', 0)}."
             )
+
+    def _validate_beta(self) -> None:
+        if self.beta is None or self.beta < 0.0 or self.beta > 1.0:
+            self._value_error("`beta` must be within 0.0 and 1.0!")
 
     @property
     def _model_auto_keys(self):
