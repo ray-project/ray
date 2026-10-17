@@ -173,7 +173,7 @@ def _metrics_reachable(url):
     try:
         requests.get(f"{url}/metrics", timeout=5)
         return True
-    except requests.exceptions.ConnectionError:
+    except requests.RequestException:
         return False
 
 

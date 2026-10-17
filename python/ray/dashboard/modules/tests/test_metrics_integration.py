@@ -1,3 +1,4 @@
+import json
 import os
 import secrets
 import subprocess
@@ -200,6 +201,9 @@ def test_dashboard_prometheus_config_warns_on_env_only_token(auth_env, monkeypat
     assert len(warnings) == 1 and "RAY_AUTH_TOKEN_PATH" in warnings[0]
 
 
+DISCOVERY_FILE_PATH = "/tmp/ray/prom_metrics_service_discovery.json"
+
+
 def test_launch_prometheus_scrapes_token_auth_cluster(auth_env, monkeypatch, capsys):
     token_file = auth_env.parent.parent / "token_file"
     token_file.write_text(secrets.token_hex(32))
@@ -210,6 +214,15 @@ def test_launch_prometheus_scrapes_token_auth_cluster(auth_env, monkeypatch, cap
     cluster.add_node()
     cluster.add_node()
     ray.init(address=cluster.address)
+
+    # launch-prometheus reads targets through the /tmp/ray symlink, so Prometheus
+    # misses later rewrites of the session file until its 5-minute refresh; start
+    # it only once the file lists two nodes, the autoscaler and the dashboard head.
+    def discovery_file_lists_all_targets():
+        with open(DISCOVERY_FILE_PATH) as f:
+            return len(json.load(f)[0]["targets"]) == 4
+
+    wait_for_condition(discovery_file_lists_all_targets, timeout=60)
     prometheus_pid = None
     try:
         install_and_start_prometheus.main()
@@ -218,10 +231,13 @@ def test_launch_prometheus_scrapes_token_auth_cluster(auth_env, monkeypatch, cap
 
         def all_targets_up():
             try:
-                targets = requests.get(
+                response = requests.get(
                     "http://localhost:9090/api/v1/targets", timeout=5
-                ).json()["data"]["activeTargets"]
-            except requests.exceptions.ConnectionError:
+                )
+                if response.status_code != 200:
+                    return False
+                targets = response.json()["data"]["activeTargets"]
+            except (requests.RequestException, ValueError, KeyError, TypeError):
                 return False
             # Two nodes, the autoscaler and the dashboard head.
             return len(targets) == 4 and all(t["health"] == "up" for t in targets)
