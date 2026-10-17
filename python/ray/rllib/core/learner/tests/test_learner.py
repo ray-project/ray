@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 
 import ray
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import LR_KEY, Learner, UpdatePlan
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -40,6 +40,38 @@ class TestLearner(unittest.TestCase):
     @classmethod
     def tearDown(cls) -> None:
         ray.shutdown()
+
+    def test_unversioned_module_state_update_advances_weights_seq_no(self):
+        """Manual RLModule updates must be visible to EnvRunner pull-if-newer sync."""
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        state = learner.get_state()
+        initial_seq_no = state[WEIGHTS_SEQ_NO]
+        module_state = state[COMPONENT_RL_MODULE]
+
+        # Change one real parameter, then restore it through the same unversioned
+        # COMPONENT_RL_MODULE-only path used when cloning a module into a learner.
+        changed_parameter = None
+        for module_id, parameters in module_state.items():
+            for name, value in parameters.items():
+                if torch.is_tensor(value) and value.is_floating_point():
+                    parameters[name] = value + 1.0
+                    changed_parameter = (module_id, name)
+                    break
+            if changed_parameter is not None:
+                break
+        self.assertIsNotNone(changed_parameter)
+
+        learner.set_state({COMPONENT_RL_MODULE: module_state})
+
+        restored_state = learner.get_state()
+        self.assertEqual(restored_state[WEIGHTS_SEQ_NO], initial_seq_no + 1)
+        module_id, parameter_name = changed_parameter
+        self.assertTrue(
+            torch.equal(
+                restored_state[COMPONENT_RL_MODULE][module_id][parameter_name],
+                module_state[module_id][parameter_name],
+            )
+        )
 
     def test_end_to_end_update(self):
         """Tests the end-to-end update process for a single-agent scenario.
