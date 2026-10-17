@@ -113,8 +113,8 @@ def _make_shutdown_fake(
 
     fake._drain_behind_haproxy = drain_behind_haproxy
 
-    async def shutdown():
-        events.append(("shutdown",))
+    async def shutdown(graceful_shutdown_timeout_s=None):
+        events.append(("shutdown", graceful_shutdown_timeout_s))
 
     fake.shutdown = shutdown
 
@@ -206,6 +206,8 @@ class TestPerformGracefulShutdown:
         for name, *args in events:
             if name.endswith("_stop"):
                 assert 0.0 < args[0] <= 1.0
+            elif name == "shutdown":
+                assert 0.0 < args[0] <= 1.0
         # The direct ingress gRPC server task is cancelled after the
         # graceful stop completes.
         assert grpc_task.cancel.called
@@ -230,7 +232,7 @@ class TestPerformGracefulShutdown:
         assert http_task.cancelled()
         # Shutdown still completes despite the timeout.
         assert fake._quiescing is True
-        assert events[-1] == ("shutdown",)
+        assert events[-1][0] == "shutdown"
 
     @pytest.mark.asyncio
     async def test_abrupt_cancel_when_server_object_missing(self):
@@ -259,7 +261,8 @@ class TestPerformGracefulShutdown:
 
         await Replica._perform_graceful_shutdown(fake)
 
-        assert events == [("shutdown",)]
+        assert [e[0] for e in events] == ["shutdown"]
+        assert 0.0 < events[0][1] <= 1.0
 
     @pytest.mark.asyncio
     async def test_behind_haproxy_uses_two_phase_drain(self):

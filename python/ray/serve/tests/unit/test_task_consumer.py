@@ -22,6 +22,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
         self._config = config
         self._start_consumer_received: bool = False
         self._stop_consumer_received: bool = False
+        self._stop_consumer_timeout = None
         self.register_task_handle_mock = MagicMock()
 
     def initialize(self, consumer_concurrency: int = 3):
@@ -43,6 +44,7 @@ class MockTaskProcessorAdapter(TaskProcessorAdapter):
 
     def stop_consumer(self, timeout: float = 10.0):
         self._stop_consumer_received = True
+        self._stop_consumer_timeout = timeout
 
     def cancel_task_sync(self, task_id) -> bool:
         pass
@@ -279,6 +281,28 @@ class TestTaskConsumerDecorator:
             @task_consumer
             class MyConsumer:
                 pass
+
+    @pytest.mark.parametrize("timeout_s", [None, 0.0, 123.0])
+    def test_graceful_shutdown_forwards_timeout(self, config, timeout_s):
+        @task_consumer(task_processor_config=config)
+        class MyConsumer:
+            pass
+
+        instance = MyConsumer()
+        instance.initialize_callable(1)
+        instance._adapter.stop_consumer = MagicMock(
+            wraps=instance._adapter.stop_consumer
+        )
+
+        instance._serve_graceful_shutdown(timeout_s=timeout_s)
+
+        assert instance._adapter._stop_consumer_received
+        if timeout_s is None:
+            instance._adapter.stop_consumer.assert_called_once_with()
+            assert instance._adapter._stop_consumer_timeout == 10.0
+        else:
+            instance._adapter.stop_consumer.assert_called_once_with(timeout=timeout_s)
+            assert instance._adapter._stop_consumer_timeout == timeout_s
 
 
 def test_default_deployment_name_stays_same_with_task_consumer(config):
