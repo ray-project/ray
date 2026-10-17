@@ -310,7 +310,7 @@ def _validate_file_schema(
     legacy_orc_layout = (
         file_format == "orc"
         and bool(file_schema.names)
-        and all(name.startswith("_col") for name in file_schema.names)
+        and all(re.fullmatch(r"_col[0-9]+", name) for name in file_schema.names)
     )
     if legacy_orc_layout:
         for hive_index, hive_field in enumerate(hive_schema):

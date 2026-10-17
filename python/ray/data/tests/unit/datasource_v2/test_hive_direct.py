@@ -686,6 +686,36 @@ def test_orc_mixed_coln_and_named_columns_use_name_mapping(tmp_path):
     assert result.column("id").to_pylist() == [43]
 
 
+def test_orc_col_prefix_names_use_name_mapping(tmp_path):
+    path = _write_table_file(
+        tmp_path / "part-000",
+        "orc",
+        pa.table({"_color": [42], "_column": [43]}),
+    )
+    declared = pa.schema([("_column", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    scanner = source.create_scanner(source.infer_schema(None))
+
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths([path])))
+    )
+
+    assert result.column("_column").to_pylist() == [43]
+
+
+def test_orc_col_prefix_name_does_not_reject_missing_hive_column(tmp_path):
+    path = _write_column_file(tmp_path / "part-000", "orc", "_color", 42)
+    declared = pa.schema([("_column", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    scanner = source.create_scanner(source.infer_schema(None))
+
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths([path])))
+    )
+
+    assert result.column("_column").to_pylist() == [None]
+
+
 def test_unsampled_orc_positional_layout_is_rejected_before_data_read(
     tmp_path, monkeypatch
 ):
