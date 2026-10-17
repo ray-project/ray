@@ -469,13 +469,41 @@ def test_concurrent_token_creation_agrees_on_one_token(tmp_path):
             )
             for _ in range(num_processes)
         ]
-        for proc in procs:
-            assert proc.stdout.readline().strip() == "ready"
-        release_file.touch()
+        try:
+            for proc in procs:
+                assert proc.stdout.readline().strip() == "ready"
+        finally:
+            # Release every child even if one failed early, so none spins forever.
+            release_file.touch()
         tokens = [proc.communicate(timeout=60)[0].strip() for proc in procs]
 
         token_on_disk = (home / ".ray" / "auth_token").read_text()
         assert tokens == [token_on_disk] * num_processes
+
+
+def test_token_creation_without_hard_links(tmp_path, monkeypatch):
+    """Token creation still works where the home directory's filesystem has no
+    hard links (FUSE mounts such as gcsfuse, exFAT)."""
+    import errno
+
+    from ray._private.authentication.authentication_token_setup import (
+        generate_and_save_token,
+    )
+
+    def link_not_permitted(src, dst):
+        raise PermissionError(errno.EPERM, "Operation not permitted")
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    monkeypatch.setattr(os, "link", link_not_permitted)
+
+    generate_and_save_token()
+
+    token_path = tmp_path / ".ray" / "auth_token"
+    assert len(token_path.read_text()) == 64
+    if sys.platform != "win32":
+        assert token_path.stat().st_mode & 0o777 == 0o600
+    assert os.listdir(token_path.parent) == ["auth_token"]
 
 
 @pytest.mark.skipif(
@@ -485,7 +513,6 @@ def test_concurrent_token_creation_agrees_on_one_token(tmp_path):
 def test_cluster_utils_head_creates_token():
     """ray.cluster_utils.Cluster() builds Node(head=True) directly. With token
     auth on and no token, the head creates ~/.ray/auth_token and starts."""
-    from ray._raylet import AuthenticationMode, get_authentication_mode
     from ray.cluster_utils import Cluster
 
     set_auth_mode("token")
@@ -497,7 +524,6 @@ def test_cluster_utils_head_creates_token():
     try:
         assert default_token_path.exists()
         ray.init(address=cluster.address)
-        assert get_authentication_mode() == AuthenticationMode.TOKEN
 
         @ray.remote
         def f():

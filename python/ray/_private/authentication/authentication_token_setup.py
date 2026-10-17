@@ -33,11 +33,7 @@ logger = logging.getLogger(__name__)
 
 def generate_and_save_token() -> None:
     """Generate a random token and save it at the default token path, unless
-    another process already saved a non-empty token there.
-
-    Returns:
-        The newly generated authentication token.
-    """
+    another process already saved a non-empty token there."""
     # Generate a UUID-based token
     token = generate_new_authentication_token()
 
@@ -59,6 +55,16 @@ def generate_and_save_token() -> None:
             if token_path.read_text().strip():
                 return
             os.replace(tmp_path, token_path)
+        except OSError:
+            # Some filesystems have no hard links (FUSE mounts such as gcsfuse,
+            # exFAT). An exclusive create still never overwrites another head's
+            # token, though a head starting at the same moment can read it empty.
+            try:
+                fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                return
+            with os.fdopen(fd, "w") as f:
+                f.write(token)
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(tmp_path)
