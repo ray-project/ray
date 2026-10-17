@@ -4,7 +4,10 @@ registration, ``KVAwareRouter`` binding to it, and the
 """
 
 import asyncio
+from collections import OrderedDict
 import sys
+import types
+from typing import List
 
 import pytest
 
@@ -120,9 +123,11 @@ class _TrackerBroadcastHandle:
     def __init__(self, *trackers):
         self._trackers = trackers
         self._tasks = set()
+        self.calls = []
 
     def broadcast(self, method_name, *args):
         handle = self
+        self.calls.append((method_name, args))
 
         class _Response:
             async def results_async(self, *, timeout_s=None, return_exceptions=False):
@@ -160,9 +165,14 @@ class _RecordingSelectionService:
     def __init__(self, inner):
         self._inner = inner
         self.create_reservation_calls = []
+        self.select_and_reserve_calls = []
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
+
+    async def select_and_reserve(self, request):
+        self.select_and_reserve_calls.append(dict(request))
+        return await self._inner.select_and_reserve(request)
 
     async def create_reservation(self, request):
         self.create_reservation_calls.append(dict(request))
@@ -395,6 +405,406 @@ async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
                 tracker._reservation_apply_task.cancel()
             if tracker._svc is not None:
                 await tracker._svc.delete_worker(worker_id)
+
+
+# ---- Session affinity -------------------------------------------------------
+
+_SESSION = "session-a"
+_SESSION_TTL_S = 1800.0
+
+
+async def _register_workers(tracker: KVTokenTracker, replica_ids) -> List[int]:
+    """Register one engine worker per replica id on ``tracker``."""
+    worker_ids = []
+    for port, replica_id in enumerate(replica_ids, start=59900):
+        worker_id = get_worker_id(replica_id)
+        tracker._register_block_size(16, replica_id)
+        await tracker._upsert_worker(
+            worker_id,
+            replica_id,
+            {
+                "endpoint": f"tcp://127.0.0.1:{port}",
+                "block_size": 16,
+                "max_num_batched_tokens": 8192,
+                "dp_rank": 0,
+            },
+        )
+        worker_ids.append(worker_id)
+    return worker_ids
+
+
+async def _delete_workers(tracker: KVTokenTracker, worker_ids) -> None:
+    if tracker._svc is not None:
+        for worker_id in worker_ids:
+            await tracker._svc.delete_worker(worker_id)
+
+
+async def _load_worker(tracker, worker_id, count, prefix="load") -> None:
+    """Book ``count`` long non-session requests on ``worker_id`` only, so normal
+    scoring prefers any other worker."""
+    for i in range(count):
+        await tracker.select_worker(
+            f"{prefix}-{worker_id}-{i}",
+            list(range(10_000 * (i + 1), 10_000 * (i + 1) + 4096)),
+            [worker_id],
+            32,
+        )
+
+
+def _turn(n: int) -> List[int]:
+    """Short prompt for a session turn, so load (not prompt size) dominates."""
+    return list(range(n * 100, n * 100 + 32))
+
+
+def _other(worker_ids, worker_id) -> int:
+    return next(w for w in worker_ids if w != worker_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "control_kwargs",
+    [
+        {},
+        {"session_id": _SESSION, "session_affinity_ttl_s": 0},
+        {"session_id": "session-b", "session_affinity_ttl_s": _SESSION_TTL_S},
+    ],
+    ids=["no-session", "ttl-zero", "new-session"],
+)
+async def test_session_later_turn_sticks_to_loaded_worker(control_kwargs):
+    """A session's later turn stays on the worker that served its first turn
+    even when that worker is more loaded; requests without an active binding
+    are scored normally and go to the less-loaded worker."""
+    pytest.importorskip("dynamo.llm")
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["sess-r0", "sess-r1"])
+    try:
+        tracker._svc = _RecordingSelectionService(tracker._svc)
+        first = await tracker.select_worker(
+            "turn-1",
+            _turn(1),
+            worker_ids,
+            32,
+            session_id=_SESSION,
+            session_affinity_ttl_s=_SESSION_TTL_S,
+        )
+        bound = first["worker_id"]
+        other = _other(worker_ids, bound)
+        # The first turn has no binding yet, so it is scored normally.
+        assert "affinity_target" not in tracker._svc.select_and_reserve_calls[0]
+        assert tracker._session_workers[_SESSION][0] == bound
+
+        await _load_worker(tracker, bound, 3)
+        assert _active_requests(tracker, bound) > _active_requests(tracker, other)
+
+        second = await tracker.select_worker(
+            "turn-2",
+            _turn(2),
+            worker_ids,
+            32,
+            session_id=_SESSION,
+            session_affinity_ttl_s=_SESSION_TTL_S,
+        )
+        assert second["worker_id"] == bound
+        assert tracker._svc.select_and_reserve_calls[-1]["affinity_target"] == {
+            "worker_id": bound
+        }
+        # Dynamo still books the affinity turn's load on the bound worker.
+        assert _active_requests(tracker, bound) == 5
+
+        control = await tracker.select_worker(
+            "control", _turn(3), worker_ids, 32, **control_kwargs
+        )
+        assert control["worker_id"] == other
+        assert "affinity_target" not in tracker._svc.select_and_reserve_calls[-1]
+        # A disabled-affinity request neither consults nor rebinds the session.
+        assert tracker._session_workers[_SESSION][0] == bound
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "max_imbalance,num_load_requests,stays",
+    [
+        (3, 3, True),
+        (2, 2, True),
+        (2, 3, False),
+        (0, 1, False),
+    ],
+)
+async def test_session_max_imbalance(max_imbalance, num_load_requests, stays):
+    """A session leaves its worker only once that worker has more than
+    ``max_imbalance`` in-flight requests above the least-loaded allowed
+    worker, and is rebound to the new choice when it moves."""
+    pytest.importorskip("dynamo.llm")
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["imb-r0", "imb-r1"])
+    affinity = {
+        "session_id": _SESSION,
+        "session_affinity_ttl_s": _SESSION_TTL_S,
+        "session_affinity_max_imbalance": max_imbalance,
+    }
+    try:
+        first = await tracker.select_worker(
+            "turn-1", _turn(1), worker_ids, 32, **affinity
+        )
+        bound = first["worker_id"]
+        other = _other(worker_ids, bound)
+        # Finish the first turn so in-flight counts are just the extra load.
+        await tracker.on_request_completed("turn-1")
+        await _load_worker(tracker, bound, num_load_requests)
+        assert len(tracker._request_ids_by_worker[bound]) == num_load_requests
+        assert not tracker._request_ids_by_worker.get(other)
+
+        second = await tracker.select_worker(
+            "turn-2", _turn(2), worker_ids, 32, **affinity
+        )
+        expected = bound if stays else other
+        assert second["worker_id"] == expected
+        assert tracker._session_workers[_SESSION][0] == expected
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_session_bound_worker_not_allowed_rebinds():
+    """When the bound worker is not a candidate (departed, or filtered out for
+    a LoRA adapter), the turn is scored normally and the session is rebound."""
+    pytest.importorskip("dynamo.llm")
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["allow-r0", "allow-r1", "allow-r2"])
+    affinity = {"session_id": _SESSION, "session_affinity_ttl_s": _SESSION_TTL_S}
+    try:
+        tracker._svc = _RecordingSelectionService(tracker._svc)
+        bound = worker_ids[0]
+        await tracker.select_worker("turn-1", _turn(1), [bound], 32, **affinity)
+        assert tracker._session_workers[_SESSION][0] == bound
+
+        # Of the remaining candidates, the loaded one loses normal scoring.
+        loaded, idle = worker_ids[1], worker_ids[2]
+        await _load_worker(tracker, loaded, 2)
+        second = await tracker.select_worker(
+            "turn-2", _turn(2), [loaded, idle], 32, **affinity
+        )
+        assert "affinity_target" not in tracker._svc.select_and_reserve_calls[-1]
+        assert second["worker_id"] == idle
+        assert tracker._session_workers[_SESSION][0] == idle
+
+        # The next turn follows the new binding even with the old worker back.
+        third = await tracker.select_worker(
+            "turn-3", _turn(3), worker_ids, 32, **affinity
+        )
+        assert tracker._svc.select_and_reserve_calls[-1]["affinity_target"] == {
+            "worker_id": idle
+        }
+        assert third["worker_id"] == idle
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+class _FakeClock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "elapsed_s,stays",
+    [(4.0, True), (5.0, False), (6.0, False)],
+)
+async def test_session_affinity_ttl_expiry(monkeypatch, elapsed_s, stays):
+    """A binding idle for the TTL or longer is dropped, so the turn is scored
+    normally and rebound; within the TTL it keeps its affinity target."""
+    pytest.importorskip("dynamo.llm")
+    clock = _FakeClock()
+    monkeypatch.setattr(
+        kv_token_tracker,
+        "time",
+        types.SimpleNamespace(monotonic=clock.monotonic, time=clock.monotonic),
+    )
+    ttl_s = 5.0
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["ttl-r0", "ttl-r1"])
+    affinity = {"session_id": _SESSION, "session_affinity_ttl_s": ttl_s}
+    try:
+        tracker._svc = _RecordingSelectionService(tracker._svc)
+        first = await tracker.select_worker(
+            "turn-1", _turn(1), worker_ids, 32, **affinity
+        )
+        bound = first["worker_id"]
+        other = _other(worker_ids, bound)
+        await _load_worker(tracker, bound, 3)
+
+        clock.now += elapsed_s
+        second = await tracker.select_worker(
+            "turn-2", _turn(2), worker_ids, 32, **affinity
+        )
+        request = tracker._svc.select_and_reserve_calls[-1]
+        if stays:
+            assert request["affinity_target"] == {"worker_id": bound}
+            assert second["worker_id"] == bound
+        else:
+            assert "affinity_target" not in request
+            assert second["worker_id"] == other
+        # Either way the turn refreshes the binding to the selected worker.
+        assert tracker._session_workers[_SESSION][:2] == (
+            second["worker_id"],
+            clock.now,
+        )
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_ttl_evicts_oldest_bindings(monkeypatch):
+    """A lookup sweeps expired bindings off the oldest end and keeps fresh
+    ones."""
+    pytest.importorskip("dynamo.llm")
+    clock = _FakeClock()
+    monkeypatch.setattr(
+        kv_token_tracker,
+        "time",
+        types.SimpleNamespace(monotonic=clock.monotonic, time=clock.monotonic),
+    )
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["sweep-r0", "sweep-r1"])
+    try:
+        for i, session_id in enumerate(["s-old", "s-mid", "s-new"]):
+            await tracker.select_worker(
+                f"req-{session_id}",
+                _turn(i),
+                worker_ids,
+                32,
+                session_id=session_id,
+                session_affinity_ttl_s=10.0,
+            )
+            clock.now += 4.0
+        # Now: s-old is 12s idle, s-mid 8s, s-new 4s.
+        assert tracker._get_session_worker("s-new", worker_ids, 10.0, None) in (
+            worker_ids
+        )
+        assert list(tracker._session_workers) == ["s-mid", "s-new"]
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_lru_bound(monkeypatch):
+    """Bindings are bounded: past the limit the least recently bound session
+    is evicted, and rebinding a session refreshes it."""
+    pytest.importorskip("dynamo.llm")
+    monkeypatch.setattr(kv_token_tracker, "SESSION_AFFINITY_MAX_ENTRIES", 2)
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["lru-r0", "lru-r1"])
+
+    async def turn(request_id, session_id):
+        await tracker.select_worker(
+            request_id,
+            _turn(len(request_id)),
+            worker_ids,
+            32,
+            session_id=session_id,
+            session_affinity_ttl_s=_SESSION_TTL_S,
+        )
+
+    try:
+        await turn("r1", "s1")
+        await turn("r2", "s2")
+        await turn("r3", "s1")  # refreshes s1, so s2 is now least recent
+        await turn("r4", "s3")
+        assert list(tracker._session_workers) == ["s1", "s3"]
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+def test_older_peer_session_binding_does_not_override_newer():
+    """A delayed broadcast for an older turn leaves a newer binding in place,
+    while a newer peer binding replaces an older local one."""
+    tracker = _NoLongPollTracker.__new__(_NoLongPollTracker)
+    tracker._session_workers = OrderedDict()
+    newer = tracker._bind_session(_SESSION, 1)
+    assert tracker._bind_session(_SESSION, 2, bound_at=newer - 5) == newer
+    assert tracker._session_workers[_SESSION][0] == 1
+    assert tracker._bind_session(_SESSION, 3, bound_at=newer + 5) == newer + 5
+    assert tracker._session_workers[_SESSION][0] == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ttl_s,expected_session_id",
+    [(_SESSION_TTL_S, _SESSION), (0, None)],
+    ids=["affinity", "disabled"],
+)
+async def test_peer_trackers_converge_on_session_binding(ttl_s, expected_session_id):
+    """The reservation broadcast carries the session, so a peer ingress binds
+    it to the same worker and routes the session's next turn there even when
+    its normal scoring would pick another worker."""
+    pytest.importorskip("dynamo.llm")
+    routing = _NoLongPollTracker(ingress_replica_rank=0)
+    peer = _NoLongPollTracker(ingress_replica_rank=1)
+    trackers = (routing, peer)
+    replica_ids = ["peer-sess-r0", "peer-sess-r1"]
+    worker_ids = []
+    try:
+        for tracker in trackers:
+            worker_ids = await _register_workers(tracker, replica_ids)
+
+        broadcast_handle = _TrackerBroadcastHandle(*trackers)
+        routing.start_reservation_broadcast(broadcast_handle)
+        first = await routing.select_worker(
+            "turn-1",
+            _turn(1),
+            worker_ids,
+            32,
+            session_id=_SESSION,
+            session_affinity_ttl_s=ttl_s,
+        )
+        bound = first["worker_id"]
+        other = _other(worker_ids, bound)
+        await routing.flush_reservation_broadcast()
+        await broadcast_handle.flush()
+        for tracker in trackers:
+            await tracker.flush_reservation_updates()
+
+        payloads = [
+            reservation
+            for method_name, (batch,) in broadcast_handle.calls
+            if method_name == "on_reservations_created"
+            for reservation in batch
+        ]
+        assert [p["request_id"] for p in payloads] == ["turn-1"]
+        assert payloads[0]["session_id"] == expected_session_id
+        assert "turn-1" in peer._requests
+
+        if expected_session_id is None:
+            assert _SESSION not in peer._session_workers
+            return
+
+        assert peer._session_workers[_SESSION][0] == bound
+        # Make the bound worker clearly busier on the peer: normal scoring
+        # there picks the other worker, but the session stays put.
+        await _load_worker(peer, bound, 3)
+        control = await peer.select_worker("control", _turn(3), worker_ids, 32)
+        assert control["worker_id"] == other
+        second = await peer.select_worker(
+            "turn-2",
+            _turn(2),
+            worker_ids,
+            32,
+            session_id=_SESSION,
+            session_affinity_ttl_s=ttl_s,
+        )
+        assert second["worker_id"] == bound
+    finally:
+        if routing._reservation_forwarder is not None:
+            routing._reservation_forwarder.close()
+        for tracker in trackers:
+            if tracker._reservation_apply_task is not None:
+                tracker._reservation_apply_task.cancel()
+            await _delete_workers(tracker, worker_ids)
 
 
 # ---- LongPoll replica-membership tracking -----------------------------------

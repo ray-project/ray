@@ -5,7 +5,7 @@ import math
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, TypedDict
 
 import ray
 from ray import serve
@@ -14,6 +14,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_INDEXER_THREADS_KEY,
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
     REQUEST_TRACKING_TTL_S,
+    SESSION_AFFINITY_MAX_ENTRIES,
 )
 from ray.serve._private.common import DeploymentTargetInfo
 from ray.serve._private.constants import (
@@ -99,6 +100,12 @@ class ReservationBroadcast(TypedDict):
     # peer's selection service books this reservation in the same LoRA
     # namespace the selecting ingress scored it in.
     lora_name: Optional[str]
+    # The request's session, so peers bind it to the same worker and route its
+    # next turn there even when that turn enters through another ingress.
+    session_id: Optional[str]
+    # Wall-clock time of the binding, so a delayed broadcast for an older turn
+    # doesn't override a newer binding.
+    session_bound_at: Optional[float]
 
 
 class ReservationBroadcastForwarder:
@@ -225,6 +232,13 @@ class KVTokenTracker:
         # Request ids whose completion arrived before their reservation broadcast.
         # Ordered oldest-first so the stale sweep can bound memory.
         self._completed_request_ids: "OrderedDict[str, float]" = OrderedDict()
+        # Session id -> (worker id, monotonic time, wall-clock time) of the
+        # session's latest turn, oldest first, for session affinity. Peers learn
+        # bindings from the reservation broadcast, so they converge without
+        # extra RPCs.
+        self._session_workers: "OrderedDict[str, Tuple[int, float, float]]" = (
+            OrderedDict()
+        )
         self._pending_tasks: Set[asyncio.Task] = set()
         self._reservation_forwarder: Optional[ReservationBroadcastForwarder] = None
         self._reservation_updates: asyncio.Queue = asyncio.Queue()
@@ -416,9 +430,17 @@ class KVTokenTracker:
         allowed_worker_ids: List[int],
         expected_output_tokens: Optional[int] = None,
         lora_name: Optional[str] = None,
+        session_id: Optional[str] = None,
+        session_affinity_ttl_s: float = 0,
+        session_affinity_max_imbalance: Optional[int] = None,
     ) -> WorkerSelection:
         """Score the allowed workers for a request based on KV-cache overlap and
         load and pick the best one.
+
+        With session affinity, a session's first turn is scored normally and
+        later turns go to the worker that served the previous turn, where its
+        prefix is cached. The selection service still scores overlap and books
+        load on that worker.
 
         Args:
             request_id: Unique identifier for the request being routed.
@@ -431,6 +453,13 @@ class KVTokenTracker:
                 events. The selection service salts its KV hashes with it, so
                 omitting it on a LoRA request scores against the wrong
                 namespace and never matches.
+            session_id: The request's session, if any.
+            session_affinity_ttl_s: How long an idle session stays bound to its
+                worker. ``0`` disables session affinity.
+            session_affinity_max_imbalance: If set, a session leaves its worker
+                when that worker has more than this many in-flight requests
+                above the least-loaded allowed worker. ``None`` always keeps
+                the session on its worker while the worker is allowed.
 
         Returns:
             The selected worker (see ``WorkerSelection``).
@@ -455,7 +484,21 @@ class KVTokenTracker:
             "expected_output_tokens": expected_output_tokens,
             "lora_name": lora_name,
         }
+        if not session_affinity_ttl_s:
+            session_id = None
+        if session_id:
+            affinity_worker_id = self._get_session_worker(
+                session_id,
+                allowed_worker_ids,
+                session_affinity_ttl_s,
+                session_affinity_max_imbalance,
+            )
+            if affinity_worker_id is not None:
+                request["affinity_target"] = {"worker_id": affinity_worker_id}
         selection = await self._svc.select_and_reserve(request)
+        session_bound_at = None
+        if session_id:
+            session_bound_at = self._bind_session(session_id, selection["worker_id"])
         self._track_request_state(
             request_id,
             selection["worker_id"],
@@ -474,6 +517,8 @@ class KVTokenTracker:
                     "expected_output_tokens": expected_output_tokens,
                     "effective_prefill_tokens": selection["effective_prefill_tokens"],
                     "lora_name": lora_name,
+                    "session_id": session_id,
+                    "session_bound_at": session_bound_at,
                 }
             )
         return {
@@ -482,6 +527,62 @@ class KVTokenTracker:
             "overlap_tokens": selection["overlap"]["longest_matched"],
             "effective_prefill_tokens": selection["effective_prefill_tokens"],
         }
+
+    def _get_session_worker(
+        self,
+        session_id: str,
+        allowed_worker_ids: List[int],
+        ttl_s: float,
+        max_imbalance: Optional[int],
+    ) -> Optional[int]:
+        """Return the worker ``session_id`` is bound to, if it is still a
+        valid affinity target for this request."""
+        cutoff = time.monotonic() - ttl_s
+        while self._session_workers:
+            _, (_, bound_at, _) = next(iter(self._session_workers.items()))
+            if bound_at > cutoff:
+                break
+            self._session_workers.popitem(last=False)
+        binding = self._session_workers.get(session_id)
+        if binding is None:
+            return None
+        worker_id = binding[0]
+        # A departed or filtered-out worker (e.g. LoRA candidates) can't serve
+        # the turn; score normally and rebind to the new choice.
+        if worker_id not in allowed_worker_ids:
+            return None
+        if max_imbalance is not None:
+            in_flight = {
+                w: len(self._request_ids_by_worker.get(w, ()))
+                for w in allowed_worker_ids
+            }
+            if in_flight[worker_id] - min(in_flight.values()) > max_imbalance:
+                return None
+        return worker_id
+
+    def _bind_session(
+        self, session_id: str, worker_id: int, bound_at: Optional[float] = None
+    ) -> float:
+        """Bind ``session_id`` to ``worker_id``, evicting the least recently
+        bound session past the size bound.
+
+        Args:
+            bound_at: Wall-clock time of a peer's binding; ignored if this
+                ingress already holds a newer one.
+
+        Returns:
+            The wall-clock time of the session's current binding.
+        """
+        current = self._session_workers.get(session_id)
+        if bound_at is not None and current is not None and current[2] >= bound_at:
+            return current[2]
+        if bound_at is None:
+            bound_at = time.time()
+        self._session_workers.pop(session_id, None)
+        self._session_workers[session_id] = (worker_id, time.monotonic(), bound_at)
+        if len(self._session_workers) > SESSION_AFFINITY_MAX_ENTRIES:
+            self._session_workers.popitem(last=False)
+        return bound_at
 
     def _track_request_state(
         self,
@@ -579,6 +680,13 @@ class KVTokenTracker:
                 reservation["isl_tokens"],
                 reservation["expected_output_tokens"],
             )
+            session_id = reservation.get("session_id")
+            if session_id:
+                self._bind_session(
+                    session_id,
+                    reservation["worker_id"],
+                    reservation.get("session_bound_at") or time.time(),
+                )
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
         """Apply a replica's ``(hook_name, args)`` lifecycle events in order.

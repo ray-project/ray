@@ -61,6 +61,11 @@ KV_EVENTS_REPLAY_BUFFER_STEPS = 999
 # transient actor outage) would otherwise leave its entry tracked forever.
 REQUEST_TRACKING_TTL_S = 3600
 
+# Session affinity: how long a session stays bound to the replica that served
+# its last turn, and how many bindings each ingress router keeps (LRU).
+DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
+SESSION_AFFINITY_MAX_ENTRIES = 65536
+
 # Bound best-effort lifecycle broadcast delivery so one slow ingress replica
 # cannot stall an engine replica's whole lifecycle-event queue indefinitely.
 LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 3

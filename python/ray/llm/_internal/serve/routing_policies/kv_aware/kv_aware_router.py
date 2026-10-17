@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_SESSION_AFFINITY_TTL_S,
     REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
@@ -42,13 +43,40 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     Dynamo selection service and the global KV index) built by the LLMRouter in
     this same ingress process; this per-handle router stays thin and simply maps
     candidate replicas to/from Dynamo worker ids.
+
+    Requests carrying a session id (the ``x-session-id`` header) get session
+    affinity: a session's first turn is scored normally and later turns go to
+    the replica that served the previous turn, which holds the session's
+    prefix in its KV cache.
     """
 
-    def initialize_state(self):
+    def initialize_state(
+        self,
+        session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+        session_affinity_max_imbalance: Optional[int] = None,
+    ):
         """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
         process. When absent (e.g. the proxy's fallback router), KV-aware
         routing degrades to load-balanced selection instead of erroring.
+
+        Args:
+            session_affinity_ttl_s: How long an idle session stays bound to the
+                replica that served its last turn. ``0`` disables session
+                affinity.
+            session_affinity_max_imbalance: If set, a session moves off its
+                replica when that replica has more than this many in-flight
+                requests above the least-loaded candidate. By default a
+                session stays on its replica while the replica is a candidate.
         """
+        if session_affinity_ttl_s < 0:
+            raise ValueError("session_affinity_ttl_s must be >= 0.")
+        if (
+            session_affinity_max_imbalance is not None
+            and session_affinity_max_imbalance < 0
+        ):
+            raise ValueError("session_affinity_max_imbalance must be >= 0.")
+        self._session_affinity_ttl_s = session_affinity_ttl_s
+        self._session_affinity_max_imbalance = session_affinity_max_imbalance
         self._kv_token_tracker = get_kv_token_tracker()
         if self._kv_token_tracker is None:
             logger.warning(
@@ -124,6 +152,9 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             # the selection service salts its KV hashes with it, so each adapter
             # gets its own KV namespace. Empty means the base model.
             lora_name=pending_request.metadata.multiplexed_model_id or None,
+            session_id=pending_request.metadata.session_id or None,
+            session_affinity_ttl_s=self._session_affinity_ttl_s,
+            session_affinity_max_imbalance=self._session_affinity_max_imbalance,
         )
         return [[worker_id_to_replica[selection["worker_id"]]]]
 

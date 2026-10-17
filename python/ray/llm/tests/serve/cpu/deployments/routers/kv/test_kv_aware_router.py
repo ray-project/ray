@@ -16,6 +16,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    DEFAULT_SESSION_AFFINITY_TTL_S,
     REQUEST_TOKEN_IDS_KWARG,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
@@ -212,6 +213,7 @@ class _SelectWorkerStub:
         self.allowed = None
         self.expected_output_tokens = None
         self.lora_name = None
+        self.session_kwargs = None
 
     async def __call__(
         self,
@@ -220,11 +222,13 @@ class _SelectWorkerStub:
         allowed_worker_ids,
         expected_output_tokens=None,
         lora_name=None,
+        **session_kwargs,
     ):
         self.token_ids = token_ids
         self.allowed = allowed_worker_ids
         self.expected_output_tokens = expected_output_tokens
         self.lora_name = lora_name
+        self.session_kwargs = session_kwargs
         return {
             "worker_id": self._worker_id,
             "dp_rank": 0,
@@ -241,12 +245,16 @@ class _KVTokenTrackerStub:
 class _StubKVAwareRouter(KVAwareRouter):
     """KVAwareRouter with the router-local tracker injected, bypassing discovery."""
 
-    def __init__(self, kv_token_tracker):
+    def __init__(self, kv_token_tracker, **initialize_state_kwargs):
+        self._deployment_id = DeploymentID(name="d", app_name="app")
+        # Serve calls initialize_state with the deployment's
+        # request_router_kwargs; then inject the stub tracker.
+        self.initialize_state(**initialize_state_kwargs)
         self._kv_token_tracker = kv_token_tracker
 
 
-def _build_kv_aware_router(worker_id: int) -> KVAwareRouter:
-    return _StubKVAwareRouter(_KVTokenTrackerStub(worker_id))
+def _build_kv_aware_router(worker_id: int, **initialize_state_kwargs) -> KVAwareRouter:
+    return _StubKVAwareRouter(_KVTokenTrackerStub(worker_id), **initialize_state_kwargs)
 
 
 @pytest.mark.asyncio
@@ -293,6 +301,93 @@ async def test_choose_replicas_routes_to_selected_worker():
     assert sorted(select.allowed) == sorted(worker_ids)
     assert select.expected_output_tokens is None
     assert select.lora_name is None
+    # Session affinity is on by default; a request without a session id
+    # forwards None.
+    assert select.session_kwargs == {
+        "session_id": None,
+        "session_affinity_ttl_s": DEFAULT_SESSION_AFFINITY_TTL_S,
+        "session_affinity_max_imbalance": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "kwargs,match",
+    [
+        ({"session_affinity_ttl_s": -1}, "session_affinity_ttl_s"),
+        ({"session_affinity_max_imbalance": -1}, "session_affinity_max_imbalance"),
+    ],
+)
+def test_initialize_state_rejects_invalid_session_affinity(kwargs, match):
+    router = KVAwareRouter.__new__(KVAwareRouter)
+    router._deployment_id = DeploymentID(name="d", app_name="app")
+    with pytest.raises(ValueError, match=match):
+        router.initialize_state(**kwargs)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "metadata_session_id,initialize_state_kwargs,expected",
+    [
+        (
+            "sess-1",
+            {},
+            {
+                "session_id": "sess-1",
+                "session_affinity_ttl_s": DEFAULT_SESSION_AFFINITY_TTL_S,
+                "session_affinity_max_imbalance": None,
+            },
+        ),
+        (
+            "sess-1",
+            {"session_affinity_ttl_s": 60.0, "session_affinity_max_imbalance": 4},
+            {
+                "session_id": "sess-1",
+                "session_affinity_ttl_s": 60.0,
+                "session_affinity_max_imbalance": 4,
+            },
+        ),
+        (
+            "sess-1",
+            {"session_affinity_ttl_s": 0, "session_affinity_max_imbalance": 0},
+            {
+                "session_id": "sess-1",
+                "session_affinity_ttl_s": 0,
+                "session_affinity_max_imbalance": 0,
+            },
+        ),
+        (
+            "",
+            {"session_affinity_ttl_s": 60.0},
+            {
+                "session_id": None,
+                "session_affinity_ttl_s": 60.0,
+                "session_affinity_max_imbalance": None,
+            },
+        ),
+    ],
+    ids=["defaults", "custom", "disabled", "no-session"],
+)
+async def test_choose_replicas_forwards_session_affinity(
+    metadata_session_id, initialize_state_kwargs, expected
+):
+    """choose_replicas forwards the request's session id and the router's
+    session-affinity settings to the tracker."""
+    replicas = [_StubReplica("r1"), _StubReplica("r2")]
+    router = _build_kv_aware_router(get_worker_id("r1"), **initialize_state_kwargs)
+    pending = PendingRequest(
+        args=[],
+        kwargs={REQUEST_TOKEN_IDS_KWARG: [10, 11, 12]},
+        metadata=RequestMetadata(
+            request_id="req-sess",
+            internal_request_id="int-sess",
+            session_id=metadata_session_id,
+        ),
+    )
+
+    groups = await router.choose_replicas(replicas, pending)
+
+    assert groups == [[replicas[0]]]
+    assert router._kv_token_tracker.select_worker.session_kwargs == expected
 
 
 @pytest.mark.asyncio
@@ -307,6 +402,7 @@ async def test_cold_adapter_backs_off_then_routes():
         allowed_worker_ids,
         expected_output_tokens=None,
         lora_name=None,
+        **session_kwargs,
     ):
         return {
             "worker_id": allowed_worker_ids[0],
@@ -323,6 +419,7 @@ async def test_cold_adapter_backs_off_then_routes():
         backoff_multiplier=1,
         max_backoff_s=0.001,
     )
+    router.initialize_state()
     router._kv_token_tracker = _KVTokenTrackerStub(0)
     router._kv_token_tracker.select_worker = select_first_allowed
     router.update_replicas([FakeRunningReplica("r1"), FakeRunningReplica("r2")])
