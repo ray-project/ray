@@ -1,6 +1,8 @@
+import asyncio
 import sys
 import uuid
 from collections import Counter
+from typing import Optional
 
 import pytest
 
@@ -75,6 +77,7 @@ def _deploy_blocking_capacity_queue_app(
     signal_actor_name: str,
     num_replicas: int = 2,
     max_ongoing_requests: int = 5,
+    token_ttl_s: Optional[float] = 5,
 ):
     """Deploy an app whose requests block until a SignalActor is triggered."""
 
@@ -85,7 +88,7 @@ def _deploy_blocking_capacity_queue_app(
                 actor_class=CapacityQueue,
                 init_kwargs={
                     "acquire_timeout_s": 0.5,
-                    "token_ttl_s": 5,
+                    "token_ttl_s": token_ttl_s,
                 },
                 actor_options={"num_cpus": 0},
             ),
@@ -247,6 +250,45 @@ class TestCapacityQueueRouterLoadBalancing:
 
 class TestCapacityQueueRouterWithSingleReplica:
     """Tests with a single replica to verify basic token flow."""
+
+    @pytest.mark.parametrize("cancel_parent", [False, True])
+    def test_sibling_handle_calls_release_all_tokens(
+        self, serve_instance, cancel_parent
+    ):
+        signal_name = f"sibling_signal_{uuid.uuid4().hex[:8]}"
+        signal = SignalActor.options(name=signal_name).remote()
+        child = _deploy_blocking_capacity_queue_app(
+            signal_name,
+            num_replicas=1,
+            max_ongoing_requests=2,
+            token_ttl_s=None,
+        )
+
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
+        class Parent:
+            def __init__(self, child):
+                self.child = child
+
+            async def __call__(self):
+                return await asyncio.gather(self.child.remote(), self.child.remote())
+
+        parent = serve.run(Parent.bind(child), name="parent", route_prefix="/parent")
+        response = parent.remote()
+        # Both calls hold tokens before either finishes. They inherit the same
+        # parent context, so indexing token ownership by that ID loses one.
+        wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 2)
+        if cancel_parent:
+            response.cancel()
+        else:
+            ray.get(signal.send.remote())
+            assert len(response.result(timeout_s=15)) == 2
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).total_releases == 2,
+            timeout=5,
+        )
+        assert ray.get(queue.get_stats.remote()).total_in_flight == 0
+        ray.kill(signal)
 
     def test_single_replica_all_requests(self, serve_instance):
         """With one replica, all requests should go to the same replica."""
