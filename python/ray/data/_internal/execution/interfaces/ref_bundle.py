@@ -27,11 +27,16 @@ class ReconstructionStamp(NamedTuple):
       therefore which output blocks of this particular reconstruction task need to be reused
       for downstream reconstruction tasks, which blocks can be discarded/pruned,
       and which blocks can be propagated as new/fresh blocks.
+
+    A re-executed seed task can serve several plans, since plans that trace back to it
+    join its queued re-execution. Its operator holds the full plan set, and the stamp
+    only records the plan that queued it.
     """
 
     # Logical Ray Data ID of the task being re-executed.
     lineage_task_id: str
-    # The reconstruction plan the re-execution serves.
+    # The reconstruction plan the re-execution serves. For a seed task, the plan that
+    # queued the re-execution.
     reconstruction_plan_id: str
 
 

@@ -162,6 +162,283 @@ def test_two_losses_under_one_seed_match_baseline(
     _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
 
 
+def test_second_loss_joins_the_queued_seed_re_execution(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """Two losses tracing back to one seed, before the seed's re-execution is
+    submitted, re-inject the seed once. The second plan joins the first.
+    """
+    from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+    from ray.data._internal.execution.util import make_ref_bundles
+
+    ctx = DataContext.get_current()
+    seed_input = make_ref_bundles([[1]])[0]
+    seed_op = MapOperator.create(
+        create_map_transformer_from_block_fn(lambda block, _: block),
+        input_op=InputDataBuffer(ctx, [seed_input]),
+        data_context=ctx,
+        name="Seed",
+    )
+    seed_task_id = seed_op._lineage_task_id_for(0)
+    tracker = LineageTracker()
+    seed_op._lineage_tracker = tracker
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_seed_input(seed_task_id, seed_input)
+    lost_task_ids = ["child:0", "child:1"]
+    for output_index, child_task_id in enumerate(lost_task_ids):
+        block_id = f"{seed_task_id}/{output_index}"
+        tracker.register_block_output(seed_task_id, block_id, output_index)
+        tracker.register_block_queued(seed_task_id, output_index)
+        tracker.register_task_submission(
+            child_task_id, tracker.resolve_dependencies([block_id])
+        )
+
+    source_op = seed_op.input_dependencies[0]
+    topology = {source_op: MagicMock(), seed_op: MagicMock()}
+    for lost_task_id in lost_task_ids:
+        task = DataOpTask(
+            0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
+        )
+        _reconstruct_lost_object(
+            topology,
+            tracker,
+            MagicMock(),
+            task,
+            ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+        )
+
+    (call,) = topology[source_op].add_output.call_args_list
+    assert call.args[0].reconstruction_stamp.lineage_task_id == seed_task_id
+    assert seed_op._queued_seed_reexecutions == {seed_task_id: set(lost_task_ids)}
+
+
+def _produced_bundles(simple_data):
+    """``make_ref_bundles`` plus the per-block exec stats a real task output carries.
+
+    ``OpRuntimeMetrics.on_task_output_generated`` asserts on them, so bundles fed
+    straight into a task's output callback need them where plain inputs do not.
+    """
+    import pandas as pd
+    import pyarrow as pa
+
+    from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
+    from ray.data.block import BlockAccessor, BlockExecStats
+
+    bundles = []
+    for rows in simple_data:
+        block = pd.DataFrame({"id": rows})
+        exec_stats = BlockExecStats.builder().build(block_ser_time_s=0.0)
+        bundles.append(
+            RefBundle(
+                [
+                    BlockEntry(
+                        ray.put(block),
+                        BlockAccessor.for_block(block).get_metadata(
+                            block_exec_stats=exec_stats
+                        ),
+                    )
+                ],
+                owns_blocks=True,
+                schema=pa.lib.Schema.from_pandas(block, preserve_index=False),
+            )
+        )
+    return bundles
+
+
+def _seed_and_consumer_ops():
+    """A started seed operator reading from an ``InputDataBuffer`` and a started
+    consumer of its output, sharing one ``LineageTracker``.
+
+    Returns:
+        The seed operator, the consumer operator, the seed input and the tracker.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+    from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+    from ray.data._internal.execution.util import make_ref_bundles
+
+    ctx = DataContext.get_current()
+    seed_input = make_ref_bundles([[0]])[0]
+    producer = MapOperator.create(
+        create_map_transformer_from_block_fn(lambda block, _: block),
+        input_op=InputDataBuffer(ctx, [seed_input]),
+        data_context=ctx,
+        name="Seed",
+    )
+    consumer = MapOperator.create(
+        create_map_transformer_from_block_fn(lambda block, _: block),
+        input_op=producer,
+        data_context=ctx,
+        name="Consumer",
+    )
+    tracker = LineageTracker()
+    producer.start(ExecutionOptions(), noop_counter(), tracker)  # noqa: F405
+    consumer.start(ExecutionOptions(), noop_counter(), tracker)  # noqa: F405
+    return producer, consumer, seed_input, tracker
+
+
+def test_shared_seed_re_execution_serves_every_joined_plan(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """One re-execution of a seed, classified and released under two plans.
+
+    Two children fanned out from one seed are lost while the seed's re-execution is
+    still queued, so the second plan joins it. The single re-run must withhold each
+    re-produced output under the plan whose child needs it, and release each child
+    once under its own plan.
+    """
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        TaskExecDriverStats,
+    )
+    from ray.data._internal.execution.lineage_tracker import ParentBlockOutput
+    from ray.data._internal.execution.util import make_ref_bundles
+
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    # First run: the seed fans two blocks out to two children, then completes.
+    seed_task_id = producer._lineage_task_id_for(0)
+    child_task_ids = [consumer._lineage_task_id_for(index) for index in range(2)]
+    first_run = make_ref_bundles([[1], [2]])
+    tracker.register_task_submission(seed_task_id, [])
+    for output_index, (child_task_id, bundle) in enumerate(
+        zip(child_task_ids, first_run)
+    ):
+        block_id = bundle.block_refs[0].hex()
+        tracker.register_block_output(seed_task_id, block_id, output_index)
+        tracker.register_block_queued(seed_task_id, output_index)
+        tracker.register_task_submission(
+            child_task_id, tracker.resolve_dependencies([block_id])
+        )
+    tracker.register_task_complete(seed_task_id)
+
+    # Both children are lost. The first plan re-injects the seed, and the second
+    # finds that re-execution still queued and joins it.
+    plan_ids = [
+        tracker.register_task_failed(child_task_id)[1]
+        for child_task_id in child_task_ids
+    ]
+    stamped_seed_input = producer.stamp_seed_reexecution(
+        seed_task_id, {plan_ids[0]}, seed_input
+    )
+    assert producer.join_queued_seed_reexecution(seed_task_id, {plan_ids[1]})
+
+    # The one re-execution is submitted under both plans.
+    producer._submit_data_task(MagicMock(), stamped_seed_input)
+    (task,) = producer._data_tasks.values()
+    assert task.lineage_task_id == seed_task_id
+    assert task.reconstruction_plan_ids == frozenset(plan_ids)
+    assert producer._queued_seed_reexecutions == {}
+
+    # Each re-produced output is withheld under exactly the plan whose child needs
+    # it. Nothing reaches the output queue on its own.
+    second_run = _produced_bundles([[1], [2]])
+    for bundle in second_run:
+        task._output_ready_callback(bundle)
+    assert not producer.has_next()
+    assert producer._reconstruction_outputs == {
+        plan_ids[0]: {ParentBlockOutput(seed_task_id, 0): second_run[0]},
+        plan_ids[1]: {ParentBlockOutput(seed_task_id, 1): second_run[1]},
+    }
+
+    # Completing releases each child once, under its own plan.
+    task._task_done_callback(
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+    )
+    released = []
+    while producer.has_next():
+        released.append(producer.get_next())
+    assert [bundle.block_refs for bundle in released] == [
+        second_run[0].block_refs,
+        second_run[1].block_refs,
+    ]
+    assert [bundle.reconstruction_stamp for bundle in released] == [
+        ReconstructionStamp(child_task_ids[0], plan_ids[0]),
+        ReconstructionStamp(child_task_ids[1], plan_ids[1]),
+    ]
+    assert producer._reconstruction_outputs == {}
+
+
+def test_joined_plans_sharing_a_child_release_it_once_per_plan(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """Two leaves under one child of a seed are lost while the seed's re-execution
+    is still queued.
+
+    Both plans need that child, and they still share one seed re-run. The re-run
+    withholds the child's input under both plans, releases it once per plan as
+    separately stamped bundles, and each copy is submitted under its own plan.
+    """
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        TaskExecDriverStats,
+    )
+    from ray.data._internal.execution.lineage_tracker import ParentBlockOutput
+    from ray.data._internal.execution.util import make_ref_bundles
+
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    # First run: the seed feeds one child, which fans two blocks out to two leaves.
+    seed_task_id = producer._lineage_task_id_for(0)
+    child_task_id = consumer._lineage_task_id_for(0)
+    leaf_task_ids = ["leaf:0", "leaf:1"]
+    seed_block_id = make_ref_bundles([[1]])[0].block_refs[0].hex()
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_block_output(seed_task_id, seed_block_id, 0)
+    tracker.register_block_queued(seed_task_id, 0)
+    tracker.register_task_submission(
+        child_task_id, tracker.resolve_dependencies([seed_block_id])
+    )
+    for output_index, leaf_task_id in enumerate(leaf_task_ids):
+        child_block_id = f"{child_task_id}/{output_index}"
+        tracker.register_block_output(child_task_id, child_block_id, output_index)
+        tracker.register_block_queued(child_task_id, output_index)
+        tracker.register_task_submission(
+            leaf_task_id, tracker.resolve_dependencies([child_block_id])
+        )
+
+    # Both leaves are lost. The second plan joins the first plan's queued seed
+    # re-execution even though both plans need the same child.
+    plan_ids = [
+        tracker.register_task_failed(leaf_task_id)[1] for leaf_task_id in leaf_task_ids
+    ]
+    stamped_seed_input = producer.stamp_seed_reexecution(
+        seed_task_id, {plan_ids[0]}, seed_input
+    )
+    assert producer.join_queued_seed_reexecution(seed_task_id, {plan_ids[1]})
+
+    producer._submit_data_task(MagicMock(), stamped_seed_input)
+    (task,) = producer._data_tasks.values()
+    assert task.reconstruction_plan_ids == frozenset(plan_ids)
+
+    # The child's input is withheld under both plans.
+    (second_run,) = _produced_bundles([[1]])
+    task._output_ready_callback(second_run)
+    assert not producer.has_next()
+    assert producer._reconstruction_outputs == {
+        plan_id: {ParentBlockOutput(seed_task_id, 0): second_run}
+        for plan_id in plan_ids
+    }
+
+    # Completing releases the child once per plan, from the same blocks.
+    task._task_done_callback(
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+    )
+    released = []
+    while producer.has_next():
+        released.append(producer.get_next())
+    assert [bundle.block_refs for bundle in released] == [second_run.block_refs] * 2
+    assert [bundle.reconstruction_stamp for bundle in released] == [
+        ReconstructionStamp(child_task_id, plan_id) for plan_id in plan_ids
+    ]
+    assert producer._reconstruction_outputs == {}
+
+    # Each copy of the child is submitted as a re-execution of its own plan.
+    for bundle in released:
+        consumer._submit_data_task(MagicMock(), bundle)
+    assert sorted(
+        (task.lineage_task_id, task.reconstruction_plan_ids)
+        for task in consumer._data_tasks.values()
+    ) == [(child_task_id, frozenset({plan_id})) for plan_id in plan_ids]
+
+
 @pytest.mark.parametrize("reads_before_loss", [5, 10])
 @reconstruction_enabled
 def test_seed_loss_does_not_re_emit_queued_outputs(
