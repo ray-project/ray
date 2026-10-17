@@ -122,13 +122,13 @@ def test_actor_pool_scaling():
             delta=0, expected_reason="utilization of 0.9 w/in limits [0.5, 1.0]"
         )
 
-    # Should be no-op since there are pending actors (no downscaling while pending)
+    # Pending actors don't pin an under-utilized pool (released first by the pool).
     with patch(actor_pool, "num_pending_actors", 1):
         with patch(actor_pool, "num_tasks_in_flight", 4):
             assert actor_pool.get_pool_util() == 0.4
             assert_autoscaling_action(
-                delta=0,
-                expected_reason="no downscaling while actors are pending",
+                delta=-1,
+                expected_reason="utilization of 0.4 <= 0.5",
             )
 
     # Should be no-op since we have reached the max size (ie could not scale

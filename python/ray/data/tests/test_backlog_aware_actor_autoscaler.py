@@ -275,6 +275,63 @@ class TestActorPoolAutoscaling:
         autoscaler.try_trigger_scaling()
         assert actor_pool.current_size() == max_size - 1
 
+    def test_downscale_not_blocked_by_pending_actors(self):
+        """Pending actors must not pin an under-utilized pool.
+
+        Pending actors are also how a pool waits for resources, so when the
+        cluster has no free capacity they can stay unstarted for a while. Once
+        such a pool is scaled down, the pool releases pending actors first.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=2,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 2 running + 2 pending actors, util = 1 / 4 = 0.25
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        for _ in range(2):
+            actor_pool.pending_to_running()
+        actor_pool.scale(ActorPoolScalingRequest(delta=2))
+        actor_pool._current_in_flight_tasks = 1
+
+        autoscaler = _make_autoscaler(actor_pool)
+        autoscaler.try_trigger_scaling()
+
+        # One actor was released, and it was a pending one.
+        assert actor_pool.current_size() == 3
+        assert actor_pool.num_pending_actors() == 1
+        assert actor_pool.num_running_actors() == 2
+
+    def test_downscale_skipped_while_all_actors_are_starting(self):
+        """Nothing is released while the whole pool is still starting.
+
+        This keeps start-up (and `initial_size` pre-warming) from being torn
+        down before any actor became ready.
+        """
+        actor_pool = MockAutoscalingActorPool(
+            min_size=1,
+            max_size=8,
+            max_tasks_in_flight_per_actor=4,
+            per_actor_resource_usage=ExecutionResources(cpu=1),
+        )
+        # 3 pending actors, no running actor yet, no task in flight (util = 0)
+        actor_pool.scale(ActorPoolScalingRequest(delta=3))
+
+        autoscaler = _make_autoscaler(actor_pool)
+        requests = []
+        original_scale = actor_pool.scale
+        actor_pool.scale = MagicMock(
+            side_effect=lambda req: (requests.append(req), original_scale(req))[1]
+        )
+
+        autoscaler.try_trigger_scaling()
+
+        assert requests[-1].delta == 0
+        assert requests[-1].reason == "no downscaling while all actors are starting"
+        assert actor_pool.current_size() == 3
+        assert actor_pool.num_pending_actors() == 3
+
     @pytest.mark.parametrize(
         "in_flight_tasks, enqueued_input_blocks, avg_inputs_per_task, expected_size",
         (
