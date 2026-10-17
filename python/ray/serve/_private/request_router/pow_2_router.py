@@ -1,9 +1,5 @@
 import logging
 import random
-from typing import (
-    List,
-    Optional,
-)
 
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
@@ -51,9 +47,9 @@ class PowerOfTwoChoicesRequestRouter(
 
     async def choose_replicas(
         self,
-        candidate_replicas: List[RunningReplica],
-        pending_request: Optional[PendingRequest] = None,
-    ) -> List[List[RunningReplica]]:
+        candidate_replicas: list[RunningReplica],
+        pending_request: PendingRequest | None = None,
+    ) -> list[list[RunningReplica]]:
         """One iteration of the power of two choices procedure that chooses
          (at most) two random available replicas.
 
@@ -62,9 +58,9 @@ class PowerOfTwoChoicesRequestRouter(
         model ID are available after that timeout, it will fall back to the regular
         procedure.
         """
-        if (
-            pending_request is not None
-            and pending_request.metadata.multiplexed_model_id
+        if pending_request is not None and (
+            pending_request.metadata.multiplexed_model_id
+            or pending_request.metadata.candidate_multiplexed_model_ids
         ):
             # Get candidates for multiplexed model ID.
             candidate_replica_ids = self.apply_multiplex_routing(

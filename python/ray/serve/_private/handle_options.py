@@ -56,6 +56,9 @@ class DynamicHandleOptionsBase(ABC):
 
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
+    # Ordered list of candidate model IDs. Router will match whichever replica
+    # has the first available ID loaded. See RequestMetadata for details.
+    candidate_multiplexed_model_ids: list[str] | None = None
     session_id: str = ""
     stream: bool = False
 
