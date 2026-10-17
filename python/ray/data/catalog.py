@@ -12,7 +12,7 @@ from dataclasses import KW_ONLY, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlsplit
 
 from packaging.version import parse as parse_version
 
@@ -55,6 +55,9 @@ _AZURE_STORAGE_SAS_TOKEN_OPTION = "azure_storage_sas_token"
 # (apache/arrow#45705). Before that it accepts only `account_key`, and reads no
 # SAS environment variable, so a Unity Catalog SAS cannot reach it by any route.
 _AZURE_SAS_PYARROW_VERSION_MIN = "20.0.0"
+
+# PyIceberg introduced Basic and noop REST auth managers in 0.10.0.
+_GRAVITINO_PYICEBERG_VERSION_MIN = "0.10.0"
 
 
 def _check_azure_sas_pyarrow_support() -> None:
@@ -601,3 +604,174 @@ class DatabricksUnityCatalog(Catalog):
         disagree.
         """
         return {_AZURE_STORAGE_SAS_TOKEN_OPTION: cls._azure_sas_token(sas)}
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class GravitinoCatalog(Catalog):
+    """Resolve existing Gravitino Iceberg tables through Iceberg REST.
+
+    This adapter maps Gravitino table names to PyIceberg catalog properties.
+    It performs no metadata requests and does not require the Gravitino Python
+    SDK. Ray and PyIceberg handle table access and data operations.
+
+    Resolving tables requires PyIceberg 0.10.0 or later for REST authentication,
+    including the default anonymous ``noop`` configuration. Install it with
+    ``pip install -U "pyiceberg>=0.10.0"``.
+
+    Args:
+        iceberg_rest_uri: Gravitino Iceberg REST endpoint, for example
+            ``"http://gravitino:9001/iceberg/"``.
+        iceberg_rest_catalog_kwargs: Optional PyIceberg authentication and
+            storage properties for the REST endpoint. Supply authentication
+            explicitly here. If ``auth``, ``credential``, and ``token`` are
+            all absent, the provider sets ``auth={"type": "noop"}``.
+            Don't rely on PyIceberg configuration files or environment
+            variables as a fallback for these authentication properties.
+
+    Example:
+        >>> import ray
+        >>> catalog = ray.data.GravitinoCatalog(  # doctest: +SKIP
+        ...     iceberg_rest_uri="http://gravitino:9001/iceberg/",
+        ... )
+        >>> ds = ray.data.read_iceberg(  # doctest: +SKIP
+        ...     table_identifier="iceberg_catalog.sales.orders", catalog=catalog
+        ... )
+
+    Note:
+        The initial scope is existing-table reads and same-schema append writes.
+        Other native Iceberg write modes have not been validated through this
+        provider. Delta and Parquet access are unsupported.
+        The REST service's dynamic catalog configuration binds the metalake;
+        the catalog component of ``catalog.schema.table`` selects its warehouse.
+        Table existence is checked during actual REST operations. Catalog
+        authorization depends on the REST service's deployment and configuration.
+        For Gravitino 1.3.1, catalog access control requires auxiliary REST mode,
+        ``gravitino.authorization.enable=true``, and the dynamic catalog
+        configuration provider. Standalone mode doesn't provide catalog
+        authorization.
+        Catalog properties are omitted when this object is serialized; recreate
+        configured instances before resolving from a deserialized object.
+    """
+
+    _: KW_ONLY
+    iceberg_rest_uri: str
+    iceberg_rest_catalog_kwargs: Optional[Dict[str, Any]] = field(
+        default=None, repr=False, compare=False
+    )
+    _credentials_redacted: bool = field(
+        default=False, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self):
+        try:
+            parsed = (
+                urlsplit(self.iceberg_rest_uri)
+                if isinstance(self.iceberg_rest_uri, str)
+                else None
+            )
+            valid = (
+                parsed is not None
+                and parsed.scheme in ("http", "https")
+                and bool(parsed.hostname)
+                and parsed.port != 0
+                and parsed.username is None
+                and parsed.password is None
+                and not parsed.query
+                and not parsed.fragment
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError(
+                "iceberg_rest_uri must be an absolute HTTP(S) URI without "
+                "credentials, query parameters, or fragments."
+            )
+        if self.iceberg_rest_catalog_kwargs is not None and not isinstance(
+            self.iceberg_rest_catalog_kwargs, dict
+        ):
+            raise ValueError("iceberg_rest_catalog_kwargs must be a dictionary.")
+        object.__setattr__(
+            self, "iceberg_rest_uri", self.iceberg_rest_uri.rstrip("/") + "/"
+        )
+        object.__setattr__(
+            self,
+            "iceberg_rest_catalog_kwargs",
+            dict(self.iceberg_rest_catalog_kwargs or {}),
+        )
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Omit potentially sensitive catalog properties from serialized state."""
+        state = self.__dict__.copy()
+        state["iceberg_rest_catalog_kwargs"] = {}
+        state["_credentials_redacted"] = self._credentials_redacted or bool(
+            self.iceberg_rest_catalog_kwargs
+        )
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        for name, value in state.items():
+            object.__setattr__(self, name, value)
+
+    @staticmethod
+    def _split_table_identifier(table: str) -> tuple[str, str, str]:
+        if not isinstance(table, str):
+            raise ValueError("table must be a three-part catalog.schema.table string.")
+        parts = table.split(".")
+        if len(parts) != 3 or any(not part.strip() for part in parts):
+            raise ValueError("table must be a three-part catalog.schema.table string.")
+        return parts[0], parts[1], parts[2]
+
+    def resolve(
+        self,
+        table: str,
+        *,
+        reader: ReaderFormat,
+        mode: CatalogAccessMode = CatalogAccessMode.READ,
+    ) -> ResolvedSource:
+        if not isinstance(reader, ReaderFormat):
+            raise ValueError("reader must be a ReaderFormat value.")
+        if not isinstance(mode, CatalogAccessMode):
+            raise ValueError("mode must be a CatalogAccessMode value.")
+        if reader is not ReaderFormat.ICEBERG:
+            raise ValueError(
+                f"GravitinoCatalog does not support format={reader.value!r}."
+            )
+        catalog_name, schema_name, table_name = self._split_table_identifier(table)
+        if self._credentials_redacted:
+            raise RuntimeError(
+                "This GravitinoCatalog was deserialized without its authentication "
+                "configuration. Recreate it before calling resolve()."
+            )
+        from ray.data._internal.util import _check_import
+
+        _check_import(
+            self,
+            module="pyiceberg",
+            package=f'"pyiceberg>={_GRAVITINO_PYICEBERG_VERSION_MIN}"',
+        )
+        import pyiceberg
+
+        if parse_version(pyiceberg.__version__) < parse_version(
+            _GRAVITINO_PYICEBERG_VERSION_MIN
+        ):
+            raise ImportError(
+                f"GravitinoCatalog requires pyiceberg >= "
+                f"{_GRAVITINO_PYICEBERG_VERSION_MIN}, but "
+                f"{pyiceberg.__version__} is installed. Upgrade with "
+                f'`pip install -U "pyiceberg>={_GRAVITINO_PYICEBERG_VERSION_MIN}"`.'
+            )
+        catalog_kwargs = dict(self.iceberg_rest_catalog_kwargs or {})
+        catalog_kwargs.update(
+            {"type": "rest", "uri": self.iceberg_rest_uri, "warehouse": catalog_name}
+        )
+        catalog_kwargs.setdefault(
+            "header.X-Iceberg-Access-Delegation", "vended-credentials"
+        )
+        if not any(key in catalog_kwargs for key in ("auth", "credential", "token")):
+            catalog_kwargs["auth"] = {"type": "noop"}
+        return ResolvedSource(
+            catalog_kwargs=catalog_kwargs,
+            table_identifier=f"{schema_name}.{table_name}",
+            data_format=ReaderFormat.ICEBERG,
+        )

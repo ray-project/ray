@@ -2760,6 +2760,35 @@ py_test(
 )
 
 py_test(
+    name = "test_gravitino_catalog",
+    size = "small",
+    srcs = ["tests/test_gravitino_catalog.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_gravitino_catalog_integration",
+    size = "large",
+    srcs = ["tests/datasource/test_gravitino_catalog_integration.py"],
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_iter_jax",
     size = "small",
     srcs = ["tests/test_iter_jax.py"],
