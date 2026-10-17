@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from copy import deepcopy
-from typing import Callable, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, List, Optional, Sequence, Set, Tuple
 from unittest.mock import Mock
 
 import grpc
@@ -42,7 +42,7 @@ class gRPCGenericServer(Server):
         self,
         service_handler_factory: Callable,
         *,
-        extra_options: Optional[List[Tuple[str, str]]] = None,
+        extra_options: Optional[List[Tuple[str, Any]]] = None,
     ):
         super().__init__(
             thread_pool=None,
@@ -199,7 +199,9 @@ async def start_grpc_server(
 
     server = gRPCGenericServer(
         service_handler_factory,
-        extra_options=[("grpc.so_reuseport", str(int(enable_so_reuseport)))],
+        # An integer: gRPC ignores a string value for this option and keeps
+        # SO_REUSEPORT on, which lets another server bind the same port.
+        extra_options=[("grpc.so_reuseport", int(enable_so_reuseport))],
     )
     add_grpc_address(server, f"[::]:{grpc_options.port}")
 
