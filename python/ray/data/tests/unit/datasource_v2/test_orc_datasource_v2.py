@@ -194,6 +194,96 @@ def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):
     assert captured["kwargs"]["override_num_blocks"] == 3
 
 
+def test_read_orc_routes_to_v2_with_merge_schema(monkeypatch, tmp_path):
+    result = object()
+    captured = {}
+
+    def _read_datasource_v2(datasource, **kwargs):
+        captured["datasource"] = datasource
+        captured["kwargs"] = kwargs
+        return result
+
+    monkeypatch.setattr(read_api, "_read_datasource_v2", _read_datasource_v2)
+    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", True)
+
+    actual = read_api.read_orc(str(tmp_path), merge_schema=True)
+
+    assert actual is result
+    assert isinstance(captured["datasource"], OrcDatasourceV2)
+    assert captured["kwargs"]["sample_all_files_for_schema"] is True
+
+
+def test_read_orc_rejects_v1_when_merge_schema_requested(monkeypatch, tmp_path):
+    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", False)
+
+    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
+        read_api.read_orc(str(tmp_path), merge_schema=True)
+
+
+def test_infer_schema_empty_sample():
+    datasource = OrcDatasourceV2(["/dummy/path"])
+    empty_manifest = FileManifest.construct_manifest(
+        paths=[], sizes=[], chunk_metadatas=[]
+    )
+    schema = datasource.infer_schema(empty_manifest)
+    assert isinstance(schema, pa.Schema)
+    assert len(schema) == 0
+
+
+def test_infer_schema_unifies_multiple_files(tmp_path):
+    paths = []
+    for i in range(5):
+        path = str(tmp_path / f"part_{i:02d}.orc")
+        if i == 4:
+            table = pa.table({"a": [i], "late": ["value"]})
+        else:
+            table = pa.table({"a": [i]})
+        _write_orc(path, table)
+        paths.append(path)
+
+    datasource = OrcDatasourceV2([str(tmp_path)])
+    schema = datasource.infer_schema(_manifest_of(paths))
+
+    assert schema.names == ["a", "late"]
+
+
+def test_infer_schema_conflicting_types_error(tmp_path):
+    first_path = str(tmp_path / "first.orc")
+    second_path = str(tmp_path / "second.orc")
+    _write_orc(first_path, pa.table({"col": [1, 2, 3]}))
+    _write_orc(second_path, pa.table({"col": ["a", "b", "c"]}))
+
+    datasource = OrcDatasourceV2([str(tmp_path)])
+    with pytest.raises(
+        (pa.ArrowTypeError, pa.ArrowInvalid), match="Failed to merge ORC schema from"
+    ):
+        datasource.infer_schema(_manifest_of([first_path, second_path]))
+
+
+def test_infer_schema_fallback_raises_original_error(monkeypatch, tmp_path):
+    from ray.data._internal.datasource_v2.formats.orc import orc_datasource_v2
+
+    first_path = str(tmp_path / "first.orc")
+    second_path = str(tmp_path / "second.orc")
+    _write_orc(first_path, pa.table({"col": [1]}))
+    _write_orc(second_path, pa.table({"col": [2]}))
+
+    call_count = 0
+
+    def mock_unify(schemas):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise pa.ArrowInvalid("Simulated batch unification failure")
+        return schemas[0]
+
+    monkeypatch.setattr(orc_datasource_v2, "unify_schemas_with_validation", mock_unify)
+
+    datasource = OrcDatasourceV2([str(tmp_path)])
+    with pytest.raises(pa.ArrowInvalid, match="Simulated batch unification failure"):
+        datasource.infer_schema(_manifest_of([first_path, second_path]))
+
+
 if __name__ == "__main__":
     import sys
 

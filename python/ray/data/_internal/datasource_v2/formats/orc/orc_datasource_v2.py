@@ -117,6 +117,9 @@ class OrcDatasourceV2(FileDataSourceV2):
         import pyarrow.orc as orc
 
         assert sample is not None
+        if len(sample) == 0:
+            return pa.schema([])
+
         sample_paths = sample.paths.tolist()
         filesystem = self._filesystem
 
@@ -127,8 +130,23 @@ class OrcDatasourceV2(FileDataSourceV2):
                 return orc.ORCFile(source).schema
 
         with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-            schemas = list(executor.map(_read_schema, sample_paths))
-        schema = unify_schemas_with_validation(schemas) or schemas[0]
+            per_file_schemas = list(executor.map(_read_schema, sample_paths))
+        try:
+            schema = (
+                unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
+            )
+        except (pa.ArrowTypeError, pa.ArrowInvalid) as orig_err:
+            merged = per_file_schemas[0]
+            for path, file_schema in zip(sample_paths[1:], per_file_schemas[1:]):
+                try:
+                    merged = (
+                        unify_schemas_with_validation([merged, file_schema]) or merged
+                    )
+                except (pa.ArrowTypeError, pa.ArrowInvalid) as cause:
+                    raise type(cause)(
+                        f"Failed to merge ORC schema from {path!r}: {cause}"
+                    ) from cause
+            raise orig_err
         assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
