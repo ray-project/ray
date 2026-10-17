@@ -50,6 +50,11 @@ DEFAULT_KV_INDEXER_THREADS = 4
 # replicas (PORT_BASE + replica rank). Dynamo's selection service dials it to recover
 # events missed before its SUB connected.
 DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
+# Batches the engine keeps for KV-event replay. A replay sends them plus an
+# end marker in one burst on a ROUTER socket whose send HWM defaults to 1000
+# messages (excess is dropped silently), and the selection service stops
+# reading live events until the replay ends, so keep replays short.
+KV_EVENTS_REPLAY_BUFFER_STEPS = 999
 
 # TTL for a request's lifecycle tracking on the KV router actor. A live
 # replica whose completion event was lost (e.g. a batch dropped on a

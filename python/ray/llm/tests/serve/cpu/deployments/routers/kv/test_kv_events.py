@@ -64,7 +64,10 @@ class TestConfigureKvEvents:
             "publisher": "zmq",
             "endpoint": "tcp://*:5557",
             "replay_endpoint": "tcp://*:6557",
+            "buffer_steps": 999,
         }
+        # A full replay plus its end marker fits ZMQ's default ROUTER send HWM.
+        assert llm_config.engine_kwargs["kv_events_config"]["buffer_steps"] + 1 <= 1000
         assert llm_config.runtime_env["env_vars"]["PYTHONHASHSEED"] == "0"
         assert llm_config.runtime_env["env_vars"]["VLLM_USE_SIMPLE_KV_OFFLOAD"] == "0"
         assert llm_config.runtime_env["env_vars"]["EXISTING_ENV"] == "value"

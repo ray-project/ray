@@ -9,6 +9,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET,
     DEFAULT_KV_TOKEN_PORT_BASE,
     KV_EVENTS_PORT_BASE_KEY,
+    KV_EVENTS_REPLAY_BUFFER_STEPS,
     KV_TOKEN_METADATA_KEY,
     KV_TOKEN_PORT_BASE_KEY,
 )
@@ -39,6 +40,7 @@ def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
             # Bind a replay (ROUTER) socket so the selection service can recover
             # the events it missed before its SUB connected (slow-joiner gap).
             "replay_endpoint": _default_kv_events_replay_endpoint(llm_config),
+            "buffer_steps": KV_EVENTS_REPLAY_BUFFER_STEPS,
         }
     )
 
