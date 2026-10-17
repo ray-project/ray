@@ -26,7 +26,7 @@ GcsResourceLoadPuller::GcsResourceLoadPuller(
     instrumented_io_context &pull_io_context,
     instrumented_io_context &main_io_context,
     rpc::RayletClientPool &raylet_client_pool,
-    std::function<void(rpc::ResourcesData)> apply_on_main)
+    std::function<bool(rpc::ResourcesData)> apply_on_main)
     : pull_io_context_(pull_io_context),
       main_io_context_(main_io_context),
       raylet_client_pool_(raylet_client_pool),
@@ -42,27 +42,50 @@ void GcsResourceLoadPuller::Pull(std::vector<rpc::Address> raylet_addresses) {
   for (const auto &node_id : pulled_node_ids_) {
     if (!current_node_ids.contains(node_id)) {
       raylet_client_pool_.Disconnect(node_id);
+      applied_versions_.erase(node_id);
     }
   }
   pulled_node_ids_ = std::move(current_node_ids);
 
   for (const auto &address : raylet_addresses) {
+    const auto node_id = NodeID::FromBinary(address.node_id());
+    const auto version_it = applied_versions_.find(node_id);
+    const int64_t last_seen_version =
+        version_it == applied_versions_.end() ? 0 : version_it->second;
     auto raylet_client = raylet_client_pool_.GetOrConnectByAddress(address);
     raylet_client->GetResourceLoad(
-        [apply_on_main = apply_on_main_, &main_io_context = main_io_context_](
-            const Status &status, rpc::GetResourceLoadReply &&reply) {
+        last_seen_version,
+        [this, node_id](const Status &status, rpc::GetResourceLoadReply &&reply) {
           if (!status.ok()) {
             RAY_LOG_EVERY_N(WARNING, 10)
                 << "Failed to get the resource load: " << status.ToString();
             return;
           }
-          main_io_context.post(
-              [apply_on_main,
+          if (reply.unchanged()) {
+            return;
+          }
+          main_io_context_.post(
+              [this,
+               node_id,
+               version = reply.version(),
                resources = std::move(*reply.mutable_resources())]() mutable {
-                apply_on_main(std::move(resources));
+                if (!apply_on_main_(std::move(resources))) {
+                  return;
+                }
+                pull_io_context_.post(
+                    [this, node_id, version]() { OnApplied(node_id, version); },
+                    "GcsResourceLoadPuller.on_applied");
               },
               "GcsResourceLoadPuller.apply");
         });
+  }
+}
+
+void GcsResourceLoadPuller::OnApplied(const NodeID &node_id, int64_t version) {
+  RAY_CHECK(pull_io_context_.get_executor().running_in_this_thread());
+  // The node may have died since the pull.
+  if (pulled_node_ids_.contains(node_id)) {
+    applied_versions_[node_id] = version;
   }
 }
 

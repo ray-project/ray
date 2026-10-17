@@ -553,6 +553,65 @@ class NodeManagerTest : public ::testing::Test {
       fake_node_manager_unexpected_worker_failure_total_count_;
 };
 
+rpc::GetResourceLoadReply GetResourceLoad(NodeManager &node_manager,
+                                          int64_t last_seen_version) {
+  rpc::GetResourceLoadRequest request;
+  request.set_last_seen_version(last_seen_version);
+  rpc::GetResourceLoadReply reply;
+  // The handler is only public through the RPC service interface.
+  static_cast<rpc::NodeManagerServiceHandler &>(node_manager)
+      .HandleGetResourceLoad(
+          request,
+          &reply,
+          [](Status s, std::function<void()> success, std::function<void()> failure) {
+            ASSERT_TRUE(s.ok());
+          });
+  return reply;
+}
+
+TEST_F(NodeManagerTest, TestHandleGetResourceLoadSkipsUnchangedReport) {
+  const auto first = GetResourceLoad(*node_manager_, /*last_seen_version=*/0);
+  ASSERT_FALSE(first.unchanged());
+  ASSERT_GT(first.version(), 0);
+  ASSERT_EQ(first.resources().node_id(), raylet_node_id_.Binary());
+  // The node starts idle; its growing idle duration is not a change.
+  ASSERT_GT(first.resources().idle_duration_ms(), 0);
+
+  const auto second = GetResourceLoad(*node_manager_, first.version());
+  ASSERT_TRUE(second.unchanged());
+  ASSERT_EQ(second.version(), first.version());
+  ASSERT_FALSE(second.has_resources());
+
+  // A caller without the version, e.g. a restarted GCS, gets the full report.
+  const auto third = GetResourceLoad(*node_manager_, /*last_seen_version=*/0);
+  ASSERT_FALSE(third.unchanged());
+  ASSERT_EQ(third.version(), first.version());
+  ASSERT_EQ(third.resources().node_id(), raylet_node_id_.Binary());
+}
+
+TEST_F(NodeManagerTest, TestHandleGetResourceLoadBumpsVersionOnResourceChange) {
+  const auto idle = GetResourceLoad(*node_manager_, /*last_seen_version=*/0);
+
+  auto &local_resource_manager = cluster_resource_scheduler_->GetLocalResourceManager();
+  auto allocation = std::make_shared<TaskResourceInstances>();
+  ASSERT_TRUE(
+      local_resource_manager.AllocateLocalTaskResources({{"CPU", 1}}, allocation));
+  const auto busy = GetResourceLoad(*node_manager_, idle.version());
+  ASSERT_FALSE(busy.unchanged());
+  ASSERT_GT(busy.version(), idle.version());
+  ASSERT_EQ(busy.resources().resources_available().at("CPU"), kTestTotalCpuResource - 1);
+  ASSERT_EQ(busy.resources().idle_duration_ms(), 0);
+
+  // Becoming idle again moves the idle start time, so it is a change too.
+  local_resource_manager.ReleaseWorkerResources(allocation);
+  const auto idle_again = GetResourceLoad(*node_manager_, busy.version());
+  ASSERT_FALSE(idle_again.unchanged());
+  ASSERT_GT(idle_again.version(), busy.version());
+  ASSERT_EQ(idle_again.resources().resources_available().at("CPU"),
+            kTestTotalCpuResource);
+  ASSERT_GT(idle_again.resources().idle_duration_ms(), 0);
+}
+
 TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadUnknownWorker) {
   WorkerID worker_id = WorkerID::FromRandom();
   // Both worker and driver lookups return nullptr (the fake's defaults).
