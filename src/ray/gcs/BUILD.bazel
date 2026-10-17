@@ -628,6 +628,7 @@ ray_cc_binary(
         "//src/ray/raylet:metrics",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:event",
+        "//src/ray/util:joinable_thread",
         "//src/ray/util:port_persistence",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",

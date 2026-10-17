@@ -200,6 +200,7 @@ class ServerCallImpl : public ServerCall {
                  std::shared_ptr<const AuthenticationToken> auth_token,
                  bool record_metrics,
                  GrpcServerMetrics &server_metrics,
+                 boost::asio::io_context &metric_context,
                  std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -212,12 +213,16 @@ class ServerCallImpl : public ServerCall {
         auth_token_(auth_token),
         start_time_(0),
         record_metrics_(record_metrics),
-        server_metrics_(server_metrics) {
+        server_metrics_(server_metrics),
+        metric_context_(metric_context) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
-      server_metrics_.req_new.Record(1.0, {{"Method", call_name_}});
+      auto &metrics = server_metrics_;
+      boost::asio::post(metric_context_, [&metrics, call_name = call_name_]() {
+        metrics.req_new.Record(1.0, {{"Method", call_name}});
+      });
     }
   }
 
@@ -262,7 +267,10 @@ class ServerCallImpl : public ServerCall {
 
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      server_metrics_.req_handling.Record(1.0, {{"Method", call_name_}});
+      auto &metrics = server_metrics_;
+      boost::asio::post(metric_context_, [&metrics, call_name = call_name_]() {
+        metrics.req_handling.Record(1.0, {{"Method", call_name}});
+      });
     }
     if (!io_service_.stopped()) {
       io_service_.post(
@@ -339,8 +347,11 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() override {
     if (record_metrics_) {
-      server_metrics_.req_finished.Record(1.0, {{"Method", call_name_}});
-      server_metrics_.req_succeeded.Record(1.0, {{"Method", call_name_}});
+      auto &metrics = server_metrics_;
+      boost::asio::post(metric_context_, [&metrics, call_name = call_name_]() {
+        metrics.req_finished.Record(1.0, {{"Method", call_name}});
+        metrics.req_succeeded.Record(1.0, {{"Method", call_name}});
+      });
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -352,8 +363,11 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplyFailed() override {
     if (record_metrics_) {
-      server_metrics_.req_finished.Record(1.0, {{"Method", call_name_}});
-      server_metrics_.req_failed.Record(1.0, {{"Method", call_name_}});
+      auto &metrics = server_metrics_;
+      boost::asio::post(metric_context_, [&metrics, call_name = call_name_]() {
+        metrics.req_finished.Record(1.0, {{"Method", call_name}});
+        metrics.req_failed.Record(1.0, {{"Method", call_name}});
+      });
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -395,8 +409,13 @@ class ServerCallImpl : public ServerCall {
     io_service_.stats()->RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      server_metrics_.req_process_time_ms.Record((end_time - start_time_) / 1000000.0,
-                                                 {{"Method", call_name_}});
+      auto &metrics = server_metrics_;
+      boost::asio::post(
+          metric_context_,
+          [&metrics, start_time = start_time_, end_time, call_name = call_name_]() {
+            metrics.req_process_time_ms.Record((end_time - start_time) / 1000000.0,
+                                               {{"Method", call_name}});
+          });
     }
   }
 
@@ -474,6 +493,8 @@ class ServerCallImpl : public ServerCall {
 
   GrpcServerMetrics &server_metrics_;
 
+  boost::asio::io_context &metric_context_;
+
   template <class T1, class T2, class T3, class T4, ClusterIdAuthType T5, bool T6>
   friend class ServerCallFactoryImpl;
 };
@@ -540,7 +561,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       std::shared_ptr<const AuthenticationToken> auth_token,
       int64_t max_active_rpcs,
       bool record_metrics,
-      GrpcServerMetrics &server_metrics)
+      GrpcServerMetrics &server_metrics,
+      boost::asio::io_context &metric_context)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -552,7 +574,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         auth_token_(auth_token),
         max_active_rpcs_(max_active_rpcs),
         record_metrics_(record_metrics),
-        server_metrics_(server_metrics) {}
+        server_metrics_(server_metrics),
+        metric_context_(metric_context) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
@@ -567,7 +590,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
             cluster_id_,
             auth_token_,
             record_metrics_,
-            server_metrics_);
+            server_metrics_,
+            metric_context_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
@@ -617,6 +641,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   bool record_metrics_;
 
   GrpcServerMetrics &server_metrics_;
+
+  boost::asio::io_context &metric_context_;
 };
 
 }  // namespace rpc
