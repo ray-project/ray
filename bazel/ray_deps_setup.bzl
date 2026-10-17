@@ -126,6 +126,24 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
+    # Declared before grpc_deps() so that the patch below applies. The version
+    # must match the one pinned in grpc's bazel/grpc_deps.bzl.
+    #
+    # upb_proto_library creates a nodeps dynamic library even when the toolchain
+    # lacks supports_dynamic_linker (Bazel's macOS toolchain), which fails to
+    # link on macOS with undefined symbols unless --dynamic_mode=off is set.
+    # Backports the fix from protobuf's bundled upb.
+    auto_http_archive(
+        name = "upb",
+        sha256 = "c29fbd26eb19f388a1894099fae5ae599210be22926e1e1694c0ed1284f1c151",
+        strip_prefix = "upb-455cfdb8ae60a1763e6d924e36851c6897a781bb",
+        url = "https://github.com/protocolbuffers/upb/archive/455cfdb8ae60a1763e6d924e36851c6897a781bb.tar.gz",
+        patches = [
+            "@io_ray//thirdparty/patches:upb-disallow-dylib-without-dynamic-linker.patch",
+        ],
+        patch_args = ["-p1"],
+    )
+
     # NOTE(lingxuan.zlx): 3rd party dependencies could be accessed, so it suggests
     # all of http/git_repository should add prefix for patches defined in ray directory.
     auto_http_archive(
