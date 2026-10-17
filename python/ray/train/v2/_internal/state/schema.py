@@ -530,3 +530,109 @@ class TrainRunsResponse(BaseModel):
     train_runs: List[DecoratedTrainRun] = Field(
         description="A list of Train runs with detailed metadata."
     )
+
+
+class NcclHangTrigger(str, Enum):
+    """What a NCCL hang detector poll reported."""
+
+    # A communicator newly reached the suspicion threshold, or the periodic
+    # "still suspected" warning fired.
+    SUSPECTED = "SUSPECTED"
+    # A communicator stalled for the confirm duration.
+    CONFIRMED = "CONFIRMED"
+    # A suspected or confirmed communicator made progress again.
+    RECOVERED = "RECOVERED"
+
+
+class NcclCommunicatorHangState(str, Enum):
+    """The NCCL hang detector's view of one communicator."""
+
+    SUSPECTED = "SUSPECTED"
+    CONFIRMED = "CONFIRMED"
+    # Recovered on the poll of the event; not open.
+    RECOVERED = "RECOVERED"
+
+
+class NcclHangDetectorStatus(str, Enum):
+    """Whether the NCCL hang detector is still watching the attempt."""
+
+    ACTIVE = "ACTIVE"
+    STOPPED = "STOPPED"
+
+
+class NcclHangStopReason(str, Enum):
+    """Why the NCCL hang detector stopped watching an attempt."""
+
+    # The worker group shut down, including for a restart or a resize.
+    WORKER_GROUP_SHUTDOWN = "worker_group_shutdown"
+    # The detector disabled itself for the rest of the run.
+    DETECTOR_DISABLED = "detector_disabled"
+
+
+class StalledRanks(BaseModel):
+    """The Ray Train world ranks that launched a collective the same number of
+    times on a stalled communicator."""
+
+    op: str = Field(description="The collective, e.g. 'AllReduce'.")
+    launch_count: int = Field(
+        description="How many of `op` these ranks launched on the communicator."
+    )
+    world_ranks: List[int] = Field(
+        description="The Ray Train world ranks at `launch_count`."
+    )
+
+
+class NcclCommunicatorState(BaseModel):
+    """The NCCL hang detector's view of one communicator at a poll."""
+
+    communicator_id: str = Field(description="The NCCL RAS communicator hash.")
+    state: NcclCommunicatorHangState = Field(description="The state.")
+    stalled_since_ms: int = Field(
+        description="When the stall began (the poll before the first frozen "
+        "poll), in ms since the UNIX epoch."
+    )
+    stall_duration_s: float = Field(
+        description="How long the communicator has been stalled, the final "
+        "duration for RECOVERED."
+    )
+    stalled_ranks: List[StalledRanks] = Field(
+        default_factory=list,
+        description="The communicator's ranks grouped by launch count, for each "
+        "collective they disagree on.",
+    )
+
+
+class TrainNcclHangEvent(BaseModel):
+    """A snapshot of the NCCL hang detector at a poll it reported on, exported
+    as an ``EXPORT_TRAIN_NCCL_HANG`` event."""
+
+    run_id: str = Field(description="The Train run id.")
+    attempt_id: str = Field(description="The Train run attempt id.")
+    poll_index: int = Field(
+        description="The detector's poll counter for the attempt, from 1."
+    )
+    timestamp_ms: int = Field(
+        description="When the poll was taken (the detector stopped, for "
+        "STOPPED), in ms since the UNIX epoch."
+    )
+    detector_status: NcclHangDetectorStatus = Field(
+        description="Whether the detector still watches the attempt."
+    )
+    stop_reason: Optional[NcclHangStopReason] = Field(
+        None, description="Why the detector stopped, when STOPPED."
+    )
+    triggers: List[NcclHangTrigger] = Field(
+        default_factory=list, description="What this poll reported."
+    )
+    message: str = Field("", description="The detector's log headline(s).")
+    ras_text_report: Optional[str] = Field(
+        None, description="The `ncclras -f text` report fetched at this poll."
+    )
+    diagnostics_dir: Optional[str] = Field(
+        None, description="Where the diagnostics were uploaded, on CONFIRMED."
+    )
+    communicators: List[NcclCommunicatorState] = Field(
+        default_factory=list,
+        description="Every non-healthy communicator, and those that recovered "
+        "at this poll.",
+    )

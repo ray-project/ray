@@ -880,6 +880,21 @@ py_test_module_list(
 )
 
 py_test(
+    name = "test_export_event_logger",
+    size = "small",
+    srcs = ["test_export_event_logger.py"],
+    tags = [
+        "exclusive",
+        "small_size_python_tests",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_autoscaler_yaml",
     size = "small",
     srcs = ["test_autoscaler_yaml.py"],

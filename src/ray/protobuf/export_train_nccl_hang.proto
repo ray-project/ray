@@ -1,0 +1,94 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+// This message defines the event_data stored by the export API for
+// EXPORT_TRAIN_NCCL_HANG type events. The Ray Train NCCL hang detector emits
+// one event per poll whose outcome it reports (a communicator newly suspected
+// or still suspected, confirmed, or recovered), and one when it stops watching
+// an attempt with a communicator still stalled. Each event is a snapshot of
+// every non-healthy communicator, so the newest event of an attempt is the
+// detector's current state for that attempt.
+//
+// Kept out of export_train_state.proto so that the Train run schema version
+// is unaffected by changes to this event.
+message ExportTrainNcclHangEventData {
+  // Ray Train world ranks that launched a collective the same number of times.
+  message StalledRanks {
+    // The collective, e.g. "AllReduce".
+    string op = 1;
+    // How many of `op` these ranks have launched on the communicator.
+    int64 launch_count = 2;
+    // The Ray Train world ranks at `launch_count`. Ranks of the communicator
+    // without a matching Ray Train worker are omitted.
+    repeated int32 world_ranks = 3;
+  }
+
+  // The detector's view of one communicator at this poll.
+  message CommunicatorState {
+    // The NCCL RAS communicator hash.
+    string communicator_id = 1;
+    // "SUSPECTED", "CONFIRMED" or "RECOVERED" (recovered on this poll). A
+    // string rather than an enum so readers can ignore a state added later.
+    string state = 2;
+    // When the stall began: the poll before the first frozen poll, in
+    // milliseconds since the UNIX epoch.
+    int64 stalled_since_ms = 3;
+    // How long the communicator has been stalled, the final duration for
+    // RECOVERED.
+    double stall_duration_s = 4;
+    // The communicator's ranks grouped by launch count, one entry per
+    // (op, launch_count) of each collective they disagree on. Empty for
+    // RECOVERED.
+    repeated StalledRanks stalled_ranks = 5;
+  }
+
+  // Version of the message schema, starting at 1.
+  uint32 schema_version = 1;
+  // The Ray Train run id (the `id` of ExportTrainRunEventData).
+  string run_id = 2;
+  // The run attempt id (the `attempt_id` of ExportTrainRunAttemptEventData).
+  string attempt_id = 3;
+  // The detector's poll counter for the attempt, starting at 1 and strictly
+  // increasing; the ordering key of the events of an attempt.
+  int64 poll_index = 4;
+  // When the poll was taken (when the detector stopped, for STOPPED), in
+  // milliseconds since the UNIX epoch.
+  int64 timestamp_ms = 5;
+  // "ACTIVE", or "STOPPED" once the detector stops watching the attempt.
+  string detector_status = 6;
+  // Why the detector stopped, "worker_group_shutdown" or "detector_disabled".
+  // Set when STOPPED only.
+  optional string stop_reason = 7;
+  // What this poll reported, a subset of "SUSPECTED", "CONFIRMED" and
+  // "RECOVERED"; empty for STOPPED.
+  repeated string triggers = 8;
+  // The detector's log headline(s) for this poll, may be empty.
+  string message = 9;
+  // The `ncclras -f text` report, on the polls that fetched it. Capped at
+  // 32 KB, tail truncated.
+  optional string ras_text_report = 10;
+  // Where the diagnostics were uploaded (`<experiment_fs_path>/hang_detector`),
+  // on polls with the CONFIRMED trigger.
+  optional string diagnostics_dir = 11;
+  // Every communicator past the suspicion threshold at this poll, plus those
+  // that recovered on this poll. When STOPPED, the communicators that were
+  // stalled at the stop, with their last state.
+  repeated CommunicatorState communicators = 12;
+}
