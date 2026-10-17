@@ -1105,5 +1105,25 @@ def test_pb2_custom_explore_fn_lambda():
     cloudpickle.dumps(pb2)
 
 
+def test_pb2_rounds_integer_hyperparams(monkeypatch):
+    """Test that PB2 rounds a suggested value for an integer hyperparam."""
+    pb2 = _create_pb2_scheduler(hyperparam_bounds={"a": [1, 4]})
+    mock_runner = MagicMock()
+    trials = [Trial("pb2_test", stub=True, config={"a": a}) for a in (1, 4)]
+    for trial in trials:
+        pb2.on_trial_add(mock_runner, trial)
+    for t in range(1, 4):
+        for i, trial in enumerate(trials):
+            _save_trial_result(pb2, trial, t, _result(time=t, val=t * (i + 1)))
+
+    monkeypatch.setattr(
+        "ray.tune.schedulers.pb2._select_config",
+        lambda *args, **kwargs: np.array([3.9], dtype=np.float32),
+    )
+    new_config, _ = pb2._get_new_config(trials[0], trials[1])
+    assert new_config["a"] == 4
+    assert isinstance(new_config["a"], int)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
