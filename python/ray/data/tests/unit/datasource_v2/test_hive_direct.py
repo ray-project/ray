@@ -626,13 +626,64 @@ def test_orc_coln_layout_with_name_position_conflict_is_rejected(tmp_path):
     path = tmp_path / "part-000"
     physical = pa.Table.from_arrays(
         [pa.array([42], type=pa.int64()), pa.array([7], type=pa.int64())],
-        names=["_col0", "id"],
+        names=["_col0", "_col1"],
     )
     orc.write_table(physical, path)
     declared = pa.schema([("id", pa.int64()), ("_col0", pa.int64())])
 
     with pytest.raises(ValueError, match="positional ORC column mapping"):
         HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+
+
+@pytest.mark.parametrize("push_filter", [False, True])
+def test_unsampled_orc_positional_layout_cannot_be_hidden_by_projection(
+    tmp_path, monkeypatch, push_filter
+):
+    sampled_paths = [
+        _write_table_file(
+            tmp_path / f"part-{index:02d}",
+            "orc",
+            pa.table({"id": [index], "_col0": [index + 100]}),
+        )
+        for index in range(16)
+    ]
+    late_path = _write_table_file(
+        tmp_path / "part-99", "orc", pa.table({"_col0": [42]})
+    )
+    observed_sample_paths = _track_sampled_paths(monkeypatch)
+    declared = pa.schema([("id", pa.int64()), ("_col0", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    assert len(observed_sample_paths) == 16
+    assert str(late_path) not in observed_sample_paths
+
+    scanner = source.create_scanner(source.infer_schema(None)).prune_columns(["_col0"])
+    if push_filter:
+        from ray.data.expressions import col
+
+        scanner, residual = scanner.push_filters(col("_col0") > 0)
+        assert residual is None
+
+    manifest = _manifest_for_paths([*sampled_paths, late_path])
+    with pytest.raises(ValueError, match="positional ORC column mapping"):
+        list(scanner.create_reader().read(manifest))
+
+
+def test_orc_mixed_coln_and_named_columns_use_name_mapping(tmp_path):
+    path = tmp_path / "part-000"
+    physical = pa.Table.from_arrays(
+        [pa.array([42], type=pa.int64()), pa.array([43], type=pa.int64())],
+        names=["_col0", "id"],
+    )
+    orc.write_table(physical, path)
+    declared = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    scanner = source.create_scanner(source.infer_schema(None))
+
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths([path])))
+    )
+
+    assert result.column("id").to_pylist() == [43]
 
 
 def test_unsampled_orc_positional_layout_is_rejected_before_data_read(

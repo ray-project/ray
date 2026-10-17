@@ -307,21 +307,24 @@ def _validate_file_schema(
     actual_by_name = _schema_fields_by_casefold(
         file_schema, "file schema", required_names
     )
-    if file_format == "orc":
-        for physical_index, physical_field in enumerate(file_schema):
-            if re.fullmatch(r"_col\d+", physical_field.name) and (
-                physical_index < len(hive_schema)
-            ):
-                hive_field = hive_schema.field(physical_index)
-                if (
-                    required_fields is None or hive_field.name in required_fields
-                ) and physical_field.name.casefold() != hive_field.name.casefold():
-                    raise ValueError(
-                        "Hive direct-read does not support positional ORC column "
-                        f"mapping: file column {physical_field.name!r} at position "
-                        f"{physical_index} conflicts with Hive column "
-                        f"{hive_field.name!r} at the same position"
-                    )
+    legacy_orc_layout = (
+        file_format == "orc"
+        and bool(file_schema.names)
+        and all(name.startswith("_col") for name in file_schema.names)
+    )
+    if legacy_orc_layout:
+        for hive_index, hive_field in enumerate(hive_schema):
+            if required_fields is not None and hive_field.name not in required_fields:
+                continue
+            name_index = file_schema.get_field_index(sampled_names[hive_field.name])
+            positional_index = hive_index if hive_index < len(file_schema) else -1
+            if name_index != positional_index:
+                raise ValueError(
+                    "Hive direct-read does not support positional ORC column "
+                    f"mapping for Hive column {hive_field.name!r}: name mapping "
+                    f"selects file index {name_index}, positional mapping selects "
+                    f"file index {positional_index}"
+                )
 
     for hive_field in hive_schema:
         if required_fields is not None and hive_field.name not in required_fields:
