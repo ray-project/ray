@@ -770,6 +770,12 @@ class RunningReplicaInfo:
         this coroutine joins any in-flight resolution task for the same
         key (single-flight) or spawns a new one that runs ``ray.get_actor``
         in a thread-pool executor so it does not block the event loop.
+
+        The critical rule: we MUST NOT ``await`` while holding
+        ``_cache_lock`` (a ``threading.Lock``).  Doing so would cause a
+        deadlock because the executor thread running ``get_actor_handle``
+        needs that same lock to store its result.  All ``await`` calls
+        therefore happen after the lock has been released.
         """
         key = self._cache_key()
 
@@ -778,17 +784,17 @@ class RunningReplicaInfo:
             if cached is not None:
                 return cached
 
-            loop = asyncio.get_running_loop()
             inflight = self._inflight_resolutions.get(key)
-            if inflight is not None and not inflight.done():
-                # Another coroutine is already resolving this handle.
-                return await inflight
+            if inflight is None or inflight.done():
+                # Either no resolution is in flight, or a previous one
+                # already finished (its result should now be in the
+                # cache; if it isn't, we start a fresh one below).
+                loop = asyncio.get_running_loop()
+                inflight = loop.run_in_executor(None, self.get_actor_handle)
+                self._inflight_resolutions[key] = inflight
 
-            # Start a fresh resolution task that runs blocking ray.get_actor
-            # in the default executor (a thread pool).
-            inflight = loop.run_in_executor(None, self.get_actor_handle)
-            self._inflight_resolutions[key] = inflight
-
+        # Lock is now released.  Await outside the lock so other
+        # coroutines / executor threads can make progress.
         try:
             return await inflight
         finally:

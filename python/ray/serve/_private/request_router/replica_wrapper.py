@@ -279,7 +279,18 @@ class RunningReplica:
             self._handle_resolved = True
             return self._actor_handle
 
-        handle = self._replica_info.get_actor_handle()
+        try:
+            handle = self._replica_info.get_actor_handle()
+        except Exception:
+            # If resolution fails (actor died, GCS error, ...), clear
+            # whatever partial state we may have cached and re-raise.
+            self._replica_info.invalidate_actor_handle(
+                self._replica_info.actor_name
+            )
+            self._handle_resolved = False
+            self._actor_handle = None
+            raise
+
         if self._replica_info.is_cross_language:
             self._actor_handle = JavaActorHandleProxy(handle)
         else:
@@ -418,9 +429,13 @@ class RunningReplica:
         Resolves the actor handle lazily on demand (async).
         """
         if self._grpc_replica_wrapper is None:
-            actor_id = self.actor_id  # sync, cheap after first resolve
+            # Do NOT use the ``actor_id`` property here: it calls
+            # ``_get_actor_handle_sync`` which performs a blocking
+            # ``ray.get_actor`` on the first invocation, stalling the
+            # event loop.  Go through the async resolver instead.
+            actor_handle = await self._ensure_actor_handle()
             self._grpc_replica_wrapper = gRPCReplicaWrapper(
-                self.stub, actor_id
+                self.stub, actor_handle._actor_id
             )
 
         if pr.metadata._by_reference:
@@ -433,8 +448,19 @@ class RunningReplica:
         Called eagerly by proxy actors right after a new replica appears.
         Uses the sync handle resolver (with process-level caching) since
         callers don't await this fire-and-forget RPC.
+
+        If the replica actor has already died (``ray.get_actor`` raises
+        ``ValueError``), silently skip — the controller will send a new
+        replica update on the next tick.  Any other error from handle
+        resolution is re-raised so the caller knows something went wrong.
         """
-        actor_handle = self._get_actor_handle_sync()
+        try:
+            actor_handle = self._get_actor_handle_sync()
+        except ValueError:
+            # Replica actor is gone (e.g. died between controller listing
+            # and our update tick).  Nothing more we can do here; the
+            # controller will notice and send a corrected replica list.
+            return
         actor_handle.push_proxy_handle.remote(handle)
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
