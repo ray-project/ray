@@ -8,13 +8,18 @@ import ray
 from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
+    _is_object_lost_error,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
+from ray.data._internal.execution.operators.map_operator import _marks_object_loss
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
+from ray.data.datasource import Datasource, ReadTask
+from ray.data.exceptions import LineageReconstructionError
+from ray.tests.conftest import *  # noqa: F401, F403
 
 
 def test_max_uss_bytes_distribution():
@@ -50,6 +55,196 @@ def test_max_uss_bytes_distribution():
     assert metrics.max_uss_bytes.num_samples == 2
     assert metrics.max_uss_bytes.mean == 200  # (100 + 300) / 2
     assert metrics.max_uss_bytes.max == 300
+
+
+@pytest.mark.parametrize(
+    "exception,expected",
+    [
+        (ray.exceptions.ObjectLostError("ab", None, ""), True),
+        (ray.exceptions.OwnerDiedError("ab", None, ""), True),
+        (ray.exceptions.ObjectReconstructionFailedError("ab", None, ""), True),
+        (
+            ray.exceptions.RayTaskError(
+                "fn", "tb", ray.exceptions.ObjectLostError("ab", None, "")
+            ),
+            True,
+        ),
+        (ValueError("boom"), False),
+        (ray.exceptions.RayTaskError("fn", "tb", ValueError("boom")), False),
+        (
+            LineageReconstructionError(
+                ray.exceptions.ObjectLostError("ab", None, ""), "failed"
+            ),
+            True,
+        ),
+    ],
+)
+def test_num_tasks_failed_object_lost(exception, expected):
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
+
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(0, exception, None, None)
+
+    assert metrics.num_tasks_failed == 1
+    assert metrics.num_tasks_failed_object_lost == int(expected)
+
+
+def test_aborted_task_not_counted_as_finished():
+    """An aborted task releases its running-task bookkeeping without adding
+    to the finished-task totals, which its replacement counts instead."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    block_meta = BlockMetadata(
+        num_rows=1, size_bytes=10, exec_stats=None, input_files=None
+    )
+    inputs = RefBundle(
+        [BlockEntry(ray.ObjectRef.from_random(), block_meta)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    output_meta = BlockMetadata(
+        num_rows=1,
+        size_bytes=10,
+        exec_stats=BlockExecStats(
+            wall_time_s=1.0, block_ser_time_s=0.1, node_id="node"
+        ),
+        input_files=None,
+    )
+    output = RefBundle(
+        [BlockEntry(ray.ObjectRef.from_random(), output_meta)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, inputs)
+    metrics.on_task_output_generated(0, output)
+    metrics.on_task_aborted(0)
+
+    assert metrics.num_tasks_running == 0
+    assert metrics.obj_store_mem_pending_task_inputs == 0
+    assert metrics.num_tasks_finished == 0
+    assert metrics.num_tasks_failed == 0
+    assert metrics.num_outputs_of_finished_tasks == 0
+    assert metrics.task_completion_time_s == 0
+    assert metrics._op_task_duration_stats.num_samples == 0
+
+
+def _reraise(inner: BaseException, how: str) -> BaseException:
+    """``inner`` re-raised as a ``RuntimeError``: ``from inner``, implicitly
+    while handling it, or ``from None``."""
+    try:
+        try:
+            raise inner
+        except BaseException as e:
+            if how == "from":
+                raise RuntimeError("wrapped") from e
+            if how == "implicit":
+                raise RuntimeError("wrapped")
+            raise RuntimeError("wrapped") from None
+    except RuntimeError as e:
+        return e
+
+
+@pytest.mark.parametrize(
+    "how,expected",
+    [("from", 1), ("implicit", 1), ("from_none", 0)],
+)
+def test_num_tasks_failed_object_lost_follows_cause_chain(how, expected):
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
+
+    wrapped = _reraise(ray.exceptions.ObjectLostError("ab", None, ""), how)
+
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(0, wrapped, None, None)
+    # Successful tasks aren't counted.
+    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_finished(
+        1,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.num_tasks_failed_object_lost == expected
+
+
+class _RaisingDatasource(Datasource):
+    """Its read task raises ``RuntimeError`` from ``error``."""
+
+    def __init__(self, error: Exception):
+        self._error = error
+
+    def estimate_inmemory_data_size(self):
+        return None
+
+    def get_read_tasks(self, parallelism, per_task_row_limit=None, data_context=None):
+        error = self._error
+
+        def read():
+            try:
+                raise error
+            except Exception as e:
+                raise RuntimeError("read failed") from e
+
+        return [
+            ReadTask(
+                read, BlockMetadata(num_rows=None, size_bytes=None, exec_stats=None)
+            )
+        ]
+
+
+def _raising_udf(error: Exception):
+    def udf(batch):
+        raise error
+
+    return udf
+
+
+@pytest.mark.parametrize(
+    "make_dataset",
+    [
+        lambda error: ray.data.range(1).map_batches(_raising_udf(error)),
+        lambda error: ray.data.read_datasource(_RaisingDatasource(error)),
+    ],
+    ids=["udf", "read"],
+)
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (ray.exceptions.OwnerDiedError("ab", None, ""), True),
+        (ValueError("boom"), False),
+    ],
+    ids=["object_lost", "other"],
+)
+def test_object_loss_in_map_task_classified_on_driver(
+    ray_start_regular_shared, make_dataset, error, expected
+):
+    """An error a map task re-raises loses ``__cause__`` when the worker pickles
+    it; whether it was caused by object loss still reaches the driver."""
+    with pytest.raises(Exception) as raised:
+        make_dataset(error).materialize()
+    assert _is_object_lost_error(raised.value) is expected
+
+
+def test_marking_failure_keeps_original_error():
+    class FrozenError(Exception):
+        def __setattr__(self, name, value):
+            raise AttributeError("frozen")
+
+    @_marks_object_loss
+    def task():
+        yield
+        raise FrozenError() from ray.exceptions.OwnerDiedError("ab", None, "")
+
+    with pytest.raises(FrozenError):
+        list(task())
 
 
 def test_task_completion_time_histogram():

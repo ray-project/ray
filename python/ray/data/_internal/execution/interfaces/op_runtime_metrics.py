@@ -194,6 +194,45 @@ def node_id_from_block_metadata(meta: BlockMetadata) -> str:
     return node_id
 
 
+# Set on an exception a worker raises when its chain holds an object loss:
+# unlike ``__cause__`` and ``__context__``, attributes survive pickling to the
+# driver.
+_CAUSED_BY_OBJECT_LOSS_ATTR = "_ray_data_caused_by_object_loss"
+
+
+def mark_object_loss(error: BaseException) -> None:
+    """Record on ``error`` whether its chain holds an object loss, for
+    ``_is_object_lost_error`` to read after ``error`` is pickled."""
+    if _is_object_lost_error(error):
+        setattr(error, _CAUSED_BY_OBJECT_LOSS_ATTR, True)
+
+
+def _is_object_lost_error(exception: BaseException) -> bool:
+    """Whether ``exception`` was caused by a lost object, following the
+    ``RayTaskError.cause`` chain and the chain Python prints in tracebacks:
+    ``__cause__``, else ``__context__`` unless suppressed (``raise ... from None``).
+    """
+    seen: Set[int] = set()
+    error: Optional[BaseException] = exception
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        if isinstance(error, ray.exceptions.ObjectLostError) or getattr(
+            error, _CAUSED_BY_OBJECT_LOSS_ATTR, False
+        ):
+            return True
+        if isinstance(error, ray.exceptions.RayTaskError) and isinstance(
+            error.cause, BaseException
+        ):
+            error = error.cause
+        elif error.__cause__ is not None:
+            error = error.__cause__
+        elif not error.__suppress_context__:
+            error = error.__context__
+        else:
+            error = None
+    return False
+
+
 @dataclass
 class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     """Runtime metrics for a 'PhysicalOperator'.
@@ -617,6 +656,10 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.block_size_rows = RuntimeMetricsHistogram(histogram_bucket_rows)
         self._op_task_duration_stats = DistributionTracker()
         self._max_uss_bytes = DistributionTracker()
+        # Number of failed tasks whose error was caused by a lost object (e.g.
+        # lineage reconstruction failed or the owner died). Used for usage
+        # telemetry, so not exposed as a metric.
+        self._num_tasks_failed_object_lost = 0
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -946,6 +989,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     def max_uss_bytes(self) -> DistributionTracker:
         return self._max_uss_bytes
 
+    @property
+    def num_tasks_failed_object_lost(self) -> int:
+        """Number of failed tasks whose error was caused by a lost object."""
+        return self._num_tasks_failed_object_lost
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
@@ -1144,6 +1192,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 node_metrics.bytes_outputs_of_finished_tasks += meta.size_bytes
                 node_metrics.blocks_outputs_of_finished_tasks += 1
 
+    def _release_task_inputs(self, task_index: int):
+        """Releases what ``on_task_submitted`` reserved for the task."""
+        self.num_tasks_running -= 1
+        inputs = self._running_tasks.pop(task_index).inputs
+        input_size = inputs.size_bytes()
+        self._pending_task_inputs.remove(inputs)
+        assert self.obj_store_mem_pending_task_inputs >= 0, (
+            self._op,
+            self.obj_store_mem_pending_task_inputs,
+            input_size,
+        )
+        self.obj_store_mem_freed += input_size
+        inputs.destroy_if_owned()
+
+    def on_task_aborted(self, task_index: int):
+        """Callback when a task is aborted without a failure. Releases what
+        ``on_task_submitted`` reserved without counting the task as finished,
+        since the task that replaces it is counted instead."""
+        self._release_task_inputs(task_index)
+
     def on_task_finished(
         self,
         task_index: int,
@@ -1152,10 +1220,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_exec_driver_stats: Optional["TaskExecDriverStats"],
     ):
         """Callback when a task is finished."""
-        self.num_tasks_running -= 1
         self.num_tasks_finished += 1
         if exception is not None:
             self.num_tasks_failed += 1
+            if _is_object_lost_error(exception):
+                self._num_tasks_failed_object_lost += 1
 
         task_info = self._running_tasks[task_index]
 
@@ -1222,13 +1291,8 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.num_task_inputs_processed += len(inputs)
         total_input_size = inputs.size_bytes()
         self.bytes_task_inputs_processed += total_input_size
-        input_size = inputs.size_bytes()
-        self._pending_task_inputs.remove(inputs)
-        assert self.obj_store_mem_pending_task_inputs >= 0, (
-            self._op,
-            self.obj_store_mem_pending_task_inputs,
-            input_size,
-        )
+        # Release before the object-location lookup below, which can raise.
+        self._release_task_inputs(task_index)
 
         ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
@@ -1238,8 +1302,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 if locations[entry.ref].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
-
-        self.obj_store_mem_freed += total_input_size
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
@@ -1255,6 +1317,3 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
                 # Keep track of node ids to ensure we don't double count
                 node_ids.add(node_id)
-
-        inputs.destroy_if_owned()
-        del self._running_tasks[task_index]

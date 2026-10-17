@@ -57,6 +57,9 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    mark_object_loss,
+)
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
@@ -712,17 +715,21 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             exception: Optional[Exception],
             task_exec_stats: Optional[TaskExecWorkerStats],
             task_exec_driver_stats: Optional[TaskExecDriverStats],
+            aborted: bool,
         ):
             # NOTE: `TaskExecStats` could be null in case there's no blocks
             #       emitted (current limitation, since it's emitted along with
             #       `BlockMetadata`)
-            assert exception or (
-                task_exec_driver_stats
+            assert (
+                aborted or exception or task_exec_driver_stats
             ), "Driver's task execution stats must be provided on task's successful completion"
 
-            self._metrics.on_task_finished(
-                task_index, exception, task_exec_stats, task_exec_driver_stats
-            )
+            if aborted:
+                self._metrics.on_task_aborted(task_index)
+            else:
+                self._metrics.on_task_finished(
+                    task_index, exception, task_exec_stats, task_exec_driver_stats
+                )
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -734,7 +741,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 self._next_data_task_idx, self.upstream_op_num_outputs(), self._metrics
             )
 
-            if lineage_tracker is not None and exception is None:
+            if lineage_tracker is not None and exception is None and not aborted:
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
                 if reconstruction_plan_id is not None:
@@ -871,6 +878,26 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         return len(self._data_tasks)
 
 
+def _marks_object_loss(task_fn: Callable[..., Iterator]) -> Callable[..., Iterator]:
+    """Wraps a task generator so whatever it raises records whether its chain
+    holds an object loss, before pickling drops that chain."""
+
+    @functools.wraps(task_fn)
+    def wrapper(*args, **kwargs):
+        try:
+            yield from task_fn(*args, **kwargs)
+        except Exception as e:
+            try:
+                mark_object_loss(e)
+            except Exception:
+                # Marking is best effort; the task must still raise the original.
+                pass
+            raise
+
+    return wrapper
+
+
+@_marks_object_loss
 def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
