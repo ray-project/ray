@@ -10,6 +10,7 @@ from typing import (
     Iterator,
     List,
     Literal,
+    NamedTuple,
     Optional,
     Tuple,
     TypeVar,
@@ -70,6 +71,15 @@ class _IterableFromIterator(Iterable[T]):
 
     def __iter__(self):
         return self.iterator_gen()
+
+
+class _BatchSource(NamedTuple):
+    """One pass over a DataIterator's data, ready to yield batches."""
+
+    batch_iterator: Iterable[Any]
+    stats: Optional[DatasetStats]
+    executor: Optional["StreamingExecutor"]
+    dataset_tags: Dict[str, Optional[str]]
 
 
 @PublicAPI
@@ -264,6 +274,42 @@ class DataIterator(abc.ABC):
             **kwargs,
         )
 
+    def _create_batch_source(self, **batch_iterator_kwargs) -> _BatchSource:
+        """Start a pass over this iterator's data and wrap it in a
+        BatchIterator.
+
+        The default reads RefBundles from ``_to_ref_bundle_iterator``.
+        Iterators whose data doesn't arrive as RefBundles override this
+        instead.
+        """
+        ref_bundles_iterator, stats, executor = self._to_ref_bundle_iterator()
+
+        dataset_tags = self._get_dataset_tag()
+
+        # Create a callback to report prefetched bytes to the executor's
+        # resource manager.
+        def make_prefetch_callback(exec):
+            def callback(num_bytes: int) -> None:
+                exec.set_external_consumer_bytes(num_bytes)
+
+            return callback
+
+        prefetch_bytes_callback = (
+            make_prefetch_callback(executor) if executor is not None else None
+        )
+        if prefetch_bytes_callback is not None:
+            # Register the external consumer with the executor's resource manager.
+            prefetch_bytes_callback(0)
+
+        batch_iterator = self._create_batch_iterator(
+            ref_bundles_iterator,
+            stats=stats,
+            dataset_tags=dataset_tags,
+            prefetch_bytes_callback=prefetch_bytes_callback,
+            **batch_iterator_kwargs,
+        )
+        return _BatchSource(batch_iterator, stats, executor, dataset_tags)
+
     def _iter_batches(
         self,
         *,
@@ -285,33 +331,7 @@ class DataIterator(abc.ABC):
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
             # needing to explicitly call `iter_batches()` multiple times.
-            (
-                ref_bundles_iterator,
-                stats,
-                executor,
-            ) = self._to_ref_bundle_iterator()
-
-            dataset_tags = self._get_dataset_tag()
-
-            # Create a callback to report prefetched bytes to the executor's
-            # resource manager.
-            def make_prefetch_callback(exec):
-                def callback(num_bytes: int) -> None:
-                    exec.set_external_consumer_bytes(num_bytes)
-
-                return callback
-
-            prefetch_bytes_callback = (
-                make_prefetch_callback(executor) if executor is not None else None
-            )
-            if prefetch_bytes_callback is not None:
-                # Register the external consumer with the executor's resource manager.
-                prefetch_bytes_callback(0)
-
-            batch_iterator = self._create_batch_iterator(
-                ref_bundles_iterator,
-                stats=stats,
-                dataset_tags=dataset_tags,
+            batch_iterator, stats, executor, dataset_tags = self._create_batch_source(
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
@@ -320,7 +340,6 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
-                prefetch_bytes_callback=prefetch_bytes_callback,
                 preserve_order=self.get_context().execution_options.preserve_order,
             )
 
