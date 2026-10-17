@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Optional
+from collections.abc import Iterable
 
 import pyarrow as pa
 
@@ -48,11 +49,11 @@ def partition_files(
 
 
 def _build_pruners(
-    file_extensions: Optional[List[str]],
+    file_extensions: list[str] | None,
     partition_filter: Optional["PathPartitionFilter"],
-    partition_pruner: Optional[FilePruner] = None,
-) -> List[FilePruner]:
-    pruners: List[FilePruner] = []
+    partition_pruner: FilePruner | None = None,
+) -> list[FilePruner]:
+    pruners: list[FilePruner] = []
     if file_extensions is not None:
         pruners.append(FileExtensionPruner(file_extensions))
     if partition_filter is not None:
@@ -69,13 +70,13 @@ def list_files_for_each_block(
     *,
     indexer: "FileIndexer",
     filesystem: Optional["FileSystem"],
-    file_extensions: Optional[List[str]] = None,
+    file_extensions: list[str] | None = None,
     partition_filter: Optional["PathPartitionFilter"] = None,
-    partition_pruner: Optional[FilePruner] = None,
+    partition_pruner: FilePruner | None = None,
     preserve_order: bool = False,
     predicate: Optional["Expr"] = None,
-    limit: Optional[int] = None,
-    projected_columns: Optional[List[str]] = None,
+    limit: int | None = None,
+    projected_columns: list[str] | None = None,
     shuffle_config: Optional["FileShuffleConfig"] = None,
     execution_idx: int = 0,
     prelisted_file_infos: bool = False,
@@ -100,17 +101,13 @@ def list_files_for_each_block(
     set.
 
     ``ctx.kwargs[EXCLUDED_READ_UNIT_IDS_KWARG_NAME]``, when a resumed job sets
-    it on the ``ListFiles`` operator, is the read unit ids already finished
-    (any collection of strings, or an Arrow string array); the indexer
-    leaves them out, so the partitioner packs only the remaining work.
+    it on the ``ListFiles`` operator, is the set of read unit ids already
+    finished; the indexer leaves them out, so the partitioner packs only the
+    remaining work.
     """
     # The excluded ids arrive through TaskContext only at execution time.
     # Both root-path listing and the prelisted route must honor them.
     excluded_ids = ctx.kwargs.get(EXCLUDED_READ_UNIT_IDS_KWARG_NAME)
-    if isinstance(excluded_ids, (pa.Array, pa.ChunkedArray)):
-        # A set built straight from an Arrow array holds Arrow scalars, which
-        # never equal the ``str`` ids looked up below.
-        excluded_ids = excluded_ids.to_pylist()
     excluded_read_unit_ids = frozenset(excluded_ids) if excluded_ids else None
     if prelisted_file_infos:
         # Initial path filters already ran during schema inference. Reapplying a
@@ -163,10 +160,10 @@ def list_files_for_each_block(
 
 def sample_files(
     indexer: "FileIndexer",
-    paths: List[str],
+    paths: list[str],
     filesystem: Optional["FileSystem"],
-    pruners: Optional[List[FilePruner]] = None,
-    max_files: Optional[int] = 16,
+    pruners: list[FilePruner] | None = None,
+    max_files: int | None = 16,
 ) -> FileManifest:
     """List up to ``max_files`` files, or all files when it is ``None``.
 
@@ -183,8 +180,8 @@ def sample_files(
     """
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
-    sampled_paths: List[str] = []
-    sampled_sizes: List[int] = []
+    sampled_paths: list[str] = []
+    sampled_sizes: list[int] = []
     for file_info in indexer.list_file_infos(
         paths_column,
         filesystem=filesystem,
