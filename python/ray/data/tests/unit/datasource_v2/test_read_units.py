@@ -8,6 +8,7 @@ for one Parquet row group. Whole files are dropped before any footer read, row
 groups inside the footer reader before predicate pruning and limit accounting,
 so the partitioner only ever sees the remaining work.
 """
+
 from dataclasses import dataclass
 
 import pyarrow as pa
