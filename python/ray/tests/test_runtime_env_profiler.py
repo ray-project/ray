@@ -315,12 +315,23 @@ def test_nsight_noop_without_config(nsight_plugin):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Uses the POSIX worker command.")
-def test_nsight_preserves_worker_command(nsight_plugin):
-    """Test the wrapped py_executable survives worker command assembly"""
+@pytest.mark.parametrize(
+    "py_executable, expected_py_executable",
+    [
+        (None, "'/opt/ray venv/bin/python'"),
+        ("'/opt/ray venv/bin/python' -u", "'/opt/ray venv/bin/python' -u"),
+    ],
+    ids=["default-sys-executable", "configured-command"],
+)
+def test_nsight_preserves_worker_command(
+    nsight_plugin, monkeypatch, py_executable, expected_py_executable
+):
+    """Test default and configured Python commands survive worker command assembly"""
+    monkeypatch.setattr(sys, "executable", "/opt/ray venv/bin/python")
     context = RuntimeEnvContext(
         command_prefix=["source '/opt/ray venv/bin/activate'", "&&"],
         env_vars={"NSIGHT_TEST": "preserved"},
-        py_executable="'/opt/ray venv/bin/python' -u",
+        py_executable=py_executable,
     )
     nsight_plugin.modify_context([], None, context)
 
@@ -343,7 +354,7 @@ def test_nsight_preserves_worker_command(nsight_plugin):
             (
                 "source '/opt/ray venv/bin/activate' && exec "
                 "nsys profile -o /tmp/ray/session/logs/nsight/'worker_process_%p' "
-                "'/opt/ray venv/bin/python' -u "
+                f"{expected_py_executable} "
                 "'/tmp/ray worker.py' --node-ip-address=127.0.0.1"
             ),
         ],
