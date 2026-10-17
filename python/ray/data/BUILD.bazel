@@ -248,6 +248,25 @@ py_test(
 )
 
 py_test(
+    name = "test_hive_direct_integration",
+    size = "medium",
+    srcs = [
+        "tests/datasource/test_hive_direct_integration.py",
+        "tests/datasource/test_hive_integration.py",
+    ],
+    main = "tests/datasource/test_hive_direct_integration.py",
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/datasource/test_snowflake.py"],

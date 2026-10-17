@@ -4100,6 +4100,9 @@ def read_hive(
     schema: Optional["pyarrow.Schema"] = None,
     user: Optional[str] = None,
     limit: Optional[int] = None,
+    read_mode: Literal["hs2", "direct"] = "hs2",
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    merge_schema: bool = False,
     num_cpus: Optional[float] = None,
     memory: Optional[float] = None,
     resources: Optional[Dict[str, float]] = None,
@@ -4108,9 +4111,11 @@ def read_hive(
     runtime_env: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Read a HiveServer2 table or trusted SQL query into a Dataset.
+    """Read a Hive table or trusted SQL query into a Dataset.
 
-    Install the optional ``impyla`` package on the driver and Ray workers.
+    Install the optional ``impyla`` package on the driver. The default HS2
+    mode also needs it on the read worker; direct workers use native file
+    and filesystem dependencies instead.
     Configure authentication, transport, and TLS certificate verification in
     ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
     Kerberos credentials on those nodes.
@@ -4123,12 +4128,13 @@ def read_hive(
         needs it on the driver before the read worker executes the query.
         See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
         for optional schema inference from the same query execution.
-        Table reads select every column. If a table has unsupported column
-        types, use ``query`` to select supported columns and provide a matching
-        schema.
+        Table reads select every column. In HS2 mode, if a table has
+        unsupported column types, use ``query`` to select supported columns
+        and provide a matching schema.
 
-        Each Dataset execution runs at most one HiveServer2 data query in one
-        Ray task. Ray doesn't retry failed reads. With the default error
+        In ``read_mode="hs2"``, each Dataset execution runs at most one
+        HiveServer2 data query in one Ray task. Ray doesn't retry failed
+        HS2 reads. With the default error
         tolerance, a read error or worker loss fails that Dataset execution.
         This API preserves ``DataContext.max_errored_blocks``. If you allow
         block errors, execution can skip failed output and return an
@@ -4224,8 +4230,28 @@ def read_hive(
             operating system username. Configure the authentication user
             separately in ``connection_factory``.
         limit: The maximum number of rows to read from a table. ``0`` skips
-            the data query. The limit is sent to HiveServer2 as SQL. This
-            argument isn't supported for query reads.
+            data scanning. HS2 mode sends it as SQL; direct mode uses Ray's
+            global limit. This argument isn't supported for query reads.
+        read_mode: ``"hs2"`` preserves the single-query HiveServer2 path.
+            ``"direct"`` reads a supported nonpartitioned, non-ACID Parquet
+            or ORC table through native Ray Data readers. Hive metadata is
+            checked on the driver before file scanning. Query reads and
+            partitioned tables aren't supported in direct mode. Filesystem
+            credentials and client dependencies are separate from HS2.
+            Top-level CHAR/VARCHAR lengths are enforced; nested CHAR/VARCHAR
+            fields are rejected during metadata planning. TIMESTAMP output
+            uses microseconds, discarding sub-microsecond digits consistently
+            before and after the Unix epoch.
+        filesystem: The filesystem used by native direct reads. If omitted,
+            infer it from the table location. Reading workers need access to
+            the storage and its client dependencies. Only supported in direct
+            mode; the HS2 connection is used only for metadata in that mode.
+        merge_schema: For direct Parquet reads, use all eligible file schemas
+            instead of sampling up to 16 files. Defaults to ``False``. This
+            doesn't change the Hive table's declared columns or types. ORC
+            retains its native sampling strategy and doesn't support this
+            option. Sampling doesn't prevalidate every file; later file
+            errors propagate without restarting through HiveServer2.
         num_cpus: The number of CPUs to reserve for the read task.
         memory: The heap memory in bytes to reserve for the read task.
         resources: Custom resources to reserve for the read task, expressed as
@@ -4237,11 +4263,18 @@ def read_hive(
         override_num_blocks: An output block-count hint. The HiveServer2
             reader ignores this hint and logs a warning when you supply a
             value. Output blocks follow Ray's normal block-sizing policy.
-            This parameter doesn't add HiveServer2 query parallelism.
+            Direct mode forwards this hint to native read planning. This
+            parameter doesn't add HiveServer2 query parallelism.
 
     Returns:
-        A :class:`Dataset` containing the HiveServer2 read result.
+        A :class:`Dataset` containing the Hive table or query results.
     """
+    if read_mode not in ("hs2", "direct"):
+        raise ValueError("read_mode must be 'hs2' or 'direct'")
+    if not isinstance(merge_schema, bool):
+        raise TypeError("merge_schema must be a bool")
+    if read_mode == "hs2" and (filesystem is not None or merge_schema):
+        raise ValueError("filesystem and merge_schema require read_mode='direct'")
     if override_num_blocks is not None and (
         isinstance(override_num_blocks, bool)
         or not isinstance(override_num_blocks, int)
@@ -4261,6 +4294,33 @@ def read_hive(
         schema=schema,
         limit=limit,
     )
+    if read_mode == "direct":
+        from ray.data._internal.datasource_v2.formats.hive.hive_direct import (
+            HiveDirectDatasource,
+            read_file_table_metadata,
+        )
+
+        source = HiveDirectDatasource(
+            read_file_table_metadata(spec),
+            filesystem=filesystem,
+            merge_schema=merge_schema,
+        )
+        dataset = _read_datasource_v2(
+            source,
+            parallelism=override_num_blocks or -1,
+            num_cpus=num_cpus,
+            memory=memory,
+            resources=resources,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            runtime_env=runtime_env,
+        )
+        if source.column_renames:
+            dataset = dataset.rename_columns(source.column_renames)
+        expressions = source.column_expressions()
+        if expressions:
+            dataset = dataset.with_columns(expressions)
+        return dataset.limit(limit) if limit is not None else dataset
     if override_num_blocks is not None:
         logger.warning(
             "The `override_num_blocks` argument is ignored by read_hive to "
