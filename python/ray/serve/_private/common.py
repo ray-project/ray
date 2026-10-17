@@ -1,4 +1,5 @@
 import json
+import weakref
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, ClassVar, Dict, List, Optional, Tuple
@@ -721,9 +722,10 @@ class RunningReplicaInfo:
     # lookups from multiple RunningReplica/Router instances in the same worker
     # process. Ray's C++ CoreWorker already caches per-process named actor IDs,
     # but this Python-level cache avoids the Python→C++ boundary overhead and
-    # keeps handles alive as long as there are RunningReplica references.
-    # Key: (actor_name, namespace) -> Value: ActorHandle
-    _actor_handle_cache: ClassVar[Dict[Tuple[str, str], ActorHandle]] = {}
+    # keeps handles alive only while actively referenced by RunningReplica
+    # instances (using WeakValueDictionary to avoid memory leaks).
+    # Key: (actor_name, namespace) -> Value: ActorHandle (weakly referenced)
+    _actor_handle_cache: ClassVar[weakref.WeakValueDictionary] = weakref.WeakValueDictionary()
 
     def get_actor_handle(self) -> ActorHandle:
         cache_key = (self.actor_name, SERVE_NAMESPACE)
