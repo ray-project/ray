@@ -1773,6 +1773,8 @@ def test_idle_termination_pending_nodes(status):
     assert _schedule(idle_timeout_s + 2, []) == ({}, [])
     assert _schedule(2 * idle_timeout_s + 2, []) == ({}, [])
 
+    # Not needed since t=idle_timeout_s + 2, so it has now been continuously
+    # unneeded for idle_timeout_s + 1 secs, which exceeds the idle timeout.
     _, to_terminate = _schedule(2 * idle_timeout_s + 3, [])
     if status == Instance.REQUESTED:
         assert to_terminate == []
