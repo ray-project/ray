@@ -196,6 +196,7 @@ def _get_vllm_engine_config(
     llm_config: LLMConfig,
     *,
     device_type: Optional[str] = None,
+    include_speculative_config: bool = True,
 ) -> Tuple["AsyncEngineArgs", "VllmConfig"]:
     engine_config = llm_config.get_engine_config()
     _resolve_hf_model_id_from_mirror(engine_config)
@@ -211,6 +212,8 @@ def _get_vllm_engine_config(
         engine_kwargs = _normalize_vllm_engine_kwargs(
             engine_config.get_initialization_kwargs()
         )
+        if not include_speculative_config:
+            engine_kwargs.pop("speculative_config", None)
         async_engine_args = vllm.engine.arg_utils.AsyncEngineArgs(**engine_kwargs)
         vllm_engine_config = async_engine_args.create_engine_config(
             usage_context=UsageContext.OPENAI_API_SERVER
