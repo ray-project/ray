@@ -5,17 +5,23 @@ These pin that ``create()`` arguments actually reach the backend's
 shipped behind a green suite.
 """
 
+import os
 import sys
 import time
 
 import pytest
 
 from ray.experimental.sandbox.backend.base import ExecResult, SandboxStatus
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 
 class _FakeImageManager:
+    def __init__(self):
+        self.pulls = []
+
     def pull_image(self, image, timeout_seconds=120.0):
+        self.pulls.append(image)
         return f"/tmp/fake-images/{image}"
 
 
@@ -110,6 +116,38 @@ def test_no_ttl_by_default():
     (config,) = runtime._backend.configs
     assert config.ttl_seconds is None
     assert config.shell == "/bin/bash"
+
+
+def test_create_leaves_the_pull_to_the_backend():
+    """The backend pulls (and pins) the image for each sandbox it creates,
+    so create() doesn't look the image up a second time."""
+    runtime = _fake_runtime()
+    runtime.create(image="fake:latest")
+    assert runtime._image_manager.pulls == []
+    assert [c.image for c in runtime._backend.configs] == ["fake:latest"]
+
+
+def test_a_failed_pull_fails_the_create_as_raised(tmp_path, monkeypatch):
+    """With the pull left to the backend, a pull's error still reaches the
+    caller as raised, and the failed create leaves no sandbox directory."""
+    from ray.experimental.sandbox.backend import gvisor
+
+    class _NoSuchImage:
+        def pull_image(self, image, timeout_seconds=120.0, instance_id=None):
+            raise SandboxCreationError(f"no such image: {image}")
+
+        def release_image(self, image, instance_id):
+            pass
+
+    monkeypatch.setattr(gvisor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path))
+    runtime = SandboxRuntime()
+    runtime._image_manager = _NoSuchImage()
+    runtime._backend = gvisor.GVisorSandboxBackend(runtime._image_manager)
+    with pytest.raises(SandboxCreationError) as err:
+        runtime.create(image="nope:latest")
+    assert str(err.value) == "no such image: nope:latest"
+    assert os.listdir(tmp_path) == []
 
 
 if __name__ == "__main__":
