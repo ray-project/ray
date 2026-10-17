@@ -51,18 +51,23 @@ logger = logging.getLogger(__name__)
 
 
 def _open_orc(path: str, filesystem: FileSystem | None):
-    """Return an :class:`pyarrow.orc.ORCFile` for ``path`` using ``filesystem``.
+    """Open an ORCFile for ``path`` and return it plus any file handle to close.
 
-    Opens only the footer (no data IO) -- roughly 0.2 ms per file on local
-    storage, higher on S3. ``filesystem=None`` means a local absolute path
-    and pyarrow opens the file directly from the OS.
+    ``filesystem=None`` means a local absolute path, which pyarrow opens
+    directly from the OS and needs no explicit close. For remote filesystems
+    we return the opened ``source`` alongside the :class:`pyarrow.orc.ORCFile`
+    so the caller can close the Python source wrapper once footer metadata
+    (nstripes, nrows, schema) has been consumed. Returning both values avoids
+    closing the source inside a ``with`` before the caller is done with the
+    ORCFile object (PyArrow's wrapper keeps a reference to the underlying
+    C++ stream).
     """
     from pyarrow import orc
 
     if filesystem is None:
-        return orc.ORCFile(path)
-    with filesystem.open_input_file(path) as source:
-        return orc.ORCFile(source)
+        return orc.ORCFile(path), None
+    source = filesystem.open_input_file(path)
+    return orc.ORCFile(source), source
 
 
 def _chunk_orc_file(file_info: FileInfo, filesystem: FileSystem | None) -> FileManifest:
@@ -73,8 +78,11 @@ def _chunk_orc_file(file_info: FileInfo, filesystem: FileSystem | None) -> FileM
     the :mod:`pyarrow.dataset` path without a per-stripe reader.
     """
     assert file_info.size is not None
+    source_to_close = None
     try:
-        of = _open_orc(file_info.path, filesystem)
+        of, source_to_close = _open_orc(file_info.path, filesystem)
+        nstripes = int(of.nstripes)
+        nrows = int(of.nrows)
     except (OSError, pa.ArrowError) as exc:
         logger.warning(
             "Failed to read ORC footer for %s: %s. Falling back to whole-file read.",
@@ -86,9 +94,9 @@ def _chunk_orc_file(file_info: FileInfo, filesystem: FileSystem | None) -> FileM
             sizes=[file_info.size],
             chunk_metadatas=[None],
         )
-
-    nstripes = int(of.nstripes)
-    nrows = int(of.nrows)
+    finally:
+        if source_to_close is not None:
+            source_to_close.close()
 
     if nstripes <= 1:
         # No point splitting; emit the whole file so the existing

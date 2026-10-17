@@ -61,6 +61,11 @@ class OrcFileReader(FileReader):
         """Route whole-file manifest rows to the pyarrow path and chunked rows
         to the stripe-direct reader, preserving OrcScanner's declared column order
         after per-file partition synthesis.
+
+        A single split can carry both whole-file and stripe-chunked rows
+        (OnlineBinPacker may coalesce them). We therefore apply the scanner
+        push-down ``limit`` exactly once at this boundary, so it is honored
+        across both paths as a global cap on rows emitted from the split.
         """
         if len(input_split) == 0:
             return
@@ -78,11 +83,26 @@ class OrcFileReader(FileReader):
                 chunked_rows.append((i, str(path), md))
 
         filesystem = self._filesystem or LocalFileSystem()
+        limit = self._limit
+        rows_read = 0
+
+        def _apply_limit(table: pa.Table) -> pa.Table | None:
+            """Slice ``table`` to respect the push-down ``limit``, if any.
+
+            Returns None when the limit has already been exhausted.
+            """
+            nonlocal rows_read
+            if limit is None:
+                return table
+            if rows_read >= limit:
+                return None
+            if len(table) > limit - rows_read:
+                table = table.slice(0, limit - rows_read)
+            rows_read += len(table)
+            return table
 
         # (1) Whole-file rows go through the pyarrow dataset path unchanged.
         if whole_indices:
-            # Select a sub-manifest containing only the whole-file rows so
-            # the default reader never sees chunk metadata it cannot use.
             whole_paths = [paths[i] for i in whole_indices]
             whole_sizes = list(input_split.file_sizes[whole_indices])
             whole_mds = [None] * len(whole_indices)
@@ -108,11 +128,18 @@ class OrcFileReader(FileReader):
                         if name not in schema_name_set
                     )
                     table = table.select(column_names)
-                yield table
+                limited = _apply_limit(table)
+                if limited is None:
+                    return
+                yield limited
 
         # (2) Chunked rows -> stripe-direct reader.
-        if chunked_rows:
-            yield from self._read_chunked_stripe_rows(chunked_rows, filesystem)
+        if chunked_rows and not (limit is not None and rows_read >= limit):
+            for table in self._read_chunked_stripe_rows(chunked_rows, filesystem):
+                limited = _apply_limit(table)
+                if limited is None:
+                    return
+                yield limited
 
     # ------------------------------------------------------------------
     # Whole-file manifest (delegates to FileReader.read). Split out so the
@@ -138,27 +165,41 @@ class OrcFileReader(FileReader):
         ``chunk_metadata_dict['unit_ids']`` lists stripe indices for the row;
         a row may carry multiple stripes (OnlineBinPacker coalesced them into
         one manifest row when the file has many small stripes).
+
+        The scanner push-down limit is applied by :meth:`read` before this
+        method is called; this method yields every stripe table it produces.
         """
-        schema = self._schema
         columns = self._columns
         predicate = self._predicate
         partition_parser = self._partition_parser
         synthesized = {c.name for c in self._synthesized_columns}
 
-        rows_read = 0
         for _, path, md in rows:
             chunk = FileChunk.from_metadata(md)
             stripe_ids = chunk.unit_ids
 
             # Open once per file so we read its schema and footer once.
-            if filesystem is None or isinstance(filesystem, LocalFileSystem):
-                source = path
-            else:
-                source = filesystem.open_input_file(path)
-            of = orc.ORCFile(source)
-            file_schema = of.schema
-            # Close the file handle on remote filesystems when we're done with
-            # this file; LocalFileSystem strings need no close.
+            source: str | object | None = None
+            of = None
+            try:
+                if filesystem is None or isinstance(filesystem, LocalFileSystem):
+                    source = path
+                else:
+                    source = filesystem.open_input_file(path)
+                of = orc.ORCFile(source)
+                file_schema = of.schema
+            except Exception:
+                # Any failure while opening the ORC file must still close
+                # the remote source handle we just opened.
+                if (
+                    source is not None
+                    and filesystem is not None
+                    and not isinstance(filesystem, LocalFileSystem)
+                    and hasattr(source, "close")
+                ):
+                    source.close()
+                raise
+
             close_source = (
                 filesystem is not None
                 and not isinstance(filesystem, LocalFileSystem)
@@ -166,7 +207,7 @@ class OrcFileReader(FileReader):
             )
             try:
                 for stripe_idx in stripe_ids:
-                    for table in self._read_one_stripe(
+                    yield from self._read_one_stripe(
                         of=of,
                         path=path,
                         stripe_idx=int(stripe_idx),
@@ -175,36 +216,7 @@ class OrcFileReader(FileReader):
                         predicate=predicate,
                         partition_parser=partition_parser,
                         synthesized=synthesized,
-                        schema=schema,
-                    ):
-                        if table.num_rows == 0:
-                            continue
-
-                        if self._limit is not None:
-                            if rows_read >= self._limit:
-                                return
-                            if len(table) > self._limit - rows_read:
-                                table = table.slice(0, self._limit - rows_read)
-
-                        # Project / reorder.
-                        if columns is not None:
-                            produced = set(table.column_names)
-                            projected = [c for c in columns if c in produced]
-                            table = table.select(projected)
-
-                        if table.num_columns == 0 and table.num_rows > 0:
-                            from ray.data._internal.arrow_block import (
-                                _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                            )
-
-                            table = table.append_column(
-                                _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
-                                pa.nulls(table.num_rows),
-                            )
-
-                        self._on_batch_read(table)
-                        rows_read += len(table)
-                        yield table
+                    )
             finally:
                 if close_source:
                     source.close()
@@ -220,9 +232,9 @@ class OrcFileReader(FileReader):
         predicate,
         partition_parser,
         synthesized: set[str],
-        schema: pa.Schema | None,
     ) -> Iterator[pa.Table]:
         """Read one stripe, apply predicates / projection, yield tables."""
+        schema = self._schema
         # Partition values from the path (same logic as _iter_fragment_tables).
         partitions = partition_parser(path) if partition_parser is not None else {}
 
@@ -258,8 +270,13 @@ class OrcFileReader(FileReader):
                 if name not in partitions and name not in synthesized
             )
         )
-        if not physical_required:
-            physical_required = None
+        # Intersect with the file's own physical columns so that schema-
+        # evolved files (missing a column present in another file of the
+        # same dataset) don't make ``read_stripe`` raise. An empty list is
+        # intentionally preserved -- it signals "don't decode anything"
+        # rather than the pyarrow default of "decode every column" (None).
+        file_physical_names = set(file_schema.names)
+        physical_required = [c for c in physical_required if c in file_physical_names]
 
         # Apply pushdown predicate splitting (partition vs data vs residual).
         data_predicate = predicate
@@ -291,8 +308,6 @@ class OrcFileReader(FileReader):
             pa.schema(
                 [f for f in file_schema if f.name in physical_required]
             )
-            if physical_required is not None
-            else file_schema
         )
         raise_on_pickle_object_columns(
             pa.Table.from_batches([], schema=decoded_schema)
@@ -334,10 +349,72 @@ class OrcFileReader(FileReader):
                 )
 
         if residual_predicate is not None:
-            table = table.filter(residual_predicate)
+            table = table.filter(residual_predicate.to_pyarrow())
             if table.num_rows == 0:
                 return
 
+        # Append synthesized columns (e.g. ``path`` from include_paths=True).
+        # The whole-file path handles these in FileReader's outer iterator,
+        # but the stripe-direct reader bypasses that iterator.
+        for column in self._synthesized_columns:
+            if (
+                self._columns is not None
+                and column.name not in self._columns
+            ):
+                # Projection pushdown excluded this column; skip.
+                continue
+            if column.name in table.column_names:
+                table = table.drop([column.name])
+            table = table.append_column(
+                column.name,
+                pa.repeat(pa.scalar(path, type=column.type), table.num_rows),
+            )
+
+        # Fill any remaining missing output columns with nulls. Multi-file
+        # ORC datasets can evolve schemas -- a column present in one file
+        # may be absent from another -- so the unified output schema must
+        # null-fill rather than raise.
+        if self._columns is not None:
+            output_cols_to_emit = self._columns
+        else:
+            output_cols_to_emit = list(dict.fromkeys(out_schema.names + output_columns))
+        for col_name in output_cols_to_emit:
+            if col_name in table.column_names:
+                continue
+            # Find a type we can use for the null fill. Prefer the unified
+            # schema; fall back to the file schema if the column is there;
+            # default to null() otherwise.
+            field = None
+            if schema is not None:
+                idx = schema.get_field_index(col_name)
+                if idx != -1:
+                    field = schema.field(idx)
+            if field is None:
+                idx = file_schema.get_field_index(col_name)
+                if idx != -1:
+                    field = file_schema.field(idx)
+            col_type = field.type if field is not None else pa.null()
+            table = table.append_column(
+                col_name, pa.nulls(table.num_rows, type=col_type)
+            )
+
+        # Reorder to the requested column order and drop extras.
+        if columns is not None:
+            produced = set(table.column_names)
+            projected = [c for c in columns if c in produced]
+            table = table.select(projected)
+
+        if table.num_columns == 0 and table.num_rows > 0:
+            from ray.data._internal.arrow_block import (
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+            )
+
+            table = table.append_column(
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                pa.nulls(table.num_rows),
+            )
+
+        self._on_batch_read(table)
         yield table
 
     # ------------------------------------------------------------------
