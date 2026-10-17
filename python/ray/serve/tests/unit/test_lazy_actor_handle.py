@@ -28,6 +28,7 @@ from ray.serve._private.request_router.replica_wrapper import RunningReplica
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_running_replica_info(
     actor_name: str = "fake-actor-1",
     node_id=None,
@@ -71,6 +72,7 @@ def _clear_handle_cache():
 # Process-level handle cache (RunningReplicaInfo)
 # ---------------------------------------------------------------------------
 
+
 class TestRunningReplicaInfoCache:
     """Tests for the class-level ``_actor_handle_cache``."""
 
@@ -82,11 +84,10 @@ class TestRunningReplicaInfoCache:
         info = _make_running_replica_info(actor_name="sync-fill")
         fake_handle = _make_mock_actor_handle()
 
-        with patch.object(
-            RunningReplicaInfo, "_actor_handle_cache", {}
-        ), patch(
-            "ray.get_actor", return_value=fake_handle
-        ) as mock_get:
+        with (
+            patch.object(RunningReplicaInfo, "_actor_handle_cache", {}),
+            patch("ray.get_actor", return_value=fake_handle) as mock_get,
+        ):
             h1 = info.get_actor_handle()
             h2 = info.get_actor_handle()
 
@@ -101,9 +102,7 @@ class TestRunningReplicaInfoCache:
         info_b = _make_running_replica_info(actor_name="shared-actor")
         fake_handle = _make_mock_actor_handle()
 
-        with patch(
-            "ray.get_actor", return_value=fake_handle
-        ) as mock_get:
+        with patch("ray.get_actor", return_value=fake_handle) as mock_get:
             h_a = info_a.get_actor_handle()
             h_b = info_b.get_actor_handle()
 
@@ -140,15 +139,15 @@ class TestRunningReplicaInfoCache:
             "ray.get_actor",
             side_effect=[h_a1, h_b, h_a2],
         ) as mock_get:
-            info_a.get_actor_handle()   # miss -> caches h_a1
-            info_b.get_actor_handle()   # miss -> caches h_b
+            info_a.get_actor_handle()  # miss -> caches h_a1
+            info_b.get_actor_handle()  # miss -> caches h_b
             RunningReplicaInfo.invalidate_actor_handle("actor-A")
-            info_a.get_actor_handle()   # miss again -> h_a2
-            info_b.get_actor_handle()   # hit -> still h_b
+            info_a.get_actor_handle()  # miss again -> h_a2
+            info_b.get_actor_handle()  # hit -> still h_b
 
         assert mock_get.call_count == 3
         assert info_a.get_actor_handle() is h_a2  # cached
-        assert info_b.get_actor_handle() is h_b   # still cached
+        assert info_b.get_actor_handle() is h_b  # still cached
 
     def test_clear_actor_handle_cache_wipes_everything(self):
         info_a = _make_running_replica_info(actor_name="actor-A")
@@ -198,9 +197,7 @@ class TestRunningReplicaInfoAsyncCache:
             info.get_actor_handle()
 
         # Async path must hit the cache and never call ray.get_actor.
-        with patch(
-            "ray.get_actor", side_effect=AssertionError("cache should be hit")
-        ):
+        with patch("ray.get_actor", side_effect=AssertionError("cache should be hit")):
             h = await info.get_actor_handle_async()
         assert h is fake_handle
 
@@ -245,6 +242,7 @@ class TestRunningReplicaInfoAsyncCache:
 # Lazy resolution in RunningReplica
 # ---------------------------------------------------------------------------
 
+
 class TestRunningReplicaLazyResolution:
     """RunningReplica must *not* call ray.get_actor in __init__."""
 
@@ -252,10 +250,9 @@ class TestRunningReplicaLazyResolution:
         info = _make_running_replica_info(actor_name="never-resolved")
         handle = _make_mock_actor_handle()
 
-        with patch(
-            "ray.get_actor", return_value=handle
-        ) as mock_get, patch.object(
-            RunningReplicaInfo, "_actor_handle_cache", {}
+        with (
+            patch("ray.get_actor", return_value=handle) as mock_get,
+            patch.object(RunningReplicaInfo, "_actor_handle_cache", {}),
         ):
             # Cache starts empty so resolution *would* happen if it were eager.
             replica = RunningReplica(info)
@@ -376,6 +373,7 @@ class TestRunningReplicaMultipleInstancesShareHandle:
 # ---------------------------------------------------------------------------
 # Cache thread safety
 # ---------------------------------------------------------------------------
+
 
 class TestCacheThreadSafety:
     """Sanity check that the cache is safe under concurrent threads."""

@@ -512,10 +512,10 @@ class RouterMetricsManager:
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             for replica_id, num_requests in self.num_requests_sent_to_replicas.items():
-                running_requests[
-                    replica_id.to_full_id_str()
-                ] = self.metrics_store.data.get(
-                    replica_id, [TimeStampedValue(timestamp, num_requests)]
+                running_requests[replica_id.to_full_id_str()] = (
+                    self.metrics_store.data.get(
+                        replica_id, [TimeStampedValue(timestamp, num_requests)]
+                    )
                 )
         handle_metric_report = HandleMetricReport(
             deployment_id=self._deployment_id,
@@ -1050,7 +1050,9 @@ class AsyncioRouter:
                     self._enable_strict_max_ongoing_requests
                     and not replica.is_cross_language
                 )
-                result = await replica.try_send_request(pr, with_rejection=with_rejection)
+                result = await replica.try_send_request(
+                    pr, with_rejection=with_rejection
+                )
                 # Proactively update the queue length cache.
                 self._active_request_router.on_send_request(replica.replica_id)
 
@@ -1642,7 +1644,9 @@ class AsyncioRouter:
             )
             replica_pr.resolved = True
             try:
-                result = await replica.try_send_request(replica_pr, with_rejection=False)
+                result = await replica.try_send_request(
+                    replica_pr, with_rejection=False
+                )
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
                 # Skip this replica and continue broadcasting to healthy replicas.
@@ -1790,6 +1794,7 @@ class SingletonThreadRouter(Router):
         This ensures choose_replica runs on the singleton router loop,
         maintaining thread safety for all state modifications.
         """
+
         # Enter context on router loop
         async def enter_context():
             cm = self._asyncio_router.choose_replica(
@@ -1972,9 +1977,9 @@ class SharedRouterLongPollClient:
 
         # We use a WeakSet to store the Routers so that we don't prevent them
         # from being garbage-collected.
-        self.routers: MutableMapping[
-            DeploymentID, weakref.WeakSet[AsyncioRouter]
-        ] = defaultdict(weakref.WeakSet)
+        self.routers: MutableMapping[DeploymentID, weakref.WeakSet[AsyncioRouter]] = (
+            defaultdict(weakref.WeakSet)
+        )
 
         # Creating the LongPollClient implicitly starts it
         self.long_poll_client = LongPollClient(
