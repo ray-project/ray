@@ -146,6 +146,69 @@ class TestMetricsPusher:
 
         await metrics_pusher.graceful_shutdown()
 
+    @pytest.mark.asyncio
+    async def test_graceful_shutdown_cancels_hung_task(self, monkeypatch):
+        """Tasks still running after the graceful timeout should be cancelled."""
+        monkeypatch.setattr(
+            "ray.serve._private.metrics_utils."
+            "METRICS_PUSHER_GRACEFUL_SHUTDOWN_TIMEOUT_S",
+            0.01,
+        )
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def hung_task():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        tasks_before = asyncio.all_tasks()
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.start()
+        metrics_pusher.register_or_update_task("hung", hung_task, 1)
+        await started.wait()
+
+        # The metrics task and its internal stop-event waiter.
+        new_tasks = asyncio.all_tasks() - tasks_before
+        assert len(new_tasks) == 2
+        metrics_task = metrics_pusher._async_tasks["hung"]
+
+        await metrics_pusher.graceful_shutdown()
+
+        assert cancelled.is_set()
+        assert metrics_task.cancelled()
+        assert metrics_pusher._async_tasks == {}
+        # The stop-event waiter must not be left behind.
+        assert all(t.done() for t in new_tasks)
+
+    @pytest.mark.asyncio
+    async def test_cancelled_metrics_task_cleans_up_stop_event_waiter(self):
+        """Cancelling a metrics task should also cancel its stop-event waiter."""
+        timer = MockAsyncTimer(0)
+        tasks_before = asyncio.all_tasks()
+        metrics_pusher = MetricsPusher(async_sleep=timer.sleep)
+        metrics_pusher.start()
+        metrics_pusher.register_or_update_task("noop", lambda: None, 1)
+        await async_wait_for_condition(
+            lambda: timer.num_sleepers() == 1, retry_interval_ms=1
+        )
+
+        # The metrics task, its stop-event waiter and its sleep task.
+        new_tasks = asyncio.all_tasks() - tasks_before
+        assert len(new_tasks) == 3
+        metrics_task = metrics_pusher._async_tasks["noop"]
+
+        # Cancel without setting the stop event.
+        metrics_task.cancel()
+        await asyncio.gather(metrics_task, return_exceptions=True)
+        await asyncio.sleep(0)
+
+        assert not metrics_pusher.stop_event.is_set()
+        assert all(t.done() for t in new_tasks)
+
 
 def assert_timeseries_equal(actual, expected):
     assert len(actual) == len(
