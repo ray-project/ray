@@ -33,6 +33,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_SKIPPED_EMPTY_BATCH_LIFETIME,
     LEARNER_UPDATE_SKIPPED_FOR_PEER_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -193,6 +194,27 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         learner_group = config.build_learner_group(env=env)
         print(learner_group)
         learner_group.shutdown()
+
+    def test_module_only_set_state_advances_weights_seq_no(self):
+        """The LearnerGroup public state API must publish manual weight mutations as a new version."""
+        env = gym.make("CartPole-v1")
+        learner_group = BaseTestingAlgorithmConfig().build_learner_group(env=env)
+        try:
+            state = learner_group.get_state()
+            initial_seq_no = state[COMPONENT_LEARNER][WEIGHTS_SEQ_NO]
+            module_state = learner_group.get_weights()
+
+            # Match the module-only update used when a new policy/module is cloned.
+            learner_group.set_state(
+                {COMPONENT_LEARNER: {COMPONENT_RL_MODULE: module_state}}
+            )
+
+            updated_state = learner_group.get_state()
+            self.assertEqual(
+                updated_state[COMPONENT_LEARNER][WEIGHTS_SEQ_NO], initial_seq_no + 1
+            )
+        finally:
+            learner_group.shutdown()
 
     def test_update_multi_gpu(self):
         return
