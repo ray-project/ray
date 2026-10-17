@@ -5,8 +5,12 @@ registration, ``KVAwareRouter`` binding to it, and the
 
 import asyncio
 import sys
+from typing import List
 
+import msgpack
 import pytest
+import zmq
+import zmq.asyncio
 
 import ray
 import ray.cloudpickle
@@ -23,6 +27,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     set_kv_token_tracker,
 )
 from ray.serve._private.common import DeploymentID
+from ray.serve.config import RequestRouterConfig
 from ray.serve.llm.request_router import KVAwareRouter
 
 
@@ -36,7 +41,8 @@ def reset_process_global():
 class _SpyTracker:
     """Records constructor kwargs; skips the real selection service + LongPoll."""
 
-    def __init__(self, *, indexer_threads, serve_deployment_id):
+    def __init__(self, *, indexer_threads, serve_deployment_id, session_affinity_ttl_s):
+        self.session_affinity_ttl_s = session_affinity_ttl_s
         self.indexer_threads = indexer_threads
         self.serve_deployment_id = serve_deployment_id
 
@@ -47,12 +53,23 @@ class _NoLongPollTracker(KVTokenTracker):
     def _start_replica_tracking(self):
         pass
 
-    async def flush_reservation_broadcast(self):
-        if self._reservation_forwarder is not None:
-            await self._reservation_forwarder.flush()
+    async def flush_replica_broadcast(self):
+        if self._replica_forwarder is not None:
+            await self._replica_forwarder.flush()
 
-    async def flush_reservation_updates(self):
-        await self._reservation_updates.join()
+    async def flush_replica_updates(self):
+        await self._replica_updates.join()
+
+    def stop_replica_broadcast(self):
+        if self._replica_forwarder is not None:
+            self._replica_forwarder.close()
+        for task in (self._session_affinity_task, self._replica_apply_task):
+            if task is not None:
+                task.cancel()
+
+
+_SESSION = "session-a"
+_WORKER_ID = get_worker_id("engine-replica-0")
 
 
 def _llm_config(experimental_configs=None) -> LLMConfig:
@@ -73,6 +90,7 @@ def test_build_registers_tracker(monkeypatch):
     tracker = build_kv_token_tracker(_llm_config(), "dep-id")
     assert get_kv_token_tracker() is tracker
     assert tracker.serve_deployment_id == "dep-id"
+    assert tracker.session_affinity_ttl_s == 1800
 
 
 def test_indexer_threads_from_config(monkeypatch):
@@ -80,6 +98,21 @@ def test_indexer_threads_from_config(monkeypatch):
     monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
     tracker = build_kv_token_tracker(_llm_config({"KV_INDEXER_THREADS": 8}), "dep-id")
     assert tracker.indexer_threads == 8
+
+
+@pytest.mark.parametrize("ttl_s,as_object", [(60.0, False), (0, True)])
+def test_session_ttl_config(monkeypatch, ttl_s, as_object):
+    monkeypatch.setattr(kv_token_tracker, "KVTokenTracker", _SpyTracker)
+    config = _llm_config()
+    router_config = {
+        "request_router_class": KVAwareRouter,
+        "request_router_kwargs": {"session_affinity_ttl_s": ttl_s},
+    }
+    config.deployment_config["request_router_config"] = (
+        RequestRouterConfig(**router_config) if as_object else router_config
+    )
+    tracker = build_kv_token_tracker(config, "dep-id")
+    assert tracker.session_affinity_ttl_s == ttl_s
 
 
 def test_router_binds_tracker():
@@ -120,8 +153,11 @@ class _TrackerBroadcastHandle:
     def __init__(self, *trackers):
         self._trackers = trackers
         self._tasks = set()
+        self.updates = []
 
     def broadcast(self, method_name, *args):
+        if method_name == "on_replica_updates":
+            self.updates.extend(args[1])
         handle = self
 
         class _Response:
@@ -153,20 +189,35 @@ class _TrackerBroadcastHandle:
         if self._tasks:
             await asyncio.gather(*self._tasks)
 
+        def converged():
+            expected = {
+                request_id
+                for tracker in self._trackers
+                for request_id in tracker._requests
+            }
+            return all(set(tracker._requests) == expected for tracker in self._trackers)
+
+        await async_wait_for_condition(converged, timeout=5, retry_interval_ms=10)
+
 
 class _RecordingSelectionService:
     """Proxy a real SelectionService while recording reservation attempts."""
 
     def __init__(self, inner):
         self._inner = inner
-        self.create_reservation_calls = []
+        self.reservation_calls = []
+        self.applied_session_bindings = []
 
     def __getattr__(self, name):
         return getattr(self._inner, name)
 
     async def create_reservation(self, request):
-        self.create_reservation_calls.append(dict(request))
+        self.reservation_calls.append(request)
         return await self._inner.create_reservation(request)
+
+    async def apply_session_binding(self, binding):
+        await self._inner.apply_session_binding(binding)
+        self.applied_session_bindings.append(binding)
 
 
 @pytest.mark.asyncio
@@ -215,11 +266,11 @@ async def test_peer_trackers_converge_through_request_lifecycle():
     same request, applies prefill completion, and frees it."""
     pytest.importorskip("dynamo.llm")
 
-    routing = _NoLongPollTracker(ingress_replica_rank=0)
-    peer = _NoLongPollTracker(ingress_replica_rank=1)
+    routing = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
     trackers = (routing, peer)
     worker_id = get_worker_id("engine-replica-0")
-    token_ids = list(range(64))
+    token_ids = list(range(63))
     try:
         # Both ingress replicas track the same LLMServer deployment, so the
         # same engine worker is registered on both.
@@ -239,17 +290,17 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         # Exactly one ingress scores and reserves. Its background broadcast
         # tells every peer to book the already-selected worker.
         broadcast_handle = _TrackerBroadcastHandle(*trackers)
-        routing.start_reservation_broadcast(broadcast_handle)
+        routing.start_replica_broadcast(broadcast_handle)
         peer._svc = _RecordingSelectionService(peer._svc)
         selection = await routing.select_worker(
             "req-bcast", token_ids, [worker_id], 32, lora_name="adapter-a"
         )
         assert selection["worker_id"] == worker_id
         assert _active_requests(routing, worker_id) == 1
-        await routing.flush_reservation_broadcast()
+        await routing.flush_replica_broadcast()
         await broadcast_handle.flush()
         for tracker in trackers:
-            await tracker.flush_reservation_updates()
+            await tracker.flush_replica_updates()
 
         load_fields = (
             "active_requests",
@@ -264,7 +315,7 @@ async def test_peer_trackers_converge_through_request_lifecycle():
         assert loads[0][0] == 1
         assert loads[0][1] > 0
         assert all("req-bcast" in tracker._requests for tracker in trackers)
-        assert peer._svc.create_reservation_calls[0]["lora_name"] == "adapter-a"
+        assert peer._svc.reservation_calls[0]["lora_name"] == "adapter-a"
 
         prefill = [("on_prefill_complete", ("req-bcast",))]
         for tracker in trackers:
@@ -278,6 +329,17 @@ async def test_peer_trackers_converge_through_request_lifecycle():
             tracker._requests["req-bcast"].prefill_completed for tracker in trackers
         )
 
+        # Exact prompt length matters at the next block boundary: 63 + 1
+        # tokens still occupy four blocks; the second output token needs five.
+        for output_tokens, blocks in [(1, 4), (2, 5)]:
+            for tracker in trackers:
+                await tracker.on_decode_progress("req-bcast", output_tokens)
+                assert tracker._requests["req-bcast"].prompt_tokens == 63
+                assert tracker._requests["req-bcast"].total_blocks == blocks
+            assert _worker_load(
+                routing, worker_id, "potential_decode_blocks"
+            ) == _worker_load(peer, worker_id, "potential_decode_blocks")
+
         completed = [("on_request_completed", ("req-bcast",))]
         for tracker in trackers:
             await tracker.on_lifecycle_events(completed)
@@ -285,11 +347,10 @@ async def test_peer_trackers_converge_through_request_lifecycle():
             assert _active_requests(tracker, worker_id) == 0
             assert "req-bcast" not in tracker._requests
     finally:
-        if routing._reservation_forwarder is not None:
-            routing._reservation_forwarder.close()
+        routing.stop_replica_broadcast()
         for tracker in trackers:
-            if tracker._reservation_apply_task is not None:
-                tracker._reservation_apply_task.cancel()
+            if tracker._replica_apply_task is not None:
+                tracker._replica_apply_task.cancel()
             if tracker._svc is not None:
                 await tracker._svc.delete_worker(worker_id)
 
@@ -302,7 +363,7 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
     worker_id = get_worker_id("engine-replica-0")
     token_ids = list(range(64))
 
-    tracker = _NoLongPollTracker(ingress_replica_rank=0)
+    tracker = _NoLongPollTracker()
     try:
         tracker._register_block_size(16, "engine-replica-0")
         await tracker._upsert_worker(
@@ -315,30 +376,47 @@ async def test_delayed_self_broadcast_does_not_resurrect_completed_request():
                 "dp_rank": 0,
             },
         )
-        selection = await tracker.select_worker(
-            "req-delayed-self", token_ids, [worker_id], 32
-        )
-        descriptor = {
-            "request_id": "req-delayed-self",
-            "source_ingress_replica_rank": 0,
-            "worker_id": selection["worker_id"],
-            "dp_rank": selection["dp_rank"],
-            "sequence_hashes": [1],
-            "isl_tokens": len(token_ids),
-            "expected_output_tokens": 32,
-            "effective_prefill_tokens": selection["effective_prefill_tokens"],
-            "lora_name": None,
-        }
+        handle = _TrackerBroadcastHandle()
+        tracker.start_replica_broadcast(handle)
+        await tracker.select_worker("req-delayed-self", token_ids, [worker_id], 32)
+        await tracker.flush_replica_broadcast()
 
         await tracker.on_request_completed("req-delayed-self")
         assert _active_requests(tracker, worker_id) == 0
 
-        await tracker.on_reservations_created([descriptor])
+        await tracker.on_replica_updates(tracker._replication_writer_id, handle.updates)
         assert "req-delayed-self" not in tracker._requests
         assert _active_requests(tracker, worker_id) == 0
     finally:
+        tracker.stop_replica_broadcast()
         if tracker._svc is not None:
             await tracker._svc.delete_worker(worker_id)
+
+
+async def _broadcast_one_selection(session_id=None):
+    """Select on a routing tracker and return a peer plus the broadcast updates."""
+    routing, peer = _NoLongPollTracker(), _NoLongPollTracker()
+    for tracker in (routing, peer):
+        await _register_workers(tracker, ["engine-replica-0"])
+    handle = _TrackerBroadcastHandle()
+    routing.start_replica_broadcast(handle)
+    await routing.select_worker(
+        "req", _turn(1), [_WORKER_ID], 32, session_id=session_id
+    )
+    expected = 2 if session_id else 1
+    await async_wait_for_condition(lambda: len(handle.updates) == expected, timeout=5)
+    await routing.flush_replica_broadcast()
+    peer._svc = _RecordingSelectionService(peer._svc)
+    updates = {update["kind"]: update for update in handle.updates}
+    return routing, peer, updates
+
+
+async def _apply_from(source, peer, updates) -> None:
+    """Deliver ``updates`` from ``source`` through the peer's LLMRouter intake."""
+    router = LLMRouter.__new__(LLMRouter)
+    router._kv_token_tracker = peer
+    await router.on_replica_updates(source._replication_writer_id, updates)
+    await peer.flush_replica_updates()
 
 
 @pytest.mark.asyncio
@@ -346,55 +424,320 @@ async def test_delayed_peer_broadcast_does_not_resurrect_completed_request():
     """A peer that sees completion before reservation admission must not
     recreate active load when the delayed reservation broadcast is applied."""
     pytest.importorskip("dynamo.llm")
-    worker_id = get_worker_id("engine-replica-0")
-    token_ids = list(range(64))
-
-    routing = _NoLongPollTracker(ingress_replica_rank=0)
-    peer = _NoLongPollTracker(ingress_replica_rank=1)
-    trackers = (routing, peer)
+    routing, peer, updates = await _broadcast_one_selection()
     try:
-        for tracker in trackers:
-            tracker._register_block_size(16, "engine-replica-0")
-            await tracker._upsert_worker(
-                worker_id,
-                "engine-replica-0",
-                {
-                    "endpoint": "tcp://127.0.0.1:59998",
-                    "block_size": 16,
-                    "max_num_batched_tokens": 8192,
-                    "dp_rank": 0,
-                },
-            )
+        await peer.on_request_completed("req")
+        await _apply_from(routing, peer, [updates["load_reservation"]])
 
-        selection = await routing.select_worker(
-            "req-delayed-peer", token_ids, [worker_id], 32
+        assert "req" not in peer._requests
+        assert _active_requests(peer, _WORKER_ID) == 0
+        assert peer._svc.reservation_calls == []
+    finally:
+        for tracker in (routing, peer):
+            tracker.stop_replica_broadcast()
+            await _delete_workers(tracker, [_WORKER_ID])
+
+
+@pytest.mark.asyncio
+async def test_binding_survives_failed_booking():
+    """A failed load reservation does not drop the binding batched with it."""
+    pytest.importorskip("dynamo.llm")
+    routing, peer, updates = await _broadcast_one_selection(session_id=_SESSION)
+    peer_bindings = peer._svc.session_binding_updates()
+    try:
+        updates["load_reservation"]["event"]["effective_prefill_tokens"] = -1
+        await _apply_from(
+            routing, peer, [updates["load_reservation"], updates["session_affinity"]]
         )
-        peer._svc = _RecordingSelectionService(peer._svc)
-        descriptor = {
-            "request_id": "req-delayed-peer",
-            "source_ingress_replica_rank": 0,
-            "worker_id": selection["worker_id"],
-            "dp_rank": selection["dp_rank"],
-            "sequence_hashes": [1],
-            "isl_tokens": len(token_ids),
-            "expected_output_tokens": 32,
-            "effective_prefill_tokens": selection["effective_prefill_tokens"],
+
+        # The next turn commits the owner's binding rather than a new one.
+        await peer.select_worker(
+            "next-turn", _turn(2), [_WORKER_ID], 32, session_id=_SESSION
+        )
+        assert await anext(peer_bindings) == updates["session_affinity"]["event"]
+    finally:
+        for tracker in (routing, peer):
+            tracker.stop_replica_broadcast()
+            await _delete_workers(tracker, [_WORKER_ID])
+
+
+# ---- Session affinity -------------------------------------------------------
+
+
+async def _register_workers(tracker: KVTokenTracker, replica_ids) -> List[int]:
+    """Register one engine worker per replica id on ``tracker``."""
+    worker_ids = []
+    for port, replica_id in enumerate(replica_ids, start=59900):
+        worker_id = get_worker_id(replica_id)
+        tracker._register_block_size(16, replica_id)
+        await tracker._upsert_worker(
+            worker_id,
+            replica_id,
+            {
+                "endpoint": f"tcp://127.0.0.1:{port}",
+                "block_size": 16,
+                "max_num_batched_tokens": 8192,
+                "dp_rank": 0,
+            },
+        )
+        worker_ids.append(worker_id)
+    return worker_ids
+
+
+async def _delete_workers(tracker: KVTokenTracker, worker_ids) -> None:
+    if tracker._svc is not None:
+        for worker_id in worker_ids:
+            await tracker._svc.delete_worker(worker_id)
+
+
+async def _load_worker(tracker, worker_id, count, prefix="load") -> None:
+    """Book ``count`` long non-session requests on ``worker_id`` only, so normal
+    scoring prefers any other worker."""
+    for i in range(count):
+        await tracker.select_worker(
+            f"{prefix}-{worker_id}-{i}",
+            list(range(10_000 * (i + 1), 10_000 * (i + 1) + 4096)),
+            [worker_id],
+            32,
+        )
+
+
+def _turn(n: int) -> List[int]:
+    """A short prompt with a distinct prefix."""
+    return list(range(n * 100, n * 100 + 32))
+
+
+def _other(worker_ids, worker_id) -> int:
+    return next(w for w in worker_ids if w != worker_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ttl_s", [1800, 0], ids=["new-session", "disabled"])
+async def test_unpinned_session_scoring(ttl_s):
+    pytest.importorskip("dynamo.llm")
+    tracker = _NoLongPollTracker(session_affinity_ttl_s=ttl_s)
+    worker_ids = await _register_workers(tracker, ["sess-r0", "sess-r1"])
+    tracker._svc = _RecordingSelectionService(tracker._svc)
+    try:
+        bindings = tracker._svc.session_binding_updates() if ttl_s else None
+        first = await tracker.select_worker(
+            "turn-1", _turn(1), worker_ids, 32, session_id=_SESSION
+        )
+        bound = first["worker_id"]
+        if bindings is not None:
+            assert (await anext(bindings))["worker_id"] == bound
+        await _load_worker(tracker, bound, 3)
+        control = await tracker.select_worker(
+            "control",
+            _turn(2),
+            worker_ids,
+            32,
+            session_id="session-b" if ttl_s else _SESSION,
+        )
+        assert control["worker_id"] == _other(worker_ids, bound)
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_session_allowlist_rebind():
+    """When the bound worker is not a candidate (departed, or filtered out for
+    a LoRA adapter), the turn is scored normally and the session is rebound."""
+    pytest.importorskip("dynamo.llm")
+    tracker = _NoLongPollTracker()
+    worker_ids = await _register_workers(tracker, ["allow-r0", "allow-r1", "allow-r2"])
+    tracker._svc = _RecordingSelectionService(tracker._svc)
+    affinity = {"session_id": _SESSION}
+    bindings = tracker._svc.session_binding_updates()
+    try:
+        bound = worker_ids[0]
+        await tracker.select_worker("turn-1", _turn(1), [bound], 32, **affinity)
+        assert (await anext(bindings))["worker_id"] == bound
+
+        # Of the remaining candidates, the loaded one loses normal scoring.
+        loaded, idle = worker_ids[1], worker_ids[2]
+        await _load_worker(tracker, loaded, 2)
+        second = await tracker.select_worker(
+            "turn-2", _turn(2), [loaded, idle], 32, **affinity
+        )
+        assert second["worker_id"] == idle
+        assert (await anext(bindings))["worker_id"] == idle
+
+        # The next turn follows the new binding even with the old worker back.
+        third = await tracker.select_worker(
+            "turn-3", _turn(3), worker_ids, 32, **affinity
+        )
+        assert third["worker_id"] == idle
+    finally:
+        await _delete_workers(tracker, worker_ids)
+
+
+@pytest.mark.asyncio
+async def test_peer_affinity_load_and_kv():
+    """Pin a later turn despite better load and overlap, with real KV events."""
+    pytest.importorskip("dynamo.llm")
+    routing = _NoLongPollTracker()
+    peer = _NoLongPollTracker()
+    trackers = (routing, peer)
+    worker_ids = [get_worker_id(f"kv-session-r{i}") for i in range(2)]
+    context = zmq.asyncio.Context()
+    publishers = {}
+    handle = _TrackerBroadcastHandle(*trackers)
+    tokens = list(range(1000, 1064))
+    query = {"model_name": "default", "routing_group": "default", "token_ids": tokens}
+    affinity = {"session_id": _SESSION}
+
+    async def flush_reservations():
+        for tracker in trackers:
+            await tracker.flush_replica_broadcast()
+        await handle.flush()
+        for tracker in trackers:
+            await tracker.flush_replica_updates()
+
+    async def lifecycle(hook, request_id):
+        await handle.broadcast(
+            "on_lifecycle_events", [(hook, (request_id,))]
+        ).results_async()
+
+    async def publish(worker_id, sequence, event):
+        await publishers[worker_id].send_multipart(
+            [
+                b"kv-events",
+                sequence.to_bytes(8, "big"),
+                msgpack.packb([0.0, [event], 0], use_bin_type=True),
+            ]
+        )
+
+    async def wait_for_overlap(expected):
+        async def matches():
+            for tracker in trackers:
+                scores = await tracker._svc.overlap_scores(query)
+                actual = {
+                    row["worker_id"]: row["device_blocks"] for row in scores["workers"]
+                }
+                if any(
+                    actual.get(worker_id, 0) != blocks
+                    for worker_id, blocks in expected.items()
+                ):
+                    return False
+            return True
+
+        await async_wait_for_condition(matches, timeout=5, retry_interval_ms=10)
+
+    try:
+        for worker_id in worker_ids:
+            publisher = context.socket(zmq.XPUB)
+            publisher.setsockopt(zmq.LINGER, 0)
+            publisher.setsockopt(zmq.XPUB_VERBOSE, 1)
+            port = publisher.bind_to_random_port("tcp://127.0.0.1")
+            publishers[worker_id] = publisher
+            for tracker in trackers:
+                tracker._register_block_size(16, str(worker_id))
+                await tracker._upsert_worker(
+                    worker_id,
+                    str(worker_id),
+                    {
+                        "endpoint": f"tcp://127.0.0.1:{port}",
+                        "block_size": 16,
+                        "max_num_batched_tokens": 8192,
+                        "dp_rank": 0,
+                    },
+                )
+            # Wait for both subscriptions so the first event cannot be lost.
+            for _ in trackers:
+                assert await publisher.poll(5000), "KV listener did not subscribe"
+                assert (await publisher.recv())[0] == 1
+
+        for tracker in trackers:
+            tracker._svc = _RecordingSelectionService(tracker._svc)
+            tracker.start_replica_broadcast(handle)
+        first = await routing.select_worker(
+            "turn-1", _turn(1), worker_ids, 32, **affinity
+        )
+        bound = first["worker_id"]
+        other = _other(worker_ids, bound)
+        await flush_reservations()
+        await async_wait_for_condition(
+            lambda: any(
+                b["session_id"] == _SESSION for b in peer._svc.applied_session_bindings
+            ),
+            timeout=5,
+        )
+        assert not routing._svc.applied_session_bindings
+        await lifecycle("on_request_completed", "turn-1")
+
+        stored = {
+            "type": "BlockStored",
+            "block_hashes": [101, 102, 103, 104],
+            "parent_block_hash": None,
+            "token_ids": tokens,
+            "block_size": 16,
+            "lora_id": None,
+            "medium": "GPU",
             "lora_name": None,
         }
+        await publish(other, 0, stored)
+        await wait_for_overlap({bound: 0, other: 4})
+        await _load_worker(peer, bound, 3)
+        await flush_reservations()
 
-        await peer.on_request_completed("req-delayed-peer")
-        await peer.on_reservations_created([descriptor])
-        await peer.flush_reservation_updates()
+        control = await peer.select_worker("control", tokens, worker_ids, 32)
+        assert control["worker_id"] == other
+        assert control["overlap_tokens"] == len(tokens)
+        await flush_reservations()
+        await lifecycle("on_request_completed", "control")
 
-        assert "req-delayed-peer" not in peer._requests
-        assert _active_requests(peer, worker_id) == 0
-        assert peer._svc.create_reservation_calls == []
+        prefill_before = _worker_load(peer, bound, "potential_prefill_tokens")
+        second = await peer.select_worker("turn-2", tokens, worker_ids, 32, **affinity)
+        assert second["worker_id"] == bound
+        assert second["overlap_tokens"] == 0
+        assert second["effective_prefill_tokens"] == len(tokens)
+        await flush_reservations()
+        # The binding still names its original writer, but this publication is
+        # from the peer and must refresh the origin rather than be self-filtered.
+        await async_wait_for_condition(
+            lambda: any(
+                b["session_id"] == _SESSION
+                for b in routing._svc.applied_session_bindings
+            ),
+            timeout=5,
+        )
+        for tracker in trackers:
+            assert _active_requests(tracker, bound) == 4
+            assert _active_requests(tracker, other) == 0
+            assert _worker_load(
+                tracker, bound, "potential_prefill_tokens"
+            ) == prefill_before + len(tokens)
+        # Reserving a pinned request does not fabricate cache residency.
+        await wait_for_overlap({bound: 0, other: 4})
+
+        await publish(bound, 0, stored)
+        await wait_for_overlap({bound: 4, other: 4})
+        await lifecycle("on_prefill_complete", "turn-2")
+        for tracker in trackers:
+            assert (
+                _worker_load(tracker, bound, "potential_prefill_tokens")
+                == prefill_before
+            )
+        await lifecycle("on_request_completed", "turn-2")
+        assert all(_active_requests(tracker, bound) == 3 for tracker in trackers)
+        await publish(
+            bound,
+            1,
+            {
+                "type": "BlockRemoved",
+                "block_hashes": stored["block_hashes"],
+                "medium": "GPU",
+            },
+        )
+        await wait_for_overlap({bound: 0, other: 4})
     finally:
         for tracker in trackers:
-            if tracker._reservation_apply_task is not None:
-                tracker._reservation_apply_task.cancel()
-            if tracker._svc is not None:
-                await tracker._svc.delete_worker(worker_id)
+            tracker.stop_replica_broadcast()
+            await _delete_workers(tracker, worker_ids)
+        for publisher in publishers.values():
+            publisher.close()
+        context.term()
 
 
 # ---- LongPoll replica-membership tracking -----------------------------------
@@ -433,15 +776,15 @@ class ReservationReplicationDeployment:
             "ReservationReplicationDeployment",
             app_name=serve.get_replica_context().app_name,
         )
-        self._tracker.start_reservation_broadcast(handle)
+        self._tracker.start_replica_broadcast(handle)
 
     async def select_worker(self, request_id, token_ids):
         return await self._tracker.select_worker(
             request_id, token_ids, [_REPLICATION_WORKER_ID]
         )
 
-    async def on_reservations_created(self, reservations):
-        await self._tracker.on_reservations_created(reservations)
+    async def on_replica_updates(self, source_writer_id, updates):
+        await self._tracker.on_replica_updates(source_writer_id, updates)
 
     async def on_lifecycle_events(self, events):
         await self._tracker.on_lifecycle_events(events)
