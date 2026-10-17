@@ -190,6 +190,11 @@ def test_metrics_endpoints_require_token(setup_cluster_with_token_auth):
         assert missing.status_code == 401, name
         assert missing.headers["WWW-Authenticate"] == "Bearer", name
 
+        malformed_cookie = requests.get(
+            f"{url}/metrics", headers={"Cookie": "a(b=1"}, timeout=5
+        )
+        assert malformed_cookie.status_code == 401, name
+
         wrong = requests.get(
             f"{url}/metrics",
             headers={"Authorization": "Bearer " + "0" * 64},

@@ -1,7 +1,7 @@
 import logging
 import socket
 import threading
-from http.cookies import SimpleCookie
+from http.cookies import CookieError, SimpleCookie
 from socketserver import ThreadingMixIn
 from types import ModuleType
 from typing import Dict, List, Optional
@@ -102,9 +102,12 @@ def get_token_auth_wsgi_app(app):
             "HTTP_X_RAY_AUTHORIZATION"
         )
         if not auth_header:
-            cookie = SimpleCookie(environ.get("HTTP_COOKIE", "")).get(
-                authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
-            )
+            try:
+                cookie = SimpleCookie(environ.get("HTTP_COOKIE", "")).get(
+                    authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
+                )
+            except CookieError:
+                cookie = None
             if cookie and cookie.value:
                 auth_header = (
                     authentication_constants.AUTHORIZATION_BEARER_PREFIX + cookie.value
@@ -126,6 +129,8 @@ def get_token_auth_wsgi_app(app):
     return token_auth_app
 
 
+# prometheus_client.exposition.ThreadingWSGIServer doesn't exist in the
+# declared minimum prometheus_client 0.7.1.
 class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     daemon_threads = True
 

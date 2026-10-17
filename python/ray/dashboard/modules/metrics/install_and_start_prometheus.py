@@ -76,7 +76,7 @@ def install_prometheus(file_path):
         return False
 
 
-def start_prometheus(prometheus_dir):
+def start_prometheus(prometheus_dir, authorization_config=""):
 
     # The function assumes the Ray cluster to be monitored by Prometheus uses the
     # default configuration with "/tmp/ray" as the default root temporary directory.
@@ -90,7 +90,6 @@ def start_prometheus(prometheus_dir):
     if not config_file.exists():
         raise FileNotFoundError(f"Prometheus config file not found: {config_file}")
 
-    authorization_config = get_prometheus_authorization_config()
     if authorization_config:
         config_file = Path(prometheus_dir) / "ray_prometheus.yml"
         config_file.write_text(
@@ -194,7 +193,7 @@ def main():
     # default are scraped with the token.
     maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
     try:
-        get_prometheus_authorization_config()
+        authorization_config = get_prometheus_authorization_config()
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
@@ -215,7 +214,8 @@ def main():
     assert file_name.endswith(".tar.gz")
     process = start_prometheus(
         # remove the .tar.gz extension
-        prometheus_dir=file_name.rstrip(".tar.gz")
+        prometheus_dir=file_name.rstrip(".tar.gz"),
+        authorization_config=authorization_config,
     )
     if process:
         print_shutdown_message(process.pid)
