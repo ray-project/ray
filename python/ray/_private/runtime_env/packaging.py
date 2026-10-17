@@ -35,6 +35,7 @@ from ray._private.ray_constants import (
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.protocol import Protocol
+from ray._private.runtime_env.redaction import redact_uri
 from ray._private.thirdparty.pathspec import PathSpec
 from ray._raylet import GcsClient
 from ray.experimental.internal_kv import (
@@ -922,7 +923,7 @@ async def download_and_unpack_package(
         if logger is None:
             logger = default_logger
 
-        logger.debug(f"Fetching package for URI: {pkg_uri}")
+        logger.debug(f"Fetching package for URI: {redact_uri(pkg_uri)}")
 
         local_dir = get_local_dir_from_uri(pkg_uri, base_directory)
         assert local_dir != pkg_file, "Invalid pkg_file!"
@@ -938,7 +939,7 @@ async def download_and_unpack_package(
         if download_package:
             protocol, _ = _parse_uri(pkg_uri)
             logger.info(
-                f"Downloading package from {pkg_uri} to {pkg_file} "
+                f"Downloading package from {redact_uri(pkg_uri)} to {pkg_file} "
                 f"with protocol {protocol}"
             )
             if protocol == Protocol.GCS:
