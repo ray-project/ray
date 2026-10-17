@@ -1291,6 +1291,96 @@ def test_limit_over_partition_filter_without_partitioning_spec(
     assert pushdown.partition_pruner is None
 
 
+def test_disjunction_over_two_joined_scans_prunes_both_reads(
+    ray_start_regular_shared, tmp_path
+):
+    """TPC-H q7 shape on real Parquet reads (#66832).
+
+    ``nation`` is read twice (supplier's nation and customer's nation), each
+    read renamed so the two sides don't collide, and the final filter is an
+    ``OR`` referencing both. The ``OR`` itself can't move, but each read ends
+    up with the weaker predicate it implies, rebound through the rename back
+    to the scan's own column name.
+    """
+    from ray.data._internal.logical.interfaces import (
+        LogicalOperatorSupportsPredicatePushdown,
+    )
+
+    nations = ["FRANCE", "GERMANY", "JAPAN", "BRAZIL"]
+    nation_path = tmp_path / "nation.parquet"
+    pq.write_table(
+        pa.table({"n_nationkey": list(range(len(nations))), "n_name": nations}),
+        nation_path,
+    )
+    trade_path = tmp_path / "trade.parquet"
+    # (supplier nation, customer nation) pairs; only FRANCE<->GERMANY survive.
+    pq.write_table(
+        pa.table(
+            {
+                "supp_nation": [0, 1, 0, 2, 1, 3],
+                "cust_nation": [1, 0, 0, 1, 1, 3],
+                "volume": [10, 20, 30, 40, 50, 60],
+            }
+        ),
+        trade_path,
+    )
+
+    supp_nation = ray.data.read_parquet(str(nation_path)).rename_columns(
+        {"n_nationkey": "supp_nation", "n_name": "supp_nation_name"}
+    )
+    cust_nation = ray.data.read_parquet(str(nation_path)).rename_columns(
+        {"n_nationkey": "cust_nation", "n_name": "cust_nation_name"}
+    )
+    join_kwargs = dict(
+        join_type="inner",
+        num_partitions=2,
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    ds = (
+        ray.data.read_parquet(str(trade_path))
+        .join(supp_nation, on=("supp_nation",), **join_kwargs)
+        .join(cust_nation, on=("cust_nation",), **join_kwargs)
+    )
+    predicate = (
+        (col("supp_nation_name") == "FRANCE") & (col("cust_nation_name") == "GERMANY")
+    ) | ((col("supp_nation_name") == "GERMANY") & (col("cust_nation_name") == "FRANCE"))
+    ds = ds.filter(expr=predicate)
+
+    plan = LogicalOptimizer().optimize(ds._logical_plan)
+    # Re-optimizing an optimized plan (what a second execution does) must be
+    # a no-op; the derivation must not stack another predicate onto the scans.
+    assert LogicalOptimizer().optimize(plan).dag.dag_str == plan.dag.dag_str
+
+    assert isinstance(plan.dag, Filter)
+    assert plan.dag.predicate_expr.structurally_equals(predicate)
+
+    reads = [
+        op
+        for op in plan.dag.post_order_iter()
+        if isinstance(op, LogicalOperatorSupportsPredicatePushdown)
+        and op.supports_predicate_pushdown()
+    ]
+    assert len(reads) == 3, plan.dag.dag_str
+    # Each side's OR lists the branches in the order they appear in the
+    # original predicate, so the two scans get mirror images of each other.
+    derived_supp = (col("n_name") == "FRANCE") | (col("n_name") == "GERMANY")
+    derived_cust = (col("n_name") == "GERMANY") | (col("n_name") == "FRANCE")
+    pruned = [
+        read
+        for read in reads
+        if read.get_current_predicate() is not None
+        and (
+            read.get_current_predicate().structurally_equals(derived_supp)
+            or read.get_current_predicate().structurally_equals(derived_cust)
+        )
+    ]
+    unpruned = [read for read in reads if read.get_current_predicate() is None]
+    assert len(pruned) == 2 and len(unpruned) == 1, plan.dag.dag_str
+
+    result = sorted(ds.to_pandas()["volume"].tolist())
+    assert result == [10, 20]
+
+
 if __name__ == "__main__":
     import sys
 

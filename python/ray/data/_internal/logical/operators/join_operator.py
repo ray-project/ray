@@ -1,3 +1,4 @@
+import functools
 from dataclasses import InitVar, dataclass, field, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -149,53 +150,43 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def which_side_to_push_predicate(
         self, predicate_expr: "Expr"
     ) -> Optional[JoinSide]:
-        """Determine which side of the join to push a predicate to.
-
-        Returns the side to push to, or None if pushdown is not safe.
-
-        Predicate pushdown is safe for:
-        - INNER: Can push to either side
-        - LEFT_OUTER/SEMI/ANTI: Can push to left side (preserved/output side)
-        - RIGHT_OUTER/SEMI/ANTI: Can push to right side (preserved/output side)
-        - FULL_OUTER: Cannot push (both sides can generate nulls)
-
-        The predicate must reference columns from exactly one side of the join,
-        OR reference only join key columns that all exist on one side.
+        """The first side (left before right) that
+        :meth:`can_push_predicate_to_side` accepts, or ``None`` if neither does.
         """
-        # Get predicate columns and schemas
-        predicate_columns = self._get_referenced_columns(predicate_expr)
-        left_schema = self.input_dependencies[0].infer_schema()
-        right_schema = self.input_dependencies[1].infer_schema()
-
-        if not left_schema or not right_schema:
-            return None
-
-        # Get column sets for each side
-        left_columns = set(left_schema.names)
-        right_columns = set(right_schema.names)
-        left_join_keys = set(self.left_key_columns)
-        right_join_keys = set(self.right_key_columns)
-
-        # Get pushdown rules for this join type
-        can_push_left, can_push_right = self._get_pushdown_rules()
-
-        # Check if predicate can be evaluated on left side
-        # Condition: ALL predicate columns must exist on left (either as regular columns or join keys)
-        can_evaluate_on_left = predicate_columns.issubset(
-            left_columns
-        ) or predicate_columns.issubset(left_join_keys)
-        if can_evaluate_on_left and can_push_left:
-            return JoinSide.LEFT
-
-        # Check if predicate can be evaluated on right side
-        can_evaluate_on_right = predicate_columns.issubset(
-            right_columns
-        ) or predicate_columns.issubset(right_join_keys)
-        if can_evaluate_on_right and can_push_right:
-            return JoinSide.RIGHT
-
-        # Cannot push down
+        for side in JoinSide:
+            if self.can_push_predicate_to_side(predicate_expr, side):
+                return side
         return None
+
+    def can_push_predicate_to_side(
+        self, predicate_expr: "Expr", side: JoinSide
+    ) -> bool:
+        """Whether a predicate over this join's output can instead be applied
+        to ``side``'s input, without changing the join's result.
+
+        Two conditions, both required:
+
+        - The join type must allow it: INNER either side; LEFT_OUTER / SEMI /
+          ANTI the left (preserved / output) side only; RIGHT_* the right side
+          only; FULL_OUTER neither, since both sides can generate nulls.
+        - Every column the predicate references must be *owned* by ``side``
+          in the output: an input column whose name the other input does not
+          have, or a join key that has the same name on both sides (it is
+          coalesced into one output column, equal on both inputs for every
+          matched row). A name present on both inputs is otherwise renamed on
+          at least one side by the physical join (``left_columns_suffix`` /
+          ``right_columns_suffix``, or Polars' default ``_right``), and which
+          input keeps the bare name depends on those settings and the join
+          type, so neither side claims it and the predicate stays above the
+          join.
+        """
+        owned_columns = self._owned_output_columns
+        if owned_columns is None:
+            return False
+        if not self._get_pushdown_rules()[side.value]:
+            return False
+        predicate_columns = self._get_referenced_columns(predicate_expr)
+        return predicate_columns.issubset(owned_columns[side.value])
 
     def _get_pushdown_rules(self) -> Tuple[bool, bool]:
         """Get pushdown rules for the current join type.
@@ -215,6 +206,34 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             JoinType.FULL_OUTER: (False, False),
         }
         return pushdown_rules.get(self.join_type, (False, False))
+
+    @functools.cached_property
+    def _owned_output_columns(self) -> Optional[Tuple[set[str], set[str]]]:
+        """Output column names each input owns (see
+        :meth:`can_push_predicate_to_side`), as ``(left, right)``, or ``None``
+        if either input's schema is unknown.
+
+        Cached on the (immutable) operator because ``infer_schema`` is not
+        memoized and re-runs inference over the whole input subtree, while
+        predicate pushdown routes every conjunct of a filter separately.
+        """
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+        if not left_schema or not right_schema:
+            return None
+        left_columns = set(left_schema.names)
+        right_columns = set(right_schema.names)
+        shared_keys = {
+            left_key
+            for left_key, right_key in zip(
+                self.left_key_columns, self.right_key_columns
+            )
+            if left_key == right_key
+        }
+        return (
+            {c for c in left_columns if c not in right_columns or c in shared_keys},
+            {c for c in right_columns if c not in left_columns or c in shared_keys},
+        )
 
     def _get_referenced_columns(self, expr: "Expr") -> set[str]:
         """Extract all column names referenced in an expression."""
