@@ -59,6 +59,7 @@ def sched_request(
     cluster_resource_constraints: Optional[List[ResourceRequest]] = None,
     instances: Optional[List[AutoscalerInstance]] = None,
     idle_timeout_s: Optional[float] = None,
+    pending_idle_timeout_s: Optional[float] = None,
     disable_launch_config_check: Optional[bool] = False,
     ippr_specs: Optional[IPPRSpecs] = None,
     ippr_statuses: Optional[Dict[str, IPPRStatus]] = None,
@@ -98,6 +99,7 @@ def sched_request(
         node_type_configs=node_type_configs,
         max_num_nodes=max_num_nodes,
         idle_timeout_s=idle_timeout_s,
+        pending_idle_timeout_s=pending_idle_timeout_s,
         disable_launch_config_check=disable_launch_config_check,
         ippr_specs=ippr_specs,
         ippr_statuses=ippr_statuses,
@@ -1736,9 +1738,7 @@ def test_idle_termination_pending_nodes(status):
     REQUESTED ones whose launch requests can't be cancelled.
     """
     idle_timeout_s = 10
-    scheduler = ResourceDemandScheduler(
-        event_logger, pending_idle_timeout_s=idle_timeout_s
-    )
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
@@ -1754,6 +1754,7 @@ def test_idle_termination_pending_nodes(status):
             node_type_configs=node_type_configs,
             instances=[_pending_instance("i-1", status)],
             idle_timeout_s=idle_timeout_s,
+            pending_idle_timeout_s=idle_timeout_s,
             # KubeRay disables the launch config check.
             disable_launch_config_check=True,
             resource_requests=resource_requests,
@@ -1784,7 +1785,7 @@ def test_idle_termination_pending_nodes_needed_by_constraints():
     Test that pending nodes needed by cluster resource constraints are not
     terminated.
     """
-    scheduler = ResourceDemandScheduler(event_logger, pending_idle_timeout_s=1)
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
@@ -1801,6 +1802,7 @@ def test_idle_termination_pending_nodes_needed_by_constraints():
             _pending_instance("i-2", Instance.ALLOCATED),
         ],
         idle_timeout_s=1,
+        pending_idle_timeout_s=1,
         disable_launch_config_check=True,
         cluster_resource_constraints=[ResourceRequestUtil.make({"CPU": 1})],
     )
@@ -1817,7 +1819,7 @@ def test_idle_termination_pending_nodes_with_min_worker():
     Test that the min_worker_nodes are honored when terminating the unneeded
     pending nodes, and the pending nodes are terminated before the running ones.
     """
-    scheduler = ResourceDemandScheduler(event_logger, pending_idle_timeout_s=1)
+    scheduler = ResourceDemandScheduler(event_logger)
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
@@ -1835,6 +1837,7 @@ def test_idle_termination_pending_nodes_with_min_worker():
             _pending_instance("i-3", Instance.QUEUED),
         ],
         idle_timeout_s=1,
+        pending_idle_timeout_s=1,
         disable_launch_config_check=True,
     )
     for now_s in [0, 10]:
@@ -1867,6 +1870,7 @@ def _schedule_pending_at(
         node_type_configs=_pending_idle_test_configs(),
         instances=[_pending_instance(i, Instance.ALLOCATED) for i in instance_ids],
         idle_timeout_s=idle_timeout_s,
+        pending_idle_timeout_s=idle_timeout_s,
         disable_launch_config_check=True,
         resource_requests=[ResourceRequestUtil.make({"CPU": 1})] * num_cpu_requests,
     )
@@ -1882,9 +1886,7 @@ def test_idle_termination_pending_nodes_tracked_by_node_type():
     the same type in each round.
     """
     idle_timeout_s = 10
-    scheduler = ResourceDemandScheduler(
-        event_logger, pending_idle_timeout_s=idle_timeout_s
-    )
+    scheduler = ResourceDemandScheduler(event_logger)
 
     # One of the two pending nodes is needed by the request. The request lands on
     # a different pending node each round, as the instance order changes.
@@ -1903,9 +1905,7 @@ def test_idle_termination_pending_nodes_count_changes():
     inherited by the remaining ones.
     """
     idle_timeout_s = 10
-    scheduler = ResourceDemandScheduler(
-        event_logger, pending_idle_timeout_s=idle_timeout_s
-    )
+    scheduler = ResourceDemandScheduler(event_logger)
 
     # 2 unneeded pending nodes since t=0.
     assert _schedule_pending_at(scheduler, 0, ["i-1", "i-2"], 0, idle_timeout_s) == []
@@ -1931,9 +1931,7 @@ def test_idle_termination_pending_nodes_after_max_workers_termination():
     terminated before the unneeded pending nodes are counted.
     """
     idle_timeout_s = 10
-    scheduler = ResourceDemandScheduler(
-        event_logger, pending_idle_timeout_s=idle_timeout_s
-    )
+    scheduler = ResourceDemandScheduler(event_logger)
 
     def _schedule(now_s: float, instance_ids: List[str], max_workers: int):
         configs = _pending_idle_test_configs()
@@ -1942,6 +1940,7 @@ def test_idle_termination_pending_nodes_after_max_workers_termination():
             node_type_configs=configs,
             instances=[_pending_instance(i, Instance.ALLOCATED) for i in instance_ids],
             idle_timeout_s=idle_timeout_s,
+            pending_idle_timeout_s=idle_timeout_s,
             disable_launch_config_check=True,
         )
         with patch("time.monotonic", return_value=now_s):
@@ -1965,15 +1964,13 @@ def test_idle_termination_pending_nodes_after_max_workers_termination():
     )
 
 
-@pytest.mark.parametrize("pending_idle_timeout_s", [5, 100, -1, None])
+@pytest.mark.parametrize("pending_idle_timeout_s", [5, 100, None])
 def test_idle_termination_pending_nodes_timeout(pending_idle_timeout_s):
     """
     Test that the pending nodes use their own idle timeout, independent of the
     regular idle timeout, and are never terminated when it's disabled.
     """
-    scheduler = ResourceDemandScheduler(
-        event_logger, pending_idle_timeout_s=pending_idle_timeout_s
-    )
+    scheduler = ResourceDemandScheduler(event_logger)
     request = sched_request(
         node_type_configs=_pending_idle_test_configs(),
         instances=[
@@ -1981,6 +1978,7 @@ def test_idle_termination_pending_nodes_timeout(pending_idle_timeout_s):
             _pending_instance("i-2", Instance.ALLOCATED),
         ],
         idle_timeout_s=1,
+        pending_idle_timeout_s=pending_idle_timeout_s,
         disable_launch_config_check=True,
     )
     with patch("time.monotonic", return_value=0):

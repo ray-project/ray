@@ -156,6 +156,20 @@ def test_node_type_configs():
     assert node_type_configs["worker_nodes1"].labels == {"foo": "bar"}
 
 
+@pytest.mark.parametrize(
+    "env_value, expected",
+    [(600, 600.0), (30, 30.0), (0, 0.0), (-1, None)],
+)
+def test_pending_idle_timeout_s(monkeypatch, env_value, expected):
+    monkeypatch.setattr(
+        config_mod, "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", env_value
+    )
+    config = FileConfigReader(
+        get_test_config_path("test_ray_complex.yaml")
+    ).get_cached_autoscaling_config()
+    assert config.get_pending_idle_timeout_s() == expected
+
+
 def test_read_config():
     # Make a temp config file from aws/defaults.yaml
     with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:

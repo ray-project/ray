@@ -10,10 +10,7 @@ from typing import Dict, List, Optional, Tuple
 
 from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import IMPLICIT_RESOURCE_PREFIX
-from ray.autoscaler._private.constants import (
-    AUTOSCALER_CONSERVE_GPU_NODES,
-    RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
-)
+from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
 from ray.autoscaler._private.resource_demand_scheduler import (
     UtilizationScore,
     _fits,
@@ -64,6 +61,9 @@ class SchedulingRequest:
     max_num_nodes: Optional[int] = None
     # Idle timeout in seconds.
     idle_timeout_s: Optional[float] = None
+    # Idle timeout in seconds for the pending nodes not needed by any resource
+    # demands. None to never terminate them for not being needed.
+    pending_idle_timeout_s: Optional[float] = None
     # TODO: This prob could be refactored into the ClusterStatus data class later.
     # The current ray resource requests.
     resource_requests: List[ResourceRequestByCount] = field(default_factory=list)
@@ -924,28 +924,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         Instance.RAY_INSTALLING,
     )
 
-    def __init__(
-        self,
-        event_logger: Optional[AutoscalerEventLogger] = None,
-        pending_idle_timeout_s: Optional[
-            float
-        ] = RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
-    ):
-        """
-        Create a resource demand scheduler.
-
-        Args:
-            event_logger: The event logger to log the scheduling updates.
-            pending_idle_timeout_s: How long pending nodes not needed by any
-                resource demands are kept before being terminated. None or a
-                negative value never terminates them for not being needed.
-        """
+    def __init__(self, event_logger: Optional[AutoscalerEventLogger] = None):
         self._event_logger = event_logger
-        self._pending_idle_timeout_s = (
-            pending_idle_timeout_s
-            if pending_idle_timeout_s is not None and pending_idle_timeout_s >= 0
-            else None
-        )
         # Pending instances have no idle duration reported by GCS. For each node
         # type, the k-th entry is the monotonic time since which at least k + 1
         # pending nodes of that type have been continuously not needed by any
@@ -970,6 +950,9 @@ class ResourceDemandScheduler(IResourceScheduler):
         _max_num_nodes: Optional[int] = None
         # The idle timeout in seconds.
         _idle_timeout_s: Optional[float] = None
+        # The idle timeout in seconds for the pending nodes not needed by any
+        # resource demands.
+        _pending_idle_timeout_s: Optional[float] = None
         # The current schedulable nodes (including pending nodes and pending requests).
         _nodes: List[SchedulingNode] = field(default_factory=list)
         # The number of nodes by node types available for launching based on the max
@@ -1001,6 +984,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
             ippr_specs: Optional[IPPRSpecs] = None,
+            pending_idle_timeout_s: Optional[float] = None,
         ):
             self._nodes = nodes
             self._node_type_configs = node_type_configs
@@ -1009,6 +993,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             )
             self._max_num_nodes = max_num_nodes
             self._idle_timeout_s = idle_timeout_s
+            self._pending_idle_timeout_s = pending_idle_timeout_s
             self._disable_launch_config_check = disable_launch_config_check
             self._ippr_specs = ippr_specs
             self._cloud_resource_availabilities = cloud_resource_availabilities
@@ -1066,6 +1051,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
+                pending_idle_timeout_s=req.pending_idle_timeout_s,
                 ippr_specs=req.ippr_specs,
             )
 
@@ -1145,6 +1131,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_idle_timeout_s(self) -> Optional[float]:
             return self._idle_timeout_s
+
+        def get_pending_idle_timeout_s(self) -> Optional[float]:
+            return self._pending_idle_timeout_s
 
         def get_cloud_resource_availabilities(self) -> Dict[NodeType, float]:
             return copy.deepcopy(self._cloud_resource_availabilities)
@@ -1276,15 +1265,13 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
         # Pending nodes not needed by the resource demands are considered idle.
-        if self._pending_idle_timeout_s is not None:
+        if ctx.get_pending_idle_timeout_s() is not None:
             self._update_pending_nodes_idle_duration(ctx)
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
         # not needed by min_worker count, etc.)
-        ResourceDemandScheduler._enforce_idle_termination(
-            ctx, self._pending_idle_timeout_s
-        )
-        if self._pending_idle_timeout_s is not None:
+        ResourceDemandScheduler._enforce_idle_termination(ctx)
+        if ctx.get_pending_idle_timeout_s() is not None:
             self._release_terminated_pending_nodes_idle_duration(ctx)
 
         cluster_resources = ctx.get_cluster_resources()
@@ -2241,7 +2228,6 @@ class ResourceDemandScheduler(IResourceScheduler):
     @staticmethod
     def _enforce_idle_termination(
         ctx: "ResourceDemandScheduler.ScheduleContext",
-        pending_idle_timeout_s: Optional[float] = None,
     ) -> None:
         """
         Enforce the idle termination for the nodes that are not needed by the cluster
@@ -2249,9 +2235,6 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         Args:
             ctx: The schedule context.
-            pending_idle_timeout_s: The idle timeout for the pending nodes, which
-                replaces the regular idle timeout for them. None to never
-                terminate pending nodes for being idle.
         """
         count_by_node_type = ctx.get_cluster_shape()
         node_type_configs = ctx.get_node_type_configs()
@@ -2279,7 +2262,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 in ResourceDemandScheduler.PENDING_TERMINABLE_STATUSES
             ):
                 # Pending nodes have their own idle timeout.
-                idle_timeout_s = pending_idle_timeout_s
+                idle_timeout_s = ctx.get_pending_idle_timeout_s()
             else:
                 idle_timeout_s = ctx.get_idle_timeout_s()
                 # Override the scheduler idle_timeout_s if set for this node_type.
