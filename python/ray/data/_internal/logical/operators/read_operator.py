@@ -377,7 +377,24 @@ class ReadFiles(
         )
 
     def get_current_predicate(self) -> Optional[Expr]:
-        return getattr(self.scanner, "predicate", None)
+        from ray.data._internal.datasource_v2.common.pushdown_utils import (
+            combine_predicates,
+        )
+        from ray.data._internal.datasource_v2.interfaces.pushdown import (
+            SupportsPartitionPruning,
+        )
+
+        # Both halves of what ``apply_predicate`` pushed: the data-column
+        # conjuncts the scanner evaluates and the partition-column conjuncts
+        # it prunes files by. Together they are what this read enforces.
+        partition_predicate = (
+            self.scanner.pushed_partition_predicate()
+            if isinstance(self.scanner, SupportsPartitionPruning)
+            else None
+        )
+        return combine_predicates(
+            getattr(self.scanner, "predicate", None), partition_predicate
+        )
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
         from ray.data._internal.datasource_v2.common.pushdown_utils import (
