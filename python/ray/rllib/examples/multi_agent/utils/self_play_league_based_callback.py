@@ -3,8 +3,10 @@ from collections import defaultdict
 from pprint import pprint
 
 import numpy as np
+import ray
 
 from ray.rllib.callbacks.callbacks import RLlibCallback
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
@@ -252,6 +254,22 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
                                 }
                             }
                         }
+                    )
+                    # add_module creates the module on EnvRunners, but the cloned
+                    # parameters are only set on the local Learner state above. Push the freshly
+                    # cloned weights immediately so the new opponent cannot play one stale iteration.
+                    #
+                    # Do not use sync_weights() here: its WEIGHTS_SEQ_NO gate can discard this
+                    # module-specific update when the EnvRunner already has the current global
+                    # sequence number. Omitting WEIGHTS_SEQ_NO intentionally forces the new
+                    # module's first state into every EnvRunner without changing global versioning.
+                    new_module_state_ref = ray.put(
+                        {new_mod_id: multi_rl_module[module_id].get_state()}
+                    )
+                    new_module_state = {COMPONENT_RL_MODULE: new_module_state_ref}
+                    algorithm.env_runner_group.foreach_env_runner(
+                        lambda env_runner: env_runner.set_state(new_module_state),
+                        local_env_runner=True,
                     )
 
                 algorithm.env_runner_group.foreach_env_runner(
