@@ -26,6 +26,7 @@ message TaskExecStartRequest {
 message TaskExecStartResponse {}
 
 message TaskExecStdioReadRequest {
+  string task_id = 1;
   string exec_id = 2;
   uint64 offset = 3;
   TaskExecStdioFileDescriptor file_descriptor = 4;
@@ -36,6 +37,7 @@ message TaskExecStdioReadResponse {
 }
 
 message TaskExecStdinWriteRequest {
+  string task_id = 1;
   string exec_id = 2;
   uint64 offset = 3;
   bytes data = 4;
@@ -63,6 +65,7 @@ message TaskExecStdinWriteStreamRequest {
 message TaskExecStdinWriteStreamResponse {}
 
 message TaskExecStdinStatusRequest {
+  string task_id = 1;
   string exec_id = 2;
 }
 
@@ -72,6 +75,7 @@ message TaskExecStdinStatusResponse {
 }
 
 message TaskExecPollRequest {
+  string task_id = 1;
   string exec_id = 2;
 }
 
@@ -82,6 +86,7 @@ message TaskExecPollResponse {
 }
 
 message TaskExecWaitRequest {
+  string task_id = 1;
   string exec_id = 2;
 }
 

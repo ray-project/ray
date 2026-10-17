@@ -129,6 +129,7 @@ def test_streaming_errors_carry_their_status(monkeypatch) -> None:
     streaming call whose generator returns as OK."""
     ingress = _ingress(monkeypatch)
     request = sr_pb2.TaskExecStdioReadRequest(
+        task_id="sb-missing",
         exec_id="ex-missing",
         file_descriptor=sr_pb2.TASK_EXEC_STDIO_FILE_DESCRIPTOR_STDOUT,
     )
@@ -186,10 +187,12 @@ def test_ingress_refuses_to_start_without_a_token(monkeypatch) -> None:
     resolver_factory.assert_not_called()
 
 
-def test_build_app_runs_one_replica(monkeypatch) -> None:
+def test_build_app_scales_replicas(monkeypatch) -> None:
+    """The facade keeps no exec state, so the application may run replicas."""
+    pytest.importorskip("ray.serve")
     monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
-    with pytest.raises(ValueError, match="one replica"):
-        grpc_app.build_app({"num_replicas": 2})
+    app = grpc_app.build_app({"num_replicas": 3})
+    assert app._bound_deployment.num_replicas == 3
 
 
 def _free_port() -> int:

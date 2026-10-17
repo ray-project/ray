@@ -145,12 +145,27 @@ class RayActorHandleResolver:
                     self._handles.popitem(last=False)
         return handle
 
-    def get(self, name: str) -> Optional[Any]:
+    def cached(self, name: str) -> Optional[Any]:
+        """``get`` from memory alone, or None: never waits on the GCS.
+
+        For event-loop callers, which then fall back to ``get`` in a thread.
+
+        Args:
+            name: The sandbox id.
+
+        Returns:
+            The cached handle, or None.
+        """
         with self._lock:
             handle = self._handles.get(name)
             if handle is not None:
                 self._handles.move_to_end(name)
-                return handle
+            return handle
+
+    def get(self, name: str) -> Optional[Any]:
+        handle = self.cached(name)
+        if handle is not None:
+            return handle
         import ray
 
         try:
