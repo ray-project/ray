@@ -364,6 +364,10 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
+        if self.block_udf is not None:
+            # A post-read transform can change both field types and values.
+            return False
+
         from ray.data._internal.datasource_v2.interfaces.pushdown import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
@@ -380,6 +384,11 @@ class ReadFiles(
         return getattr(self.scanner, "predicate", None)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
+        if self.block_udf is not None:
+            # Preserve identity so callers keep the Filter after the UDF,
+            # including callers that do not check the capability first.
+            return self
+
         from ray.data._internal.datasource_v2.common.pushdown_utils import (
             _split_predicate_by_columns,
             combine_predicates,
