@@ -348,7 +348,9 @@ class DataClient:
             callbacks = self.asyncio_waiting_data.values()
             self.asyncio_waiting_data = {}
 
-        if self._last_exception:
+        if isinstance(self._last_exception, AuthenticationError):
+            err = self._last_exception
+        elif self._last_exception:
             # Abort async requests with the error.
             err = ConnectionError(
                 "Failed during this or a previous request. Exception that "

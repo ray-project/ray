@@ -657,7 +657,7 @@ class _RejectingStub:
         return reject
 
 
-@pytest.mark.parametrize("operation", ["put", "get"])
+@pytest.mark.parametrize("operation", ["put", "get", "pending_future"])
 def test_rejected_reconnect_raises_authentication_error(
     operation, call_ray_start_shared
 ):
@@ -666,6 +666,12 @@ def test_rejected_reconnect_raises_authentication_error(
     with start_middleman_server() as middleman:
         ref = ray.put(42)
         assert ray.get(ref) == 42
+
+        @ray.remote
+        def slow():
+            time.sleep(30)
+
+        pending = slow.remote().future()
         for servicer in (
             middleman.task_servicer,
             middleman.data_servicer,
@@ -680,6 +686,7 @@ def test_rejected_reconnect_raises_authentication_error(
         run_operation = {
             "put": lambda: ray.put(42),
             "get": lambda: ray.get(ref),
+            "pending_future": lambda: pending.result(timeout=20),
         }[operation]
 
         def get_after_rejection():
@@ -688,7 +695,6 @@ def test_rejected_reconnect_raises_authentication_error(
             except Exception as e:
                 outcome["error"] = e
 
-        start_time = time.time()
         get_thread = threading.Thread(target=get_after_rejection, daemon=True)
         get_thread.start()
         # The default reconnect grace period is 30s; a rejection must not wait it out.
@@ -697,7 +703,6 @@ def test_rejected_reconnect_raises_authentication_error(
             not get_thread.is_alive()
         ), f"{operation} hung after the token was rejected"
         assert isinstance(outcome.get("error"), AuthenticationError), outcome
-        assert time.time() - start_time < 20
 
 
 if __name__ == "__main__":
