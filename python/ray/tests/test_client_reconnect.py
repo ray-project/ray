@@ -639,5 +639,71 @@ def test_client_reconnect_grace_period(call_ray_start_shared):
         assert time.time() - start_time < 20
 
 
+class _UnauthenticatedError(grpc.RpcError):
+    def code(self):
+        return grpc.StatusCode.UNAUTHENTICATED
+
+    def details(self):
+        return "Invalid or missing authentication token"
+
+
+class _RejectingStub:
+    """Stands in for a restarted server that rejects the client's token."""
+
+    def __getattr__(self, method):
+        def reject(*args, **kwargs):
+            raise _UnauthenticatedError()
+
+        return reject
+
+
+@pytest.mark.parametrize("operation", ["put", "get", "pending_future"])
+def test_rejected_reconnect_raises_authentication_error(
+    operation, call_ray_start_shared
+):
+    from ray.exceptions import AuthenticationError
+
+    with start_middleman_server() as middleman:
+        ref = ray.put(42)
+        assert ray.get(ref) == 42
+
+        @ray.remote
+        def slow():
+            time.sleep(30)
+
+        pending = slow.remote().future()
+        for servicer in (
+            middleman.task_servicer,
+            middleman.data_servicer,
+            middleman.logs_servicer,
+        ):
+            servicer.stub = _RejectingStub()
+        middleman.reset_channel = lambda: None
+        middleman.channel.close()
+
+        outcome = {}
+
+        run_operation = {
+            "put": lambda: ray.put(42),
+            "get": lambda: ray.get(ref),
+            "pending_future": lambda: pending.result(timeout=20),
+        }[operation]
+
+        def get_after_rejection():
+            try:
+                run_operation()
+            except Exception as e:
+                outcome["error"] = e
+
+        get_thread = threading.Thread(target=get_after_rejection, daemon=True)
+        get_thread.start()
+        # The default reconnect grace period is 30s; a rejection must not wait it out.
+        get_thread.join(timeout=20)
+        assert (
+            not get_thread.is_alive()
+        ), f"{operation} hung after the token was rejected"
+        assert isinstance(outcome.get("error"), AuthenticationError), outcome
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

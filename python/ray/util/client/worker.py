@@ -33,7 +33,7 @@ from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 
 # Use cloudpickle's version of pickle for UnpicklingError
 from ray.cloudpickle.compat import pickle
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import AuthenticationError, GetTimeoutError
 from ray.job_config import JobConfig
 from ray.util.client.client_pickler import dumps_from_client, loads_from_server
 from ray.util.client.common import (
@@ -210,6 +210,11 @@ class Worker:
         # Set to True after initial connection succeeds
         self._has_connected = False
 
+        from ray._private.authentication.authentication_token_setup import (
+            ensure_token_if_auth_enabled,
+        )
+
+        ensure_token_if_auth_enabled(create_token_if_missing=False)
         self._connect_channel()
         self._has_connected = True
 
@@ -310,6 +315,8 @@ class Worker:
                 # Note that channel_ready_future constitutes its own timeout,
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise AuthenticationError(e.details()) from e
                 logger.debug(
                     f"Ray client server unavailable, retrying in {timeout}s..."
                 )
@@ -355,6 +362,9 @@ class Worker:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
             return False
+        if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+            # A rejected token stays rejected; retrying can't fix it.
+            return False
         if e.code() == grpc.StatusCode.INTERNAL:
             details = e.details()
             if details == "Exception serializing request!":
@@ -378,6 +388,8 @@ class Worker:
                 if self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise AuthenticationError(e.details()) from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -426,6 +438,8 @@ class Worker:
                 if self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise AuthenticationError(e.details()) from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
