@@ -146,6 +146,40 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
   // blocking where a lease which cannot be granted because
   // there are not enough available resources blocks other
   // leases from being granted.
+
+  // Precompute fair-share aggregates once before the loop. These values are
+  // updated incrementally as leases are granted, spilled, or erased, avoiding
+  // the O(C²) cost of re-scanning every scheduling class on each iteration.
+
+  // Total CPU requests across all scheduling classes in leases_to_grant_.
+  double total_cpu_requests = 0.0;
+  // Number of scheduling classes that require CPU.
+  size_t num_classes_with_cpu = 0;
+  for (const auto &[_, cur_dispatch_queue] : leases_to_grant_) {
+    RAY_CHECK(!cur_dispatch_queue.empty());
+    const auto &work = cur_dispatch_queue.front();
+    const auto &lease_spec = work->lease_.GetLeaseSpecification();
+    double cpu_request =
+        lease_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+    if (cpu_request > 0) {
+      num_classes_with_cpu++;
+      total_cpu_requests += cur_dispatch_queue.size() * cpu_request;
+    }
+  }
+
+  // Total granted leases that require CPU, across all scheduling classes.
+  size_t total_cpu_granted_leases = 0;
+  for (const auto &entry : info_by_sched_cls_) {
+    const auto &cur_sched_cls_desc =
+        SchedulingClassToIds::GetSchedulingClassDescriptor(entry.first);
+    if (cur_sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double() >
+        0) {
+      total_cpu_granted_leases += entry.second.granted_leases.size();
+    }
+  }
+
+  double total_cpus = cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
+
   for (auto shapes_it = leases_to_grant_.begin(); shapes_it != leases_to_grant_.end();) {
     auto &scheduling_class = shapes_it->first;
     auto &leases_to_grant_queue = shapes_it->second;
@@ -198,49 +232,20 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
     // Currently, fair granting is implemented only for leases that require CPU
     // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
 
-    // Calculate the total CPU requests for all leases in the leases_to_grant queue.
-    double total_cpu_requests_ = 0.0;
-
-    // Count the number of scheduling classes that require CPU and sum their total CPU
-    // requests.
-    size_t num_classes_with_cpu = 0;
-    for (const auto &[_, cur_dispatch_queue] : leases_to_grant_) {
-      // Only need to check the first because all tasks with the same scheduling class
-      // have the same CPU resource requirements.
-      RAY_CHECK(!cur_dispatch_queue.empty());
-      const auto &work = cur_dispatch_queue.front();
-      const auto &lease_spec = work->lease_.GetLeaseSpecification();
-      auto cpu_request_ =
-          lease_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
-      if (cpu_request_ > 0) {
-        num_classes_with_cpu++;
-        total_cpu_requests_ += cur_dispatch_queue.size() * cpu_request_;
-      }
-    }
     const auto &sched_cls_desc =
         SchedulingClassToIds::GetSchedulingClassDescriptor(scheduling_class);
-    double total_cpus =
-        cluster_resource_scheduler_.GetLocalResourceManager().GetNumCpus();
+    // CPU demand per lease in this scheduling class. Used for the fair-share
+    // gate check and for incremental updates when a lease is erased.
+    const double cpu_per_lease =
+        sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double();
 
     // Compare total CPU requests with the node's total CPU capacity. If the requests
     // exceed the capacity, check if fair granting is needed.
-    if (sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
-        total_cpu_requests_ > total_cpus) {
+    if (cpu_per_lease > 0 && total_cpu_requests > total_cpus) {
       RAY_LOG(DEBUG)
           << "Applying fairness policy. Total CPU requests in leases_to_grant_ ("
-          << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
+          << total_cpu_requests << ") exceed total CPUs available (" << total_cpus
           << ").";
-      // Get the total number of granted leases that require CPU.
-      size_t total_cpu_granted_leases = 0;
-      for (auto &entry : info_by_sched_cls_) {
-        // Only consider CPU requests
-        const auto &cur_sched_cls_desc =
-            SchedulingClassToIds::GetSchedulingClassDescriptor(entry.first);
-        if (cur_sched_cls_desc->resource_set.Get(scheduling::ResourceID::CPU()).Double() >
-            0) {
-          total_cpu_granted_leases += entry.second.granted_leases.size();
-        }
-      }
 
       // 1. We have confirmed that this is a scheduling class that requires CPU resources,
       //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is in
@@ -255,7 +260,6 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       //    Second, we expect the number of granted leases for this scheduling class to
       //    not be much. However, if no leases of this scheduling class are granted, it
       //    will not be skipped.
-
       size_t fair_share = total_cpu_granted_leases / num_classes_with_cpu;
       if (sched_cls_info.granted_leases.size() > fair_share) {
         RAY_LOG(DEBUG) << "Skipping lease granting for scheduling class "
@@ -316,6 +320,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           const auto result = TrySpillback(work);
           if (PickedOtherNode(result)) {
             work_it = leases_to_grant_queue.erase(work_it);
+            if (cpu_per_lease > 0) {
+              total_cpu_requests -= cpu_per_lease;
+            }
             continue;
           }
 
@@ -340,6 +347,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           cluster_resource_scheduler_.GetLocalResourceManager().MaybeMarkFootprintAsBusy(
               WorkFootprint::PULLING_TASK_ARGUMENTS);
           work_it = leases_to_grant_queue.erase(work_it);
+          if (cpu_per_lease > 0) {
+            total_cpu_requests -= cpu_per_lease;
+          }
           RAY_LOG(DEBUG) << "Failed to pin arguments for lease " << lease_id;
         } else {
           // The lease's args cannot be pinned due to lack of memory. We should
@@ -384,13 +394,19 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           break;
         }
         work_it = leases_to_grant_queue.erase(work_it);
+        if (cpu_per_lease > 0) {
+          total_cpu_requests -= cpu_per_lease;
+        }
       } else {
         // Force us to recalculate the next update time the next time a task
         // comes through this queue. We should only do this when we're
         // confident we're ready to dispatch the task after all checks have
         // passed.
         sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
-        sched_cls_info.granted_leases.insert(lease_id);
+        auto [_, inserted] = sched_cls_info.granted_leases.insert(lease_id);
+        if (inserted && cpu_per_lease > 0) {
+          total_cpu_granted_leases++;
+        }
         // The local node has the available resources to grant the lease, so we should
         // grant it.
         work->allocated_instances_ = allocated_instances;
@@ -431,8 +447,16 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
       RAY_LOG(ERROR) << "A lease got granted to a node even though it was infeasible. "
                         "Please report an issue on GitHub.\nLease: "
                      << front_lease.DebugString();
+      if (cpu_per_lease > 0) {
+        total_cpu_requests -= leases_to_grant_queue.size() * cpu_per_lease;
+      }
       auto leases_to_grant_queue_iter = leases_to_grant_queue.begin();
       while (leases_to_grant_queue_iter != leases_to_grant_queue.end()) {
+        // Only decrement for granted leases actually being cancelled.
+        if (cpu_per_lease > 0 && (*leases_to_grant_queue_iter)->GetState() ==
+                                     internal::WorkStatus::WAITING_FOR_WORKER) {
+          total_cpu_granted_leases--;
+        }
         CancelLeaseToGrantWithoutReply(*leases_to_grant_queue_iter);
         ReplyCancelled(*leases_to_grant_queue_iter,
                        rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
@@ -441,8 +465,14 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
             leases_to_grant_queue.erase(leases_to_grant_queue_iter);
       }
       leases_to_grant_.erase(shapes_it++);
+      if (cpu_per_lease > 0) {
+        num_classes_with_cpu--;
+      }
     } else if (leases_to_grant_queue.empty()) {
       leases_to_grant_.erase(shapes_it++);
+      if (cpu_per_lease > 0) {
+        num_classes_with_cpu--;
+      }
     } else {
       shapes_it++;
     }
