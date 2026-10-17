@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
-from typing import List, Optional
 
 import ray
 from ray.serve._private.common import DeploymentHandleSource
@@ -59,7 +58,7 @@ class DynamicHandleOptionsBase(ABC):
     multiplexed_model_id: str = ""
     # Ordered list of candidate model IDs. Router will match whichever replica
     # has the first available ID loaded. See RequestMetadata for details.
-    candidate_multiplexed_model_ids: Optional[List[str]] = None
+    candidate_multiplexed_model_ids: list[str] | None = None
     session_id: str = ""
     stream: bool = False
 

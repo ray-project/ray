@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, Callable, Dict, Optional, Protocol, Tuple, Type, Union
+from typing import Any, Protocol
+from collections.abc import Callable
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
@@ -72,8 +73,8 @@ def _default_create_placement_group(
 
 def create_deployment_scheduler(
     cluster_node_info_cache: ClusterNodeInfoCache,
-    head_node_id_override: Optional[str] = None,
-    create_placement_group_fn_override: Optional[CreatePlacementGroupFn] = None,
+    head_node_id_override: str | None = None,
+    create_placement_group_fn_override: CreatePlacementGroupFn | None = None,
 ) -> DeploymentScheduler:
     head_node_id = head_node_id_override or get_head_node_id()
     return DeploymentScheduler(
@@ -138,7 +139,7 @@ def get_request_metadata(init_options, handle_options):
     )
 
 
-def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
+def _get_node_id_and_az() -> tuple[str, str | None]:
     node_id = ray.get_runtime_context().get_node_id()
     try:
         cluster_node_info_cache = create_cluster_node_info_cache(
@@ -160,15 +161,14 @@ class CreateRouterCallable(Protocol):
         handle_id: str,
         deployment_id: DeploymentID,
         handle_options: InitHandleOptions,
-    ) -> Router:
-        ...
+    ) -> Router: ...
 
 
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: InitHandleOptions,
-    request_router_class: Optional[Callable] = None,
+    request_router_class: Callable | None = None,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
@@ -179,7 +179,7 @@ def create_router(
     controller_handle = _get_global_client()._controller  # type: ignore[union-attr]
     is_inside_ray_client_context = inside_ray_client_context()
 
-    router_wrapper_cls: Union[Type[SingletonThreadRouter], Type[CurrentLoopRouter]]
+    router_wrapper_cls: type[SingletonThreadRouter | CurrentLoopRouter]
     if handle_options._run_router_in_separate_loop:
         router_wrapper_cls = SingletonThreadRouter
         # Determine the component for the event loop monitor
@@ -254,7 +254,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
 
 
 def get_controller_impl(
-    controller_options: Optional[ControllerOptions] = None,
+    controller_options: ControllerOptions | None = None,
 ) -> Any:
     """Build the Ray actor class for the Serve controller.
 
@@ -265,7 +265,7 @@ def get_controller_impl(
     """
     from ray.serve._private.controller import ServeController
 
-    actor_options: Dict[str, Any] = dict(
+    actor_options: dict[str, Any] = dict(
         name=SERVE_CONTROLLER_NAME,
         namespace=SERVE_NAMESPACE,
         num_cpus=0,
