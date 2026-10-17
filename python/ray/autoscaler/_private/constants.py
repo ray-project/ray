@@ -81,6 +81,15 @@ RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S = env_integer(
     "RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S", 600
 )
 
+# Autoscaler v2 only. Pending worker nodes (not yet running ray) that are not
+# needed by any resource demands for longer than this are terminated. It's
+# separate from (and by default longer than) the idle timeout, since pending
+# nodes may take a while to provision and are expensive to relaunch. Set to a
+# negative value to never terminate pending nodes for not being needed.
+RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S = env_integer(
+    "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", 600
+)
+
 AUTOSCALER_REPORT_PER_NODE_STATUS = (
     env_integer("AUTOSCALER_REPORT_PER_NODE_STATUS", 1) == 1
 )

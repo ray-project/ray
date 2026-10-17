@@ -1736,7 +1736,9 @@ def test_idle_termination_pending_nodes(status):
     REQUESTED ones whose launch requests can't be cancelled.
     """
     idle_timeout_s = 10
-    scheduler = ResourceDemandScheduler(event_logger)
+    scheduler = ResourceDemandScheduler(
+        event_logger, pending_idle_timeout_s=idle_timeout_s
+    )
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
@@ -1782,7 +1784,7 @@ def test_idle_termination_pending_nodes_needed_by_constraints():
     Test that pending nodes needed by cluster resource constraints are not
     terminated.
     """
-    scheduler = ResourceDemandScheduler(event_logger)
+    scheduler = ResourceDemandScheduler(event_logger, pending_idle_timeout_s=1)
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
@@ -1815,7 +1817,7 @@ def test_idle_termination_pending_nodes_with_min_worker():
     Test that the min_worker_nodes are honored when terminating the unneeded
     pending nodes, and the pending nodes are terminated before the running ones.
     """
-    scheduler = ResourceDemandScheduler(event_logger)
+    scheduler = ResourceDemandScheduler(event_logger, pending_idle_timeout_s=1)
     node_type_configs = {
         "type_cpu": NodeTypeConfig(
             name="type_cpu",
@@ -1879,8 +1881,10 @@ def test_idle_termination_pending_nodes_tracked_by_node_type():
     so they don't reset when the requests land on a different pending node of
     the same type in each round.
     """
-    scheduler = ResourceDemandScheduler(event_logger)
     idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(
+        event_logger, pending_idle_timeout_s=idle_timeout_s
+    )
 
     # One of the two pending nodes is needed by the request. The request lands on
     # a different pending node each round, as the instance order changes.
@@ -1898,8 +1902,10 @@ def test_idle_termination_pending_nodes_count_changes():
     pending nodes drops, and that the durations of the terminated nodes are not
     inherited by the remaining ones.
     """
-    scheduler = ResourceDemandScheduler(event_logger)
     idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(
+        event_logger, pending_idle_timeout_s=idle_timeout_s
+    )
 
     # 2 unneeded pending nodes since t=0.
     assert _schedule_pending_at(scheduler, 0, ["i-1", "i-2"], 0, idle_timeout_s) == []
@@ -1924,8 +1930,10 @@ def test_idle_termination_pending_nodes_after_max_workers_termination():
     the idle durations of the remaining unneeded pending nodes, since they are
     terminated before the unneeded pending nodes are counted.
     """
-    scheduler = ResourceDemandScheduler(event_logger)
     idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(
+        event_logger, pending_idle_timeout_s=idle_timeout_s
+    )
 
     def _schedule(now_s: float, instance_ids: List[str], max_workers: int):
         configs = _pending_idle_test_configs()
@@ -1955,6 +1963,36 @@ def test_idle_termination_pending_nodes_after_max_workers_termination():
     assert sorted(to_terminate) == sorted(
         (i, "", TerminationRequest.Cause.IDLE) for i in instance_ids
     )
+
+
+@pytest.mark.parametrize("pending_idle_timeout_s", [5, 100, -1, None])
+def test_idle_termination_pending_nodes_timeout(pending_idle_timeout_s):
+    """
+    Test that the pending nodes use their own idle timeout, independent of the
+    regular idle timeout, and are never terminated when it's disabled.
+    """
+    scheduler = ResourceDemandScheduler(
+        event_logger, pending_idle_timeout_s=pending_idle_timeout_s
+    )
+    request = sched_request(
+        node_type_configs=_pending_idle_test_configs(),
+        instances=[
+            _running_instance("i-1", idle_duration_ms=50 * 1000),
+            _pending_instance("i-2", Instance.ALLOCATED),
+        ],
+        idle_timeout_s=1,
+        disable_launch_config_check=True,
+    )
+    with patch("time.monotonic", return_value=0):
+        scheduler.schedule(request)
+    with patch("time.monotonic", return_value=10):
+        _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+
+    # The running node always follows the regular idle timeout.
+    expected = [("i-1", "r-i-1", TerminationRequest.Cause.IDLE)]
+    if pending_idle_timeout_s == 5:
+        expected.append(("i-2", "", TerminationRequest.Cause.IDLE))
+    assert sorted(to_terminate) == sorted(expected)
 
 
 def test_gang_scheduling():
