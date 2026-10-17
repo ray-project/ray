@@ -8,7 +8,13 @@ from pathlib import Path
 
 import requests
 
+from ray._private.authentication.authentication_token_setup import (
+    maybe_enable_token_auth_if_token_available,
+)
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
+from ray.dashboard.modules.metrics.templates import (
+    get_prometheus_authorization_config,
+)
 
 FALLBACK_PROMETHEUS_VERSION = "2.48.1"
 DOWNLOAD_BLOCK_SIZE = 8192  # 8 KB
@@ -83,6 +89,13 @@ def start_prometheus(prometheus_dir):
 
     if not config_file.exists():
         raise FileNotFoundError(f"Prometheus config file not found: {config_file}")
+
+    authorization_config = get_prometheus_authorization_config()
+    if authorization_config:
+        config_file = Path(prometheus_dir) / "ray_prometheus.yml"
+        config_file.write_text(
+            Path(PROMETHEUS_CONFIG_INPUT_PATH).read_text() + authorization_config
+        )
 
     prometheus_cmd = [
         f"{prometheus_dir}/prometheus",
@@ -176,6 +189,15 @@ def main():
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     logging.warning("This script is not intended for production use.")
+
+    # Same auth decision as `ray start`, so local clusters with token auth on by
+    # default are scraped with the token.
+    maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
+    try:
+        get_prometheus_authorization_config()
+    except ValueError as e:
+        logging.error(e)
+        sys.exit(1)
 
     downloaded, file_name = download_prometheus()
     if not downloaded:
