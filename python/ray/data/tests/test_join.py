@@ -1356,7 +1356,8 @@ def test_join_same_name_payload_column_is_not_pushed(
     )
     expected_pd = expected_pd[expected_pd["val"] == 1].reset_index(drop=True)
     assert len(expected_pd) == 1  # k == 1: left val 1, right val_r 11
-    assert rows_same(filtered_ds.to_pandas(), expected_pd)
+    # A right outer join emits the left payload before the key; compare by name.
+    assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
 
 
 @pytest.mark.parametrize(

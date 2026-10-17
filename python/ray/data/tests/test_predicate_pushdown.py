@@ -1292,7 +1292,7 @@ def test_limit_over_partition_filter_without_partitioning_spec(
 
 
 def test_disjunction_over_two_joined_scans_prunes_both_reads(
-    ray_start_regular_shared_2_cpus, tmp_path
+    ray_start_regular_shared, tmp_path
 ):
     """TPC-H q7 shape on real Parquet reads (#66832).
 
