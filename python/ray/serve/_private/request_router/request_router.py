@@ -391,7 +391,18 @@ class MultiplexMixin:
         # ``candidate_multiplexed_model_ids`` (no legacy single ID) — without
         # the write-back the replica would see an empty model ID and either
         # cold-load the wrong model or fail to multiplex at all.
+        #
+        # After writing back the resolved ID we clear the candidate list so
+        # that ``_get_effective_multiplexed_model_ids`` won't re-prepend it as
+        # highest priority on the next call (which would invert the caller's
+        # original ordering).  The routing decision is sticky: once we pick a
+        # model ID we stick with it for retries / pending-request coalescing.
         pending_request.metadata.multiplexed_model_id = multiplexed_model_id
+        if (
+            pending_request.metadata.candidate_multiplexed_model_ids
+            and multiplexed_model_id
+        ):
+            pending_request.metadata.candidate_multiplexed_model_ids = None
         if (
             time.time() - multiplexed_start_matching_time
             < self._multiplexed_matching_timeout
@@ -436,16 +447,17 @@ class MultiplexMixin:
         replicas: List[RunningReplica],
         multiplexed_model_id: str,
     ) -> List[List[RunningReplica]]:
-        """Rank the replicas based on the multiplexed model ID.
+        """Rank the replicas based on a single resolved multiplexed model ID.
 
-        Rank 0 is the list of replicas that have the multiplexed model ID (or,
-        when an ordered candidate list is passed, replicas that have *any* of
-        the listed model IDs loaded).  Rank 1 is the replicas that have the
-        fewest models overall, and Rank 2 is the rest.
+        Rank 0 is the list of replicas that have the given multiplexed model ID
+        loaded. Rank 1 is the replicas that have the fewest models overall, and
+        Rank 2 is the rest.
 
-        The legacy single-ID path still works; the ``apply_multiplex_routing``
-        method is responsible for resolving an ordered list down to the single
-        model ID that will be used here.
+        This method operates on a single model ID. Callers that want the
+        ordered ``candidate_multiplexed_model_ids`` behaviour should resolve
+        the candidate list first (e.g. via ``apply_multiplex_routing`` or
+        ``_get_first_available_multiplexed_model_id``) and pass the resolved
+        single ID here.
         """
         replica_ids_with_multiplexed_model = (
             self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
