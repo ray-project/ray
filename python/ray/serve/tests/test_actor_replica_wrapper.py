@@ -2,7 +2,6 @@ import asyncio
 import pickle
 import sys
 from types import SimpleNamespace
-from typing import Union
 
 import pytest
 
@@ -111,7 +110,7 @@ class FakeReplicaActor:
 
     async def handle_request(
         self,
-        request_metadata: Union[bytes, RequestMetadata],
+        request_metadata: bytes | RequestMetadata,
         message: str,
         *,
         is_streaming: bool,
@@ -124,7 +123,7 @@ class FakeReplicaActor:
 
     async def handle_request_streaming(
         self,
-        request_metadata: Union[bytes, RequestMetadata],
+        request_metadata: bytes | RequestMetadata,
         message: str,
         *,
         is_streaming: bool,

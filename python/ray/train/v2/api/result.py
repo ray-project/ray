@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional
 
 import pandas as pd
 import pyarrow
@@ -50,10 +50,10 @@ class Result(ResultV1):
             wrapping the original exception.
     """
 
-    checkpoint: Optional[Checkpoint]
-    error: Optional[TrainingFailedError]
-    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
-    return_value: Optional[Any] = None
+    checkpoint: Checkpoint | None
+    error: TrainingFailedError | None
+    best_checkpoints: list[tuple[Checkpoint, dict[str, Any]]] | None = None
+    return_value: Any | None = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
@@ -64,8 +64,8 @@ class Result(ResultV1):
     @classmethod
     def from_path(
         cls,
-        path: Union[str, os.PathLike],
-        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        path: str | os.PathLike,
+        storage_filesystem: pyarrow.fs.FileSystem | None = None,
     ) -> "Result":
         """Restore a training result from a previously saved training run path.
 
@@ -124,7 +124,7 @@ class Result(ResultV1):
         cls,
         checkpoint_manager: CheckpointManager,
         storage_context: StorageContext,
-        error: Optional[TrainingFailedError] = None,
+        error: TrainingFailedError | None = None,
     ) -> "Result":
         """Create a Result object from a CheckpointManager."""
         latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
@@ -156,7 +156,7 @@ class Result(ResultV1):
 
     @property
     @Deprecated
-    def config(self) -> Optional[Dict[str, Any]]:
+    def config(self) -> dict[str, Any] | None:
         raise DeprecationWarning(
             "The `config` property for a `ray.train.Result` is deprecated, "
             "since it is only relevant in the context of Ray Tune."

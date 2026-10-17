@@ -14,7 +14,6 @@ make existing checkpoints unreadable.
 
 import posixpath
 from dataclasses import dataclass, field
-from typing import List, Union
 
 import numpy as np
 import pyarrow as pa
@@ -180,7 +179,7 @@ _COMPACTED_CHECKPOINT_SCHEMA = pa.schema(
 
 
 def _id_field(
-    ids: Union[pa.Array, pa.ChunkedArray], name: str, value_type: pa.DataType
+    ids: pa.Array | pa.ChunkedArray, name: str, value_type: pa.DataType
 ) -> np.ndarray:
     # Fields are looked up by name: the struct's field order isn't guaranteed
     # to survive a Parquet round trip.
@@ -188,7 +187,7 @@ def _id_field(
     return values.to_numpy(zero_copy_only=False)
 
 
-def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
+def _compact_file_ids(ids: pa.Array | pa.ChunkedArray) -> pa.Table:
     """Compact the committed generated IDs of one file into read units.
 
     Each row group with committed rows is either done (all its on-disk rows
@@ -212,9 +211,9 @@ def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
     row_group_sizes = _id_field(ids, NUM_ROWS_FIELD, pa.int32())
     row_ids = _id_field(ids, ROW_ID_FIELD, pa.int32())
 
-    done_row_groups: List[int] = []
-    partial_row_groups: List[int] = []
-    partial_masks: List[np.ndarray] = []
+    done_row_groups: list[int] = []
+    partial_row_groups: list[int] = []
+    partial_masks: list[np.ndarray] = []
     for row_group in np.unique(row_groups):
         in_group = row_groups == row_group
         size = int(row_group_sizes[in_group][0])

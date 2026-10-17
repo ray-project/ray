@@ -2,7 +2,7 @@ import csv
 import os
 import random
 from types import SimpleNamespace
-from typing import List, Literal, Union
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -55,8 +55,8 @@ from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.tests.conftest import *  # noqa
-from ray.tests.conftest import *  # noqa
+from ray.data.tests.conftest import *
+from ray.tests.conftest import *
 
 # User-provided ID column name
 ID_COL = "id"
@@ -138,7 +138,7 @@ def generate_sample_physical_plan(generate_sample_data_csv, tmp_path):
     yield physical_plan
 
 
-def _get_batch_based_files(ckpt_path: str, fs) -> List[str]:
+def _get_batch_based_files(ckpt_path: str, fs) -> list[str]:
     """Get checkpoint file paths for batch-based backends."""
     if fs is None:
         if not os.path.exists(ckpt_path):
@@ -151,7 +151,7 @@ def _get_batch_based_files(ckpt_path: str, fs) -> List[str]:
         return [file_info.path for file_info in files if file_info.is_file]
 
 
-def _read_batch_file_ids(file_paths: List[str], id_column: str, fs) -> List[int]:
+def _read_batch_file_ids(file_paths: list[str], id_column: str, fs) -> list[int]:
     """Read IDs from batch-based checkpoint files."""
     ids = []
     for file_path in file_paths:
@@ -165,7 +165,7 @@ def _read_batch_file_ids(file_paths: List[str], id_column: str, fs) -> List[int]
     return ids
 
 
-def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[Union[int, str]]:
+def read_ids_from_checkpoint_files(config: CheckpointConfig) -> list[int | str]:
     """Reads the checkpoint files and returns a sorted list of IDs which have been checkpointed."""
     # Batch-based backends
     if config.backend in (
@@ -359,7 +359,7 @@ class TestCheckpointConfig:
                 CheckpointConfig(ID_COL, local_path, checkpoint_filter_cls=cls)
 
 
-def _committed_checkpoint_files(checkpoint_path: str) -> List[str]:
+def _committed_checkpoint_files(checkpoint_path: str) -> list[str]:
     return sorted(
         f
         for f in os.listdir(checkpoint_path)
@@ -367,7 +367,7 @@ def _committed_checkpoint_files(checkpoint_path: str) -> List[str]:
     )
 
 
-def _physical_op_names(physical_plan) -> List[str]:
+def _physical_op_names(physical_plan) -> list[str]:
     names = []
     to_visit = [physical_plan.dag]
     while to_visit:
@@ -621,9 +621,9 @@ def test_checkpoint_end_to_end(
                 pyarrow.fs.FileSelector(unwrapped_path, recursive=True)
             )
             # If we can get file info, the directory exists and should be empty
-            assert (
-                len(files) == 0
-            ), f"Checkpoint directory should be empty but contains {len(files)} files"
+            assert len(files) == 0, (
+                f"Checkpoint directory should be empty but contains {len(files)} files"
+            )
         except (FileNotFoundError, OSError):
             # If directory doesn't exist, that's also fine (cleanup worked)
             pass
@@ -789,7 +789,6 @@ def test_full_dataset_executed_for_non_write(
 @pytest.mark.parametrize(
     "ds_factory",
     [
-        (lazy_fixture("generate_sample_data_parquet")),
         (lazy_fixture("generate_sample_data_parquet")),
     ],
 )
@@ -1364,9 +1363,9 @@ def test_clean_pending_checkpoint_with_partitioned_data(
 
     # Verify all files were created
     for f in pending_data_files + unrelated_files:
-        assert (
-            fs.get_file_info(f).type != FileType.NotFound
-        ), f"Expected file to exist: {f}"
+        assert fs.get_file_info(f).type != FileType.NotFound, (
+            f"Expected file to exist: {f}"
+        )
 
     # Run cleanup
     checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
@@ -1374,15 +1373,15 @@ def test_clean_pending_checkpoint_with_partitioned_data(
 
     # Verify data files matching pending checkpoint were deleted
     for f in pending_data_files:
-        assert (
-            fs.get_file_info(f).type == FileType.NotFound
-        ), f"Expected pending data file to be deleted: {f}"
+        assert fs.get_file_info(f).type == FileType.NotFound, (
+            f"Expected pending data file to be deleted: {f}"
+        )
 
     # Verify unrelated data files still exist
     for f in unrelated_files:
-        assert (
-            fs.get_file_info(f).type != FileType.NotFound
-        ), f"Expected unrelated file to still exist: {f}"
+        assert fs.get_file_info(f).type != FileType.NotFound, (
+            f"Expected unrelated file to still exist: {f}"
+        )
 
     # Verify pending checkpoint was also deleted
     assert fs.get_file_info(pending.pending_path).type == FileType.NotFound
@@ -1783,9 +1782,9 @@ def test_checkpoint_restore_after_full_execution(
     num_rows_first = run_simple_pipeline(
         checkpoint_config, input_data_path, data_output_path
     )
-    assert (
-        num_rows_first == SAMPLE_DATA_NUM_ROWS
-    ), f"Expected {SAMPLE_DATA_NUM_ROWS} rows, got {num_rows_first}"
+    assert num_rows_first == SAMPLE_DATA_NUM_ROWS, (
+        f"Expected {SAMPLE_DATA_NUM_ROWS} rows, got {num_rows_first}"
+    )
 
     # Check if checkpoint files were created
     assert os.path.exists(checkpoint_path), "No checkpoint directory created!"
