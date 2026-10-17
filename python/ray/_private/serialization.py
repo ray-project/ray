@@ -264,7 +264,7 @@ class SerializationContext:
             DynamicObjectRefGenerator, object_ref_generator_reducer
         )
 
-        serialization_addons.apply(self)
+        serialization_addons.apply(self, lazily=True)
 
     def _register_cloudpickle_reducer(self, cls, reducer):
         pickle.CloudPickler.dispatch[cls] = reducer
@@ -627,6 +627,9 @@ class SerializationContext:
         )
 
     def _serialize_to_msgpack(self, value):
+        # Libraries imported since the last serialization get their
+        # serializers.
+        serialization_addons.apply_pending()
         # Only RayTaskError is possible to be serialized here. We don't
         # need to deal with other exception types here.
         contained_object_refs = []
