@@ -120,6 +120,20 @@ def _import_spark(provider_config):
     return SparkNodeProvider
 
 
+def _import_oci(provider_config):
+    try:
+        import oci  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "The Ray OCI VM launcher requires the Oracle Cloud Infrastructure "
+            "Python SDK to be installed. You can install it with `pip install oci`."
+        ) from e
+
+    from ray.autoscaler._private._oci.node_provider import OCINodeProvider
+
+    return OCINodeProvider
+
+
 def _load_fake_multinode_defaults_config():
     import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
 
@@ -182,6 +196,12 @@ def _load_spark_defaults_config():
     return os.path.join(os.path.dirname(ray_spark.__file__), "defaults.yaml")
 
 
+def _load_oci_defaults_config():
+    import ray.autoscaler.oci as ray_oci
+
+    return os.path.join(os.path.dirname(ray_oci.__file__), "defaults.yaml")
+
+
 def _import_external(provider_config):
     provider_cls = load_function_or_class(path=provider_config["module"])
     return provider_cls
@@ -200,6 +220,7 @@ _NODE_PROVIDERS = {
     "aliyun": _import_aliyun,
     "external": _import_external,  # Import an external module
     "spark": _import_spark,
+    "oci": _import_oci,
 }
 
 _PROVIDER_PRETTY_NAMES = {
@@ -215,6 +236,7 @@ _PROVIDER_PRETTY_NAMES = {
     "external": "External",
     "vsphere": "vSphere",
     "spark": "Spark",
+    "oci": "OCI",
 }
 
 _DEFAULT_CONFIGS = {
@@ -228,6 +250,7 @@ _DEFAULT_CONFIGS = {
     "vsphere": _load_vsphere_defaults_config,
     "readonly": _load_read_only_defaults_config,
     "spark": _load_spark_defaults_config,
+    "oci": _load_oci_defaults_config,
 }
 
 
