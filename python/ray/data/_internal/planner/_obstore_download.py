@@ -54,6 +54,69 @@ def _parse_obstore_int_env(var_name: str, default: int) -> int:
         return default
 
 
+# Retry budget for the obstore GET/HEAD clients. obstore retries 5xx, 429 and
+# connection errors itself and sleeps a jittered exponential backoff between
+# attempts, drawn from ``[init_backoff, prev * base)`` and capped at
+# ``max_backoff``. ``init_backoff`` is therefore the lever that decides how long
+# a sustained S3 SlowDown burst can be ridden out: with obstore's 100 ms default,
+# 10 retries completed in ~2 s and a transient 503 became a failed download
+# (DATA-3604). These are read at call time, not import time, so a job can
+# override them through ``runtime_env`` env vars.
+_DEFAULT_RETRY_MAX_RETRIES_INT = 10
+_DEFAULT_RETRY_INIT_BACKOFF_MS_INT = 1000
+_DEFAULT_RETRY_MAX_BACKOFF_MS_INT = 20_000
+_DEFAULT_RETRY_TIMEOUT_S_INT = 120
+
+
+def _obstore_retry_config_from_env() -> Dict[str, Any]:
+    """Build the obstore ``retry_config`` for download GET/HEAD clients.
+
+    The defaults give one failing object roughly 40 s of expected backoff,
+    bounded by ``retry_timeout``, instead of the ~2 s that obstore's own
+    defaults allow. Backoff sleeps are async inside obstore, so a throttled
+    object only holds its concurrency slot; other URIs keep downloading.
+    """
+    return {
+        "max_retries": _parse_obstore_int_env(
+            "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", _DEFAULT_RETRY_MAX_RETRIES_INT
+        ),
+        "retry_timeout": timedelta(
+            seconds=_parse_obstore_int_env(
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", _DEFAULT_RETRY_TIMEOUT_S_INT
+            )
+        ),
+        "backoff": {
+            "init_backoff": timedelta(
+                milliseconds=_parse_obstore_int_env(
+                    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                    _DEFAULT_RETRY_INIT_BACKOFF_MS_INT,
+                )
+            ),
+            "max_backoff": timedelta(
+                milliseconds=_parse_obstore_int_env(
+                    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                    _DEFAULT_RETRY_MAX_BACKOFF_MS_INT,
+                )
+            ),
+            "base": 2,
+        },
+    }
+
+
+def _obstore_client_options_from_env() -> Dict[str, Any]:
+    """Optional obstore ``client_options`` overrides from the environment.
+
+    ``RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S`` sets the per-request timeout
+    (obstore's default is 30 s). Large whole-file GETs can legitimately take
+    longer than that, and a timed-out request consumes the same retry budget
+    as a 5xx. Unset or ``0`` keeps obstore's default.
+    """
+    timeout_s = _parse_obstore_int_env("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", 0)
+    if timeout_s <= 0:
+        return {}
+    return {"timeout": timedelta(seconds=timeout_s)}
+
+
 # Constants & configuration
 RAY_DATA_USE_OBSTORE = os.environ.get("RAY_DATA_USE_OBSTORE", "1") == "1"
 OBSTORE_AVAILABLE = RAY_DATA_USE_OBSTORE and obstore_parse_scheme is not None
@@ -634,10 +697,23 @@ class StoreRegistry:
         retry_config: Optional[Dict[str, Any]] = None,
         **filesystem_kwargs: Any,
     ):
+        """Create the registry.
+
+        Args:
+            retry_config: obstore ``RetryConfig`` for every store created by
+                this registry. ``None`` (the default) uses the env-configurable
+                budget from ``_obstore_retry_config_from_env``; pass an explicit
+                dict to override it.
+            **filesystem_kwargs: Forwarded to ``obstore.store.from_url``.
+        """
         from obstore.store import from_url
 
         self._from_url = from_url
-        self._retry_config = retry_config or {}
+        self._retry_config = (
+            retry_config
+            if retry_config is not None
+            else _obstore_retry_config_from_env()
+        )
         self._filesystem_kwargs = filesystem_kwargs
         self._cache: Dict[str, Any] = {}
 
@@ -661,6 +737,14 @@ class StoreRegistry:
                     region = _discover_aws_bucket_region(bucket)
                     if region:
                         kwargs["region"] = region
+            env_client_options = _obstore_client_options_from_env()
+            if env_client_options:
+                # Caller-supplied options (e.g. from a user filesystem) win
+                # over the environment defaults.
+                kwargs["client_options"] = {
+                    **env_client_options,
+                    **kwargs.get("client_options", {}),
+                }
             if store_url.startswith("http://"):
                 # obstore's reqwest client rejects http:// by default. Auto-enable it
                 # to maintain parity with PyArrow (which accepts http:// via fsspec),
@@ -900,7 +984,7 @@ async def _download_uris_with_obstore(
             range_threshold = 0
     sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
 
-    registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
+    registry = StoreRegistry(**fs_kwargs)
 
     if range_threshold <= 0:
         logger.debug(

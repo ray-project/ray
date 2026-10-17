@@ -19,7 +19,9 @@ from ray.data._internal.planner._obstore_download import (
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
     _native_s3_obstore_kwargs,
+    _obstore_client_options_from_env,
     _obstore_filesystem_requires_threaded_download,
+    _obstore_retry_config_from_env,
     _plan_obstore_routing,
     _S3FSSessionCredentialProvider,
     _split_obstore_uri,
@@ -1665,6 +1667,215 @@ class TestObstoreRangeSplitDownload:
             "socket exhaustion. Disabling range splitting.",
             0,
         )
+
+
+def _start_status_sequence_server(statuses, content=b"ok"):
+    """Serve ``content`` over loopback HTTP, answering one status per request.
+
+    Statuses are consumed in order; once the sequence is exhausted the last
+    one repeats. Returns ``(server, port, served)`` where ``served`` records
+    every status actually sent. Call ``server.shutdown()`` when done.
+    """
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Thread
+
+    served = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def _respond(self, with_body: bool):
+            status = statuses[min(len(served), len(statuses) - 1)]
+            served.append(status)
+            body = content if status == 200 else b""
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if with_body:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            self._respond(with_body=True)
+
+        def do_HEAD(self):
+            self._respond(with_body=False)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1], served
+
+
+_RETRY_ENV_VARS = (
+    "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES",
+    "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+    "RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S",
+)
+
+
+class TestObstoreRetryConfig:
+    """DATA-3604: obstore download clients get a real, env-tunable retry budget.
+
+    obstore's own defaults let 10 retries finish in ~2 s, so a transient S3
+    503 burst exhausted them and the object silently became ``None``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_retry_env(self, monkeypatch):
+        for var in _RETRY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+    def test_defaults(self):
+        assert _obstore_retry_config_from_env() == {
+            "max_retries": 10,
+            "retry_timeout": timedelta(seconds=120),
+            "backoff": {
+                "init_backoff": timedelta(milliseconds=1000),
+                "max_backoff": timedelta(milliseconds=20_000),
+                "base": 2,
+            },
+        }
+
+    @pytest.mark.parametrize(
+        "var, value, path, expected",
+        [
+            ("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "3", ("max_retries",), 3),
+            (
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+                "7",
+                ("retry_timeout",),
+                timedelta(seconds=7),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                "5",
+                ("backoff", "init_backoff"),
+                timedelta(milliseconds=5),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                "50",
+                ("backoff", "max_backoff"),
+                timedelta(milliseconds=50),
+            ),
+        ],
+    )
+    def test_env_overrides(self, monkeypatch, var, value, path, expected):
+        monkeypatch.setenv(var, value)
+        config = _obstore_retry_config_from_env()
+        for key in path:
+            config = config[key]
+        assert config == expected
+
+    def test_invalid_env_falls_back(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "fast")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            config = _obstore_retry_config_from_env()
+        assert config["backoff"]["init_backoff"] == timedelta(milliseconds=1000)
+        mock_logger.warning.assert_called_once()
+
+    def test_request_timeout_env(self, monkeypatch):
+        assert _obstore_client_options_from_env() == {}
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        assert _obstore_client_options_from_env() == {"timeout": timedelta(seconds=90)}
+
+    def test_store_registry_defaults_to_env_config(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "250")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(client_options={"user_agent": "ray-test"})
+        reg._from_url = fake_from_url
+        reg.get("file://")
+
+        retry_config = captured["kwargs"]["retry_config"]
+        assert retry_config["max_retries"] == 10
+        assert retry_config["backoff"]["init_backoff"] == timedelta(milliseconds=250)
+        # The env request timeout is merged beneath the caller's own options.
+        assert captured["kwargs"]["client_options"] == {
+            "timeout": timedelta(seconds=90),
+            "user_agent": "ray-test",
+        }
+
+    def test_explicit_retry_config_wins(self):
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(retry_config={"max_retries": 1})
+        reg._from_url = fake_from_url
+        reg.get("file://")
+        assert captured["kwargs"]["retry_config"] == {"max_retries": 1}
+        assert "client_options" not in captured["kwargs"]
+
+    def test_download_path_passes_retry_config(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "4")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        uri = f"file://{tmp_path}/f.bin"
+
+        with patch(
+            "obstore.store.from_url",
+            wraps=__import__("obstore.store", fromlist=["from_url"]).from_url,
+        ) as spy:
+            results = asyncio.run(_download_uris_with_obstore([uri], "uri"))
+
+        assert results == [b"data"]
+        retry_config = spy.call_args.kwargs["retry_config"]
+        assert retry_config["max_retries"] == 4
+        assert retry_config["backoff"]["init_backoff"] == timedelta(milliseconds=1000)
+
+    def test_partition_actor_passes_retry_config(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", "9")
+        (tmp_path / "f.bin").write_bytes(b"data")
+
+        with patch(
+            "obstore.store.from_url",
+            wraps=__import__("obstore.store", fromlist=["from_url"]).from_url,
+        ) as spy:
+            actor = AsyncPartitionActor(["uri"], DataContext.get_current())
+            sizes = actor._size_provider.get_file_sizes([f"file://{tmp_path}/f.bin"])
+
+        assert sizes == [4]
+        retry_config = spy.call_args.kwargs["retry_config"]
+        assert retry_config["retry_timeout"] == timedelta(seconds=9)
+
+    def test_503_then_200_is_retried(self, monkeypatch):
+        pytest.importorskip("obstore")
+        # Tiny budget so the test stays fast; obstore sleeps in Rust, so the
+        # unit-test ban on ``time.sleep`` is not involved.
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "3")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS", "5")
+        content = b"eventually available"
+        server, port, served = _start_status_sequence_server([503, 503, 200], content)
+        try:
+            with patch("ray.data._internal.planner._obstore_download.logger"):
+                results = asyncio.run(
+                    _download_uris_with_obstore(
+                        [f"http://127.0.0.1:{port}/f.bin"], "uri"
+                    )
+                )
+        finally:
+            server.shutdown()
+
+        assert results == [content]
+        assert served == [503, 503, 200]
 
 
 if __name__ == "__main__":
