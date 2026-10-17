@@ -156,12 +156,11 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
             "ray.io/tpu-slice-name": slice_name,
             "ray.io/tpu-worker-id": str(worker_id),
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V6E",
         }
 
         resources = {"TPU": 4, "accelerator_type:TPU-V6E": 1}
-
-        if is_head:
-            resources[f"TPU-{pod_type}-head"] = 1
 
         node = cluster.add_node(
             num_cpus=8,

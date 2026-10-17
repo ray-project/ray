@@ -5,7 +5,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
+import ray
 import ray.util.accelerators.accelerators as accelerators
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
 from ray._private.accelerators.tpu import get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
@@ -224,7 +226,30 @@ class TPUAccelerator(AcceleratorBackend):
     ) -> PlacementGroup:
 
         if not self._config.topology:
-            return placement_group(bundles=bundles, strategy=strategy, name=name)
+            clean_bundles = [
+                {
+                    k: v
+                    for k, v in b.items()
+                    if not k.startswith(RESOURCE_CONSTRAINT_PREFIX)
+                }
+                for b in bundles
+            ]
+            label_selector = (
+                [
+                    {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accelerator_type_str}
+                    if b.get("TPU", 0) > 0
+                    else {}
+                    for b in clean_bundles
+                ]
+                if accelerator_type_str
+                else None
+            )
+            return placement_group(
+                bundles=clean_bundles,
+                strategy=strategy,
+                name=name,
+                bundle_label_selector=label_selector,
+            )
 
         if not accelerator_type_str:
             raise ValueError(
@@ -235,7 +260,15 @@ class TPUAccelerator(AcceleratorBackend):
 
         if bundles:
             # Filter for bundles that actually specify TPU resources
-            tpu_bundles = [b for b in bundles if b.get("TPU", 0) > 0]
+            tpu_bundles = [
+                {
+                    k: v
+                    for k, v in b.items()
+                    if not k.startswith(RESOURCE_CONSTRAINT_PREFIX)
+                }
+                for b in bundles
+                if b.get("TPU", 0) > 0
+            ]
 
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}

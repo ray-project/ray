@@ -101,12 +101,13 @@ def test_slice_handle_placement_group_property():
 
 
 def test_slice_handle_ready():
-    """ready() should delegate to the underlying PlacementGroup."""
+    """ready() should delegate to the underlying PlacementGroup(s)."""
     mock_spg = MagicMock()
     mock_pg = MagicMock()
     mock_ready_ref = MagicMock()
     mock_pg.ready.return_value = mock_ready_ref
     mock_spg.placement_group = mock_pg
+    mock_spg.placement_groups = [mock_pg]
 
     handle = SlicePlacementGroupHandle(mock_spg)
     result = handle.ready()
@@ -116,15 +117,33 @@ def test_slice_handle_ready():
 
 
 def test_slice_handle_wait():
-    """wait() should delegate to the underlying PlacementGroup."""
+    """wait() should delegate to the underlying PlacementGroup(s)."""
     mock_spg = MagicMock()
     mock_pg = MagicMock()
     mock_pg.wait.return_value = True
     mock_spg.placement_group = mock_pg
+    mock_spg.placement_groups = [mock_pg]
 
     handle = SlicePlacementGroupHandle(mock_spg)
     assert handle.wait(timeout_seconds=10)
     mock_pg.wait.assert_called_once()
+
+
+def test_slice_handle_multi_slice_wait():
+    """wait() should wait on all underlying PlacementGroups for multi-slice TPUs."""
+    mock_spg = MagicMock()
+    mock_pg1 = MagicMock()
+    mock_pg2 = MagicMock()
+    mock_pg1.wait.return_value = True
+    mock_pg2.wait.return_value = True
+    mock_spg.placement_group = mock_pg1
+    mock_spg.placement_groups = [mock_pg1, mock_pg2]
+
+    handle = SlicePlacementGroupHandle(mock_spg)
+    assert handle.placement_groups == [mock_pg1, mock_pg2]
+    assert handle.wait(timeout_seconds=10)
+    mock_pg1.wait.assert_called_once()
+    mock_pg2.wait.assert_called_once()
 
 
 def test_slice_handle_shutdown():

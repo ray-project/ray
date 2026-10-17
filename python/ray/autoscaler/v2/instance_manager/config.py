@@ -127,6 +127,8 @@ class NodeTypeConfig:
     min_worker_nodes: int
     # The maximal number of worker nodes can be launched for this node type.
     max_worker_nodes: int
+    # The number of worker hosts launched atomically per replica/unit for this node type.
+    num_of_hosts: int = 1
     # Idle timeout seconds for worker nodes of this node type.
     idle_timeout_s: Optional[float] = None
     # The priority of the worker group. Higher value means the group will be scaled up first if everything else is equal.
@@ -143,6 +145,7 @@ class NodeTypeConfig:
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
         assert self.min_worker_nodes >= 0
+        assert self.num_of_hosts >= 1
 
 
 class AutoscalingConfig:
@@ -352,6 +355,7 @@ class AutoscalingConfig:
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
                 max_worker_nodes=max_workers_nodes,
+                num_of_hosts=node_config.get("num_of_hosts", 1),
                 idle_timeout_s=node_config.get("idle_timeout_s", None),
                 priority=node_config.get("priority", 0),
                 resources=node_config.get("resources", {}),
