@@ -103,15 +103,11 @@ class OrcDatasourceV2(FileDataSourceV2):
             OnlineBinPacker,
         )
 
-        max_bin_bytes = env_integer(
-            "RAY_DATA_ORC_BIN_PACKING_BYTES", 128 * MiB
-        )
+        max_bin_bytes = env_integer("RAY_DATA_ORC_BIN_PACKING_BYTES", 128 * MiB)
         max_shared_open_bins = env_integer(
             "RAY_DATA_ORC_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )
-        split_coalesced = env_bool(
-            "RAY_DATA_ORC_FOOTER_SPLIT_COALESCED", False
-        )
+        split_coalesced = env_bool("RAY_DATA_ORC_FOOTER_SPLIT_COALESCED", False)
         logger.debug(
             "ORC OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
             "split_coalesced=%s)",
@@ -177,9 +173,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         return schema
 
     @override
-    def resolve_partitioning(
-        self, sample: FileManifest | None
-    ) -> Partitioning | None:
+    def resolve_partitioning(self, sample: FileManifest | None) -> Partitioning | None:
         if self._partitioning is None or sample is None or len(sample) == 0:
             return copy.deepcopy(self._partitioning)
         if self._partitioning.field_names:
