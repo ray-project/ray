@@ -1,4 +1,12 @@
+import os
+from pathlib import Path
+
 import yaml
+
+from ray._private.authentication.authentication_token_setup import (
+    _get_default_token_path,
+)
+from ray._private.authentication.authentication_utils import is_token_auth_enabled
 
 GRAFANA_INI_TEMPLATE = """
 [security]
@@ -61,3 +69,44 @@ scrape_configs:
   - files:
     - '{prom_metrics_service_discovery_file_path}'
 """
+
+# Indented to sit inside the 'ray' scrape job of PROMETHEUS_YML_TEMPLATE.
+PROMETHEUS_AUTHORIZATION_TEMPLATE = """  authorization:
+    type: Bearer
+    credentials_file: '{credentials_file}'
+"""
+
+
+def get_prometheus_authorization_config() -> str:
+    """Get the authorization block for the 'ray' scrape job.
+
+    Prometheus reads the token from RAY_AUTH_TOKEN_PATH if set, else from
+    ~/.ray/auth_token, so Ray never writes another copy of the token.
+
+    Returns:
+        The YAML block to append to PROMETHEUS_YML_TEMPLATE, or "" when token
+        auth is off.
+
+    Raises:
+        ValueError: Token auth is on but the token in use isn't in that file.
+    """
+    if not is_token_auth_enabled():
+        return ""
+    token_path = os.path.abspath(
+        os.environ.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
+    )
+    # RAY_AUTH_TOKEN takes precedence over any file, so the file must hold it.
+    env_token = os.environ.get("RAY_AUTH_TOKEN", "").strip()
+    read_error = ""
+    try:
+        file_token = Path(token_path).read_text().strip()
+    except (OSError, UnicodeDecodeError) as e:
+        file_token, read_error = "", f" ({e})"
+    if not file_token or (env_token and file_token != env_token):
+        raise ValueError(
+            "Token authentication is enabled, but Prometheus can only read the "
+            f"token from a file and {token_path} doesn't hold the token in use"
+            f"{read_error}. "
+            "Put the token in a file and set RAY_AUTH_TOKEN_PATH to its path."
+        )
+    return PROMETHEUS_AUTHORIZATION_TEMPLATE.format(credentials_file=token_path)
