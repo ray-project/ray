@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional
+from collections.abc import Callable
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
@@ -22,13 +23,13 @@ if TYPE_CHECKING:
 @PublicAPI(stability="stable")
 @requires_train_worker(raise_in_tune_session=True)
 def report(
-    metrics: Dict[str, Any],
+    metrics: dict[str, Any],
     checkpoint: Optional["Checkpoint"] = None,
-    checkpoint_dir_name: Optional[str] = None,
+    checkpoint_dir_name: str | None = None,
     checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
-    delete_local_checkpoint_after_upload: Optional[bool] = None,
-    checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
-    validation: Union[bool, ValidationTaskConfig] = False,
+    delete_local_checkpoint_after_upload: bool | None = None,
+    checkpoint_upload_fn: Callable[["Checkpoint", str], "Checkpoint"] | None = None,
+    validation: bool | ValidationTaskConfig = False,
 ):
     """Report metrics and optionally save a checkpoint.
 
@@ -243,8 +244,8 @@ def get_checkpoint() -> Optional["Checkpoint"]:
 @requires_train_worker()
 def get_all_reported_checkpoints(
     consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-    timeout_s: Optional[float] = None,
-) -> List["ReportedCheckpoint"]:
+    timeout_s: float | None = None,
+) -> list["ReportedCheckpoint"]:
     """Get all the reported checkpoints so far.
 
     Blocks until Ray Train has finished processing every in-flight `ray.train.report` call.
@@ -299,7 +300,7 @@ def get_all_reported_checkpoints(
 
 @PublicAPI(stability="stable")
 @requires_train_worker()
-def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataIterator"]:
+def get_dataset_shard(dataset_name: str | None = None) -> Optional["DataIterator"]:
     """Returns the :class:`ray.data.DataIterator` shard for this worker.
 
     Call :meth:`~ray.data.DataIterator.iter_torch_batches` or

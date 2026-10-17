@@ -1,6 +1,7 @@
 import warnings
 from functools import partial
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import TYPE_CHECKING, Optional, TypeVar
+from collections.abc import Callable
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -82,13 +83,13 @@ from ray.data.datasource.file_datasink import _FileDatasink
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
 PlanLogicalOpFn = Callable[
-    [LogicalOperatorType, List[PhysicalOperator], DataContext], PhysicalOperator
+    [LogicalOperatorType, list[PhysicalOperator], DataContext], PhysicalOperator
 ]
 
 
 def plan_input_data_op(
     logical_op: InputData,
-    physical_children: List[PhysicalOperator],
+    physical_children: list[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     """Get the corresponding DAG of physical operators for InputData."""
@@ -102,7 +103,7 @@ def plan_input_data_op(
 
 def plan_from_op(
     op: AbstractFrom,
-    physical_children: List[PhysicalOperator],
+    physical_children: list[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 0
@@ -146,7 +147,7 @@ _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER = 3
 
 def _plan_join_shuffle_v2(
     logical_op: Join,
-    physical_children: List[PhysicalOperator],
+    physical_children: list[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     left_keys = list(logical_op.left_key_columns)
@@ -190,9 +191,9 @@ def _plan_join_shuffle_v2(
     )
     reduce_kwargs = {}
     if data_context.use_disk_based_hash_shuffle:
-        reduce_kwargs[
-            "peak_memory_multiplier"
-        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        reduce_kwargs["peak_memory_multiplier"] = (
+            _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        )
     return reduce_cls(
         [left_map, right_map],
         data_context,
@@ -207,7 +208,7 @@ def _plan_join_shuffle_v2(
 
 def plan_join_op(
     logical_op: Join,
-    physical_children: List[PhysicalOperator],
+    physical_children: list[PhysicalOperator],
     data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 2
@@ -230,7 +231,7 @@ def plan_join_op(
 
 def plan_streaming_split_op(
     logical_op: StreamingSplit,
-    physical_children: List[PhysicalOperator],
+    physical_children: list[PhysicalOperator],
     data_context: DataContext,
 ):
     assert len(physical_children) == 1
@@ -280,7 +281,7 @@ class Planner:
 
     def plan(
         self, logical_plan: LogicalPlan
-    ) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
+    ) -> tuple[PhysicalPlan, list["ExecutionCallback"]]:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
 
@@ -358,7 +359,7 @@ class Planner:
 
     def _plan_recursively(
         self, logical_op: LogicalOperator, data_context: DataContext
-    ) -> Tuple[PhysicalOperator, Dict[PhysicalOperator, LogicalOperator]]:
+    ) -> tuple[PhysicalOperator, dict[PhysicalOperator, LogicalOperator]]:
         """Plan a logical operator and its input dependencies recursively.
 
         Args:
@@ -369,7 +370,7 @@ class Planner:
             A tuple of the physical operator corresponding to the logical operator, and
             a mapping from physical operators to logical operators.
         """
-        op_map: Dict[PhysicalOperator, LogicalOperator] = {}
+        op_map: dict[PhysicalOperator, LogicalOperator] = {}
 
         # Plan the input dependencies first.
         physical_children = []
@@ -443,9 +444,9 @@ class Planner:
 
     def _get_plan_fns_for_checkpointing(
         self,
-        data_file_dir: Optional[str] = None,
+        data_file_dir: str | None = None,
         data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
+    ) -> dict[type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
             Read: partial(
                 plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
@@ -479,8 +480,8 @@ class Planner:
 
 
 def find_plan_fn(
-    logical_op: LogicalOperator, plan_fns: Dict[Type[LogicalOperator], PlanLogicalOpFn]
-) -> Optional[PlanLogicalOpFn]:
+    logical_op: LogicalOperator, plan_fns: dict[type[LogicalOperator], PlanLogicalOpFn]
+) -> PlanLogicalOpFn | None:
     """Find the plan function for a logical operator.
 
     This function goes through the plan functions in order and returns the first one
