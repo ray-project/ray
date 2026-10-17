@@ -50,36 +50,43 @@ NodeSchedulingResult NodeLabelSchedulingPolicy::Schedule(
         FilterNodesByLabelMatchExpressions(hard_match_nodes, soft_expressions);
   }
 
-  return NodeSchedulingResult::Scheduled(
-      SelectBestNode(hard_match_nodes, hard_and_soft_match_nodes, resource_request));
+  return SelectBestNode(hard_match_nodes,
+                        hard_and_soft_match_nodes,
+                        resource_request,
+                        options.require_node_available_);
 }
 
-scheduling::NodeID NodeLabelSchedulingPolicy::SelectBestNode(
+NodeSchedulingResult NodeLabelSchedulingPolicy::SelectBestNode(
     const absl::flat_hash_map<scheduling::NodeID, const Node *> &hard_match_nodes,
     const absl::flat_hash_map<scheduling::NodeID, const Node *>
         &hard_and_soft_match_nodes,
-    const ResourceRequest &resource_request) {
+    const ResourceRequest &resource_request,
+    bool require_node_available) {
   // 1. Match hard&soft and available nodes.
   if (!hard_and_soft_match_nodes.empty()) {
     auto available_soft_nodes =
         SelectAvailableNodes(hard_and_soft_match_nodes, resource_request);
     if (!available_soft_nodes.empty()) {
-      return SelectRandomNode(available_soft_nodes);
+      return NodeSchedulingResult::Scheduled(SelectRandomNode(available_soft_nodes));
     }
   }
 
   // 2. Match hard and available nodes.
   auto available_nodes = SelectAvailableNodes(hard_match_nodes, resource_request);
   if (!available_nodes.empty()) {
-    return SelectRandomNode(available_nodes);
+    return NodeSchedulingResult::Scheduled(SelectRandomNode(available_nodes));
+  }
+
+  if (require_node_available) {
+    return NodeSchedulingResult::NoNodeAvailable();
   }
 
   // 3. Match hard&soft and feasible nodes.
   if (!hard_and_soft_match_nodes.empty()) {
-    return SelectRandomNode(hard_and_soft_match_nodes);
+    return NodeSchedulingResult::Scheduled(SelectRandomNode(hard_and_soft_match_nodes));
   }
   // 4. Match hard and feasible nodes.
-  return SelectRandomNode(hard_match_nodes);
+  return NodeSchedulingResult::Scheduled(SelectRandomNode(hard_match_nodes));
 }
 
 scheduling::NodeID NodeLabelSchedulingPolicy::SelectRandomNode(
