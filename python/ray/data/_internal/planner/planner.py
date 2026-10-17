@@ -191,9 +191,9 @@ def _plan_join_shuffle_v2(
     )
     reduce_kwargs = {}
     if data_context.use_disk_based_hash_shuffle:
-        reduce_kwargs[
-            "peak_memory_multiplier"
-        ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        reduce_kwargs["peak_memory_multiplier"] = (
+            _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER
+        )
     return reduce_cls(
         [left_map, right_map],
         data_context,

@@ -85,8 +85,9 @@ class Result(ResultV1):
         # Remove trailing slashes to handle paths correctly
         # os.path.basename() returns empty string for paths with trailing slashes
         fs_path = fs_path.rstrip("/")
-        storage_path, experiment_dir_name = os.path.dirname(fs_path), os.path.basename(
-            fs_path
+        storage_path, experiment_dir_name = (
+            os.path.dirname(fs_path),
+            os.path.basename(fs_path),
         )
 
         storage_context = StorageContext(
