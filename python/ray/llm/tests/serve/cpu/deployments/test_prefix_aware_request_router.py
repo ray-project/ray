@@ -47,7 +47,9 @@ def prefix_request_router(tree_actor, request):
         request_router = PrefixCacheAffinityRouter(
             deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=DeploymentHandleSource.REPLICA,
-            use_replica_queue_len_cache=False,
+            use_replica_queue_len_cache=params.get(
+                "use_replica_queue_len_cache", False
+            ),
             get_curr_time_s=TIMER.time,
         )
         return request_router
@@ -63,6 +65,7 @@ def prefix_request_router(tree_actor, request):
         eviction_target_chars=params.get("eviction_target_chars"),
         eviction_interval_secs=params.get("eviction_interval_secs"),
         tree_actor=tree_actor,
+        multiplex_spill_threshold=params.get("multiplex_spill_threshold", float("inf")),
     )
 
     yield request_router
@@ -83,7 +86,9 @@ class ChatRequest:
         self.messages = messages
 
 
-def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
+def fake_pending_request(
+    prompt=None, messages=None, multiplexed_model_id=""
+) -> PendingRequest:
     if prompt is not None:
         args = [PromptRequest(prompt)]
     elif messages is not None:
@@ -97,9 +102,18 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         metadata=RequestMetadata(
             request_id=generate_request_id(),
             internal_request_id=generate_request_id(),
-            multiplexed_model_id="",
+            multiplexed_model_id=multiplexed_model_id,
         ),
         created_at=time.time(),
+    )
+
+
+def record_routed(router, replica, prompt, multiplexed_model_id=""):
+    """Records a prompt as routed to a replica, as Serve does once it's accepted."""
+    router.on_request_routed(
+        fake_pending_request(prompt=prompt, multiplexed_model_id=multiplexed_model_id),
+        replica.replica_id,
+        result=None,
     )
 
 
@@ -252,6 +266,120 @@ class TestPrefixAwareLogic:
             assert (
                 await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
+
+    @pytest.mark.asyncio
+    async def test_multiplexed_request_matches_replicas_with_model(
+        self, prefix_request_router
+    ):
+        """Prefix matching uses the replicas that have the requested model."""
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello", multiplexed_model_id="m1")
+
+        # r1 has both the model and the prefix. r2 has the fewest models, the
+        # candidates a second apply_multiplex_routing call in one attempt returns.
+        req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
+        assert await prefix_request_router._choose_replica_for_request(req) == r1
+
+    @pytest.mark.asyncio
+    async def test_image_only_request_uses_smallest_tenant(self, prefix_request_router):
+        """A request without text, e.g. image-only messages, gets the smallest tenant."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello")
+
+        image = {"type": "image_url", "image_url": {"url": "https://example.com/a.png"}}
+        req = fake_pending_request(messages=[{"role": "user", "content": [image]}])
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+
+class TestMultiplexedRouting:
+    """Tests for multiplexed requests, e.g. ones for LoRA adapters."""
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_is_per_model(self, prefix_request_router):
+        """A prefix cached under one model doesn't count for another."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello world", "m1")
+
+        # Neither replica has the prompt cached for m2, so the one with less
+        # cached text is chosen.
+        req = fake_pending_request(prompt="hello world", multiplexed_model_id="m2")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+    @pytest.mark.asyncio
+    async def test_low_match_rate_uses_smallest_candidate(self, prefix_request_router):
+        """On a low match rate, the smallest tenant is picked among the candidates."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        r3 = FakeRunningReplica("r3")
+        r3.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2, r3])
+        record_routed(prefix_request_router, r1, "aaaa", "m1")
+        record_routed(prefix_request_router, r2, "bb", "m1")
+
+        # r3 has the least cached text but isn't a candidate.
+        req = fake_pending_request(prompt="zzzz", multiplexed_model_id="m1")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+    @pytest.mark.parametrize(
+        "prefix_request_router", [{"multiplex_spill_threshold": 10}], indirect=True
+    )
+    @pytest.mark.parametrize("r1_queue_len, spills", [(100, True), (5, False)])
+    @pytest.mark.asyncio
+    async def test_spills_from_busy_replica(
+        self, prefix_request_router, r1_queue_len, spills
+    ):
+        """A busy replica with the model spills to the least busy alternative."""
+        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r2 = FakeRunningReplica("r2")
+        prefix_request_router.update_replicas([r1, r2])
+        prefix_request_router._replica_queue_len_cache.update(
+            r1.replica_id, r1_queue_len
+        )
+        prefix_request_router._replica_queue_len_cache.update(r2.replica_id, 0)
+
+        # r2 has the fewest models loaded, so it's where r1's requests spill.
+        spill_replicas = prefix_request_router._get_spill_replicas([r1], [r1])
+        assert set(spill_replicas) == ({r2} if spills else set())
+
+    @pytest.mark.parametrize(
+        "prefix_request_router",
+        [{"multiplex_spill_threshold": 10, "use_replica_queue_len_cache": True}],
+        indirect=True,
+    )
+    @pytest.mark.asyncio
+    async def test_spill_reaches_replica_without_cached_queue_len(
+        self, prefix_request_router
+    ):
+        """A spilled request leaves the busy replica even if only it is cached."""
+        # Like Serve LLM's default max_ongoing_requests, the replicas never fill up.
+        r1 = FakeRunningReplica("r1", model_ids={"m1"}, max_ongoing_requests=1000)
+        r1.set_queue_len_response(100)
+        r2 = FakeRunningReplica("r2", max_ongoing_requests=1000)
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello", "m1")
+        # Replica selection prefers cached queue lengths, and only r1 has one.
+        prefix_request_router._replica_queue_len_cache.update(r1.replica_id, 100)
+
+        req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
+        assert await prefix_request_router._choose_replica_for_request(req) == r2
 
 
 class TestEvictionBehavior:
