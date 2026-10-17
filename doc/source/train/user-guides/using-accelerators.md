@@ -47,6 +47,8 @@ To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. Also 
 
 Each worker maps to one TPU VM host. The total number of workers must be a multiple of the number of hosts in a single slice. For example, a `v6e` TPU slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
 
+For PyTorch workloads using TorchTPU and {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device, and set `num_workers` to the total number of logical TPU devices across your slices. For TPU7x configuration, see {ref}`TPU7x configuration <kuberay-tpu7x-dual-chiplet>`.
+
 For details on how TPU topologies map to the number of hosts, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
 ```{testcode}
@@ -68,6 +70,15 @@ scaling_config = ScalingConfig(
     use_tpu=True,
     topology="4x4",
     accelerator_type="TPU-V6E",
+)
+
+# Single slice with TorchTPU: 16 device workers on a v6e 4x4 slice
+scaling_config = ScalingConfig(
+    num_workers=16,
+    use_tpu=True,
+    topology="4x4",
+    accelerator_type="TPU-V6E",
+    resources_per_worker={"TPU": 1},
 )
 ```
 :::
@@ -135,6 +146,47 @@ trainer = JaxTrainer(
         topology="4x4",
         accelerator_type="TPU-V6E",
     )
+)
+trainer.fit()
+```
+
+In Ray 2.58.0 and later, when you use `TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for TorchTPU, sets `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` via {meth}`ray.train.torch.get_device`:
+
+```{testcode}
+:skipif: True
+
+import torch
+import ray.train
+from ray.train import ScalingConfig
+from ray.train.torch import TorchTrainer, get_device, prepare_model
+
+
+def train_func():
+    device = get_device()
+    model = torch.nn.Linear(128, 10).to(device)
+    model = prepare_model(model)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+    inputs = torch.randn(32, 128, device=device)
+    targets = torch.randint(0, 10, (32,), device=device)
+
+    optimizer.zero_grad()
+    loss = torch.nn.functional.cross_entropy(model(inputs), targets)
+    loss.backward()
+    optimizer.step()
+
+    ray.train.report({"loss": loss.item()})
+
+
+trainer = TorchTrainer(
+    train_func,
+    scaling_config=ScalingConfig(
+        num_workers=16,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"TPU": 1},
+    ),
 )
 trainer.fit()
 ```
@@ -247,7 +299,7 @@ ScalingConfig(
 
 ### PyTorch: Set the communication backend
 
-PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default, Ray Train uses NCCL when `use_gpu=True` and Gloo otherwise.
+PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default, Ray Train uses NCCL when `use_gpu=True`, `tpu_dist` when `use_tpu=True`, and Gloo otherwise.
 
 To override the default, configure a {class}`~ray.train.torch.TorchConfig` and pass it to the {class}`~ray.train.torch.TorchTrainer`.
 

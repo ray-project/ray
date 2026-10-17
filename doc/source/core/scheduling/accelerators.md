@@ -93,6 +93,8 @@ See the [Amazon documentation](https://awslabs.github.io/data-on-eks/docs/ai-ml/
 :sync: Google TPU
 :::{tip}
 You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` lets Ray only see devices 1 and 3.
+
+By default, Ray registers one `TPU` resource per physical chip, such as `{"TPU": 4}` on a four-chip host. On TPU7x, where each physical chip contains two logical TPU chiplets, set `RAY_TPU_RESOURCE_PER_CHIP=2` and `--resources='{"TPU": 8}'` when running one process per logical device. For details, see {ref}`TPU7x configuration <kuberay-tpu7x-dual-chiplet>`.
 :::
 ::::
 
@@ -359,6 +361,8 @@ ray.get(tpu_task.remote())
 (tpu_task pid=51830) TPU IDs: [1]
 (tpu_task pid=51830) TPU_VISIBLE_CHIPS: 1
 ```
+
+When a task or actor requests a subset of a host's TPUs, Ray sets `TPU_VISIBLE_CHIPS` to the assigned physical chip indices and, for 1- or 2-chip allocations, sets `TPU_CHIPS_PER_HOST_BOUNDS` and `TPU_HOST_BOUNDS` to isolate the sub-host topology. When a task or actor requests all TPUs on the host, Ray clears `TPU_VISIBLE_CHIPS` and those sub-host bounds so the framework uses the full host. For multi-host slice scheduling, per-device execution, and MPMD workloads, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 :::
 
 :::{tab-item} Intel Gaudi
