@@ -378,7 +378,9 @@ async def test_candidate_model_ids_picks_first_warm(router):
 
     # Candidates ordered [alpha, beta, gamma]. Alpha has no warm replicas, so
     # beta is the first match and gets preferred.
-    request = _make_request(candidate_model_ids=["model-alpha", "model-beta", "model-gamma"])
+    request = _make_request(
+        candidate_model_ids=["model-alpha", "model-beta", "model-gamma"]
+    )
     ranks = await router.choose_replicas(replicas, request)
     assert _ranked_replica_unique_ids(ranks)[0] == ["r0"]
 
