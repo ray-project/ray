@@ -152,7 +152,11 @@ def test_repartition_e2e(
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
-        assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
+        rows = ds._block_num_rows()
+        if DataContext.get_current().use_disk_based_hash_shuffle:
+            assert sorted(rows, reverse=True) == [10] * 2 + [0] * (40 - 2), rows
+        else:
+            assert rows == [10] * 2 + [0] * (40 - 2), rows
     else:
         assert ds._block_num_rows() == [1] * 20 + [0] * 20, ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
@@ -169,7 +173,11 @@ def test_repartition_e2e(
             if DataContext.get_current().shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
             else [9, 9, 4, 0]
         )
-        assert ds._block_num_rows() == expected_block_num_rows, ds._block_num_rows()
+        rows = ds._block_num_rows()
+        if DataContext.get_current().use_disk_based_hash_shuffle:
+            assert sorted(rows, reverse=True) == expected_block_num_rows, rows
+        else:
+            assert rows == expected_block_num_rows, rows
     else:
         assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
