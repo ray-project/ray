@@ -555,7 +555,7 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
         The ``self`` object if it's a method call, else ``None``.
     """
     if len(args) > 0:
-        method = getattr(args[0], func.__name__, False)
+        method = getattr(args[0], func.__name__, None)
         if method and method is not func:
             try:
                 unwrapped = inspect.unwrap(method, stop=lambda f: f is func)
