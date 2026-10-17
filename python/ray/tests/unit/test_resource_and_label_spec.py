@@ -114,6 +114,8 @@ def test_resource_and_label_spec_resolves_auto_detect(monkeypatch):
     if sys.platform == "darwin":
         # Object store memory is capped at 2GB on macOS.
         expected_object_store = 2 * 1024**3
+    elif sys.platform == "win32":
+        expected_object_store = ray_constants.WINDOWS_DEFAULT_OBJECT_STORE_MEMORY_LIMIT
     else:
         # object_store_memory = 8GB * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
         expected_object_store = int(
