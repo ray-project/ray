@@ -81,8 +81,13 @@ class URICache:
             self._unused_uris.remove(uri)
 
         self._used_uris.add(uri)
+        # Track size delta to avoid double-counting when re-adding an already
+        # cached URI (either in _used_uris or _unused_uris).  Without this,
+        # re-adding would overwrite the stored size but keep the old amount
+        # in _total_size_bytes, corrupting the accounting.
+        old_size = self._sizes.get(uri, 0)
         self._sizes[uri] = size_bytes
-        self._total_size_bytes += size_bytes
+        self._total_size_bytes += size_bytes - old_size
 
         self._evict_if_needed(logger)
         self._check_valid()
