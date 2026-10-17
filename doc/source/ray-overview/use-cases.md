@@ -78,8 +78,8 @@ Learn more about model serving with the following resources.
 
 - [[Talk] Productionizing ML at Scale with Ray Serve](https://www.youtube.com/watch?v=UtH-CMpmxvI)
 - [[Blog] Simplify your MLOps with Ray & Ray Serve](https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve)
-- {doc}`[Guide] Getting Started with Ray Serve </serve/getting_started>`
-- {doc}`[Guide] Model Composition in Serve </serve/model_composition>`
+- {doc}`[Guide] Getting Started with Ray Serve </serve/getting-started>`
+- {doc}`[Guide] Model Composition in Serve </serve/model-composition>`
 - {doc}`[Gallery] Serve Examples Gallery </serve/examples>`
 - [[Gallery] More Serve Use Cases on the Blog](https://www.anyscale.com/blog?tag=ray_serve)
 
@@ -162,7 +162,7 @@ Read more about building ML platforms with Ray in {ref}`this section <ray-for-ml
 The following highlights examples utilizing Ray AI libraries to implement end-to-end ML workflows.
 
 - {doc}`[Example] Text classification with Ray </train/examples/transformers/huggingface-text-classification>`
-- {doc}`[Example] Object detection with Ray </train/examples/pytorch/torch-detection>`
+- {doc}`[Example] Object detection with Ray </_collections/ray-overview/examples/object-detection/README>`
 - {doc}`[Example] Machine learning on tabular data </_collections/ray-overview/examples/e2e-xgboost/README>`
 
 ## Large Scale Workload Orchestration

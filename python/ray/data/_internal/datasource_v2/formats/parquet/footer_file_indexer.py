@@ -16,6 +16,7 @@ import ray
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
+    _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
@@ -41,7 +42,7 @@ logger = logging.getLogger(__name__)
 # A pool of footer-reading actors spread across the cluster, provisioned once
 # per ``list_files`` call. Footer reads are network-bound, so several actors each
 # driving many concurrent reads keeps IO from bottlenecking on a single node.
-_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 32)
+_DEFAULT_NUM_ACTORS = env_integer("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", 8)
 _DEFAULT_IO_CONCURRENCY = env_integer("RAY_DATA_PARQUET_FOOTER_IO_CONCURRENCY", 128)
 # Files per ``read_footers`` call. Small footers -> batch several per task to
 # amortize the per-task and per-result object-store overhead.
@@ -174,6 +175,58 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         )
         # Whole files were dropped above; row-group ids are applied by the
         # footer reader once it knows each file's row groups.
+        yield from self._process_file_infos(
+            file_infos,
+            filesystem=filesystem,
+            preserve_order=preserve_order,
+            predicate=predicate,
+            limit=limit,
+            projected_columns=projected_columns,
+            excluded_read_unit_ids=excluded_read_unit_ids,
+        )
+
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        if excluded_read_unit_ids:
+            file_infos = (
+                info for info in file_infos if info.path not in excluded_read_unit_ids
+            )
+        if shuffle_config is not None:
+            file_infos = _shuffle_file_infos(
+                list(file_infos), seed=shuffle_config.get_seed(execution_idx)
+            )
+        yield from self._process_file_infos(
+            file_infos,
+            filesystem=filesystem,
+            preserve_order=preserve_order,
+            predicate=predicate,
+            limit=limit,
+            projected_columns=projected_columns,
+            excluded_read_unit_ids=excluded_read_unit_ids,
+        )
+
+    def _process_file_infos(
+        self,
+        file_infos: Iterable[FileInfo],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool,
+        predicate: Optional["Expr"],
+        limit: Optional[int],
+        projected_columns: Optional[List[str]],
+        excluded_read_unit_ids: Optional[AbstractSet[str]],
+    ) -> Iterator[FileManifest]:
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,

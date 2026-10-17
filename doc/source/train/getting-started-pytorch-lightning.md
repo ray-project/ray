@@ -13,7 +13,7 @@ This tutorial shows how to convert an existing PyTorch Lightning script to use R
 You learn how to do the following:
 
 1. Configure the Lightning `Trainer` to run distributed with Ray on the correct CPU or GPU device.
-1. Configure the {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
+1. Configure the {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
 1. Launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer`.
 
@@ -220,7 +220,7 @@ The following sections discuss each change.
 
 ### Configure the distributed strategy
 
-Ray Train offers several distributed strategies for Lightning, each a subclass of a Lightning base strategy. They accept the same arguments as their base strategy classes, and internally they configure the root device and the distributed sampler arguments. Choose from the following strategies:
+Ray Train offers several distributed strategies for Lightning, each a subclass of a Lightning base strategy. They accept the same arguments as their base strategy classes, and internally they configure the root device and the distributed sampler arguments. {class}`~ray.train.lightning.RayDDPStrategy` disables `process_group_backend`, `timeout`, and `start_method`. Set them in {class}`~ray.train.torch.TorchConfig` instead. Choose from the following strategies:
 
 - {class}`~ray.train.lightning.RayDDPStrategy`
 - {class}`~ray.train.lightning.RayFSDPStrategy`
@@ -287,9 +287,9 @@ Ray Train also provides a {class}`~ray.train.lightning.RayLightningEnvironment` 
 
 
 
-### Report checkpoints and metrics
+### Save checkpoints for fault tolerance
 
-To persist your checkpoints and monitor training progress, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
+To persist checkpoints so that training can recover from failures, add a {class}`ray.train.lightning.RayTrainReportCallback` utility callback to your Lightning `Trainer`.
 
 
 ```diff
@@ -374,7 +374,7 @@ After you convert your PyTorch Lightning training script to use Ray Train, explo
 
 ## Version compatibility
 
-The Ray project tests Ray Train with `pytorch_lightning` versions `1.6.5` and `2.1.2`. For full compatibility, use `pytorch_lightning>=1.6.5`. Earlier versions aren't prohibited but might cause unexpected issues. If you run into compatibility issues, consider upgrading your PyTorch Lightning version or [file an issue](https://github.com/ray-project/ray/issues).
+The Ray project tests Ray Train with `pytorch_lightning` versions `1.8.6` and `2.6.1`. For full compatibility, use `pytorch_lightning>=1.6.5`. Earlier versions aren't prohibited but might cause unexpected issues. If you run into compatibility issues, consider upgrading your PyTorch Lightning version or [file an issue](https://github.com/ray-project/ray/issues).
 
 :::{note}
 If you're using Lightning 2.x, use the import path `lightning.pytorch.xxx` instead of `pytorch_lightning.xxx`.
