@@ -141,20 +141,21 @@ def enable_token_auth_by_default() -> bool:
 def ensure_token_if_auth_enabled(
     system_config: Optional[Dict[str, Any]] = None, create_token_if_missing: bool = True
 ) -> None:
-    """Check authentication settings and set up token resources if authentication is enabled.
+    """Make sure a token is available when token authentication is enabled.
 
-    Ray calls this early during ray.init() to do the following for token-based authentication:
-    1. Check whether you enabled token-based authentication.
-    2. Make sure a token is available if authentication is enabled.
-    3. Generate and save a default token for new local clusters if one doesn't already exist.
+    ``Node(head=True)`` calls this with ``create_token_if_missing=True``, so every
+    head node creates the token if none exists. Paths that connect to an existing
+    cluster call it with ``create_token_if_missing=False``.
 
     Args:
         system_config: Ray raises an error if you set AUTH_MODE in system_config instead of the environment.
         create_token_if_missing: Generate a new token if one doesn't already exist.
 
     Raises:
-        RuntimeError: Ray raises this error if authentication is enabled but no token is found when connecting
-            to an existing cluster.
+        RuntimeError: AUTH_MODE is set in system_config instead of the
+            ``RAY_AUTH_MODE`` environment variable.
+        AuthenticationError: Token authentication is enabled, no token exists, and
+            ``create_token_if_missing`` is False.
     """
 
     # Check if you enabled token authentication.
