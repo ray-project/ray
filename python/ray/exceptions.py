@@ -601,7 +601,7 @@ class AuthenticationError(RayError, ConnectionError):
         help_text = ""
         if TOKEN_AUTH_FIX_MESSAGE not in self.message:
             help_text = " " + TOKEN_AUTH_FIX_MESSAGE
-        return self.message + "." + auth_mode_note + help_text
+        return self.message.rstrip(".") + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI

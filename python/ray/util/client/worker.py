@@ -362,6 +362,9 @@ class Worker:
             # Unrecoverable error -- These errors are specifically raised
             # by the server's application logic
             return False
+        if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+            # A rejected token stays rejected; retrying can't fix it.
+            return False
         if e.code() == grpc.StatusCode.INTERNAL:
             details = e.details()
             if details == "Exception serializing request!":
@@ -385,6 +388,8 @@ class Worker:
                 if self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise AuthenticationError(e.details()) from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -433,6 +438,8 @@ class Worker:
                 if self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
+                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                    raise AuthenticationError(e.details()) from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise

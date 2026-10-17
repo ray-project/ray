@@ -946,14 +946,14 @@ def _assert_connect_fails_naming_fix(
     entry_point: str, cluster_info: dict, env_overrides: dict
 ):
     """Run a connecting entry point in a subprocess and check how it fails."""
-    # Drop the retry cap from the pre_envs fixture so the subprocess retries
-    # GCS connections as many times as a real node does.
     env = {
         k: v
         for k, v in os.environ.items()
-        if k
-        not in ("RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH", "RAY_NUM_REDIS_GET_RETRIES")
+        if k not in ("RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
     }
+    # Replace the pre_envs fixture's cap of 2 GCS connect retries with 60, so code
+    # that retries a rejection takes about 60s, far above the bound below.
+    env["RAY_NUM_REDIS_GET_RETRIES"] = "60"
     env.update(env_overrides)
     start = time.monotonic()
     result = subprocess.run(
@@ -970,40 +970,30 @@ def _assert_connect_fails_naming_fix(
     assert "ray get-auth-token" in output, output
     assert "RAY_AUTH_MODE=disabled" in output, output
     assert "--generate" not in output, output
-    # Connection retries take 20s or more; a rejection must not wait them out.
-    assert elapsed_s < 15, f"{entry_point} took {elapsed_s:.0f}s to fail: {output}"
+    # Retrying takes about 60s for GCS and 31s for ray://; failing fast takes ~1s.
+    assert elapsed_s < 20, f"{entry_point} took {elapsed_s:.0f}s to fail: {output}"
 
 
 @pytest.mark.skipif(
     client_test_enabled(),
     reason="Runs connecting entry points in subprocesses",
 )
-@pytest.mark.parametrize("entry_point", ["ray_start", "ray_init", "ray_client"])
-def test_connect_without_token_names_fix(entry_point, token_cluster_with_client_server):
-    _assert_connect_fails_naming_fix(
-        entry_point, token_cluster_with_client_server, {"RAY_AUTH_MODE": "token"}
-    )
-
-
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Runs connecting entry points in subprocesses",
-)
-@pytest.mark.parametrize("entry_point", ["ray_start", "ray_init", "ray_client"])
 @pytest.mark.parametrize(
     "env_overrides",
     [
+        {"RAY_AUTH_MODE": "token"},
         {"RAY_AUTH_MODE": "disabled"},
         {"RAY_AUTH_MODE": "token", "RAY_AUTH_TOKEN": "b" * 64},
     ],
-    ids=["auth_disabled", "wrong_token"],
+    ids=["no_token", "auth_disabled", "wrong_token"],
 )
 def test_rejected_connect_fails_fast_naming_fix(
-    entry_point, env_overrides, token_cluster_with_client_server
+    env_overrides, token_cluster_with_client_server
 ):
-    _assert_connect_fails_naming_fix(
-        entry_point, token_cluster_with_client_server, env_overrides
-    )
+    for entry_point in ["ray_start", "ray_init", "ray_client"]:
+        _assert_connect_fails_naming_fix(
+            entry_point, token_cluster_with_client_server, env_overrides
+        )
 
 
 @pytest.mark.skipif(

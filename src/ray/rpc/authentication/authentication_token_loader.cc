@@ -47,8 +47,8 @@ constexpr const char *kNoTokenErrorMessage =
     "To connect to a cluster with token authentication, run `ray get-auth-token` "
     "on the head node and copy the token to ~/.ray/auth_token on this machine, "
     "or to a file that RAY_AUTH_TOKEN_PATH points to. If the cluster was started "
-    "with RAY_AUTH_MODE=disabled, set RAY_AUTH_MODE=disabled here too. For more "
-    "information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html";
+    "with RAY_AUTH_MODE=disabled, set RAY_AUTH_MODE=disabled here too. See "
+    "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
