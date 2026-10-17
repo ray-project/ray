@@ -195,6 +195,10 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         wait for the download to finish. Once the download finishes, all processes
         receive the same local directory to read from.
 
+        When ``path`` is omitted, subsequent calls reuse the completed temporary
+        download for this checkpoint until that directory is removed. Treat this
+        shared temporary directory as read-only.
+
         Args:
             path: Target directory to download data to. If not specified,
                 this method will use a temporary directory.
@@ -207,6 +211,23 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
             path if user_provided_path else self._get_temporary_checkpoint_dir()
         )
         local_path = os.path.normpath(os.path.expanduser(str(local_path)))
+
+        if not user_provided_path:
+            with TempFileLock(local_path, timeout=-1):
+                if not os.path.exists(local_path):
+                    # Publish only completed downloads. A later reader must not
+                    # overwrite files already in use or reuse a partial download.
+                    with tempfile.TemporaryDirectory(
+                        dir=os.path.dirname(local_path)
+                    ) as staging_path:
+                        _download_from_fs_path(
+                            fs=self.filesystem,
+                            fs_path=self.path,
+                            local_path=staging_path,
+                        )
+                        os.replace(staging_path, local_path)
+            return local_path
+
         os.makedirs(local_path, exist_ok=True)
 
         try:

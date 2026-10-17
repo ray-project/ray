@@ -1,5 +1,8 @@
 import os
+import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 
 import pyarrow.fs
 import pytest
@@ -12,7 +15,11 @@ from ray.train._checkpoint import (
     _get_del_lock_path,
     _list_existing_del_locks,
 )
-from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
+from ray.train._internal.storage import (
+    _download_from_fs_path,
+    _exists_at_fs_path,
+    _upload_to_fs_path,
+)
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
 
 _CHECKPOINT_CONTENT_FILE = "dummy.txt"
@@ -70,6 +77,60 @@ def test_to_directory_with_user_specified_path(checkpoint: Checkpoint, tmp_path)
     assert checkpoint_path.name == "special_dir"
 
 
+def test_to_directory_reuses_completed_download(checkpoint: Checkpoint):
+    with mock.patch(
+        "ray.train._checkpoint._download_from_fs_path", wraps=_download_from_fs_path
+    ) as download:
+        first_path = checkpoint.to_directory()
+        second_path = checkpoint.to_directory()
+        assert download.call_count == 1
+
+        # The cache may be removed by as_directory cleanup or the caller.
+        shutil.rmtree(first_path)
+        assert checkpoint.to_directory() == first_path
+
+    assert first_path == second_path
+    assert (Path(second_path) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
+    assert download.call_count == 2
+
+
+def test_to_directory_concurrent_readers(checkpoint: Checkpoint):
+    with mock.patch(
+        "ray.train._checkpoint._download_from_fs_path", wraps=_download_from_fs_path
+    ) as download:
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            paths = list(pool.map(lambda _: checkpoint.to_directory(), range(8)))
+
+    assert len(set(paths)) == 1
+    assert (Path(paths[0]) / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
+    assert download.call_count == 1
+
+
+def test_to_directory_retries_failed_download(checkpoint: Checkpoint):
+    def fail_download(fs, fs_path, local_path):
+        Path(local_path).mkdir(parents=True, exist_ok=True)
+        (Path(local_path) / _CHECKPOINT_CONTENT_FILE).write_text("partial")
+        raise RuntimeError("download failed")
+
+    with mock.patch(
+        "ray.train._checkpoint._download_from_fs_path", side_effect=fail_download
+    ):
+        with pytest.raises(RuntimeError, match="download failed"):
+            checkpoint.to_directory()
+
+    assert not Path(checkpoint._get_temporary_checkpoint_dir()).exists()
+    checkpoint_path = Path(checkpoint.to_directory())
+    assert (checkpoint_path / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
+
+
+def test_to_directory_refreshes_explicit_destination(checkpoint: Checkpoint, tmp_path):
+    destination = tmp_path / "destination"
+    checkpoint.to_directory(destination)
+    (destination / _CHECKPOINT_CONTENT_FILE).write_text("changed")
+    checkpoint.to_directory(destination)
+    assert (destination / _CHECKPOINT_CONTENT_FILE).read_text() == "dummy"
+
+
 def test_multiprocess_to_directory(checkpoint: Checkpoint):
     """Test the case where multiple processes are trying to checkpoint.
 
@@ -81,12 +142,18 @@ def test_multiprocess_to_directory(checkpoint: Checkpoint):
         pytest.skip("Mock filesystem cannot be pickled for use with Ray.")
 
     @ray.remote
-    def download_checkpoint(checkpoint: Checkpoint) -> str:
-        return checkpoint.to_directory()
+    def download_checkpoint(checkpoint: Checkpoint):
+        with mock.patch(
+            "ray.train._checkpoint._download_from_fs_path", wraps=_download_from_fs_path
+        ) as download:
+            path = checkpoint.to_directory()
+        return path, download.call_count
 
-    paths = [ray.get(download_checkpoint.remote(checkpoint)) for _ in range(5)]
+    results = [ray.get(download_checkpoint.remote(checkpoint)) for _ in range(5)]
+    paths, download_counts = zip(*results)
     # Check that all the paths are the same (no duplicates).
     assert len(set(paths)) == 1
+    assert download_counts == (1, 0, 0, 0, 0)
 
 
 def test_as_directory(checkpoint: Checkpoint):
