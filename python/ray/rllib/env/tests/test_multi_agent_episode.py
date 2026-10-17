@@ -523,6 +523,49 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode._hanging_rewards_end["agent_3"], 2.2)
         check(episode._hanging_rewards_begin["agent_5"], 1.0)
 
+    def test_add_env_step_new_agent_joining_as_last_agent_terminates(self):
+        # Reproduction from #66781: "a1" sends its first observation on the step
+        # "a0" terminates, and the env reports `__all__=False`. The episode must
+        # stay open and register "a1".
+        episode = MultiAgentEpisode(agent_module_ids={"a0": "p", "a1": "p"})
+        episode.add_env_reset(
+            observations={"a0": np.zeros(1, np.float32)}, infos={"a0": {}}
+        )
+        episode.add_env_step(
+            observations={
+                "a0": np.zeros(1, np.float32),
+                "a1": np.ones(1, np.float32),
+            },
+            actions={"a0": 0},
+            rewards={"a0": 1.0, "a1": 0.0},
+            infos={"a0": {}, "a1": {}},
+            terminateds={"a0": True, "__all__": False},
+            truncateds={"__all__": False},
+        )
+        self.assertFalse(episode.is_terminated)
+        self.assertEqual(episode.agent_ids, {"a0", "a1"})
+        self.assertFalse(episode.get_terminateds()["__all__"])
+
+        # A newcomer that is already done on its first observation does not keep
+        # the episode open: every agent is done, so Case 2 still terminates it
+        # even though the env reports `__all__=False`.
+        episode = MultiAgentEpisode(agent_module_ids={"a0": "p", "a1": "p"})
+        episode.add_env_reset(
+            observations={"a0": np.zeros(1, np.float32)}, infos={"a0": {}}
+        )
+        episode.add_env_step(
+            observations={
+                "a0": np.zeros(1, np.float32),
+                "a1": np.ones(1, np.float32),
+            },
+            actions={"a0": 0},
+            rewards={"a0": 1.0, "a1": 0.0},
+            infos={"a0": {}, "a1": {}},
+            terminateds={"a0": True, "a1": True, "__all__": False},
+            truncateds={"__all__": False},
+        )
+        self.assertTrue(episode.is_terminated)
+
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
         (
