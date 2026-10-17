@@ -158,6 +158,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
+            shutil.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
@@ -181,6 +182,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 disk=config.disk,
             )
         except Exception:
+            shutil.rmtree(root_dir, ignore_errors=True)
             self._image_manager.release_image(config.image, sandbox_id)
             raise
         run_args = self._build_run_command(config, root_dir, sandbox_id)
