@@ -902,6 +902,27 @@ Remote URIs support `.zip`, `.tar.gz`, `.tgz`, and `.tar.xz` archive formats. Su
 The `smart_open`, `boto3`, `google-cloud-storage`, `azure-storage-blob`, and `azure-identity` packages aren't installed by default, and specifying them in the `pip` section of your `runtime_env` isn't sufficient. The relevant packages must already be installed on all nodes of the cluster when Ray starts.
 :::
 
+## Download packages with Kerberos authentication
+
+To download `working_dir` or `py_modules` through a Kerberos-protected HttpFS gateway over HTTP or HTTPS, preinstall `smart_open[http]` and `requests-kerberos` on every node. Before starting Ray, provide an existing Kerberos credential cache through `KRB5CCNAME` or your system configuration. Configure the gateway hosts and set any enterprise CA bundle:
+
+```bash
+export RAY_RUNTIME_ENV_HTTP_KERBEROS_HOSTS=httpfs1.example.org,httpfs2.example.org
+export REQUESTS_CA_BUNDLE=/etc/company-ca/ca.pem
+```
+
+```python
+runtime_env = {
+    "working_dir": "https://httpfs1.example.org/webhdfs/v1/artifacts/code.zip?op=OPEN"
+}
+```
+
+Kerberos is disabled by default. The host list configures Kerberos for matching initial HTTP or HTTPS URLs. Use exact, comma-separated DNS names without ports or wildcards. IP addresses and embedded URL credentials aren't supported. Combining Kerberos with `RAY_RUNTIME_ENV_BEARER_TOKEN` for the same download is an error. Over plain HTTP, Kerberos authenticates the gateway but neither encrypts nor integrity-protects the downloaded bytes. Use HTTPS when available.
+
+For HTTPS, use certificates with matching DNS subject alternative names (SANs). Standard certificate authority (CA), hostname, and Kerberos mutual authentication checks remain enabled. Redirects retain the libraries' default behavior. The host list isn't a redirect allowlist. Use a direct HttpFS download endpoint. Ray doesn't handle native WebHDFS delegation tokens.
+
+Each package uses one URL. The host list doesn't provide failover. A load-balanced endpoint can replace the individual gateway names, with its DNS name configured in the certificate SAN and HTTP Kerberos service principal. HttpFS/Hadoop and the load balancer handle availability. Ray doesn't acquire or renew tickets. Dependencies, credentials, and configuration must be available before package download. Setting them in `runtime_env["pip"]` or `runtime_env["env_vars"]` is too late.
+
 ## Hosting a dependency on a remote Git provider: Step-by-step guide
 
 You can store your dependencies in repositories on a remote Git provider, such as GitHub, Bitbucket, or GitLab, and periodically push changes to keep them updated. This section describes how to store a dependency on GitHub and use it in your runtime environment.
