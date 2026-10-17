@@ -199,7 +199,7 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     reading actors and hands the remaining ids to those actors."""
     import ray
 
-    path_a, size_a = _write_file(tmp_path / "a.parquet")
+    path_a, _size_a = _write_file(tmp_path / "a.parquet")
     path_b, size_b = _write_file(tmp_path / "b.parquet")
     excluded = {path_a, _row_group_unit_id(path_b, 0)}
     actor_kwargs = []

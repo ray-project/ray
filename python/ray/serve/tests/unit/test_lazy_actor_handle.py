@@ -396,7 +396,7 @@ class TestCacheThreadSafety:
             try:
                 h = info.get_actor_handle()
                 assert h is fake
-            except Exception as e:  # pragma: no cover - safety net
+            except Exception as e:  # noqa: BLE001 - pragma: no cover - safety net
                 errors.append(e)
 
         with patch("ray.get_actor", side_effect=counting_get_actor):
