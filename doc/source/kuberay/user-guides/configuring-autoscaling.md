@@ -389,6 +389,7 @@ workerGroupSpecs:
   minReplicas: 0
   maxReplicas: 5
   resources:
+    GPU: "1"
     "accelerator_type:A10G": "1"
   # Retain your existing Pod template.
 ```
