@@ -10,7 +10,7 @@ import time
 import traceback
 from collections import Counter
 from dataclasses import asdict
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -41,7 +41,7 @@ from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.sdk import get_cluster_resource_state
-from ray.core.generated import gcs_pb2
+from ray.core.generated import autoscaler_pb2
 from ray.core.generated.autoscaler_pb2 import NodeStatus
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
@@ -62,46 +62,36 @@ logger = logging.getLogger(__name__)
 
 
 def parse_resource_demands(
-    resource_load_by_shape: "gcs_pb2.ResourceLoad",
-) -> Tuple[List[Dict], List[Dict]]:
-    """Handle the message.resource_load_by_shape protobuf for the demand
-    based autoscaling. Catch and log all exceptions so this doesn't
-    interfere with the utilization based autoscaler until we're confident
-    this is stable. Worker queue backlogs are added to the appropriate
-    resource demand vector.
+    pending_resource_requests: Iterable["autoscaler_pb2.ResourceRequestByCount"],
+) -> List[Dict]:
+    """Flatten the cluster_resource_state.pending_resource_requests protobuf
+    into a bundle-per-request demand vector. Catch and log all exceptions so
+    this doesn't interfere with the utilization based autoscaler until we're
+    confident this is stable.
 
     Args:
-        resource_load_by_shape: The resource demands in protobuf form or None.
+        pending_resource_requests: The per-shape pending resource request
+            counts from ClusterResourceState.
 
     Returns:
-        Tuple of (Waiting bundles both ready and feasible, and Infeasible bundles).
+        The pending demand, one dict per requested bundle.
     """
-    waiting_bundles, infeasible_bundles = [], []
+    demand_bundles = []
     try:
-        for resource_demand_pb in list(resource_load_by_shape.resource_demands):
-            request_shape = dict(resource_demand_pb.shape)
-            for _ in range(resource_demand_pb.num_ready_requests_queued):
-                waiting_bundles.append(request_shape)
-            for _ in range(resource_demand_pb.num_infeasible_requests_queued):
-                infeasible_bundles.append(request_shape)
-
-            # Infeasible and ready states for tasks are (logically)
-            # mutually exclusive.
-            if resource_demand_pb.num_infeasible_requests_queued > 0:
-                backlog_queue = infeasible_bundles
-            else:
-                backlog_queue = waiting_bundles
-            for _ in range(resource_demand_pb.backlog_size):
-                backlog_queue.append(request_shape)
-            if (
-                len(waiting_bundles + infeasible_bundles)
-                > AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-            ):
-                break
+        for request_by_count in pending_resource_requests:
+            request_shape = dict(request_by_count.request.resources_bundle)
+            # Cap each shape's own contribution rather than the running
+            # total, so a single shape with a huge backlog (e.g. demand for
+            # a resource no node type can ever provide) can't crowd out a
+            # different, smaller shape's demand from the vector.
+            count = min(
+                request_by_count.count, AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+            )
+            demand_bundles.extend([request_shape] * count)
     except Exception:
         logger.exception("Failed to parse resource demands.")
 
-    return waiting_bundles, infeasible_bundles
+    return demand_bundles
 
 
 # Readonly provider config (e.g., for laptop mode, manually setup clusters).
@@ -251,17 +241,8 @@ class Monitor:
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
-        # TODO(jinbum-kim): Still needed since some fields aren't in cluster_resource_state.
-        # Remove after v1 autoscaler fully migrates to get_cluster_resource_state().
-        # ref: https://github.com/ray-project/ray/pull/57130
-        response = self.gcs_client.get_all_resource_usage(timeout=60)
-        resources_batch_data = response.resource_usage_data
-        log_resource_batch_data_if_desired(resources_batch_data)
-
-        # This is a workaround to get correct idle_duration_ms
-        # from "get_cluster_resource_state"
-        # ref: https://github.com/ray-project/ray/pull/48519#issuecomment-2481659346
         cluster_resource_state = get_cluster_resource_state(self.gcs_client)
+        log_resource_batch_data_if_desired(cluster_resource_state)
         # Dead raylets are included in cluster_resource_state (for v2). Skip
         # them so they cannot overwrite live LoadMetrics by IP or appear as
         # active in the readonly provider (ray status).
@@ -282,12 +263,17 @@ class Monitor:
                 new_nodes.append((node_id, msg.node_ip_address))
             self.autoscaler.provider._set_nodes(new_nodes)
 
-        waiting_bundles, infeasible_bundles = parse_resource_demands(
-            resources_batch_data.resource_load_by_shape
+        waiting_bundles = parse_resource_demands(
+            cluster_resource_state.pending_resource_requests
         )
+        # GCS no longer distinguishes feasible from infeasible demand for
+        # this RPC; infeasibility is determined independently downstream
+        # against the configured node types (see
+        # StandardAutoscaler._report_pending_infeasible).
+        infeasible_bundles: List[Dict] = []
 
         pending_placement_groups = list(
-            resources_batch_data.placement_group_load.placement_group_data
+            cluster_resource_state.placement_group_load.placement_group_data
         )
 
         mirror_node_types = {}
@@ -613,11 +599,11 @@ class Monitor:
 
 
 def log_resource_batch_data_if_desired(
-    resources_batch_data: gcs_pb2.ResourceUsageBatchData,
+    cluster_resource_state: autoscaler_pb2.ClusterResourceState,
 ) -> None:
     if os.getenv("AUTOSCALER_LOG_RESOURCE_BATCH_DATA") == "1":
         logger.info("Logging raw resource message pulled from GCS.")
-        logger.info(resources_batch_data)
+        logger.info(cluster_resource_state)
         logger.info("Done logging raw resource message.")
 
 
