@@ -338,6 +338,66 @@ Classification models differ in the following ways:
 - Use direct `prompt` input instead of `messages`.
 - Access classification logits through `row["embeddings"]`.
 
+(sglang_score)=
+
+## Score items against a query with SGLang
+
+{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` supports `task_type="score"`, which wraps SGLang's score API. Each row holds one `query` and a list of `items`. For every item, the engine returns the probabilities of `label_token_ids` appearing after the `query + item` sequence. Sequence-classification models return their class logits instead, and don't need `label_token_ids`.
+
+Set `enable_mis=True` in `engine_kwargs` to turn on SGLang's multi-item scoring (MIS). MIS packs the query and all of a row's items into one delimited sequence and scores them in a single forward pass, instead of running one pass for each item. MIS requires the FlashInfer attention backend.
+
+```python
+import ray
+from transformers import AutoTokenizer
+from ray.data.llm import SGLangEngineProcessorConfig, build_processor
+
+model = "Qwen/Qwen2.5-7B-Instruct"
+tokenizer = AutoTokenizer.from_pretrained(model)
+label_token_ids = [
+    tokenizer.encode(word, add_special_tokens=False)[0] for word in ("Yes", "No")
+]
+
+config = SGLangEngineProcessorConfig(
+    model_source=model,
+    task_type="score",
+    engine_kwargs=dict(enable_mis=True, attention_backend="flashinfer"),
+    score_options=dict(label_token_ids=label_token_ids, apply_softmax=True),
+    batch_size=16,
+    concurrency=1,
+)
+processor = build_processor(config)
+
+ds = ray.data.from_items(
+    [
+        {
+            "query": "Is this city the capital of France? ",
+            "items": ["Paris", "London", "Berlin"],
+        }
+    ]
+)
+ds = processor(ds)
+for row in ds.take_all():
+    # One [p_yes, p_no] list per item, in item order.
+    print(row["scores"])
+```
+
+Keep the following in mind when you use the score task:
+
+- The tokenize stage turns the `query` and `items` text into `query_token_ids` and `item_token_ids`. To pass token IDs yourself, set `tokenize_stage=False` and provide those two columns.
+- The processor always disables the chat template and detokenize stages for scoring.
+- `score_options` applies to the whole run. MIS ignores `item_first`, so setting both raises an error when you build the processor.
+- Read scores from `row["scores"]`, which is aligned to `items` by position. This output differs from vLLM's `task_type="score"`, which scores a single prompt and writes `embeddings`.
+
+### Override token embeddings
+
+To replace token embeddings with precomputed vectors, such as user or item features:
+
+1. Put a marker token in the `query` or `items` text, for example `"<|vision_pad|>"`. The marker must tokenize to a single token.
+2. Set `score_options["embed_override_token"]` to the marker. The processor resolves it to a token ID when you build it.
+3. Add a `query_embed_overrides` or `item_embed_overrides` column. Shape each override as `[num_markers, hidden_dim]`; for `item_embed_overrides`, provide one entry, or `None`, per item.
+
+The engine replaces the embedding at each marker position with the next vector from the override column. If you already know the marker's token ID, set `embed_override_token_id` instead.
+
 (openai_compatible_api_endpoint)=
 (openai-compatible-endpoints)=
 
