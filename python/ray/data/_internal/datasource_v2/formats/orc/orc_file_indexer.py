@@ -20,6 +20,7 @@ ORC files with a single stripe fall back to the whole-file representation
 shared :mod:`pyarrow.dataset` path. This keeps manifest cardinality low when
 stripe splitting buys nothing.
 """
+
 from __future__ import annotations
 
 import logging
