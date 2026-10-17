@@ -509,6 +509,103 @@ class TestHTTPProxy:
         )
 
     @pytest.mark.asyncio
+    async def test_builtin_app_health_skips_ongoing_requests(self):
+        """/{route_prefix}/-/healthz calls check_health and does not queue."""
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.set_ready_for_traffic()
+        handle = FakeHTTPHandle(messages=[])
+        called = {"n": 0}
+
+        async def check_ingress_health():
+            called["n"] += 1
+
+        async def remote(*args, **kwargs):
+            raise AssertionError("app health must not be routed as a user request")
+
+        handle.check_ingress_health = check_ingress_health
+        handle.remote = remote
+        http_proxy.proxy_router.route = "/app"
+        http_proxy.proxy_router.handle = handle
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="http",
+                    method="GET",
+                    path="/app/-/healthz",
+                    route_path="/app/-/healthz",
+                )
+            )
+        )
+
+        assert status.code == 200
+        assert status.is_error is False
+        assert called["n"] == 1
+        assert http_proxy._ongoing_requests == 0
+        self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
+
+    @pytest.mark.asyncio
+    async def test_builtin_app_health_failure_is_503(self):
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.set_ready_for_traffic()
+        handle = FakeHTTPHandle(messages=[])
+
+        async def check_ingress_health():
+            raise RuntimeError("down")
+
+        handle.check_ingress_health = check_ingress_health
+        http_proxy.proxy_router.route = "/app"
+        http_proxy.proxy_router.handle = handle
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="http",
+                    method="GET",
+                    path="/app/-/healthz",
+                    route_path="/app/-/healthz",
+                )
+            )
+        )
+
+        assert status.code == 503
+        assert status.is_error is True
+        assert http_proxy._ongoing_requests == 0
+        self._check_asgi_messages(messages, status_code=503, body="UNHEALTHY")
+
+    @pytest.mark.asyncio
+    async def test_system_healthz_does_not_call_app_check(self):
+        http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.set_ready_for_traffic()
+        handle = FakeHTTPHandle(messages=[])
+
+        async def check_ingress_health():
+            raise AssertionError("system health must not call check_health")
+
+        handle.check_ingress_health = check_ingress_health
+        http_proxy.proxy_router.route = "/"
+        http_proxy.proxy_router.handle = handle
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        status, messages = await _consume_proxy_generator(
+            http_proxy.proxy_request(
+                FakeProxyRequest(
+                    request_type="http",
+                    method="GET",
+                    path="/-/healthz",
+                    route_path="/-/healthz",
+                    is_health_request=True,
+                )
+            )
+        )
+
+        assert status.code == 200
+        assert http_proxy._ongoing_requests == 0
+        self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
+
+    @pytest.mark.asyncio
     async def test_not_found_response(self):
         """Test the response returned when a route is not found."""
         http_proxy = self.create_http_proxy()

@@ -1329,3 +1329,32 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         coro = self._router.broadcast(metadata, *args, **kwargs)
         return DeploymentBroadcastResponse(coro, self._router.event_loop)
+
+    async def check_ingress_health(self) -> None:
+        """Run ``check_health`` on one replica without request admission.
+
+        Used by the proxy for ``/{route_prefix}/-/healthz``. This does not
+        acquire a ``max_ongoing_requests`` slot and does not wait for replica
+        capacity.
+        """
+        if not self.is_initialized:
+            self._init()
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        check = getattr(self._router, "check_ingress_health", None)
+        if check is None:
+            raise RuntimeError("This handle cannot run an application health check.")
+
+        coro = check()
+        loop = self._router.event_loop
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+        if loop is None or loop is running:
+            await coro
+        else:
+            fut = asyncio.run_coroutine_threadsafe(coro, loop)
+            await asyncio.wrap_future(fut)

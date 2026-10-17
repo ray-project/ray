@@ -318,6 +318,19 @@ class RunningReplica:
         """When on proxy, push proxy's self handle to replica"""
         self._actor_handle.push_proxy_handle.remote(handle)
 
+    async def check_health(self) -> None:
+        """Run the replica ``check_health`` actor method.
+
+        This is not a user request: it does not reserve a slot and does not
+        count toward ``max_ongoing_requests``.
+        """
+        obj_ref = self._actor_handle.check_health.remote()
+        try:
+            await obj_ref
+        except asyncio.CancelledError:
+            ray.cancel(obj_ref)
+            raise
+
     async def get_queue_len(self, *, deadline_s: float) -> int:
         """Returns current queue len for the replica.
         `deadline_s` is passed to verify backoff for testing.

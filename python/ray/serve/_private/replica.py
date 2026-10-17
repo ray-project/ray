@@ -134,6 +134,7 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
+    is_builtin_app_health_path,
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
     parse_session_id_header,
@@ -3119,6 +3120,60 @@ class Replica:
         http_options = self._http_options
         return parse_request_timeout_header(headers, http_options.request_timeout_s)
 
+    async def _serve_builtin_app_health(
+        self,
+        route: str,
+        method: str,
+        send: Send,
+        start_time: float,
+    ) -> None:
+        """Answer the built-in app health route without taking a request slot.
+
+        Calls the replica ``check_health`` method (the same hook the controller
+        uses). Does not acquire ``max_ongoing_requests``.
+
+        Bounded by the deployment ``health_check_timeout_s``, the same timeout
+        the controller uses. A timeout is logged and returned as unhealthy.
+        """
+        if self._shutting_down:
+            healthy = False
+            message = "DRAINING"
+        else:
+            timeout_s = self._deployment_config.health_check_timeout_s
+            try:
+                await asyncio.wait_for(self.check_health(), timeout=timeout_s)
+                healthy = True
+                message = HEALTHY_MESSAGE
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Application health check timed out after {timeout_s}s."
+                )
+                healthy = False
+                message = "UNHEALTHY"
+            except Exception:
+                logger.warning("Application health check failed.", exc_info=True)
+                healthy = False
+                message = "UNHEALTHY"
+
+        status_code = 200 if healthy else 503
+        for msg in convert_object_to_asgi_messages(
+            message,
+            status_code=status_code,
+        ):
+            await send(msg)
+
+        latency_ms = (time.time() - start_time) * 1000.0
+        self._metrics_manager.record_ingress_request_metrics(
+            protocol=RequestProtocol.HTTP,
+            method=method,
+            route=route,
+            app_name=self._deployment_id.app_name,
+            deployment_name=self._deployment_id.name,
+            latency_ms=latency_ms,
+            is_error=not healthy,
+            status_code=str(status_code),
+        )
+
     async def _direct_ingress_asgi(
         self,
         scope: Scope,
@@ -3201,6 +3256,11 @@ class Replica:
                 is_error=True,
                 status_code=str(status_code),
             )
+            return
+
+        if is_builtin_app_health_path(route_prefix, route):
+            # Reserved path. Do not admit it through max_ongoing_requests.
+            await self._serve_builtin_app_health(route, method, send, start_time)
             return
 
         headers = dict(scope["headers"])

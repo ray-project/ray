@@ -407,6 +407,12 @@ class LocalRouter(Router):
             "Use assign_request instead."
         )
 
+    async def check_ingress_health(self) -> None:
+        """Run the local replica health check. Does not take a request slot."""
+        result = self._user_callable_wrapper.call_user_health_check()
+        if result is not None:
+            await result
+
     async def broadcast(
         self,
         request_meta: RequestMetadata,

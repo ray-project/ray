@@ -53,6 +53,8 @@ In this example, `check_health` raises an error if the connection to an external
 You shouldn't call ``check_health`` directly through a deployment handle (e.g., ``await deployment_handle.check_health.remote()``). This would invoke the health check on a single, arbitrary replica. The ``check_health`` method is designed as an interface for the Serve controller, not for direct user calls.
 :::
 
+When the application route prefix is not ``/``, ``GET {route_prefix}/-/healthz`` calls ``check_health`` on one running replica and does not take a ``max_ongoing_requests`` slot. Use that path for load balancer probes. A user route such as ``/healthz`` is ordinary application traffic and still counts toward the limit. The system route ``/-/healthz`` is unchanged: it reports proxy readiness and does not call ``check_health``. A route prefix of ``/`` has no separate application health path, because that string is already the system route.
+
 :::{note}
 In a composable deployment graph, each deployment is responsible for its own health, independent of the other deployments it's bound to. For example, in an application defined by ``app = ParentDeployment.bind(ChildDeployment.bind())``, ``ParentDeployment`` doesn't restart if ``ChildDeployment`` replicas fail their health checks. When the ``ChildDeployment`` replicas recover, the handle in ``ParentDeployment`` updates automatically to route requests to the healthy replicas.
 :::
