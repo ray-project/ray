@@ -363,6 +363,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         self._metrics.on_output_dequeued(bundle)
         return bundle
 
+    @property
+    def is_blocking_materializing(self) -> bool:
+        return True
+
     def get_partition_bytes(self) -> Dict[int, int]:
         return dict(self._partition_bytes)
 
