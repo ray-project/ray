@@ -1204,6 +1204,19 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             len(pods_to_terminate) == 2
         ), "Expected all multi-host pods to be tracked by the provider."
 
+        # Partial slice deletion (only 1 of 2 hosts idle) must NOT scale down the
+        # active multi-host replica, and must report a TerminateNodeError so the
+        # InstanceManager transitions the instance back to RAY_RUNNING.
+        provider.terminate(ids=[pods_to_terminate[0]], request_id="term-partial")
+        assert f"rayclusters/{provider._cluster_name}" not in mock_client._patches
+        partial_errors = provider.poll_errors()
+        assert len(partial_errors) == 1
+        assert partial_errors[0].cloud_instance_id == pods_to_terminate[0]
+        assert partial_errors[0].request_id == "term-partial"
+        assert "Waiting for all hosts in the multi-host replica" in str(
+            partial_errors[0]
+        )
+
         # Terminate all pods in the group
         provider.terminate(ids=pods_to_terminate, request_id="term-multi")
 
@@ -1225,6 +1238,73 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                 },
             },
         ]
+
+    def test_scale_up_with_multi_host_group(self):
+        """Verify that launching a single TPU head node or multi-slice workers
+        correctly updates the multi-host worker group's replica count and caps
+        at maxReplicas.
+        """
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            gcs_client=MagicMock(),
+            k8s_api_client=mock_client,
+        )
+
+        # 1. Requesting 1 node (e.g. a TPU-v4-16-head placement group) on a
+        # multi-host group with numOfHosts=2 and replicas=1 rounds up
+        # desired workers (2 + 2 = 4) to target_replicas=2.
+        provider.launch(shape={"tpu-group": 1}, request_id="launch-tpu-head")
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/2/replicas",
+                "value": 2,
+            },
+        ]
+        assert provider.poll_errors() == []
+
+        # 2. Requesting 4 worker nodes (2 additional slices of numOfHosts=2)
+        # increments target_replicas from 1 to 3.
+        provider.launch(shape={"tpu-group": 4}, request_id="launch-multi-slice")
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/2/replicas",
+                "value": 3,
+            },
+        ]
+        assert provider.poll_errors() == []
+
+        # 3. Requesting 7 worker nodes when replicas=1, numOfHosts=2, and
+        # maxReplicas=4 rounds desired workers up to 8 (target_replicas=5), caps
+        # target_replicas at 4 (launching 6 new workers), and rejects only the
+        # 1 unallocated requested node (excluding the 1-node rounding padding).
+        provider.launch(shape={"tpu-group": 7}, request_id="launch-capped")
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/2/replicas",
+                "value": 4,
+            },
+        ]
+        errors = provider.poll_errors()
+        assert len(errors) == 1
+        assert isinstance(errors[0], LaunchNodeError)
+        assert errors[0].node_type == "tpu-group"
+        assert errors[0].count == 1
+        assert errors[0].request_id == "launch-capped"
 
 
 if __name__ == "__main__":

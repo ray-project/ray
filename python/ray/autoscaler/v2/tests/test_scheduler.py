@@ -4115,6 +4115,1289 @@ class TestPrecomputeSerializeKeys:
         assert to_launch == {"type_1": 2}
 
 
+def test_tpu_multi_host_slice_atomic_idle_termination():
+    """Verify that multi-host TPU slices (nodes sharing ray.io/tpu-slice-name)
+    are only idle-terminated when all hosts in the slice are present and have
+    exceeded idle_timeout_s.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "tpu-v6e-8": NodeTypeConfig(
+            name="tpu-v6e-8",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+        ),
+    }
+
+    slice_labels = {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "2x4",
+        "ray.io/tpu-pod-type": "v6e-8",
+        "ray.io/tpu-slice-name": "tpu-v6e-8-0",
+    }
+
+    # Case 1: Worker 0 is busy (idle_duration_ms=0), Worker 1 is idle (60s > 45s).
+    # Neither host should be terminated.
+    instances_partial_busy = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 3},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"r0",
+                idle_duration_ms=0,
+                labels={**slice_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="i0",
+                node_id="r0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"r1",
+                idle_duration_ms=60000,
+                labels={**slice_labels, "ray.io/tpu-worker-id": "1"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="i1",
+                node_id="r1",
+            ),
+        ),
+    ]
+    reply = scheduler.schedule(
+        sched_request(
+            node_type_configs=node_type_configs,
+            instances=instances_partial_busy,
+            idle_timeout_s=45.0,
+        )
+    )
+    assert reply.to_terminate == []
+
+    # Case 2: Only 1 of the 2 expected hosts for a 2x4 slice (8 chips / 4 per host = 2)
+    # has registered so far and is idle > 45s. Must not terminate the booting slice.
+    reply_booting = scheduler.schedule(
+        sched_request(
+            node_type_configs=node_type_configs,
+            instances=[instances_partial_busy[1]],
+            idle_timeout_s=45.0,
+        )
+    )
+    assert reply_booting.to_terminate == []
+
+    # Case 3: Both Worker 0 and Worker 1 have exceeded idle_timeout_s (45s).
+    # Both hosts must be terminated atomically in the same pass.
+    instances_full_idle = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"r0",
+                idle_duration_ms=50000,
+                labels={**slice_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="i0",
+                node_id="r0",
+            ),
+        ),
+        instances_partial_busy[1],
+    ]
+    reply_full = scheduler.schedule(
+        sched_request(
+            node_type_configs=node_type_configs,
+            instances=instances_full_idle,
+            idle_timeout_s=45.0,
+        )
+    )
+    assert {t.instance_id for t in reply_full.to_terminate} == {"i0", "i1"}
+
+    # Case 4: 3D TPU7x topology (2x2x2 = 8 physical chips across 2 hosts) with
+    # RAY_TPU_RESOURCE_PER_CHIP=2 (TPU=8 per host). When only Worker 0 has
+    # registered, expected_hosts is still 2 (num_of_hosts=2), so it is not terminated.
+    v7x_node_type_configs = {
+        "tpu-v7x-16": NodeTypeConfig(
+            name="tpu-v7x-16",
+            resources={"CPU": 24, "TPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            labels={
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+            },
+        ),
+    }
+    v7x_worker0 = make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name="tpu-v7x-16",
+            available_resources={"CPU": 24, "TPU": 8},
+            total_resources={"CPU": 24, "TPU": 8},
+            node_id=b"v7x-0",
+            idle_duration_ms=60000,
+            labels={
+                "ray.io/accelerator-type": "TPU-V7X",
+                "ray.io/tpu-topology": "2x2x2",
+                "ray.io/tpu-pod-type": "v7x-16",
+                "ray.io/tpu-slice-name": "tpu7x-16-0",
+                "ray.io/tpu-worker-id": "0",
+            },
+        ),
+        im_instance=Instance(
+            instance_type="tpu-v7x-16",
+            status=Instance.RAY_RUNNING,
+            instance_id="v7x-i0",
+            node_id="v7x-0",
+        ),
+    )
+    reply_v7x_booting = scheduler.schedule(
+        sched_request(
+            node_type_configs=v7x_node_type_configs,
+            instances=[v7x_worker0],
+            idle_timeout_s=45.0,
+        )
+    )
+    assert reply_v7x_booting.to_terminate == []
+
+
+def test_tpu_multi_host_slice_label_based_scale_up():
+    """Verify that a multi-host TPU placement group (e.g. 2 bundles of TPU: 4 with
+    static TPU node label selectors and NO synthetic TPU-*-head resource) scales up
+    the matching 2-host TPU node type from 0 to 2 nodes, and that multi-slice
+    gang requests with AFFINITY on ray.io/tpu-slice-name isolate each PG to a
+    single slice domain and pair booting nodes with pending nodes.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "tpu-v6e-8": NodeTypeConfig(
+            name="tpu-v6e-8",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+        ),
+    }
+
+    tpu_bundle_selector = [
+        [
+            (
+                "ray.io/accelerator-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["TPU-V6E"],
+            ),
+            (
+                "ray.io/tpu-topology",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["2x4"],
+            ),
+            (
+                "ray.io/tpu-pod-type",
+                LabelSelectorOperator.LABEL_OPERATOR_IN,
+                ["v6e-8"],
+            ),
+        ]
+    ]
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        LocalityConstraint,
+        LocalityRequirement,
+    )
+    from ray.core.generated.common_pb2 import PlacementStrategy
+
+    def make_slice_gang_req() -> GangResourceRequest:
+        req = ResourceRequestUtil.make(
+            {"CPU": 1, "TPU": 4},
+            label_selectors=tpu_bundle_selector,
+        )
+        return GangResourceRequest(
+            requests=[req, req],
+            bundle_selectors=[
+                BundleSelector(
+                    resource_requests=[req, req],
+                    locality_requirement=LocalityRequirement(
+                        locality_constraint=LocalityConstraint(
+                            label_name="ray.io/tpu-slice-name",
+                            placement_strategy=PlacementStrategy.STRICT_PACK,
+                        )
+                    ),
+                )
+            ],
+        )
+
+    # 1. Scale from zero for 1 slice -> 2 nodes.
+    req1 = sched_request(node_type_configs=node_type_configs, instances=[])
+    req1.gang_resource_requests = [make_slice_gang_req()]
+    reply = scheduler.schedule(req1)
+    to_launch, _ = _launch_and_terminate(reply)
+    assert to_launch == {"tpu-v6e-8": 2}
+
+    # 2. Booting slice: Worker 0 of slice-0 is RAY_RUNNING, Worker 1 is still
+    # REQUESTED (pending). PG 0 must pair Worker 0 + pending Worker 1 without
+    # launching a spurious 2nd slice.
+    slice0_labels = {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "2x4",
+        "ray.io/tpu-pod-type": "v6e-8",
+        "ray.io/tpu-slice-name": "tpu-v6e-8-0",
+    }
+    booting_instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"r0",
+                idle_duration_ms=0,
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="i0",
+                node_id="r0",
+            ),
+        ),
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.REQUESTED,
+                instance_id="i1",
+            ),
+        ),
+    ]
+    req_booting = sched_request(
+        node_type_configs=node_type_configs,
+        instances=booting_instances,
+    )
+    req_booting.gang_resource_requests = [make_slice_gang_req()]
+    reply_booting = scheduler.schedule(req_booting)
+    to_launch_booting, _ = _launch_and_terminate(reply_booting)
+    assert to_launch_booting == {}
+
+    # 3. Domain isolation: Slice 0 has 1 idle host and Slice 1 has 1 idle host
+    # (each slice has 1 busy host). A new 2-bundle slice PG cannot span across
+    # Slice 0 and Slice 1 because of STRICT_PACK on ray.io/tpu-slice-name, so it
+    # must request a new slice (2 nodes) when max_worker_nodes allows it.
+    node_type_configs_3_slices = {
+        "tpu-v6e-8": NodeTypeConfig(
+            name="tpu-v6e-8",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=6,
+            num_of_hosts=2,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+        ),
+    }
+    slice1_labels = {**slice0_labels, "ray.io/tpu-slice-name": "tpu-v6e-8-1"}
+    fragmented_instances = [
+        # Slice 0: Worker 0 busy, Worker 1 free
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s0-0",
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s0-i0",
+                node_id="s0-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s0-1",
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "1"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s0-i1",
+                node_id="s0-1",
+            ),
+        ),
+        # Slice 1: Worker 0 busy, Worker 1 free
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s1-0",
+                labels={**slice1_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s1-i0",
+                node_id="s1-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s1-1",
+                labels={**slice1_labels, "ray.io/tpu-worker-id": "1"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s1-i1",
+                node_id="s1-1",
+            ),
+        ),
+    ]
+    req_fragmented = sched_request(
+        node_type_configs=node_type_configs_3_slices,
+        instances=fragmented_instances,
+    )
+    req_fragmented.gang_resource_requests = [make_slice_gang_req()]
+    reply_fragmented = scheduler.schedule(req_fragmented)
+    to_launch_fragmented, _ = _launch_and_terminate(reply_fragmented)
+    assert to_launch_fragmented == {"tpu-v6e-8": 2}
+
+    # 5. Degraded slice rescheduling (`locality_requirement.label_selector` pinned
+    # to `"slice-1"` when 1 of 2 hosts in `"slice-1"` died and has not yet appeared
+    # as a pending instance): should NOT be marked infeasible and should NOT launch
+    # a spurious new slice.
+    degraded_slice1_instances = [
+        # Slice 0: fully idle
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s0-0",
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s0-i0",
+                node_id="s0-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s0-1",
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "1"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s0-i1",
+                node_id="s0-1",
+            ),
+        ),
+        # Slice 1: Only Worker 0 is alive (occupied by placed bundle 0); Worker 1 died.
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s1-0",
+                labels={**slice1_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s1-i0",
+                node_id="s1-0",
+            ),
+        ),
+    ]
+    resched_gang_req = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make(
+                        {"CPU": 1, "TPU": 4},
+                        label_selectors=tpu_bundle_selector,
+                    )
+                ],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/tpu-slice-name",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    ),
+                    label_selector=ResourceRequestUtil.make(
+                        {"CPU": 1},
+                        label_selectors=[
+                            [
+                                (
+                                    "ray.io/tpu-slice-name",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    ["tpu-v6e-8-1"],
+                                )
+                            ]
+                        ],
+                    ).label_selectors[0],
+                ),
+            )
+        ]
+    )
+    req_resched = sched_request(
+        node_type_configs=node_type_configs_3_slices,
+        instances=degraded_slice1_instances,
+    )
+    req_resched.gang_resource_requests = [resched_gang_req]
+    reply_resched = scheduler.schedule(req_resched)
+    to_launch_resched, _ = _launch_and_terminate(reply_resched)
+    assert to_launch_resched == {}
+    assert len(reply_resched.infeasible_gang_resource_requests) == 0
+
+    # 8. Two partially-booted slices: slice 0 has 1 running BUSY host (TPU=0),
+    # slice 1 has 1 running IDLE host (TPU=4), plus 1 pending REQUESTED host.
+    # Slice 0 must not greedily steal the pending host from slice 1.
+    partially_booted_instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s0-0",
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s0-i0",
+                node_id="s0-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s1-0",
+                labels={**slice1_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s1-i0",
+                node_id="s1-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.REQUESTED,
+                instance_id="pending-i0",
+            ),
+        ),
+    ]
+    req_partial = sched_request(
+        node_type_configs=node_type_configs_3_slices,
+        instances=partially_booted_instances,
+    )
+    req_partial.gang_resource_requests = [make_slice_gang_req()]
+    reply_partial = scheduler.schedule(req_partial)
+    to_launch_partial, _ = _launch_and_terminate(reply_partial)
+    assert to_launch_partial == {}
+    assert len(reply_partial.infeasible_gang_resource_requests) == 0
+
+    # 9. When BOTH partially-booted slices have 1 busy running host + 1 pending
+    # host each, their 2 pending hosts belong to slice 0 and slice 1 respectively
+    # and must NOT be combined into a fake pure-pending 2-host slice.
+    two_busy_partial_instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s0-0",
+                labels={**slice0_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s0-i0",
+                node_id="s0-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-8",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"s1-0",
+                labels={**slice1_labels, "ray.io/tpu-worker-id": "0"},
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.RAY_RUNNING,
+                instance_id="s1-i0",
+                node_id="s1-0",
+            ),
+        ),
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.REQUESTED,
+                instance_id="pending-s0-i1",
+            ),
+        ),
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="tpu-v6e-8",
+                status=Instance.REQUESTED,
+                instance_id="pending-s1-i1",
+            ),
+        ),
+    ]
+    req_two_busy = sched_request(
+        node_type_configs=node_type_configs_3_slices,
+        instances=two_busy_partial_instances,
+    )
+    req_two_busy.gang_resource_requests = [make_slice_gang_req()]
+    reply_two_busy = scheduler.schedule(req_two_busy)
+    to_launch_two_busy, _ = _launch_and_terminate(reply_two_busy)
+    assert to_launch_two_busy == {"tpu-v6e-8": 2}
+    assert len(reply_two_busy.infeasible_gang_resource_requests) == 0
+
+
+def test_label_refs_placeholder_locality_scheduling():
+    """Verify that KubeRay labelRefs empty placeholder values ("") in NodeTypeConfig.labels:
+    1. Allow STRICT_PACK locality gang scheduling on custom/accelerator domain keys
+       (e.g. ray.io/accelerator-domain or ray.io/tpu-topology-subblock) by assigning
+       distinct synthetic domains per replica rather than sharing "".
+    2. Do not falsely match a concrete LABEL_OPERATOR_IN bundle label selector.
+    """
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        LocalityConstraint,
+        LocalityRequirement,
+    )
+    from ray.core.generated.common_pb2 import PlacementStrategy
+
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "no-subblock-group": NodeTypeConfig(
+            name="no-subblock-group",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            priority=10,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
+        ),
+        "subblock-group": NodeTypeConfig(
+            name="subblock-group",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            priority=1,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+                "ray.io/accelerator-domain": "",
+                "ray.io/tpu-topology-subblock": "",
+            },
+        ),
+    }
+
+    req_bundle = ResourceRequestUtil.make({"CPU": 1, "TPU": 4})
+
+    def make_subblock_gang(
+        label_name: str = "ray.io/tpu-topology-subblock",
+        bundle_req: ResourceRequest = req_bundle,
+    ) -> GangResourceRequest:
+        return GangResourceRequest(
+            requests=[bundle_req, bundle_req],
+            bundle_selectors=[
+                BundleSelector(
+                    resource_requests=[bundle_req, bundle_req],
+                    locality_requirement=LocalityRequirement(
+                        locality_constraint=LocalityConstraint(
+                            label_name=label_name,
+                            placement_strategy=PlacementStrategy.STRICT_PACK,
+                        )
+                    ),
+                )
+            ],
+        )
+
+    # 1. Two gang requests with STRICT_PACK on ray.io/tpu-topology-subblock must
+    # select "subblock-group" (which has the labelRefs placeholder) and launch 2
+    # separate 2-host replicas (4 nodes total) with distinct synthetic domains.
+    req1 = sched_request(node_type_configs=node_type_configs, instances=[])
+    req1.gang_resource_requests = [make_subblock_gang(), make_subblock_gang()]
+    reply1 = scheduler.schedule(req1)
+    to_launch1, _ = _launch_and_terminate(reply1)
+    assert to_launch1 == {"subblock-group": 4}
+    assert len(reply1.infeasible_gang_resource_requests) == 0
+
+    # 2. A bundle with a concrete IN ["subblock-concrete"] selector on the
+    # labelRefs key must NOT match the empty placeholder "" on unlaunched nodes.
+    concrete_bundle = ResourceRequestUtil.make(
+        {"CPU": 1, "TPU": 4},
+        label_selectors=[
+            [
+                (
+                    "ray.io/tpu-topology-subblock",
+                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                    ["subblock-concrete"],
+                )
+            ]
+        ],
+    )
+    req2 = sched_request(node_type_configs=node_type_configs, instances=[])
+    req2.gang_resource_requests = [make_subblock_gang(bundle_req=concrete_bundle)]
+    reply2 = scheduler.schedule(req2)
+    to_launch2, _ = _launch_and_terminate(reply2)
+    assert to_launch2 == {}
+    assert len(reply2.infeasible_gang_resource_requests) == 1
+
+    # 3. Non-TPU locality gang (e.g. GPU domain with no TPU resource or TPU labels)
+    # must evaluate _assign_missing_tpu_worker_ids without NameError and scale up.
+    gpu_node_type_configs = {
+        "gpu-domain-group": NodeTypeConfig(
+            name="gpu-domain-group",
+            resources={"CPU": 16, "GPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            labels={"ray.io/gpu-domain": ""},
+        ),
+    }
+    gpu_bundle = ResourceRequestUtil.make({"CPU": 4, "GPU": 8})
+    req3 = sched_request(node_type_configs=gpu_node_type_configs, instances=[])
+    req3.gang_resource_requests = [
+        make_subblock_gang(label_name="ray.io/gpu-domain", bundle_req=gpu_bundle)
+    ]
+    reply3 = scheduler.schedule(req3)
+    to_launch3, _ = _launch_and_terminate(reply3)
+    assert to_launch3 == {"gpu-domain-group": 2}
+    assert len(reply3.infeasible_gang_resource_requests) == 0
+
+
+def test_single_host_shared_domain_label_idle_termination():
+    """Verify that single-host nodes (num_of_hosts=1, expected_hosts == 1) that
+    share a GKE node-pool domain label (e.g. ray.io/tpu-slice-name: np-1 or
+    ray.io/accelerator-domain: np-1 via labelRefs) are evaluated individually
+    during idle termination so an idle 1-host node can scale down while another
+    1-host node in the same node pool is busy.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "tpu-v6e-4": NodeTypeConfig(
+            name="tpu-v6e-4",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=1,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x2",
+                "ray.io/tpu-pod-type": "v6e-4",
+                "ray.io/tpu-slice-name": "",
+                "ray.io/accelerator-domain": "",
+            },
+        ),
+    }
+
+    shared_pool_labels = {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "2x2",
+        "ray.io/tpu-pod-type": "v6e-4",
+        "ray.io/tpu-slice-name": "np-1",
+        "ray.io/accelerator-domain": "np-1",
+        "ray.io/tpu-worker-id": "0",
+    }
+
+    instances = [
+        # Node 0 is busy (idle_duration_ms=0)
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-4",
+                available_resources={"CPU": 19, "TPU": 0},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"n0",
+                idle_duration_ms=0,
+                labels=shared_pool_labels,
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-4",
+                status=Instance.RAY_RUNNING,
+                instance_id="i0",
+                node_id="n0",
+            ),
+        ),
+        # Node 1 is idle > 45s in the same node pool np-1
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-4",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=b"n1",
+                idle_duration_ms=60000,
+                labels=shared_pool_labels,
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-4",
+                status=Instance.RAY_RUNNING,
+                instance_id="i1",
+                node_id="n1",
+            ),
+        ),
+    ]
+    reply = scheduler.schedule(
+        sched_request(
+            node_type_configs=node_type_configs,
+            instances=instances,
+            idle_timeout_s=45.0,
+        )
+    )
+    assert [t.instance_id for t in reply.to_terminate] == ["i1"]
+
+
+def test_tpu_worker_id_pinned_slice_and_subslice_gang_scheduling():
+    """Verify that multi-host SlicePlacementGroups and SubslicePlacementGroups
+    with per-bundle `ray.io/tpu-worker-id` label selectors:
+    1. Scale from 0 when NodeTypeConfig has no/empty `ray.io/tpu-worker-id` (both
+       1 bundle/host and 2 bundles/host).
+    2. Pair with partially-booted slices (where running node has worker-id "0" and
+       pending node has no worker-id yet) without launching an extra slice.
+    3. Treat degraded slices with a rescheduling SubslicePlacementGroup (no
+       explicit LocalityRequirement, shared `ray.io/tpu-slice-name` in bundle
+       selectors) as feasible while waiting for replacement host recovery, and do
+       not launch a separate new slice.
+    """
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        LocalityConstraint,
+        LocalityRequirement,
+    )
+    from ray.core.generated.common_pb2 import PlacementStrategy
+
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        "tpu-v6e-16": NodeTypeConfig(
+            name="tpu-v6e-16",
+            resources={"CPU": 20, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            num_of_hosts=4,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "4x4",
+                "ray.io/tpu-pod-type": "v6e-16",
+                "ray.io/tpu-slice-name": "",
+                "ray.io/tpu-worker-id": "",
+            },
+        ),
+    }
+
+    # 1a. Scale from 0 with 1 bundle per host (4 bundles, worker-id "0".."3", STRICT_SPREAD on node-id)
+    gang_1b_per_host = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make(
+                        {"CPU": 1, "TPU": 4},
+                        [
+                            (
+                                ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY,
+                                "pg_1",
+                                "",
+                            )
+                        ],
+                        label_selectors=[
+                            [
+                                (
+                                    "ray.io/tpu-pod-type",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    ["v6e-16"],
+                                ),
+                                (
+                                    "ray.io/tpu-worker-id",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    [str(w)],
+                                ),
+                            ]
+                        ],
+                    )
+                    for w in range(4)
+                ],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/tpu-slice-name",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ]
+    )
+    req_1a = sched_request(node_type_configs=node_type_configs)
+    req_1a.gang_resource_requests = [gang_1b_per_host]
+    reply = scheduler.schedule(req_1a)
+    assert len(reply.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply)[0] == {"tpu-v6e-16": 4}
+
+    # 1b. Scale from 0 with 2 bundles per host (8 bundles, 2 per worker-id "0".."3", PACK on node-id)
+    gang_2b_per_host = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make(
+                        {"CPU": 1, "TPU": 2},
+                        label_selectors=[
+                            [
+                                (
+                                    "ray.io/tpu-pod-type",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    ["v6e-16"],
+                                ),
+                                (
+                                    "ray.io/tpu-worker-id",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    [str(w)],
+                                ),
+                            ]
+                        ],
+                    )
+                    for w in range(4)
+                    for _ in range(2)
+                ],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/tpu-slice-name",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ]
+    )
+    req_1b = sched_request(node_type_configs=node_type_configs)
+    req_1b.gang_resource_requests = [gang_2b_per_host]
+    reply = scheduler.schedule(req_1b)
+    assert len(reply.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply)[0] == {"tpu-v6e-16": 4}
+
+    # 2. Partially-booted slice (worker "0" and "2" running, 2 REQUESTED pending nodes)
+    # satisfies gang_1b_per_host without launching another slice.
+    partially_booted_instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="tpu-v6e-16",
+                available_resources={"CPU": 20, "TPU": 4},
+                total_resources={"CPU": 20, "TPU": 4},
+                node_id=f"n{w}".encode(),
+                labels={
+                    "ray.io/accelerator-type": "TPU-V6E",
+                    "ray.io/tpu-topology": "4x4",
+                    "ray.io/tpu-pod-type": "v6e-16",
+                    "ray.io/tpu-slice-name": "slice-0",
+                    "ray.io/tpu-worker-id": str(w),
+                },
+            ),
+            im_instance=Instance(
+                instance_type="tpu-v6e-16",
+                status=Instance.RAY_RUNNING,
+                instance_id=f"i{w}",
+                node_id=f"n{w}",
+            ),
+        )
+        for w in (0, 2)
+    ] + [
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="tpu-v6e-16",
+                status=Instance.REQUESTED,
+                instance_id=f"p{p}",
+            )
+        )
+        for p in range(2)
+    ]
+    req_2 = sched_request(
+        node_type_configs=node_type_configs,
+        instances=partially_booted_instances,
+    )
+    req_2.gang_resource_requests = [gang_1b_per_host]
+    reply = scheduler.schedule(req_2)
+    assert len(reply.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply)[0] == {}
+
+    # 3. SubslicePlacementGroup (no LocalityRequirement, pinned via bundle_label_selector
+    # to slice-0 workers "0" and "1") on a degraded slice where worker "0" is running and
+    # worker "1" crashed (no pending node yet): must not launch a new slice and must not
+    # be marked infeasible.
+    subslice_gang = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make(
+                        {"CPU": 1, "TPU": 4},
+                        [
+                            (
+                                ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY,
+                                "pg_sub",
+                                "",
+                            )
+                        ],
+                        label_selectors=[
+                            [
+                                (
+                                    "ray.io/tpu-slice-name",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    ["slice-0"],
+                                ),
+                                (
+                                    "ray.io/tpu-worker-id",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    [str(w)],
+                                ),
+                            ]
+                        ],
+                    )
+                    for w in (0, 1)
+                ]
+            )
+        ]
+    )
+    degraded_instances = partially_booted_instances[
+        :2
+    ]  # only workers "0" and "2" running
+    req_3 = sched_request(
+        node_type_configs=node_type_configs,
+        instances=degraded_instances,
+    )
+    req_3.gang_resource_requests = [subslice_gang]
+    reply = scheduler.schedule(req_3)
+    assert len(reply.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply)[0] == {}
+
+    # 4. A subslice gang pinned to partially-booted slice-0 (workers "0" and "1"
+    # running) must NOT stamp slice-0's domain or worker-id onto an unscheduled
+    # pending REQUESTED node that is needed by partially-booted slice-1 (workers
+    # "0", "1", "2" running + 1 REQUESTED pending node) in the same scheduling pass.
+    two_slice_instances = (
+        [
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="tpu-v6e-16",
+                    available_resources={"CPU": 20, "TPU": 4},
+                    total_resources={"CPU": 20, "TPU": 4},
+                    node_id=f"s0-n{w}".encode(),
+                    labels={
+                        "ray.io/accelerator-type": "TPU-V6E",
+                        "ray.io/tpu-topology": "4x4",
+                        "ray.io/tpu-pod-type": "v6e-16",
+                        "ray.io/tpu-slice-name": "slice-0",
+                        "ray.io/tpu-worker-id": str(w),
+                    },
+                ),
+                im_instance=Instance(
+                    instance_type="tpu-v6e-16",
+                    status=Instance.RAY_RUNNING,
+                    instance_id=f"s0-i{w}",
+                    node_id=f"s0-n{w}",
+                ),
+            )
+            for w in (0, 1)
+        ]
+        + [
+            make_autoscaler_instance(
+                ray_node=NodeState(
+                    ray_node_type_name="tpu-v6e-16",
+                    available_resources={"CPU": 20, "TPU": 4},
+                    total_resources={"CPU": 20, "TPU": 4},
+                    node_id=f"s1-n{w}".encode(),
+                    labels={
+                        "ray.io/accelerator-type": "TPU-V6E",
+                        "ray.io/tpu-topology": "4x4",
+                        "ray.io/tpu-pod-type": "v6e-16",
+                        "ray.io/tpu-slice-name": "slice-1",
+                        "ray.io/tpu-worker-id": str(w),
+                    },
+                ),
+                im_instance=Instance(
+                    instance_type="tpu-v6e-16",
+                    status=Instance.RAY_RUNNING,
+                    instance_id=f"s1-i{w}",
+                    node_id=f"s1-n{w}",
+                ),
+            )
+            for w in (0, 1, 2)
+        ]
+        + [
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type="tpu-v6e-16",
+                    status=Instance.REQUESTED,
+                    instance_id="p-s1-w3",
+                )
+            )
+        ]
+    )
+    req_4 = sched_request(
+        node_type_configs=node_type_configs,
+        instances=two_slice_instances,
+    )
+    req_4.gang_resource_requests = [subslice_gang, gang_1b_per_host]
+    reply = scheduler.schedule(req_4)
+    assert len(reply.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply)[0] == {}
+
+
+def test_mixed_cluster_locality_isolation_and_flexible_single_host():
+    """Verify:
+    1. A standard KubeRay TPU group (without explicit ray.io/tpu-slice-name in labels)
+       does not cause cpu-group or multi-host gpu-group to match ray.io/tpu-slice-name.
+    2. Flexible single-host unlabelled pending nodes are not stamped with a synthetic
+       domain beyond the bundles actually placed on them.
+    3. A static domain label on one node type does not block extracting a dynamic
+       shared domain constraint targeting a degraded domain on another node type.
+    """
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        LocalityConstraint,
+        LocalityRequirement,
+    )
+    from ray.core.generated.common_pb2 import PlacementStrategy
+
+    scheduler = ResourceDemandScheduler()
+    node_type_configs = {
+        "cpu-group": NodeTypeConfig(
+            name="cpu-group",
+            resources={"CPU": 16},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+            num_of_hosts=1,
+        ),
+        "gpu-group": NodeTypeConfig(
+            name="gpu-group",
+            resources={"CPU": 16, "GPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            num_of_hosts=2,
+            labels={"ray.io/gpu-domain": ""},
+        ),
+        "tpu-group": NodeTypeConfig(
+            name="tpu-group",
+            resources={"CPU": 16, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            num_of_hosts=2,
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+                "ray.io/tpu-worker-id": "",
+            },
+        ),
+        "static-rack": NodeTypeConfig(
+            name="static-rack",
+            resources={"CPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=1,
+            labels={"ray.io/accelerator-domain": "static-rack-0"},
+        ),
+        "dynamic-rack": NodeTypeConfig(
+            name="dynamic-rack",
+            resources={"CPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=1,
+            labels={"ray.io/accelerator-domain": ""},
+        ),
+        "dynamic-multi-rack": NodeTypeConfig(
+            name="dynamic-multi-rack",
+            resources={"CPU": 8},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            num_of_hosts=2,
+            labels={"ray.io/accelerator-domain": ""},
+        ),
+    }
+
+    # 1. CPU-only gang with ray.io/tpu-slice-name LocalityConstraint must ONLY scale
+    # tpu-group, never cpu-group or gpu-group, even though tpu-group does not list
+    # ray.io/tpu-slice-name in its static NodeTypeConfig.labels.
+    tpu_slice_cpu_gang = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make(
+                        {"CPU": 4},
+                        [
+                            (
+                                ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY,
+                                "pg_tpu_cpu",
+                                "",
+                            )
+                        ],
+                    )
+                    for _ in range(2)
+                ],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/tpu-slice-name",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    req_tpu = sched_request(node_type_configs=node_type_configs, instances=[])
+    req_tpu.gang_resource_requests = [tpu_slice_cpu_gang]
+    reply_tpu = scheduler.schedule(req_tpu)
+    assert len(reply_tpu.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply_tpu)[0] == {"tpu-group": 2}
+
+    # 2. Two 1-bundle gangs with LocalityConstraint on ray.io/accelerator-domain when
+    # two unlabelled pending dynamic-rack (num_of_hosts=1) nodes exist: the first gang
+    # must not stamp the second spare pending node with its synthetic domain, so both
+    # gangs fit on the 2 existing pending nodes with zero new launches.
+    pending_dynamic_instances = [
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_type="dynamic-rack",
+                status=Instance.REQUESTED,
+                instance_id=f"dyn-p{i}",
+            )
+        )
+        for i in range(2)
+    ]
+    dynamic_gang_1 = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[ResourceRequestUtil.make({"CPU": 8}, [])],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/accelerator-domain",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    dynamic_gang_2 = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[ResourceRequestUtil.make({"CPU": 8}, [])],
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="ray.io/accelerator-domain",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ],
+    )
+    req_dyn = sched_request(
+        node_type_configs=node_type_configs,
+        instances=pending_dynamic_instances,
+    )
+    req_dyn.gang_resource_requests = [dynamic_gang_1, dynamic_gang_2]
+    reply_dyn = scheduler.schedule(req_dyn)
+    assert len(reply_dyn.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply_dyn)[0] == {}
+
+    # 3. Gang pinned via label_selectors to degraded domain "dynamic-multi-1" (1 of 2
+    # hosts running) when static-rack has static label "static-rack-0":
+    # _extract_shared_domain_constraint must not skip "ray.io/accelerator-domain", and
+    # the degraded domain check must keep the gang feasible without launching a new replica.
+    degraded_multi_instances = [
+        make_autoscaler_instance(
+            ray_node=NodeState(
+                ray_node_type_name="dynamic-multi-rack",
+                available_resources={"CPU": 8},
+                total_resources={"CPU": 8},
+                node_id=b"dm-n0",
+                labels={"ray.io/accelerator-domain": "dynamic-multi-1"},
+            ),
+            im_instance=Instance(
+                instance_type="dynamic-multi-rack",
+                status=Instance.RAY_RUNNING,
+                instance_id="dm-i0",
+                node_id="dm-n0",
+            ),
+        )
+    ]
+    pinned_degraded_gang = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=[
+                    ResourceRequestUtil.make(
+                        {"CPU": 8},
+                        [
+                            (
+                                ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY,
+                                "pg_dm",
+                                "",
+                            )
+                        ],
+                        label_selectors=[
+                            [
+                                (
+                                    "ray.io/accelerator-domain",
+                                    LabelSelectorOperator.LABEL_OPERATOR_IN,
+                                    ["dynamic-multi-1"],
+                                )
+                            ]
+                        ],
+                    )
+                    for _ in range(2)
+                ]
+            )
+        ],
+    )
+    req_deg = sched_request(
+        node_type_configs=node_type_configs,
+        instances=degraded_multi_instances,
+    )
+    req_deg.gang_resource_requests = [pinned_degraded_gang]
+    reply_deg = scheduler.schedule(req_deg)
+    assert len(reply_deg.infeasible_gang_resource_requests) == 0
+    assert _launch_and_terminate(reply_deg)[0] == {}
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

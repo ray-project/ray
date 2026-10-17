@@ -158,3 +158,44 @@ class AcceleratorManager(ABC):
             A dictionary mapping accelerator related label keys to values.
         """
         return None
+
+    @staticmethod
+    def get_k8s_node_group_accelerator_labels(
+        node_selector: Dict[str, str],
+        num_accelerators: int,
+        num_of_hosts: int = 1,
+    ) -> Optional[Dict[str, str]]:
+        """Get accelerator-related Ray node labels for a Kubernetes node group
+        from its pod nodeSelector, accelerator count, and host count.
+
+        Args:
+            node_selector: The Kubernetes pod spec nodeSelector dictionary.
+            num_accelerators: The number of accelerators of this family per pod.
+            num_of_hosts: The number of hosts (workers) per replica in the node group.
+
+        Returns:
+            A dictionary mapping accelerator-related label keys to static or
+            placeholder values, or None if not applicable.
+        """
+        return None
+
+    @staticmethod
+    def get_multi_host_domain_label_key() -> Optional[str]:
+        """Get the Ray node label key that identifies a multi-host accelerator
+        domain or slice replica (e.g., "ray.io/tpu-slice-name" for TPUs).
+
+        Returns:
+            The domain label key string, or None if not applicable.
+        """
+        return None
+
+    @staticmethod
+    def get_multi_host_worker_id_label_key() -> Optional[str]:
+        """Get the Ray node label key that identifies the 0-indexed host rank
+        within a multi-host accelerator domain (e.g., "ray.io/tpu-worker-id"
+        for TPUs).
+
+        Returns:
+            The worker ID label key string, or None if not applicable.
+        """
+        return None

@@ -3,10 +3,11 @@ import json
 import logging
 import time
 from itertools import chain
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
+from ray._private.accelerators import get_all_accelerator_managers
 from ray._private.label_utils import (
     validate_node_label_syntax,
 )
@@ -32,9 +33,6 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
-
-GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
-GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
@@ -201,14 +199,21 @@ def _node_type_from_group_spec(
     if is_head:
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
+        num_of_hosts = 1
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
         # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
-        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
-        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
+        num_of_hosts = int(group_spec.get("numOfHosts", 1))
+        min_workers = group_spec["minReplicas"] * num_of_hosts
+        max_workers = group_spec["maxReplicas"] * num_of_hosts
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
-    labels = _get_labels_from_group_spec(group_spec, group_name)
+    labels = _get_labels_from_group_spec(
+        group_spec,
+        group_name,
+        resources=resources,
+        num_of_hosts=num_of_hosts,
+    )
 
     node_type = {
         "min_workers": min_workers,
@@ -219,6 +224,9 @@ def _node_type_from_group_spec(
         "resources": resources,
         "labels": labels,
     }
+
+    if num_of_hosts > 1:
+        node_type["num_of_hosts"] = num_of_hosts
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:
@@ -243,7 +251,9 @@ def _get_ray_resources_from_group_spec(
 
     ray_start_params = group_spec.get("rayStartParams", {})
     # In KubeRay, Ray container is always the first application container of a Ray Pod.
-    k8s_resources = group_spec["template"]["spec"]["containers"][0].get("resources", {})
+    container = group_spec["template"]["spec"]["containers"][0]
+    k8s_resources = container.get("resources", {})
+    container_env = container.get("env", [])
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
 
     num_cpus = _get_num_cpus(
@@ -255,7 +265,9 @@ def _get_ray_resources_from_group_spec(
     custom_resource_dict = _get_custom_resources(
         group_resources, ray_start_params, group_name
     )
-    num_tpus = _get_num_tpus(group_resources, custom_resource_dict, k8s_resources)
+    num_tpus = _get_num_tpus(
+        group_resources, custom_resource_dict, k8s_resources, container_env
+    )
     memory = _get_memory(group_resources, ray_start_params, k8s_resources)
 
     # It's not allowed to use object store memory as a resource request, so we don't
@@ -269,44 +281,10 @@ def _get_ray_resources_from_group_spec(
     if num_gpus is not None:
         resources["GPU"] = num_gpus
 
-    if num_tpus is not None:
+    if num_tpus is not None and "TPU" not in custom_resource_dict:
         # Add TPU Ray resource if not already added by ray_start_params,
         # but specified in k8s_resource_limits.
-        if "TPU" not in custom_resource_dict:
-            resources["TPU"] = num_tpus
-
-        """Add TPU head resource, similar to the GCP node_provider.
-        Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
-        has sufficient resources to make scaling decisions.
-        TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
-        specifying the number of workers per slice. Each replica of a TPU worker
-        group has one TPU head.
-
-        For example, a v4-16 worker group with 2 replicas should have the following
-        resource labels on worker 0 of each replica:
-            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
-        """
-        if (
-            "nodeSelector" in group_spec["template"]["spec"]
-            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
-            and GKE_TPU_ACCELERATOR_LABEL
-            in group_spec["template"]["spec"]["nodeSelector"]
-        ):
-            topology = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_TOPOLOGY_LABEL
-            ]
-            accelerator = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_ACCELERATOR_LABEL
-            ]
-            accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
-            if accelerator_type:
-                resources[f"TPU-{accelerator_type}-head"] = 1
-        else:
-            logger.error(
-                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
-                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
-                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
-            )
+        resources["TPU"] = num_tpus
 
     if memory is not None:
         resources["memory"] = memory
@@ -317,22 +295,42 @@ def _get_ray_resources_from_group_spec(
 
 
 def _get_labels_from_group_spec(
-    group_spec: Dict[str, Any], group_name: str = ""
+    group_spec: Dict[str, Any],
+    group_name: str = "",
+    resources: Optional[Dict[str, int]] = None,
+    num_of_hosts: int = 1,
 ) -> Dict[str, str]:
     """
     Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
-    2. `labels` field in `rayStartParams`.
+    2. `labels` field in `rayStartParams` (ignored with a warning).
+    3. Default accelerator node labels inferred from the pod `nodeSelector`.
 
     Args:
         group_spec: The group specification dictionary.
         group_name: The name of the group (used in warning messages).
+        resources: Inferred Ray resources for the group.
+        num_of_hosts: Number of hosts per replica for the group.
 
     Returns:
         A dictionary of labels for the node type.
     """
     labels_dict = {}
+
+    node_selector = (
+        group_spec.get("template", {}).get("spec", {}).get("nodeSelector") or {}
+    )
+    group_resources = resources or {}
+    for accelerator_manager in get_all_accelerator_managers():
+        num_acc = group_resources.get(accelerator_manager.get_resource_name(), 0)
+        accel_labels = accelerator_manager.get_k8s_node_group_accelerator_labels(
+            node_selector,
+            num_acc,
+            num_of_hosts=num_of_hosts,
+        )
+        if accel_labels:
+            labels_dict.update(accel_labels)
 
     ray_start_params = group_spec.get("rayStartParams", {})
     labels_str = ray_start_params.get("labels")
@@ -358,9 +356,26 @@ def _get_labels_from_group_spec(
 
     # Check for top-level structured Labels field.
     if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):
-        labels_dict = group_spec.get("labels")
+        user_labels = group_spec.get("labels")
         # Validate node labels follow expected Kubernetes label syntax.
-        validate_node_label_syntax(labels_dict)
+        validate_node_label_syntax(user_labels)
+        labels_dict.update(user_labels)
+
+    # Check for top-level labelRefs field (KubeRay dynamic node label mappings).
+    # Dynamic node label values are resolved at pod binding time by KubeRay's
+    # PodBindingWebhook, so we record an empty placeholder ("") in the node type
+    # config when the label key is not already populated by static labels or
+    # derived TPU nodeSelector labels.
+    label_refs = group_spec.get("labelRefs")
+    if isinstance(label_refs, list):
+        for ref in label_refs:
+            if not isinstance(ref, dict):
+                continue
+            ref_name = ref.get("name")
+            if isinstance(ref_name, str) and ref_name:
+                validate_node_label_syntax({ref_name: ""})
+                if ref_name not in labels_dict:
+                    labels_dict[ref_name] = ""
 
     return labels_dict
 
@@ -460,10 +475,31 @@ def _get_num_gpus(
     return None
 
 
+def _get_tpu_resource_per_chip_from_env(
+    container_env: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    """Extract RAY_TPU_RESOURCE_PER_CHIP from container env list, defaulting to 1."""
+    if not container_env:
+        return 1
+    for env_entry in container_env:
+        if (
+            isinstance(env_entry, dict)
+            and env_entry.get("name") == "RAY_TPU_RESOURCE_PER_CHIP"
+        ):
+            value = str(env_entry.get("value", "")).strip()
+            if value.isdecimal() and int(value) >= 1:
+                return int(value)
+            raise ValueError(
+                f"RAY_TPU_RESOURCE_PER_CHIP must be a positive integer, got: {value!r}"
+            )
+    return 1
+
+
 def _get_num_tpus(
     group_resources: Dict[str, str],
     custom_resource_dict: Dict[str, int],
     k8s_resources: Dict[str, Dict[str, str]],
+    container_env: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[int]:
     """Get TPU custom resource annotation from `resources` field, custom_resource_dict in ray_start_params,
     or k8s_resources, with priority for `resources` field.
@@ -473,6 +509,7 @@ def _get_num_tpus(
     elif "TPU" in custom_resource_dict:
         return custom_resource_dict["TPU"]
     else:
+        tpu_resource_per_chip = _get_tpu_resource_per_chip_from_env(container_env)
         for typ in ["limits", "requests"]:
             tpu_resource_quantity = k8s_resources.get(typ, {}).get("google.com/tpu")
             if tpu_resource_quantity is not None:
@@ -481,7 +518,7 @@ def _get_num_tpus(
                 # besides that it's valid as a K8s resource quantity.
                 num_tpus = _round_up_k8s_quantity(tpu_resource_quantity)
                 if num_tpus > 0:
-                    return num_tpus
+                    return num_tpus * tpu_resource_per_chip
     return None
 
 

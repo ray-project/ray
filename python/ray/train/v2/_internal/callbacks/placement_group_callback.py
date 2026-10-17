@@ -96,10 +96,14 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             )
             return
         worker_group_state = worker_group.get_worker_group_state()
-        placement_group = worker_group_state.placement_group_handle.placement_group
+        pg_handle = worker_group_state.placement_group_handle
+        pgs = pg_handle.placement_groups
+        pg_or_pgs = (
+            pgs if isinstance(pgs, list) and len(pgs) > 1 else pg_handle.placement_group
+        )
 
         try:
-            ray.get(self._cleaner.register_placement_group.remote(placement_group))
+            ray.get(self._cleaner.register_placement_group.remote(pg_or_pgs))
         except Exception as e:
             logger.warning(
                 f"Failed to register placement group with cleaner: {e}. "
@@ -108,7 +112,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
             return
 
         logger.debug(
-            f"Registered placement group {placement_group.id} with PlacementGroupCleaner."
+            f"Registered {len(pgs)} placement group(s) with PlacementGroupCleaner."
         )
 
     async def before_controller_shutdown(self):

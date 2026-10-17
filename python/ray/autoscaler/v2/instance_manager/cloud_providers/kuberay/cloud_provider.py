@@ -1,5 +1,6 @@
 import copy
 import logging
+import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -136,6 +137,9 @@ class KubeRayProvider(ICloudInstanceProvider):
         )
         # The worker groups that still have workers to be deleted.
         worker_groups_with_pending_deletes: Set[NodeType] = field(default_factory=set)
+        # Multi-host worker instances whose deletion was deferred because a full
+        # multi-host replica of candidates was not yet present in the request.
+        deferred_workers_to_delete: List[CloudInstanceId] = field(default_factory=list)
 
     ################################
     # Interface for ICloudInstanceProvider
@@ -178,6 +182,16 @@ class KubeRayProvider(ICloudInstanceProvider):
             # Only add to processed requests if successful
             self._requests.add(request_id)
 
+            if scale_request.deferred_workers_to_delete:
+                self._add_terminate_errors(
+                    scale_request.deferred_workers_to_delete,
+                    request_id,
+                    details=(
+                        "Waiting for all hosts in the multi-host replica to "
+                        "be ready for termination before deleting pods."
+                    ),
+                )
+
         except Exception as e:
             logger.exception(f"Error terminating nodes: {scale_request or 'N/A'}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
@@ -218,7 +232,18 @@ class KubeRayProvider(ICloudInstanceProvider):
             for node_type, rejected in rejected_nodes.items():
                 requested = shape.get(node_type, 0)
                 if requested > 0 and rejected > 0:
-                    nodes_to_reject[node_type] = min(rejected, requested)
+                    group_index = _worker_group_index(self._ray_cluster, node_type)
+                    num_of_hosts = _worker_group_num_of_hosts(
+                        self._ray_cluster, group_index
+                    )
+                    rounding_padding = (
+                        math.ceil(requested / num_of_hosts) * num_of_hosts - requested
+                    )
+                    rejected_requested = min(
+                        requested, max(0, rejected - rounding_padding)
+                    )
+                    if rejected_requested > 0:
+                        nodes_to_reject[node_type] = rejected_requested
 
             if nodes_to_reject:
                 self._add_launch_errors(
@@ -332,13 +357,20 @@ class KubeRayProvider(ICloudInstanceProvider):
                 replicas, observed_workers_dict[node_type]
             )
 
-        # Add to launch nodes.
+        # Add to launch nodes, rounding up to whole multi-host replicas when
+        # `numOfHosts > 1` so partial replica requests still provision a full
+        # replica in `_submit_scale_request`.
         for node_type, count in to_launch.items():
-            num_workers_dict[node_type] += count
+            if count <= 0:
+                continue
+            group_index = _worker_group_index(ray_cluster, node_type)
+            num_of_hosts = _worker_group_num_of_hosts(ray_cluster, group_index)
+            num_workers_dict[node_type] += (
+                math.ceil(count / num_of_hosts) * num_of_hosts
+            )
 
-        to_delete_instances_by_type = defaultdict(list)
-        # Update the number of workers with to_delete_instances
-        # and group them by type.
+        candidate_deletes_by_type = defaultdict(list)
+        # Group candidate instances to delete by node type.
         for to_delete_id in to_delete_instances:
             to_delete_instance = cur_instances.get(to_delete_id, None)
             if to_delete_instance is None:
@@ -354,17 +386,34 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # any worker group, skip it.
                 continue
 
-            num_workers_dict[to_delete_instance.node_type] -= 1
-            assert num_workers_dict[to_delete_instance.node_type] >= 0
-            to_delete_instances_by_type[to_delete_instance.node_type].append(
+            candidate_deletes_by_type[to_delete_instance.node_type].append(
                 to_delete_instance
             )
+
+        to_delete_instances_by_type = defaultdict(list)
+        deferred_workers_to_delete = []
+        # For multi-host worker groups (`numOfHosts > 1`), only scale down full
+        # multi-host replicas so a partially idle slice is never torn down while
+        # other hosts in the slice are still active.
+        for node_type, candidates in candidate_deletes_by_type.items():
+            group_index = _worker_group_index(ray_cluster, node_type)
+            num_of_hosts = _worker_group_num_of_hosts(ray_cluster, group_index)
+            num_to_delete = (len(candidates) // num_of_hosts) * num_of_hosts
+            for unselected in candidates[num_to_delete:]:
+                deferred_workers_to_delete.append(unselected.cloud_instance_id)
+            if num_to_delete <= 0:
+                continue
+            selected = candidates[:num_to_delete]
+            num_workers_dict[node_type] -= len(selected)
+            assert num_workers_dict[node_type] >= 0
+            to_delete_instances_by_type[node_type].extend(selected)
 
         scale_request = KubeRayProvider.ScaleRequest(
             desired_num_workers=num_workers_dict,
             workers_to_delete=to_delete_instances_by_type,
             worker_groups_without_pending_deletes=worker_groups_without_pending_deletes,
             worker_groups_with_pending_deletes=worker_groups_with_pending_deletes,
+            deferred_workers_to_delete=deferred_workers_to_delete,
         )
 
         return scale_request

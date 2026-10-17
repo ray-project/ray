@@ -41,12 +41,10 @@ def ray_tpu_cluster():
                 "ray.io/tpu-slice-name": "test-slice",
                 "ray.io/tpu-worker-id": str(i),
                 "ray.io/tpu-pod-type": pod_type,
+                "ray.io/tpu-topology": topology,
+                "ray.io/accelerator-type": "TPU-V6E",
             }
             resources = {"TPU": 4, "accelerator_type:TPU-V6E": 4}
-
-            # The first node is the "head" of the slice
-            if i == 0:
-                resources[f"TPU-{pod_type}-head"] = 1
 
             cluster.add_node(
                 num_cpus=8,

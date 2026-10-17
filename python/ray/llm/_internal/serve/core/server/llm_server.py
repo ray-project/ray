@@ -20,7 +20,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 import ray
 from ray import serve
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._common.utils import import_attr
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX, import_attr
 from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
@@ -831,6 +831,28 @@ class LLMServer(LLMServerProtocol):
             pg_bundles = _merge_replica_actor_and_child_actor_bundles(
                 engine_config.placement_bundles, replica_actor_resources
             )
+            if any(b.get("TPU", 0) > 0 for b in pg_bundles):
+                pg_bundles = [
+                    {
+                        k: v
+                        for k, v in b.items()
+                        if not k.startswith(RESOURCE_CONSTRAINT_PREFIX)
+                    }
+                    for b in pg_bundles
+                ]
+                if (
+                    llm_config.accelerator_type
+                    and "placement_group_bundle_label_selector"
+                    not in deployment_options
+                ):
+                    deployment_options["placement_group_bundle_label_selector"] = [
+                        {
+                            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: llm_config.accelerator_type
+                        }
+                        if b.get("TPU", 0) > 0
+                        else {}
+                        for b in pg_bundles
+                    ]
 
             deployment_options.update(
                 {

@@ -345,7 +345,7 @@ def test_placement_group_wait_without_pins_uses_the_full_timeout(monkeypatch):
 
 
 def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
-    """TPU head reservation timeouts should surface as the retryable
+    """TPU slice placement-group timeouts should surface as the retryable
     ``WorkerGroupStartupTimeoutError`` so the controller transitions
     SCHEDULING -> RESCHEDULING instead of failing the run, matching the
     behavior of CPU/GPU placement-group timeouts.
@@ -358,16 +358,15 @@ def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
 
     monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
 
-    # SlicePlacementGroup blocks synchronously on a TPU head PG; simulate the
-    # "cluster still autoscaling" scenario where reserve_tpu_slice times out
-    # and capture the timeout that Ray Train passed in.
+    # Simulate the "cluster still autoscaling" scenario where
+    # SlicePlacementGroup placement-group creation times out.
     captured_kwargs = {}
 
     def _raise_timeout(*args, **kwargs):
         captured_kwargs.update(kwargs)
         raise TimeoutError(
-            "Failed to reserve TPU head for slice with shape: v5litepod-8 "
-            "after 0.1 seconds."
+            "Placement group creation timed out for TPU slice with shape: "
+            "v5litepod-8 after 0.1 seconds."
         )
 
     monkeypatch.setattr(wg_mod, "SlicePlacementGroup", _raise_timeout)
@@ -394,9 +393,8 @@ def test_tpu_slice_reservation_timeout_is_retryable(monkeypatch):
     with pytest.raises(WorkerGroupStartupTimeoutError):
         wg._create_placement_group(tpu_scaling_config, wg._worker_group_context)
 
-    # Ray Train should forward its own startup timeout to the TPU head wait
-    # rather than relying on the hard-coded default in reserve_tpu_slice.
-    assert captured_kwargs.get("head_reservation_timeout_s") == 0.1
+    assert captured_kwargs.get("topology") == "2x4"
+    assert captured_kwargs.get("num_slices") == 2
 
 
 def test_tpu_slice_reservation_non_timeout_failure_is_retryable(monkeypatch):

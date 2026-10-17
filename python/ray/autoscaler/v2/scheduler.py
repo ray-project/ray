@@ -6,8 +6,9 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
+from ray._private.accelerators import get_all_accelerator_managers
 from ray._private.protobuf_compat import message_to_dict
 from ray._raylet import IMPLICIT_RESOURCE_PREFIX
 from ray.autoscaler._private.constants import AUTOSCALER_CONSERVE_GPU_NODES
@@ -30,15 +31,52 @@ from ray.autoscaler.v2.utils import ProtobufUtil, ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
     ClusterResourceConstraint,
     GangResourceRequest,
+    LocalityRequirement,
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.common_pb2 import LabelSelectorOperator
+from ray.core.generated.common_pb2 import (
+    LabelSelector,
+    LabelSelectorOperator,
+    PlacementStrategy,
+)
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     LaunchRequest,
     NodeKind,
     TerminationRequest,
+)
+
+ACCELERATOR_MULTI_HOST_DOMAIN_TO_RESOURCE: Dict[str, str] = {
+    m.get_multi_host_domain_label_key(): m.get_resource_name()
+    for m in get_all_accelerator_managers()
+    if m.get_multi_host_domain_label_key()
+}
+ACCELERATOR_MULTI_HOST_DOMAIN_TO_WORKER_ID: Dict[str, str] = {
+    m.get_multi_host_domain_label_key(): m.get_multi_host_worker_id_label_key()
+    for m in get_all_accelerator_managers()
+    if m.get_multi_host_domain_label_key() and m.get_multi_host_worker_id_label_key()
+}
+ACCELERATOR_RESOURCE_TO_WORKER_ID: Dict[str, str] = {
+    m.get_resource_name(): m.get_multi_host_worker_id_label_key()
+    for m in get_all_accelerator_managers()
+    if m.get_multi_host_worker_id_label_key()
+}
+MULTI_HOST_WORKER_ID_LABEL_KEYS: Tuple[str, ...] = tuple(
+    dict.fromkeys(
+        m.get_multi_host_worker_id_label_key()
+        for m in get_all_accelerator_managers()
+        if m.get_multi_host_worker_id_label_key()
+    )
+)
+MULTI_HOST_DOMAIN_LABEL_KEYS: Tuple[str, ...] = tuple(
+    dict.fromkeys(
+        [
+            *ACCELERATOR_MULTI_HOST_DOMAIN_TO_RESOURCE.keys(),
+            "ray.io/accelerator-domain",
+            "ray.io/gpu-domain",
+        ]
+    )
 )
 
 # ============= Resource Scheduling Service API =======================
@@ -759,11 +797,11 @@ class SchedulingNode:
                     node_val = self.labels.get(key)
 
                     if op == LabelSelectorOperator.LABEL_OPERATOR_IN:
-                        if node_val not in values:
+                        if not node_val or node_val not in values:
                             all_constraints_pass = False
                             break
                     elif op == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN:
-                        if node_val in values:
+                        if node_val and node_val in values:
                             all_constraints_pass = False
                             break
                     else:
@@ -1647,32 +1685,63 @@ class ResourceDemandScheduler(IResourceScheduler):
                 1. the number of placement constraints in the gang request.
                 2. the number of resource requests in the gang request.
             """
+            reqs = (
+                req.bundle_selectors[0].resource_requests
+                if req.bundle_selectors
+                else req.requests
+            )
             total_placement_constraints = 0
-            for resource_request in req.requests:
+            for resource_request in reqs:
                 total_placement_constraints += len(
                     resource_request.placement_constraints
                 )
 
-            return (total_placement_constraints, len(req.requests))
+            return (total_placement_constraints, len(reqs))
 
         infeasible_gang_requests = []
         # Try fulfilling the gang requests one by one.
         for gang_req in sorted(
             gang_requests, key=_sort_gang_resource_requests, reverse=True
         ):
+            locality_requirement = None
             if gang_req.bundle_selectors:
                 # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
                 # for `fallback_strategy`.
-                requests = gang_req.bundle_selectors[0].resource_requests
+                bundle_selector = gang_req.bundle_selectors[0]
+                requests = bundle_selector.resource_requests
+                if bundle_selector.HasField("locality_requirement"):
+                    locality_requirement = bundle_selector.locality_requirement
             else:
                 # Use legacy field if `bundle_selectors` not provided.
                 requests = gang_req.requests
             # Try to combine requests with affinity constraints into the same request.
             requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 
-            nodes, infeasible = ResourceDemandScheduler._try_schedule(
-                ctx, requests, ResourceRequestSource.PENDING_DEMAND
+            locality_requirement = (
+                ResourceDemandScheduler._extract_shared_domain_constraint(
+                    requests, locality_requirement, ctx.get_node_type_configs()
+                )
             )
+
+            if (
+                locality_requirement is not None
+                and locality_requirement.locality_constraint.label_name
+                and locality_requirement.locality_constraint.placement_strategy
+                == PlacementStrategy.STRICT_PACK
+            ):
+                (
+                    nodes,
+                    infeasible,
+                ) = ResourceDemandScheduler._try_schedule_gang_with_locality(
+                    ctx,
+                    requests,
+                    locality_requirement,
+                    ResourceRequestSource.PENDING_DEMAND,
+                )
+            else:
+                nodes, infeasible = ResourceDemandScheduler._try_schedule(
+                    ctx, requests, ResourceRequestSource.PENDING_DEMAND
+                )
 
             if infeasible:
                 # Unable to satisfy the constraint. We will skip the gang request.
@@ -1684,6 +1753,540 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx.update(nodes)
 
         return infeasible_gang_requests
+
+    @staticmethod
+    def _extract_shared_domain_constraint(
+        requests: List[ResourceRequest],
+        locality_requirement: Optional[LocalityRequirement],
+        node_type_configs: Dict[NodeType, NodeTypeConfig],
+    ) -> Optional[LocalityRequirement]:
+        """Extract or populate a shared dynamic domain constraint across a gang's bundles.
+
+        1. If the gang has no `locality_requirement` (e.g., a `SubslicePlacementGroup`),
+           check if every bundle is pinned via `LABEL_OPERATOR_IN` to the same single
+           value on a `MULTI_HOST_DOMAIN_LABEL_KEYS` key that is not a static non-empty
+           label in any `NodeTypeConfig`. If so, synthesize a `STRICT_PACK`
+           `LocalityRequirement` with that `label_selector`.
+        2. If the gang already has a `STRICT_PACK` `locality_requirement` without a
+           `label_selector` (e.g., a `SlicePlacementGroup` pinned via
+           `bundle_label_selector` to a specific `ray.io/tpu-slice-name` before any
+           bundle is placed), check if every bundle is pinned to the same single value
+           for `locality_requirement.locality_constraint.label_name` and populate
+           `locality_requirement.label_selector` if so.
+        """
+        if not requests:
+            return locality_requirement
+
+        candidate_keys: List[str] = []
+        if locality_requirement is not None:
+            if (
+                locality_requirement.locality_constraint.label_name
+                and locality_requirement.locality_constraint.placement_strategy
+                == PlacementStrategy.STRICT_PACK
+                and (
+                    not locality_requirement.HasField("label_selector")
+                    or len(locality_requirement.label_selector.label_constraints) == 0
+                )
+            ):
+                candidate_keys.append(
+                    locality_requirement.locality_constraint.label_name
+                )
+            else:
+                return locality_requirement
+        else:
+            candidate_keys.extend(sorted(MULTI_HOST_DOMAIN_LABEL_KEYS))
+
+        for domain_key in candidate_keys:
+            shared_val: Optional[str] = None
+            all_match = True
+            for req in requests:
+                req_val: Optional[str] = None
+                if len(req.label_selectors) == 1:
+                    for lc in req.label_selectors[0].label_constraints:
+                        if (
+                            lc.label_key == domain_key
+                            and lc.operator == LabelSelectorOperator.LABEL_OPERATOR_IN
+                            and len(lc.label_values) == 1
+                            and lc.label_values[0]
+                        ):
+                            req_val = lc.label_values[0]
+                            break
+                if req_val is None or (
+                    shared_val is not None and req_val != shared_val
+                ):
+                    all_match = False
+                    break
+                shared_val = req_val
+
+            if (
+                not all_match
+                or shared_val is None
+                or any(
+                    c.labels.get(domain_key) == shared_val
+                    for c in node_type_configs.values()
+                )
+            ):
+                continue
+
+            synthesized = LocalityRequirement()
+            if locality_requirement is not None:
+                synthesized.CopyFrom(locality_requirement)
+            else:
+                synthesized.locality_constraint.label_name = domain_key
+                synthesized.locality_constraint.placement_strategy = (
+                    PlacementStrategy.STRICT_PACK
+                )
+            lc = synthesized.label_selector.label_constraints.add()
+            lc.label_key = domain_key
+            lc.operator = LabelSelectorOperator.LABEL_OPERATOR_IN
+            lc.label_values.append(shared_val)
+            return synthesized
+
+        return locality_requirement
+
+    @staticmethod
+    def _node_satisfies_label_selector(
+        node: SchedulingNode, selector: LabelSelector
+    ) -> bool:
+        for constraint in selector.label_constraints:
+            key = constraint.label_key
+            values = set(constraint.label_values)
+            op = constraint.operator
+            node_val = node.labels.get(key)
+            if op == LabelSelectorOperator.LABEL_OPERATOR_IN:
+                if not node_val or node_val not in values:
+                    return False
+            elif op == LabelSelectorOperator.LABEL_OPERATOR_NOT_IN:
+                if node_val and node_val in values:
+                    return False
+            else:
+                return False
+        return True
+
+    @staticmethod
+    def _try_schedule_gang_with_locality(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        requests_to_sched: List[ResourceRequest],
+        locality_requirement: LocalityRequirement,
+        resource_request_source: ResourceRequestSource,
+    ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
+        """Schedule a gang request whose bundles must be strictly packed into a
+        single locality domain (e.g., `ray.io/tpu-slice-name` or `ray.io/gpu-domain`).
+
+        1. First evaluates existing/pending locality domains (pairing partially-booted
+           domains with pending nodes of the same `node_type` up to `num_of_hosts` and
+           grouping remaining unlabelled pending nodes into `num_of_hosts` replicas).
+        2. If no existing/pending domain can fit all bundles, evaluates launching a
+           single new multi-host replica (`num_of_hosts` nodes) for each candidate
+           `node_type`.
+        """
+        if not requests_to_sched:
+            return ctx.get_nodes(), []
+
+        domain_label_key = locality_requirement.locality_constraint.label_name
+        has_locality_selector = (
+            locality_requirement.HasField("label_selector")
+            and len(locality_requirement.label_selector.label_constraints) > 0
+        )
+
+        def _sort_resource_request(req: ResourceRequest) -> Tuple:
+            label_constraint_len = (
+                len(req.label_selectors[0].label_constraints)
+                if req.label_selectors
+                else 0
+            )
+            return (
+                len(req.placement_constraints),
+                label_constraint_len,
+                len(req.resources_bundle.values()),
+                sum(req.resources_bundle.values()),
+                sorted(req.resources_bundle.items()),
+            )
+
+        requests_to_sched = sorted(
+            requests_to_sched, key=_sort_resource_request, reverse=True
+        )
+        shape_keys = {}
+        for r in requests_to_sched:
+            if id(r) not in shape_keys:
+                shape_keys[id(r)] = r.SerializeToString(deterministic=True)
+
+        all_nodes = ctx.get_nodes()
+        node_type_configs = ctx.get_node_type_configs()
+        node_type_available = ctx.get_node_type_available()
+        cloud_avail = ctx.get_cloud_resource_availabilities()
+        recoverable_avail = ctx.get_recoverable_resource_availabilities()
+
+        accel_resource = ACCELERATOR_MULTI_HOST_DOMAIN_TO_RESOURCE.get(domain_label_key)
+        explicit_locality_types = {
+            nt
+            for nt, c in node_type_configs.items()
+            if domain_label_key in c.labels
+            or (accel_resource and c.resources.get(accel_resource, 0) > 0)
+        }
+
+        def _supports_locality_key(nt: NodeType) -> bool:
+            c = node_type_configs.get(nt)
+            if c is None:
+                return False
+            if nt in explicit_locality_types:
+                return True
+            if not explicit_locality_types and (
+                domain_label_key in MULTI_HOST_DOMAIN_LABEL_KEYS or c.num_of_hosts > 1
+            ):
+                return True
+            return False
+
+        def _is_flexible_single_host_domain(cfg: Optional[NodeTypeConfig]) -> bool:
+            return (
+                cfg is not None
+                and cfg.num_of_hosts <= 1
+                and domain_label_key in cfg.labels
+                and not cfg.labels.get(domain_label_key)
+                and domain_label_key not in ACCELERATOR_MULTI_HOST_DOMAIN_TO_RESOURCE
+            )
+
+        def _assign_missing_worker_ids(
+            domain_nodes: List[SchedulingNode],
+            cfg: Optional[NodeTypeConfig],
+        ) -> None:
+            worker_id_key = ACCELERATOR_MULTI_HOST_DOMAIN_TO_WORKER_ID.get(
+                domain_label_key
+            )
+            if worker_id_key is None:
+                for wk in MULTI_HOST_WORKER_ID_LABEL_KEYS:
+                    if (cfg is not None and wk in cfg.labels) or any(
+                        wk in n.labels for n in domain_nodes
+                    ):
+                        worker_id_key = wk
+                        break
+                if worker_id_key is None:
+                    for res_name, wk in ACCELERATOR_RESOURCE_TO_WORKER_ID.items():
+                        if (
+                            cfg is not None and cfg.resources.get(res_name, 0) > 0
+                        ) or any(
+                            n.total_resources.get(res_name, 0) > 0 for n in domain_nodes
+                        ):
+                            worker_id_key = wk
+                            break
+            if not worker_id_key:
+                return
+            expected_hosts = max(cfg.num_of_hosts if cfg else 1, len(domain_nodes))
+            used_wids = {
+                n.labels.get(worker_id_key)
+                for n in domain_nodes
+                if n.labels.get(worker_id_key)
+            }
+            avail_wids = [
+                str(w) for w in range(expected_hosts) if str(w) not in used_wids
+            ]
+            for n in domain_nodes:
+                if not n.ray_node_id and not n.labels.get(worker_id_key) and avail_wids:
+                    n.labels[worker_id_key] = avail_wids.pop(0)
+
+        domain_node_indices: Dict[Tuple[NodeType, str], List[int]] = defaultdict(list)
+        unlabelled_pending_by_type: Dict[NodeType, List[int]] = defaultdict(list)
+
+        for idx, node in enumerate(all_nodes):
+            if node.status == SchedulingNodeStatus.TO_TERMINATE:
+                continue
+            if node.ippr_status is not None and node.ippr_status.is_in_progress():
+                node.update_total_resources(
+                    {
+                        "CPU": node.ippr_status.desired_cpu,
+                        "memory": node.ippr_status.desired_memory,
+                    }
+                )
+            domain_val = node.labels.get(domain_label_key)
+            if domain_val:
+                domain_node_indices[(node.node_type, domain_val)].append(idx)
+            elif not node.ray_node_id and _supports_locality_key(node.node_type):
+                unlabelled_pending_by_type[node.node_type].append(idx)
+
+        def _try_pack_into_domain(
+            domain_nodes: List[SchedulingNode],
+            keep_unscheduled: bool = True,
+        ) -> Optional[Tuple[List[Tuple[int, SchedulingNode]], Tuple]]:
+            if has_locality_selector and not all(
+                ResourceDemandScheduler._node_satisfies_label_selector(
+                    n, locality_requirement.label_selector
+                )
+                for n in domain_nodes
+            ):
+                return None
+
+            remaining = list(requests_to_sched)
+            pool = [copy.deepcopy(n) for n in domain_nodes]
+            pool_id_to_orig_idx = {id(n): i for i, n in enumerate(pool)}
+            scheduled: List[Tuple[int, SchedulingNode]] = []
+            while remaining and pool:
+                prev_ids = [id(n) for n in pool]
+                best_node, remaining, pool = ResourceDemandScheduler._sched_best_node(
+                    remaining,
+                    pool,
+                    resource_request_source,
+                    cloud_avail,
+                    recoverable_avail,
+                    shape_keys,
+                )
+                if best_node is None:
+                    break
+                cur_ids = {id(n) for n in pool}
+                popped_id = next(pid for pid in prev_ids if pid not in cur_ids)
+                scheduled.append((pool_id_to_orig_idx[popped_id], best_node))
+
+            if remaining:
+                return None
+
+            best_node_score = max(
+                (n._compute_score(resource_request_source) for _, n in scheduled),
+                default=(0, True, 0, 0, 0),
+            )
+            running_count = sum(
+                1 for _, n in scheduled if n.im_instance_status == Instance.RAY_RUNNING
+            )
+            node_type = domain_nodes[0].node_type
+            priority = domain_nodes[0].priority
+            domain_score = (
+                running_count,
+                best_node_score,
+                recoverable_avail.get(node_type, 1.0),
+                priority,
+                cloud_avail.get(node_type, 1.0),
+            )
+            result_nodes = list(scheduled)
+            if keep_unscheduled:
+                result_nodes.extend((pool_id_to_orig_idx[id(n)], n) for n in pool)
+            result_nodes.sort(key=lambda x: x[0])
+            return result_nodes, domain_score
+
+        # 1. Try existing / pending domains first without mutating `all_nodes`
+        # until a winning candidate is selected (so a busy partially-booted
+        # domain does not greedily consume pending nodes needed by an idle
+        # partially-booted domain).
+        existing_candidates = []
+        for (node_type, domain_val), indices in domain_node_indices.items():
+            cfg = node_type_configs.get(node_type)
+            num_of_hosts = max(1, cfg.num_of_hosts) if cfg else 1
+            cand_indices = list(indices)
+            pending_indices = unlabelled_pending_by_type.get(node_type, [])
+            if len(cand_indices) < num_of_hosts and pending_indices:
+                if not has_locality_selector or all(
+                    ResourceDemandScheduler._node_satisfies_label_selector(
+                        all_nodes[i], locality_requirement.label_selector
+                    )
+                    for i in cand_indices
+                ):
+                    needed = num_of_hosts - len(cand_indices)
+                    cand_indices.extend(pending_indices[:needed])
+            domain_nodes = []
+            for i in cand_indices:
+                node_copy = copy.deepcopy(all_nodes[i])
+                node_copy.labels[domain_label_key] = domain_val
+                domain_nodes.append(node_copy)
+            _assign_missing_worker_ids(domain_nodes, cfg)
+            res = _try_pack_into_domain(domain_nodes, keep_unscheduled=False)
+            if res is not None:
+                updated_indexed_nodes, domain_score = res
+                existing_candidates.append(
+                    (
+                        domain_score,
+                        [
+                            (cand_indices[orig_idx], updated_node)
+                            for orig_idx, updated_node in updated_indexed_nodes
+                        ],
+                    )
+                )
+
+        for node_type, pending_indices in unlabelled_pending_by_type.items():
+            cfg = node_type_configs.get(node_type)
+            num_of_hosts = max(1, cfg.num_of_hosts) if cfg else 1
+            partially_booted_missing = sum(
+                max(0, num_of_hosts - len(indices))
+                for (dt, _), indices in domain_node_indices.items()
+                if dt == node_type
+            )
+            pure_pending_indices = pending_indices[partially_booted_missing:]
+            flexible_single_host = _is_flexible_single_host_domain(cfg)
+            chunk_size = (
+                len(pure_pending_indices) if flexible_single_host else num_of_hosts
+            )
+            if chunk_size <= 0:
+                continue
+            for i in range(0, len(pure_pending_indices), chunk_size):
+                chunk = pure_pending_indices[i : i + chunk_size]
+                syn_domain = f"__pending_domain_{node_type}_{uuid.uuid4().hex[:8]}"
+                chunk_nodes = []
+                for p_idx in chunk:
+                    node_copy = copy.deepcopy(all_nodes[p_idx])
+                    if not node_copy.labels.get(domain_label_key):
+                        node_copy.labels[domain_label_key] = syn_domain
+                    chunk_nodes.append(node_copy)
+                _assign_missing_worker_ids(chunk_nodes, cfg)
+                res = _try_pack_into_domain(
+                    chunk_nodes, keep_unscheduled=not flexible_single_host
+                )
+                if res is not None:
+                    updated_indexed_nodes, domain_score = res
+                    existing_candidates.append(
+                        (
+                            domain_score,
+                            [
+                                (chunk[orig_idx], updated_node)
+                                for orig_idx, updated_node in updated_indexed_nodes
+                            ],
+                        )
+                    )
+
+        if existing_candidates:
+            existing_candidates.sort(key=lambda x: x[0], reverse=True)
+            _, best_indexed_nodes = existing_candidates[0]
+            for idx, updated_node in best_indexed_nodes:
+                all_nodes[idx] = updated_node
+            return all_nodes, []
+
+        if has_locality_selector:
+            # A rescheduling placement group pinned to an existing domain (e.g.,
+            # `ray.io/tpu-slice-name IN ["slice-1"]`) cannot be satisfied by
+            # launching a separate new replica. However, if the pinned domain is a
+            # degraded existing slice (`len(indices) < num_of_hosts`) waiting for
+            # its missing host(s) to recover, verify feasibility with hypothetical
+            # replacement host(s) so it is not falsely marked infeasible.
+            ippr_specs = ctx.get_ippr_specs()
+            for (d_node_type, domain_val), indices in domain_node_indices.items():
+                cfg = node_type_configs.get(d_node_type)
+                if cfg is None:
+                    continue
+                num_of_hosts = max(1, cfg.num_of_hosts)
+                domain_nodes = [all_nodes[i] for i in indices]
+                if not all(
+                    ResourceDemandScheduler._node_satisfies_label_selector(
+                        n, locality_requirement.label_selector
+                    )
+                    for n in domain_nodes
+                ):
+                    continue
+                cand_nodes = [copy.deepcopy(n) for n in domain_nodes]
+                pending_indices = unlabelled_pending_by_type.get(d_node_type, [])
+                for p_idx in pending_indices[: max(0, num_of_hosts - len(cand_nodes))]:
+                    p_copy = copy.deepcopy(all_nodes[p_idx])
+                    p_copy.labels[domain_label_key] = domain_val
+                    cand_nodes.append(p_copy)
+                if len(cand_nodes) >= num_of_hosts:
+                    continue
+                missing_hosts = num_of_hosts - len(cand_nodes)
+                replacement_nodes = []
+                for _ in range(missing_hosts):
+                    node = SchedulingNode.from_node_config(
+                        cfg,
+                        status=SchedulingNodeStatus.TO_LAUNCH,
+                        node_kind=NodeKind.WORKER,
+                    )
+                    if ippr_specs and d_node_type in ippr_specs.groups:
+                        group = ippr_specs.groups[d_node_type]
+                        node.update_total_resources(
+                            {
+                                "CPU": float(
+                                    max(
+                                        group.max_cpu,
+                                        node.total_resources.get("CPU", 0),
+                                    )
+                                ),
+                                "memory": float(
+                                    max(
+                                        group.max_memory,
+                                        node.total_resources.get("memory", 0),
+                                    )
+                                ),
+                            }
+                        )
+                    node.labels[domain_label_key] = domain_val
+                    replacement_nodes.append(node)
+                full_domain = cand_nodes + replacement_nodes
+                _assign_missing_worker_ids(full_domain, cfg)
+                if _try_pack_into_domain(full_domain) is not None:
+                    return ctx.get_nodes(), []
+            return ctx.get_nodes(), requests_to_sched
+
+        # 2. Try launching 1 new replica (`num_of_hosts` nodes) for each candidate node_type.
+        ippr_specs = ctx.get_ippr_specs()
+        max_num_nodes = ctx.get_max_num_nodes()
+        non_terminating_count = sum(
+            1 for n in all_nodes if n.status != SchedulingNodeStatus.TO_TERMINATE
+        )
+
+        launch_candidates = []
+        for node_type, num_available in node_type_available.items():
+            if not _supports_locality_key(node_type):
+                continue
+            cfg = node_type_configs[node_type]
+            is_flexible_single_host_domain = _is_flexible_single_host_domain(cfg)
+            if is_flexible_single_host_domain:
+                max_allowed = num_available
+                if max_num_nodes is not None:
+                    max_allowed = min(
+                        max_allowed, max(0, max_num_nodes - non_terminating_count)
+                    )
+                replica_hosts = min(len(requests_to_sched), max_allowed)
+                if replica_hosts <= 0:
+                    continue
+            else:
+                replica_hosts = max(1, cfg.num_of_hosts)
+                if num_available < replica_hosts:
+                    continue
+                if (
+                    max_num_nodes is not None
+                    and non_terminating_count + replica_hosts > max_num_nodes
+                ):
+                    continue
+
+            syn_domain = f"__pending_domain_{node_type}_{uuid.uuid4().hex[:8]}"
+            replica_nodes = []
+            for _ in range(replica_hosts):
+                node = SchedulingNode.from_node_config(
+                    cfg,
+                    status=SchedulingNodeStatus.TO_LAUNCH,
+                    node_kind=NodeKind.WORKER,
+                )
+                if ippr_specs and node_type in ippr_specs.groups:
+                    group = ippr_specs.groups[node_type]
+                    node.update_total_resources(
+                        {
+                            "CPU": float(
+                                max(group.max_cpu, node.total_resources.get("CPU", 0))
+                            ),
+                            "memory": float(
+                                max(
+                                    group.max_memory,
+                                    node.total_resources.get("memory", 0),
+                                )
+                            ),
+                        }
+                    )
+                if not node.labels.get(domain_label_key):
+                    node.labels[domain_label_key] = syn_domain
+                replica_nodes.append(node)
+
+            _assign_missing_worker_ids(replica_nodes, cfg)
+            res = _try_pack_into_domain(
+                replica_nodes, keep_unscheduled=not is_flexible_single_host_domain
+            )
+            if res is not None:
+                updated_indexed_nodes, domain_score = res
+                launch_candidates.append(
+                    (
+                        domain_score,
+                        [node for _, node in updated_indexed_nodes],
+                    )
+                )
+
+        if launch_candidates:
+            launch_candidates.sort(key=lambda x: x[0], reverse=True)
+            _, winning_replica_nodes = launch_candidates[0]
+            all_nodes.extend(winning_replica_nodes)
+            return all_nodes, []
+
+        return ctx.get_nodes(), requests_to_sched
 
     @staticmethod
     def _try_schedule(
@@ -2106,12 +2709,58 @@ class ResourceDemandScheduler(IResourceScheduler):
         ctx.update(nodes)
 
     @staticmethod
+    def _get_node_domain_key(
+        node: SchedulingNode,
+        node_type_config: Optional[NodeTypeConfig] = None,
+    ) -> Optional[Tuple[str, str]]:
+        for label_key in MULTI_HOST_DOMAIN_LABEL_KEYS:
+            val = node.labels.get(label_key)
+            if val:
+                return (label_key, val)
+        if node_type_config is not None and node_type_config.num_of_hosts > 1:
+            for label_key, cfg_val in node_type_config.labels.items():
+                if (
+                    cfg_val == ""
+                    and label_key not in MULTI_HOST_WORKER_ID_LABEL_KEYS
+                    and label_key != "ray.io/worker-id"
+                ):
+                    val = node.labels.get(label_key)
+                    if val:
+                        return (label_key, val)
+        return None
+
+    @staticmethod
+    def _get_expected_domain_hosts(
+        domain_nodes: List[SchedulingNode],
+        node_type_config: Optional[NodeTypeConfig] = None,
+    ) -> int:
+        expected_hosts = (
+            node_type_config.num_of_hosts if node_type_config is not None else 1
+        )
+        for node in domain_nodes:
+            for worker_id_key in MULTI_HOST_WORKER_ID_LABEL_KEYS:
+                worker_id = node.labels.get(worker_id_key)
+                if worker_id is not None:
+                    try:
+                        expected_hosts = max(expected_hosts, int(worker_id) + 1)
+                    except ValueError:
+                        pass
+        if expected_hosts > 1:
+            expected_hosts = max(expected_hosts, len(domain_nodes))
+        return expected_hosts
+
+    @staticmethod
     def _enforce_idle_termination(
         ctx: "ResourceDemandScheduler.ScheduleContext",
     ) -> None:
         """
         Enforce the idle termination for the nodes that are not needed by the cluster
         resource constraints and idle for too long.
+
+        For multi-host domains (nodes sharing a domain label such as
+        `ray.io/tpu-slice-name` or `ray.io/gpu-domain`), idle termination is evaluated
+        atomically across the entire domain so that an idle host is never drained
+        while another host in the same replica is still active or booting.
 
         Args:
             ctx: The schedule context.
@@ -2122,51 +2771,91 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         nodes = ctx.get_nodes()
         s_to_ms = 1000
+
+        domain_nodes_by_key: Dict[
+            Tuple[NodeType, str, str], List[SchedulingNode]
+        ] = defaultdict(list)
         for node in nodes:
-            if node.status != SchedulingNodeStatus.SCHEDULABLE:
-                # We don't need to care about the non-running nodes.
+            if node.status == SchedulingNodeStatus.TO_TERMINATE:
                 continue
+            domain_key = ResourceDemandScheduler._get_node_domain_key(
+                node, node_type_configs.get(node.node_type)
+            )
+            if domain_key:
+                domain_nodes_by_key[
+                    (node.node_type, domain_key[0], domain_key[1])
+                ].append(node)
+
+        def _node_idle_timeout_if_eligible(node: SchedulingNode) -> Optional[float]:
+            if node.status != SchedulingNodeStatus.SCHEDULABLE:
+                return None
 
             if node.node_kind == NodeKind.HEAD:
-                # The head node is not subject to idle termination.
-                continue
+                return None
 
             idle_timeout_s = ctx.get_idle_timeout_s()
-            # Override the scheduler idle_timeout_s if set for this node_type.
             node_type = node.node_type
             if node_type in node_type_configs:
                 if node_type_configs[node_type].idle_timeout_s is not None:
                     idle_timeout_s = node_type_configs[node_type].idle_timeout_s
             if idle_timeout_s is None:
-                # No idle timeout is set, skip the idle termination.
-                continue
+                return None
 
             if node.idle_duration_ms <= idle_timeout_s * s_to_ms:
-                # The node is not idle for too long, skip it.
-                continue
+                return None
 
             if node.sched_requests[ResourceRequestSource.PENDING_DEMAND]:
-                # The node is needed by the pending requests.
-                # Skip it.
                 logger.debug(
                     "Node {} (idle for {} secs) is needed by the pending requests, "
                     "skip idle termination.".format(
                         node.ray_node_id, node.idle_duration_ms / s_to_ms
                     )
                 )
-                continue
+                return None
 
             if node.sched_requests[ResourceRequestSource.CLUSTER_RESOURCE_CONSTRAINT]:
-                # The node is needed by the resource constraints.
-                # Skip it.
                 logger.debug(
                     "Node {} (idle for {} secs) is needed by the cluster resource "
                     "constraints, skip idle termination.".format(
                         node.ray_node_id, node.idle_duration_ms / s_to_ms
                     )
                 )
-                continue
+                return None
 
+            return idle_timeout_s
+
+        processed_domains: Set[Tuple[NodeType, str, str]] = set()
+        for node in nodes:
+            domain_key = ResourceDemandScheduler._get_node_domain_key(
+                node, node_type_configs.get(node.node_type)
+            )
+            if domain_key:
+                full_domain_key = (node.node_type, domain_key[0], domain_key[1])
+                domain_nodes = domain_nodes_by_key[full_domain_key]
+                expected_hosts = ResourceDemandScheduler._get_expected_domain_hosts(
+                    domain_nodes, node_type_configs.get(node.node_type)
+                )
+            else:
+                expected_hosts = 1
+
+            if domain_key and expected_hosts > 1:
+                if full_domain_key in processed_domains:
+                    continue
+                processed_domains.add(full_domain_key)
+                group_nodes = domain_nodes
+                if len(group_nodes) < expected_hosts:
+                    continue
+                timeouts = [_node_idle_timeout_if_eligible(n) for n in group_nodes]
+                if any(t is None for t in timeouts):
+                    continue
+            else:
+                idle_timeout_s = _node_idle_timeout_if_eligible(node)
+                if idle_timeout_s is None:
+                    continue
+                group_nodes = [node]
+                timeouts = [idle_timeout_s]
+
+            node_type = node.node_type
             # Honor the min_worker_nodes setting for the node type.
             min_count = 0
             if node_type in node_type_configs:
@@ -2174,29 +2863,33 @@ class ResourceDemandScheduler(IResourceScheduler):
             if (
                 count_by_node_type.get(node_type, 0)
                 - terminate_nodes_by_type[node_type]
-                <= min_count
+                - len(group_nodes)
+                < min_count
             ):
-                logger.info(
-                    "Node {} (idle for {} secs) belongs to node_type {} and is "
-                    "required by min_worker_nodes, skipping idle termination.".format(
-                        node.ray_node_id, node.idle_duration_ms / s_to_ms, node_type
+                for n in group_nodes:
+                    logger.info(
+                        "Node {} (idle for {} secs) belongs to node_type {} and is "
+                        "required by min_worker_nodes, skipping idle termination.".format(
+                            n.ray_node_id, n.idle_duration_ms / s_to_ms, node_type
+                        )
                     )
-                )
                 continue
 
-            terminate_nodes_by_type[node.node_type] += 1
-            # The node is idle for too long, terminate it.
-            node.status = SchedulingNodeStatus.TO_TERMINATE
-            node.termination_request = TerminationRequest(
-                id=str(uuid.uuid4()),
-                instance_id=node.im_instance_id,
-                ray_node_id=node.ray_node_id,
-                cause=TerminationRequest.Cause.IDLE,
-                instance_type=node.node_type,
-                instance_status=node.im_instance_status,
-                idle_duration_ms=node.idle_duration_ms,
-                details=f"idle for {node.idle_duration_ms/s_to_ms} secs > "
-                f"timeout={idle_timeout_s} secs",
-            )
+            terminate_nodes_by_type[node_type] += len(group_nodes)
+            for n, idle_timeout_s in zip(group_nodes, timeouts):
+                # The node (and its entire slice, if any) is idle for too long,
+                # terminate it.
+                n.status = SchedulingNodeStatus.TO_TERMINATE
+                n.termination_request = TerminationRequest(
+                    id=str(uuid.uuid4()),
+                    instance_id=n.im_instance_id,
+                    ray_node_id=n.ray_node_id,
+                    cause=TerminationRequest.Cause.IDLE,
+                    instance_type=n.node_type,
+                    instance_status=n.im_instance_status,
+                    idle_duration_ms=n.idle_duration_ms,
+                    details=f"idle for {n.idle_duration_ms/s_to_ms} secs > "
+                    f"timeout={idle_timeout_s} secs",
+                )
 
         ctx.update(nodes)
