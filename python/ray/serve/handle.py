@@ -6,19 +6,11 @@ import warnings
 from contextlib import asynccontextmanager
 from typing import (
     Any,
-    AsyncIterator,
-    Coroutine,
-    Dict,
-    Generator,
     Generic,
-    Iterator,
-    List,
-    Optional,
-    Tuple,
     TypeVar,
-    Union,
     cast,
 )
+from collections.abc import AsyncIterator, Coroutine, Generator, Iterator
 
 from typing_extensions import AsyncContextManager
 
@@ -71,15 +63,15 @@ class _DeploymentHandleBase(Generic[T]):
         deployment_name: str,
         app_name: str,
         *,
-        init_options: Optional[InitHandleOptionsBase] = None,
-        handle_options: Optional[DynamicHandleOptionsBase] = None,
-        _router: Optional[Router] = None,
-        _create_router: Optional[CreateRouterCallable] = None,
-        _request_counter: Optional[metrics.Counter] = None,
-        _handle_id: Optional[str] = None,
+        init_options: InitHandleOptionsBase | None = None,
+        handle_options: DynamicHandleOptionsBase | None = None,
+        _router: Router | None = None,
+        _create_router: CreateRouterCallable | None = None,
+        _request_counter: metrics.Counter | None = None,
+        _handle_id: str | None = None,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-        self.init_options: Optional[InitHandleOptionsBase] = init_options
+        self.init_options: InitHandleOptionsBase | None = init_options
         self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
@@ -91,7 +83,7 @@ class _DeploymentHandleBase(Generic[T]):
             app_name, deployment_name, self.handle_id
         )
 
-        self._router: Optional[Router] = _router
+        self._router: Router | None = _router
         self._create_router: CreateRouterCallable
         if _create_router is None:
             self._create_router = create_router
@@ -196,7 +188,7 @@ class _DeploymentHandleBase(Generic[T]):
 
         return self._router
 
-    def _init_router_and_get_metadata(self) -> Tuple[Router, RequestMetadata]:
+    def _init_router_and_get_metadata(self) -> tuple[Router, RequestMetadata]:
         router = self._init_router()
 
         metadata = serve._private.default_impl.get_request_metadata(
@@ -233,11 +225,12 @@ class _DeploymentHandleBase(Generic[T]):
             _request_counter=self.request_counter,
             _handle_id=self.handle_id,
         )
+
     def _remote(
         self,
-        args: Tuple[Any],
-        kwargs: Dict[str, Any],
-    ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
+        args: tuple[Any],
+        kwargs: dict[str, Any],
+    ) -> tuple[concurrent.futures.Future, RequestMetadata]:
         router, metadata = self._init_router_and_get_metadata()
 
         self.request_counter.inc(
@@ -251,8 +244,8 @@ class _DeploymentHandleBase(Generic[T]):
     @asynccontextmanager
     async def _choose_replica(
         self,
-        args: Tuple[Any],
-        kwargs: Dict[str, Any],
+        args: tuple[Any],
+        kwargs: dict[str, Any],
     ) -> AsyncIterator[ReplicaSelection]:
         """Execute the request router to select a replica without dispatching."""
         router, metadata = self._init_router_and_get_metadata()
@@ -266,9 +259,9 @@ class _DeploymentHandleBase(Generic[T]):
     def _dispatch(
         self,
         selection: ReplicaSelection,
-        args: Tuple[Any],
-        kwargs: Dict[str, Any],
-    ) -> Tuple[concurrent.futures.Future, RequestMetadata]:
+        args: tuple[Any],
+        kwargs: dict[str, Any],
+    ) -> tuple[concurrent.futures.Future, RequestMetadata]:
         """Dispatch a request to a previously selected replica."""
         # Validate that the selection was produced for this deployment
         if selection._deployment_id != self.deployment_id:
@@ -291,12 +284,12 @@ class _DeploymentHandleBase(Generic[T]):
     def options(
         self,
         *,
-        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
-        session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        method_name: str | DEFAULT = DEFAULT.VALUE,
+        multiplexed_model_id: str | DEFAULT = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: list[str] | DEFAULT = DEFAULT.VALUE,
+        session_id: str | DEFAULT = DEFAULT.VALUE,
+        stream: bool | DEFAULT = DEFAULT.VALUE,
+        _prefer_local_routing: bool | DEFAULT = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         raise NotImplementedError
 
@@ -317,9 +310,9 @@ class _DeploymentHandleBase(Generic[T]):
 
     async def shutdown_async(self):
         if self._router:
-            shutdown_future: Union[
-                asyncio.Future, concurrent.futures.Future
-            ] = self._router.shutdown()
+            shutdown_future: asyncio.Future | concurrent.futures.Future = (
+                self._router.shutdown()
+            )
             if self._is_router_running_in_separate_loop:
                 await asyncio.wrap_future(shutdown_future)
             else:
@@ -327,10 +320,10 @@ class _DeploymentHandleBase(Generic[T]):
                 await cast(asyncio.Future, shutdown_future)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
+        return f"{self.__class__.__name__}(deployment='{self.deployment_name}')"
 
     @classmethod
-    def _deserialize(cls, kwargs: Dict[str, Any]) -> "_DeploymentHandleBase[T]":
+    def _deserialize(cls, kwargs: dict[str, Any]) -> "_DeploymentHandleBase[T]":
         """Required for this class's __reduce__ method to be picklable."""
         return cls(**kwargs)
 
@@ -346,15 +339,14 @@ class _DeploymentHandleBase(Generic[T]):
 class _DeploymentResponseBase(Generic[R]):
     def __init__(
         self,
-        replica_result_future: Union[
-            concurrent.futures.Future[ReplicaResult], asyncio.Future[ReplicaResult]
-        ],
+        replica_result_future: concurrent.futures.Future[ReplicaResult]
+        | asyncio.Future[ReplicaResult],
         request_metadata: RequestMetadata,
         _is_router_running_in_separate_loop: bool = True,
     ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
-        self._replica_result: Optional[ReplicaResult] = None
+        self._replica_result: ReplicaResult | None = None
         self._request_metadata: RequestMetadata = request_metadata
         self._is_router_running_in_separate_loop = _is_router_running_in_separate_loop
 
@@ -367,7 +359,7 @@ class _DeploymentResponseBase(Generic[R]):
         return self._request_metadata._by_reference
 
     def _fetch_future_result_sync(
-        self, _timeout_s: Optional[float] = None
+        self, _timeout_s: float | None = None
     ) -> ReplicaResult:
         """Synchronously fetch the replica result.
 
@@ -568,7 +560,7 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
     def result(
         self,
         *,
-        timeout_s: Optional[float] = None,
+        timeout_s: float | None = None,
         _skip_asyncio_check: bool = False,
     ) -> R:
         """Fetch the result of the handle call synchronously.
@@ -617,7 +609,7 @@ class DeploymentResponse(_DeploymentResponseBase[R]):
     @DeveloperAPI
     def _to_object_ref_sync(
         self,
-        _timeout_s: Optional[float] = None,
+        _timeout_s: float | None = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
@@ -738,7 +730,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
     def result(
         self,
         *,
-        timeout_s: Optional[float] = None,
+        timeout_s: float | None = None,
         _skip_asyncio_check: bool = False,
     ) -> Any:
         """Not supported on `DeploymentResponseGenerator`.
@@ -779,7 +771,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
     @DeveloperAPI
     def _to_object_ref_gen_sync(
         self,
-        _timeout_s: Optional[float] = None,
+        _timeout_s: float | None = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
@@ -827,8 +819,8 @@ class DeploymentBroadcastResponse:
 
     def __init__(
         self,
-        coro: Coroutine[Any, Any, List[ReplicaResult]],
-        loop: Optional[asyncio.AbstractEventLoop],
+        coro: Coroutine[Any, Any, list[ReplicaResult]],
+        loop: asyncio.AbstractEventLoop | None,
     ):
         """Initialize a DeploymentBroadcastResponse.
 
@@ -839,10 +831,10 @@ class DeploymentBroadcastResponse:
         """
         self._coro = coro
         self._loop = loop
-        self._replica_results: Optional[List[ReplicaResult]] = None
+        self._replica_results: list[ReplicaResult] | None = None
         # Cached future so the single-use coroutine is only scheduled once.
         # A retry after timeout reuses this future instead of re-scheduling.
-        self._scheduled_future: Optional[concurrent.futures.Future] = None
+        self._scheduled_future: concurrent.futures.Future | None = None
 
     def _ensure_scheduled(self) -> concurrent.futures.Future:
         """Schedule the coroutine on the router's loop exactly once."""
@@ -854,8 +846,8 @@ class DeploymentBroadcastResponse:
         return self._scheduled_future
 
     def _fetch_replica_results_sync(
-        self, timeout_s: Optional[float] = None
-    ) -> List[ReplicaResult]:
+        self, timeout_s: float | None = None
+    ) -> list[ReplicaResult]:
         if self._replica_results is None:
             if self._loop is None or self._loop.is_closed():
                 # Local testing mode: no running event loop.
@@ -884,7 +876,7 @@ class DeploymentBroadcastResponse:
         assert self._replica_results is not None
         return self._replica_results
 
-    async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
+    async def _fetch_replica_results_async(self) -> list[ReplicaResult]:
         if self._replica_results is None:
             running_loop = None
             try:
@@ -909,9 +901,9 @@ class DeploymentBroadcastResponse:
     def results(
         self,
         *,
-        timeout_s: Optional[float] = None,
+        timeout_s: float | None = None,
         return_exceptions: bool = False,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Fetch results from all replicas synchronously.
 
         Returns a list of results, one per replica. The order of results is
@@ -956,8 +948,8 @@ class DeploymentBroadcastResponse:
         )
         futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
 
-        collected: List[Any] = []
-        first_error: Optional[Exception] = None
+        collected: list[Any] = []
+        first_error: Exception | None = None
         for fut in futures:
             try:
                 collected.append(fut.result())
@@ -980,9 +972,9 @@ class DeploymentBroadcastResponse:
     async def results_async(
         self,
         *,
-        timeout_s: Optional[float] = None,
+        timeout_s: float | None = None,
         return_exceptions: bool = False,
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Fetch results from all replicas asynchronously.
 
         Args:
@@ -1077,15 +1069,15 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
     def options(
         self,
         *,
-        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        candidate_multiplexed_model_ids: Union[List[str], DEFAULT] = DEFAULT.VALUE,
-        session_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _by_reference: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        request_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
-        response_serialization: Union[str, DEFAULT] = DEFAULT.VALUE,
+        method_name: str | DEFAULT = DEFAULT.VALUE,
+        multiplexed_model_id: str | DEFAULT = DEFAULT.VALUE,
+        candidate_multiplexed_model_ids: list[str] | DEFAULT = DEFAULT.VALUE,
+        session_id: str | DEFAULT = DEFAULT.VALUE,
+        stream: bool | DEFAULT = DEFAULT.VALUE,
+        _prefer_local_routing: bool | DEFAULT = DEFAULT.VALUE,
+        _by_reference: bool | DEFAULT = DEFAULT.VALUE,
+        request_serialization: str | DEFAULT = DEFAULT.VALUE,
+        response_serialization: str | DEFAULT = DEFAULT.VALUE,
     ) -> "DeploymentHandle[T]":
         """Set options for this handle and return an updated copy of it.
 
@@ -1139,7 +1131,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
     def remote(
         self, *args: Any, **kwargs: Any
-    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
+    ) -> DeploymentResponse[Any] | DeploymentResponseGenerator[Any]:
         """Issue a remote call to a method of the deployment.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
@@ -1219,7 +1211,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         selection: ReplicaSelection,
         *args: Any,
         **kwargs: Any,
-    ) -> Union[DeploymentResponse[Any], DeploymentResponseGenerator[Any]]:
+    ) -> DeploymentResponse[Any] | DeploymentResponseGenerator[Any]:
         """Dispatch a request to a previously selected replica.
 
         By default, the result is a `DeploymentResponse` that can be awaited to fetch
