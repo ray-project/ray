@@ -19,7 +19,7 @@ TPUs are custom-designed AI accelerators, which are optimized for training and i
 Ray supports both **SPMD** and **MPMD** workloads on TPUs. In SPMD workloads, all workers run the same program across data or model shards. In MPMD workloads, distinct actor groups such as reinforcement learning rollout and learner actors run different programs concurrently across devices or slices. Depending on your framework, you can schedule workers at two granularities:
 
 - **One process per TPU host (`{"TPU": 4}`):** One Ray task or actor runs on each TPU node and manages all local TPU devices on that host. Frameworks such as JAX, MaxText, and [vLLM-TPU](https://github.com/vllm-project/tpu-inference) use this model.
-- **One process per TPU device (`{"TPU": 1}`):** One Ray task or actor runs on each logical TPU device, matching the one-process-per-GPU model. Frameworks such as TorchTPU, vLLM-TorchTPU, and per-device MPMD actor groups use this model.
+- **One process per TPU device (`{"TPU": 1}`):** One Ray task or actor runs on each logical TPU device. Frameworks such as TorchTPU, vLLM-TorchTPU, and per-device MPMD actor groups use this model.
 
 (kuberay-tpu7x-dual-chiplet)=
 
