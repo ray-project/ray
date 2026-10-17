@@ -219,11 +219,17 @@ class DashboardAgent:
         modules = self._load_modules()
 
         launch_http_server = True
+        # -1 indicates the HTTP service is not available: a minimal install,
+        # RAY_DASHBOARD_AGENT_HTTP_SERVER_ENABLED=0, or a failure to start.
+        http_port = -1
         if self.http_server:
             try:
-                await self.http_server.start(modules)
-                # listen_port can be 0 for dynamic port assignment. get the actual bound port.
-                self.listen_port = self.http_server.http_port
+                await self.http_server.start(
+                    modules, serve=dashboard_consts.DASHBOARD_AGENT_HTTP_SERVER_ENABLED
+                )
+                if self.http_server.http_port is not None:
+                    # listen_port can be 0 for dynamic port assignment. get the actual bound port.
+                    self.listen_port = http_port = self.http_server.http_port
             except Exception as e:
                 # TODO(kevin85421): We should fail the agent if the HTTP server
                 # fails to start to avoid hiding the root cause. However,
@@ -236,21 +242,17 @@ class DashboardAgent:
                 )
                 launch_http_server = False
 
-        # If the HTTP server fails to start or is not launched, we should
-        # persist -1 to indicate that the service is not available.
         persist_port(
             self.session_dir,
             self.node_id,
             DASHBOARD_AGENT_LISTEN_PORT_NAME,
-            self.listen_port if self.http_server and launch_http_server else -1,
+            http_port,
         )
 
         if launch_http_server:
             # Writes agent address to kv.
             # DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX: <node_id> -> (ip, http_port, grpc_port)
             # DASHBOARD_AGENT_ADDR_IP_PREFIX: <ip> -> (node_id, http_port, grpc_port)
-            # -1 should indicate that http server is not started.
-            http_port = -1 if not self.http_server else self.http_server.http_port
             grpc_port = -1 if not self.server else self.grpc_port
             put_by_node_id = self.gcs_client.async_internal_kv_put(
                 f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{self.node_id}".encode(),
