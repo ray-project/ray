@@ -657,6 +657,23 @@ ray.init(logging_format='custom logging format - %(message)s')
     assert "custom logging format - " in stderr
 
 
+def test_configure_logging_false_defers_to_user_config(shutdown_only):
+    script = """
+import logging
+import sys
+
+import ray
+
+logging.basicConfig(
+    stream=sys.stderr, level=logging.DEBUG, format="user handler - %(name)s - %(message)s"
+)
+ray.init(configure_logging=False)
+logging.getLogger("ray").debug("ray debug message")
+"""
+    stderr = run_string_as_driver(script)
+    assert "user handler - ray - ray debug message" in stderr
+
+
 def test_segfault_stack_trace(ray_start_cluster, capsys):
     @ray.remote
     def f():
