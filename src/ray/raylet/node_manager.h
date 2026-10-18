@@ -308,16 +308,28 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
+  /// The outcome of PinAndReportMovedObject.
+  enum class MovedObjectPinResult {
+    /// This node holds the primary copy, either already or after the pin.
+    kPinned,
+    /// The copy is not in the store, so a later pull of the object can still
+    /// bring it here as a move.
+    kNotInStore,
+    /// The owner is dead or the object is being freed, so the object must not
+    /// be pinned and no later pull will bring it here.
+    kNotPinnable,
+  };
+
   /// Pin the local copy of a moved object as its primary copy and report the
   /// new primary to the owner. Nothing to do if this node already holds the
   /// primary copy.
   ///
   /// \param object_id The moved object.
   /// \param owner_address The address of the object's owner.
-  /// \return False if the object is not in the store, is pending deletion, or its
-  /// owner is known to be dead; the object is then left unpinned.
-  bool PinAndReportMovedObject(const ObjectID &object_id,
-                               const rpc::Address &owner_address);
+  /// \return Whether the object is pinned and, if not, why. An object that is
+  /// not pinned is left alone.
+  MovedObjectPinResult PinAndReportMovedObject(const ObjectID &object_id,
+                                               const rpc::Address &owner_address);
 
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
@@ -374,6 +386,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
   FRIEND_TEST(NodeManagerTest, TestHandleMovedActorCallArgs);
+  FRIEND_TEST(NodeManagerTest, TestPinAndReportMovedObject);
 
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
