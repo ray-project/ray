@@ -718,29 +718,92 @@ class TestControllerHealthMetricsTracker:
         assert tracker.dsm_update_durations[0] == 50.0
 
 
-def test_broadcast_app_statuses_only_on_change():
-    """The proxies get {app name: status} once per change."""
+def _app_status_controller(statuses, ingress_running):
     controller = ServeController.__new__(ServeController)
     controller.long_poll_host = MagicMock()
     controller._last_broadcasted_app_statuses = None
-    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
     controller.application_state_manager = MagicMock()
     controller.application_state_manager.list_app_statuses.side_effect = (
         lambda: statuses
     )
+    controller.application_state_manager.get_ingress_deployment_name.return_value = (
+        "ingress"
+    )
+    controller.deployment_state_manager = MagicMock()
+    controller.deployment_state_manager.get_num_running_replicas.side_effect = (
+        lambda _: ingress_running[0]
+    )
+    return controller
+
+
+def test_broadcast_app_statuses_only_on_change():
+    """The proxies get {app name: (status, serving)} once per change."""
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller = _app_status_controller(statuses, ingress_running=[0])
 
     controller.broadcast_app_statuses_if_changed()
     controller.broadcast_app_statuses_if_changed()
     controller.long_poll_host.notify_changed.assert_called_once_with(
-        {LongPollNamespace.APPLICATION_STATUSES: {"app": ApplicationStatus.DEPLOYING}}
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, False)
+            }
+        }
     )
 
     statuses["app"] = MagicMock(status=ApplicationStatus.RUNNING)
     controller.broadcast_app_statuses_if_changed()
     assert controller.long_poll_host.notify_changed.call_count == 2
     controller.long_poll_host.notify_changed.assert_called_with(
-        {LongPollNamespace.APPLICATION_STATUSES: {"app": ApplicationStatus.RUNNING}}
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.RUNNING, True)
+            }
+        }
     )
+
+
+def test_broadcast_app_statuses_serving_follows_ingress_replicas():
+    """DEPLOYING is serving only while the ingress has running replicas."""
+    from ray.serve._private.common import DeploymentID
+
+    ingress_running = [2]
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller = _app_status_controller(statuses, ingress_running=ingress_running)
+
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, True)
+            }
+        }
+    )
+    controller.deployment_state_manager.get_num_running_replicas.assert_called_with(
+        DeploymentID(name="ingress", app_name="app")
+    )
+
+    ingress_running[0] = 0
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {
+            LongPollNamespace.APPLICATION_STATUSES: {
+                "app": (ApplicationStatus.DEPLOYING, False)
+            }
+        }
+    )
+
+    for status in (
+        ApplicationStatus.DEPLOY_FAILED,
+        ApplicationStatus.UNHEALTHY,
+        ApplicationStatus.DELETING,
+    ):
+        ingress_running[0] = 3
+        statuses["app"] = MagicMock(status=status)
+        controller.broadcast_app_statuses_if_changed()
+        controller.long_poll_host.notify_changed.assert_called_with(
+            {LongPollNamespace.APPLICATION_STATUSES: {"app": (status, False)}}
+        )
 
 
 if __name__ == "__main__":

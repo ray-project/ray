@@ -105,7 +105,7 @@ class FakeProxyRouter(ProxyRouter):
         self.route_patterns = {}
         self._route_pattern_apps = {}
         self.app_statuses = {}
-        self._apps_reached_running = set()
+        self._serving_apps = set()
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.endpoints = endpoints
@@ -511,7 +511,7 @@ class TestHTTPProxy:
             self_actor_name="fake-proxy-name",
         )
 
-    def _app_health_proxy(self, status):
+    def _app_health_proxy(self, status, serving=None):
         http_proxy = self.create_http_proxy()
         http_proxy.proxy_router.set_ready_for_traffic()
         handle = FakeHTTPHandle(messages=[])
@@ -524,8 +524,10 @@ class TestHTTPProxy:
         http_proxy.proxy_router.handle = handle
         http_proxy.proxy_router.app_is_cross_language = False
         if status is not None:
+            if serving is None:
+                serving = status == ApplicationStatus.RUNNING
             http_proxy.proxy_router.update_app_statuses(
-                {handle.deployment_id.app_name: status}
+                {handle.deployment_id.app_name: (status, serving)}
             )
         return http_proxy
 
@@ -574,13 +576,14 @@ class TestHTTPProxy:
         self._check_asgi_messages(messages, status_code=503, body=app_status.value)
 
     @pytest.mark.asyncio
-    async def test_builtin_app_health_update_after_running_is_200(self):
-        """An in-place update keeps the app healthy while old replicas serve."""
-        http_proxy = self._app_health_proxy(ApplicationStatus.RUNNING)
+    async def test_builtin_app_health_deploying_while_serving_is_200(self):
+        """An in-place update keeps the app healthy while old replicas serve.
+
+        The controller marks the app as serving, so a proxy that never saw it
+        RUNNING (for example one started mid-update) still answers 200.
+        """
+        http_proxy = self._app_health_proxy(ApplicationStatus.DEPLOYING, serving=True)
         app_name = http_proxy.proxy_router.handle.deployment_id.app_name
-        http_proxy.proxy_router.update_app_statuses(
-            {app_name: ApplicationStatus.DEPLOYING}
-        )
 
         status, messages = await self._get_app_health(http_proxy)
 
@@ -590,14 +593,14 @@ class TestHTTPProxy:
             messages, status_code=200, body=ApplicationStatus.DEPLOYING.value
         )
 
-        # A failed update is reported, and redeploying from scratch after
-        # deletion starts over as a first deploy.
+        # Once the controller stops reporting it as serving (no ingress
+        # replicas left, or the update failed), the probe fails.
         for app_status in (
+            ApplicationStatus.DEPLOYING,
             ApplicationStatus.DEPLOY_FAILED,
             ApplicationStatus.DELETING,
-            ApplicationStatus.DEPLOYING,
         ):
-            http_proxy.proxy_router.update_app_statuses({app_name: app_status})
+            http_proxy.proxy_router.update_app_statuses({app_name: (app_status, False)})
             status, _ = await self._get_app_health(http_proxy)
             assert status.code == 503, app_status
 

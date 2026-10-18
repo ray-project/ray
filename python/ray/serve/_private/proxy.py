@@ -1136,9 +1136,9 @@ class HTTPProxy(GenericProxy):
     async def app_health_response(self, app_name: str) -> ResponseGenerator:
         """Per-app health from the application status the controller pushes.
 
-        200 when the application is RUNNING, or DEPLOYING during an update of
-        an app that already reached RUNNING (its existing replicas keep
-        serving). 503 otherwise. It does not call a replica or take a request
+        200 when the application is RUNNING, or DEPLOYING while its ingress
+        deployment still has running replicas (for example an in-place
+        update). 503 otherwise. It does not call a replica or take a request
         slot. System ``/-/healthz`` is a separate proxy readiness check.
         """
         status = self.proxy_router.get_app_status(app_name)
@@ -1820,7 +1820,9 @@ class ProxyActor(ProxyActorInterface):
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.proxy_router.update_routes(endpoints)
 
-    def _update_app_statuses(self, app_statuses: Dict[str, ApplicationStatus]):
+    def _update_app_statuses(
+        self, app_statuses: Dict[str, Tuple[ApplicationStatus, bool]]
+    ):
         self.proxy_router.update_app_statuses(app_statuses)
 
     def _get_logging_config(self) -> Optional[str]:
