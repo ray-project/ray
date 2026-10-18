@@ -2440,11 +2440,19 @@ void NodeManager::HandleMovedActorCallArgs(const WorkerID &worker_id,
       // This node already holds the primary copy; there is nothing to move.
       continue;
     }
-    if (lease_dependency_manager_.CheckObjectLocal(object_id) &&
-        PinAndReportMovedObject(object_id, refs[i].owner_address())) {
-      // A plain copy was already here, for example from the owner's ray.get on
-      // this node, and is now the primary copy. No pull is needed.
-      continue;
+    if (lease_dependency_manager_.CheckObjectLocal(object_id)) {
+      const MovedObjectPinResult result =
+          PinAndReportMovedObject(object_id, refs[i].owner_address());
+      if (result == MovedObjectPinResult::kPinned) {
+        // A plain copy was already here, for example from the owner's ray.get on
+        // this node, and is now the primary copy. No pull is needed.
+        continue;
+      }
+      if (result == MovedObjectPinResult::kNotPinnable) {
+        // The owner is dead or the object is being freed, so no copy of it may
+        // be pinned here, and a record would only linger until the worker exits.
+        continue;
+      }
     }
     // The object is not here, so the wait started by the caller pulls it, and
     // the record makes the arriving copy a move.
@@ -2548,20 +2556,22 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
     owner_address.set_ip_address(object_info.owner_ip_address);
     owner_address.set_port(object_info.owner_port);
     owner_address.set_worker_id(object_info.owner_worker_id.Binary());
-    pin_missed = !PinAndReportMovedObject(object_id, owner_address);
+    pin_missed = PinAndReportMovedObject(object_id, owner_address) ==
+                 MovedObjectPinResult::kNotInStore;
   }
   // Notify the task dependency manager that this object is local.
   const auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(object_id);
   if (pin_missed) {
-    // The pin missed. This happens when the copy was sealed as a plain copy, so
-    // nothing held it in the store, and it was evicted before the pull manager
-    // could pin it; the record was written in between, by a request that saw
-    // the pull in flight. The record is written back only here, after the call
-    // above: that call cancels the wait pull, and with the last pull CancelPull
-    // erases the record, so a record written earlier would be lost. The
-    // worker's own fetch of its args finds the object missing and pulls it
-    // again, and the record makes that pull a move. Until then the record
-    // belongs to no pull; DisconnectClient erases it if the worker dies first.
+    // The pin missed because the copy is no longer in the store. This happens
+    // when the copy was sealed as a plain copy, so nothing held it in the
+    // store, and it was evicted before the pull manager could pin it; the
+    // record was written in between, by a request that saw the pull in flight.
+    // The record is written back only here, after the call above: that call
+    // cancels the wait pull, and with the last pull CancelPull erases the
+    // record, so a record written earlier would be lost. The worker's own fetch
+    // of its args finds the object missing and pulls it again, and the record
+    // makes that pull a move. Until then the record belongs to no pull;
+    // DisconnectClient erases it if the worker dies first.
     object_manager_.MarkMovePull(object_id, *move_requester);
   }
   RAY_LOG(DEBUG).WithField(object_id).WithField(self_node_id_)
@@ -2797,17 +2807,17 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
-                                          const rpc::Address &owner_address) {
+NodeManager::MovedObjectPinResult NodeManager::PinAndReportMovedObject(
+    const ObjectID &object_id, const rpc::Address &owner_address) {
   if (local_object_manager_.HoldsPrimaryCopy(object_id)) {
-    return true;
+    return MovedObjectPinResult::kPinned;
   }
   if (failed_workers_cache_.contains(WorkerID::FromBinary(owner_address.worker_id())) ||
       failed_nodes_cache_.contains(NodeID::FromBinary(owner_address.node_id()))) {
     RAY_LOG(DEBUG).WithField(object_id)
         << "Not pinning moved object because its owner is dead";
     num_moved_objects_pin_failed_++;
-    return false;
+    return MovedObjectPinResult::kNotPinnable;
   }
   std::vector<ObjectID> object_ids{object_id};
   std::vector<std::unique_ptr<RayObject>> results;
@@ -2816,21 +2826,26 @@ bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
   // example one pulled by the owner's ray.get on this node, with the move
   // request arriving after the seal: a plain seal releases the store reference
   // at once, whereas the sealing chunk of a recorded move keeps it until after
-  // the store's notification is handled. The copy can be pending deletion when
-  // the owner died, or freed the object by hand, while the move was in flight;
-  // the raylet is about to delete it, so it must not be pinned.
+  // the store's notification is handled.
   if (!GetObjectsFromPlasma(object_ids, &results) || results.size() != 1 ||
-      results[0] == nullptr || local_object_manager_.ObjectPendingDeletion(object_id)) {
-    RAY_LOG(DEBUG).WithField(object_id)
-        << "Moved object is not in the object store or is being freed";
+      results[0] == nullptr) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Moved object is not in the object store";
     num_moved_objects_pin_failed_++;
-    return false;
+    return MovedObjectPinResult::kNotInStore;
+  }
+  // The copy can be pending deletion when the owner died, or freed the object
+  // by hand, while the move was in flight; the raylet is about to delete it, so
+  // it must not be pinned.
+  if (local_object_manager_.ObjectPendingDeletion(object_id)) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Not pinning moved object being freed";
+    num_moved_objects_pin_failed_++;
+    return MovedObjectPinResult::kNotPinnable;
   }
   local_object_manager_.PinObjectsAndWaitForFree(
       object_ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
   object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
   num_moved_objects_pinned_++;
-  return true;
+  return MovedObjectPinResult::kPinned;
 }
 
 void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
