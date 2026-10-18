@@ -2,7 +2,7 @@ import functools
 import logging
 import typing
 from collections import deque
-from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -42,7 +42,6 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 from ray.data._internal.execution.util import merge_label_selector
-from ray.data._internal.util import _estimate_available_parallelism
 from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -122,7 +121,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._num_reduce_tasks_submitted: int = 0
         self._handle_bundles: List[RefBundle] = []
         self._handle_refs_by_input: List[List[ObjectRef]] = [[] for _ in input_ops]
-        self._shared_handles_by_input: List[Optional[ObjectRef]] = [None] * len(
+        self._shared_handles_by_input: List[Optional["ray.ObjectRef"]] = [None] * len(
             input_ops
         )
         self._partition_rows_by_input: List[np.ndarray] = [
@@ -134,8 +133,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._schema: Optional[pa.Schema] = None
         # (shuffle_id, node_id) of every file server the mappers created.
         self._file_servers: Set[Tuple[str, str]] = set()
-        self._pending_partitions: Deque[int] = deque()
-        self._max_tasks_in_flight: Optional[int] = None
         self._fused_output_map_transformer = fused_output_map_transformer
         self._fused_output_map_task_kwargs = fused_output_map_task_kwargs or {}
         self._fused_output_map_target_max_block_size_override = (
@@ -172,11 +169,12 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert 0 <= input_index < self._num_inputs
         for entry in refs.blocks:
-            self._record_handle(handle_from_block(ray.get(entry.ref)), input_index)
+            handle_block = ray.get(entry.ref)  # pyrefly: ignore[no-matching-overload]
+            self._record_handle(handle_from_block(handle_block), input_index)
             self._handle_refs_by_input[input_index].append(entry.ref)
         self._handle_bundles.append(refs)
 
-    def _record_handle(self, handle: Dict, input_index: int) -> None:
+    def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
         for key, tallies in (
             ("num_rows", self._partition_rows_by_input),
             ("decoded_bytes", self._partition_bytes_by_input),
@@ -193,15 +191,14 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        for input_index, refs in enumerate(self._handle_refs_by_input):
-            if refs:
-                self._shared_handles_by_input[input_index] = ray.put(refs)
+        self._shared_handles_by_input = [
+            ray.put(refs) if refs else None for refs in self._handle_refs_by_input
+        ]
         if not any(self._handle_refs_by_input):
             return
         for partition_id in range(self._num_partitions):
             if not self._try_emit_empty_partition(partition_id):
-                self._pending_partitions.append(partition_id)
-        self._submit_pending()
+                self._submit_reduce_task(partition_id)
 
     def _try_emit_empty_partition(self, partition_id: int) -> bool:
         """Return True if ``partition_id`` was handled without a reduce task.
@@ -221,19 +218,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         if self._emit_empty_partitions:
             self._emit_empty_partition(self._schema)
         return True
-
-    def _submit_pending(self) -> None:
-        if not self._pending_partitions:
-            return
-        if self._max_tasks_in_flight is None:
-            # Sized when the reduce phase starts (the first poll with pending
-            # work), not at the first executor poll of the whole pipeline.
-            self._max_tasks_in_flight = max(1, _estimate_available_parallelism())
-        while (
-            self._pending_partitions
-            and len(self._shuffle_reduce_tasks) < self._max_tasks_in_flight
-        ):
-            self._submit_reduce_task(self._pending_partitions.popleft())
 
     def _submit_reduce_task(self, partition_id: int) -> None:
         handles_refs: List[Any] = [
@@ -354,7 +338,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._estimated_output_num_rows = num_rows
 
     def has_next(self) -> bool:
-        self._submit_pending()
         return len(self._output_queue) > 0
 
     def _get_next_inner(self) -> RefBundle:
@@ -394,7 +377,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         )
 
     def has_execution_finished(self) -> bool:
-        if self._shuffle_reduce_tasks or self._output_queue or self._pending_partitions:
+        if self._shuffle_reduce_tasks or self._output_queue:
             return False
         return super().has_execution_finished()
 
@@ -402,7 +385,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
-        self._pending_partitions.clear()
         teardown_disk_shuffle(self._file_servers)
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
@@ -442,13 +424,15 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         return ExecutionResources(cpu=cpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        # The next pending partition's exact request.
-        memory = 0
-        if self._pending_partitions:
-            memory = int(
-                self._partition_bytes(self._pending_partitions[0])
-                * self._peak_memory_multiplier
-            )
+        """Per-task resource ask for the framework's budget allocator: the
+        average non-empty partition's request, as for ShuffleReduceOp."""
+        total_bytes = np.sum(self._partition_bytes_by_input, axis=0)
+        non_empty = total_bytes[total_bytes > 0]
+        memory = (
+            int(non_empty.mean() * self._peak_memory_multiplier)
+            if non_empty.size
+            else 0
+        )
         return ExecutionResources.from_resource_dict(
             self._reduce_task_remote_args(memory)
         )
