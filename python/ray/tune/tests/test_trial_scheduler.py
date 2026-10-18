@@ -1,3 +1,4 @@
+import itertools
 import json
 import os
 import random
@@ -490,6 +491,29 @@ class HyperbandSuite(unittest.TestCase):
             self.assertEqual(new_length, self.downscale(current_length, sched))
             cur_units = int(cur_units * sched._eta)
         self.assertEqual(len(big_bracket.current_trials()), 1)
+
+    def testSuccessiveHalvingRanksNanLast(self):
+        """A NaN metric must not corrupt the ranking of the other trials."""
+        sched = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=3, reduction_factor=3
+        )
+        for metric_op, best in [(1.0, 0.9), (-1.0, 0.1)]:
+            for order in itertools.permutations([best, 0.5, np.nan]):
+                with self.subTest(metric_op=metric_op, order=order):
+                    # The s=1 bracket holds 3 trials and keeps 1 at the first rung.
+                    bracket = sched._create_bracket(1)
+                    trials = []
+                    for i, value in enumerate(order):
+                        trial = Trial(
+                            MOCK_TRAINABLE_NAME, trial_id=f"ft_{i:04d}", stub=True
+                        )
+                        bracket.add_trial(trial)
+                        bracket.update_trial_stats(trial, result(1, value))
+                        trials.append(trial)
+                    good, _ = bracket.successive_halving(
+                        "episode_reward_mean", metric_op
+                    )
+                    self.assertEqual(good, [trials[order.index(best)]])
 
     def testHalvingStop(self):
         stats = self.default_statistics()
