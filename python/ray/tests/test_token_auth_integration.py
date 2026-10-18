@@ -814,6 +814,201 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
             _cleanup_ray_start(env)
 
 
+_AUTH_MODE_MISMATCH = "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled"
+
+
+@pytest.fixture
+def disabled_head_with_token_file():
+    """A head with RAY_AUTH_MODE=disabled, and a token file in the default path."""
+    from ray._common.network_utils import find_free_port
+    from ray._private.authentication_test_utils import set_default_auth_token
+
+    set_default_auth_token("c" * 64)
+    port = find_free_port()
+    client_server_port = find_free_port()
+    env = os.environ.copy()
+    env.pop("RAY_AUTH_TOKEN", None)
+    env.pop("RAY_AUTH_TOKEN_PATH", None)
+    # Keep the default GCS connect retries (~20s) so a client that retries a
+    # rejection exceeds the 15s timeouts below instead of passing.
+    env.pop("RAY_NUM_REDIS_GET_RETRIES", None)
+    env["RAY_AUTH_MODE"] = "disabled"
+    try:
+        _run_ray_start_and_verify_status(
+            [
+                "--head",
+                f"--port={port}",
+                f"--ray-client-server-port={client_server_port}",
+            ],
+            env,
+            expect_success=True,
+        )
+        yield env, f"127.0.0.1:{port}", f"ray://127.0.0.1:{client_server_port}"
+    finally:
+        _cleanup_ray_start(env)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+@pytest.mark.parametrize("driver_auth_mode", ["disabled", "token"])
+def test_driver_on_auth_disabled_cluster(
+    driver_auth_mode, disabled_head_with_token_file
+):
+    """A driver with a token file works on a cluster with RAY_AUTH_MODE=disabled
+    only if it sets RAY_AUTH_MODE=disabled too."""
+    env, address, _ = disabled_head_with_token_file
+    driver = (
+        "import ray\n"
+        f"ray.init(address='{address}')\n"
+        "print(ray.get(ray.remote(lambda: 'driver ok').remote()))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", driver],
+        env={**env, "RAY_AUTH_MODE": driver_auth_mode},
+        capture_output=True,
+        text=True,
+        # The rejection must not wait out the ~20s of GCS connect retries.
+        timeout=15 if driver_auth_mode == "token" else 60,
+    )
+    output = result.stdout + result.stderr
+
+    if driver_auth_mode == "disabled":
+        assert result.returncode == 0, output
+        assert "driver ok" in output
+    else:
+        assert result.returncode != 0, output
+        assert _AUTH_MODE_MISMATCH in output
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+def test_ray_start_address_in_token_mode_on_auth_disabled_cluster(
+    disabled_head_with_token_file,
+):
+    """ray start --address in token mode fails fast with AuthModeMismatch against a
+    head with RAY_AUTH_MODE=disabled."""
+    env, address, _ = disabled_head_with_token_file
+    result = subprocess.run(
+        ["ray", "start", f"--address={address}", "--num-cpus=1"],
+        env={**env, "RAY_AUTH_MODE": "token"},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode != 0
+    assert _AUTH_MODE_MISMATCH in result.stdout + result.stderr
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+@pytest.mark.parametrize("client_auth_mode", ["disabled", "token"])
+def test_ray_client_on_auth_disabled_cluster(
+    client_auth_mode, disabled_head_with_token_file
+):
+    """A ray:// client with a token file works on a cluster with
+    RAY_AUTH_MODE=disabled only if it sets RAY_AUTH_MODE=disabled too."""
+    env, _, client_address = disabled_head_with_token_file
+    driver = (
+        "import ray\n"
+        f"ray.init('{client_address}')\n"
+        "print(ray.get(ray.remote(lambda: 'client ok').remote()))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", driver],
+        env={**env, "RAY_AUTH_MODE": client_auth_mode},
+        capture_output=True,
+        text=True,
+        timeout=15 if client_auth_mode == "token" else 60,
+    )
+    output = result.stdout + result.stderr
+
+    if client_auth_mode == "disabled":
+        assert result.returncode == 0, output
+        assert "client ok" in output
+    else:
+        assert result.returncode != 0, output
+        assert _AUTH_MODE_MISMATCH in output
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_file):
+    """The dashboard agent's gRPC server rejects a request that carries a token on a
+    cluster with RAY_AUTH_MODE=disabled, and accepts one that doesn't."""
+    import json
+
+    import grpc
+
+    from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+    from ray.dashboard import consts as dashboard_consts
+
+    _, address, _ = disabled_head_with_token_file
+    set_auth_mode("disabled")
+    reset_auth_token_state()
+    ray.init(address=address)
+    agent_key = (
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}"
+        f"{ray.get_runtime_context().get_node_id()}"
+    )
+
+    def get_agent_address():
+        return ray.experimental.internal_kv._internal_kv_get(
+            agent_key, namespace=ray._private.ray_constants.KV_NAMESPACE_DASHBOARD
+        )
+
+    wait_for_condition(lambda: get_agent_address() is not None, timeout=30)
+    ip, _, grpc_port = json.loads(get_agent_address())
+    stub = reporter_pb2_grpc.ReporterServiceStub(
+        grpc.insecure_channel(f"{ip}:{grpc_port}")
+    )
+
+    stub.HealthCheck(reporter_pb2.HealthCheckRequest(), timeout=5)
+    with pytest.raises(grpc.RpcError) as exc_info:
+        stub.HealthCheck(
+            reporter_pb2.HealthCheckRequest(),
+            metadata=(("authorization", f"Bearer {'c' * 64}"),),
+            timeout=5,
+        )
+    assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
+    assert _AUTH_MODE_MISMATCH in exc_info.value.details()
+
+
+def test_kill_raylet_on_auth_disabled_cluster_with_token_file():
+    """kill_raylet still kills a raylet on a cluster with RAY_AUTH_MODE=disabled when
+    the test process has a token file, which the raylet would reject."""
+    from ray._private.authentication_test_utils import set_default_auth_token
+    from ray._private.test_utils import kill_raylet
+
+    set_default_auth_token("e" * 64)
+    set_auth_mode("disabled")
+    reset_auth_token_state()
+    cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 1})
+    try:
+        worker = cluster.add_node(num_cpus=1)
+        ray.init(address=cluster.address)
+        kill_raylet(
+            next(n for n in ray.nodes() if n["NodeID"] == worker.node_id),
+            graceful=False,
+        )
+        wait_for_condition(
+            lambda: not next(
+                n["Alive"] for n in ray.nodes() if n["NodeID"] == worker.node_id
+            ),
+            timeout=60,
+        )
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     """Test that e2e operations work with token authentication enabled.
 

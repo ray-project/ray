@@ -1510,33 +1510,6 @@ TEST_F(SyncerAuthenticationTest, ServerHasTokenClientDoesNot) {
   ASSERT_EQ(client.syncer->GetAllConnectedNodeIDs().size(), 0);
 }
 
-TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
-  // Test that connections succeed when client has token but server doesn't require it
-  const std::string server_token = "";
-  const std::string client_token = "different-client-token";
-
-  // Set client token
-  ray::SetEnv("RAY_AUTH_TOKEN", client_token);
-  // Enable token authentication
-  RayConfig::instance().AUTH_MODE() = "token";
-  ray::rpc::AuthenticationTokenLoader::instance().ResetCache();
-
-  // Create server without authentication (empty token)
-  auto server = CreateAuthenticatedServer("37896", server_token);
-
-  // Create client with separate io_context
-  ClientSyncer client;
-  auto channel = grpc::CreateChannel(BuildAddress("0.0.0.0", "37896"),
-                                     grpc::InsecureChannelCredentials());
-
-  // Should connect successfully - server accepts any client when auth is not required
-  client.Connect(channel);
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Verify connection is established
-  ASSERT_GT(client.syncer->GetAllConnectedNodeIDs().size(), 0);
-}
-
 grpc::Status StartSyncWithMetadata(
     const std::string &port,
     const std::vector<std::pair<std::string, std::string>> &metadata) {
@@ -1551,6 +1524,17 @@ grpc::Status StartSyncWithMetadata(
   auto stream = stub->StartSync(&context);
   stream->WritesDone();
   return stream->Finish();
+}
+
+TEST_F(SyncerAuthenticationTest, ServerWithAuthDisabledRejectsToken) {
+  auto server = CreateAuthenticatedServer("37896", "");
+  auto status = StartSyncWithMetadata(
+      "37896",
+      {{"node_id", NodeID::FromRandom().Hex()},
+       {kAuthTokenKey,
+        ray::rpc::AuthenticationToken("client-token").ToAuthorizationHeaderValue()}});
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED);
+  ASSERT_EQ(status.error_message(), kAuthModeMismatchErrorMessage);
 }
 
 TEST_F(SyncerAuthenticationTest, MissingNodeIdAndTokenIsRejected) {
