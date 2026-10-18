@@ -32,8 +32,7 @@ namespace gcs {
 /// of public APIs.
 class StoreClientInternalKV : public InternalKVInterface {
  public:
-  /// \param store_client The underlying storage, e.g. MaybeObserve's result.
-  explicit StoreClientInternalKV(std::shared_ptr<StoreClient> store_client);
+  explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client);
 
   void Get(const std::string &ns,
            const std::string &key,
@@ -64,7 +63,7 @@ class StoreClientInternalKV : public InternalKVInterface {
             Postable<void(std::vector<std::string>)> callback) override;
 
  private:
-  std::shared_ptr<StoreClient> delegate_;
+  std::unique_ptr<StoreClient> delegate_;
   const std::string table_name_;
 };
 }  // namespace gcs

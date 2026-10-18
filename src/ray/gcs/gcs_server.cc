@@ -1008,17 +1008,22 @@ void GcsServer::InitUsageStatsClient() {
 
 void GcsServer::InitKVManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
-  std::shared_ptr<StoreClient> store_client;
+  std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
-  case (StorageType::REDIS_PERSIST):
-    store_client = MaybeObserve(
-        std::make_shared<RedisStoreClient>(
-            io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_)),
-        RayConfig::instance().gcs_redis_storage_metrics_enabled(),
-        metrics_.storage_operation_latency_in_ms_histogram,
-        metrics_.storage_operation_count_counter,
-        clock_);
+  case (StorageType::REDIS_PERSIST): {
+    auto redis_store_client = std::make_unique<RedisStoreClient>(
+        io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
+    if (RayConfig::instance().gcs_redis_storage_metrics_enabled()) {
+      store_client = std::make_unique<ObservableStoreClient>(
+          std::move(redis_store_client),
+          metrics_.storage_operation_latency_in_ms_histogram,
+          metrics_.storage_operation_count_counter,
+          clock_);
+    } else {
+      store_client = std::move(redis_store_client);
+    }
     break;
+  }
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),
