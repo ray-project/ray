@@ -23,7 +23,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 )
 from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.conftest import *
+from ray.serve.tests.conftest import *  # noqa
 
 
 @ray.remote(num_cpus=0)

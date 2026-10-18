@@ -4,9 +4,9 @@ import random
 import sys
 import threading
 from collections import defaultdict
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import replace
-from collections.abc import Callable
 from unittest.mock import Mock, patch
 
 import grpc
