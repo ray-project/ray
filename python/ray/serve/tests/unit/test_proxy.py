@@ -10,7 +10,6 @@ import pytest
 import ray
 from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
 from ray.serve._private.constants import HEALTHY_MESSAGE
-from ray.serve.schema import ApplicationStatus
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
     HTTPProxy,
@@ -32,6 +31,7 @@ from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
+from ray.serve.schema import ApplicationStatus
 
 ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE = "Router is not ready for traffic"
 
@@ -105,6 +105,7 @@ class FakeProxyRouter(ProxyRouter):
         self.route_patterns = {}
         self._route_pattern_apps = {}
         self.app_statuses = {}
+        self._apps_reached_running = set()
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.endpoints = endpoints
@@ -571,6 +572,34 @@ class TestHTTPProxy:
         assert status.is_error is True
         assert http_proxy._ongoing_requests == 0
         self._check_asgi_messages(messages, status_code=503, body=app_status.value)
+
+    @pytest.mark.asyncio
+    async def test_builtin_app_health_update_after_running_is_200(self):
+        """An in-place update keeps the app healthy while old replicas serve."""
+        http_proxy = self._app_health_proxy(ApplicationStatus.RUNNING)
+        app_name = http_proxy.proxy_router.handle.deployment_id.app_name
+        http_proxy.proxy_router.update_app_statuses(
+            {app_name: ApplicationStatus.DEPLOYING}
+        )
+
+        status, messages = await self._get_app_health(http_proxy)
+
+        assert status.code == 200
+        assert status.is_error is False
+        self._check_asgi_messages(
+            messages, status_code=200, body=ApplicationStatus.DEPLOYING.value
+        )
+
+        # A failed update is reported, and redeploying from scratch after
+        # deletion starts over as a first deploy.
+        for app_status in (
+            ApplicationStatus.DEPLOY_FAILED,
+            ApplicationStatus.DELETING,
+            ApplicationStatus.DEPLOYING,
+        ):
+            http_proxy.proxy_router.update_app_statuses({app_name: app_status})
+            status, _ = await self._get_app_health(http_proxy)
+            assert status.code == 503, app_status
 
     @pytest.mark.asyncio
     async def test_builtin_app_health_unknown_status_is_503(self):

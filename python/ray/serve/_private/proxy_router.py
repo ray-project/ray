@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -59,6 +59,11 @@ class ProxyRouter:
         # Application statuses tracked by the controller, pushed over long poll.
         # Used to answer the per-app health route without calling a replica.
         self.app_statuses: Dict[ApplicationName, ApplicationStatus] = dict()
+        # Apps that reached RUNNING since they were last created. A config
+        # update moves a RUNNING app back to DEPLOYING while its existing
+        # replicas keep serving, so those apps still answer the health route
+        # with 200 until the update finishes or fails.
+        self._apps_reached_running: Set[ApplicationName] = set()
 
     def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic.
@@ -92,7 +97,28 @@ class ProxyRouter:
     def update_app_statuses(
         self, app_statuses: Dict[ApplicationName, ApplicationStatus]
     ) -> None:
+        for app_name, status in app_statuses.items():
+            if status == ApplicationStatus.RUNNING:
+                self._apps_reached_running.add(app_name)
+            elif status in (ApplicationStatus.NOT_STARTED, ApplicationStatus.DELETING):
+                self._apps_reached_running.discard(app_name)
+        self._apps_reached_running.intersection_update(app_statuses)
         self.app_statuses = dict(app_statuses)
+
+    def app_is_serving(self, app_name: ApplicationName) -> bool:
+        """Whether the per-app health route should report the app as healthy.
+
+        True when the app is RUNNING, or DEPLOYING after it already reached
+        RUNNING (an in-place update, where existing replicas keep serving).
+        A first deploy, a failed deploy, an unhealthy app, or deletion is not.
+        """
+        status = self.app_statuses.get(app_name)
+        if status == ApplicationStatus.RUNNING:
+            return True
+        return (
+            status == ApplicationStatus.DEPLOYING
+            and app_name in self._apps_reached_running
+        )
 
     def get_app_status(self, app_name: ApplicationName) -> Optional[ApplicationStatus]:
         return self.app_statuses.get(app_name)

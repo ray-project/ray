@@ -1134,19 +1134,22 @@ class HTTPProxy(GenericProxy):
         )
 
     async def app_health_response(self, app_name: str) -> ResponseGenerator:
-        """Per-app health: 200 when the application is RUNNING, 503 otherwise.
+        """Per-app health from the application status the controller pushes.
 
-        Answered from the application status the controller pushes to the proxy,
-        so it does not call a replica or take a request slot. System
-        ``/-/healthz`` is a separate proxy readiness check.
+        200 when the application is RUNNING, or DEPLOYING during an update of
+        an app that already reached RUNNING (its existing replicas keep
+        serving). 503 otherwise. It does not call a replica or take a request
+        slot. System ``/-/healthz`` is a separate proxy readiness check.
         """
         status = self.proxy_router.get_app_status(app_name)
         if self._is_draining():
             healthy = False
             message = DRAINING_MESSAGE
-        elif status == ApplicationStatus.RUNNING:
+        elif self.proxy_router.app_is_serving(app_name):
             healthy = True
-            message = HEALTHY_MESSAGE
+            message = (
+                HEALTHY_MESSAGE if status == ApplicationStatus.RUNNING else status.value
+            )
         else:
             healthy = False
             message = status.value if status is not None else "UNKNOWN"
