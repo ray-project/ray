@@ -637,7 +637,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             if isinstance(col.dtype, (TensorDtype, pd.ArrowDtype)):
                 continue
 
-            if len(col) > 0 and not col.notna().any():
+            if not col.empty and not col.notna().any():
                 # If there are only null-values, coerce column to Arrow's `NullType`
                 null_coerced_columns[(idx, col_name)] = pa.nulls(
                     len(col), type=pa.null()
