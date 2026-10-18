@@ -1413,6 +1413,119 @@ async def test_get_queue_len_cancelled_with_routing_task(pow_2_router):
     await async_wait_for_condition(lambda: r1.get_queue_len_was_cancelled)
 
 
+class SlowToCancelReplica(FakeRunningReplica):
+    """Fake replica whose `get_queue_len` does async cleanup when cancelled.
+
+    The cleanup takes `cleanup_s` or until `finish_cleanup()` is called.
+    """
+
+    def __init__(self, *args, cleanup_s: float, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cleanup_s = cleanup_s
+        self._finish_cleanup = asyncio.Event()
+        self.num_cleanups_started = 0
+        self.num_cleanups_finished = 0
+
+    def finish_cleanup(self):
+        self._finish_cleanup.set()
+
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        try:
+            return await super().get_queue_len(deadline_s=deadline_s)
+        except asyncio.CancelledError:
+            self.num_cleanups_started += 1
+            try:
+                await asyncio.wait_for(
+                    self._finish_cleanup.wait(), timeout=self._cleanup_s
+                )
+            except asyncio.TimeoutError:
+                pass
+            self.num_cleanups_finished += 1
+            raise
+
+
+@pytest.mark.asyncio
+async def test_cancelled_get_queue_len_finishes_before_routing(pow_2_router):
+    """
+    Verify that a `get_queue_len` call cancelled at the response deadline has
+    finished running before the router acts on the probe results, and that the
+    replica is treated as unavailable.
+    """
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.001
+    # Bounds how long the router waits for cancelled probes to finish.
+    s.max_queue_len_response_deadline_s = 10
+    loop = get_or_create_event_loop()
+
+    r1 = SlowToCancelReplica("r1", cleanup_s=0.1)
+    r2 = FakeRunningReplica("r2")
+    r2.set_queue_len_response(0)
+    s.update_replicas([r1, r2])
+    # Let the probe started by `update_replicas` finish.
+    await async_wait_for_condition(lambda: r1.num_cleanups_finished == 1)
+
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    # r1 never responds, so its probe times out and r2 is chosen.
+    assert (await task) == r2
+    assert r1.num_cleanups_started == 2
+    assert r1.num_cleanups_finished == 2
+
+
+@pytest.mark.asyncio
+async def test_slow_to_cancel_get_queue_len_does_not_block_routing(pow_2_router):
+    """
+    Verify that a `get_queue_len` call that takes a long time to handle its
+    cancellation doesn't block routing past the max response deadline.
+    """
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.001
+    s.max_queue_len_response_deadline_s = 0.01
+    loop = get_or_create_event_loop()
+
+    r1 = SlowToCancelReplica("r1", cleanup_s=100)
+    r2 = FakeRunningReplica("r2")
+    r2.set_queue_len_response(0)
+    s.update_replicas([r1, r2])
+
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    assert (await asyncio.wait_for(task, timeout=10)) == r2
+    assert r1.num_cleanups_finished == 0
+    r1.finish_cleanup()
+    await async_wait_for_condition(
+        lambda: r1.num_cleanups_finished == r1.num_cleanups_started
+    )
+
+
+@pytest.mark.asyncio
+async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_router):
+    """
+    Verify that cancelling a request while its routing task is waiting for a
+    cancelled `get_queue_len` call to finish still cancels the routing task.
+    """
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.001
+    # Long enough that only the cancellation can end the wait.
+    s.max_queue_len_response_deadline_s = 100
+    loop = get_or_create_event_loop()
+
+    r1 = SlowToCancelReplica("r1", cleanup_s=100)
+    s.update_replicas([r1])
+    task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+    # The probe started by `update_replicas` and the routing task's probe.
+    await async_wait_for_condition(lambda: r1.num_cleanups_started >= 2)
+    assert s.curr_num_routing_tasks == 1
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await async_wait_for_condition(lambda: s.curr_num_routing_tasks == 0, timeout=5)
+
+    r1.finish_cleanup()
+    await async_wait_for_condition(
+        lambda: r1.num_cleanups_finished == r1.num_cleanups_started
+    )
+
+
 @pytest.mark.asyncio
 async def test_queue_len_response_deadline_backoff(pow_2_router):
     """
