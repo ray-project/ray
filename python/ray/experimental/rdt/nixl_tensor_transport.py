@@ -260,6 +260,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agents: OrderedDict = OrderedDict()
         # Keeps remote agents from being removed while transfers on them are in flight.
         self._agent_guard = _AgentGuard()
+        # Agents claimed by an in-progress eviction, so concurrent evictors pick different ones.
+        self._evicting: set = set()
+        self._evicting_lock = threading.Lock()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
         self._memory_pool: Optional[MemoryPoolManager] = None
@@ -597,12 +600,28 @@ class NixlTensorTransport(TensorTransportManager):
                     cached_version is None
                     and len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE
                 ):
-                    evicted_agent_name = next(iter(self._remote_agents))
-                    with self._agent_guard.write(evicted_agent_name, self._wait_done):
-                        # Dropped from the cache only once its removal is certain, so a
-                        # concurrent refresh never sees it missing while NIXL still has it.
-                        if self._remote_agents.pop(evicted_agent_name, None) is not None:
-                            nixl_agent.remove_remote_agent(evicted_agent_name)
+                    with self._evicting_lock:
+                        evicted_agent_name = next(
+                            (n for n in list(self._remote_agents) if n not in self._evicting),
+                            None,
+                        )
+                        if evicted_agent_name is not None:
+                            self._evicting.add(evicted_agent_name)
+                    if evicted_agent_name is not None:
+                        try:
+                            with self._agent_guard.write(
+                                evicted_agent_name, self._wait_done
+                            ):
+                                # Dropped from the cache only once its removal is certain, so a
+                                # concurrent refresh never sees it missing while NIXL still has it.
+                                if (
+                                    self._remote_agents.pop(evicted_agent_name, None)
+                                    is not None
+                                ):
+                                    nixl_agent.remove_remote_agent(evicted_agent_name)
+                        finally:
+                            with self._evicting_lock:
+                                self._evicting.discard(evicted_agent_name)
 
                 if cached_version is not None:
                     if remote_agent_meta_version > cached_version:
