@@ -1602,9 +1602,9 @@ def get_application_urls(
     client = _get_global_client()
     assert client is not None
     serve_details = client.get_serve_details()
-    assert app_name in serve_details["applications"], (
-        f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
-    )
+    assert (
+        app_name in serve_details["applications"]
+    ), f"App {app_name} not found in serve details. Use this method only when the app is known to be running."
     route_prefix = serve_details["applications"][app_name]["route_prefix"]
     # route_prefix is set to None when route_prefix value is specifically set to None
     # in the config used to deploy the app.
@@ -1782,9 +1782,9 @@ def get_metric_dictionaries(
             # so the test doesn't hang on requests.get
             timeout=timeout,
         )
-        assert name in prom_timeseries, (
-            f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
-        )
+        assert (
+            name in prom_timeseries
+        ), f"Metric {name} not found. Available metrics: {list(prom_timeseries.keys())}"
         return True
 
     if wait:
@@ -1887,9 +1887,9 @@ def wait_for_metric_export(metric_name, timeseries, count=None):
         if count is None:
             assert metrics, f"Metric {metric_name} not exported yet"
         else:
-            assert len(metrics) == count, (
-                f"Expected {count} {metric_name}, got {len(metrics)}"
-            )
+            assert (
+                len(metrics) == count
+            ), f"Expected {count} {metric_name}, got {len(metrics)}"
         return True
 
     wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
