@@ -879,7 +879,8 @@ class StreamingHTTPRequest:
         asgi_scope: Scope,
         *,
         proxy_actor_name: str | None = None,
-        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]] | None = None,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
+        | None = None,
     ):
         self._asgi_scope: Scope = asgi_scope
 
@@ -894,7 +895,9 @@ class StreamingHTTPRequest:
         self._proxy_actor_name: str | None = proxy_actor_name
         # Need to keep the actor handle cached to avoid "lost reference to actor" error.
         self._cached_proxy_actor: ActorHandle | None = None
-        self._receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]] | None = receive_asgi_messages
+        self._receive_asgi_messages: (
+            Callable[[RequestMetadata], Awaitable[bytes]] | None
+        ) = receive_asgi_messages
 
     @property
     def asgi_scope(self) -> Scope:
