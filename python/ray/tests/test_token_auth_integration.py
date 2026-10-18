@@ -1007,8 +1007,13 @@ def test_ray_client_checks_token_before_connecting():
     # Nothing listens on the port, so only a check made before connecting
     # can fail with AuthenticationError instead of a connection timeout.
     start = time.monotonic()
-    with pytest.raises(AuthenticationError, match="ray get-auth-token"):
-        ray.init(f"ray://127.0.0.1:{find_free_port()}")
+    try:
+        with pytest.raises(AuthenticationError, match="ray get-auth-token"):
+            ray.init(f"ray://127.0.0.1:{find_free_port()}")
+    finally:
+        # A failed ray:// connect leaves client mode on; later tests in this
+        # process would then route ray.init through the client.
+        ray.util.disconnect()
     assert time.monotonic() - start < 5
 
 
