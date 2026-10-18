@@ -142,6 +142,10 @@ bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
   return objects_pending_deletion_.find(object_id) != objects_pending_deletion_.end();
 }
 
+bool LocalObjectManager::HoldsPrimaryCopy(const ObjectID &object_id) const {
+  return local_objects_.contains(object_id);
+}
+
 void LocalObjectManager::SpillObjectUptoMaxThroughput() {
   if (RayConfig::instance().object_spilling_config().empty()) {
     return;

@@ -308,10 +308,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
-  /// Pin a received moved object as its primary copy and report the new primary
-  /// to the owner. Called from HandleObjectLocal for an object with a move record.
+  /// Pin the local copy of a moved object as its primary copy and report the
+  /// new primary to the owner. Nothing to do if this node already holds the
+  /// primary copy.
   ///
-  /// \param object_id The moved object, sealed in the local store.
+  /// \param object_id The moved object.
   /// \param owner_address The address of the object's owner.
   /// \return False if the object is not in the store, is pending deletion, or its
   /// owner is known to be dead; the object is then left unpinned.
@@ -372,6 +373,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void FreeLocalObjects(const std::vector<ObjectID> &object_ids);
 
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
+  FRIEND_TEST(NodeManagerTest, TestHandleMovedActorCallArgs);
 
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
@@ -466,11 +468,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
-  /// \param is_move Parallel to `object_refs`, or empty: whether the requesting
-  /// actor task consumes the object (TaskArg.is_move).
   void AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                 const std::vector<rpc::ObjectReference> &object_refs,
-                 const std::vector<bool> &is_move);
+                 const std::vector<rpc::ObjectReference> &object_refs);
+
+  /// Handle the args an actor task moves (TaskArg.is_move), before the wait
+  /// that fetches them starts: a local copy that is not the primary is pinned as
+  /// the new primary now, and any other arg this node does not hold the primary
+  /// copy of is recorded so that its pull pins the copy on arrival.
+  ///
+  /// \param worker_id The worker that will run the task.
+  /// \param refs The task's args.
+  /// \param is_move Parallel to `refs`: whether the task moves the arg.
+  void HandleMovedActorCallArgs(const WorkerID &worker_id,
+                                const std::vector<rpc::ObjectReference> &refs,
+                                const std::vector<bool> &is_move);
 
   /// Start a get request for the requested objects.
   ///
@@ -1033,8 +1044,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
 
-  /// Received moves pinned as the primary copy, and received moves whose pin
-  /// failed (the object left the store before it could be pinned).
+  /// Moved objects pinned here as the new primary copy, and moved objects whose
+  /// pin failed.
   uint64_t num_moved_objects_pinned_ = 0;
   uint64_t num_moved_objects_pin_failed_ = 0;
 

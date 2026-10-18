@@ -15,6 +15,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -32,12 +33,11 @@ class ObjectManagerInterface {
                         BundlePriority prio,
                         const TaskMetricsKey &task_key) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
-  /// Record that the pull in flight for `object_id` consumes the object (the
-  /// requesting actor task's TaskArg.is_move is set). Only call while a pull for
-  /// the object exists; the record is dropped when no pull needs the object.
-  virtual void MarkMovePull(const ObjectID &object_id) = 0;
-  /// Whether the pull in flight for `object_id` consumes the object.
+  virtual void MarkMovePull(const ObjectID &object_id, const WorkerID &worker_id) = 0;
   virtual bool IsMovePull(const ObjectID &object_id) const = 0;
+  virtual std::optional<WorkerID> GetMovePullRequester(
+      const ObjectID &object_id) const = 0;
+  virtual void EraseMovePullsRequestedBy(const WorkerID &worker_id) = 0;
   /// Mark the specified object as failed with the given error type.
   ///
   /// \param object_id The object id to store error message into.

@@ -69,22 +69,14 @@ LeaseDependencyManager::GetOrInsertRequiredObject(const ObjectID &object_id,
 
 void LeaseDependencyManager::StartOrUpdateWaitRequest(
     const WorkerID &worker_id,
-    const std::vector<rpc::ObjectReference> &required_objects,
-    const std::vector<bool> &is_move) {
+    const std::vector<rpc::ObjectReference> &required_objects) {
   RAY_LOG(DEBUG) << "Starting wait request for worker " << worker_id;
-  RAY_CHECK(is_move.empty() || is_move.size() == required_objects.size());
   auto &wait_request = wait_requests_[worker_id];
-  for (size_t i = 0; i < required_objects.size(); i++) {
-    const auto &ref = required_objects[i];
+  for (const auto &ref : required_objects) {
     const auto obj_id = ObjectRefToId(ref);
     if (local_objects_.contains(obj_id)) {
       // Object is already local. No need to fetch it.
       continue;
-    }
-
-    if (!is_move.empty() && is_move[i]) {
-      // Recorded before the pull below, so it is set before any chunk can arrive.
-      object_manager_.MarkMovePull(obj_id);
     }
 
     if (wait_request.insert(obj_id).second) {

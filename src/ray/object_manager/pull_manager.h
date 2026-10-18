@@ -149,6 +149,9 @@ class PullManager {
   /// The number of ongoing object pulls.
   int NumObjectPullRequests() const;
 
+  /// Whether any pull request, active or queued, needs the object.
+  bool HasObjectPullRequest(const ObjectID &object_id) const;
+
   /// Returns whether the object is actively being pulled.
   ///
   /// This method (and this method only) is thread-safe.
