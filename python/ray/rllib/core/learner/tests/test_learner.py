@@ -83,9 +83,38 @@ class TestLearner(unittest.TestCase):
         current_seq_no = learner.get_state()[WEIGHTS_SEQ_NO]
         self.assertEqual(current_seq_no, 2)
 
-        # A stale positive version is ignored and must not overwrite the current version.
-        learner.set_state({COMPONENT_RL_MODULE: module_state, WEIGHTS_SEQ_NO: 1})
-        self.assertEqual(learner.get_state()[WEIGHTS_SEQ_NO], current_seq_no)
+        # A stale positive version must neither downgrade the sequence nor
+        # overwrite the newer module parameters.
+        current_state = learner.get_state()[COMPONENT_RL_MODULE]
+        stale_state = {
+            module_id: {
+                name: value.copy() if isinstance(value, np.ndarray) else value
+                for name, value in parameters.items()
+            }
+            for module_id, parameters in current_state.items()
+        }
+        changed_parameter = None
+        for module_id, parameters in stale_state.items():
+            for name, value in parameters.items():
+                if isinstance(value, np.ndarray) and np.issubdtype(value.dtype, np.floating):
+                    parameters[name] = value + 1.0
+                    changed_parameter = (module_id, name)
+                    break
+            if changed_parameter is not None:
+                break
+        self.assertIsNotNone(changed_parameter)
+
+        learner.set_state({COMPONENT_RL_MODULE: stale_state, WEIGHTS_SEQ_NO: 1})
+
+        restored_state = learner.get_state()
+        self.assertEqual(restored_state[WEIGHTS_SEQ_NO], current_seq_no)
+        module_id, parameter_name = changed_parameter
+        self.assertTrue(
+            np.array_equal(
+                restored_state[COMPONENT_RL_MODULE][module_id][parameter_name],
+                current_state[module_id][parameter_name],
+            )
+        )
 
     def test_end_to_end_update(self):
         """Tests the end-to-end update process for a single-agent scenario.
