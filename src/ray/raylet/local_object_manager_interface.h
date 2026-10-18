@@ -52,6 +52,10 @@ class LocalObjectManagerInterface {
 
   virtual bool ObjectPendingDeletion(const ObjectID &) = 0;
 
+  /// Whether this raylet holds the object's primary copy: pinned in memory,
+  /// pending spill, or spilled from this node.
+  virtual bool HoldsPrimaryCopy(const ObjectID &) const = 0;
+
   virtual void ProcessSpilledObjectsDeleteQueue(uint32_t) = 0;
 
   virtual bool IsSpillingInProgress() = 0;

@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -201,20 +202,45 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param pull_request_id The request to cancel.
   void CancelPull(uint64_t pull_request_id) override;
 
-  /// Record that the pull in flight for `object_id` consumes the object (the
-  /// requesting actor task's TaskArg.is_move is set). The record is erased when
-  /// the last pull that needs the object is cancelled. Called on the main service.
+  /// Record that a pull of `object_id` to this node moves the object (the
+  /// requesting actor task's TaskArg.is_move is set), asked for by `worker_id`, the
+  /// worker that will run the task. An object is moved by one task, so a later call
+  /// for the same object replaces the worker. The record is erased when the last pull
+  /// that needs the object is cancelled, or by EraseMovePullsRequestedBy. Called on
+  /// the main service.
   ///
-  /// \param object_id The object being pulled as a move.
-  void MarkMovePull(const ObjectID &object_id) override
+  /// \param object_id The object to pull as a move.
+  /// \param worker_id The worker whose task moves it.
+  void MarkMovePull(const ObjectID &object_id, const WorkerID &worker_id) override
       ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
 
-  /// Whether the pull in flight for `object_id` consumes the object. Safe to call
-  /// from any thread; ReceiveObjectChunk reads it on the rpc service.
+  /// Whether a pull of `object_id` moves the object. Safe to call from any
+  /// thread; ReceiveObjectChunk reads it on the rpc service.
   ///
   /// \param object_id The object to look up.
   /// \return True if a move record exists for the object.
   bool IsMovePull(const ObjectID &object_id) const override
+      ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
+
+  /// The worker that asked for `object_id` to be pulled as a move. Called on the
+  /// main service.
+  ///
+  /// \param object_id The object to look up.
+  /// \return The worker from the move record, or nullopt if there is no record.
+  std::optional<WorkerID> GetMovePullRequester(const ObjectID &object_id) const override
+      ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
+
+  /// Erase the move records `worker_id` asked for that no pull needs. Called on
+  /// the main service when the worker disconnects.
+  ///
+  /// A record that a pull needs is left alone: that pull's cancel erases it, and
+  /// until then the copy must still arrive as a move. A record written after a
+  /// failed pin has no pull; only the worker's own fetch of its args would pick
+  /// it up. Once the worker is gone, that fetch never comes, and the record would
+  /// make the next plain pull of the object on this node a move.
+  ///
+  /// \param worker_id The worker that disconnected.
+  void EraseMovePullsRequestedBy(const WorkerID &worker_id) override
       ABSL_LOCKS_EXCLUDED(move_pull_mutex_);
 
   void MarkObjectFailed(const ObjectID &object_id, rpc::ErrorType error_type) override;
@@ -431,12 +457,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// has already left plasma (eviction or spill).
   absl::flat_hash_map<ObjectID, LocalObjectInfo> local_plasma_objects_;
 
-  /// Objects whose in-flight pull consumes the object (the requesting actor task's
-  /// TaskArg.is_move). Written on the main service (MarkMovePull, CancelPull), read
-  /// on the rpc service through IsMovePull from ReceiveObjectChunk, once per received
-  /// chunk.
+  /// Objects whose pull moves the object (the requesting actor task's
+  /// TaskArg.is_move), each with the worker that asked for it. Written on the main
+  /// service (MarkMovePull, CancelPull, EraseMovePullsRequestedBy), read on the rpc
+  /// service through IsMovePull from ReceiveObjectChunk, once per received chunk.
   mutable absl::Mutex move_pull_mutex_;
-  absl::flat_hash_set<ObjectID> move_pull_object_ids_ ABSL_GUARDED_BY(move_pull_mutex_);
+  absl::flat_hash_map<ObjectID, WorkerID> move_pulls_ ABSL_GUARDED_BY(move_pull_mutex_);
 
   /// This is used as the callback identifier in Pull for
   /// SubscribeObjectLocations. We only need one identifier because we never need to
