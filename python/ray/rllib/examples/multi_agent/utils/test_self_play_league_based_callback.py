@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock
 
+from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.multi_agent.utils import (
     self_play_league_based_callback as callback_module,
 )
-from ray.rllib.core import COMPONENT_RL_MODULE
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.multi_agent.utils.self_play_league_based_callback import (
     SelfPlayLeagueBasedCallback,
 )
