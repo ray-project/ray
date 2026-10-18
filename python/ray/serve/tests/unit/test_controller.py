@@ -1,17 +1,21 @@
 from copy import deepcopy
+from unittest.mock import MagicMock
 
 import pytest
 
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.controller import (
+    ServeController,
     applications_match,
     calculate_target_capacity_direction,
 )
+from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
     ControllerHealthMetricsTracker,
 )
 from ray.serve.schema import (
+    ApplicationStatus,
     ControllerHealthMetrics,
     DurationStats,
     HTTPOptionsSchema,
@@ -712,6 +716,31 @@ class TestControllerHealthMetricsTracker:
         assert len(tracker.dsm_update_durations) == _HEALTH_METRICS_HISTORY_SIZE
         # The oldest values should have been dropped
         assert tracker.dsm_update_durations[0] == 50.0
+
+
+def test_broadcast_app_statuses_only_on_change():
+    """The proxies get {app name: status} once per change."""
+    controller = ServeController.__new__(ServeController)
+    controller.long_poll_host = MagicMock()
+    controller._last_broadcasted_app_statuses = None
+    statuses = {"app": MagicMock(status=ApplicationStatus.DEPLOYING)}
+    controller.application_state_manager = MagicMock()
+    controller.application_state_manager.list_app_statuses.side_effect = (
+        lambda: statuses
+    )
+
+    controller.broadcast_app_statuses_if_changed()
+    controller.broadcast_app_statuses_if_changed()
+    controller.long_poll_host.notify_changed.assert_called_once_with(
+        {LongPollNamespace.APPLICATION_STATUSES: {"app": ApplicationStatus.DEPLOYING}}
+    )
+
+    statuses["app"] = MagicMock(status=ApplicationStatus.RUNNING)
+    controller.broadcast_app_statuses_if_changed()
+    assert controller.long_poll_host.notify_changed.call_count == 2
+    controller.long_poll_host.notify_changed.assert_called_with(
+        {LongPollNamespace.APPLICATION_STATUSES: {"app": ApplicationStatus.RUNNING}}
+    )
 
 
 if __name__ == "__main__":

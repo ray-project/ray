@@ -103,6 +103,7 @@ from ray.serve.generated.serve_pb2 import (
 from ray.serve.schema import (
     APIType,
     ApplicationDetails,
+    ApplicationStatus,
     DeploymentDetails,
     HTTPOptionsSchema,
     LoggingConfig,
@@ -329,6 +330,9 @@ class ServeController:
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
+        self._last_broadcasted_app_statuses: Optional[
+            Dict[str, ApplicationStatus]
+        ] = None
 
     def _log_throughput_opt_message(self) -> None:
         msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
@@ -704,6 +708,7 @@ class ServeController:
         try:
             asm_update_start_time = time.time()
             self.application_state_manager.update()
+            self.broadcast_app_statuses_if_changed()
             asm_duration = time.time() - asm_update_start_time
             self.asm_update_duration_gauge_s.set(asm_duration)
             self._health_metrics_tracker.record_asm_update_duration(asm_duration)
@@ -818,6 +823,24 @@ class ServeController:
             {LongPollNamespace.TARGET_GROUPS: target_groups}
         )
         self._last_broadcasted_target_groups = target_groups
+
+    def broadcast_app_statuses_if_changed(self) -> None:
+        """Broadcast {app name: status} to the proxies if it changed.
+
+        The proxies answer ``{route_prefix}/-/healthz`` from this, so a probe
+        does not go through an ingress replica or its max_ongoing_requests.
+        """
+        app_statuses = {
+            name: info.status
+            for name, info in self.application_state_manager.list_app_statuses().items()
+        }
+        if self._last_broadcasted_app_statuses == app_statuses:
+            return
+
+        self.long_poll_host.notify_changed(
+            {LongPollNamespace.APPLICATION_STATUSES: app_statuses}
+        )
+        self._last_broadcasted_app_statuses = app_statuses
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""

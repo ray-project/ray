@@ -13,6 +13,7 @@ from ray.serve._private.thirdparty.get_asgi_route_name import (
     get_asgi_route_name,
 )
 from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import ApplicationStatus
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -55,6 +56,10 @@ class ProxyRouter:
         # Key: route prefix, Value: pre-built Starlette app with routes
         self._route_pattern_apps: Dict[str, Any] = dict()
 
+        # Application statuses tracked by the controller, pushed over long poll.
+        # Used to answer the per-app health route without calling a replica.
+        self.app_statuses: Dict[ApplicationName, ApplicationStatus] = dict()
+
     def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic.
 
@@ -83,6 +88,14 @@ class ProxyRouter:
                 return True, ""
 
         return False, NO_REPLICAS_MESSAGE
+
+    def update_app_statuses(
+        self, app_statuses: Dict[ApplicationName, ApplicationStatus]
+    ) -> None:
+        self.app_statuses = dict(app_statuses)
+
+    def get_app_status(self, app_name: ApplicationName) -> Optional[ApplicationStatus]:
+        return self.app_statuses.get(app_name)
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
