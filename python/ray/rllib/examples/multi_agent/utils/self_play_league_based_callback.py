@@ -256,13 +256,13 @@ class SelfPlayLeagueBasedCallback(RLlibCallback):
                         }
                     )
                     # add_module creates the module on EnvRunners, but the cloned
-                    # parameters are only set on the local Learner state above. Push the freshly
-                    # cloned weights immediately so the new opponent cannot play one stale iteration.
+                    # parameters are only set on the Learner above. Push the weights
+                    # before the new mapping can route episodes to this opponent.
                     #
-                    # Do not use sync_weights() here: its WEIGHTS_SEQ_NO gate can discard this
-                    # module-specific update when the EnvRunner already has the current global
-                    # sequence number. Omitting WEIGHTS_SEQ_NO intentionally forces the new
-                    # module's first state into every EnvRunner without changing global versioning.
+                    # Do not use sync_weights() here: its WEIGHTS_SEQ_NO gate can
+                    # discard this module-only update when an EnvRunner already has
+                    # the current global sequence number. Omitting WEIGHTS_SEQ_NO
+                    # forces first installation without changing global versioning.
                     new_module_state_ref = ray.put(
                         {new_mod_id: multi_rl_module[module_id].get_state()}
                     )
