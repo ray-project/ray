@@ -274,7 +274,13 @@ class _BatchQueue:
         # Flattened arguments alternate names and values, with `self` already
         # removed. `enqueue_request` ensures the first value is the first input.
         items = [request.flattened_args[1] for request in batch]
-        return self.batch_size_fn(items)
+        try:
+            return self.batch_size_fn(items)
+        except (StopIteration, StopAsyncIteration) as e:
+            # Future rejects StopIteration, and the streaming wrapper interprets
+            # StopAsyncIteration as normal completion. Sizing failures are errors
+            # in both assembly and execution, not end-of-stream signals.
+            raise RuntimeError(f"batch_size_fn raised {type(e).__name__}.") from e
 
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
@@ -292,6 +298,7 @@ class _BatchQueue:
         try:
             return await self._wait_for_batch(batch)
         except Exception as e:
+            logger.exception("Batch assembly ran into an unexpected exception.")
             # A sizing callback can fail after requests have been dequeued.
             # Complete those requests and keep the batching loop running.
             for request in batch:

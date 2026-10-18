@@ -807,14 +807,18 @@ async def test_batch_generator_setters():
 @pytest.mark.parametrize("fail_when_combining", [False, True])
 @pytest.mark.parametrize("use_generator", [False, True])
 @pytest.mark.parametrize("use_keyword", [False, True])
+@pytest.mark.parametrize("error_type", [ValueError, StopIteration, StopAsyncIteration])
 async def test_batch_size_fn_error_does_not_stop_batching(
-    fail_when_combining, use_generator, use_keyword
+    fail_when_combining, use_generator, use_keyword, error_type, caplog, monkeypatch
 ):
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    monkeypatch.setattr(logger, "handlers", [*logger.handlers, caplog.handler])
+
     def batch_size_fn(items):
         if (fail_when_combining and len(items) > 1) or (
             not fail_when_combining and "bad" in items
         ):
-            raise ValueError("Cannot size this batch")
+            raise error_type("Cannot size this batch")
         return len(items)
 
     async def handler(items):
@@ -845,8 +849,16 @@ async def test_batch_size_fn_error_does_not_stop_batching(
         results = await asyncio.wait_for(
             asyncio.gather(*tasks, return_exceptions=True), timeout=1
         )
-        assert all(isinstance(result, ValueError) for result in results[:-1])
-        assert all(str(result) == "Cannot size this batch" for result in results[:-1])
+        expected_type = ValueError if error_type is ValueError else RuntimeError
+        assert all(isinstance(result, expected_type) for result in results[:-1])
+        for result in results[:-1]:
+            original = result if error_type is ValueError else result.__cause__
+            assert isinstance(original, error_type)
+            assert str(original) == "Cannot size this batch"
+        assert any(
+            record.exc_info and "Batch assembly" in record.message
+            for record in caplog.records
+        )
         assert results[-1] == (["queued-good"] if use_generator else "queued-good")
         assert await batched._is_batching_task_alive()
         assert await asyncio.wait_for(call("ok"), timeout=1) == (
@@ -859,13 +871,14 @@ async def test_batch_size_fn_error_does_not_stop_batching(
 
 
 @pytest.mark.asyncio
-async def test_batch_size_fn_error_during_execution():
+@pytest.mark.parametrize("error_type", [ValueError, StopIteration, StopAsyncIteration])
+async def test_batch_size_fn_error_during_execution(error_type):
     from ray._common.signature import extract_signature, flatten_args
     from ray.serve.batching import _SingleRequest
 
     def batch_size_fn(items):
         if "bad" in items:
-            raise ValueError("Cannot size this sub-batch")
+            raise error_type("Cannot size this sub-batch")
         return len(items)
 
     async def handler(items):
@@ -886,8 +899,12 @@ async def test_batch_size_fn_error_during_execution():
     # An error at that point must also complete the affected requests.
     bad = request("bad")
     await queue._process_sub_batches(handler, [[bad]])
-    with pytest.raises(ValueError, match="Cannot size this sub-batch"):
+    expected_type = ValueError if error_type is ValueError else RuntimeError
+    with pytest.raises(expected_type) as exc_info:
         await asyncio.wait_for(bad.future, timeout=1)
+    original = exc_info.value if error_type is ValueError else exc_info.value.__cause__
+    assert isinstance(original, error_type)
+    assert str(original) == "Cannot size this sub-batch"
 
     good = request("ok")
     await queue._process_sub_batches(handler, [[good]])
