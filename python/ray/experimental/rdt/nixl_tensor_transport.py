@@ -597,20 +597,12 @@ class NixlTensorTransport(TensorTransportManager):
                     cached_version is None
                     and len(self._remote_agents) >= NIXL_REMOTE_AGENT_CACHE_MAXSIZE
                 ):
-                    evicted_agent_name, evicted_version = self._remote_agents.popitem(
-                        last=False
-                    )
-                    try:
-                        with self._agent_guard.write(
-                            evicted_agent_name, self._wait_done
-                        ):
+                    evicted_agent_name = next(iter(self._remote_agents))
+                    with self._agent_guard.write(evicted_agent_name, self._wait_done):
+                        # Dropped from the cache only once its removal is certain, so a
+                        # concurrent refresh never sees it missing while NIXL still has it.
+                        if self._remote_agents.pop(evicted_agent_name, None) is not None:
                             nixl_agent.remove_remote_agent(evicted_agent_name)
-                    except TimeoutError:
-                        # Still registered, so keep tracking it.
-                        self._remote_agents.setdefault(
-                            evicted_agent_name, evicted_version
-                        )
-                        raise
 
                 if cached_version is not None:
                     if remote_agent_meta_version > cached_version:
