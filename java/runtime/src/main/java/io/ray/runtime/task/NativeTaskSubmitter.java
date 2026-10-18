@@ -70,7 +70,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
 
   @Override
   public BaseActorHandle getActor(ActorId actorId) {
-    return NativeActorHandle.create(actorId.getBytes());
+    return NativeActorHandle.create(actorId.getBytes(), /* weakRef= */ true);
   }
 
   @Override

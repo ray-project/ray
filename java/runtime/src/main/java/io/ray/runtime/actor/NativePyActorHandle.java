@@ -9,8 +9,15 @@ import java.io.ObjectInput;
 /** Python actor handle implementation for cluster mode. */
 public class NativePyActorHandle extends NativeActorHandle implements PyActorHandle {
 
+  // Preserve compatibility with handles serialized before weak-reference cleanup.
+  private static final long serialVersionUID = -7021691998330060618L;
+
   NativePyActorHandle(byte[] actorId) {
-    super(actorId, Language.PYTHON);
+    this(actorId, false);
+  }
+
+  NativePyActorHandle(byte[] actorId, boolean weakRef) {
+    super(actorId, Language.PYTHON, weakRef);
   }
 
   /** Required by FST. */

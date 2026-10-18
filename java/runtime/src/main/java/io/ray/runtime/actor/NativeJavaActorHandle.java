@@ -9,8 +9,15 @@ import java.io.ObjectInput;
 /** Java implementation of actor handle for cluster mode. */
 public class NativeJavaActorHandle extends NativeActorHandle implements ActorHandle {
 
+  // Preserve compatibility with handles serialized before weak-reference cleanup.
+  private static final long serialVersionUID = 6318953115892572541L;
+
   NativeJavaActorHandle(byte[] actorId) {
-    super(actorId, Language.JAVA);
+    this(actorId, false);
+  }
+
+  NativeJavaActorHandle(byte[] actorId, boolean weakRef) {
+    super(actorId, Language.JAVA, weakRef);
   }
 
   /** Required by FST. */
