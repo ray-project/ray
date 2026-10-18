@@ -1698,3 +1698,21 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", "-s", __file__]))
+
+
+def test_max_surge_percent_proto_roundtrip():
+    config = DeploymentConfig(max_surge_percent=30)
+    assert (
+        DeploymentConfig.from_proto_bytes(config.to_proto_bytes()).max_surge_percent
+        == 30
+    )
+
+    # Older controllers omit this field, which defaults to zero.
+    proto = DeploymentConfig().to_proto()
+    proto.ClearField("max_surge_percent")
+    assert DeploymentConfig.from_proto(proto).max_surge_percent == 0
+
+    with pytest.raises(ValidationError):
+        DeploymentConfig(max_surge_percent=-1)
+    with pytest.raises(ValidationError):
+        DeploymentConfig(max_surge_percent=101)

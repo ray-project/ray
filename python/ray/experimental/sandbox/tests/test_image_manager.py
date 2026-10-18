@@ -297,6 +297,52 @@ def test_custom_image_manager_subclass(tmp_path):
     assert ("another-image", 120.0) in custom_mgr.pull_calls
 
 
+@pytest.mark.parametrize(
+    "readonly, disk, options",
+    [
+        (False, "64Mi", "size=67108864"),
+        (False, 1 << 30, "size=1073741824"),
+        # Floats and fractional sizes come out as whole bytes.
+        (False, float(1 << 30), "size=1073741824"),
+        (False, "1.5Gi", "size=1610612736"),
+        (False, 0, None),
+        (False, None, None),
+        # A read-only rootfs gets no overlay, so there's nothing to cap.
+        (True, "64Mi", None),
+    ],
+)
+def test_create_oci_spec_caps_the_writable_overlay(tmp_path, readonly, disk, options):
+    mgr = _StubImageManager(tmp_path)
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        readonly=readonly,
+        disk=disk,
+        base_spec=_sample_base_spec(),
+    )
+    assert spec["annotations"].get("dev.gvisor.spec.rootfs.options") == options
+
+
+def test_create_oci_spec_keeps_a_capped_workdir_in_the_overlay(tmp_path):
+    """readonly + workdir runs on a private writable overlay. With a cap the
+    workdir isn't bind-mounted, since a host directory would escape it."""
+    mgr = _StubImageManager(tmp_path)
+    workdir_path = str(tmp_path / "scratch")
+    os.makedirs(workdir_path)
+
+    spec = mgr.create_oci_spec(
+        image="fake:latest",
+        base_spec=_sample_base_spec(),
+        container_cwd="/workspace",
+        workdir_path=workdir_path,
+        readonly=True,
+        disk="64Mi",
+    )
+    assert spec["root"]["readonly"] is False
+    assert spec["annotations"]["dev.gvisor.spec.rootfs.options"] == "size=67108864"
+    assert not any(m["destination"] == "/workspace" for m in spec["mounts"])
+    assert spec["process"]["cwd"] == "/workspace"
+
+
 class _StubImageManager(ImageManager):
     """ImageManager that skips pulling so spec construction is testable offline."""
 
