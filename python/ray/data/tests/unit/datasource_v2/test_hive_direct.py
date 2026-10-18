@@ -1,6 +1,8 @@
 """Hive metadata contracts and composition with native file readers."""
 
-from unittest.mock import MagicMock
+from datetime import datetime
+from decimal import Decimal
+from unittest.mock import MagicMock, call
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -150,13 +152,81 @@ def test_metadata_does_not_silently_drop_header_like_column_names():
 def test_lookup_uses_only_metadata_and_closes_resources():
     connection = MagicMock()
     cursor = connection.cursor.return_value
-    cursor.fetchall.return_value = _metadata()
+    cursor.fetchall.side_effect = [
+        _metadata(),
+        [("parquet.column.index.access is undefined",)],
+    ]
     spec = HiveReadSpec(connection_factory=lambda: connection, table="analytics.events")
     result = read_file_table_metadata(spec)
     assert result.schema.field("id").type == pa.int64()
-    cursor.execute.assert_called_once_with("DESCRIBE FORMATTED `analytics`.`events`")
+    assert cursor.execute.call_args_list == [
+        call("DESCRIBE FORMATTED `analytics`.`events`"),
+        call("SET parquet.column.index.access"),
+    ]
     cursor.close.assert_called_once()
     connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "rows,accepted",
+    [
+        ([("parquet.column.index.access=false",)], True),
+        ([("parquet.column.index.access is undefined",)], True),
+        ([("parquet.column.index.access=true",)], False),
+        ([("parquet.column.index.access=unknown",)], False),
+        ([("other=false",)], False),
+        ([("parquet.column.index.access=false", "extra")], False),
+        ([], False),
+    ],
+)
+def test_parquet_session_mapping_is_checked_before_file_access(
+    monkeypatch, rows, accepted
+):
+    from ray.data import read_api
+
+    connection = MagicMock()
+    cursor = connection.cursor.return_value
+    cursor.fetchall.side_effect = [_metadata(), rows]
+    spec = HiveReadSpec(
+        connection_factory=lambda: connection, table="events", user="reader"
+    )
+    if accepted:
+        assert read_file_table_metadata(spec).file_format == "parquet"
+    else:
+        monkeypatch.setattr(
+            hive_direct,
+            "HiveDirectDatasource",
+            lambda *a, **kw: pytest.fail("Unexpected file planning"),
+        )
+        with pytest.raises(ValueError, match="Hive|positional"):
+            read_api.read_hive(
+                "events",
+                connection_factory=spec.connection_factory,
+                user="reader",
+                read_mode="direct",
+            )
+    connection.cursor.assert_called_once_with(user="reader")
+    assert cursor.execute.call_args_list == [
+        call("DESCRIBE FORMATTED `default`.`events`"),
+        call("SET parquet.column.index.access"),
+    ]
+    cursor.close.assert_called_once()
+    connection.close.assert_called_once()
+
+
+def test_orc_metadata_lowercase_does_not_conflate_distinct_unicode_names():
+    rows = _metadata("orc")
+    rows[1:3] = [("ss", "bigint", None), ("\u00df", "bigint", None)]
+    assert _parse_file_table(rows).schema.names == ["ss", "\u00df"]
+
+
+def test_parquet_metadata_uses_lowercase_for_name_ambiguity():
+    rows = _metadata("parquet")
+    rows[1:3] = [("ss", "bigint", None), ("\u00df", "bigint", None)]
+    assert _parse_file_table(rows).schema.names == ["ss", "\u00df"]
+    rows[2] = ("SS", "bigint", None)
+    with pytest.raises(ValueError, match="unambiguous"):
+        _parse_file_table(rows)
 
 
 def test_lookup_preserves_error_and_closes_on_failure():
@@ -168,6 +238,113 @@ def test_lookup_preserves_error_and_closes_on_failure():
         read_file_table_metadata(
             HiveReadSpec(connection_factory=lambda: connection, table="events")
         )
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize("value", ["true", "false"])
+def test_orc_lookup_reads_mapping_mode_on_the_metadata_session(value):
+    connection = MagicMock()
+    cursor = connection.cursor.return_value
+    cursor.fetchall.side_effect = [
+        _metadata("orc"),
+        [(f"orc.force.positional.evolution={value}",)],
+        [("orc.force.positional.evolution.level is undefined",)],
+        [("hive.exec.schema.evolution=true",)],
+        [("orc.tolerate.missing.schema is undefined",)],
+        [("hive.exec.orc.tolerate.missing.schema is undefined",)],
+        [("orc.schema.evolution.case.sensitive is undefined",)],
+    ]
+    result = read_file_table_metadata(
+        HiveReadSpec(
+            connection_factory=lambda: connection, table="events", user="reader"
+        )
+    )
+    assert result.force_positional_evolution == (value == "true")
+    assert result.tolerate_missing_schema
+    assert result.schema_evolution_case_sensitive
+    connection.cursor.assert_called_once_with(user="reader")
+    assert cursor.execute.call_args_list == [
+        call("DESCRIBE FORMATTED `default`.`events`"),
+        call("SET orc.force.positional.evolution"),
+        call("SET orc.force.positional.evolution.level"),
+        call("SET hive.exec.schema.evolution"),
+        call("SET orc.tolerate.missing.schema"),
+        call("SET hive.exec.orc.tolerate.missing.schema"),
+        call("SET orc.schema.evolution.case.sensitive"),
+    ]
+    cursor.close.assert_called_once()
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "setting,value",
+    [
+        ("orc.force.positional.evolution.level", "2"),
+        ("hive.exec.schema.evolution", "false"),
+        ("orc.tolerate.missing.schema", "unknown"),
+        ("orc.schema.evolution.case.sensitive", "unknown"),
+    ],
+)
+def test_unsupported_orc_mapping_settings_fail_before_file_access(
+    monkeypatch, setting, value
+):
+    connection = MagicMock()
+    cursor = connection.cursor.return_value
+    settings = {
+        "orc.force.positional.evolution": "true",
+        "orc.force.positional.evolution.level": "1",
+        "hive.exec.schema.evolution": "true",
+        "orc.tolerate.missing.schema": "true",
+        "orc.schema.evolution.case.sensitive": "true",
+    }
+    settings[setting] = value
+
+    def fetch():
+        statement = cursor.execute.call_args.args[0]
+        if statement.startswith("DESCRIBE"):
+            return _metadata("orc")
+        key = statement[4:]
+        return [(key + "=" + settings[key],)]
+
+    cursor.fetchall.side_effect = fetch
+    monkeypatch.setattr(
+        hive_direct,
+        "sample_files",
+        lambda *a, **kw: pytest.fail("Unexpected file read"),
+    )
+    with pytest.raises(ValueError):
+        read_file_table_metadata(
+            HiveReadSpec(connection_factory=lambda: connection, table="events")
+        )
+    cursor.close.assert_called_once()
+    connection.close.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [],
+        [("undefined",)],
+        [("orc.force.positional.evolution=unknown",)],
+        [("orc.force.positional.evolution=true", "extra")],
+    ],
+)
+def test_orc_unknown_mapping_mode_fails_before_file_planning(monkeypatch, rows):
+    from ray.data import read_api
+
+    connection = MagicMock()
+    cursor = connection.cursor.return_value
+    cursor.fetchall.side_effect = [_metadata("orc"), rows]
+    monkeypatch.setattr(
+        hive_direct,
+        "sample_files",
+        lambda *a, **kw: pytest.fail("Unexpected file access"),
+    )
+    with pytest.raises(ValueError, match="Cannot determine Hive"):
+        read_api.read_hive(
+            "events", connection_factory=lambda: connection, read_mode="direct"
+        )
+    cursor.close.assert_called_once()
     connection.close.assert_called_once()
 
 
@@ -268,6 +445,118 @@ def test_schema_name_mapping_and_compatibility():
         _read_schema(declared, pa.schema([("id", pa.int64()), ("ID", pa.int64())]))
     with pytest.raises(ValueError, match="type mismatch"):
         _read_schema(declared, pa.schema([("id", pa.string())]))
+
+
+@pytest.mark.parametrize(
+    "physical,logical,expected",
+    [
+        ({"\u00df": [42, None]}, "ss", [None, None]),
+        ({"\u00df": [42, None]}, "\u00df", [42, None]),
+        ({"ss": [43, None], "\u00df": [42, None]}, "ss", [43, None]),
+        ({"ss": [43, None], "\u00df": [42, None]}, "\u00df", [42, None]),
+    ],
+)
+def test_parquet_sampled_name_mapping_does_not_use_casefold(
+    tmp_path, physical, logical, expected
+):
+    path = _write_table_file(tmp_path / "part-00", "parquet", pa.table(physical))
+    declared = pa.schema([(logical, pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "parquet", declared))
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    assert source.column_renames == {}
+    assert result.schema == declared
+    assert result.column(logical).to_pylist() == expected
+
+
+@pytest.mark.parametrize(
+    "late,required", [(False, "all"), (True, "projection"), (True, "filter_only")]
+)
+def test_parquet_lowercase_ambiguity_is_rejected_for_required_fields(
+    tmp_path, monkeypatch, late, required
+):
+    from ray.data.expressions import col
+
+    paths = [
+        _write_table_file(
+            tmp_path / f"part-{i:02d}",
+            "parquet",
+            pa.table({"id": [i], "ss": [i + 100]}),
+        )
+        for i in range(16 if late else 0)
+    ]
+    ambiguous = _write_table_file(
+        tmp_path / "part-99", "parquet", pa.table({"id": [16], "ss": [42], "SS": [43]})
+    )
+    sampled = _track_sampled_paths(monkeypatch)
+    table = HiveFileTable(
+        str(tmp_path), "parquet", pa.schema([("id", pa.int64()), ("ss", pa.int64())])
+    )
+    if not late:
+        with pytest.raises(ValueError, match="ambiguous"):
+            HiveDirectDatasource(table)
+        return
+    source = HiveDirectDatasource(table)
+    assert len(sampled) == 16 and str(ambiguous) not in sampled
+    scanner = source.create_scanner(source.infer_schema(None))
+    if required == "projection":
+        scanner = scanner.prune_columns(["ss"])
+    else:
+        scanner = scanner.prune_columns(["id"])
+        scanner, residual = scanner.push_filters(col("ss") > 0)
+        assert residual is None
+    with pytest.raises(ValueError, match="ambiguous"):
+        list(scanner.create_reader().read(_manifest_for_paths([*paths, ambiguous])))
+    # An ambiguous field unused by output and filters does not affect id.
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .prune_columns(["id"])
+            .create_reader()
+            .read(_manifest_for_paths([ambiguous]))
+        )
+    )
+    assert result.to_pylist() == [{"id": 16}]
+
+
+@pytest.mark.parametrize(
+    "actual,expected",
+    [
+        (actual, expected)
+        for actual in (pa.int8(), pa.int16(), pa.int32())
+        for expected in (pa.int16(), pa.int32(), pa.int64())
+        if actual.bit_width < expected.bit_width
+    ]
+    + [(pa.float32(), pa.float64()), (pa.decimal128(9, 2), pa.decimal128(18, 2))],
+)
+def test_safe_widening_uses_the_declared_target_schema(actual, expected):
+    schema, renames = _read_schema(
+        pa.schema([("v", expected)]), pa.schema([("v", actual)])
+    )
+    assert schema == pa.schema([("v", expected)])
+    assert renames == {}
+
+
+@pytest.mark.parametrize(
+    "actual,expected",
+    [
+        (pa.int64(), pa.int32()),
+        (pa.float64(), pa.float32()),
+        (pa.int32(), pa.float64()),
+        (pa.uint32(), pa.int64()),
+        (pa.string(), pa.int64()),
+        (pa.decimal128(18, 2), pa.decimal128(9, 2)),
+        (pa.decimal128(9, 2), pa.decimal128(18, 3)),
+    ],
+)
+def test_other_type_changes_remain_unsupported(actual, expected):
+    with pytest.raises(ValueError, match="type mismatch"):
+        _read_schema(pa.schema([("v", expected)]), pa.schema([("v", actual)]))
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
@@ -421,7 +710,10 @@ def test_bounded_string_projection_reuses_unicode_kernels(tmp_path):
     )
     source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "parquet", schema))
     values = pa.table(
-        {"code": ["ab", "中文😀abc", "", None], "tag": ["abcdef", "中文😀abc", "", None]}
+        {
+            "code": ["ab", "中文😀abc", "", None],
+            "tag": ["abcdef", "中文😀abc", "", None],
+        }
     )
     expressions = source.column_expressions()
     assert eval_expr(expressions["code"], values).to_pylist() == [
@@ -430,7 +722,12 @@ def test_bounded_string_projection_reuses_unicode_kernels(tmp_path):
         "    ",
         None,
     ]
-    assert eval_expr(expressions["tag"], values).to_pylist() == ["abc", "中文😀", "", None]
+    assert eval_expr(expressions["tag"], values).to_pylist() == [
+        "abc",
+        "中文😀",
+        "",
+        None,
+    ]
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
@@ -502,6 +799,494 @@ def _track_sampled_paths(monkeypatch):
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_native_safe_widening_preserves_nested_values(tmp_path, file_format):
+    old_value = pa.struct(
+        [
+            ("n", pa.int32()),
+            ("f", pa.float32()),
+            ("d", pa.decimal128(9, 2)),
+        ]
+    )
+    new_value = pa.struct(
+        [
+            ("n", pa.int64()),
+            ("f", pa.float64()),
+            ("d", pa.decimal128(18, 2)),
+        ]
+    )
+    physical = pa.schema(
+        [
+            ("v", old_value),
+            ("items", pa.list_(old_value)),
+            ("labels", pa.map_(pa.string(), old_value)),
+            ("keys", pa.map_(pa.int32(), pa.string())),
+        ]
+    )
+    declared = pa.schema(
+        [
+            ("v", new_value),
+            ("items", pa.list_(new_value)),
+            ("labels", pa.map_(pa.string(), new_value)),
+            ("keys", pa.map_(pa.int64(), pa.string())),
+        ]
+    )
+    value = {"n": -2147483648, "f": 0.1, "d": Decimal("-123.45")}
+    data = pa.Table.from_pylist(
+        [
+            {
+                "v": value,
+                "items": [value, None],
+                "labels": [("k", value)],
+                "keys": [(-2147483648, "value")],
+            },
+            {"v": None, "items": [], "labels": [], "keys": []},
+            {"v": None, "items": None, "labels": None, "keys": None},
+        ],
+        schema=physical,
+    )
+    old = _write_table_file(tmp_path / "part-00", file_format, data)
+    new = _write_table_file(tmp_path / "part-01", file_format, data.cast(declared))
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([old, new]))
+        )
+    )
+    assert result.equals(pa.concat_tables([data.cast(declared)] * 2))
+    assert source.column_expressions() == {}
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+@pytest.mark.parametrize("late_wider", [False, True])
+def test_unsampled_file_type_uses_the_same_compatibility_rules(
+    tmp_path, file_format, late_wider, monkeypatch
+):
+    declared = pa.schema([("id", pa.int64() if late_wider else pa.int32())])
+    paths = [
+        _write_table_file(
+            tmp_path / f"part-{i:02d}",
+            file_format,
+            pa.table({"id": pa.array([i], type=pa.int32())}),
+        )
+        for i in range(16)
+    ]
+    late = _write_table_file(
+        tmp_path / "part-99",
+        file_format,
+        pa.table({"id": pa.array([42], type=pa.int64())}),
+    )
+    sampled = _track_sampled_paths(monkeypatch)
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    assert len(sampled) == 16 and str(late) not in sampled
+    reader = source.create_scanner(source.infer_schema(None)).create_reader()
+    if late_wider:
+        result = pa.concat_tables(
+            list(reader.read(_manifest_for_paths([*paths, late])))
+        )
+        assert result.schema == declared
+        assert result.column("id").to_pylist() == list(range(16)) + [42]
+    else:
+        # The value fits int32, but narrowing is not an allowed Hive conversion.
+        with pytest.raises(ValueError, match="type mismatch"):
+            list(reader.read(_manifest_for_paths([*paths, late])))
+
+
+@pytest.mark.parametrize("physical", ["renamed", "reordered", "mixed"])
+def test_sampled_orc_positional_mapping_uses_original_positions(tmp_path, physical):
+    values = {
+        "renamed": {"old_id": [42], "value": [43]},
+        "reordered": {"value": [43], "id": [42]},
+        "mixed": {"_col0": [42], "id": [43]},
+    }[physical]
+    path = _write_table_file(tmp_path / "part-00", "orc", pa.table(values))
+    declared = pa.schema([("id", pa.int64()), ("value", pa.int64())])
+    source = HiveDirectDatasource(
+        HiveFileTable(str(tmp_path), "orc", declared, force_positional_evolution=True)
+    )
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    assert result.to_pylist() == [
+        dict(zip(declared.names, [v[0] for v in values.values()]))
+    ]
+
+
+@pytest.mark.parametrize("required", ["all", "projection", "filter_only"])
+def test_unsampled_orc_rename_checks_full_hive_positions(
+    tmp_path, monkeypatch, required
+):
+    from ray.data.expressions import col
+
+    paths = [
+        _write_table_file(
+            tmp_path / f"part-{i:02d}", "orc", pa.table({"id": [i], "value": [i + 100]})
+        )
+        for i in range(16)
+    ]
+    late = _write_table_file(
+        tmp_path / "part-99", "orc", pa.table({"old_id": [42], "value": [142]})
+    )
+    sampled = _track_sampled_paths(monkeypatch)
+    declared = pa.schema([("id", pa.int64()), ("value", pa.int64())])
+    source = HiveDirectDatasource(
+        HiveFileTable(
+            str(tmp_path),
+            "orc",
+            declared,
+            force_positional_evolution=True,
+        )
+    )
+    assert len(sampled) == 16 and str(late) not in sampled
+    scanner = source.create_scanner(source.infer_schema(None))
+    if required == "projection":
+        scanner = scanner.prune_columns(["id"])
+    elif required == "filter_only":
+        scanner = scanner.prune_columns(["value"])
+        scanner, residual = scanner.push_filters(col("id") > 0)
+        assert residual is None
+    reader = cloudpickle.loads(cloudpickle.dumps(scanner.create_reader()))
+    result = pa.concat_tables(list(reader.read(_manifest_for_paths([*paths, late]))))
+    expected = [{"id": i, "value": i + 100} for i in range(16)] + [
+        {"id": 42, "value": 142}
+    ]
+    if required == "projection":
+        expected = [{"id": row["id"]} for row in expected]
+    elif required == "filter_only":
+        expected = [{"value": row["value"]} for row in expected if row["id"] > 0]
+    assert result.to_pylist() == expected
+    # A rename in an unread, unfiltered column does not affect the valid field.
+    if required != "filter_only":
+        safe_reader = source.create_scanner(source.infer_schema(None)).prune_columns(
+            ["value"]
+        )
+        result = pa.concat_tables(
+            list(safe_reader.create_reader().read(_manifest_for_paths([late])))
+        )
+        assert result.column("value").to_pylist() == [142]
+
+
+def test_orc_positional_mode_preserves_trailing_missing_and_extra_columns(tmp_path):
+    paths = [
+        _write_table_file(tmp_path / "part-00", "orc", pa.table({"id": [42]})),
+        _write_table_file(
+            tmp_path / "part-01",
+            "orc",
+            pa.table({"id": [43], "added": [44], "extra": [45]}),
+        ),
+    ]
+    declared = pa.schema([("id", pa.int64()), ("added", pa.int64())])
+    source = HiveDirectDatasource(
+        HiveFileTable(
+            str(tmp_path),
+            "orc",
+            declared,
+            force_positional_evolution=True,
+        )
+    )
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths(paths))
+        )
+    )
+    assert result.to_pylist() == [{"id": 42, "added": None}, {"id": 43, "added": 44}]
+
+
+@pytest.mark.parametrize("tolerate", [False, True])
+def test_legacy_orc_honors_missing_schema_tolerance(tmp_path, tolerate):
+    path = _write_column_file(tmp_path / "part-00", "orc", "_col0", 42)
+    declared = pa.schema([("id", pa.int64())])
+    table = HiveFileTable(
+        str(tmp_path), "orc", declared, tolerate_missing_schema=tolerate
+    )
+    if not tolerate:
+        with pytest.raises(ValueError, match="tolerance is disabled"):
+            HiveDirectDatasource(table)
+    else:
+        source = HiveDirectDatasource(table)
+        result = pa.concat_tables(
+            list(
+                source.create_scanner(source.infer_schema(None))
+                .create_reader()
+                .read(_manifest_for_paths([path]))
+            )
+        )
+        assert result.to_pylist() == [{"id": 42}]
+
+
+@pytest.mark.parametrize("case_sensitive", [False, True])
+def test_orc_name_mode_keeps_casefold_distinct_names(tmp_path, case_sensitive):
+    data = pa.table({"ss": [43, None], "\u00df": [42, None]})
+    path = _write_table_file(tmp_path / "part-00", "orc", data)
+    source = HiveDirectDatasource(
+        HiveFileTable(
+            str(tmp_path),
+            "orc",
+            data.schema,
+            schema_evolution_case_sensitive=case_sensitive,
+        )
+    )
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    assert result.equals(data)
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+@pytest.mark.parametrize("required", ["all", "projection", "filter_only"])
+def test_unsampled_unicode_name_is_not_a_casefold_alias(
+    tmp_path, monkeypatch, required, file_format
+):
+    from ray.data.expressions import col
+
+    paths = [
+        _write_table_file(
+            tmp_path / f"part-{i:02d}",
+            file_format,
+            pa.table({"id": [i], "ss": [i + 100]}),
+        )
+        for i in range(16)
+    ]
+    late = _write_table_file(
+        tmp_path / "part-99", file_format, pa.table({"id": [16], "\u00df": [42]})
+    )
+    sampled = _track_sampled_paths(monkeypatch)
+    declared = pa.schema([("id", pa.int64()), ("ss", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    assert len(sampled) == 16 and str(late) not in sampled
+    scanner = source.create_scanner(source.infer_schema(None))
+    expected = [{"id": i, "ss": i + 100} for i in range(16)] + [{"id": 16, "ss": None}]
+    if required == "projection":
+        scanner = scanner.prune_columns(["ss"])
+        expected = [{"ss": row["ss"]} for row in expected]
+    elif required == "filter_only":
+        scanner = scanner.prune_columns(["id"])
+        scanner, residual = scanner.push_filters(col("ss") > 0)
+        assert residual is None
+        expected = [{"id": i} for i in range(16)]
+    if file_format == "parquet":
+        # ReadFiles serializes the scanner and creates its reader on the worker.
+        reader = cloudpickle.loads(cloudpickle.dumps(scanner)).create_reader()
+    else:
+        reader = cloudpickle.loads(cloudpickle.dumps(scanner.create_reader()))
+    result = pa.concat_tables(list(reader.read(_manifest_for_paths([*paths, late]))))
+    assert result.to_pylist() == expected
+
+
+@pytest.mark.parametrize(
+    "actual,expected",
+    [
+        (pa.int32(), pa.int64()),
+        (pa.timestamp("ms"), pa.timestamp("us")),
+        (pa.timestamp("ns", tz="UTC"), pa.timestamp("us")),
+        (
+            pa.struct([("old", pa.timestamp("ns"))]),
+            pa.struct([("new", pa.timestamp("us"))]),
+        ),
+        (
+            pa.struct([("a", pa.int64()), ("b", pa.int64())]),
+            pa.struct([("b", pa.int64()), ("a", pa.int64())]),
+        ),
+        (pa.list_(pa.int32()), pa.list_(pa.int64())),
+        (pa.map_(pa.string(), pa.int32()), pa.map_(pa.string(), pa.int64())),
+    ],
+)
+def test_legacy_orc_schema_equality_is_stricter_than_safe_casts(actual, expected):
+    with pytest.raises(ValueError, match="tolerance is disabled"):
+        hive_direct._orc_uses_positions(
+            pa.schema([("_col0", expected)]),
+            pa.schema([("_col0", actual)]),
+            False,
+            False,
+        )
+
+
+@pytest.mark.parametrize(
+    "late,required",
+    [(False, "all"), (True, "all"), (True, "projection"), (True, "filter_only")],
+)
+def test_legacy_orc_timestamp_units_reuse_existing_nested_project(
+    tmp_path, monkeypatch, late, required
+):
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        eval_expr,
+    )
+    from ray.data.expressions import col
+
+    def schema(unit):
+        ts = pa.timestamp(unit)
+        return pa.schema(
+            [
+                ("_col0", ts),
+                ("_col1", pa.struct([("ts", ts), ("n", pa.int32())])),
+                ("_col2", pa.list_(ts)),
+                ("_col3", pa.map_(pa.string(), ts)),
+                ("_col4", pa.map_(ts, pa.string())),
+            ]
+        )
+
+    physical, declared = schema("ns"), schema("us")
+    paths, expected = [], []
+    for i in range(17 if late else 1):
+        tick = 86400123456789 + i * 1000
+        data = pa.Table.from_pylist(
+            [
+                {
+                    "_col0": tick,
+                    "_col1": {"ts": tick, "n": i},
+                    "_col2": [tick, None],
+                    "_col3": [("k", tick)],
+                    "_col4": [(tick, "v")],
+                },
+                dict.fromkeys(physical.names),
+            ],
+            schema=physical,
+        )
+        expected.append(data.cast(declared, safe=False))
+        # Only the last file has an all-_colN layout. The earlier files must
+        # not exercise the legacy equality check during schema sampling.
+        if late and i < 16:
+            data = data.append_column("marker", pa.array([i, None], type=pa.int32()))
+        paths.append(_write_table_file(tmp_path / f"part-{i:02d}", "orc", data))
+    sampled = _track_sampled_paths(monkeypatch)
+    source = HiveDirectDatasource(
+        HiveFileTable(str(tmp_path), "orc", declared, tolerate_missing_schema=False)
+    )
+    if late:
+        assert len(sampled) == 16 and str(paths[-1]) not in sampled
+    scanner = source.create_scanner(source.infer_schema(None))
+    expected = pa.concat_tables(expected)
+    if required == "projection":
+        scanner = scanner.prune_columns(["_col1"])
+        expected = expected.select(["_col1"])
+    elif required == "filter_only":
+        scanner = scanner.prune_columns(["_col1"])
+        scanner, residual = scanner.push_filters(col("_col0") > datetime(1970, 1, 2))
+        assert residual is None
+        expected = expected.filter(expected.column("_col0").is_valid()).select(
+            ["_col1"]
+        )
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths(paths)))
+    )
+    expressions = source.column_expressions()
+    result = pa.table(
+        {
+            name: eval_expr(expressions[name], result)
+            if name in expressions
+            else result[name]
+            for name in result.column_names
+        }
+    )
+    assert result.equals(expected)
+
+
+def test_orc_positional_mixed_names_missing_projection_and_limit(tmp_path):
+    paths = [
+        _write_table_file(
+            tmp_path / "part-00",
+            "orc",
+            pa.table({"old_id": [1, 2, 3, 4], "old_value": [10, 20, 30, 40]}),
+        ),
+        _write_table_file(
+            tmp_path / "part-01", "orc", pa.table({"id": [5, 6], "value": [50, 60]})
+        ),
+    ]
+    declared = pa.schema(
+        [("id", pa.int64()), ("value", pa.int64()), ("missing", pa.int64())]
+    )
+    source = HiveDirectDatasource(
+        HiveFileTable(str(tmp_path), "orc", declared, force_positional_evolution=True)
+    )
+    from ray.data.expressions import col
+
+    scanner = source.create_scanner(source.infer_schema(None)).prune_columns(
+        ["missing"]
+    )
+    scanner, residual = scanner.push_filters(col("value") >= 30)
+    assert residual is None
+    scanner = scanner.push_limit(3)
+    result = pa.concat_tables(
+        list(scanner.create_reader().read(_manifest_for_paths(paths)))
+    )
+    assert result.to_pylist() == [{"missing": None}] * 3
+    # Empty projection must preserve rows across multiple batches and files.
+    scanner = source.create_scanner(source.infer_schema(None)).prune_columns([])
+    from dataclasses import replace
+
+    reader = replace(scanner, batch_size=2).create_reader()
+    assert sum(table.num_rows for table in reader.read(_manifest_for_paths(paths))) == 6
+
+
+def test_orc_positional_renamed_complex_column_reuses_timestamp_project(tmp_path):
+    from ray.data._internal.planner.plan_expression.expression_evaluator import (
+        eval_expr,
+    )
+
+    actual = pa.struct(
+        [
+            ("n", pa.int32()),
+            ("ts", pa.timestamp("ns")),
+            ("items", pa.list_(pa.int32())),
+            ("labels", pa.map_(pa.string(), pa.int32())),
+        ]
+    )
+    target = pa.struct(
+        [
+            ("n", pa.int64()),
+            ("ts", pa.timestamp("us")),
+            ("items", pa.list_(pa.int64())),
+            ("labels", pa.map_(pa.string(), pa.int64())),
+        ]
+    )
+    data = pa.table(
+        {
+            "old": pa.array(
+                [
+                    {"n": 42, "ts": -1, "items": [7, None], "labels": [("k", 8)]},
+                    None,
+                    {"n": None, "ts": 1001, "items": [], "labels": []},
+                ],
+                type=actual,
+            )
+        }
+    )
+    path = _write_table_file(tmp_path / "part-00", "orc", data)
+    source = HiveDirectDatasource(
+        HiveFileTable(
+            str(tmp_path),
+            "orc",
+            pa.schema([("new", target)]),
+            force_positional_evolution=True,
+        )
+    )
+    read = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    result = eval_expr(source.column_expressions()["new"], read).combine_chunks()
+    assert result.type == target
+    assert result.field("n").to_pylist() == [42, None, None]
+    assert result.field("ts").cast(pa.int64()).to_pylist() == [-1, None, 1]
+    assert result.field("items").to_pylist() == [[7, None], None, []]
+    assert result.field("labels").to_pylist() == [[("k", 8)], None, []]
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_actual_file_uses_sampled_case_mapping(tmp_path, file_format):
     path = _write_column_file(tmp_path / "part-000", file_format, "ID", 42)
     declared = pa.schema([("id", pa.int64())])
@@ -520,8 +1305,8 @@ def test_actual_file_uses_sampled_case_mapping(tmp_path, file_format):
         list(scanner.create_reader().read(_manifest_for_paths([path])))
     )
 
-    assert source.column_renames == {"ID": "id"}
-    assert result.column("ID").to_pylist() == [42]
+    assert source.column_renames == ({"ID": "id"} if file_format == "parquet" else {})
+    assert result.column("ID" if file_format == "parquet" else "id").to_pylist() == [42]
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
@@ -541,8 +1326,12 @@ def test_unsampled_file_case_change_fails_before_data_read(
 
     scanner = source.create_scanner(source.infer_schema(None))
     manifest = _manifest_for_paths([*sampled_paths, late_path])
-    with pytest.raises(ValueError, match="per-file column name changes"):
-        list(scanner.create_reader().read(manifest))
+    if file_format == "parquet":
+        with pytest.raises(ValueError, match="per-file column name changes"):
+            list(scanner.create_reader().read(manifest))
+    else:
+        result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+        assert result.column("id").to_pylist() == list(range(16)) + [99]
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
@@ -614,15 +1403,21 @@ def test_file_schema_metadata_read_uses_configured_io_retry(
     assert calls == 2
 
 
-def test_sampled_orc_positional_layout_is_rejected(tmp_path):
-    _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
+def test_sampled_legacy_orc_uses_positional_layout(tmp_path):
+    path = _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
     declared = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    assert result.to_pylist() == [{"id": 42}]
 
-    with pytest.raises(ValueError, match="positional ORC column mapping"):
-        HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
 
-
-def test_orc_coln_layout_with_name_position_conflict_is_rejected(tmp_path):
+def test_orc_coln_layout_uses_position_even_when_names_conflict(tmp_path):
     path = tmp_path / "part-000"
     physical = pa.Table.from_arrays(
         [pa.array([42], type=pa.int64()), pa.array([7], type=pa.int64())],
@@ -631,12 +1426,19 @@ def test_orc_coln_layout_with_name_position_conflict_is_rejected(tmp_path):
     orc.write_table(physical, path)
     declared = pa.schema([("id", pa.int64()), ("_col0", pa.int64())])
 
-    with pytest.raises(ValueError, match="positional ORC column mapping"):
-        HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    assert result.to_pylist() == [{"id": 42, "_col0": 7}]
 
 
 @pytest.mark.parametrize("push_filter", [False, True])
-def test_unsampled_orc_positional_layout_cannot_be_hidden_by_projection(
+def test_unsampled_legacy_orc_keeps_full_positions_under_projection(
     tmp_path, monkeypatch, push_filter
 ):
     sampled_paths = [
@@ -664,8 +1466,10 @@ def test_unsampled_orc_positional_layout_cannot_be_hidden_by_projection(
         assert residual is None
 
     manifest = _manifest_for_paths([*sampled_paths, late_path])
-    with pytest.raises(ValueError, match="positional ORC column mapping"):
-        list(scanner.create_reader().read(manifest))
+    result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+    assert result.column("_col0").to_pylist() == list(range(100, 116)) + (
+        [] if push_filter else [None]
+    )
 
 
 def test_orc_mixed_coln_and_named_columns_use_name_mapping(tmp_path):
@@ -716,9 +1520,7 @@ def test_orc_col_prefix_name_does_not_reject_missing_hive_column(tmp_path):
     assert result.column("_column").to_pylist() == [None]
 
 
-def test_unsampled_orc_positional_layout_is_rejected_before_data_read(
-    tmp_path, monkeypatch
-):
+def test_unsampled_legacy_orc_is_read_by_position(tmp_path, monkeypatch):
     sampled_paths = [
         _write_column_file(tmp_path / f"part-{index:02d}", "orc", "id", index)
         for index in range(16)
@@ -732,8 +1534,8 @@ def test_unsampled_orc_positional_layout_is_rejected_before_data_read(
 
     scanner = source.create_scanner(source.infer_schema(None))
     manifest = _manifest_for_paths([*sampled_paths, late_path])
-    with pytest.raises(ValueError, match="positional ORC column mapping"):
-        list(scanner.create_reader().read(manifest))
+    result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+    assert result.column("id").to_pylist() == list(range(16)) + [99]
 
 
 def test_orc_declared_col0_is_read_by_name(tmp_path):

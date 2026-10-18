@@ -1,17 +1,24 @@
 """Hive metadata planning composed with native Parquet and ORC datasources."""
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
-from dataclasses import dataclass, field as dataclass_field, fields
+from dataclasses import dataclass, field as dataclass_field, fields, replace
 from typing import Iterable, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
 
 import pyarrow as pa
+import pyarrow.dataset as pds
 
+from ray.data._internal.datasource_v2.common.file_reader import (
+    _ARROW_DEFAULT_BATCH_SIZE,
+    FileFormat,
+)
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import _connect
 from ray.data._internal.datasource_v2.formats.hive.hive_schema import hive_type_to_arrow
+from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
@@ -30,7 +37,7 @@ from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     SupportsMetadata,
 )
-from ray.data._internal.util import iterate_with_retry
+from ray.data._internal.util import iterate_with_retry, unify_schemas_with_validation
 from ray.data.context import DataContext
 
 _FORMATS = {
@@ -52,6 +59,24 @@ class HiveFileTable:
     location: str
     file_format: str
     schema: pa.Schema
+    force_positional_evolution: bool = False
+    tolerate_missing_schema: bool = True
+    schema_evolution_case_sensitive: bool = False
+
+
+def _read_hive_setting(cursor, option: str, default=None):
+    """Read one setting from the metadata cursor's actual HS2 session."""
+    cursor.execute(f"SET {option}")
+    rows = cursor.fetchall()
+    if len(rows) != 1 or len(rows[0]) != 1:
+        raise ValueError(f"Cannot determine Hive setting {option}")
+    text = str(rows[0][0]).strip()
+    if text == f"{option} is undefined":
+        return default
+    key, separator, value = text.partition("=")
+    if key.strip() != option or not separator:
+        raise ValueError(f"Cannot determine Hive setting {option}")
+    return value.strip().lower()
 
 
 def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
@@ -65,7 +90,50 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
     try:
         cursor = connection.cursor(user=spec.user)
         cursor.execute(f"DESCRIBE FORMATTED `{database}`.`{table}`")
-        rows = cursor.fetchall()
+        metadata = _parse_file_table(cursor.fetchall())
+        if metadata.file_format == "parquet":
+            value = _read_hive_setting(cursor, "parquet.column.index.access", "false")
+            if value not in ("true", "false"):
+                raise ValueError("Cannot determine Hive Parquet column mapping mode")
+            if value == "true":
+                raise ValueError(
+                    "Hive direct-read does not support Parquet positional column access"
+                )
+        if metadata.file_format == "orc":
+            # Impyla opens a separate HS2 session for each cursor. Query this
+            # setting on the metadata cursor, including its factory overrides.
+            value = _read_hive_setting(cursor, "orc.force.positional.evolution")
+            if value not in ("true", "false"):
+                raise ValueError("Cannot determine Hive ORC positional mapping mode")
+            level = _read_hive_setting(
+                cursor, "orc.force.positional.evolution.level", "1"
+            )
+            if level != "1":
+                raise ValueError(
+                    "Hive direct-read supports only top-level ORC positional evolution"
+                )
+            evolution = _read_hive_setting(cursor, "hive.exec.schema.evolution")
+            if evolution != "true":
+                raise ValueError("Hive direct-read requires ORC schema evolution")
+            tolerate = _read_hive_setting(cursor, "orc.tolerate.missing.schema")
+            if tolerate is None:
+                tolerate = _read_hive_setting(
+                    cursor, "hive.exec.orc.tolerate.missing.schema", "true"
+                )
+            if tolerate not in ("true", "false"):
+                raise ValueError("Cannot determine Hive ORC missing schema mode")
+            case_sensitive = _read_hive_setting(
+                cursor, "orc.schema.evolution.case.sensitive", "true"
+            )
+            if case_sensitive not in ("true", "false"):
+                raise ValueError("Cannot determine Hive ORC name matching mode")
+            metadata = replace(
+                metadata,
+                force_positional_evolution=value == "true",
+                tolerate_missing_schema=tolerate == "true",
+                schema_evolution_case_sensitive=case_sensitive == "true",
+            )
+        return metadata
     finally:
         # A close failure must not mask the metadata lookup's original error.
         if cursor is not None:
@@ -73,7 +141,6 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
                 cursor.close()
         with suppress(Exception):
             connection.close()
-    return _parse_file_table(rows)
 
 
 def _parse_file_table(rows) -> HiveFileTable:
@@ -136,7 +203,13 @@ def _parse_file_table(rows) -> HiveFileTable:
     provider = table_properties.get("spark.sql.sources.provider", "hive").lower()
     if provider not in ("hive", "parquet", "orc"):
         raise ValueError("Hive direct-read does not support this table provider")
-    for option in ("parquet.column.index.access", "orc.force.positional.evolution"):
+    file_format = _FORMATS.get(
+        (details.get("InputFormat:"), details.get("SerDe Library:"))
+    )
+    positional_options = ("parquet.column.index.access",)
+    if file_format != "orc":
+        positional_options += ("orc.force.positional.evolution",)
+    for option in positional_options:
         if any(
             properties.get(option, "false").lower() != "false"
             for properties in (table_properties, serde_properties)
@@ -144,9 +217,6 @@ def _parse_file_table(rows) -> HiveFileTable:
             raise ValueError(
                 "Hive direct-read does not support positional column access"
             )
-    file_format = _FORMATS.get(
-        (details.get("InputFormat:"), details.get("SerDe Library:"))
-    )
     if file_format is None:
         raise ValueError("Hive direct-read requires a supported Parquet or ORC SerDe")
     location = details.get("Location:")
@@ -159,7 +229,7 @@ def _parse_file_table(rows) -> HiveFileTable:
         raise ValueError(
             "Configure storage credentials on the filesystem, not LOCATION"
         )
-    if len({field.name.casefold() for field in columns}) != len(columns):
+    if len({field.name.lower() for field in columns}) != len(columns):
         raise ValueError("Hive direct-read requires unambiguous column names")
     return HiveFileTable(location, file_format, pa.schema(columns))
 
@@ -168,6 +238,14 @@ def _compatible_read_type(expected: pa.DataType, actual: pa.DataType) -> pa.Data
     """Validate types, retaining file timestamp units until the typed Project."""
     if expected == actual or pa.types.is_null(actual):
         return expected
+    if pa.types.is_signed_integer(expected) and pa.types.is_signed_integer(actual):
+        if actual.bit_width < expected.bit_width:
+            return expected
+    if pa.types.is_float64(expected) and pa.types.is_float32(actual):
+        return expected
+    if pa.types.is_decimal128(expected) and pa.types.is_decimal128(actual):
+        if actual.scale == expected.scale and actual.precision < expected.precision:
+            return expected
     if pa.types.is_timestamp(expected) and pa.types.is_timestamp(actual):
         if expected.tz == actual.tz:
             return actual
@@ -198,12 +276,16 @@ def _compatible_read_type(expected: pa.DataType, actual: pa.DataType) -> pa.Data
     raise ValueError(f"Hive direct-read type mismatch: {expected} versus {actual}")
 
 
-def _schema_fields_by_casefold(
-    schema: pa.Schema, label: str, required_names: Optional[Set[str]] = None
+def _schema_fields_by_name(
+    schema: pa.Schema,
+    label: str,
+    required_names: Optional[Set[str]] = None,
+    *,
+    normalize=str.casefold,
 ):
     by_name = {}
     for field in schema:
-        folded = field.name.casefold()
+        folded = normalize(field.name)
         if folded in by_name:
             if required_names is None or folded in required_names:
                 raise ValueError(f"Hive direct-read {label} has ambiguous column names")
@@ -213,10 +295,9 @@ def _schema_fields_by_casefold(
 
 
 def _sampled_column_names(hive_schema: pa.Schema, file_schema: pa.Schema):
-    by_name = _schema_fields_by_casefold(file_schema, "file schema")
+    by_name = _schema_fields_by_name(file_schema, "file schema", normalize=str.lower)
     return {
-        field.name: by_name.get(field.name.casefold(), field).name
-        for field in hive_schema
+        field.name: by_name.get(field.name.lower(), field).name for field in hive_schema
     }
 
 
@@ -243,7 +324,7 @@ def _validate_nested_field_names(
 ) -> None:
     """Reject per-file nested name changes that would silently null-fill."""
     if pa.types.is_struct(expected) and pa.types.is_struct(actual):
-        actual_by_name = _schema_fields_by_casefold(
+        actual_by_name = _schema_fields_by_name(
             pa.schema(list(actual)), f"file schema at {path}"
         )
         for expected_field in expected:
@@ -299,40 +380,21 @@ def _validate_file_schema(
         None
         if required_fields is None
         else {
-            name.casefold()
+            name.lower()
             for hive_name in required_fields
             for name in (hive_name, sampled_names[hive_name])
         }
     )
-    actual_by_name = _schema_fields_by_casefold(
-        file_schema, "file schema", required_names
+    actual_by_name = _schema_fields_by_name(
+        file_schema, "file schema", required_names, normalize=str.lower
     )
-    legacy_orc_layout = (
-        file_format == "orc"
-        and bool(file_schema.names)
-        and all(re.fullmatch(r"_col[0-9]+", name) for name in file_schema.names)
-    )
-    if legacy_orc_layout:
-        for hive_index, hive_field in enumerate(hive_schema):
-            if required_fields is not None and hive_field.name not in required_fields:
-                continue
-            name_index = file_schema.get_field_index(sampled_names[hive_field.name])
-            positional_index = hive_index if hive_index < len(file_schema) else -1
-            if name_index != positional_index:
-                raise ValueError(
-                    "Hive direct-read does not support positional ORC column "
-                    f"mapping for Hive column {hive_field.name!r}: name mapping "
-                    f"selects file index {name_index}, positional mapping selects "
-                    f"file index {positional_index}"
-                )
-
     for hive_field in hive_schema:
         if required_fields is not None and hive_field.name not in required_fields:
             continue
         sampled_name = sampled_names[hive_field.name]
         file_index = file_schema.get_field_index(sampled_name)
         if file_index < 0:
-            folded = actual_by_name.get(hive_field.name.casefold())
+            folded = actual_by_name.get(hive_field.name.lower())
             if folded is not None:
                 raise ValueError(
                     "Hive direct-read does not support per-file column name "
@@ -346,6 +408,9 @@ def _validate_file_schema(
         _validate_nested_field_names(
             hive_field.type, actual_field.type, hive_field.name
         )
+        # A later file must satisfy the same finite compatibility rules as the
+        # sample; native casting must not silently accept a narrowing instead.
+        _compatible_read_type(hive_field.type, actual_field.type)
 
 
 def _read_physical_schema(path: str, file_format: str, filesystem) -> pa.Schema:
@@ -405,7 +470,13 @@ def _required_hive_fields(reader, sampled_names: dict) -> Optional[Set[str]]:
 class _HiveSchemaValidatingReader(Reader[FileManifest]):
     """Validate per-file names, then delegate all decoding to Ray's reader."""
 
-    def __init__(self, reader, hive_schema, sampled_names, file_format):
+    def __init__(
+        self,
+        reader,
+        hive_schema,
+        sampled_names,
+        file_format,
+    ):
         self._reader = reader
         self._hive_schema = hive_schema
         self._sampled_names = sampled_names
@@ -458,17 +529,217 @@ class _HiveParquetScanner(ParquetScanner):  # noqa: D101
         )
 
 
+def _orc_type_for_comparison(dtype):
+    """Ignore only Arrow's ns/us representation of the same ORC TIMESTAMP."""
+    if pa.types.is_timestamp(dtype) and dtype.unit == "ns":
+        return pa.timestamp("us", tz=dtype.tz)
+    if pa.types.is_struct(dtype):
+        return pa.struct(
+            [field.with_type(_orc_type_for_comparison(field.type)) for field in dtype]
+        )
+    if pa.types.is_list(dtype):
+        return pa.list_(
+            dtype.value_field.with_type(_orc_type_for_comparison(dtype.value_type))
+        )
+    if pa.types.is_map(dtype):
+        return pa.map_(
+            dtype.key_field.with_type(_orc_type_for_comparison(dtype.key_type)),
+            dtype.item_field.with_type(_orc_type_for_comparison(dtype.item_type)),
+            keys_sorted=dtype.keys_sorted,
+        )
+    return dtype
+
+
+def _orc_uses_positions(hive_schema, file_schema, force, tolerate):
+    if force:
+        return True
+    legacy = bool(file_schema.names) and all(
+        re.fullmatch(r"_col[0-9]+", name) for name in file_schema.names
+    )
+    # The ORC adapter exposes TIMESTAMP as ns; Hive's output schema uses us.
+    # Safe widening is not equality: it must still honor missing-schema policy.
+    if legacy:
+        expected, actual = (
+            pa.schema(
+                [
+                    field.with_type(_orc_type_for_comparison(field.type))
+                    for field in schema
+                ]
+            )
+            for schema in (hive_schema, file_schema)
+        )
+        if not actual.equals(expected):
+            if not tolerate:
+                raise ValueError(
+                    "Hive ORC file is missing schema names and tolerance is disabled"
+                )
+            return True
+    return False
+
+
+def _orc_column_indices(
+    hive_schema, file_schema, force, tolerate, case_sensitive, required_fields=None
+):
+    if _orc_uses_positions(hive_schema, file_schema, force, tolerate):
+        indices = [i if i < len(file_schema) else -1 for i in range(len(hive_schema))]
+    else:
+        names = file_schema.names
+        if not case_sensitive:
+            needed = (
+                None
+                if required_fields is None
+                else {name.lower() for name in required_fields}
+            )
+            _schema_fields_by_name(
+                file_schema, "file schema", needed, normalize=str.lower
+            )
+            names = [name.lower() for name in names]
+        indices = []
+        for field in hive_schema:
+            name = field.name if case_sensitive else field.name.lower()
+            if names.count(name) > 1 and (
+                required_fields is None or field.name in required_fields
+            ):
+                raise ValueError(
+                    "Hive direct-read file schema has ambiguous column names"
+                )
+            indices.append(names.index(name) if name in names else -1)
+    for field, index in zip(hive_schema, indices):
+        if index < 0 or (
+            required_fields is not None and field.name not in required_fields
+        ):
+            continue
+        actual = file_schema.field(index)
+        _validate_nested_field_names(field.type, actual.type, field.name)
+        _compatible_read_type(field.type, actual.type)
+    return indices
+
+
+def _infer_orc_read_schema(table, sample, filesystem):
+    """Normalize each sampled file before native schema unification."""
+    if not len(sample):
+        return table.schema, {field.name: field.name for field in table.schema}
+    retryable = DataContext.get_current().retried_io_errors
+    with ThreadPoolExecutor(max_workers=min(len(sample), 16)) as executor:
+        schemas = list(
+            executor.map(
+                lambda path: _read_physical_schema_with_retry(
+                    str(path), "orc", filesystem, retryable
+                ),
+                sample.paths,
+            )
+        )
+    sampled_names = {field.name: field.name for field in table.schema}
+    normalized = []
+    for schema in schemas:
+        indices = _orc_column_indices(
+            table.schema,
+            schema,
+            table.force_positional_evolution,
+            table.tolerate_missing_schema,
+            table.schema_evolution_case_sensitive,
+        )
+        normalized.append(
+            pa.schema(
+                [
+                    pa.field(
+                        field.name,
+                        _compatible_read_type(field.type, schema[index].type)
+                        if index >= 0
+                        else field.type,
+                    )
+                    for field, index in zip(table.schema, indices)
+                ]
+            )
+        )
+    return unify_schemas_with_validation(normalized), sampled_names
+
+
+class _HiveOrcFileReader(OrcFileReader):
+    """Adapt per-file ORC names with Arrow projection inside the native reader."""
+
+    def __init__(
+        self,
+        *,
+        hive_schema,
+        sampled_names,
+        force_positional_evolution,
+        tolerate_missing_schema,
+        schema_evolution_case_sensitive,
+        **options,
+    ):
+        super().__init__(**options)
+        self._hive_schema = hive_schema
+        self._sampled_names = sampled_names
+        self._force_positional_evolution = force_positional_evolution
+        self._tolerate_missing_schema = tolerate_missing_schema
+        self._schema_evolution_case_sensitive = schema_evolution_case_sensitive
+
+    def _iter_fragment_tables(self, fragment, scanner_kwargs):
+        required = _required_hive_fields(
+            self, {field.name: field.name for field in self._hive_schema}
+        )
+        physical = fragment.physical_schema
+        indices = _orc_column_indices(
+            self._hive_schema,
+            physical,
+            self._force_positional_evolution,
+            self._tolerate_missing_schema,
+            self._schema_evolution_case_sensitive,
+            required,
+        )
+        fields = list(physical)
+        projection = {}
+        for field, index in zip(self._hive_schema, indices):
+            if required is not None and field.name not in required:
+                continue
+            target = self._schema.field(field.name).type
+            if index < 0:
+                projection[field.name] = pds.scalar(pa.scalar(None, type=target))
+            else:
+                fields[index] = fields[index].with_type(target)
+                projection[field.name] = pds.field(index)
+        # A reader can scan fragments concurrently. Keep schema and kwargs local.
+        kwargs = dict(scanner_kwargs)
+        kwargs.update(columns=projection, filter=None)
+        scanner = fragment.scanner(schema=pa.schema(fields), **kwargs)
+        predicate = (
+            self._predicate.to_pyarrow() if self._predicate is not None else None
+        )
+        for tagged in scanner.scan_batches():
+            table = pa.Table.from_batches([tagged.record_batch])
+            if predicate is not None:
+                table = table.filter(predicate)
+            yield table
+
+
 @dataclass(frozen=True)
 class _HiveOrcScanner(OrcScanner):  # noqa: D101
     hive_schema: pa.Schema = dataclass_field(kw_only=True, repr=False)
     sampled_names: Tuple[Tuple[str, str], ...] = dataclass_field(
         kw_only=True, repr=False
     )
+    force_positional_evolution: bool = dataclass_field(kw_only=True, default=False)
+    tolerate_missing_schema: bool = dataclass_field(kw_only=True, default=True)
+    schema_evolution_case_sensitive: bool = dataclass_field(kw_only=True, default=False)
 
     def create_reader(self):
-        reader = super().create_reader()
-        return _HiveSchemaValidatingReader(
-            reader, self.hive_schema, dict(self.sampled_names), "orc"
+        return _HiveOrcFileReader(
+            hive_schema=self.hive_schema,
+            sampled_names=dict(self.sampled_names),
+            force_positional_evolution=self.force_positional_evolution,
+            tolerate_missing_schema=self.tolerate_missing_schema,
+            schema_evolution_case_sensitive=self.schema_evolution_case_sensitive,
+            format=FileFormat.ORC,
+            batch_size=self.batch_size
+            if self.batch_size is not None
+            else _ARROW_DEFAULT_BATCH_SIZE,
+            columns=list(self.columns) if self.columns is not None else None,
+            predicate=self.predicate,
+            limit=self.limit,
+            filesystem=self.filesystem,
+            ignore_prefixes=self.ignore_prefixes,
+            schema=self.schema,
         )
 
 
@@ -614,13 +885,24 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             source.filesystem,
             max_files=None if merge_schema else 16,
         )
-        physical = source.infer_schema(sample) if len(sample) else pa.schema([])
-        sampled_names = _sampled_column_names(table.schema, physical)
-        _validate_file_schema(table.schema, physical, sampled_names, table.file_format)
-        self._schema, self.column_renames = _read_schema(table.schema, physical)
+        if table.file_format == "orc":
+            self._schema, sampled_names = _infer_orc_read_schema(
+                table, sample, source.filesystem
+            )
+            self.column_renames = {}
+        else:
+            physical = source.infer_schema(sample) if len(sample) else pa.schema([])
+            sampled_names = _sampled_column_names(table.schema, physical)
+            _validate_file_schema(
+                table.schema, physical, sampled_names, table.file_format
+            )
+            self._schema, self.column_renames = _read_schema(table.schema, physical)
         self._hive_schema = table.schema
         self._sampled_names = sampled_names
         self._file_format = table.file_format
+        self._force_positional_evolution = table.force_positional_evolution
+        self._tolerate_missing_schema = table.tolerate_missing_schema
+        self._schema_evolution_case_sensitive = table.schema_evolution_case_sensitive
         self._source: FileDataSourceV2 = source
         self._retained = sample if merge_schema else None
 
@@ -683,6 +965,14 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             for descriptor in fields(scanner)
             if descriptor.init
         }
+        if self._file_format == "orc":
+            scanner_options[
+                "force_positional_evolution"
+            ] = self._force_positional_evolution
+            scanner_options["tolerate_missing_schema"] = self._tolerate_missing_schema
+            scanner_options[
+                "schema_evolution_case_sensitive"
+            ] = self._schema_evolution_case_sensitive
         return scanner_type(
             **scanner_options,
             hive_schema=self._hive_schema,
