@@ -158,6 +158,30 @@ def test_find_partitions_duplicates():
     assert partitions[3].to_pydict() == {"value": []}  # >=3
 
 
+def test_pandas_block_to_arrow_preserves_empty_column_dtypes():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "id": pd.Series([], dtype="int64"),
+            "score": pd.Series([], dtype="float32"),
+            "flag": pd.Series([], dtype="bool"),
+            "obj": pd.Series([], dtype="object"),
+        }
+    )
+    arrow_table = BlockAccessor.for_block(df).to_arrow()
+    assert arrow_table.num_rows == 0
+    assert arrow_table.schema.field("id").type == pa.int64()
+    assert arrow_table.schema.field("score").type == pa.float32()
+    assert arrow_table.schema.field("flag").type == pa.bool_()
+    assert arrow_table.schema.field("obj").type == pa.null()
+
+    # Non-empty all-null columns are still coerced to pa.null().
+    null_df = pd.DataFrame({"x": [None, None]})
+    null_arrow = BlockAccessor.for_block(null_df).to_arrow()
+    assert null_arrow.schema.field("x").type == pa.null()
+
+
 if __name__ == "__main__":
     import sys
 

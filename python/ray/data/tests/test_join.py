@@ -1571,6 +1571,33 @@ def test_streaming_join(ray_start_regular_shared_2_cpus):
     assert num_blocks >= 1000
 
 
+def test_join_with_empty_pandas_block(ray_start_regular_shared_2_cpus):
+    """Regression test for https://github.com/ray-project/ray/issues/67127.
+
+    Joining a dataset containing an empty pandas-backed block (either directly
+    from an empty DataFrame or produced by filtering out all rows) must preserve
+    its column dtypes when converted to Arrow rather than coercing 0-row columns
+    to ``pa.null()``.
+    """
+    from ray.data.expressions import col
+
+    left_empty = ray.data.from_pandas(
+        pd.DataFrame({"id": pd.Series([], dtype="int64"), "lval": pd.Series([], dtype="int64")})
+    )
+    right = ray.data.from_pandas(pd.DataFrame({"id": [1, 2], "rval": [10, 20]}))
+
+    assert left_empty.join(right, join_type="inner", num_partitions=1).take_all() == []
+
+    left_filtered = ray.data.from_pandas(
+        pd.DataFrame({"id": [1, 2], "lval": [100, 200]})
+    ).filter(expr=col("id") > 10)
+    joined_right = left_filtered.join(right, join_type="right_outer", num_partitions=1)
+    assert sorted(joined_right.take_all(), key=lambda r: r["id"]) == [
+        {"id": 1, "lval": None, "rval": 10},
+        {"id": 2, "lval": None, "rval": 20},
+    ]
+
+
 if __name__ == "__main__":
     import sys
 
