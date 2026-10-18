@@ -33,11 +33,13 @@ from ray.dashboard.consts import (
 from ray.dashboard.modules.dashboard_sdk import (
     DEFAULT_DASHBOARD_ADDRESS,
     ClusterInfo,
+    SubmissionClient,
     parse_cluster_info,
 )
 from ray.dashboard.modules.job.pydantic_models import JobType
 from ray.dashboard.modules.job.sdk import JobStatus, JobSubmissionClient
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.exceptions import AuthenticationError
 from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
@@ -135,6 +137,37 @@ def test_parse_cluster_info_default_address():
     assert parse_cluster_info(
         address=None,
     ) == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
+
+
+@pytest.mark.parametrize(
+    "client_token_auth, status_code, body, expect_mismatch",
+    [
+        (True, 200, b'{"authentication_mode": "disabled"}', True),
+        (True, 200, b'{"authentication_mode": "token"}', False),
+        # A cluster older than /api/authentication_mode.
+        (True, 404, b"Not Found", False),
+        (True, 200, b"<html>proxy page</html>", False),
+        (False, 200, b'{"authentication_mode": "disabled"}', False),
+    ],
+)
+def test_check_auth_mode(client_token_auth, status_code, body, expect_mismatch):
+    import requests
+
+    response = requests.Response()
+    response.status_code = status_code
+    response._content = body
+    client = SubmissionClient.__new__(SubmissionClient)
+    client._do_request = Mock(return_value=response)
+
+    with patch(
+        "ray.dashboard.modules.dashboard_sdk.is_token_auth_enabled",
+        return_value=client_token_auth,
+    ):
+        if expect_mismatch:
+            with pytest.raises(AuthenticationError, match="AuthModeMismatch"):
+                client._check_auth_mode()
+        else:
+            client._check_auth_mode()
 
 
 def test_submit_job_does_not_mutate_runtime_env():

@@ -149,6 +149,7 @@ class StateApiClient(SubmissionClient):
             headers=headers,
             cookies=cookies,
         )
+        self._check_auth_mode()
 
     @classmethod
     def _make_param(cls, options: Union[ListApiOptions, GetApiOptions]) -> Dict:
