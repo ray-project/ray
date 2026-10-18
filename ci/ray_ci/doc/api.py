@@ -288,8 +288,17 @@ class API:
         intent signal (its boolean value tracks a separate runtime concern).
         Read the attribute generically so the shared check needs no per-team
         import.
+
+        ``hasattr`` only swallows ``AttributeError``, and a lazy proxy or a
+        metaclass ``__getattr__`` can raise anything on lookup. A marker that
+        can't be read is not an exemption: report False, so the private-name
+        rule still flags the one symbol rather than the check crashing for
+        every team.
         """
-        return hasattr(obj, _OVERRIDE_HOOK_MARKER)
+        try:
+            return hasattr(obj, _OVERRIDE_HOOK_MARKER)
+        except Exception:
+            return False
 
     def is_public(self) -> bool:
         """

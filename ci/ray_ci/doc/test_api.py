@@ -329,6 +329,35 @@ def test_split_resolvable_exempts_override_hook():
     assert private == [f"{_MOCK}.MockClass._mock_private"]
 
 
+def test_split_resolvable_survives_marker_lookup_that_raises(monkeypatch):
+    # hasattr only swallows AttributeError. A class whose attribute lookup
+    # raises anything else (a lazy optional-dependency proxy, a metaclass
+    # __getattr__) must not crash the check for every team. An unreadable
+    # override-hook marker is no exemption, so the private-name rule still
+    # applies and the symbol is reported on its own.
+    class _RaisingMeta(type):
+        def __getattr__(cls, name):
+            raise RuntimeError(f"lazy attribute {name} blew up")
+
+    class _Hostile(metaclass=_RaisingMeta):
+        pass
+
+    module_name = "fake_hostile_doc_module"
+    module = type(sys)(module_name)
+    _Hostile.__module__ = module_name
+    _Hostile.__qualname__ = "_Hostile"
+    module._Hostile = _Hostile
+    monkeypatch.setitem(sys.modules, module_name, module)
+
+    assert not API._is_override_hook(_Hostile)
+    unresolved, private = API.split_resolvable_and_broken_doc_apis(
+        [_doc_api(f"{module_name}._Hostile", CodeType.CLASS)], set()
+    )
+
+    assert unresolved == []
+    assert private == [f"{module_name}._Hostile"]
+
+
 def test_split_resolvable_exempts_public_reexport_of_private_module():
     # A class implemented in a private module but re-exported through a public
     # module's __all__ is public: the export is the contract, the implementation
