@@ -53,7 +53,9 @@ class TestLearner(unittest.TestCase):
         changed_parameter = None
         for module_id, parameters in module_state.items():
             for name, value in parameters.items():
-                if isinstance(value, np.ndarray) and np.issubdtype(value.dtype, np.floating):
+                if isinstance(value, np.ndarray) and np.issubdtype(
+                    value.dtype, np.floating
+                ):
                     parameters[name] = value + 1.0
                     changed_parameter = (module_id, name)
                     break
@@ -98,7 +100,9 @@ class TestLearner(unittest.TestCase):
         changed_parameter = None
         for module_id, parameters in stale_state.items():
             for name, value in parameters.items():
-                if isinstance(value, np.ndarray) and np.issubdtype(value.dtype, np.floating):
+                if isinstance(value, np.ndarray) and np.issubdtype(
+                    value.dtype, np.floating
+                ):
                     parameters[name] = value + 1.0
                     changed_parameter = (module_id, name)
                     break
