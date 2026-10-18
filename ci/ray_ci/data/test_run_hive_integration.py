@@ -102,6 +102,8 @@ def test_ready_service_runs_suite(run_script, scenario):
     assert "HIVE_TEST_PASSWORD=hive" in test_envs
     probes = [call for call in calls if call[:2] == ["docker", "exec"]]
     assert len(probes) == (2 if scenario == "retry" else 1)
+    assert "-t" in probes[-1]
+    assert "JAVA_TOOL_OPTIONS=--enable-preview" in probes[-1]
     assert probes[-1][-2:] == ["-e", "SELECT 1"]
     assert calls.index(probes[-1]) < calls.index(test_command)
 

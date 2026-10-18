@@ -34,8 +34,11 @@ docker run -d --name "${service}" --network "${network}" \
 
 # A listening TCP socket is insufficient: require an authenticated SQL query.
 # Bound both each probe and the total wait, and detect a crashed service early.
+# Hive 4.2's Beeline requires a terminal even for -e, and its JLine terminal
+# provider uses Java 21 preview features. Allocate a PTY without interactive stdin.
 deadline=$((SECONDS + ${RAY_HIVE_STARTUP_TIMEOUT:-300}))
-until docker exec "${service}" timeout 30s beeline \
+until docker exec -t -e JAVA_TOOL_OPTIONS=--enable-preview \
+  "${service}" timeout 30s beeline \
   -u jdbc:hive2://localhost:10000/default -n hive -p hive \
   -e 'SELECT 1' > "${log_dir}/readiness.log" 2>&1; do
   if [[ $(docker inspect -f '{{.State.Running}}' "${service}") != true ]] || \
