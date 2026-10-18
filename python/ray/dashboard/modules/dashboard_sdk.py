@@ -306,7 +306,7 @@ class SubmissionClient:
                 f"Failed to connect to Ray at address: {self._address}."
             )
 
-    def _check_auth_mode(self):
+    def _check_auth_mode(self) -> None:
         """Raise AuthModeMismatch if this client is in token mode and the cluster has
         RAY_AUTH_MODE=disabled.
 
@@ -318,12 +318,17 @@ class SubmissionClient:
         try:
             r = self._do_request("GET", "/api/authentication_mode", timeout=10)
             r.raise_for_status()
-            cluster_auth_mode = r.json().get("authentication_mode")
-        except requests.exceptions.RequestException:
-            # The next request reports an unreachable cluster, and clusters older
-            # than this endpoint have no mode to compare.
+            body = r.json()
+        except (
+            requests.exceptions.RequestException,
+            AuthenticationError,
+            ValueError,
+        ) as e:
+            # The next request reports an unreachable or rejecting cluster, and
+            # clusters older than this endpoint have no mode to compare.
+            logger.debug(f"Skipping the auth mode check against {self._address}: {e}")
             return
-        if cluster_auth_mode == "disabled":
+        if isinstance(body, dict) and body.get("authentication_mode") == "disabled":
             raise AuthenticationError(AUTH_MODE_MISMATCH_ERROR_MESSAGE)
 
     def _raise_error(self, r: "requests.Response"):

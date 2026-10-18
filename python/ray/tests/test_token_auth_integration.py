@@ -1022,7 +1022,8 @@ def test_http_client_on_auth_disabled_cluster(
 
     env, _, _, dashboard_url = disabled_head_with_token_file
     wait_for_condition(
-        lambda: requests.get(f"{dashboard_url}/api/version").ok, timeout=30
+        lambda: requests.get(f"{dashboard_url}/api/version", timeout=5).ok,
+        timeout=30,
     )
     result = subprocess.run(
         [

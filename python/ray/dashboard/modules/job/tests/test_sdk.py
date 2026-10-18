@@ -7,11 +7,12 @@ import time
 import types
 import zipfile
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import aiohttp
 import pytest
+import requests
 
 import ray.experimental.internal_kv as kv
 from ray._common.test_utils import wait_for_condition
@@ -139,35 +140,92 @@ def test_parse_cluster_info_default_address():
     ) == ClusterInfo(address=DEFAULT_DASHBOARD_ADDRESS)
 
 
+def _client_with_auth_mode_response(
+    response_or_error: Union[Tuple[int, bytes], Exception],
+) -> Tuple[SubmissionClient, Mock]:
+    if isinstance(response_or_error, Exception):
+        request = Mock(side_effect=response_or_error)
+    else:
+        status_code, body = response_or_error
+        response = requests.Response()
+        response.status_code = status_code
+        response._content = body
+        request = Mock(return_value=response)
+    client = SubmissionClient.__new__(SubmissionClient)
+    client._address = "http://127.0.0.1:8265"
+    client._cookies = None
+    client._headers = {}
+    client._verify = True
+    return client, request
+
+
 @pytest.mark.parametrize(
-    "client_token_auth, status_code, body, expect_mismatch",
+    "response_or_error, expect_mismatch",
     [
-        (True, 200, b'{"authentication_mode": "disabled"}', True),
-        (True, 200, b'{"authentication_mode": "token"}', False),
+        ((200, b'{"authentication_mode": "disabled"}'), True),
+        ((200, b'{"authentication_mode": "token"}'), False),
         # A cluster older than /api/authentication_mode.
-        (True, 404, b"Not Found", False),
-        (True, 200, b"<html>proxy page</html>", False),
-        (False, 200, b'{"authentication_mode": "disabled"}', False),
+        ((404, b"Not Found"), False),
+        ((500, b'{"authentication_mode": "disabled"}'), False),
+        ((401, b"Unauthorized"), False),
+        ((403, b"Forbidden"), False),
+        ((200, b"<html>proxy page</html>"), False),
+        ((200, b"null"), False),
+        ((200, b"[]"), False),
+        (requests.exceptions.ConnectionError("unreachable"), False),
+        (requests.exceptions.ReadTimeout("slow"), False),
     ],
 )
-def test_check_auth_mode(client_token_auth, status_code, body, expect_mismatch):
-    import requests
-
-    response = requests.Response()
-    response.status_code = status_code
-    response._content = body
-    client = SubmissionClient.__new__(SubmissionClient)
-    client._do_request = Mock(return_value=response)
+def test_check_auth_mode_in_token_mode(
+    response_or_error: Union[Tuple[int, bytes], Exception], expect_mismatch: bool
+) -> None:
+    client, request = _client_with_auth_mode_response(response_or_error)
 
     with patch(
         "ray.dashboard.modules.dashboard_sdk.is_token_auth_enabled",
-        return_value=client_token_auth,
-    ):
+        return_value=True,
+    ), patch("ray.dashboard.modules.dashboard_sdk.requests.request", request):
         if expect_mismatch:
             with pytest.raises(AuthenticationError, match="AuthModeMismatch"):
                 client._check_auth_mode()
         else:
             client._check_auth_mode()
+
+    assert request.call_args.args[:2] == (
+        "GET",
+        "http://127.0.0.1:8265/api/authentication_mode",
+    )
+    assert request.call_args.kwargs["timeout"] == 10
+
+
+def test_check_auth_mode_sends_no_request_with_auth_disabled() -> None:
+    client, request = _client_with_auth_mode_response(
+        (200, b'{"authentication_mode": "disabled"}')
+    )
+
+    with patch(
+        "ray.dashboard.modules.dashboard_sdk.is_token_auth_enabled",
+        return_value=False,
+    ), patch("ray.dashboard.modules.dashboard_sdk.requests.request", request):
+        client._check_auth_mode()
+
+    request.assert_not_called()
+
+
+@pytest.mark.parametrize("version_url", ["/api/version", "/api/ray/version"])
+def test_version_check_runs_auth_mode_check_first(version_url: str) -> None:
+    """The jobs (/api/version) and Serve (/api/ray/version) version checks both
+    run the auth mode check before their first request."""
+    client = SubmissionClient.__new__(SubmissionClient)
+    calls = []
+    client._check_auth_mode = lambda: calls.append("auth_mode")
+    client._do_request = lambda method, endpoint: calls.append(endpoint) or Mock(
+        status_code=200, json=lambda: {"ray_version": "3.0.0"}
+    )
+
+    client._check_connection_and_version_with_url(url=version_url)
+
+    assert calls == ["auth_mode", version_url]
 
 
 def test_submit_job_does_not_mutate_runtime_env():
