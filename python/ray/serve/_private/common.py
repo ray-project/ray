@@ -690,7 +690,7 @@ class RunningReplicaInfo:
     _cache_lock: ClassVar[threading.Lock] = threading.Lock()
     # Single-flight: track async resolution tasks per key so multiple
     # coroutines awaiting the same handle share one GCS round-trip.
-    _inflight_resolutions: ClassVar[dict[tuple[str, str], asyncio.Task]] = {}
+    _inflight_resolutions: ClassVar[dict[tuple[str, str], asyncio.Future]] = {}
 
     def __post_init__(self):
         # Set hash value when object is constructed.

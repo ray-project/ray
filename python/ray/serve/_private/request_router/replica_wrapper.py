@@ -4,7 +4,7 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import ray
 from ray._private.grpc_utils import init_grpc_channel
@@ -261,7 +261,7 @@ class RunningReplica:
                 self._actor_handle = handle
             self._handle_resolved = True
 
-        return self._actor_handle
+        return cast(ActorHandle | JavaActorHandleProxy, self._actor_handle)
 
     def _get_actor_handle_sync(self) -> ActorHandle | JavaActorHandleProxy:
         """Sync: resolve and cache the actor handle.  Uses the process-level
@@ -293,7 +293,7 @@ class RunningReplica:
             self._actor_handle = handle
         self._handle_resolved = True
 
-        return self._actor_handle
+        return cast(ActorHandle | JavaActorHandleProxy, self._actor_handle)
 
     async def _get_or_create_actor_replica_wrapper(self) -> ActorReplicaWrapper:
         """Lazily create and cache the ``ActorReplicaWrapper``.  Requires a
