@@ -75,13 +75,15 @@ class TestLearner(unittest.TestCase):
 
     def test_stale_module_state_does_not_downgrade_weights_seq_no(self):
         learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
-        module_state = learner.get_state()[COMPONENT_RL_MODULE]
+        initial_state = learner.get_state()
+        initial_seq_no = initial_state[WEIGHTS_SEQ_NO]
+        module_state = initial_state[COMPONENT_RL_MODULE]
 
         # Unversioned module-only state updates each advance the version.
         learner.set_state({COMPONENT_RL_MODULE: module_state})
         learner.set_state({COMPONENT_RL_MODULE: module_state})
         current_seq_no = learner.get_state()[WEIGHTS_SEQ_NO]
-        self.assertEqual(current_seq_no, 2)
+        self.assertEqual(current_seq_no, initial_seq_no + 2)
 
         # A stale positive version must neither downgrade the sequence nor
         # overwrite the newer module parameters.
@@ -104,7 +106,9 @@ class TestLearner(unittest.TestCase):
                 break
         self.assertIsNotNone(changed_parameter)
 
-        learner.set_state({COMPONENT_RL_MODULE: stale_state, WEIGHTS_SEQ_NO: 1})
+        learner.set_state(
+            {COMPONENT_RL_MODULE: stale_state, WEIGHTS_SEQ_NO: current_seq_no - 1}
+        )
 
         restored_state = learner.get_state()
         self.assertEqual(restored_state[WEIGHTS_SEQ_NO], current_seq_no)
