@@ -442,6 +442,38 @@ TEST_F(LocalObjectManagerTest, TestPin) {
   ASSERT_EQ(freed, expected);
 }
 
+TEST_F(LocalObjectManagerTest, TestHoldsPrimaryCopy) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  const ObjectID freed_id = ObjectID::FromRandom();
+  const ObjectID spilled_id = ObjectID::FromRandom();
+  ASSERT_FALSE(manager.HoldsPrimaryCopy(freed_id));
+
+  std::vector<std::unique_ptr<RayObject>> objects;
+  for (const ObjectID &id : {freed_id, spilled_id}) {
+    auto data_buffer = std::make_shared<FakeObjectBuffer>(object_size, id, unpins);
+    objects.push_back(std::make_unique<RayObject>(
+        data_buffer, nullptr, std::vector<rpc::ObjectReference>()));
+  }
+  manager.PinObjectsAndWaitForFree(
+      {freed_id, spilled_id}, std::move(objects), owner_address);
+  ASSERT_TRUE(manager.HoldsPrimaryCopy(freed_id));
+  ASSERT_TRUE(manager.HoldsPrimaryCopy(spilled_id));
+
+  // A pinned copy that the owner freed is no longer a primary copy.
+  manager.ReleaseFreedLocalObject(freed_id);
+  ASSERT_FALSE(manager.HoldsPrimaryCopy(freed_id));
+
+  // A primary copy stays one while it is being spilled and once it is on disk.
+  manager.SpillObjects({spilled_id}, [](const Status &status) {});
+  ASSERT_TRUE(worker_pool.FlushPopSpillWorkerCallbacks());
+  ASSERT_TRUE(manager.HoldsPrimaryCopy(spilled_id));
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects({BuildURL("url")}));
+  ASSERT_TRUE(owner_client->ReplyUpdateObjectLocationBatch());
+  ASSERT_EQ((*unpins)[spilled_id], 1);
+  ASSERT_TRUE(manager.HoldsPrimaryCopy(spilled_id));
+}
+
 TEST_F(LocalObjectManagerTest, TestReleaseFreedLocalObjectIdempotent) {
   // FreeLocalObjects rides the retryable gRPC client, which is at-least-once (a
   // succeeded-but-lost reply is retried and re-executed), so ReleaseFreedLocalObject
