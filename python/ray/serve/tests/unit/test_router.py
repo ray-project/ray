@@ -233,12 +233,12 @@ class FakeReplica(RunningReplica):
         )
 
         if with_rejection:
-            assert (
-                not self.is_cross_language
-            ), "Rejection not supported for cross language."
-            assert (
-                self._queue_len_info is not None
-            ), "Must set queue_len_info to use `send_request_with_rejection`."
+            assert not self.is_cross_language, (
+                "Rejection not supported for cross language."
+            )
+            assert self._queue_len_info is not None, (
+                "Must set queue_len_info to use `send_request_with_rejection`."
+            )
 
             return FakeReplicaResult(
                 self._replica_id,
@@ -332,9 +332,9 @@ class FakeRequestRouter(RequestRouter):
             await event.wait()
 
         if is_retry:
-            assert (
-                self._replica_to_return_on_retry is not None
-            ), "Set a replica to return on retry."
+            assert self._replica_to_return_on_retry is not None, (
+                "Set a replica to return on retry."
+            )
             replica = self._replica_to_return_on_retry
         else:
             assert self._replica_to_return is not None, "Set a replica to return."
@@ -526,9 +526,9 @@ class TestReplicaSlotReservation:
         drain_task = asyncio.create_task(replica._drain_ongoing_requests())
         try:
             await asyncio.sleep(0.1)
-            assert (
-                not drain_task.done()
-            ), "drain should still be running while a slot is reserved"
+            assert not drain_task.done(), (
+                "drain should still be running while a slot is reserved"
+            )
 
             replica.release_slot("slot-token-1")
             await asyncio.wait_for(drain_task, timeout=1.0)
@@ -558,9 +558,9 @@ class TestReplicaSlotReservation:
 
             # The period elapses, but the request is still ongoing -> keep waiting.
             await asyncio.sleep(0.2)
-            assert (
-                not drain_task.done()
-            ), "drain must not exit while a request is still ongoing"
+            assert not drain_task.done(), (
+                "drain must not exit while a request is still ongoing"
+            )
 
             # Request finishes; only now may the drain complete.
             replica._metrics_manager.num_ongoing_requests = 0

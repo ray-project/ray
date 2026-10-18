@@ -1688,9 +1688,9 @@ class SingletonThreadRouter(Router):
     _event_loop_monitor: EventLoopMonitor | None = None
 
     def __init__(self, **passthrough_kwargs):
-        assert (
-            "event_loop" not in passthrough_kwargs
-        ), "SingletonThreadRouter manages the router event loop."
+        assert "event_loop" not in passthrough_kwargs, (
+            "SingletonThreadRouter manages the router event loop."
+        )
 
         if passthrough_kwargs.get("handle_source") == DeploymentHandleSource.REPLICA:
             component = EventLoopMonitor.COMPONENT_REPLICA
@@ -1886,8 +1886,10 @@ class SingletonThreadRouter(Router):
         Returns:
             A concurrent.futures.Future that resolves to the ReplicaResult.
         """
-        # Extract operation name from coroutine for logging
-        operation_name = coro.__name__
+        # Extract operation name from coroutine for logging. Coroutine objects
+        # don't have __name__; cr_code.co_name exposes the wrapped function's
+        # name.
+        operation_name = coro.cr_code.co_name  # type: ignore[attr-defined]
 
         def asyncio_future_callback(
             asyncio_future: asyncio.Future, concurrent_future: concurrent.futures.Future
@@ -2054,9 +2056,9 @@ class CurrentLoopRouter(Router):
     """
 
     def __init__(self, **passthrough_kwargs):
-        assert (
-            "event_loop" not in passthrough_kwargs
-        ), "CurrentLoopRouter uses the current event loop."
+        assert "event_loop" not in passthrough_kwargs, (
+            "CurrentLoopRouter uses the current event loop."
+        )
 
         self._asyncio_loop = asyncio.get_running_loop()
         self._asyncio_router = AsyncioRouter(

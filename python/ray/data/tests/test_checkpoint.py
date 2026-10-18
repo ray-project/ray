@@ -55,8 +55,8 @@ from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.tests.conftest import *  # noqa
-from ray.tests.conftest import *  # noqa
+from ray.data.tests.conftest import *  # noqa: F403
+from ray.tests.conftest import *  # noqa: F403
 
 # User-provided ID column name
 ID_COL = "id"
@@ -621,9 +621,9 @@ def test_checkpoint_end_to_end(
                 pyarrow.fs.FileSelector(unwrapped_path, recursive=True)
             )
             # If we can get file info, the directory exists and should be empty
-            assert (
-                len(files) == 0
-            ), f"Checkpoint directory should be empty but contains {len(files)} files"
+            assert len(files) == 0, (
+                f"Checkpoint directory should be empty but contains {len(files)} files"
+            )
         except (FileNotFoundError, OSError):
             # If directory doesn't exist, that's also fine (cleanup worked)
             pass
@@ -1363,9 +1363,9 @@ def test_clean_pending_checkpoint_with_partitioned_data(
 
     # Verify all files were created
     for f in pending_data_files + unrelated_files:
-        assert (
-            fs.get_file_info(f).type != FileType.NotFound
-        ), f"Expected file to exist: {f}"
+        assert fs.get_file_info(f).type != FileType.NotFound, (
+            f"Expected file to exist: {f}"
+        )
 
     # Run cleanup
     checkpoint_manager = IdColumnCheckpointManager(ctx.checkpoint_config, ctx)
@@ -1373,15 +1373,15 @@ def test_clean_pending_checkpoint_with_partitioned_data(
 
     # Verify data files matching pending checkpoint were deleted
     for f in pending_data_files:
-        assert (
-            fs.get_file_info(f).type == FileType.NotFound
-        ), f"Expected pending data file to be deleted: {f}"
+        assert fs.get_file_info(f).type == FileType.NotFound, (
+            f"Expected pending data file to be deleted: {f}"
+        )
 
     # Verify unrelated data files still exist
     for f in unrelated_files:
-        assert (
-            fs.get_file_info(f).type != FileType.NotFound
-        ), f"Expected unrelated file to still exist: {f}"
+        assert fs.get_file_info(f).type != FileType.NotFound, (
+            f"Expected unrelated file to still exist: {f}"
+        )
 
     # Verify pending checkpoint was also deleted
     assert fs.get_file_info(pending.pending_path).type == FileType.NotFound
@@ -1782,9 +1782,9 @@ def test_checkpoint_restore_after_full_execution(
     num_rows_first = run_simple_pipeline(
         checkpoint_config, input_data_path, data_output_path
     )
-    assert (
-        num_rows_first == SAMPLE_DATA_NUM_ROWS
-    ), f"Expected {SAMPLE_DATA_NUM_ROWS} rows, got {num_rows_first}"
+    assert num_rows_first == SAMPLE_DATA_NUM_ROWS, (
+        f"Expected {SAMPLE_DATA_NUM_ROWS} rows, got {num_rows_first}"
+    )
 
     # Check if checkpoint files were created
     assert os.path.exists(checkpoint_path), "No checkpoint directory created!"
