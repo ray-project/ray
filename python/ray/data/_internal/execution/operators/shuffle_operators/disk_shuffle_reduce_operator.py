@@ -1,9 +1,10 @@
 import functools
 import logging
 import typing
-from collections import defaultdict, deque
+from collections import deque
 from typing import Any, Deque, Dict, List, Optional, Set, Tuple, Union
 
+import numpy as np
 import pyarrow as pa
 
 import ray
@@ -124,11 +125,11 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._shared_handles_by_input: List[Optional[ObjectRef]] = [None] * len(
             input_ops
         )
-        self._partition_rows_by_input: List[Dict[int, int]] = [
-            defaultdict(int) for _ in input_ops
+        self._partition_rows_by_input: List[np.ndarray] = [
+            np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
         ]
-        self._partition_bytes_by_input: List[Dict[int, int]] = [
-            defaultdict(int) for _ in input_ops
+        self._partition_bytes_by_input: List[np.ndarray] = [
+            np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
         ]
         self._schema: Optional[pa.Schema] = None
         # (shuffle_id, node_id) of every file server the mappers created.
@@ -176,20 +177,13 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._handle_bundles.append(refs)
 
     def _record_handle(self, handle: Dict, input_index: int) -> None:
-        rows = handle.get("num_rows")
-        if rows is not None:
-            partition_rows = self._partition_rows_by_input[input_index]
-            for pid in range(rows.shape[0]):
-                n = int(rows[pid])
-                if n:
-                    partition_rows[pid] += n
-        dec = handle.get("decoded_bytes")
-        if dec is not None:
-            partition_bytes = self._partition_bytes_by_input[input_index]
-            for pid in range(dec.shape[0]):
-                n = int(dec[pid])
-                if n:
-                    partition_bytes[pid] += n
+        for key, tallies in (
+            ("num_rows", self._partition_rows_by_input),
+            ("decoded_bytes", self._partition_bytes_by_input),
+        ):
+            counts = handle.get(key)
+            if counts is not None:
+                tallies[input_index] += np.asarray(counts, dtype=np.int64)
         if self._schema is None:
             self._schema = handle.get("schema")
         shuffle_id = handle.get("shuffle_id")
@@ -222,14 +216,18 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             return False
         if not isinstance(self._schema, pa.Schema):
             return False
-        if self._partition_rows_by_input[0].get(partition_id, 0) > 0:
+        if self._partition_rows_by_input[0][partition_id] > 0:
             return False
         if self._emit_empty_partitions:
             self._emit_empty_partition(self._schema)
         return True
 
     def _submit_pending(self) -> None:
+        if not self._pending_partitions:
+            return
         if self._max_tasks_in_flight is None:
+            # Sized when the reduce phase starts (the first poll with pending
+            # work), not at the first executor poll of the whole pipeline.
             self._max_tasks_in_flight = max(1, _estimate_available_parallelism())
         while (
             self._pending_partitions
@@ -307,9 +305,11 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         )
 
     def _partition_bytes(self, partition_id: int) -> int:
-        return sum(
-            partition_bytes.get(partition_id, 0)
-            for partition_bytes in self._partition_bytes_by_input
+        return int(
+            sum(
+                partition_bytes[partition_id]
+                for partition_bytes in self._partition_bytes_by_input
+            )
         )
 
     def _emit_empty_partition(self, schema: pa.Schema) -> None:
@@ -420,7 +420,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         if self._num_inputs > 1 or not self._preserves_row_count:
             return None
         if self._inputs_complete:
-            return sum(self._partition_rows_by_input[0].values())
+            return int(self._partition_rows_by_input[0].sum())
         writer = self.input_dependencies[0]
         if (
             isinstance(writer, TaskPoolMapOperator)
