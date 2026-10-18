@@ -16,6 +16,9 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
 )
+from ray.data._internal.execution.operators.hash_shuffle_v2 import (
+    _SHUFFLE_MAP_RUNTIME_ENV,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
@@ -640,10 +643,12 @@ def test_disk_shuffle_map_is_plain_map_operator(restore_data_context):
     assert isinstance(map_op, TaskPoolMapOperator)
     assert not map_op.isolate_workers
     assert not map_op.supports_fusion()
-    assert map_op._get_dynamic_ray_remote_args()["label_selector"] == {
+    remote_args = map_op._get_dynamic_ray_remote_args()
+    assert remote_args["label_selector"] == {
         "subcluster": "train",
         "zone": "us-west",
     }
+    assert remote_args["runtime_env"] == _SHUFFLE_MAP_RUNTIME_ENV
 
 
 def test_disk_shuffle_reduce_task_merges_label_selector(restore_data_context):

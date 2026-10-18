@@ -120,7 +120,7 @@ def plan_disk_hash_shuffle_map(
         input_op,
         data_context,
         name=name,
-        ray_remote_args={"num_cpus": map_cpus},
+        ray_remote_args={"num_cpus": map_cpus, "runtime_env": _SHUFFLE_MAP_RUNTIME_ENV},
         blocking_materializing=True,
         supports_fusion=False,
     )
