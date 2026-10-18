@@ -456,7 +456,6 @@ def test_sort_reduce_uses_higher_multiplier(ray_start_regular_shared_2_cpus, use
     # The multiplier drives the reduce task's memory request.
     if use_disk:
         sorted_dag._partition_bytes_by_input[0][0] = 100
-        sorted_dag._pending_partitions.append(0)
     else:
         sorted_dag.input_dependencies[0]._partition_bytes[0] = 100
     assert sorted_dag.incremental_resource_usage().memory == 300
@@ -702,14 +701,13 @@ def test_disk_flag_off_keeps_object_store_path(
         assert ray.data.range(200).repartition(4, keys=["id"]).count() == 200
 
 
-def test_disk_reduce_regroups_handles_and_paces_dispatch(
+def test_disk_reduce_regroups_handles_into_one_task_per_partition(
     ray_start_regular_shared_2_cpus,
 ):
     """The writer emits one handle block per task. The reduce tallies rows
     per partition from them and, once all inputs are done, emits empty
-    partitions without a task and submits the rest one task per partition,
-    keeping at most ``_max_tasks_in_flight`` running and refilling from
-    ``has_next``, which the executor polls every scheduling loop."""
+    partitions without a task and submits one task per remaining partition,
+    all at once; Ray's scheduler paces them by their resource requests."""
     ctx = DataContext.get_current()
     writer = plan_disk_hash_shuffle_map(
         InputDataBuffer(ctx, []), ctx, num_partitions=3, partition_fn=lambda t: {}
@@ -723,40 +721,100 @@ def test_disk_reduce_regroups_handles_and_paces_dispatch(
         reduce_op.add_input(
             _handle_bundle({"num_rows": np.array(rows), "schema": schema}), 0
         )
-    assert dict(reduce_op._partition_rows_by_input[0]) == {0: 7, 2: 3}
+    assert reduce_op._partition_rows_by_input[0].tolist() == [7, 0, 3]
 
-    submitted = []
-
-    def fake_submit(partition_id):
-        submitted.append(partition_id)
-        reduce_op._shuffle_reduce_tasks[partition_id] = MagicMock()
-
-    reduce_op._max_tasks_in_flight = 1
-    with patch.object(reduce_op, "_submit_reduce_task", side_effect=fake_submit):
+    with patch.object(reduce_op, "_submit_reduce_task") as submit:
         reduce_op.all_inputs_done()
-        # Partition 1 is empty: one typed empty block queued, no task.
-        assert reduce_op.has_next()
-        assert [b.num_rows() for b in reduce_op._output_queue] == [0]
-        assert submitted == [0]
-        assert list(reduce_op._pending_partitions) == [2]
-        # Polling does not exceed the in-flight cap...
-        reduce_op.has_next()
-        assert submitted == [0]
-        # ...until the running task finishes.
-        del reduce_op._shuffle_reduce_tasks[0]
-        reduce_op.has_next()
-        assert submitted == [0, 2]
+    # Partition 1 is empty: one typed empty block queued, no task.
+    assert [b.num_rows() for b in reduce_op._output_queue] == [0]
+    assert [c.args[0] for c in submit.call_args_list] == [0, 2]
+
+
+def test_disk_reduce_op_owns_file_servers(ray_start_regular_shared_2_cpus):
+    """The reduce op, not the writer task, creates the per-node
+    ``ShuffleFileServer``: none exists after the writer ran, exactly one
+    (this node) exists once the reduce ingests the first handle, and it is
+    gone after the reduce op shuts down."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+        _SHUFFLE_FILE_SERVER_NAMESPACE,
+        _file_server_name,
+    )
+    from ray.data._internal.stats import Timer
+
+    ctx = DataContext.get_current()
+    writer = plan_disk_hash_shuffle_map(
+        InputDataBuffer(ctx, []), ctx, num_partitions=2, partition_fn=lambda t: {}
+    )
+    reduce_op = DiskHashShuffleReduceOp(
+        writer, ctx, num_partitions=2, reduce_fn=lambda *args: []
+    )
+    writer.start(ExecutionOptions(), noop_counter())
+    reduce_op.start(ExecutionOptions(), noop_counter())
+    for bundle in make_ref_bundles([[0], [1]]):
+        writer.add_input(bundle, 0)
+    writer.all_inputs_done()
+    run_op_tasks_sync(writer)
+
+    handle_bundles = []
+    while writer.has_next():
+        handle_bundles.append(writer.get_next())
+    handle = handle_from_block(ray.get(handle_bundles[0].block_refs[0]))
+    key = (handle["shuffle_id"], handle["node_id"])
+    assert key[1] == ray.get_runtime_context().get_node_id()
+
+    def _server_registered() -> bool:
+        try:
+            ray.get_actor(
+                _file_server_name(*key), namespace=_SHUFFLE_FILE_SERVER_NAMESPACE
+            )
+            return True
+        except ValueError:
+            return False
+
+    # Writer done, nothing ingested by the reduce yet: no server.
+    assert not _server_registered()
+    assert reduce_op._file_servers == {}
+
+    for bundle in handle_bundles:
+        reduce_op.add_input(bundle, 0)
+    assert list(reduce_op._file_servers) == [key]
+    assert _server_registered()
+
+    reduce_op.all_inputs_done()
+    reduce_op.shutdown(Timer(), force=True)
+    assert reduce_op._file_servers == {}
+    wait_for_condition(lambda: not _server_registered())
+
+
+def test_disk_shuffle_leaves_no_file_server_actors(
+    ray_start_regular_shared_2_cpus, data_context_shuffle_v2
+):
+    """File servers are owned by the reduce op and killed at executor
+    shutdown, so none survive a finished dataset execution."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.util.state import list_actors
+
+    DataContext.get_current().use_disk_based_hash_shuffle = True
+
+    def _alive_file_servers():
+        return list_actors(
+            filters=[("class_name", "=", "ShuffleFileServer"), ("state", "=", "ALIVE")]
+        )
+
+    assert ray.data.range(200).repartition(4, keys=["id"]).count() == 200
+    wait_for_condition(lambda: not _alive_file_servers())
 
 
 def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_cpus):
     """The writer is blocking materializing, like ``ShuffleMapOp``: during the
     map phase it is the only operator eligible for resources, and once it
     completes the reduce and its tail take over. Without the mark, the idle
-    reduce and tail would hold a share of the pool for the whole map phase."""
+    reduce and the Write after it would hold a share of the pool for the whole
+    map phase."""
     ctx = DataContext.get_current()
-    input_op = InputDataBuffer(ctx, [])
     writer = plan_disk_hash_shuffle_map(
-        input_op, ctx, num_partitions=2, partition_fn=lambda t: {}
+        InputDataBuffer(ctx, []), ctx, num_partitions=2, partition_fn=lambda t: {}
     )
     reduce_op = DiskHashShuffleReduceOp(
         writer, ctx, num_partitions=2, reduce_fn=lambda *args: []
@@ -775,13 +833,18 @@ def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_c
     assert writer.is_blocking_materializing
     assert allocator._get_eligible_ops() == [writer]
 
-    # Phase boundary: the reduce ingests the last handle (rows in both
-    # partitions, so it has work) and the writer has nothing more to emit.
-    # Task submission is stubbed; this test is about allocation.
-    reduce_op.add_input(_handle_bundle({"num_rows": np.array([5, 5])}), 0)
-    with patch.object(reduce_op, "_submit_pending"):
-        writer.mark_execution_finished()
-        reduce_op.all_inputs_done()
+    # Phase boundary: the writer has nothing more to emit and the reduce has
+    # ingested the last handle. Both partitions are empty, so the reduce
+    # emits typed empty blocks on the driver and launches no task.
+    reduce_op.add_input(
+        _handle_bundle(
+            {"num_rows": np.array([0, 0]), "schema": pa.schema([("id", pa.int64())])}
+        ),
+        0,
+    )
+    writer.mark_execution_finished()
+    reduce_op.all_inputs_done()
+    assert [b.num_rows() for b in reduce_op._output_queue] == [0, 0]
 
     # Reduce phase.
     assert allocator._get_eligible_ops() == [reduce_op, tail]

@@ -21,7 +21,6 @@ from typing import (
     Literal,
     NamedTuple,
     Optional,
-    Set,
     Tuple,
     TypedDict,
     Union,
@@ -197,13 +196,15 @@ def _is_disk_exhausted(exc: BaseException) -> bool:
 class ShuffleFileServerAnomalyError(RuntimeError):
     """Terminal shuffle file-server failure: a driver-level retry cannot fix it.
 
-    We run with ``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
-    the actor on any mid-life crash and surfaces ``ActorUnavailableError``
-    during the restart window. So the anomalous states we key off of are:
+    The server is a named actor owned by the driver-side reduce operator,
+    created with ``max_restarts=-1`` and
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``. Ray auto-restarts
+    it on any mid-life crash and surfaces ``ActorUnavailableError`` during the
+    restart window. So the anomalous states we key off of are:
 
-    - ``ActorDiedError``          -> ``__init__`` raised, or external
-                                    ``ray.kill(actor, no_restart=True)``.
+    - ``ActorDiedError``          -> ``__init__`` raised, the owning driver
+                                    exited, or ``ray.kill(actor, no_restart=True)``
+                                    (the reduce operator's shutdown).
     - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
                                     relocation. Terminal at the shuffle layer;
                                     an upstream lineage layer must re-execute
@@ -400,8 +401,12 @@ def _make_flight_server(host: str, base_dir: str):
 @ray.remote(num_cpus=0, max_restarts=-1)
 class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
-    byte-ranges of local shuffle files to remote reducers. Survives individual
-    map/reduce workers; in a real cluster, one per node (NodeAffinity)."""
+    byte-ranges of local shuffle files to remote reducers.
+
+    One per (shuffle, node), pinned with NodeAffinity. Created and owned by
+    the driver-side ``DiskHashShuffleReduceOp`` when the first mapper handle
+    from that node arrives, and killed at its shutdown; survives individual
+    map/reduce workers but not the driver."""
 
     def __init__(
         self,
@@ -431,21 +436,15 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
     shutil.rmtree(reduce_dir, ignore_errors=True)
 
 
-def teardown_disk_shuffle(file_servers: Set[Tuple[str, str]]) -> None:
-    """Kill every ``ShuffleFileServer`` in ``file_servers`` and remove the
-    shuffle directories on its node. Called once by the reduce operator at
-    shutdown, when no reducer can still need the files.
+def teardown_disk_shuffle(shuffle_nodes: Iterable[Tuple[str, str]]) -> None:
+    """Remove the shuffle directories of every ``(shuffle_id, node_id)`` in
+    ``shuffle_nodes`` on that node. Called once by the reduce operator at
+    shutdown, when no reducer can still need the files. The node's
+    ``ShuffleFileServer`` is owned by the reduce operator and killed there;
+    serving a removed directory is harmless, so the two need no ordering.
     """
     cleanup_refs = []
-    for shuffle_id, node_id in file_servers:
-        try:
-            server = ray.get_actor(
-                _file_server_name(shuffle_id, node_id),
-                namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-            )
-            ray.kill(server, no_restart=True)
-        except Exception:
-            pass
+    for shuffle_id, node_id in shuffle_nodes:
         try:
             map_dir, reduce_dir = disk_shuffle_dirs(shuffle_id)
             cleanup_refs.append(
