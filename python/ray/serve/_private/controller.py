@@ -853,14 +853,20 @@ class ServeController:
         if status != ApplicationStatus.DEPLOYING:
             return False
         ingress = self.application_state_manager.get_ingress_deployment_name(app_name)
-        if ingress is None:
+        ingress_id: Optional[DeploymentID] = None
+        if ingress is not None:
+            ingress_id = DeploymentID(name=ingress, app_name=app_name)
+        else:
+            # A declarative rebuild clears the target ingress until the build
+            # task finishes, while the old deployments keep serving. Fall back
+            # to the endpoint the proxies are still routing this app to.
+            for endpoint in self.endpoint_state.get_endpoints():
+                if endpoint.app_name == app_name:
+                    ingress_id = endpoint
+                    break
+        if ingress_id is None:
             return False
-        return (
-            self.deployment_state_manager.get_num_running_replicas(
-                DeploymentID(name=ingress, app_name=app_name)
-            )
-            > 0
-        )
+        return self.deployment_state_manager.get_num_running_replicas(ingress_id) > 0
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""

@@ -1142,17 +1142,20 @@ class HTTPProxy(GenericProxy):
         slot. System ``/-/healthz`` is a separate proxy readiness check.
         """
         status = self.proxy_router.get_app_status(app_name)
+        status_message = status.value if status is not None else "UNKNOWN"
         if self._is_draining():
             healthy = False
             message = DRAINING_MESSAGE
         elif self.proxy_router.app_is_serving(app_name):
             healthy = True
             message = (
-                HEALTHY_MESSAGE if status == ApplicationStatus.RUNNING else status.value
+                HEALTHY_MESSAGE
+                if status == ApplicationStatus.RUNNING
+                else status_message
             )
         else:
             healthy = False
-            message = status.value if status is not None else "UNKNOWN"
+            message = status_message
 
         async for message_or_status in self.health_response(
             healthy=healthy, message=message
