@@ -68,7 +68,13 @@ def _open_orc(path: str, filesystem: FileSystem | None):
     if filesystem is None:
         return orc.ORCFile(path), None
     source = filesystem.open_input_file(path)
-    return orc.ORCFile(source), source
+    try:
+        return orc.ORCFile(source), source
+    except Exception:
+        # ORCFile constructor failed -- source was opened but never returned,
+        # so close it here to avoid leaking descriptors on unreadable files.
+        source.close()
+        raise
 
 
 def _chunk_orc_file(file_info: FileInfo, filesystem: FileSystem | None) -> FileManifest:

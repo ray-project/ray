@@ -131,7 +131,10 @@ class OrcDatasourceV2(FileDataSourceV2):
         from pyarrow import orc
 
         assert sample is not None
-        sample_paths = sample.paths.tolist()
+        # After stripe splitting, the same path can appear once per stripe
+        # in the manifest. Deduplicate so we only open each file once for
+        # schema inference (and stay within the 16-worker thread pool).
+        sample_paths = list(dict.fromkeys(sample.paths.tolist()))
         filesystem = self._filesystem
 
         def _read_schema(path: str) -> pa.Schema:

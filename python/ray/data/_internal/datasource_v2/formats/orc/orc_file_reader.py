@@ -328,6 +328,25 @@ class OrcFileReader(FileReader):
 
         # Apply data predicate on the physical columns.
         if data_predicate is not None:
+            # If schema evolution removed columns this file doesn't have, fill
+            # them with nulls so pyarrow can still evaluate the filter (matching
+            # what the whole-file pyarrow.dataset path does).
+            data_filter_cols = set(get_column_references(data_predicate))
+            for col_name in data_filter_cols:
+                if col_name not in table.column_names and col_name not in partitions:
+                    field = None
+                    if schema is not None:
+                        idx = schema.get_field_index(col_name)
+                        if idx != -1:
+                            field = schema.field(idx)
+                    if field is None:
+                        idx = file_schema.get_field_index(col_name)
+                        if idx != -1:
+                            field = file_schema.field(idx)
+                    col_type = field.type if field is not None else pa.null()
+                    table = table.append_column(
+                        col_name, pa.nulls(table.num_rows, type=col_type)
+                    )
             pyarrow_filter = data_predicate.to_pyarrow()
             table = table.filter(pyarrow_filter)
             if table.num_rows == 0:
@@ -390,8 +409,20 @@ class OrcFileReader(FileReader):
                 col_name, pa.nulls(table.num_rows, type=col_type)
             )
 
-        # Reorder to the requested column order and drop extras.
-        if columns is not None:
+        # Reorder to the requested column order and drop extras. Mirror
+        # the whole-file path's logic: when no projection is pushed but we
+        # have a schema, reorder to schema names and keep extras; when a
+        # projection is pushed, select only the requested columns.
+        if columns is None and schema is not None:
+            produced = set(table.column_names)
+            schema_names = schema.names
+            schema_name_set = set(schema_names)
+            column_names = [name for name in schema_names if name in produced]
+            column_names.extend(
+                name for name in table.column_names if name not in schema_name_set
+            )
+            table = table.select(column_names)
+        elif columns is not None:
             produced = set(table.column_names)
             projected = [c for c in columns if c in produced]
             table = table.select(projected)
