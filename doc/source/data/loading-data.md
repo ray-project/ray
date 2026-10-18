@@ -983,6 +983,7 @@ The reader attempts to cancel the HiveServer2 operation and close its cursor and
 
 Compared with {func}`~ray.data.read_sql`, the default HS2 mode fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
 
+(native-hive-file-reads)=
 #### Native Hive file reads
 
 Use `read_mode="direct"` for native Ray Data reads of a Parquet or ORC Hive table without partitions. Both managed and external file tables with supported metadata are eligible. The driver uses HiveServer2 for `DESCRIBE FORMATTED` and read-only `SET` queries for the same session's mapping settings. Workers read storage directly without executing an HS2 data query. Raw SQL queries, partitioned tables, Hive `ACID`, custom SerDes, Parquet positional column access, and Iceberg/Delta/Hudi tables aren't supported by this path and are rejected during metadata planning.

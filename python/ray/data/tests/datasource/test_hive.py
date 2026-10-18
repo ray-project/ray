@@ -1,6 +1,8 @@
 """Tests for the public HiveServer2 read API."""
 
+import json
 import sys
+from dataclasses import fields
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
@@ -189,6 +191,163 @@ def test_direct_api_reuses_project_for_column_name_case(monkeypatch, tmp_path):
     )
     assert result is dataset
     assert calls == [{"ID": "id"}]
+
+
+@pytest.mark.parametrize("positional", [False, True])
+@pytest.mark.parametrize("unsampled", [False, True])
+@pytest.mark.parametrize("operation", ["projection", "filter_only"])
+def test_direct_orc_scan_requests_prune_unused_columns(
+    ray_start_regular_shared, tmp_path, monkeypatch, positional, unsampled, operation
+):
+    import pyarrow.dataset as pds
+    from pyarrow import orc
+
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+    from ray.data.expressions import col
+
+    directory = tmp_path / "data"
+    directory.mkdir()
+    file_count = 17 if unsampled else 1
+    physical_names = {}
+    for index in range(file_count):
+        late = index == 16
+        if positional:
+            prefix = "renamed" if late else "old"
+            names = [
+                prefix + suffix for suffix in ("_unused", "_id", "_value", "_payload")
+            ]
+            data = dict(
+                zip(
+                    names,
+                    [
+                        [-1, -1],
+                        [2 * index, 2 * index + 1],
+                        [10 + 2 * index, 11 + 2 * index],
+                        ["wide" * 1024] * 2,
+                    ],
+                )
+            )
+        else:
+            data = {
+                "ID" if late else "id": [2 * index, 2 * index + 1],
+                "value": [10 + 2 * index, 11 + 2 * index],
+                "payload": ["wide" * 1024] * 2,
+                "unused": [-1, -1],
+            }
+            names = (
+                ["ID", "payload", "value", "unused"]
+                if late
+                else ["payload", "value", "id", "unused"]
+            )
+            data = {name: data[name] for name in names}
+        path = directory / f"{index:06d}_0"
+        orc.write_table(pa.table(data), path)
+        physical_names[str(path)] = names
+
+    hive_schema = pa.schema(
+        [
+            ("unused", pa.int64()),
+            ("id", pa.int64()),
+            ("value", pa.int64()),
+            ("payload", pa.string()),
+        ]
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(
+            str(directory), "orc", hive_schema, force_positional_evolution=positional
+        ),
+    )
+    sampled_paths = []
+    original_infer = hive_direct._infer_orc_read_schema
+
+    def infer_schema(table, sample, filesystem):
+        sampled_paths.extend(str(path) for path in sample.paths)
+        return original_infer(table, sample, filesystem)
+
+    monkeypatch.setattr(hive_direct, "_infer_orc_read_schema", infer_schema)
+    trace_path = str(tmp_path / "scan-requests.jsonl")
+    original_create_scanner = hive_direct.HiveDirectDatasource.create_scanner
+
+    class TracingScanner(hive_direct._HiveOrcScanner):
+        def create_reader(self):
+            reader = super().create_reader()
+            original_iter = reader._iter_fragment_tables
+
+            class Fragment:
+                def __init__(self, fragment):
+                    self._fragment = fragment
+
+                def __getattr__(self, name):
+                    return getattr(self._fragment, name)
+
+                def scanner(self, **kwargs):
+                    request = {
+                        "path": self._fragment.path,
+                        "columns": {
+                            name: str(expr) for name, expr in kwargs["columns"].items()
+                        },
+                        "filter": str(kwargs["filter"]),
+                    }
+                    with open(trace_path, "a") as trace:
+                        trace.write(json.dumps(request) + "\n")
+                    return self._fragment.scanner(**kwargs)
+
+            def traced_iter(fragment, scanner_kwargs):
+                yield from original_iter(Fragment(fragment), scanner_kwargs)
+
+            reader._iter_fragment_tables = traced_iter
+            return reader
+
+    def create_scanner(datasource, *args, **kwargs):
+        scanner = original_create_scanner(datasource, *args, **kwargs)
+        return TracingScanner(
+            **{
+                field.name: getattr(scanner, field.name)
+                for field in fields(scanner)
+                if field.init
+            }
+        )
+
+    monkeypatch.setattr(
+        hive_direct.HiveDirectDatasource, "create_scanner", create_scanner
+    )
+    dataset = read_hive(
+        "events",
+        connection_factory=lambda: pytest.fail(
+            "Native workers must not connect to HS2"
+        ),
+        read_mode="direct",
+        override_num_blocks=2,
+    )
+    assert sampled_paths == list(physical_names)[:16]
+    if operation == "filter_only":
+        dataset = dataset.filter(expr=col("id") > 0)
+    dataset = dataset.select_columns(["value"])
+    assert dataset.schema().base_schema == pa.schema([("value", pa.int64())])
+    expected = range(11 if operation == "filter_only" else 10, 10 + 2 * file_count)
+    assert sorted(row["value"] for row in dataset.take_all()) == list(expected)
+
+    with open(trace_path) as trace:
+        requests = [json.loads(line) for line in trace]
+    assert len(requests) == file_count
+    assert {request["path"] for request in requests} == set(physical_names)
+    required = ["id", "value"] if operation == "filter_only" else ["value"]
+    for request in requests:
+        names = physical_names[request["path"]]
+        indices = (
+            {"id": 1, "value": 2}
+            if positional
+            else {
+                "id": names.index("ID" if "ID" in names else "id"),
+                "value": names.index("value"),
+            }
+        )
+        assert request["columns"] == {
+            name: str(pds.field(indices[name])) for name in required
+        }
+        assert request["filter"] == "None"
 
 
 if __name__ == "__main__":

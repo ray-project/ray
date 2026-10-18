@@ -4238,17 +4238,8 @@ def read_hive(
             checked on the driver before file scanning. Query reads and
             partitioned tables aren't supported in direct mode. Filesystem
             credentials and client dependencies are separate from HS2.
-            Top-level CHAR/VARCHAR lengths are enforced; nested CHAR/VARCHAR
-            fields are rejected during metadata planning. TIMESTAMP output
-            uses microseconds, discarding sub-microsecond digits consistently
-            before and after the Unix epoch.
-            Signed integer widening, FLOAT to DOUBLE, and DECIMAL precision
-            increases with unchanged scale use native Arrow casts, including
-            supported nested types. Other type changes are rejected.
-            ORC reads follow the metadata session's name or top-level positional
-            mapping, including supported legacy files. Each file is projected
-            to Hive's declared column names before filtering. Deeper positional
-            evolution and disabled ORC schema evolution are rejected.
+            See :ref:`native-hive-file-reads` for supported types, column mapping
+            settings, and compatibility rules.
         filesystem: The filesystem used by native direct reads. If omitted,
             infer it from the table location. Reading workers need access to
             the storage and its client dependencies. Only supported in direct

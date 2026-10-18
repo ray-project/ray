@@ -372,7 +372,6 @@ def _validate_file_schema(
     hive_schema: pa.Schema,
     file_schema: pa.Schema,
     sampled_names: dict,
-    file_format: str,
     required_fields: Optional[Set[str]] = None,
 ) -> None:
     """Validate the name mapping before the native reader can null-fill it."""
@@ -496,8 +495,7 @@ class _HiveSchemaValidatingReader(Reader[FileManifest]):
                 self._hive_schema,
                 file_schema,
                 self._sampled_names,
-                self._file_format,
-                required_fields,
+                required_fields=required_fields,
             )
         yield from self._reader.read(input_split)
 
@@ -516,7 +514,9 @@ class _HiveParquetSchemaValidatingReader(_HiveSchemaValidatingReader, SupportsMe
 
 
 @dataclass(frozen=True)
-class _HiveParquetScanner(ParquetScanner):  # noqa: D101
+class _HiveParquetScanner(ParquetScanner):
+    """Add Hive validation while retaining native Parquet readers and metadata."""
+
     hive_schema: pa.Schema = dataclass_field(kw_only=True, repr=False)
     sampled_names: Tuple[Tuple[str, str], ...] = dataclass_field(
         kw_only=True, repr=False
@@ -676,9 +676,12 @@ class _HiveOrcFileReader(OrcFileReader):
         self._schema_evolution_case_sensitive = schema_evolution_case_sensitive
 
     def _iter_fragment_tables(self, fragment, scanner_kwargs):
-        required = _required_hive_fields(
-            self, {field.name: field.name for field in self._hive_schema}
-        )
+        """Project required Hive columns, then filter their logical values.
+
+        Read only output and filter dependencies. Evaluate predicates after
+        mapping so renamed and positional fields use Hive names and types.
+        """
+        required = _required_hive_fields(self, self._sampled_names)
         physical = fragment.physical_schema
         indices = _orc_column_indices(
             self._hive_schema,
@@ -701,6 +704,7 @@ class _HiveOrcFileReader(OrcFileReader):
                 projection[field.name] = pds.field(index)
         # A reader can scan fragments concurrently. Keep schema and kwargs local.
         kwargs = dict(scanner_kwargs)
+        # The physical scan doesn't yet expose the Hive names used by predicates.
         kwargs.update(columns=projection, filter=None)
         scanner = fragment.scanner(schema=pa.schema(fields), **kwargs)
         predicate = (
@@ -714,7 +718,9 @@ class _HiveOrcFileReader(OrcFileReader):
 
 
 @dataclass(frozen=True)
-class _HiveOrcScanner(OrcScanner):  # noqa: D101
+class _HiveOrcScanner(OrcScanner):
+    """Configure native ORC reads with per-file Hive column mapping."""
+
     hive_schema: pa.Schema = dataclass_field(kw_only=True, repr=False)
     sampled_names: Tuple[Tuple[str, str], ...] = dataclass_field(
         kw_only=True, repr=False
@@ -893,9 +899,7 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         else:
             physical = source.infer_schema(sample) if len(sample) else pa.schema([])
             sampled_names = _sampled_column_names(table.schema, physical)
-            _validate_file_schema(
-                table.schema, physical, sampled_names, table.file_format
-            )
+            _validate_file_schema(table.schema, physical, sampled_names)
             self._schema, self.column_renames = _read_schema(table.schema, physical)
         self._hive_schema = table.schema
         self._sampled_names = sampled_names
