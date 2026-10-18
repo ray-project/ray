@@ -1,10 +1,10 @@
 import asyncio
 import json
 import threading
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, ClassVar
-from collections.abc import Awaitable, Callable
 
 from starlette.types import Scope
 

@@ -10,6 +10,7 @@ need a live cluster.
 """
 
 import asyncio
+import sys
 import threading
 from unittest.mock import Mock, patch
 
@@ -408,3 +409,7 @@ class TestCacheThreadSafety:
 
         assert not errors
         assert call_count["n"] == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

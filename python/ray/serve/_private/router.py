@@ -8,15 +8,14 @@ import weakref
 from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
-from collections.abc import MutableMapping
+from collections.abc import AsyncIterator, Callable, Coroutine, MutableMapping
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import replace
-from functools import partial, cache
+from functools import cache, partial
 from typing import (
     Any,
     cast,
 )
-from collections.abc import AsyncIterator, Callable, Coroutine
 
 import ray
 from ray.actor import ActorHandle

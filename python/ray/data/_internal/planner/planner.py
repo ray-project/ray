@@ -1,7 +1,7 @@
 import warnings
+from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING, Optional, TypeVar
-from collections.abc import Callable
 
 if TYPE_CHECKING:
     import pyarrow.fs

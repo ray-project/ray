@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, Any, Optional
 from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional
 
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata

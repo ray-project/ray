@@ -7,10 +7,10 @@ import random
 import socket
 import threading
 import time
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, cast
-from collections.abc import Callable
 from unittest.mock import Mock
 
 import grpc
