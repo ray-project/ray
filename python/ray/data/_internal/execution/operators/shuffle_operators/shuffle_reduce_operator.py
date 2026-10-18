@@ -41,12 +41,8 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Isolate shuffle reduce workers into a dedicated worker pool so that
-# ReadParquet/Project tasks don't run on the same workers.  Mirrors the
-# map-side isolation (RAY_DATA_SHUFFLE_MAP_WORKER): without this, shared
-# memory pages from object store accesses (mmap'd during combine_chunks)
-# accumulate across task types and inflate reduce worker RSS.
-_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_REDUCE_WORKER": "1"}}
+
+_SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
 
 
 def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
