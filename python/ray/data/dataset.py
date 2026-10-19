@@ -4715,9 +4715,33 @@ class Dataset:
         self, fetch_if_missing: bool = True
     ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
         """Gets the underlying raw schema value not wrapped in Schema class."""
+        import pyarrow as pa
+
         base_schema = self._cache.get_schema(self._logical_plan.dag)
         if base_schema is None:
             base_schema = self._logical_plan.dag.infer_schema()
+
+        # ``BindGeneratedIdColumn`` adds the configured generated ID column
+        # when the plan is optimized for execution, possibly after this
+        # dataset was built (Ray Train sets ``checkpoint_config`` on built
+        # datasets). Re-infer over the bound plan whenever it would add the
+        # column, so the schema matches the rows execution produces — also
+        # when the schema was cached before the config was set.
+        config = self._logical_plan.context.checkpoint_config
+        generated_id = config.generated_id_column if config is not None else None
+        if generated_id is not None and (
+            not isinstance(base_schema, pa.Schema)
+            or generated_id not in base_schema.names
+        ):
+            # Lazy import: the rules package imports back into ``ray.data``.
+            from ray.data._internal.logical.rules.bind_generated_id_column import (
+                BindGeneratedIdColumn,
+            )
+
+            bound_plan = BindGeneratedIdColumn().apply(self._logical_plan)
+            if bound_plan is not self._logical_plan:
+                base_schema = bound_plan.dag.infer_schema()
+
         if base_schema is None and fetch_if_missing:
             # Lazily execute only the first block to minimize computation.
             # We achieve this by appending a Limit[1] operation to a copy of

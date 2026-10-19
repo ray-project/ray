@@ -22,6 +22,8 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 impo
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
+from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan
 from ray.data._internal.logical.operators import InputData, ListFiles, ReadFiles
 from ray.data._internal.logical.operators.map_operator import MapBatches, Project
@@ -36,6 +38,29 @@ from ray.data.context import DataContext
 from ray.data.expressions import col, star
 
 ID_COLUMN = "generated_id"
+
+
+class _FakeScanner(Scanner):
+    """A scanner of no particular format, standing in for a non-Parquet one."""
+
+    def read_schema(self) -> pa.Schema:
+        return pa.schema([])
+
+    def create_reader(self) -> Reader:
+        raise NotImplementedError
+
+
+def _prune_columns(read_files: ReadFiles, columns: "list[str]") -> ReadFiles:
+    scanner = read_files.scanner
+    assert isinstance(scanner, ParquetScanner), scanner
+    return replace(read_files, scanner=scanner.prune_columns(columns))
+
+
+def _schema_names(op: LogicalOperator) -> "list[str]":
+    schema = op.infer_schema()
+    assert schema is not None, op
+    assert isinstance(schema, pa.Schema), schema
+    return list(schema.names)
 
 
 def _mk_read_files(tmp_path: Path, table: Optional[pa.Table] = None) -> ReadFiles:
@@ -122,8 +147,7 @@ def test_is_idempotent(tmp_path, context):
 
 
 def test_adds_the_column_to_a_projection_pushed_into_the_read(tmp_path, context):
-    read_files = _mk_read_files(tmp_path)
-    read_files = replace(read_files, scanner=read_files.scanner.prune_columns(["a"]))
+    read_files = _prune_columns(_mk_read_files(tmp_path), ["a"])
 
     scanner = _scanner_of(_apply(read_files, context))
 
@@ -151,7 +175,7 @@ def test_keeps_the_column_through_a_project_built_before_binding(
 
     assert isinstance(plan.dag, Project)
     assert [expr.name for expr in plan.dag.exprs] == expected_names
-    assert plan.dag.infer_schema().names == expected_names
+    assert _schema_names(plan.dag) == expected_names
 
 
 @pytest.mark.parametrize(
@@ -174,8 +198,7 @@ def test_leaves_a_project_over_an_unknown_schema_alone(tmp_path, context, exprs)
 
 def test_leaves_reads_and_projects_that_keep_no_columns_alone(tmp_path, context):
     """E.g. ``count()``, which projects the read to zero columns."""
-    read_files = _mk_read_files(tmp_path)
-    read_files = replace(read_files, scanner=read_files.scanner.prune_columns([]))
+    read_files = _prune_columns(_mk_read_files(tmp_path), [])
     project = Project(exprs=[], input_dependencies=[read_files])
     plan = LogicalPlan(dag=project, context=context)
 
@@ -186,7 +209,7 @@ def test_leaves_non_parquet_reads_alone(context):
     """The planner rejects these for generated-ID plans."""
     read_files = ReadFiles(
         datasource_name="JSONv2",
-        scanner=object(),
+        scanner=_FakeScanner(),
         schema=pa.schema([]),
         parallelism=-1,
         input_dependencies=[InputData(input_data=[])],
@@ -212,7 +235,8 @@ def test_optimizer_binds_after_projection_pushdown(tmp_path, context):
 
     optimized = LogicalOptimizer().optimize(LogicalPlan(dag=project, context=context))
 
-    assert optimized.dag.infer_schema().names == ["a", ID_COLUMN]
+    assert isinstance(optimized, LogicalPlan), optimized
+    assert _schema_names(optimized.dag) == ["a", ID_COLUMN]
     assert _scanner_of(optimized).columns == ("a", ID_COLUMN)
     (list_files,) = [
         op for op in optimized.dag.post_order_iter() if isinstance(op, ListFiles)

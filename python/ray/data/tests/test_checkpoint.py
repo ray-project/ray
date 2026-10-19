@@ -399,10 +399,17 @@ def test_read_parquet_adds_generated_id_column(
     f_dir = generate_sample_data_parquet()
     if set_config_after_read:
         ds = ray.data.read_parquet(f_dir)
+        # Populate the schema cache before the config exists: the column
+        # must still show up in the schema afterwards.
+        assert "generated_id" not in ds.schema(fetch_if_missing=False).names
         ds.context.checkpoint_config = config
     else:
         ray.data.DataContext.get_current().checkpoint_config = config
         ds = ray.data.read_parquet(f_dir)
+
+    # The public schema matches the rows execution produces, without
+    # executing anything.
+    assert "generated_id" in ds.schema(fetch_if_missing=False).names
 
     rows = ds.take_all()
     assert len(rows) == SAMPLE_DATA_NUM_ROWS
@@ -410,6 +417,7 @@ def test_read_parquet_adds_generated_id_column(
 
     opted_out = ray.data.read_parquet(f_dir)
     opted_out.context.checkpoint_config = None
+    assert "generated_id" not in opted_out.schema(fetch_if_missing=False).names
     assert "generated_id" not in opted_out.take_all()[0]
 
 

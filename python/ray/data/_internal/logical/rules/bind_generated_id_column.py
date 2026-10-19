@@ -35,9 +35,10 @@ class BindGeneratedIdColumn(Rule):
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
         config = plan.context.checkpoint_config
-        if config is None or not config.has_generated_id_column:
+        if config is None or config.generated_id_column is None:
             return plan
-        name = config.generated_id_column
+        # Declared ``str`` so the narrowing survives the closure below.
+        name: str = config.generated_id_column
 
         def transform(op: LogicalOperator) -> LogicalOperator:
             if isinstance(op, ReadFiles):
@@ -95,6 +96,8 @@ def _keep_column(op: Project, name: str) -> Project:
     ):
         return op
     input_schema = op.input_dependencies[0].infer_schema()
-    if not isinstance(input_schema, pa.Schema) or name not in input_schema.names:
+    if input_schema is None or not isinstance(input_schema, pa.Schema):
+        return op
+    if name not in input_schema.names:
         return op
     return replace(op, exprs=[*op.exprs, col(name)])
