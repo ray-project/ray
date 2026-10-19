@@ -1113,6 +1113,29 @@ class TestModelMultiplexing:
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r1
 
+    async def test_cold_model_ids_are_reserved_across_replicas(self, pow_2_router):
+        """Distinct cold model IDs should not all select one replica."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+        replicas = [FakeRunningReplica(f"r{i}", model_ids=set()) for i in range(3)]
+        for replica in replicas:
+            replica.set_queue_len_response(0)
+        s.update_replicas(replicas)
+
+        requests = [
+            fake_pending_request(model_id=f"cold-{i}") for i in range(len(replicas))
+        ]
+        chosen = await asyncio.gather(
+            *[
+                loop.create_task(s._choose_replica_for_request(request))
+                for request in requests
+            ]
+        )
+
+        assert {replica.replica_id for replica in chosen} == {
+            replica.replica_id for replica in replicas
+        }
+
     async def test_fall_back_to_replica_without_model_id(self, pow_2_router):
         """
         Verify that we'll fall back to a replica that doesn't have the model ID if
