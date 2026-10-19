@@ -29,7 +29,7 @@ Ray supports both *single program, multiple data* (SPMD) and *multiple program, 
 
 ### TPU7x logical devices
 
-On TPU v4, v5e, v5p, and v6e, each physical chip exposes one logical TPU device, so a four-chip host registers `{"TPU": 4}`. On [TPU7x](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet-architecture), each physical chip contains two compute chiplets that expose two logical TPU devices, so a four-chip `tpu7x-standard-4t` host has eight logical devices. For host-level SPMD workloads such as JAX, keep the default `{"TPU": 4}`. To run one process per logical device with `{"TPU": 1}` on TPU7x, set `RAY_TPU_RESOURCE_PER_CHIP=2` on both the head and worker containers and set `resources: '"{\"TPU\": 8}"'` in `rayStartParams` on the worker group. {ref}`kuberay-tpu-pod-config` shows the full worker group configuration.
+On TPU v4, v5e, v5p, and v6e, each physical chip exposes one logical TPU device, so a four-chip host registers `{"TPU": 4}`. On [TPU7x](https://cloud.google.com/tpu/docs/tpu7x#dual-chiplet_architecture), each physical chip contains two compute chiplets that expose two logical TPU devices, so a four-chip `tpu7x-standard-4t` host has eight logical devices. For host-level SPMD workloads such as JAX, keep the default `{"TPU": 4}`. To run one process per logical device with `{"TPU": 1}` on TPU7x, set `RAY_TPU_RESOURCE_PER_CHIP=2` on both the head and worker containers and set `resources: '"{\"TPU\": 8}"'` in `rayStartParams` on the worker group. {ref}`kuberay-tpu-pod-config` shows the full worker group configuration.
 
 (kuberay-tpu-get-started)=
 

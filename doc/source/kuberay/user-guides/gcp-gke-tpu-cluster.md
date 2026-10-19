@@ -26,7 +26,7 @@ Replace the following:
 
 Run the following commands on your local machine or in [Google Cloud Shell](https://cloud.google.com/shell). If you run them from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
-Create a Standard GKE cluster and enable the Ray Operator add-on. GKE supports TPU v6e in version 1.31.2-gke.1115000 and later, and TPU7x in version 1.34.1-gke.2541000 and later. For minimum GKE versions by TPU generation, see [TPUs in GKE](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types):
+Create a Standard GKE cluster and enable the Ray Operator add-on. GKE supports TPU v6e in version 1.31.2-gke.1115000 and later, and TPU7x in version 1.34.1-gke.2541000 and later. For minimum GKE versions by TPU generation, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#choose-tpu-version):
 
 ```bash
 gcloud container clusters create $CLUSTER_NAME \
@@ -102,7 +102,7 @@ gcloud container node-pools create tpu7x-multihost \
 
 ::::
 
-The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes, so the number of TPU hosts must equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
+The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes, so the number of TPU hosts must equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-classes). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
 GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
 
