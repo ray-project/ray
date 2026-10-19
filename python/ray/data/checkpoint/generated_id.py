@@ -13,11 +13,16 @@ make existing checkpoints unreadable.
 """
 
 import posixpath
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Dict, List, Mapping, Union
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
+    _row_group_unit_id,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
@@ -135,3 +140,203 @@ class GeneratedIdColumn(SynthesizedColumn):
             rows_before=position.rows_before,
             num_rows=num_rows,
         )
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
+class GeneratedIdCheckpoint:
+    """What a generated-ID checkpoint says is already done, in read-unit terms.
+
+    Kept in Arrow, so it stays compact on the driver and cheap to send to
+    the tasks that use it.
+
+    Attributes:
+        done_unit_ids: String array of read unit ids whose rows are all
+            committed: a file's path when all its row groups are done,
+            otherwise ``"<path>#rg<N>"`` for each done row group. Listing
+            drops these units before reading.
+        partial_masks: One row per row group with only some rows committed:
+            its read unit id (``unit_id``) and a boolean mask indexed by
+            ``row_id`` (``partial_mask``; ``True`` means committed). The
+            rows it marks are dropped after the read.
+    """
+
+    done_unit_ids: pa.Array = field(
+        default_factory=lambda: pa.array([], type=pa.string())
+    )
+    partial_masks: pa.Table = field(
+        default_factory=lambda: _COMPACTED_CHECKPOINT_SCHEMA.empty_table()
+    )
+
+
+# One row per done or partly done read unit, built by ``_compact_file_ids``.
+# ``partial_mask`` is null when every row of the unit is committed.
+_COMPACTED_CHECKPOINT_SCHEMA = pa.schema(
+    [
+        ("unit_id", pa.string()),
+        ("partial_mask", pa.list_(pa.bool_())),
+    ]
+)
+
+
+def _id_field(
+    ids: Union[pa.Array, pa.ChunkedArray], name: str, value_type: pa.DataType
+) -> np.ndarray:
+    # Fields are looked up by name: the struct's field order isn't guaranteed
+    # to survive a Parquet round trip.
+    values = pc.cast(pc.struct_field(ids, name), value_type)
+    return values.to_numpy(zero_copy_only=False)
+
+
+def _compact_file_ids(ids: Union[pa.Array, pa.ChunkedArray]) -> pa.Table:
+    """Compact the committed generated IDs of one file into read units.
+
+    Each row group with committed rows is either done (all its on-disk rows
+    are committed) or partial, in which case its committed ``row_id`` values
+    become a boolean mask. When every row group is done, the whole file is a
+    single done unit. Duplicate IDs, from rows written more than once, are
+    counted once.
+
+    Args:
+        ids: Generated IDs that all name the same file.
+
+    Returns:
+        A table with ``_COMPACTED_CHECKPOINT_SCHEMA``: one row per done or
+        partly done read unit.
+    """
+    path_prefix = _id_field(ids, PATH_PREFIX_FIELD, pa.string())[0]
+    file_name = _id_field(ids, FILE_NAME_FIELD, pa.string())[0]
+    path = posixpath.join(path_prefix, file_name)
+    num_row_groups = int(_id_field(ids, NUM_FRAGMENTS_FIELD, pa.int32())[0])
+    row_groups = _id_field(ids, FRAGMENT_FIELD, pa.int32())
+    row_group_sizes = _id_field(ids, NUM_ROWS_FIELD, pa.int32())
+    row_ids = _id_field(ids, ROW_ID_FIELD, pa.int32())
+
+    done_row_groups: List[int] = []
+    partial_row_groups: List[int] = []
+    partial_masks: List[np.ndarray] = []
+    for row_group in np.unique(row_groups):
+        in_group = row_groups == row_group
+        size = int(row_group_sizes[in_group][0])
+        committed = np.unique(row_ids[in_group])
+        # Only IDs inside the row group count; anything else must never mark
+        # rows done.
+        committed = committed[(committed >= 0) & (committed < size)]
+        if len(committed) >= size:
+            done_row_groups.append(int(row_group))
+        else:
+            mask = np.zeros(size, dtype=bool)
+            mask[committed] = True
+            partial_row_groups.append(int(row_group))
+            partial_masks.append(mask)
+
+    if len(done_row_groups) == num_row_groups:
+        unit_ids = [path]
+    else:
+        unit_ids = [
+            _row_group_unit_id(path, row_group)
+            for row_group in done_row_groups + partial_row_groups
+        ]
+    # Done units come first with a null mask. Masks stay numpy: no per-row
+    # Python bools.
+    num_done = len(unit_ids) - len(partial_masks)
+    mask_lengths = [0] * num_done + [len(mask) for mask in partial_masks]
+    offsets = np.concatenate([[0], np.cumsum(mask_lengths)]).astype(np.int32)
+    values = np.concatenate(partial_masks) if partial_masks else np.array([], bool)
+    masks = pa.ListArray.from_arrays(
+        pa.array(offsets),
+        pa.array(values, type=pa.bool_()),
+        mask=pa.array([True] * num_done + [False] * len(partial_masks)),
+    )
+    return pa.Table.from_arrays(
+        [pa.array(unit_ids, type=pa.string()), masks],
+        schema=_COMPACTED_CHECKPOINT_SCHEMA,
+    )
+
+
+def _checkpoint_from_compacted(compacted: pa.Table) -> GeneratedIdCheckpoint:
+    """Turn compacted read-unit rows into done unit ids and partial masks.
+
+    Args:
+        compacted: Rows with ``_COMPACTED_CHECKPOINT_SCHEMA``.
+
+    Returns:
+        The checkpoint, in read-unit terms.
+    """
+    is_done = pc.is_null(compacted["partial_mask"])
+    done_unit_ids = pc.filter(compacted["unit_id"], is_done).combine_chunks()
+    partial_masks = compacted.filter(pc.invert(is_done)).combine_chunks()
+    return GeneratedIdCheckpoint(done_unit_ids, partial_masks)
+
+
+def _partial_mask_lookup(partial_masks: pa.Table) -> Dict[str, np.ndarray]:
+    """Index :attr:`GeneratedIdCheckpoint.partial_masks` by read unit id.
+
+    Each mask is a slice of the flattened bool values, so no per-row Python
+    bools are built. Only row groups in flight when a job stopped are partly
+    done, so there are few of them.
+    """
+    masks = partial_masks["partial_mask"].combine_chunks()
+    offsets = masks.offsets.to_numpy()
+    values = masks.values.to_numpy(zero_copy_only=False)
+    return {
+        unit_id: values[offsets[i] : offsets[i + 1]]
+        for i, unit_id in enumerate(partial_masks["unit_id"].to_pylist())
+    }
+
+
+def _drop_committed_rows(
+    table: pa.Table, id_column: str, partial_masks: Mapping[str, np.ndarray]
+) -> pa.Table:
+    """Drop the rows that the checkpoint's partial masks mark as committed.
+
+    Each row's generated ID names its file, row group and ``row_id``, so the
+    row group's mask (from :func:`_partial_mask_lookup`) says whether the row
+    is already committed. A table can hold rows of
+    several row groups. Rows past the end of a mask are kept.
+
+    Args:
+        table: Rows with a generated ID column.
+        id_column: Name of the generated ID column.
+        partial_masks: Masks of partly done row groups, keyed by read unit id.
+
+    Returns:
+        ``table`` without the committed rows.
+    """
+    if not partial_masks or table.num_rows == 0:
+        return table
+    ids = table[id_column]
+    keys = pa.table(
+        {
+            PATH_PREFIX_FIELD: pc.cast(
+                pc.struct_field(ids, PATH_PREFIX_FIELD), pa.string()
+            ),
+            FILE_NAME_FIELD: pc.cast(
+                pc.struct_field(ids, FILE_NAME_FIELD), pa.string()
+            ),
+            FRAGMENT_FIELD: pc.cast(pc.struct_field(ids, FRAGMENT_FIELD), pa.int32()),
+        }
+    )
+    row_ids = _id_field(ids, ROW_ID_FIELD, pa.int32())
+    drop = np.zeros(table.num_rows, dtype=bool)
+    row_groups = keys.group_by(list(keys.column_names)).aggregate([]).to_pylist()
+    for row_group in row_groups:
+        path = posixpath.join(row_group[PATH_PREFIX_FIELD], row_group[FILE_NAME_FIELD])
+        mask = partial_masks.get(_row_group_unit_id(path, row_group[FRAGMENT_FIELD]))
+        if mask is None:
+            continue
+        in_row_group = np.flatnonzero(
+            pc.and_(
+                pc.and_(
+                    pc.equal(keys[PATH_PREFIX_FIELD], row_group[PATH_PREFIX_FIELD]),
+                    pc.equal(keys[FILE_NAME_FIELD], row_group[FILE_NAME_FIELD]),
+                ),
+                pc.equal(keys[FRAGMENT_FIELD], row_group[FRAGMENT_FIELD]),
+            ).to_numpy(zero_copy_only=False)
+        )
+        positions = row_ids[in_row_group]
+        covered = (positions >= 0) & (positions < len(mask))
+        drop[in_row_group[covered]] = mask[positions[covered]]
+    if not drop.any():
+        return table
+    return table.filter(pa.array(~drop))
