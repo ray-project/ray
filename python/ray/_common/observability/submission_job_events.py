@@ -1,13 +1,10 @@
 """Event builders for submission job events.
 
 This module provides concrete InternalEventBuilder subclasses for emitting
-submission job definition and lifecycle events via the ONE-Event framework.
+submission job definition and lifecycle events via the Ray event export framework.
 """
 
-import time
 from typing import Dict, Optional, Union
-
-from google.protobuf.timestamp_pb2 import Timestamp
 
 from ray._common.observability.internal_event import InternalEventBuilder
 from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
@@ -79,17 +76,6 @@ class SubmissionJobDefinitionEventBuilder(InternalEventBuilder):
         return event.SerializeToString()
 
 
-def job_status_to_proto_state(
-    status_name: str,
-) -> Optional[int]:
-    """Convert a JobStatus name to the proto State enum value.
-
-    Returns None if the status name is not recognized.
-    """
-    value = SubmissionJobLifecycleEvent.State.DESCRIPTOR.values_by_name.get(status_name)
-    return value.number if value is not None else None
-
-
 class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
     """Builds a SubmissionJobLifecycleEvent for a job state transition.
 
@@ -100,7 +86,7 @@ class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
         self,
         submission_id: str,
         state: int,
-        message: str = "",
+        transition_message: str = "",
         error_type: Optional[str] = None,
         driver_node_id: Optional[str] = None,
         driver_agent_http_address: Optional[str] = None,
@@ -111,11 +97,11 @@ class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
             source_type=RayEventProto.SourceType.JOBS,
             event_type=RayEventProto.EventType.SUBMISSION_JOB_LIFECYCLE_EVENT,
             nested_event_field_number=RayEventProto.SUBMISSION_JOB_LIFECYCLE_EVENT_FIELD_NUMBER,
-            message=message,
             session_name=session_name,
         )
         self._submission_id = submission_id
         self._state = state
+        self._transition_message = transition_message
         self._error_type = error_type
         self._driver_node_id = driver_node_id
         self._driver_agent_http_address = driver_agent_http_address
@@ -131,14 +117,10 @@ class SubmissionJobLifecycleEventBuilder(InternalEventBuilder):
         transition = event.state_transitions.add()
         transition.state = self._state
 
-        # Set timestamp to current time
-        now = time.time()
-        transition.timestamp.CopyFrom(
-            Timestamp(seconds=int(now), nanos=int((now % 1) * 1e9))
-        )
+        transition.timestamp.GetCurrentTime()
 
-        if self._message:
-            transition.message = self._message
+        if self._transition_message:
+            transition.message = self._transition_message
         if self._error_type is not None:
             transition.error_type = self._error_type
         if self._driver_node_id is not None:
