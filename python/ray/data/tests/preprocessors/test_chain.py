@@ -646,6 +646,137 @@ def test_dag_structure(deferred_fit_enabled):
         assert not node.dependencies
 
 
+def _make_undeclared_in_place_scale(column: str, factor: float) -> Preprocessor:
+    """Non-fittable preprocessor that rewrites a column in place without
+    declaring the columns it reads or writes (the default for user-defined
+    preprocessors). Defined in a function for the same reason as `_make_add_one`.
+    """
+
+    class _UndeclaredScale(Preprocessor):
+        _is_fittable = False
+
+        def _transform_pandas(self, df):
+            df[column] = df[column] * factor
+            return df
+
+    return _UndeclaredScale()
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_member_without_declared_columns_is_a_barrier(deferred_fit_enabled, nested):
+    """A member that doesn't declare its columns may write any column, so later
+    members must not compute statistics until its transform has been applied."""
+    ds = ray.data.from_pandas(pd.DataFrame({"a": [1.0, 2.0, 3.0]}))
+    custom = _make_undeclared_in_place_scale("a", 10)
+    scaler = StandardScaler(["a"])
+    chain = Chain(Chain(custom) if nested else custom, scaler)
+
+    out = chain.fit_transform(ds).to_pandas()
+
+    # Same statistics as fitting step by step: computed on a * 10.
+    assert scaler.stats_["mean(a)"] == pytest.approx(20.0)
+    assert list(out["a"]) == pytest.approx([-1.2247449, 0.0, 1.2247449])
+
+
+def test_later_member_does_not_rewrite_data_before_earlier_member_fits(
+    deferred_fit_enabled,
+):
+    """A later member that overwrites a column an earlier member reads must not
+    transform the data before the earlier member has computed its statistics,
+    even when the two don't depend on each other's outputs."""
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"a": [1.0, None, 3.0], "b": [100.0, 200.0, 300.0]})
+    )
+    imputer = SimpleImputer(["a"])
+    scaler = StandardScaler(["a"])  # waits for the imputer (reads a)
+    overwrite_a = _make_add_one("b", "a")  # independent, but rewrites a
+
+    Chain(imputer, scaler, overwrite_a).fit_transform(ds).to_pandas()
+
+    # The scaler sees the imputed `a` = [1, 2, 3], not `b + 1`.
+    assert scaler.stats_["mean(a)"] == pytest.approx(2.0)
+
+
+def test_member_waits_for_the_transform_it_depends_on(deferred_fit_enabled):
+    """Transforms are applied in chain order, so a member whose input comes
+    from an earlier member must wait until that member's transform has actually
+    been applied, not just until it has finished computing statistics."""
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"a": [1.0, None, 3.0], "b": [100.0, 200.0, 300.0]})
+    )
+    imputer = SimpleImputer(["a"])
+    scaler_a = StandardScaler(["a"])  # waits for the imputer
+    add_one = _make_add_one("b", "c")  # independent, but queued behind scaler_a
+    scaler_c = StandardScaler(["c"])  # needs add_one's output
+
+    Chain(imputer, scaler_a, add_one, scaler_c).fit_transform(ds).to_pandas()
+
+    assert scaler_a.stats_["mean(a)"] == pytest.approx(2.0)
+    assert scaler_c.stats_["mean(c)"] == pytest.approx(201.0)
+
+
+@pytest.mark.parametrize("serial_fallback", [False, True])
+def test_categorizer_with_some_dtypes_given(deferred_fit_enabled, serial_fallback):
+    """`Categorizer` fills `stats_` with the dtypes it was given before
+    registering aggregations for the other columns; those must still run."""
+    from ray.data.preprocessors import Categorizer
+
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"A": ["x", "y", "x"], "B": ["p", "q", "r"], "n": [0.0, 1.0, 2.0]})
+    )
+    categorizer = Categorizer(["A", "B"], dtypes={"A": pd.CategoricalDtype(["x", "y"])})
+    members = [categorizer]
+    if serial_fallback:
+        # A member with a callable stat makes the chain fit step by step.
+        members.insert(0, _make_callable_stat_scaler(["n"]))
+    chain = Chain(*members)
+
+    out = chain.fit_transform(ds).to_pandas()
+
+    assert list(categorizer.stats_["B"].categories) == ["p", "q", "r"]
+    assert isinstance(out["B"].dtype, pd.CategoricalDtype)
+
+
+@pytest.mark.parametrize("serial_fallback", [False, True])
+def test_fit_dataset_released_after_stats_are_computed(
+    deferred_fit_enabled, serial_fallback
+):
+    """The chain only needs the fit dataset to compute the deferred statistics,
+    so it must not keep the dataset alive afterwards."""
+    ds = ray.data.from_pandas(pd.DataFrame({"a": [0.0, 2.0], "n": [1.0, 3.0]}))
+    members = [StandardScaler(["a"])]
+    if serial_fallback:
+        members.append(_make_callable_stat_scaler(["n"]))
+    chain = Chain(*members)
+    chain.fit(ds)
+    assert chain._fit_ds is not None
+
+    first = chain.transform(ds).to_pandas()
+
+    assert chain._fit_ds is None
+    # Later transforms and serialization still work without it.
+    pd.testing.assert_frame_equal(chain.transform(ds).to_pandas(), first)
+    assert Chain.deserialize(chain.serialize()).transform_batch(
+        pd.DataFrame({"a": [1.0], "n": [2.0]})
+    )["a"].tolist() == [0.0]
+
+
+def test_chain_input_and_output_columns():
+    """A Chain's inputs exclude columns an earlier member produces, and both
+    lists are de-duplicated in order."""
+    chain = Chain(
+        SimpleImputer(["a"], output_columns=["a_imputed"]),
+        StandardScaler(["a_imputed"]),  # reads a column produced in the chain
+        StandardScaler(["a"]),
+    )
+    assert chain.get_input_columns() == ["a"]
+    assert chain.get_output_columns() == ["a_imputed", "a"]
+
+    in_place = Chain(SimpleImputer(["a"]), StandardScaler(["a"]))
+    assert in_place.get_input_columns() == ["a"]
+    assert in_place.get_output_columns() == ["a"]
+
+
 if __name__ == "__main__":
     import sys
 

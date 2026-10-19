@@ -104,16 +104,21 @@ class Chain(SerializablePreprocessorBase):
         )
 
     def get_input_columns(self) -> List[str]:
-        columns = []
+        # Columns an earlier member produces aren't inputs of the chain.
+        columns = {}
+        written = set()
         for p in self._preprocessors:
-            columns.extend(p.get_input_columns())
-        return columns
+            for column in p.get_input_columns():
+                if column not in written:
+                    columns[column] = None
+            written.update(p.get_output_columns())
+        return list(columns)
 
     def get_output_columns(self) -> List[str]:
-        columns = []
+        columns = {}
         for p in self._preprocessors:
-            columns.extend(p.get_output_columns())
-        return columns
+            columns.update(dict.fromkeys(p.get_output_columns()))
+        return list(columns)
 
     def _uses_deferred_fit(self) -> bool:
         from ray.data.context import DataContext
@@ -197,6 +202,7 @@ class Chain(SerializablePreprocessorBase):
         ):
             self._fallback_to_serial_execution(ds)
             self._stats_materialized = True
+            self._fit_ds = None
             return
 
         all_nodes = _build_aggregation_dag(self._preprocessors)
@@ -204,7 +210,13 @@ class Chain(SerializablePreprocessorBase):
         transformed = set()
 
         while pending_nodes:
-            ready = [node for node in pending_nodes if node.is_ready()]
+            # A node is ready once every member it depends on has transformed
+            # the dataset it aggregates over.
+            ready = [
+                node
+                for node in pending_nodes
+                if all(dep.preprocessor in transformed for dep in node.dependencies)
+            ]
             if not ready:
                 raise RuntimeError("Circular dependency detected in aggregation DAG.")
 
@@ -237,22 +249,27 @@ class Chain(SerializablePreprocessorBase):
             ready_set = set(ready)
             pending_nodes = [n for n in pending_nodes if n not in ready_set]
 
-            # Apply the transform of every member whose nodes are all complete
-            # (in chain order), so the next level aggregates over transformed
-            # data.
+            # Apply transforms strictly in chain order, stopping at the first
+            # member still waiting on statistics, so the next level aggregates
+            # over transformed data. A later member must not transform the
+            # data before an earlier member has computed its statistics on it.
             for preprocessor in self._preprocessors:
                 if preprocessor in transformed:
                     continue
-                if all(
+                if not all(
                     node.completed
                     for node in all_nodes
                     if node.preprocessor is preprocessor
                 ):
-                    self._sync_nested_chain_fit_ds(preprocessor, ds)
-                    ds = preprocessor.transform(ds)
-                    transformed.add(preprocessor)
+                    break
+                self._sync_nested_chain_fit_ds(preprocessor, ds)
+                ds = preprocessor.transform(ds)
+                transformed.add(preprocessor)
 
         self._stats_materialized = True
+        # The fit dataset is only needed to compute the statistics; don't keep
+        # it (and possibly its blocks) alive for the chain's lifetime.
+        self._fit_ds = None
 
     def _fallback_to_serial_execution(self, ds: "Dataset") -> None:
         """Fit members one by one, each on the previous members' transformed
@@ -267,7 +284,9 @@ class Chain(SerializablePreprocessorBase):
             "single pass over the dataset."
         )
         for preprocessor in self._preprocessors:
-            if preprocessor._is_fittable and not preprocessor.has_stats():
+            # NOTE: Every fittable member deferred its statistics, even if its
+            #       `stats_` is already partly filled (e.g. `Categorizer`).
+            if preprocessor._is_fittable:
                 preprocessor._fit_execute(ds)
             self._sync_nested_chain_fit_ds(preprocessor, ds)
             ds = preprocessor.transform(ds)

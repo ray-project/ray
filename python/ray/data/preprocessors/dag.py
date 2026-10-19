@@ -16,6 +16,10 @@ class _DAGNode:
     that touch disjoint columns can have their statistics computed in the same
     dataset scan.
 
+    A member that declares no input or output columns may read and write any
+    column, so its node is treated as reading and writing every column: it
+    depends on every earlier node, and every later node depends on it.
+
     Args:
         preprocessor: The preprocessor this node belongs to.
     """
@@ -27,10 +31,15 @@ class _DAGNode:
         self.completed: bool = False
         self.read_cols: Set[str] = set(preprocessor.get_input_columns())
         self.write_cols: Set[str] = set(preprocessor.get_output_columns())
+        self.touches_all_columns: bool = not _declares_columns(preprocessor)
 
-    def is_ready(self) -> bool:
-        """Returns True if every dependency has completed."""
-        return all(dep.completed for dep in self.dependencies)
+    def depends_on(self, earlier: "_DAGNode") -> bool:
+        """Whether this node must wait for an earlier chain member's node."""
+        return (
+            self.touches_all_columns
+            or earlier.touches_all_columns
+            or bool(self.read_cols & earlier.write_cols)
+        )
 
     @property
     def is_placeholder(self) -> bool:
@@ -60,14 +69,24 @@ class _AggregationNode(_DAGNode):
 class _PlaceholderNode(_DAGNode):
     """Placeholder node for members that contribute no aggregations.
 
-    Covers non-fittable preprocessors, fittable members that already have
-    stats (e.g. fitted eagerly), and fittable members whose plan registered
-    nothing. These nodes have nothing to compute, but they participate in
-    dependency tracking so that transforms are ordered correctly: a
-    placeholder completes only when its own dependencies complete, which keeps
-    any member that reads this preprocessor's output columns from aggregating
-    before this preprocessor's transform has been applied.
+    Covers non-fittable preprocessors and fittable members whose plan
+    registered nothing (e.g. a nested Chain, which computes its own statistics
+    when transformed). These nodes have nothing to compute, but they
+    participate in dependency tracking so that transforms are ordered
+    correctly.
     """
+
+
+def _declares_columns(preprocessor: Preprocessor) -> bool:
+    """Whether a preprocessor declares the columns it reads or writes.
+
+    A Chain declares its columns only if every member does.
+    """
+    from ray.data.preprocessors.chain import Chain
+
+    if isinstance(preprocessor, Chain):
+        return all(_declares_columns(p) for p in preprocessor.preprocessors)
+    return bool(preprocessor.get_input_columns() or preprocessor.get_output_columns())
 
 
 def _build_aggregation_dag(
@@ -75,10 +94,10 @@ def _build_aggregation_dag(
 ) -> List[_DAGNode]:
     """Construct the aggregation DAG for a chain of preprocessors.
 
-    Each fittable member contributes one node per registered aggregation;
-    every other member contributes a placeholder node. Edges follow one rule:
-    a later node depends on an earlier one iff it reads any column the earlier
-    one writes.
+    Each fittable member contributes one node per aggregation registered on
+    its plan; every other member contributes a placeholder node. A later node
+    depends on an earlier one iff it reads a column the earlier one writes, or
+    either of them doesn't declare its columns.
 
     Args:
         preprocessors: The chain's members, in chain order.
@@ -91,12 +110,13 @@ def _build_aggregation_dag(
 
     for preprocessor in preprocessors:
         nodes: List[_DAGNode] = []
-        if preprocessor._is_fittable and not preprocessor.has_stats():
+        if preprocessor._is_fittable:
+            # NOTE: Every registered aggregation is pending, even when `stats_`
+            #       is already partly filled (e.g. `Categorizer` copies the
+            #       dtypes it was given before registering the rest).
             for agg_spec in preprocessor._stat_computation_plan:
                 nodes.append(_AggregationNode(preprocessor=preprocessor, spec=agg_spec))
         if not nodes:
-            # Non-fittable, already fitted, or nothing registered on the plan
-            # (e.g. a nested Chain, which runs its own DAG when transformed).
             nodes.append(_PlaceholderNode(preprocessor=preprocessor))
 
         nodes_per_preprocessor.append(nodes)
@@ -107,7 +127,7 @@ def _build_aggregation_dag(
         for j in range(i):
             for cur_node in nodes_per_preprocessor[i]:
                 for prev_node in nodes_per_preprocessor[j]:
-                    if cur_node.read_cols & prev_node.write_cols:
+                    if cur_node.depends_on(prev_node):
                         cur_node.dependencies.add(prev_node)
                         prev_node.dependents.add(cur_node)
 
