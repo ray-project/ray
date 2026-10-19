@@ -1314,6 +1314,7 @@ def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
     unique_pred = col("left_val") >= 10
     colliding_pred = col("val_r") == 11
     filtered_ds = joined.filter(expr=unique_pred & colliding_pred)
+    assert joined._logical_plan.dag.infer_schema() is None
 
     plan = _optimized_plan(filtered_ds)
     _assert_filter_with(plan.dag, colliding_pred)
@@ -1329,6 +1330,80 @@ def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
     ].reset_index(drop=True)
     assert len(expected_pd) == 1  # k == 1
     assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
+
+
+def test_join_pandas_inputs_right_column_named_like_left_suffixed(
+    ray_start_regular_shared_2_cpus,
+):
+    """Without an output schema the fallback cannot verify suffixed names. A
+    right column that happens to be named like a left collision after the
+    left suffix (``v_l``) is suffixed again by the join, so the output's
+    ``v_l`` is the left ``v``; claiming it for the right side would evaluate
+    the filter on the wrong column. It must stay above the join."""
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_ds = ray.data.from_pandas(pd.DataFrame({"k": [0, 1, 2, 3], "v": [0, 1, 2, 3]}))
+    right_ds = ray.data.from_pandas(
+        pd.DataFrame(
+            {"k": [0, 1, 2, 3], "v": [10, 11, 12, 13], "v_l": [100, 101, 102, 103]}
+        )
+    )
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    assert joined._logical_plan.dag.infer_schema() is None
+    predicate = col("v_l") == 1
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, predicate)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+
+    rows = filtered_ds.take_all()
+    assert len(rows) == 1 and rows[0]["k"] == 1 and rows[0]["v_l"] == 1
+
+
+def test_join_pandas_inputs_right_outer_pushes_right_key(
+    ray_start_regular_shared_2_cpus,
+):
+    """A right outer join keeps its right key under its own name, so the
+    fallback still pushes a predicate on it to the right input."""
+    from ray.data._internal.logical.operators import Join
+    from ray.data.expressions import col
+
+    left_pd = pd.DataFrame({"k": [1, 2, 3], "lv": [10, 20, 30]})
+    right_pd = pd.DataFrame({"rk": [0, 1, 2, 3], "rv": [0, 1, 2, 3]})
+    left_ds = ray.data.from_pandas(left_pd)
+    right_ds = ray.data.from_pandas(right_pd)
+    joined = left_ds.join(
+        right_ds,
+        join_type="right_outer",
+        num_partitions=2,
+        on=("k",),
+        right_on=("rk",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    assert joined._logical_plan.dag.infer_schema() is None
+    predicate = col("rk") == 2
+    filtered_ds = joined.filter(expr=predicate)
+
+    plan = _optimized_plan(filtered_ds)
+    join = plan.dag
+    assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+    _assert_filter_with(join.input_dependencies[1], predicate)
+    _assert_num_filters(plan, 1)
+
+    rows = filtered_ds.take_all()
+    assert len(rows) == 1 and rows[0]["rk"] == 2 and rows[0]["lv"] == 20
 
 
 def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_cpus):

@@ -259,8 +259,20 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         if not output_schema:
             # Keys are coalesced away on the non-preserved side, so only a
             # shared key counts there; everything else needs a unique name.
+            # A right column named like a left collision after the left suffix
+            # (left ``v`` -> ``v_l`` while the right also has ``v_l``) gets
+            # suffixed again by Polars, so that bare name is the left's: not
+            # the right's to claim.
             left_set, right_set = set(left_columns), set(right_columns)
             is_right_outer = self.join_type is JoinType.RIGHT_OUTER
+            left_renamed = (
+                {
+                    f"{c}{self.left_columns_suffix}"
+                    for c in (left_set & (right_set - right_keys)) - left_keys
+                }
+                if self.left_columns_suffix
+                else set()
+            )
             return (
                 {
                     c: c
@@ -271,7 +283,12 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 {
                     c: c
                     for c in right_columns
-                    if c in shared_keys or (c not in left_set and c not in right_keys)
+                    if c in shared_keys
+                    or (
+                        c not in left_set
+                        and c not in left_renamed
+                        and (c not in right_keys or is_right_outer)
+                    )
                 },
             )
         # Right keys are coalesced into the left ones, so only right non-key
