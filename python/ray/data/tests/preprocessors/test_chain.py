@@ -512,7 +512,9 @@ def _make_callable_stat_scaler(columns) -> StandardScaler:
     return _CallableStatScaler(columns)
 
 
-def test_custom_stat_member_falls_back_to_serial(deferred_fit_enabled, caplog):
+def test_custom_stat_member_falls_back_to_serial(
+    deferred_fit_enabled, propagate_logs, caplog
+):
     ds = ray.data.from_pandas(pd.DataFrame({"A": [0.0, 2.0], "B": [1.0, 3.0]}))
 
     custom = _make_callable_stat_scaler(["A"])
