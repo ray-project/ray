@@ -603,6 +603,10 @@ class PushSplitCoordinator:
                         # still sends one block at a time. The consumer
                         # reports back this same count.
                         num_rows = max(1, flow.target_rows)
+                    elif num_rows == 0:
+                        # Charge empty blocks one row, so they still use up
+                        # window room instead of being sent without limit.
+                        num_rows = 1
                     # Record before sending, so a fast consumer's report can
                     # never make consumed exceed pushed.
                     flow.record_push(num_rows, size_bytes, entry.ref)
