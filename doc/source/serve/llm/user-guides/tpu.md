@@ -7,7 +7,7 @@ myst:
 (serve-llm-tpu)=
 # TPU serving
 
-Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes either [vLLM-TPU](https://github.com/vllm-project/tpu-inference) or vLLM-TorchTPU. For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
+Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes either [vLLM-TPU](https://github.com/vllm-project/tpu-inference) or [vLLM-TorchTPU](https://github.com/vllm-project/vllm-torchtpu). For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 
 ## Topology and placement
 
@@ -110,7 +110,7 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 :::{tab-item} Dockerfile (vLLM-TorchTPU)
 
 ```dockerfile
-FROM us-docker.pkg.dev/ml-oss-artifacts-transient/torch-tpu-docker-container/torchtpu-vllm-prod:latest
+FROM vllm/vllm-torchtpu:latest
 
 ARG RAY_PACKAGE="ray[default,llm]"
 RUN pip install --no-cache-dir -U "${RAY_PACKAGE}"

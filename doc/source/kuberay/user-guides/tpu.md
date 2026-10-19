@@ -12,7 +12,7 @@ This page explains how to schedule, run, and autoscale Ray workloads on Google C
 
 ## About TPUs
 
-Tensor Processing Units (TPUs) are Google's custom-designed accelerators for training and serving large AI models. Google uses TPUs for its own workloads, including training and serving Gemini, and offers the same hardware to Google Cloud customers through Cloud TPU and GKE. Each TPU chip pairs matrix multiplication units with high-bandwidth memory (HBM), and a dedicated inter-chip interconnect (ICI) connects chips so that a workload can treat a group of chips as one accelerator. For hardware details, see [TPU system architecture](https://cloud.google.com/tpu/docs/system-architecture-tpu-vm), and for the generations available in each region, see [TPU regions and zones](https://cloud.google.com/tpu/docs/regions-zones).
+Tensor Processing Units (TPUs) are Google's custom-developed, application-specific integrated circuits (ASICs) for accelerating machine learning workloads using frameworks such as PyTorch and JAX. You can access [Cloud TPUs](https://cloud.google.com/tpu/docs/intro-to-tpu) on Google Cloud through Google Kubernetes Engine (GKE), Compute Engine, and Vertex AI. Each TPU chip pairs matrix multiplication units with on-chip high-bandwidth memory (HBM), and a high-speed inter-chip interconnect (ICI) links chips into slices that scale up your workloads. For hardware details, see [TPU system architecture](https://cloud.google.com/tpu/docs/system-architecture-tpu-vm), and for regional availability, see [TPU regions and zones](https://cloud.google.com/tpu/docs/regions-zones).
 
 ## Running Ray on TPUs
 
@@ -23,7 +23,7 @@ KubeRay runs each TPU host as a Pod, so one Ray node maps to one TPU host. Ray s
 Ray supports both *single program, multiple data* (SPMD) and *multiple program, multiple data* (MPMD) workloads on TPUs. In an SPMD workload, every worker runs the same program over data or model shards. In an MPMD workload, distinct actor groups, such as reinforcement learning rollout actors and learner actors, run different programs at the same time across devices or slices. Depending on your framework, schedule workers at one of two granularities:
 
 - **One process per TPU host**: One Ray task or actor requests all TPUs on a host, such as `{"TPU": 4}` on a four-chip host, and drives all of the host's TPU devices. JAX, MaxText, and [vLLM-TPU](https://github.com/vllm-project/tpu-inference) use this model.
-- **One process per TPU device**: One Ray task or actor requests `{"TPU": 1}` and runs on a single logical TPU device. TorchTPU, vLLM-TorchTPU, and per-device MPMD actor groups use this model.
+- **One process per TPU device**: One Ray task or actor requests `{"TPU": 1}` and runs on a single logical TPU device. [TorchTPU](https://torchtpu.readthedocs.io/en/latest/), [vLLM-TorchTPU](https://vllm-torchtpu.readthedocs.io/en/latest/), and per-device MPMD actor groups use this model.
 
 (kuberay-tpu7x-dual-chiplet)=
 
@@ -254,6 +254,7 @@ The following disaggregated RL example deploys vLLM on one TPU v6e `4x4` slice w
 ```python
 from openai import OpenAI
 import torch
+
 import ray.train
 from ray import serve
 from ray.serve.llm import LLMConfig, build_openai_app
@@ -430,4 +431,5 @@ When you deploy a RayCluster on GKE with [`kuberay-tpu-webhook`](https://github.
 - [Serve an LLM on multi-host TPUs with Ray Serve and TorchTPU](https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-llm-tpu-ray-torchtpu): A GKE tutorial for Ray Serve LLM with vLLM-TorchTPU.
 - {doc}`TPU serving </serve/llm/user-guides/tpu>`: How Ray Serve LLM places vLLM workers on TPU slices.
 - {doc}`Configure scale and accelerators </train/user-guides/using-accelerators>`: Ray Train scaling configuration for TPUs.
+- [PyTorch on Cloud TPU](https://cloud.google.com/tpu/docs/pytorch-on-tpu): Overview of the native PyTorch stack on Cloud TPU.
 - [TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus): GKE documentation for TPU node pools and workloads.

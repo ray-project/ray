@@ -20,6 +20,7 @@ export ZONE=<zone>
 ```
 
 Replace the following:
+
 - `<cluster-name>`: The name of the GKE cluster to create.
 - `<zone>`: The zone with available TPU quota. For a list of TPU availability by zone, see [TPU regions and zones](https://cloud.google.com/tpu/docs/regions-zones).
 
@@ -101,7 +102,7 @@ gcloud container node-pools create tpu7x-multihost \
 
 ::::
 
-The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes, so the number of TPU hosts must equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [ClusterAutoscaler custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/tpus).
+The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes, so the number of TPU hosts must equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
 GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
 
@@ -133,7 +134,7 @@ helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 ```
 
-GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap environment variables for [JAX](https://github.com/google/jax) and TorchTPU initialization. The Ray TPU webhook requires KubeRay operator v1.1.0 or later. GKE automatically installs the Ray TPU webhook through the [Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) in GKE version 1.30.0-gke.1747000 and later.
+GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap environment variables for [JAX](https://github.com/google/jax) and [TorchTPU](https://torchtpu.readthedocs.io/en/latest/) initialization. The Ray TPU webhook requires KubeRay operator v1.1.0 or later. GKE automatically installs the Ray TPU webhook through the [Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) in GKE version 1.30.0-gke.1747000 and later.
 
 When you install the webhook manually, [cert-manager](https://github.com/cert-manager/cert-manager) handles TLS certificate injection. Install cert-manager in a GKE Standard or Autopilot cluster with the following Helm commands:
 

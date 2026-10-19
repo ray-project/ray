@@ -150,12 +150,13 @@ trainer = JaxTrainer(
 trainer.fit()
 ```
 
-As of Ray 2.58.0, when you use `TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for TorchTPU, sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`:
+As of Ray 2.58.0, when you use `TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for [TorchTPU](https://torchtpu.readthedocs.io/en/latest/), sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`:
 
 ```{testcode}
 :skipif: True
 
 import torch
+
 import ray.train
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer, get_device, prepare_model
