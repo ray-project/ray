@@ -39,6 +39,8 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     round_robin_messages,
     summary_of,
     without_summary_records,
+    write_corrupt_chunk,
+    write_corrupt_chunk_header,
     write_mcap,
     write_mcap_without_summary_schemas,
 )
@@ -240,6 +242,40 @@ def test_unreadable_sampled_file_is_skipped(tmp_path):
         f.write(b"not an MCAP file")
 
     assert infer(paths, selection=ONLY_A) == struct_of("typed")
+
+
+# Bytes before a message record's data: the opcode, the record length, the
+# channel id, the sequence, and the log and publish times.
+MESSAGE_PREFIX = 1 + 8 + 2 + 4 + 8 + 8
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    [write_corrupt_chunk, write_corrupt_chunk_header],
+    ids=["payload", "header"],
+)
+def test_a_sampled_chunk_that_does_not_decode_is_skipped(tmp_path, corrupt):
+    """The chunk planning reads to type ``data`` may be corrupt. Planning then
+    types ``data`` from the next chunk instead of failing, and the chunk's own
+    read task reports the error."""
+    (good,) = write_files(tmp_path, [dict(times=(0, 1), key="typed")])
+    bad = corrupt(os.path.join(tmp_path, "bad.mcap"), good, 0)
+
+    assert infer([bad], selection=ONLY_A) == struct_of("typed")
+
+
+def test_a_corrupt_record_ends_the_scan_of_an_unindexed_sampled_file(tmp_path):
+    """Planning scans a sampled file without a chunk index. A record that does
+    not parse ends the scan instead of failing planning, so ``data`` is typed
+    from the messages before it."""
+    (path,) = write_files(tmp_path, [dict(times=(0, 1, 2), key="typed", index=False)])
+    with open(path, "r+b") as f:
+        # The last message's opcode and length become 0xff bytes, an unknown
+        # record longer than mcap reads.
+        f.seek(f.read().index(b'{"typed": 2}') - MESSAGE_PREFIX)
+        f.write(b"\xff" * 9)
+
+    assert infer([path], selection=ONLY_A) == struct_of("typed")
 
 
 @pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
