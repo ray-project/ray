@@ -330,6 +330,7 @@ def create_app(
             "capabilities": capabilities,
             "cpu_limit": cpu_limit,
             "memory_limit_mb": memory_limit_mb,
+            "disk_limit_mb": resources.disk_limit_mb if resources else None,
             "image_pull_timeout_seconds": request.image_pull_timeout_seconds,
             "start_timeout_seconds": request.start_timeout_seconds,
             "labels": request.labels,
