@@ -1757,6 +1757,17 @@ def build_serve_application(
             import_attr(import_path), args
         )
 
+        ingress_name = app._bound_deployment.name
+        if (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and app._ingress_request_router is None
+            and deployment_to_request_router_cls.get(
+                ingress_name, DEFAULT_REQUEST_ROUTER_PATH
+            )
+            != DEFAULT_REQUEST_ROUTER_PATH
+        ):
+            raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
+
         deploy_args_list = []
         built_app: BuiltApplication = build_app(
             app,
@@ -2098,15 +2109,5 @@ def override_deployment_info(
                     )
                 )
             deployment.route_prefix = app_route_prefix
-
-    # build_app cannot see config overrides, so re-check the post-override
-    # ingress router here.
-    if RAY_SERVE_ENABLE_HA_PROXY and not any(
-        info.ingress_request_router for info in deployment_infos.values()
-    ):
-        for info in deployment_infos.values():
-            request_router_config = info.deployment_config.request_router_config
-            if info.ingress and not request_router_config.is_default_request_router():
-                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     return deployment_infos

@@ -671,6 +671,8 @@ class _ControlServicer(ModalClientServicer):
             "capabilities": list(settings.default_capabilities),
             "cpu_limit": cpu_limit,
             "memory_limit_mb": memory_limit_mb,
+            # The client SDK doesn't request disk for sandboxes.
+            "disk_limit_mb": None,
             "image_pull_timeout_seconds": _PULL_TIMEOUT_SECONDS,
             "start_timeout_seconds": _START_TIMEOUT_SECONDS,
             "labels": {tag.tag_name: tag.tag_value for tag in request.tags},

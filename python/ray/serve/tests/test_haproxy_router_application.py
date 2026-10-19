@@ -154,7 +154,7 @@ class TestRouterApplicationConfig:
             )
             # A routed request never also runs the target's ingress request router.
             assert (
-                "http-request lua.route_via_ingress_request_router if METH_POST "
+                "http-request lua.route_via_ingress_request_router if "
                 "has_ingress_request_router_app !is_router_request"
             ) in config
             with open(lua_path) as f:

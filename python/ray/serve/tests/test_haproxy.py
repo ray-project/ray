@@ -1248,12 +1248,10 @@ def test_multiplexed_routing_retry(shutdown_ray):
 
     server = ModelServer.bind()
     serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
-    # Wait for HAProxy to install the ingress router before exercising model
-    # selection. Readiness requests do not touch multiplexed routing state.
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
-        timeout=30,
-    )
+    # Blocking serve.run() guarantees that the ingress request router is installed.
+    response = httpx.post("http://localhost:8000/ready")
+    assert response.status_code == 200, response.text
+    assert response.text == "ready"
     serve.get_deployment_handle(
         "IngressRouter", app_name="default"
     ).enable_multiplexing.remote().result()
@@ -1323,7 +1321,6 @@ def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
 
 
 def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
-    """serve.run rejects a custom router on the ingress under HAProxy."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
 
@@ -1341,8 +1338,7 @@ def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
 
 
 def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
-    """A config override that sets a custom router on the ingress fails to deploy
-    under HAProxy."""
+    """A config override cannot silently bypass the ingress request router."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()
