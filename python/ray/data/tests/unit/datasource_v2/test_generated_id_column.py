@@ -190,6 +190,42 @@ def test_infer_schema_raises_on_name_clash(tmp_path):
         datasource.infer_schema(_manifest([(path, None)]))
 
 
+@pytest.mark.parametrize(
+    "include_paths, include_row_hash, generated_id_name",
+    [
+        (True, False, "path"),
+        (False, True, "row_hash"),
+    ],
+)
+def test_rejects_synthesized_column_name_collision(
+    include_paths,
+    include_row_hash,
+    generated_id_name,
+):
+    with pytest.raises(ValueError, match="Duplicate synthesized column name"):
+        ParquetDatasourceV2(
+            ["dummy.parquet"],
+            include_paths=include_paths,
+            include_row_hash=include_row_hash,
+            extra_synthesized_columns=(GeneratedIdColumn(generated_id_name),),
+        )
+
+
+def test_allows_distinct_synthesized_column_names(tmp_path):
+    path = _write_file(tmp_path / "a.parquet")
+
+    datasource = ParquetDatasourceV2(
+        [path],
+        include_paths=True,
+        extra_synthesized_columns=(GeneratedIdColumn(ID_COLUMN),),
+    )
+    schema = datasource.infer_schema(_manifest([(path, None)]))
+
+    assert schema.names == ["value", "path", ID_COLUMN]
+    assert schema.field("path").type == pa.string()
+    assert schema.field(ID_COLUMN).type == GENERATED_ID_COLUMN_TYPE
+
+
 def test_no_column_without_request(tmp_path):
     path = _write_file(tmp_path / "a.parquet")
     datasource = ParquetDatasourceV2([path])
