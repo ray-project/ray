@@ -129,6 +129,14 @@ class SandboxConfig:
             writable through the per-sandbox copy-on-write overlay: image
             content stays visible, sandboxes don't interfere with each
             other, and the base image is never modified.
+        disk: Size cap of the writable rootfs overlay (e.g. "10Gi"), in the
+            units ``memory`` takes. Writes past it fail with ENOSPC inside
+            the sandbox, and the sandbox keeps running. Zero (default) means
+            no cap. Requires ``readonly=False`` or a ``workdir``: a readonly
+            rootfs with an explicit workdir runs on a private writable
+            overlay too, and a cap keeps that workdir inside the overlay
+            instead of a host directory. In-memory mounts such as /dev/shm
+            count toward the sandbox's memory instead.
     """
 
     image: str
@@ -148,6 +156,7 @@ class SandboxConfig:
         default=None, repr=False, compare=False
     )
     _ignore_cgroups: bool = field(default=False, repr=False, compare=False)
+    disk: Union[str, int, float] = 0
 
     def __post_init__(self):
         if not self.image or not isinstance(self.image, str) or not self.image.strip():
@@ -169,6 +178,16 @@ class SandboxConfig:
             raise ValueError(
                 "dns is only valid with network='public' or network='host'; "
                 f"network={self.network!r} does not mount a resolv.conf."
+            )
+        disk_bytes = parse_memory_bytes(self.disk) or 0
+        if disk_bytes < 0:
+            raise ValueError("disk must be non-negative")
+        if disk_bytes > 0 and self.readonly and not self.workdir:
+            # Only a read-only rootfs without a workdir has no overlay to cap
+            # (see ImageManager.create_oci_spec).
+            raise ValueError(
+                "disk caps the writable rootfs; it requires readonly=False or "
+                "a workdir"
             )
 
 

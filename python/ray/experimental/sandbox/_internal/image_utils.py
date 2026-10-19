@@ -1,5 +1,8 @@
+import concurrent.futures
+import contextlib
 import errno
 import fcntl
+import hashlib
 import io
 import json
 import logging
@@ -11,13 +14,14 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 from collections import deque
 from functools import lru_cache
-from typing import BinaryIO, Deque, Dict, List, Optional, Tuple, Union
+from typing import BinaryIO, Deque, Dict, Iterator, List, Optional, Tuple, Union
 
 from ray.experimental.sandbox._internal import docker_config
 from ray.experimental.sandbox.exceptions import SandboxCreationError
@@ -38,6 +42,8 @@ ROOTFS_IMAGE = "rootfs.erofs"
 _EXTRACT_FORMAT = 3
 # The erofs-utils release that added ``mkfs.erofs --tar``.
 _MKFS_EROFS_MIN_VERSION = "1.7"
+# How many of an image's layers download at once, as in Docker.
+_LAYER_DOWNLOADS = 3
 
 
 def _registry_request(
@@ -138,6 +144,9 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
+    The registry comes back in lowercase, since host names are
+    case-insensitive: ``Docker.io/...`` is a Docker Hub reference too.
+
     Args:
         image_ref: Container image reference string (e.g. 'busybox:latest',
             'python:3.10-slim', 'docker.io/library/python:3.12-slim',
@@ -155,21 +164,63 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
             image_ref, tag = parts[0], parts[1]
 
     parts = image_ref.split("/", 1)
+    host = parts[0].lower()
     if len(parts) == 1:
         registry = "registry-1.docker.io"
         repo = f"library/{parts[0]}"
-    elif "." in parts[0] or ":" in parts[0] or parts[0] == "localhost":
-        if parts[0] in _DOCKER_HUB_REGISTRIES:
+    elif "." in host or ":" in host or host == "localhost":
+        if host in _DOCKER_HUB_REGISTRIES:
             registry = "registry-1.docker.io"
             repo = f"library/{parts[1]}" if "/" not in parts[1] else parts[1]
         else:
-            registry = parts[0]
+            registry = host
             repo = parts[1]
     else:
         registry = "registry-1.docker.io"
         repo = image_ref
 
     return registry, repo, tag
+
+
+# Keeps a cache entry's name, and the ``.lock`` and ``.tmp.<uuid>`` names
+# derived from it, well under the 255-byte limit on a file name.
+_CACHE_NAME_READABLE_CHARS = 128
+
+
+def image_cache_name(image: str) -> str:
+    """Name of an image's entry in the image cache.
+
+    A registry reference is normalized first, so every spelling of one image
+    (``python:3.12-slim``, ``library/python:3.12-slim``,
+    ``docker.io/library/python:3.12-slim``) shares one entry instead of each
+    pulling and building its own. The name is the normalized reference made
+    safe for a file name, then a hash of the reference: the first part turns
+    ``/``, ``:`` and ``@`` all into ``_``, so ``repo@sha256:<hex>`` and a tag
+    named ``sha256_<hex>`` differ only in the hash.
+
+    The name depends on the string alone, not on which files exist, so the
+    pin a pull takes and its later release always agree on it.
+
+    Args:
+        image: Container image reference or path to a local tar archive.
+
+    Returns:
+        A name that is safe as a directory and file name.
+    """
+    if (
+        not isinstance(image, str)
+        or not image.strip()
+        or image.endswith(".tar")
+        or image.startswith(("/", "./", "../"))
+    ):
+        return sanitize_image_name(image)
+    registry, repo, reference = parse_image_ref(image)
+    if registry == "registry-1.docker.io":
+        registry = "docker.io"
+    separator = "@" if "@" in image else ":"
+    ref = f"{registry}/{repo}{separator}{reference}"
+    ref_hash = hashlib.sha256(ref.encode("utf-8")).hexdigest()[:16]
+    return f"{sanitize_image_name(ref)[:_CACHE_NAME_READABLE_CHARS]}-{ref_hash}"
 
 
 def get_platform_arch() -> str:
@@ -406,8 +457,12 @@ def extract_tar_layer(
         tar_fileobj = tar_input
 
     dir_mtimes = []
+    # Iterating reads the layer once; getmembers() first would decompress it
+    # twice, since extractfile() then rewinds a compressed stream. Not stream
+    # mode (r|*): it doesn't check where a gzip stream ends, so a layer cut
+    # short on a member boundary would extract without an error.
     with tarfile.open(fileobj=tar_fileobj, mode="r:*") as tar:
-        for member in tar.getmembers():
+        for member in tar:
             name = member.name.lstrip("/")
 
             # Prevent path traversal
@@ -963,7 +1018,7 @@ def pull_and_extract_container_image(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
 
-    safe_name = sanitize_image_name(image)
+    safe_name = image_cache_name(image)
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
@@ -1058,6 +1113,99 @@ def pull_and_extract_container_image(
                 fcntl.flock(f_lock, fcntl.LOCK_UN)
             except Exception:
                 pass
+
+
+def _download_blob(
+    url: str,
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+    stop: threading.Event,
+) -> BinaryIO:
+    """Download a registry blob into an anonymous temporary file.
+
+    Args:
+        url: The blob's URL.
+        headers: Request headers.
+        auth_header: The registry's ``Authorization`` value, if any.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for the temporary file.
+        stop: Set to end the download early.
+
+    Returns:
+        The file, rewound; a partial one if ``stop`` was set meanwhile.
+    """
+    blob = tempfile.TemporaryFile(dir=blob_dir)
+    if stop.is_set():
+        return blob
+    try:
+        req = _registry_request(url, headers, auth_header)
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+            while not stop.is_set():
+                # read1 returns what has arrived, so a stop takes effect soon.
+                chunk = resp.read1(1 << 20)
+                if not chunk:
+                    break
+                blob.write(chunk)
+        blob.seek(0)
+    except BaseException:
+        blob.close()
+        raise
+    return blob
+
+
+def _download_blobs(
+    urls: List[str],
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+) -> Iterator[BinaryIO]:
+    """Yield registry blobs in order, downloading a few of them at a time.
+
+    The caller extracts each layer while the ones after it download, and
+    closes each blob it gets. Closing the generator, as on an error, returns
+    at once: downloads still running stop at their next read, and the blobs
+    nobody took get closed.
+
+    Args:
+        urls: Blob URLs, in the order to yield them.
+        headers: Request headers.
+        auth_header: The registry's ``Authorization`` value, if any.
+        timeout_seconds: Network request timeout.
+        blob_dir: Directory for the temporary files.
+
+    Yields:
+        BinaryIO: Each blob, as a rewound temporary file.
+    """
+    stop = threading.Event()
+    pool = concurrent.futures.ThreadPoolExecutor(
+        max_workers=_LAYER_DOWNLOADS, thread_name_prefix="sandbox-layer-download"
+    )
+    downloads = [
+        pool.submit(
+            _download_blob, url, headers, auth_header, timeout_seconds, blob_dir, stop
+        )
+        for url in urls
+    ]
+    yielded = 0
+    try:
+        for download in downloads:
+            blob = download.result()
+            yielded += 1
+            yield blob
+    finally:
+        stop.set()
+        for download in downloads[yielded:]:
+            download.cancel()
+            download.add_done_callback(_close_blob)
+        pool.shutdown(wait=False)
+
+
+def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
+    if not download.cancelled() and download.exception() is None:
+        download.result().close()
 
 
 def _extract_image_layers(
@@ -1178,17 +1326,16 @@ def _extract_image_layers(
                 f"No layers found in manifest for image '{image}'"
             )
 
-        for layer in layers:
-            digest = layer["digest"]
-            blob_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/{digest}"
-            blob_req = _registry_request(blob_url, headers, auth_header)
-            with urllib.request.urlopen(blob_req, timeout=timeout_seconds) as blob_resp:
-                with tempfile.NamedTemporaryFile(
-                    dir=blob_dir, delete=True
-                ) as tmp_blob_file:
-                    shutil.copyfileobj(blob_resp, tmp_blob_file, length=64 * 1024)
-                    tmp_blob_file.seek(0)
-                    extract_tar_layer(tmp_blob_file, rootfs_dir, ownership=ownership)
+        blob_urls = [
+            f"{registry_base_url(registry)}/v2/{repo}/blobs/{layer['digest']}"
+            for layer in layers
+        ]
+        with contextlib.closing(
+            _download_blobs(blob_urls, headers, auth_header, timeout_seconds, blob_dir)
+        ) as blobs:
+            for blob in blobs:
+                with blob:
+                    extract_tar_layer(blob, rootfs_dir, ownership=ownership)
 
     except Exception as err:
         if isinstance(err, SandboxCreationError):
