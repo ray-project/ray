@@ -137,12 +137,23 @@ def test_repartition_e2e(
             assert "RepartitionSplit" in ds_stats.metadata
         assert "RepartitionReduce" in ds_stats.metadata
 
+    def _check_block_num_rows(ds, expected):
+        block_num_rows = ds._block_num_rows()
+        if (
+            shuffle
+            and DataContext.get_current().shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+        ):
+            # SHUFFLE_V2 reducers emit partitions in completion order, and empty
+            # partitions are emitted without a reduce task.
+            block_num_rows, expected = sorted(block_num_rows), sorted(expected)
+        assert block_num_rows == expected, block_num_rows
+
     ds = ray.data.range(10000, override_num_blocks=10).repartition(20, shuffle=shuffle)
     assert (
         ds._logical_plan.initial_num_blocks() == 20
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10000))
-    assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
+    _check_block_num_rows(ds, [500] * 20)
     _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
@@ -152,13 +163,9 @@ def test_repartition_e2e(
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
-        rows = ds._block_num_rows()
-        if DataContext.get_current().use_disk_based_hash_shuffle:
-            assert sorted(rows, reverse=True) == [10] * 2 + [0] * (40 - 2), rows
-        else:
-            assert rows == [10] * 2 + [0] * (40 - 2), rows
+        _check_block_num_rows(ds, [10] * 2 + [0] * (40 - 2))
     else:
-        assert ds._block_num_rows() == [1] * 20 + [0] * 20, ds._block_num_rows()
+        _check_block_num_rows(ds, [1] * 20 + [0] * 20)
     _check_repartition_usage_and_stats(ds)
 
     # Test case where number of rows does not divide equally into num_output_blocks.
@@ -173,13 +180,9 @@ def test_repartition_e2e(
             if DataContext.get_current().shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
             else [9, 9, 4, 0]
         )
-        rows = ds._block_num_rows()
-        if DataContext.get_current().use_disk_based_hash_shuffle:
-            assert sorted(rows, reverse=True) == expected_block_num_rows, rows
-        else:
-            assert rows == expected_block_num_rows, rows
+        _check_block_num_rows(ds, expected_block_num_rows)
     else:
-        assert ds._block_num_rows() == [5, 6, 5, 6], ds._block_num_rows()
+        _check_block_num_rows(ds, [5, 6, 5, 6])
     _check_repartition_usage_and_stats(ds)
 
     # Test case where we do not split on repartitioning.
@@ -188,7 +191,7 @@ def test_repartition_e2e(
         ds._logical_plan.initial_num_blocks() == 1
     ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10))
-    assert ds._block_num_rows() == [10], ds._block_num_rows()
+    _check_block_num_rows(ds, [10])
     _check_repartition_usage_and_stats(ds)
 
 
