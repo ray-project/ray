@@ -797,6 +797,14 @@ class RequestRouter(ABC):
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
+        # Invalidate the cached actor handle BEFORE we drop the replica from
+        # our tables.  ``RunningReplica.invalidate`` clears both the
+        # wrapper-level caches and the process-wide handle cache entry in
+        # ``RunningReplicaInfo``, so a subsequent GCS lookup starts fresh
+        # rather than reusing the stale handle for the dead actor.
+        dead_replica = self._replicas.get(replica_id)
+        if dead_replica is not None:
+            dead_replica.invalidate()
         self._replicas.pop(replica_id, None)
         self._replicas_list = list(self._replicas.values())
         self._replica_id_set.discard(replica_id)
@@ -922,6 +930,14 @@ class RequestRouter(ABC):
                 f"(+{len(added)} added, -{len(removed)} removed).",
                 extra={"log_to_stderr": False},
             )
+            # Invalidate actor-handle caches for replicas the controller just
+            # removed so we don't leave stale handles around.  This covers
+            # orderly scaling-down / rolling-upgrade removals that don't go
+            # through the async on_replica_actor_died path.
+            for replica_id in removed:
+                old = self._replicas.get(replica_id)
+                if old is not None:
+                    old.invalidate()
 
         # Get list of new replicas
         new_ids = new_replica_id_set - self._replica_id_set
@@ -1041,6 +1057,16 @@ class RequestRouter(ABC):
                         "Failed to fetch queue length for "
                         f"{replica.replica_id}. Replica is temporarily "
                         "unavailable."
+                    )
+                elif isinstance(t.exception(), ValueError):
+                    # Lazy handle resolution: ``ray.get_actor`` raises
+                    # ValueError when the actor no longer exists.  Treat
+                    # the same as ActorDiedError — the replica is gone and
+                    # should not be considered for future requests.
+                    self.on_replica_actor_died(replica.replica_id)
+                    msg += (
+                        " This replica will no longer be considered for "
+                        "requests."
                     )
 
                 logger.warning(msg)

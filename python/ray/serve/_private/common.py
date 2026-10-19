@@ -796,16 +796,33 @@ class RunningReplicaInfo:
 
         # Lock is now released.  Await outside the lock so other
         # coroutines / executor threads can make progress.
+        #
+        # ``asyncio.shield`` protects the shared in-flight future from
+        # being cancelled when a single waiter is cancelled.  Without
+        # it, cancelling one waiter would cancel the whole
+        # ``run_in_executor`` task and make every other waiter for the
+        # same actor fail with ``CancelledError`` (see Cursor Bugbot
+        # report on commit ee713d6).  ``shield`` preserves the
+        # single-flight coalescing while still letting cancelled
+        # waiters propagate ``CancelledError`` back to their own caller.
         try:
-            return await inflight
+            return await asyncio.shield(inflight)
         finally:
             # Clean up the in-flight map.  We intentionally keep the
             # cache entry (populated by the thread in get_actor_handle)
             # so subsequent lookups hit the fast path.
-            with self._cache_lock:
-                existing = self._inflight_resolutions.get(key)
-                if existing is inflight:
-                    del self._inflight_resolutions[key]
+            #
+            # Only remove if inflight is actually done — a waiter may
+            # have been cancelled while inflight itself (shielded above)
+            # is still running.  We don't want to orphan the shared
+            # future; let it stay in the map so other waiters can still
+            # join it.  When inflight eventually finishes the next
+            # waiter's finally will clean it up.
+            if inflight.done():
+                with self._cache_lock:
+                    existing = self._inflight_resolutions.get(key)
+                    if existing is inflight:
+                        del self._inflight_resolutions[key]
 
     @classmethod
     def invalidate_actor_handle(cls, actor_name: str) -> None:

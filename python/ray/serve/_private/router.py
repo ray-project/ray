@@ -1113,6 +1113,22 @@ class AsyncioRouter:
                     replica.replica_id
                 )
                 logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+        except ValueError:
+            # Lazy handle resolution: ``ray.get_actor`` raises ValueError
+            # when the actor no longer exists (replica died, GCS pruned it,
+            # ...).  With the old eager-construction flow this would have
+            # been caught during wrapper creation and the replica simply
+            # skipped.  Now it surfaces on the first send / probe / reserve
+            # so we treat it identically to ActorDiedError — drop the
+            # replica from rotation and retry with another.
+            if replica is not None:
+                self._active_request_router.on_replica_actor_died(
+                    replica.replica_id
+                )
+                logger.warning(
+                    f"{replica.replica_id} actor handle lookup failed "
+                    "(ValueError); marking as dead."
+                )
         finally:
             # Only release if callback wasn't registered (callback handles release).
             if replica is not None and not callback_registered:
@@ -1428,7 +1444,18 @@ class AsyncioRouter:
                 await self._resolve_args_with_metrics(pr)
             except ActorDiedError as e:
                 raise self._make_upstream_crash_error(e)
-            result = await replica.try_send_request(pr, with_rejection=False)
+            try:
+                result = await replica.try_send_request(pr, with_rejection=False)
+            except ValueError:
+                # Lazy handle resolution failure: ``ray.get_actor`` raised
+                # ValueError for a dead replica.  Mark dead before the broad
+                # ``except BaseException`` below releases the slot and re-raises.
+                self._active_request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} actor handle lookup failed "
+                    "(ValueError) during dispatch; marking as dead."
+                )
+                raise
         except BaseException:
             # Dispatch failed; release the reservation before re-raising.
             await self._release_slot_and_refresh_cache(selection, replica, force=True)
@@ -1512,6 +1539,20 @@ class AsyncioRouter:
                         replica.replica_id
                     )
                     logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                    is_retry = True
+                    continue
+                except ValueError:
+                    # Lazy handle resolution: ``ray.get_actor`` raises ValueError
+                    # when the actor no longer exists.  Slot reservation RPC
+                    # resolution failed before the request even reached the
+                    # replica — treat the same as ActorDiedError and retry.
+                    self._active_request_router.on_replica_actor_died(
+                        replica.replica_id
+                    )
+                    logger.warning(
+                        f"{replica.replica_id} actor handle lookup failed "
+                        "(ValueError) during slot reservation; marking as dead."
+                    )
                     is_retry = True
                     continue
 
@@ -1652,6 +1693,16 @@ class AsyncioRouter:
                     replica.replica_id
                 )
                 logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                continue
+            except ValueError:
+                # Lazy handle resolution failure: ``ray.get_actor`` raised
+                # ValueError for a dead replica.  Treat identically to
+                # ActorDiedError — mark dead and skip to the next replica.
+                self._active_request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} actor handle lookup failed "
+                    "(ValueError); skipping during broadcast."
+                )
                 continue
 
             # Proactively update the queue length cache.
