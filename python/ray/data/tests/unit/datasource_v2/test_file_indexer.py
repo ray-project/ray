@@ -55,6 +55,25 @@ def test_schema_aware_partition_pruner_uses_logical_values(
     assert not pruner.should_include(str(tmp_path / f"key={other}" / "data"))
 
 
+def test_schema_aware_partition_pruner_ignores_unused_logical_fields(tmp_path):
+    scheme = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
+    schema = pa.schema([("country", pa.string()), ("year", pa.int64())])
+    pruner = SchemaAwarePartitionPredicatePruner(scheme, col("country") == "US", schema)
+    assert pruner.should_include(
+        str(tmp_path / "country=US" / "year=invalid" / "data.parquet")
+    )
+    assert not pruner.should_include(
+        str(tmp_path / "country=CA" / "year=invalid" / "data.parquet")
+    )
+    year_pruner = SchemaAwarePartitionPredicatePruner(
+        scheme, col("year") == 2024, schema
+    )
+    with pytest.raises(pa.ArrowInvalid):
+        year_pruner.should_include(
+            str(tmp_path / "country=US" / "year=invalid" / "data.parquet")
+        )
+
+
 def test_schema_aware_partition_pruner_preserves_unknown_and_errors(tmp_path):
     scheme = Partitioning(
         PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}

@@ -67,6 +67,11 @@ def _evaluate_path_predicate(
     predicate: Expr, values: dict[str, Any], schema: pa.Schema | None
 ) -> bool | None:
     """Return unknown when a predicate needs values absent from the path."""
-    if not set(get_column_references(predicate)).issubset(values):
+    referenced_columns = set(get_column_references(predicate))
+    if not referenced_columns.issubset(values):
         return None
-    return _partition_table(values, schema).filter(predicate.to_pyarrow()).num_rows == 1
+    predicate_values = {
+        name: value for name, value in values.items() if name in referenced_columns
+    }
+    partition_table = _partition_table(predicate_values, schema)
+    return partition_table.filter(predicate.to_pyarrow()).num_rows == 1

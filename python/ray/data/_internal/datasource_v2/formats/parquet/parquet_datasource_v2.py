@@ -286,8 +286,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # parallel keeps driver-side schema inference bounded by the
         # slowest single read rather than the sum. ``executor.map``
         # preserves input order, which matters because the unified
-        # schema's field order follows the first schema's and
-        # ``sample_paths[0]`` drives partition discovery below.
+        # schema's field order follows the first schema's.
         #
         # NOTE: ``pq.read_schema`` only accepts a ``filesystem=`` kwarg in
         # recent pyarrow releases; older wheels in CI don't have it. Open

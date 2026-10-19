@@ -30,6 +30,24 @@ def _write(path, table):
     pq.write_table(table, str(path))
 
 
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_partition_filter_ignores_unprojected_logical_partition_field(
+    tmp_path, restore_ctx, merge_schema
+):
+    from ray.data.expressions import col
+
+    for identifier, country in [(1, "US"), (2, "CA")]:
+        path = tmp_path / f"country={country}" / "year=invalid" / "data.parquet"
+        path.parent.mkdir(parents=True)
+        _write(path, pa.table({"id": [identifier], "year": [2024]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path), merge_schema=merge_schema)
+    assert ds.schema().base_schema.field("year").type == pa.int64()
+    rows = ds.filter(expr=col("country") == "US").select_columns(["id"]).take_all()
+    assert rows == [{"id": 1}]
+
+
 @pytest.fixture
 def mixed_root_parquet(tmp_path):
     root = tmp_path / "root.parquet"
