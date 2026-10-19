@@ -9,9 +9,6 @@ import java.io.ObjectInput;
 /** Cpp actor handle implementation for cluster mode. */
 public class NativeCppActorHandle extends NativeActorHandle implements CppActorHandle {
 
-  // Preserve compatibility with handles serialized before weak-reference cleanup.
-  private static final long serialVersionUID = -203435930006206287L;
-
   NativeCppActorHandle(byte[] actorId) {
     this(actorId, false);
   }

@@ -25,9 +25,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public abstract class NativeActorHandle implements BaseActorHandle, Externalizable {
 
-  // Preserve compatibility with handles serialized before weak-reference cleanup.
-  private static final long serialVersionUID = 274415512118579246L;
-
   private static final FinalizableReferenceQueue REFERENCE_QUEUE = new FinalizableReferenceQueue();
 
   private static final Set<Reference<NativeActorHandle>> REFERENCES = Sets.newConcurrentHashSet();
