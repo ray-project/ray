@@ -12,7 +12,7 @@ This tutorial shows how to convert an existing XGBoost script to use Ray Train.
 
 In this tutorial, you learn how to do the following:
 
-1. Configure a {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
+1. Configure a {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
 1. Launch a distributed training job with a {class}`~ray.train.xgboost.XGBoostTrainer`.
 
@@ -35,9 +35,9 @@ trainer = XGBoostTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the Python code that executes on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-1. {class}`~ray.train.xgboost.XGBoostTrainer` launches the distributed training job.
+- `train_func` is the Python code that executes on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+- {class}`~ray.train.xgboost.XGBoostTrainer` launches the distributed training job.
 
 Compare an XGBoost training script with and without Ray Train.
 
