@@ -1,4 +1,5 @@
 # coding: utf-8
+import importlib
 import os
 import sys
 import tempfile
@@ -168,6 +169,23 @@ def test_pending_idle_timeout_s(monkeypatch, env_value, expected):
         get_test_config_path("test_ray_complex.yaml")
     ).get_cached_autoscaling_config()
     assert config.get_pending_idle_timeout_s() == expected
+
+
+def test_pending_idle_timeout_s_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", raising=False)
+    # Re-evaluate the constant without the env var set.
+    constants = importlib.reload(
+        importlib.import_module("ray.autoscaler._private.constants")
+    )
+    monkeypatch.setattr(
+        config_mod,
+        "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S",
+        constants.RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
+    )
+    config = FileConfigReader(
+        get_test_config_path("test_ray_complex.yaml")
+    ).get_cached_autoscaling_config()
+    assert config.get_pending_idle_timeout_s() is None
 
 
 def test_read_config():
