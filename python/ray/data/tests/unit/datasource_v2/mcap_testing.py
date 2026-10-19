@@ -7,6 +7,7 @@ collect without it.
 """
 
 import json
+import shutil
 from collections import defaultdict
 from typing import Any, Dict, List
 
@@ -239,6 +240,46 @@ def write_cut_short(path: str, source: str) -> str:
         data = f.read()
     with open(path, "wb") as f:
         f.write(data[: len(data) // 2])
+    return path
+
+
+def write_corrupt_chunk(path: str, source: str, index: int) -> str:
+    """Copy the MCAP file ``source`` to ``path`` with chunk ``index``'s compressed
+    bytes zeroed.
+
+    The summary stays readable, so the file is listed as usual, but
+    decompressing that chunk fails, as after a bad disk sector or transfer.
+    """
+    shutil.copyfile(source, path)
+    chunk = summary_of(path).chunk_indexes[index]
+    start = chunk.chunk_start_offset + chunk.chunk_length - chunk.compressed_size
+    with open(path, "r+b") as f:
+        f.seek(start)
+        f.write(bytes(chunk.compressed_size))
+    return path
+
+
+# Where a chunk record's compression name starts: after the opcode (1 byte),
+# the record length (8), the message start and end times (8 each), the
+# uncompressed size (8), its CRC (4) and the name's length (4).
+CHUNK_COMPRESSION_NAME = 1 + 8 + 8 + 8 + 8 + 4 + 4
+
+
+def write_corrupt_chunk_header(path: str, source: str, index: int) -> str:
+    """Copy the MCAP file ``source`` to ``path`` with chunk ``index``'s
+    compression name, ``zstd``, overwritten by bytes that are not UTF-8.
+
+    The summary stays readable, so the file is listed as usual, but that chunk
+    record no longer parses, before anything is decompressed.
+    """
+    shutil.copyfile(source, path)
+    chunk = summary_of(path).chunk_indexes[index]
+    name_at = chunk.chunk_start_offset + CHUNK_COMPRESSION_NAME
+    with open(path, "r+b") as f:
+        f.seek(name_at)
+        assert f.read(4) == b"zstd"
+        f.seek(name_at)
+        f.write(b"\xff" * 4)
     return path
 
 
