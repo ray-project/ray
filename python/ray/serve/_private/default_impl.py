@@ -161,7 +161,8 @@ class CreateRouterCallable(Protocol):
         handle_id: str,
         deployment_id: DeploymentID,
         handle_options: InitHandleOptions,
-    ) -> Router: ...
+    ) -> Router:
+        ...
 
 
 def create_router(
