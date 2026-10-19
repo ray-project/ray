@@ -10,14 +10,13 @@ from ray.train.v2._internal.state.export import (
     _truncate_ras_report,
 )
 from ray.train.v2._internal.state.schema import (
-    NcclCommunicatorHangState,
+    NcclCommunicator,
     NcclCommunicatorState,
     NcclHangDetectorStatus,
-    NcclHangStopReason,
+    NcclHangDisabledReason,
     NcclHangTrigger,
     RunAttemptStatus,
     RunStatus,
-    StalledRanks,
     TrainNcclHangEvent,
 )
 from ray.train.v2._internal.state.state_actor import (
@@ -659,28 +658,28 @@ def _create_nccl_hang_event(**overrides) -> TrainNcclHangEvent:
         poll_index=44,
         timestamp_ms=1760000660123,
         detector_status=NcclHangDetectorStatus.ACTIVE,
-        triggers=[NcclHangTrigger.CONFIRMED, NcclHangTrigger.SUSPECTED],
-        message="NCCL hang detected by the Ray Train hang detector callback!",
+        triggers=[
+            NcclHangTrigger.SUSPECTED,
+            NcclHangTrigger.CONFIRMED,
+            NcclHangTrigger.RECOVERED,
+        ],
         ras_text_report="RAS report",
         diagnostics_dir="s3://bucket/run/hang_detector",
         communicators=[
-            NcclCommunicatorState(
+            NcclCommunicator(
                 communicator_id="0x8a3f1c2b",
-                state=NcclCommunicatorHangState.CONFIRMED,
+                state=NcclCommunicatorState.CONFIRMED,
                 stalled_since_ms=1760000060123,
-                stall_duration_s=600.0,
-                stalled_ranks=[
-                    StalledRanks(
-                        op="AllReduce", launch_count=622, world_ranks=[0, 1, 3]
-                    ),
-                    StalledRanks(op="AllReduce", launch_count=621, world_ranks=[2]),
-                ],
             ),
-            NcclCommunicatorState(
+            NcclCommunicator(
                 communicator_id="0x11aa22bb",
-                state=NcclCommunicatorHangState.SUSPECTED,
+                state=NcclCommunicatorState.SUSPECTED,
                 stalled_since_ms=1760000600123,
-                stall_duration_s=60.0,
+            ),
+            NcclCommunicator(
+                communicator_id="0x99cc00dd",
+                state=NcclCommunicatorState.RECOVERED,
+                stalled_since_ms=1760000500123,
             ),
         ],
     )
@@ -692,6 +691,9 @@ def test_export_nccl_hang_event(enable_export_api_write):
     """Every field of a hang event is exported to the hang log file, and none
     to the train state file."""
     state_actor = get_or_create_state_actor()
+    lifecycle = dict(
+        triggers=[], ras_text_report=None, diagnostics_dir=None, communicators=[]
+    )
     ray.get(
         [
             state_actor.export_train_nccl_hang_event.remote(_create_nccl_hang_event()),
@@ -699,18 +701,21 @@ def test_export_nccl_hang_event(enable_export_api_write):
                 _create_nccl_hang_event(
                     poll_index=45,
                     detector_status=NcclHangDetectorStatus.STOPPED,
-                    stop_reason=NcclHangStopReason.WORKER_GROUP_SHUTDOWN,
-                    triggers=[],
-                    message="",
-                    ras_text_report=None,
-                    diagnostics_dir=None,
-                    communicators=[],
+                    **lifecycle,
+                )
+            ),
+            state_actor.export_train_nccl_hang_event.remote(
+                _create_nccl_hang_event(
+                    poll_index=46,
+                    detector_status=NcclHangDetectorStatus.DISABLED,
+                    disabled_reason=NcclHangDisabledReason.INTERNAL_ERROR,
+                    **lifecycle,
                 )
             ),
         ]
     )
 
-    active, stopped = _get_exported_data(_get_nccl_hang_export_file_path())
+    active, stopped, disabled = _get_exported_data(_get_nccl_hang_export_file_path())
     assert active["source_type"] == "EXPORT_TRAIN_NCCL_HANG"
     assert active["event_data"] == {
         "schema_version": 1,
@@ -719,41 +724,35 @@ def test_export_nccl_hang_event(enable_export_api_write):
         "poll_index": "44",
         "timestamp_ms": "1760000660123",
         "detector_status": "ACTIVE",
-        "triggers": ["CONFIRMED", "SUSPECTED"],
-        "message": "NCCL hang detected by the Ray Train hang detector callback!",
+        "triggers": ["SUSPECTED", "CONFIRMED", "RECOVERED"],
         "ras_text_report": "RAS report",
         "diagnostics_dir": "s3://bucket/run/hang_detector",
         "communicators": [
             {
                 "communicator_id": "0x8a3f1c2b",
-                "state": "CONFIRMED",
+                "state": "COMMUNICATOR_CONFIRMED",
                 "stalled_since_ms": "1760000060123",
-                "stall_duration_s": 600.0,
-                "stalled_ranks": [
-                    {
-                        "op": "AllReduce",
-                        "launch_count": "622",
-                        "world_ranks": [0, 1, 3],
-                    },
-                    {"op": "AllReduce", "launch_count": "621", "world_ranks": [2]},
-                ],
             },
             {
                 "communicator_id": "0x11aa22bb",
-                "state": "SUSPECTED",
+                "state": "COMMUNICATOR_SUSPECTED",
                 "stalled_since_ms": "1760000600123",
-                "stall_duration_s": 60.0,
-                "stalled_ranks": [],
+            },
+            {
+                "communicator_id": "0x99cc00dd",
+                "state": "COMMUNICATOR_RECOVERED",
+                "stalled_since_ms": "1760000500123",
             },
         ],
     }
     # Unset optional fields are left out, so readers can tell them from "".
     assert stopped["event_data"]["detector_status"] == "STOPPED"
-    assert stopped["event_data"]["stop_reason"] == "worker_group_shutdown"
-    assert stopped["event_data"]["triggers"] == []
-    assert stopped["event_data"]["communicators"] == []
-    for absent in ("ras_text_report", "diagnostics_dir"):
+    for absent in ("disabled_reason", "ras_text_report", "diagnostics_dir"):
         assert absent not in stopped["event_data"]
+    assert disabled["event_data"]["detector_status"] == "DISABLED"
+    assert disabled["event_data"]["disabled_reason"] == "INTERNAL_ERROR"
+    assert disabled["event_data"]["triggers"] == []
+    assert disabled["event_data"]["communicators"] == []
 
     # The hang events never reach the train state file (which exists, empty,
     # as every export type is enabled).
@@ -848,6 +847,8 @@ def test_export_nccl_hang_event_helper(enable_export_api_write):
 def test_export_nccl_hang_event_helper_never_raises(monkeypatch):
     from ray.train.v2._internal.state import state_manager
 
+    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: True)
+
     def boom():
         raise RuntimeError("GCS unavailable")
 
@@ -856,54 +857,55 @@ def test_export_nccl_hang_event_helper_never_raises(monkeypatch):
 
 
 class _FakeMethod:
-    def __init__(self, result=None):
-        self.result = result
+    def __init__(self):
         self.calls = []
 
     def remote(self, *args):
         self.calls.append(args)
-        return self.result
 
 
 class _FakeStateActor:
-    def __init__(self, enabled: bool):
-        self.is_nccl_hang_export_enabled = _FakeMethod(result=enabled)
+    def __init__(self):
         self.export_train_nccl_hang_event = _FakeMethod()
 
 
-@pytest.mark.parametrize("enabled", [True, False])
-def test_export_nccl_hang_event_helper_looks_up_the_actor_once(monkeypatch, enabled):
-    """The actor and whether it exports are looked up on the first event only,
-    and nothing is sent to an actor that would drop it."""
+def test_export_nccl_hang_event_helper_without_ray(monkeypatch):
+    """The exporter never starts Ray to look up the actor."""
     from ray.train.v2._internal.state import state_manager
 
-    actor = _FakeStateActor(enabled)
+    def get_state_actor():
+        raise AssertionError("Looked up the actor without Ray running.")
+
+    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: False)
+    monkeypatch.setattr(state_manager, "get_state_actor", get_state_actor)
+    NcclHangEventExporter().export(_create_nccl_hang_event())
+
+
+def test_export_nccl_hang_event_helper_looks_up_the_actor_once(monkeypatch):
+    """The actor is looked up on the first event only, and every event is sent
+    without waiting on it."""
+    from ray.train.v2._internal.state import state_manager
+
+    actor = _FakeStateActor()
     lookups = []
 
     def get_state_actor():
         lookups.append(1)
         return actor
 
+    def no_blocking_get(*args, **kwargs):
+        raise AssertionError("The exporter must never wait on the actor.")
+
     monkeypatch.setattr(state_manager, "get_state_actor", get_state_actor)
-    monkeypatch.setattr(state_manager.ray, "get", lambda ref, timeout: ref)
+    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(state_manager.ray, "get", no_blocking_get)
 
     exporter = NcclHangEventExporter()
     for _ in range(3):
         exporter.export(_create_nccl_hang_event())
 
     assert len(lookups) == 1
-    assert len(actor.is_nccl_hang_export_enabled.calls) == 1
-    assert len(actor.export_train_nccl_hang_event.calls) == (3 if enabled else 0)
-
-
-def test_state_actor_reports_whether_nccl_hang_export_is_enabled(
-    enable_export_api_write,
-):
-    assert ray.get(get_or_create_state_actor().is_nccl_hang_export_enabled.remote())
-
-
-def test_state_actor_reports_nccl_hang_export_disabled(ray_start_4_cpus):
-    assert not ray.get(get_or_create_state_actor().is_nccl_hang_export_enabled.remote())
+    assert len(actor.export_train_nccl_hang_event.calls) == 3
 
 
 if __name__ == "__main__":

@@ -398,9 +398,9 @@ def _read_nccl_hang_events():
 
 
 def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
-    """An induced hang is exported as a SUSPECTED poll then a CONFIRMED poll
-    (with NCCL's report and the diagnostics directory), then STOPPED as the
-    failed worker group shuts down."""
+    """An induced hang is exported as the attempt's first poll, a SUSPECTED
+    poll then a CONFIRMED poll (both with NCCL's report, the latter with the
+    diagnostics directory), then STOPPED as the failed worker group shuts down."""
     err = run_train_fn(straggler_train_fn, num_workers=2, storage_path=tmp_path)
     _assert_outcome(err, HANG)
 
@@ -410,6 +410,7 @@ def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
     )
     events = _read_nccl_hang_events()
     assert [(e["detector_status"], e["triggers"]) for e in events] == [
+        ("ACTIVE", []),
         ("ACTIVE", ["SUSPECTED"]),
         ("ACTIVE", ["CONFIRMED"]),
         ("STOPPED", []),
@@ -421,14 +422,15 @@ def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
     assert {e["run_id"] for e in events} == {run.id}
     assert len({e["attempt_id"] for e in events}) == 1
 
-    suspected, confirmed, stopped = events
+    started, suspected, confirmed, stopped = events
+    assert started["communicators"] == []
     assert suspected["ras_text_report"]
     assert confirmed["ras_text_report"]
     assert confirmed["diagnostics_dir"].endswith("hang_detector")
     [comm] = confirmed["communicators"]
-    assert comm["state"] == "CONFIRMED" and comm["stalled_ranks"]
-    assert stopped["stop_reason"] == "worker_group_shutdown"
-    assert [c["state"] for c in stopped["communicators"]] == ["CONFIRMED"]
+    assert comm["state"] == "COMMUNICATOR_CONFIRMED"
+    assert comm["stalled_since_ms"] == suspected["communicators"][0]["stalled_since_ms"]
+    assert [c["state"] for c in stopped["communicators"]] == ["COMMUNICATOR_CONFIRMED"]
 
 
 if __name__ == "__main__":

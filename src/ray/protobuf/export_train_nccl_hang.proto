@@ -19,44 +19,69 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 // This message defines the event_data stored by the export API for
-// EXPORT_TRAIN_NCCL_HANG type events. The Ray Train NCCL hang detector emits
-// one event per poll whose outcome it reports (a communicator newly suspected
-// or still suspected, confirmed, or recovered), and one when it stops watching
-// an attempt with a communicator still stalled. Each event is a snapshot of
-// every non-healthy communicator, so the newest event of an attempt is the
-// detector's current state for that attempt.
+// EXPORT_TRAIN_NCCL_HANG type events, emitted by the Ray Train NCCL hang
+// detector. This schema is public and any changes must be backward compatible.
+//
+// Each event is a snapshot of every communicator the detector considers
+// stalled, so the newest event of an attempt (by `poll_index`) is the
+// detector's current state for that attempt. Events are emitted:
+//   - ACTIVE, with no triggers, on the first poll of each attempt.
+//   - ACTIVE, with triggers, on each poll that suspects, confirms or sees a
+//     recovery of a communicator.
+//   - STOPPED when the attempt's worker group shuts down, ending the attempt's
+//     events. A later attempt of the run starts again with ACTIVE.
+//   - DISABLED when the detector gives up for the rest of the run. No further
+//     events are emitted for the run, for this or any later attempt.
 //
 // Kept out of export_train_state.proto so that the Train run schema version
 // is unaffected by changes to this event.
 message ExportTrainNcclHangEventData {
-  // Ray Train world ranks that launched a collective the same number of times.
-  message StalledRanks {
-    // The collective, e.g. "AllReduce".
-    string op = 1;
-    // How many of `op` these ranks have launched on the communicator.
-    int64 launch_count = 2;
-    // The Ray Train world ranks at `launch_count`. Ranks of the communicator
-    // without a matching Ray Train worker are omitted.
-    repeated int32 world_ranks = 3;
+  enum DetectorStatus {
+    DETECTOR_STATUS_UNSPECIFIED = 0;
+    // Watching the attempt.
+    ACTIVE = 1;
+    // Stopped watching the attempt, as its worker group shut down.
+    STOPPED = 2;
+    // Disabled for the rest of the run.
+    DISABLED = 3;
   }
 
-  // The detector's view of one communicator at this poll.
-  message CommunicatorState {
+  enum DisabledReason {
+    DISABLED_REASON_UNSPECIFIED = 0;
+    // `ncclras` can't be used, e.g. the binary is missing or rejects the
+    // query, which a change to the cluster's setup can fix.
+    RAS_UNAVAILABLE = 1;
+    // The detector hit an unexpected error.
+    INTERNAL_ERROR = 2;
+  }
+
+  enum Trigger {
+    TRIGGER_UNSPECIFIED = 0;
+    // A communicator newly reached the suspicion threshold, or the periodic
+    // "still suspected" warning fired.
+    SUSPECTED = 1;
+    // A communicator stalled for the confirm duration.
+    CONFIRMED = 2;
+    // A suspected or confirmed communicator made progress again.
+    RECOVERED = 3;
+  }
+
+  enum CommunicatorState {
+    COMMUNICATOR_STATE_UNSPECIFIED = 0;
+    COMMUNICATOR_SUSPECTED = 1;
+    COMMUNICATOR_CONFIRMED = 2;
+    // Recovered on the poll of this event, so this is its last appearance.
+    COMMUNICATOR_RECOVERED = 3;
+  }
+
+  // The detector's view of one communicator.
+  message Communicator {
     // The NCCL RAS communicator hash.
     string communicator_id = 1;
-    // "SUSPECTED", "CONFIRMED" or "RECOVERED" (recovered on this poll). A
-    // string rather than an enum so readers can ignore a state added later.
-    string state = 2;
+    CommunicatorState state = 2;
     // When the stall began: the poll before the first frozen poll, in
     // milliseconds since the UNIX epoch.
     int64 stalled_since_ms = 3;
-    // How long the communicator has been stalled, the final duration for
-    // RECOVERED.
-    double stall_duration_s = 4;
-    // The communicator's ranks grouped by launch count, one entry per
-    // (op, launch_count) of each collective they disagree on. Empty for
-    // RECOVERED.
-    repeated StalledRanks stalled_ranks = 5;
   }
 
   // Version of the message schema, starting at 1.
@@ -65,30 +90,24 @@ message ExportTrainNcclHangEventData {
   string run_id = 2;
   // The run attempt id (the `attempt_id` of ExportTrainRunAttemptEventData).
   string attempt_id = 3;
-  // The detector's poll counter for the attempt, starting at 1 and strictly
-  // increasing; the ordering key of the events of an attempt.
+  // The order of the events of an attempt, strictly increasing from 1.
   int64 poll_index = 4;
-  // When the poll was taken (when the detector stopped, for STOPPED), in
-  // milliseconds since the UNIX epoch.
+  // When the poll was taken (when the detector stopped, for STOPPED and
+  // DISABLED), in milliseconds since the UNIX epoch.
   int64 timestamp_ms = 5;
-  // "ACTIVE", or "STOPPED" once the detector stops watching the attempt.
-  string detector_status = 6;
-  // Why the detector stopped, "worker_group_shutdown" or "detector_disabled".
-  // Set when STOPPED only.
-  optional string stop_reason = 7;
-  // What this poll reported, a subset of "SUSPECTED", "CONFIRMED" and
-  // "RECOVERED"; empty for STOPPED.
-  repeated string triggers = 8;
-  // The detector's log headline(s) for this poll, may be empty.
-  string message = 9;
-  // The `ncclras -f text` report, on the polls that fetched it. Capped at
-  // 32 KB, tail truncated.
-  optional string ras_text_report = 10;
+  DetectorStatus detector_status = 6;
+  // Why the detector was disabled. Set for DISABLED only.
+  optional DisabledReason disabled_reason = 7;
+  // What this poll reported. Empty for STOPPED, DISABLED and the first
+  // poll's ACTIVE event.
+  repeated Trigger triggers = 8;
+  // The `ncclras -f text` report, on the first poll of a suspected hang and
+  // on its confirmation. Capped at 32 KB, keeping the head.
+  optional string ras_text_report = 9;
   // Where the diagnostics were uploaded (`<experiment_fs_path>/hang_detector`),
-  // on polls with the CONFIRMED trigger.
-  optional string diagnostics_dir = 11;
-  // Every communicator past the suspicion threshold at this poll, plus those
-  // that recovered on this poll. When STOPPED, the communicators that were
-  // stalled at the stop, with their last state.
-  repeated CommunicatorState communicators = 12;
+  // with the CONFIRMED trigger.
+  optional string diagnostics_dir = 10;
+  // Every suspected or confirmed communicator, plus those that recovered on
+  // this poll. For STOPPED and DISABLED, those still stalled at the stop.
+  repeated Communicator communicators = 11;
 }

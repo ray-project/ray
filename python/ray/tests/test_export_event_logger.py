@@ -42,29 +42,18 @@ def _nccl_hang_event(**overrides) -> ExportTrainNcclHangEventData:
         attempt_id="attempt",
         poll_index=44,
         timestamp_ms=1760000660123,
-        detector_status="ACTIVE",
-        triggers=["CONFIRMED", "SUSPECTED"],
-        message="NCCL hang detected",
+        detector_status=Data.ACTIVE,
+        triggers=[Data.SUSPECTED, Data.CONFIRMED],
         communicators=[
-            Data.CommunicatorState(
+            Data.Communicator(
                 communicator_id="0x8a3f1c2b",
-                state="CONFIRMED",
+                state=Data.COMMUNICATOR_CONFIRMED,
                 stalled_since_ms=1760000060123,
-                stall_duration_s=600.0,
-                stalled_ranks=[
-                    Data.StalledRanks(
-                        op="AllReduce", launch_count=622, world_ranks=[0, 1, 3]
-                    ),
-                    Data.StalledRanks(
-                        op="AllReduce", launch_count=621, world_ranks=[2]
-                    ),
-                ],
             ),
-            Data.CommunicatorState(
+            Data.Communicator(
                 communicator_id="0x11aa22bb",
-                state="SUSPECTED",
+                state=Data.COMMUNICATOR_SUSPECTED,
                 stalled_since_ms=1760000600123,
-                stall_duration_s=60.0,
             ),
         ],
     )
@@ -89,8 +78,10 @@ def test_nccl_hang_event_written_to_its_own_file(tmp_path, fresh_export_loggers)
 
 
 def test_nccl_hang_event_json_shape(tmp_path, fresh_export_loggers):
-    """The JSON line is a cross-repo contract: int64 fields are strings, unset
-    optional fields are omitted and empty repeated fields are printed."""
+    """The JSON line is a cross-repo contract: enums are their names, int64
+    fields are strings, unset optional fields are omitted and empty repeated
+    fields are printed."""
+    Data = ExportTrainNcclHangEventData
     logger = get_export_event_logger(EventLogType.TRAIN_NCCL_HANG, tmp_path)
     logger.send_event(
         _nccl_hang_event(ras_text_report="RAS report", diagnostics_dir="s3://b/hd")
@@ -98,15 +89,14 @@ def test_nccl_hang_event_json_shape(tmp_path, fresh_export_loggers):
     logger.send_event(
         _nccl_hang_event(
             poll_index=45,
-            detector_status="STOPPED",
-            stop_reason="worker_group_shutdown",
+            detector_status=Data.DISABLED,
+            disabled_reason=Data.RAS_UNAVAILABLE,
             triggers=[],
-            message="",
             communicators=[],
         )
     )
 
-    active, stopped = [
+    active, disabled = [
         event["event_data"]
         for event in _read_events(
             tmp_path / "export_events" / "event_EXPORT_TRAIN_NCCL_HANG.log"
@@ -119,44 +109,31 @@ def test_nccl_hang_event_json_shape(tmp_path, fresh_export_loggers):
         "poll_index": "44",
         "timestamp_ms": "1760000660123",
         "detector_status": "ACTIVE",
-        "triggers": ["CONFIRMED", "SUSPECTED"],
-        "message": "NCCL hang detected",
+        "triggers": ["SUSPECTED", "CONFIRMED"],
         "ras_text_report": "RAS report",
         "diagnostics_dir": "s3://b/hd",
         "communicators": [
             {
                 "communicator_id": "0x8a3f1c2b",
-                "state": "CONFIRMED",
+                "state": "COMMUNICATOR_CONFIRMED",
                 "stalled_since_ms": "1760000060123",
-                "stall_duration_s": 600.0,
-                "stalled_ranks": [
-                    {
-                        "op": "AllReduce",
-                        "launch_count": "622",
-                        "world_ranks": [0, 1, 3],
-                    },
-                    {"op": "AllReduce", "launch_count": "621", "world_ranks": [2]},
-                ],
             },
             {
                 "communicator_id": "0x11aa22bb",
-                "state": "SUSPECTED",
+                "state": "COMMUNICATOR_SUSPECTED",
                 "stalled_since_ms": "1760000600123",
-                "stall_duration_s": 60.0,
-                "stalled_ranks": [],
             },
         ],
     }
-    assert stopped == {
+    assert disabled == {
         "schema_version": 1,
         "run_id": "run",
         "attempt_id": "attempt",
         "poll_index": "45",
         "timestamp_ms": "1760000660123",
-        "detector_status": "STOPPED",
-        "stop_reason": "worker_group_shutdown",
+        "detector_status": "DISABLED",
+        "disabled_reason": "RAS_UNAVAILABLE",
         "triggers": [],
-        "message": "",
         "communicators": [],
     }
 

@@ -19,6 +19,10 @@ from ray.train.v2._internal.state.schema import (
     BackendConfig,
     DataConfig,
     ExecutionOptions,
+    NcclCommunicatorState,
+    NcclHangDetectorStatus,
+    NcclHangDisabledReason,
+    NcclHangTrigger,
     RunAttemptStatus,
     RunConfig,
     RunSettings,
@@ -344,6 +348,40 @@ def _truncate_ras_report(report: str, max_bytes: int = _MAX_RAS_REPORT_BYTES) ->
     return f"{head}\n... [truncated {dropped} bytes]"
 
 
+_NCCL_HANG_DETECTOR_STATUS_MAP = {
+    NcclHangDetectorStatus.ACTIVE: ProtoTrainNcclHangEvent.DetectorStatus.ACTIVE,
+    NcclHangDetectorStatus.STOPPED: ProtoTrainNcclHangEvent.DetectorStatus.STOPPED,
+    NcclHangDetectorStatus.DISABLED: ProtoTrainNcclHangEvent.DetectorStatus.DISABLED,
+}
+
+_NCCL_HANG_DISABLED_REASON_MAP = {
+    NcclHangDisabledReason.RAS_UNAVAILABLE: (
+        ProtoTrainNcclHangEvent.DisabledReason.RAS_UNAVAILABLE
+    ),
+    NcclHangDisabledReason.INTERNAL_ERROR: (
+        ProtoTrainNcclHangEvent.DisabledReason.INTERNAL_ERROR
+    ),
+}
+
+_NCCL_HANG_TRIGGER_MAP = {
+    NcclHangTrigger.SUSPECTED: ProtoTrainNcclHangEvent.Trigger.SUSPECTED,
+    NcclHangTrigger.CONFIRMED: ProtoTrainNcclHangEvent.Trigger.CONFIRMED,
+    NcclHangTrigger.RECOVERED: ProtoTrainNcclHangEvent.Trigger.RECOVERED,
+}
+
+_NCCL_COMMUNICATOR_STATE_MAP = {
+    NcclCommunicatorState.SUSPECTED: (
+        ProtoTrainNcclHangEvent.CommunicatorState.COMMUNICATOR_SUSPECTED
+    ),
+    NcclCommunicatorState.CONFIRMED: (
+        ProtoTrainNcclHangEvent.CommunicatorState.COMMUNICATOR_CONFIRMED
+    ),
+    NcclCommunicatorState.RECOVERED: (
+        ProtoTrainNcclHangEvent.CommunicatorState.COMMUNICATOR_RECOVERED
+    ),
+}
+
+
 def train_nccl_hang_event_to_proto(
     event: TrainNcclHangEvent,
 ) -> ProtoTrainNcclHangEvent:
@@ -357,12 +395,13 @@ def train_nccl_hang_event_to_proto(
         attempt_id=event.attempt_id,
         poll_index=event.poll_index,
         timestamp_ms=event.timestamp_ms,
-        detector_status=event.detector_status.value,
-        stop_reason=(
-            event.stop_reason.value if event.stop_reason is not None else None
+        detector_status=_NCCL_HANG_DETECTOR_STATUS_MAP[event.detector_status],
+        disabled_reason=(
+            _NCCL_HANG_DISABLED_REASON_MAP[event.disabled_reason]
+            if event.disabled_reason is not None
+            else None
         ),
-        triggers=[trigger.value for trigger in event.triggers],
-        message=event.message,
+        triggers=[_NCCL_HANG_TRIGGER_MAP[trigger] for trigger in event.triggers],
         ras_text_report=(
             _truncate_ras_report(event.ras_text_report)
             if event.ras_text_report is not None
@@ -370,19 +409,10 @@ def train_nccl_hang_event_to_proto(
         ),
         diagnostics_dir=event.diagnostics_dir,
         communicators=[
-            ProtoTrainNcclHangEvent.CommunicatorState(
+            ProtoTrainNcclHangEvent.Communicator(
                 communicator_id=comm.communicator_id,
-                state=comm.state.value,
+                state=_NCCL_COMMUNICATOR_STATE_MAP[comm.state],
                 stalled_since_ms=comm.stalled_since_ms,
-                stall_duration_s=comm.stall_duration_s,
-                stalled_ranks=[
-                    ProtoTrainNcclHangEvent.StalledRanks(
-                        op=ranks.op,
-                        launch_count=ranks.launch_count,
-                        world_ranks=ranks.world_ranks,
-                    )
-                    for ranks in comm.stalled_ranks
-                ],
             )
             for comm in event.communicators
         ],
