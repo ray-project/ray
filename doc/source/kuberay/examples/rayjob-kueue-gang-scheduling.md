@@ -8,7 +8,7 @@ myst:
 
 # Gang Scheduling with RayJob and Kueue
 
-This guide demonstrates how to use Kueue for gang scheduling RayJob resources, taking advantage of dynamic resource provisioning and queueing on Kubernetes. To illustrate the concepts, this guide uses the [Fine-tune a PyTorch Lightning Text Classifier with Ray Data](https://docs.ray.io/en/master/train/examples/lightning/lightning_cola_advanced.html) example.
+This guide demonstrates how to use Kueue for gang scheduling RayJob resources, taking advantage of dynamic resource provisioning and queueing on Kubernetes. To illustrate the concepts, this guide uses the [Fine-tune a PyTorch Lightning Text Classifier with Ray Data](../../train/examples/lightning/lightning-cola-advanced.ipynb) example.
 
 ## Gang scheduling
 
@@ -150,7 +150,7 @@ This example configures Kueue to orchestrate the gang scheduling of GPUs. Howeve
 
 ## Deploy a RayJob
 
-Download the RayJob that executes all the steps documented in [Fine-tune a PyTorch Lightning Text Classifier](https://docs.ray.io/en/master/train/examples/lightning/lightning_cola_advanced.html). The [source code](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/pytorch-text-classifier) is also in the KubeRay repository.
+Download the RayJob that executes all the steps documented in [Fine-tune a PyTorch Lightning Text Classifier](../../train/examples/lightning/lightning-cola-advanced.ipynb). The [source code](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/pytorch-text-classifier) is also in the KubeRay repository.
 
 ```bash
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-text-classifier/ray-job.pytorch-distributed-training.yaml

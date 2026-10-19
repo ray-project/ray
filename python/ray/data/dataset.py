@@ -109,6 +109,7 @@ from ray.data._internal.util import (
     ConsumptionAPI,
     _validate_min_bytes_per_file_args,
     _validate_rows_per_file_args,
+    create_streaming_split_dataset,
     explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
@@ -2344,9 +2345,10 @@ class Dataset:
 
         .. tip::
 
-            Repartitioning with ``keys`` hash-shuffles the whole dataset. If the
-            dataset is much larger than the cluster's aggregate object-store
-            memory, enable :ref:`disk-based shuffle <disk-based-shuffle>` by
+            Repartitioning with ``keys`` or ``shuffle=True`` shuffles the whole dataset.
+            Under ``ShuffleStrategy.SHUFFLE_V2``, if the dataset is much larger than
+            the cluster's aggregate object-store memory, enable
+            :ref:`disk-based shuffle <disk-based-shuffle>` by
             setting ``ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True`` or the
             environment variable ``RAY_DATA_ENABLE_DISK_SHUFFLE=1``.
 
@@ -2383,7 +2385,10 @@ class Dataset:
                 contains a subset of data rows from each input block, which
                 requires all-to-all data movement. When shuffle is disabled,
                 output blocks are created from adjacent input blocks,
-                minimizing data movement.
+                minimizing data movement. When shuffle is enabled with
+                ``ShuffleStrategy.SHUFFLE_V2`` and no keys, rows within each input
+                block are divided into contiguous slices and assigned to output
+                partitions in order.
             keys: List of key columns repartitioning will use to determine which
                 partition will row belong to after repartitioning (by applying
                 hash-partitioning algorithm to the whole dataset). Note that, this
@@ -2394,8 +2399,8 @@ class Dataset:
 
         Note that you must set either `num_blocks` or `target_num_rows_per_block`
         but not both.
-        Additionally note that this operation materializes the entire dataset in memory
-        when you set shuffle to True.
+        Additionally note that this operation materializes the entire dataset
+        when you set shuffle to True, using disk when disk-based shuffle is enabled.
 
         Returns:
             The repartitioned :class:`Dataset`.
@@ -2766,16 +2771,9 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
-        op = StreamingSplit(
-            num_splits=n,
-            equal=equal,
-            input_dependencies=[self._logical_plan.dag],
-            locality_hints=locality_hints,
+        split_dataset = create_streaming_split_dataset(
+            self, n, equal=equal, locality_hints=locality_hints
         )
-        logical_plan = LogicalPlan(op, self.context)
-        split_dataset = Dataset._from_parent(self, logical_plan)
-        split_dataset._set_uuid(self._uuid)
-
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
 
     @ConsumptionAPI

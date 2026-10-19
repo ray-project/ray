@@ -67,14 +67,33 @@ doc/source/ray-more-libs/api/
 @ doc_api
 ;
 
-# Data's prose pages are the only ones with a per-file doctest target
-# (`doctest_each` in doc/BUILD.bazel), so they're the only prose that the
-# "docs-example-test" opt-in can test file by file. Emit doc_example for
-# them, ahead of the prose skip rule below. Only the label-gated opt-in step
-# listens for that tag, so without the label this runs nothing. Add a library's
-# prose here when its doctest target moves to `doctest_each`.
-doc/source/data/*.md
-doc/source/data/*.rst
+# Prose under doc/source/ that Sphinx never renders as a page: autosummary
+# templates, include fragments, and prose beside the build inputs in the
+# `doc`-routed doc_code/ directories below. No per-file doctest target names any
+# of them, so they stay skipped rather than matching the doc_example rule below.
+doc/source/_*.md
+doc/source/_*.rst
+doc/source/cluster/doc_code/*.md
+doc/source/ray-contribute/doc_code/*.md
+# pass
+;
+
+# Documentation prose emits doc_example, so that the "docs-example-test" opt-in
+# can run the per-file doctest target (`doctest_each` in doc/BUILD.bazel) of a
+# changed page. Only the label-gated opt-in step listens for that tag, so
+# without the label no test runs. Which pages have a target is decided in
+# doc/BUILD.bazel, not here: the opt-in step selects targets by changed file
+# when it runs, and a page with no target selects nothing. A page rename, a
+# move, or a page gaining a runnable example needs no edit to this file.
+#
+# The cost: rayci marks a step's dependencies before Buildkite evaluates the
+# step's `if:` label guard, so every match also builds the opt-in step's images,
+# from cache, even when the step itself is skipped.
+#
+# The API reference rules above still claim their pages first. The prose skip
+# rule below still skips prose everywhere else in the repository.
+doc/source/*.md
+doc/source/*.rst
 @ doc_example
 ;
 
@@ -91,8 +110,9 @@ doc/source/data/*.rst
 #
 # Executable and config assets are deliberately not skipped here. They route
 # to the owning library's opt-in tag below, so the "docs-example-test" label
-# can run the tests that consume them. The API reference pages above are the one prose exception:
-# they emit doc_api and are matched by the earlier rule, before this one.
+# can run the tests that consume them. Most prose under doc/source/ never
+# reaches this rule: the API reference rules and the doc_example rule above
+# match it first.
 #
 # Static images stay doc-scoped, not a repo-wide *.png, and are listed here
 # ahead of the per-library rules because those rules match a whole directory and
@@ -406,6 +426,7 @@ doc/load_doc_cache.py
 doc/update_cache_env.py
 doc/rtd_doctor.py
 doc/test_no_new_rst.py
+doc/test_prose_doctest_targets.py
 doc/test_llms_txt.py
 .vale.ini
 .vale/
@@ -435,17 +456,15 @@ doc/source/core/examples/highly_parallel.ipynb
 # is the validation premerge actually offers for these files.
 #
 # Images and prose under these directories are unaffected -- the leading skip
-# rule matches them first, as it does everywhere else in the tree. So the
-# dreambooth page's `.. image::` targets stay skipped, consistent with every
-# other doc image, even though a rename would break the build the same way.
-# Widening the image policy is a separate decision and belongs in that rule.
+# rule matches them first, as it does everywhere else in the tree. So an
+# included `.. image::` target stays skipped, consistent with every other doc
+# image, even though a rename would break the build the same way. Widening the
+# image policy is a separate decision and belongs in that rule.
 #
-# These are directory rules, matching how doc/external/ is handled below, so a
-# few non-included assets under 05 (its Dockerfile, compute configs, and
-# requirements.txt) start the build too. That is a deliberate trade: the build
-# is the cheap step, and enumerating individual include targets would rot the
-# moment someone adds a literalinclude.
-doc/source/templates/05_dreambooth_finetuning/
+# These are directory rules, so a non-included asset added under one of them
+# starts the build too. That is a deliberate trade: the build is the cheap step,
+# and enumerating individual include targets would rot the moment someone adds
+# a literalinclude.
 doc/source/cluster/doc_code/
 doc/source/ray-contribute/doc_code/
 @ doc
@@ -494,10 +513,6 @@ doc/source/ray-observability/*BUILD.bazel
 # example suite, in the one doctestbuild environment. Library code changes still
 # run the default docs example steps through the library tags. The postmerge
 # build runs every docs example suite.
-#
-# doc/external/ holds a vendored PyTorch tutorial and the test that guards it
-# against upstream drift. Route the whole directory, because the tutorial script
-# is the test's `data` and editing it is what the hash check exists to catch.
 doc/source/data/
 doc/source/ray-more-libs/
 doc/source/serve/
@@ -506,7 +521,6 @@ doc/source/train/
 doc/source/tune/
 doc/source/core/
 doc/source/ray-observability/
-doc/external/
 @ doc_example
 ;
 
@@ -536,18 +550,11 @@ doc/source/_intersphinx/
 @ doc
 ;
 
-# Starter-template sources and the notebook authoring boilerplate. Sphinx never
-# reads any of these: `exclude_patterns` in doc/source/conf.py drops
-# `templates/*` from the build outright, and `_templates/template.ipynb` is a
-# file contributors copy, not a page. Nothing includes them either -- 01 through
-# 03 have no reference anywhere in the repo, and 04 is cited only as a GitHub
-# URL, from train/deepspeed.rst, train/huggingface-accelerate.rst, and the train
-# examples gallery, none of which any build step resolves. They also back no bazel target: doc/BUILD.bazel names
-# source/templates/ exactly once, as a doctest exclusion. So the catch-all was
-# starting the core docs example step for files that step cannot run and the
-# build does not read. 05_dreambooth_finetuning is the exception and is routed
-# to `doc` above, because a rendered Train page literalincludes it.
-doc/source/templates/
+# The notebook authoring boilerplate. Sphinx never reads it:
+# `_templates/template.ipynb` is a file contributors copy, not a page, nothing
+# includes it, and it backs no bazel target. So the catch-all was starting the
+# core docs example step for a file that step cannot run and the build does not
+# read.
 doc/source/_templates/
 # pass
 ;

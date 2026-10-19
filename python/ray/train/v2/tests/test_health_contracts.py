@@ -3,6 +3,7 @@ import sys
 import pytest
 
 from ray.train.health import (
+    ControllerProbe,
     Diagnose,
     Evaluator,
     Evict,
@@ -36,6 +37,15 @@ class Loss(WorkerProbe):
         return ProbeResult(metrics={"loss": 1.0})
 
 
+class CommProgress(ControllerProbe):
+    def __init__(self):
+        self.polls = 0
+
+    def poll(self):
+        self.polls += 1
+        return {"comm0": ProbeResult(metrics={"polls": float(self.polls)})}
+
+
 class Healthy(Evaluator):
     def evaluate(self, state):
         return Noop()
@@ -46,8 +56,9 @@ def test_probe_name_defaults_to_the_class_name():
     assert Named.probe_name() == "custom"
 
 
-def test_probe_result_defaults_to_no_timestamp():
+def test_probe_result_defaults_to_no_timestamp_and_no_error():
     assert ProbeResult().timestamp_s is None
+    assert ProbeResult().error is None
 
 
 def test_a_probe_must_implement_poll():
@@ -81,6 +92,20 @@ def test_evict_takes_its_nodes_by_keyword():
 def test_diagnose_needs_checks():
     with pytest.raises(TypeError):
         Diagnose(reason="slow")
+
+
+def test_a_controller_probe_reports_its_own_keys_and_keeps_state():
+    probe = CommProgress()
+    assert probe.poll() == {"comm0": ProbeResult(metrics={"polls": 1.0})}
+    assert probe.poll() == {"comm0": ProbeResult(metrics={"polls": 2.0})}
+
+
+def test_a_controller_probe_must_implement_poll():
+    class NoPoll(ControllerProbe):
+        pass
+
+    with pytest.raises(TypeError):
+        NoPoll()
 
 
 def test_an_evaluator_returns_one_decision():

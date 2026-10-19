@@ -232,12 +232,18 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  // Consume a RaySyncer sync message from another Raylet.
+  // Consume a batch of RaySyncer sync messages of one type from other Raylets.
   //
   // The two types of messages that are received are:
   //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
   //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
-  void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
+  //
+  // \param message_type The type every message in `messages` has.
+  // \param messages The messages received together. For RESOURCE_VIEW, the whole batch
+  //     is applied first, then scheduling runs once.
+  void ConsumeSyncMessages(
+      syncer::MessageType message_type,
+      std::vector<std::shared_ptr<const syncer::RaySyncMessage>> messages) override;
 
   // Generate a RaySyncer sync message to be sent to other Raylets.
   //

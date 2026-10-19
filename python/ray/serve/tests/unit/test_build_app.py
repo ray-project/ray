@@ -586,6 +586,28 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
+def test_build_app_adds_model_multiplexing_ingress_request_router(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class MultiplexedIngress:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def load_model(self, model_id: str) -> str:
+            return model_id
+
+    built_app = build_app(
+        MultiplexedIngress.bind(),
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    router = built_app.ingress_request_router_deployment
+    assert router is not None
+    assert router.name == "MultiplexedIngressRequestRouter"
+    assert router.max_ongoing_requests == 1000
+    assert router.init_args == (FakeDeploymentHandle("MultiplexedIngress", "default"),)
+
+
 def test_build_app_requires_ingress_request_router_to_be_single_deployment(
     monkeypatch,
 ):
@@ -790,19 +812,14 @@ def test_callable_uses_multiplexing_does_not_initialize_handles():
 @pytest.mark.parametrize(
     "haproxy_enabled, request_router_class, rejected",
     [
-        # A custom router on the ingress is rejected only under HAProxy, which
-        # load-balances ingress traffic and bypasses the Serve request router.
         (True, RoundRobinRouter, True),
         (False, RoundRobinRouter, False),
-        # The default router (left unset) is not custom.
         (True, None, False),
     ],
 )
 def test_build_app_rejects_only_custom_ingress_request_router_under_haproxy(
     monkeypatch, haproxy_enabled, request_router_class, rejected
 ):
-    """A custom ingress router is rejected only under HAProxy. The default
-    router and the no-HAProxy case build."""
     monkeypatch.setattr(
         "ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", haproxy_enabled
     )
@@ -838,9 +855,7 @@ def test_build_app_rejects_only_custom_ingress_request_router_under_haproxy(
 def test_build_app_allows_custom_ingress_request_router_in_direct_streaming(
     monkeypatch,
 ):
-    """Direct streaming attaches an ingress_request_router that delegates replica
-    selection back to the ingress deployment's router, so a custom router is
-    allowed even under HAProxy."""
+    """A user-provided /internal/route deployment permits a custom ingress router."""
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
 
     @serve.deployment(
@@ -869,8 +884,7 @@ def test_build_app_allows_custom_ingress_request_router_in_direct_streaming(
 
 
 def test_build_app_haproxy_allows_custom_router_on_non_ingress_deployment(monkeypatch):
-    """The guard targets only the ingress, so a custom router on a downstream
-    deployment is honored under HAProxy."""
+    """A custom router on a downstream deployment remains unchanged."""
     monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
 
     @serve.deployment(
