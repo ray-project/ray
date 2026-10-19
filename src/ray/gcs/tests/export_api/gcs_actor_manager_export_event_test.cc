@@ -183,6 +183,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
+        [](const PlacementGroupID &) { return true; },
         *raylet_client_pool_,
         *worker_client_pool_,
         /*ray_event_recorder=*/fake_ray_event_recorder_,

@@ -199,6 +199,9 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
+        [this](const PlacementGroupID &placement_group_id) {
+          return registered_placement_groups_.contains(placement_group_id);
+        },
         *raylet_client_pool_,
         *worker_client_pool_,
         *fake_ray_event_recorder_,
@@ -247,6 +250,36 @@ class GcsActorManagerTest : public ::testing::Test {
                : nullptr;
   }
 
+  /**
+   * @brief Registers and creates an actor that requires a placement group. The
+   * placement group is made to exist.
+   *
+   * @param placement_group_id The placement group the actor requires.
+   * @param max_restarts The max restarts of the actor.
+   * @return The actor, in state PENDING_CREATION.
+   */
+  std::shared_ptr<gcs::GcsActor> CreateActorInPlacementGroup(
+      const PlacementGroupID &placement_group_id, int max_restarts) {
+    registered_placement_groups_.insert(placement_group_id);
+    auto request = GenRegisterActorRequest(JobID::FromInt(1), max_restarts);
+    request.mutable_task_spec()
+        ->mutable_scheduling_strategy()
+        ->mutable_placement_group_scheduling_strategy()
+        ->set_placement_group_id(placement_group_id.Binary());
+    RAY_CHECK_OK(gcs_actor_manager_->RegisterActor(request, [](const Status &) {}));
+    drain_io_context();
+
+    rpc::CreateActorRequest create_request;
+    create_request.mutable_task_spec()->CopyFrom(request.task_spec());
+    RAY_CHECK_OK(gcs_actor_manager_->CreateActor(
+        create_request,
+        [](std::shared_ptr<gcs::GcsActor>, const rpc::PushTaskReply &, const Status &) {
+        }));
+    auto actor = fake_actor_scheduler_->actors.back();
+    fake_actor_scheduler_->actors.pop_back();
+    return actor;
+  }
+
   void OnNodeDead(const NodeID &node_id) {
     auto node_info = std::make_shared<rpc::GcsNodeInfo>();
     node_info->set_node_id(node_id.Binary());
@@ -281,6 +314,9 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
+        [this](const PlacementGroupID &placement_group_id) {
+          return registered_placement_groups_.contains(placement_group_id);
+        },
         *raylet_client_pool_,
         *worker_client_pool_,
         *fake_ray_event_recorder_,
@@ -393,6 +429,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::unique_ptr<rpc::CoreWorkerClientPool> worker_client_pool_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
+  absl::flat_hash_set<PlacementGroupID> registered_placement_groups_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
@@ -3033,6 +3070,155 @@ TEST_F(GcsActorManagerTest, TestInitializeMarksDeadWhenOwnerJobDeadAndReloads) {
   const auto *reloaded_info = GetActorInfo(*reloaded_manager, actor_id);
   ASSERT_NE(reloaded_info, nullptr);
   ASSERT_EQ(reloaded_info->state(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestRemovedPlacementGroupCancelsPendingActorLease) {
+  // Tests that a pending actor is destroyed when its placement group is removed, and
+  // that its lease request is cancelled at the node it was sent to.
+  auto placement_group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  auto actor = CreateActorInPlacementGroup(placement_group_id, /*max_restarts=*/0);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
+  auto node_id = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_node_id(node_id.Binary());
+  actor->UpdateAddress(address);
+
+  gcs_actor_manager_->OnPlacementGroupRemoved(placement_group_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_unschedulable_context());
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_leasing_calls.size(), 1);
+  ASSERT_EQ(std::get<0>(fake_actor_scheduler_->cancel_on_leasing_calls[0]), node_id);
+  ASSERT_EQ(std::get<1>(fake_actor_scheduler_->cancel_on_leasing_calls[0]),
+            actor->GetActorID());
+}
+
+TEST_F(GcsActorManagerTest, TestRemovedPlacementGroupDestroysRunningActor) {
+  // Tests that a running actor is killed and destroyed when its placement group is
+  // removed, and is not restarted even though it has restarts left. An actor in another
+  // placement group keeps running.
+  auto job_id = JobID::FromInt(1);
+  auto placement_group_id = PlacementGroupID::Of(job_id);
+  auto actor = CreateActorInPlacementGroup(placement_group_id, /*max_restarts=*/-1);
+  auto other_actor =
+      CreateActorInPlacementGroup(PlacementGroupID::Of(job_id), /*max_restarts=*/-1);
+  for (const auto &created_actor : {actor, other_actor}) {
+    created_actor->UpdateAddress(RandomAddress());
+    created_actor->UpdateLocalRayletAddress(RandomAddress());
+    gcs_actor_manager_->OnActorCreationSuccess(created_actor, rpc::PushTaskReply());
+  }
+  drain_io_context();
+
+  gcs_actor_manager_->OnPlacementGroupRemoved(placement_group_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_EQ(actor->GetActorTableData().death_cause().actor_died_error_context().reason(),
+            rpc::ActorDiedErrorContext::PLACEMENT_GROUP_REMOVED);
+  ASSERT_EQ(raylet_client_->killed_actors, std::vector<ActorID>{actor->GetActorID()});
+  ASSERT_EQ(other_actor->GetState(), rpc::ActorTableData::ALIVE);
+
+  // The raylet reports the death of the actor's worker afterwards.
+  gcs_actor_manager_->OnWorkerDead(actor->GetNodeID(),
+                                   actor->GetWorkerID(),
+                                   /*worker_ip=*/"",
+                                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                                   /*disconnect_detail=*/"");
+  ASSERT_TRUE(fake_actor_scheduler_->actors.empty());
+}
+
+TEST_F(GcsActorManagerTest, TestRemovedPlacementGroupDestroysOutOfScopeActor) {
+  // Tests that an actor that went out of scope but can still be restarted for lineage
+  // reconstruction is destroyed when its placement group is removed, so a later
+  // restart request is refused.
+  auto placement_group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  auto actor = CreateActorInPlacementGroup(placement_group_id, /*max_restarts=*/-1);
+  actor->UpdateAddress(RandomAddress());
+  gcs_actor_manager_->OnActorCreationSuccess(actor, rpc::PushTaskReply());
+  drain_io_context();
+  ReportActorOutOfScope(actor->GetActorID(),
+                        /*num_restarts_due_to_lineage_reconstruction=*/0);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+
+  gcs_actor_manager_->OnPlacementGroupRemoved(placement_group_id);
+  ASSERT_EQ(actor->GetActorTableData().death_cause().actor_died_error_context().reason(),
+            rpc::ActorDiedErrorContext::PLACEMENT_GROUP_REMOVED);
+
+  rpc::RestartActorForLineageReconstructionRequest request;
+  request.set_actor_id(actor->GetActorID().Binary());
+  request.set_num_restarts_due_to_lineage_reconstruction(1);
+  rpc::RestartActorForLineageReconstructionReply reply;
+  gcs_actor_manager_->HandleRestartActorForLineageReconstruction(
+      request, &reply, [](auto, auto, auto) {});
+  ASSERT_EQ(reply.status().code(), static_cast<int>(StatusCode::Invalid));
+  ASSERT_TRUE(fake_actor_scheduler_->actors.empty());
+}
+
+TEST_F(GcsActorManagerTest, TestCreateActorInRemovedPlacementGroup) {
+  // Tests that creating an actor whose placement group was already removed fails the
+  // creation instead of leaving the actor pending forever.
+  auto job_id = JobID::FromInt(1);
+  auto placement_group_id = PlacementGroupID::Of(job_id);
+  auto request = GenRegisterActorRequest(job_id);
+  request.mutable_task_spec()
+      ->mutable_scheduling_strategy()
+      ->mutable_placement_group_scheduling_strategy()
+      ->set_placement_group_id(placement_group_id.Binary());
+  rpc::RegisterActorReply register_reply;
+  gcs_actor_manager_->HandleRegisterActor(
+      request, &register_reply, [](auto, auto, auto) {});
+  drain_io_context();
+
+  rpc::CreateActorRequest create_request;
+  create_request.mutable_task_spec()->CopyFrom(request.task_spec());
+  rpc::CreateActorReply create_reply;
+  gcs_actor_manager_->HandleCreateActor(
+      create_request, &create_reply, [](auto, auto, auto) {});
+  ASSERT_EQ(create_reply.status().code(),
+            static_cast<int>(StatusCode::SchedulingCancelled));
+  ASSERT_TRUE(create_reply.death_cause().has_actor_unschedulable_context());
+  ASSERT_TRUE(fake_actor_scheduler_->actors.empty());
+}
+
+TEST_F(GcsActorManagerTest, TestInitializeMarksDeadWhenPlacementGroupRemoved) {
+  // Tests that an actor whose placement group was removed before the GCS restarted is
+  // not loaded and is marked dead because its placement group was removed. An actor
+  // whose placement group still exists is loaded.
+  auto job_id = JobID::FromInt(1);
+  rpc::JobTableData job_data;
+  job_data.set_job_id(job_id.Binary());
+  auto removed_placement_group_id = PlacementGroupID::Of(job_id);
+  auto placement_group_id = PlacementGroupID::Of(job_id);
+  registered_placement_groups_.insert(placement_group_id);
+
+  absl::flat_hash_map<ActorID, rpc::ActorTableData> actor_data;
+  absl::flat_hash_map<ActorID, rpc::TaskSpec> task_spec_data;
+  std::vector<ActorID> actor_ids;
+  for (const auto &group_id : {removed_placement_group_id, placement_group_id}) {
+    auto actor_id = ActorID::Of(job_id, RandomTaskId(), 0);
+    actor_data[actor_id].set_actor_id(actor_id.Binary());
+    actor_data[actor_id].set_state(rpc::ActorTableData::ALIVE);
+    actor_data[actor_id].set_placement_group_id(group_id.Binary());
+    auto *owner_address = actor_data[actor_id].mutable_owner_address();
+    owner_address->set_node_id(NodeID::FromRandom().Binary());
+    owner_address->set_worker_id(WorkerID::FromRandom().Binary());
+    task_spec_data[actor_id].mutable_actor_creation_task_spec()->set_actor_id(
+        actor_id.Binary());
+    actor_ids.push_back(actor_id);
+  }
+
+  TestGcsInitData gcs_init_data(*gcs_table_storage_);
+  gcs_init_data.SetJobTableData({{job_id, job_data}});
+  gcs_init_data.SetActorTableData(actor_data);
+  gcs_init_data.SetActorTaskSpecTableData(task_spec_data);
+
+  auto manager = CreateActorManagerForInitializeTest();
+  manager->Initialize(gcs_init_data);
+
+  ASSERT_EQ(GetRegisteredActor(*manager, actor_ids[0]), nullptr);
+  const auto *actor_info = GetActorInfo(*manager, actor_ids[0]);
+  ASSERT_NE(actor_info, nullptr);
+  ASSERT_EQ(actor_info->state(), rpc::ActorTableData::DEAD);
+  ASSERT_EQ(actor_info->death_cause().actor_died_error_context().reason(),
+            rpc::ActorDiedErrorContext::PLACEMENT_GROUP_REMOVED);
+  ASSERT_NE(GetRegisteredActor(*manager, actor_ids[1]), nullptr);
 }
 
 }  // namespace gcs

@@ -437,9 +437,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     }
   }
 
-  // Destroy all bundles.
-  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
-      placement_group_id);
   // Cancel the scheduling request if necessary.
   if (IsSchedulingInProgress(placement_group_id)) {
     // If the placement group is scheduling.
@@ -471,6 +468,13 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       placement_group->GetPlacementGroupTableData(),
       {[this, on_placement_group_removed, placement_group_id](Status status) {
          RAY_CHECK_OK(status);
+         // The cleanup runs after REMOVED is stored, so a GCS that restarts in the
+         // middle still treats the group as removed.
+         for (const auto &listener : placement_group_removed_listeners_) {
+           listener(placement_group_id);
+         }
+         gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+             placement_group_id);
          // If there is a driver waiting for the creation done, then send a message that
          // the placement group has been removed.
          auto it = placement_group_to_create_callbacks_.find(placement_group_id);
@@ -995,6 +999,17 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
     });
   }
   SchedulePendingPlacementGroups();
+}
+
+void GcsPlacementGroupManager::AddPlacementGroupRemovedListener(
+    std::function<void(const PlacementGroupID &)> listener) {
+  RAY_CHECK(listener);
+  placement_group_removed_listeners_.emplace_back(std::move(listener));
+}
+
+bool GcsPlacementGroupManager::IsPlacementGroupRegistered(
+    const PlacementGroupID &placement_group_id) const {
+  return registered_placement_groups_.contains(placement_group_id);
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
