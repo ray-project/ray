@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from typing import Any, Dict
 
 import pyarrow as pa
 import pytest
@@ -869,6 +870,196 @@ def test_read_mcap_lists_files_in_parallel(
     # One listing task per path (up to 200), not a single task for all paths,
     # because the MCAP packer packs per listing shard.
     assert int(match.group(1)) == 3
+
+
+def _write_video_recording(path, seconds=3):
+    """A 10 fps camera with a keyframe every ten frames (synthetic H.264 Annex-B)
+    and a 50 Hz IMU, in small chunks."""
+    from mcap.writer import CompressionType, Writer
+
+    start = b"\x00\x00\x00\x01"
+    keyframe = (
+        (
+            start
+            + bytes([0x67, 0x42, 0x00, 0x1F])
+            + start
+            + bytes([0x68, 0xCE, 0x38, 0x80])
+        )
+        + start
+        + bytes([0x65, 0x88, 0x84, 0x00])
+    )
+    pframe = start + bytes([0x41, 0x9A, 0x02, 0x04])
+    with open(path, "wb") as stream:
+        writer = Writer(stream, chunk_size=600, compression=CompressionType.ZSTD)
+        writer.start(profile="ros2", library="ray-test")
+        cam_schema_id = writer.register_schema(
+            name="foxglove_msgs/msg/CompressedVideo", encoding="ros2msg", data=b""
+        )
+        imu_schema = writer.register_schema(
+            name="sensor_msgs/msg/Imu", encoding="ros2msg", data=b""
+        )
+        cam = writer.register_channel(
+            schema_id=cam_schema_id, topic="/cam", message_encoding="cdr"
+        )
+        imu = writer.register_channel(
+            schema_id=imu_schema, topic="/imu", message_encoding="cdr"
+        )
+        messages = []
+        for frame in range(10 * seconds):
+            payload = (keyframe if frame % 10 == 0 else pframe) + frame.to_bytes(
+                4, "big"
+            )
+            messages.append((frame * 100_000_000, cam, payload))
+        for i in range(50 * seconds):
+            messages.append((i * 20_000_000, imu, i.to_bytes(8, "big")))
+        for log_time, channel_id, payload in sorted(messages):
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+            )
+        writer.finish()
+
+
+def _sample_rows(path, anchors):
+    """One sample per anchor in ``path``, clipped to [0.5 s, 2.5 s)."""
+    return [
+        {
+            "sample_id": f"s{i}",
+            "files": [path],
+            "clip_start": 500_000_000,
+            "clip_end": 2_500_000_000,
+            "anchor": anchor,
+        }
+        for i, anchor in enumerate(anchors)
+    ]
+
+
+def test_read_mcap_samples(ray_start_regular_shared, tmp_path, datasource_v2):
+    """A sample read gives one row per sample: its own columns, then each topic's
+    steps. Projection, ``count`` and ``limit`` apply to it. The legacy datasource
+    refuses it."""
+    from ray.data.datasource import TopicSpec
+    from ray.data.datasource.mcap import steps
+
+    path = os.path.join(tmp_path, "video.mcap")
+    _write_video_recording(path)
+    samples = ray.data.from_items(
+        _sample_rows(path, [1_000_000_000, 1_500_000_000, 2_400_000_000])
+    )
+    topics = {
+        "/cam": TopicSpec(steps.before(0.3, fps=10)),
+        "/imu": TopicSpec(steps.after(frames=3, fps=20), pad="zeros"),
+    }
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="V2 datasource"):
+            ray.data.read_mcap(samples=samples, topics=topics)
+        return
+    ds = ray.data.read_mcap(samples=samples, topics=topics)
+    rows = sorted(ds.take_all(), key=lambda row: row["anchor"])
+
+    assert ds.schema().names == [
+        "sample_id",
+        "files",
+        "clip_start",
+        "clip_end",
+        "anchor",
+        "data:/cam",
+        "times:/cam",
+        "valid:/cam",
+        "data:/imu",
+        "times:/imu",
+        "valid:/imu",
+    ]
+    cam = [[int.from_bytes(d[-4:], "big") for d in row["data:/cam"]] for row in rows]
+    assert cam == [[8, 9, 10], [13, 14, 15], [22, 23, 24]]
+    # The last sample's steps at 2.5 and 2.55 s lie past its clip, so are empty.
+    assert [row["valid:/imu"] for row in rows] == [[True] * 3] * 2 + [
+        [True, False, False]
+    ]
+    assert rows[2]["data:/imu"][1:] == [b"", b""]
+    assert ds.count() == 3
+    assert ds.limit(2).count() == 2
+    assert sorted(
+        r["sample_id"] for r in ds.select_columns(["sample_id"]).take_all()
+    ) == [
+        "s0",
+        "s1",
+        "s2",
+    ]
+
+
+@pytest.mark.parametrize(
+    "kwargs, error, match",
+    [
+        ({"paths": "x.mcap"}, ValueError, r"does not take \['paths'\]"),
+        ({"time_range": (0, 1)}, ValueError, "time_range"),
+        ({"topics": ["/cam"]}, ValueError, r"topics=\{topic: TopicSpec"),
+        ({"topics": {"/cam": 0.5}}, ValueError, "map each topic to a TopicSpec"),
+        ({"time_source": "header"}, NotImplementedError, "header"),
+        ({"time_source": "wall"}, ValueError, "time_source must be"),
+    ],
+)
+def test_read_mcap_samples_rejects_options(
+    ray_start_regular_shared, tmp_path, datasource_v2, kwargs, error, match
+):
+    """A sample read refuses the options of a read of paths, and needs a
+    ``TopicSpec`` per topic and log time."""
+    from ray.data.datasource import TopicSpec
+    from ray.data.datasource.mcap import steps
+
+    if not datasource_v2:
+        pytest.skip("validated on the V2 path")
+    samples = ray.data.from_items(_sample_rows("x.mcap", [1_000_000_000]))
+    options: Dict[str, Any] = {"topics": {"/cam": TopicSpec(steps.last(1))}}
+    options.update(kwargs)
+
+    with pytest.raises(error, match=match):
+        ray.data.read_mcap(samples=samples, **options)
+
+
+def test_read_mcap_samples_needs_its_columns(
+    ray_start_regular_shared, simple_mcap_file, datasource_v2
+):
+    """The samples need their four columns, and ``topics`` takes specs only
+    with samples."""
+    from ray.data.datasource import TopicSpec
+    from ray.data.datasource.mcap import steps
+
+    if not datasource_v2:
+        pytest.skip("validated on the V2 path")
+    topics = {"/cam": TopicSpec(steps.last(1))}
+    no_anchor = ray.data.from_items(
+        [{"files": ["x.mcap"], "clip_start": 0, "clip_end": 10}]
+    )
+
+    with pytest.raises(ValueError, match=r"lacks the columns \['anchor'\]"):
+        ray.data.read_mcap(samples=no_anchor, topics=topics)
+    with pytest.raises(ValueError, match="only in a sample read"):
+        ray.data.read_mcap(simple_mcap_file, topics=topics)
+    with pytest.raises(ValueError, match="needs the paths to read"):
+        ray.data.read_mcap(topics=["/cam"])
+
+
+def test_read_mcap_samples_refuses_a_row_id_checkpoint(
+    ray_start_regular_shared, restore_data_context, datasource_v2
+):
+    """Sample rows have no ``row_id``, so a checkpoint keyed on it is refused up
+    front rather than when the first row is written."""
+    from ray.data.checkpoint import CheckpointConfig
+    from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+    from ray.data.datasource import TopicSpec
+    from ray.data.datasource.mcap import steps
+
+    ray.data.DataContext.get_current().checkpoint_config = CheckpointConfig(
+        id_column="row_id", checkpoint_path="/tmp/unused"
+    )
+    samples = ray.data.from_items(_sample_rows("x.mcap", [1_000_000_000]))
+
+    with pytest.raises(InvalidCheckpointingConfig, match='id_column="sample_id"'):
+        ray.data.read_mcap(samples=samples, topics={"/cam": TopicSpec(steps.last(1))})
 
 
 if __name__ == "__main__":
