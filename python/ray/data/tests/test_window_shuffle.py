@@ -7,13 +7,16 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from types import GeneratorType
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pytest
 
 import ray
+from ray.actor import ActorHandle
 from ray.data import RandomSeedConfig
 from ray.data._internal import window_shuffle as window_shuffle_impl
 from ray.data._internal.compute import TaskPoolStrategy
@@ -74,13 +77,16 @@ def _probe_shuffle(batch, seed_config, *, batch_idx=0, gate):
         result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
     finally:
         sys.setprofile(previous_profile)
+    assert isinstance(result, pa.Table)
+    ctx = TaskContext.get_current()
+    assert ctx is not None
     # Synchronize two workers so overlap doesn't depend on worker startup timing.
     ray.get(gate.arrive.remote(os.getpid()), timeout=30)
     metrics = {
         "_probe_chunks": max((c.num_chunks for c in batch.columns), default=0),
         "_probe_fast_takes": fast_takes,
         "_probe_pid": os.getpid(),
-        "_probe_task": TaskContext.get_current().task_idx,
+        "_probe_task": ctx.task_idx,
     }
     for name, value in metrics.items():
         result = result.append_column(name, pa.array([value] * len(result)))
@@ -90,6 +96,7 @@ def _probe_shuffle(batch, seed_config, *, batch_idx=0, gate):
 def _fail_once_after_shuffle(batch, seed_config, *, batch_idx=0):
     result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
     ctx = TaskContext.get_current()
+    assert ctx is not None
     if "previous_shuffle" not in ctx.kwargs:
         ctx.kwargs["previous_shuffle"] = result["id"].to_pylist()
         raise ValueError("Injected failure after generating the permutation")
@@ -99,19 +106,23 @@ def _fail_once_after_shuffle(batch, seed_config, *, batch_idx=0):
 
 def _tag_shuffle_task(batch, seed_config, *, batch_idx=0):
     ctx = TaskContext.get_current()
+    assert ctx is not None
     assert "window_seen" not in ctx.kwargs, "A task received more than one window"
     ctx.kwargs["window_seen"] = True
-    return _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx).append_column(
-        "task_idx", pa.array([ctx.task_idx] * len(batch))
-    )
+    result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
+    assert isinstance(result, pa.Table)
+    return result.append_column("task_idx", pa.array([ctx.task_idx] * len(batch)))
 
 
 def _record_shuffle_batch(batch, seed_config, *, batch_idx=0):
     result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
+    assert isinstance(result, pa.Table)
+    ctx = TaskContext.get_current()
+    assert ctx is not None
     metrics = {
         "batch_start": min(batch["id"].to_pylist()),
         "batch_idx": batch_idx,
-        "task_idx": TaskContext.get_current().task_idx,
+        "task_idx": ctx.task_idx,
     }
     for name, value in metrics.items():
         result = result.append_column(name, pa.array([value] * len(result)))
@@ -126,7 +137,9 @@ def _record_map_batch(batch):
 
 def _fail_once_in_second_batch(batch, seed_config, *, batch_idx=0):
     result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
-    state = TaskContext.get_current().kwargs
+    ctx = TaskContext.get_current()
+    assert ctx is not None
+    state = ctx.kwargs
     previous = state.setdefault("previous_batches", {})
     ids = result["id"].to_pylist()
     if batch_idx in previous:
@@ -138,7 +151,6 @@ def _fail_once_in_second_batch(batch, seed_config, *, batch_idx=0):
     return result
 
 
-@ray.remote(num_cpus=0)
 class _WorkerCrashRecorder:
     def __init__(self, crash_batch_idx):
         self.crash_batch_idx = crash_batch_idx
@@ -163,10 +175,10 @@ class _WorkerCrashRecorder:
 
 def _crash_once_after_shuffle(batch, seed_config, *, batch_idx=0, recorder):
     result = _ORIGINAL_SHUFFLE(batch, seed_config, batch_idx=batch_idx)
+    ctx = TaskContext.get_current()
+    assert ctx is not None
     if ray.get(
-        recorder.record.remote(
-            TaskContext.get_current().task_idx, batch_idx, result["id"].to_pylist()
-        )
+        recorder.record.remote(ctx.task_idx, batch_idx, result["id"].to_pylist())
     ):
         os._exit(1)
     return result
@@ -176,7 +188,6 @@ def _identity(batch):
     return batch
 
 
-@ray.remote(num_cpus=0)
 class _WindowGate:
     def __init__(self):
         self.event = asyncio.Event()
@@ -273,7 +284,7 @@ class WindowShuffleTests(unittest.TestCase):
                         )
                         for row in batch.to_pylist()
                     ]
-                groups = {}
+                groups: dict[int, list[int]] = {}
                 for row in rows:
                     groups.setdefault(row["batch_start"], []).append(row["id"])
                 windows = [sorted(ids) for _, ids in sorted(groups.items())]
@@ -286,7 +297,7 @@ class WindowShuffleTests(unittest.TestCase):
 
     def test_default_matches_map_batches_membership(self):
         def members(dataset):
-            groups = {}
+            groups: dict[int, list[int]] = {}
             for row in dataset.take_all():
                 groups.setdefault(row["batch_start"], []).append(row["id"])
             return [sorted(ids) for _, ids in sorted(groups.items())]
@@ -540,7 +551,12 @@ class WindowShuffleTests(unittest.TestCase):
         for strict in (False, True):
             with self.subTest(strict=strict):
                 crash_batch_idx = 0 if strict else 1
-                recorder = _WorkerCrashRecorder.remote(crash_batch_idx)
+                recorder = (
+                    ray.remote(_WorkerCrashRecorder)
+                    .options(num_cpus=0)
+                    .remote(crash_batch_idx)
+                )
+                assert isinstance(recorder, ActorHandle)
                 try:
                     expected = self.ids(
                         source.window_shuffle(16, strict=strict, seed=42)
@@ -609,27 +625,32 @@ class WindowShuffleTests(unittest.TestCase):
         # Output buffering flushes above (not at) the byte target. Keep this
         # below the first table's 64 bytes without triggering block splitting.
         DataContext.get_current().target_max_block_size = 48
-        gate = _WindowGate.remote()
+        gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
+        assert isinstance(gate, ActorHandle)
         source = ray.data.range(1, override_num_blocks=1).map_batches(
-            _gated_windows,
+            partial(_gated_windows, gate=gate),
             batch_format="pyarrow",
             batch_size=None,
-            fn_args=(gate,),
         )
         iterator = iter(
             source.window_shuffle(8, strict=strict, seed=42).iter_batches(
                 batch_size=8, batch_format="pyarrow", prefetch_batches=0
             )
         )
+        assert isinstance(iterator, GeneratorType)
         try:
             with ThreadPoolExecutor(max_workers=1) as pool:
                 pending = pool.submit(next, iterator)
                 try:
                     first = pending.result(timeout=20)
+                    assert isinstance(first, pa.Table)
                     self.assertEqual(sorted(first["id"].to_pylist()), list(range(8)))
                 finally:
                     ray.get(gate.release.remote())
-            remaining = [i for b in iterator for i in b["id"].to_pylist()]
+            remaining = []
+            for batch in iterator:
+                assert isinstance(batch, pa.Table)
+                remaining.extend(batch["id"].to_pylist())
             self.assertEqual(sorted(remaining), list(range(8, 16)))
         finally:
             iterator.close()
@@ -673,14 +694,18 @@ class WindowShuffleTests(unittest.TestCase):
                 batch_size=window, batch_format="pyarrow", prefetch_batches=0
             )
         )
+        assert isinstance(iterator, GeneratorType)
         try:
             first = next(iterator)
+            assert isinstance(first, pa.Table)
             paused.set()
             self.assertTrue(backpressured.wait(timeout=20), observed)
             self.assertLess(observed["submitted"], total_rows // window, observed)
             paused.clear()
             ids = first["id"].to_pylist()
-            ids.extend(i for b in iterator for i in b["id"].to_pylist())
+            for batch in iterator:
+                assert isinstance(batch, pa.Table)
+                ids.extend(batch["id"].to_pylist())
             self.assertEqual(sorted(ids), list(range(total_rows)))
         finally:
             paused.clear()
@@ -806,7 +831,8 @@ class WindowShuffleTests(unittest.TestCase):
                 )
             )
         source = ray.data.from_arrow(tables).materialize()
-        gate = _WindowGate.remote()
+        gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
+        assert isinstance(gate, ActorHandle)
         try:
             with patch.object(
                 window_shuffle_impl,
@@ -860,7 +886,8 @@ class WindowShuffleTests(unittest.TestCase):
             ).materialize()
             for strict in (False, True):
                 with self.subTest(variable=variable, strict=strict):
-                    gate = _WindowGate.remote()
+                    gate = ray.remote(_WindowGate).options(num_cpus=0).remote()
+                    assert isinstance(gate, ActorHandle)
                     try:
                         with patch.object(
                             window_shuffle_impl,
@@ -895,4 +922,4 @@ class WindowShuffleTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    sys.exit(pytest.main(["-v", __file__]))

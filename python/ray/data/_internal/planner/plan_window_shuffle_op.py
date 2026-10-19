@@ -23,6 +23,7 @@ def plan_window_shuffle_op(
 ) -> MapOperator:
     """Plan the built-in shuffle without the user-defined map machinery."""
     assert len(physical_children) == 1
+    assert op.compute is not None
     shuffle_fn = window_shuffle_impl._shuffle_window
     seed_config = op.seed_config
     batch_size = None if op.strict else op.window_size
