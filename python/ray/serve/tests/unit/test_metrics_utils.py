@@ -1713,6 +1713,28 @@ class TestSelfHealthPush:
         await m._eval_and_push_self_health()
         m._controller_handle.record_replica_health.remote.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_a_check_a_reconfigure_overtakes_is_not_carried(self):
+        """The pause drops its verdict from the heartbeat, so a metric report must not
+        carry it to the controller either."""
+        m = self._manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fails_once_released():
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = fails_once_released
+        before = dict(_SELF_HEALTH_SNAPSHOT)
+        check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        m.pause_self_health()
+        release.set()
+        await check
+        assert _SELF_HEALTH_SNAPSHOT == before
+
     def test_the_replica_report_carries_health(self, monkeypatch):
         """The replica's own report carries health too, so a fleet whose replicas
         push metrics needs no heartbeat at all."""
