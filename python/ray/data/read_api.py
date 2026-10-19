@@ -2995,9 +2995,10 @@ def read_orc(
         The DataSourceV2 reader is selected through
         :attr:`~ray.data.context.DataContext.use_datasource_v2`.
         It samples file schemas and may omit columns absent from the sample.
-        If you encounter a DataSourceV2 limitation, set
-        ``RAY_DATA_USE_DATASOURCE_V2=0`` before importing Ray to use the V1
-        reader. This shared setting also affects ``read_parquet()``.
+        If you encounter a DataSourceV2 limitation, use the V1 reader by
+        setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
+        or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray. This shared setting also affects ``read_parquet()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
