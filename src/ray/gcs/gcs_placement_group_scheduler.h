@@ -389,12 +389,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node The node that the bundles are being removed from.
   /// \param max_retry The maximum times the remove request can be retried.
   /// \param current_retry_count The number of times the remove request has been retried.
+  /// \param callback Called when the request succeeds or exhausts its retries.
   void RemovePlacementGroupBundles(
       const PlacementGroupID &placement_group_id,
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const std::optional<std::shared_ptr<const ray::rpc::GcsNodeInfo>> &node,
       int max_retry,
-      int current_retry_count);
+      int current_retry_count,
+      rpc::StatusCallback callback = nullptr);
 
   /// Get an existing lease client or connect a new one or connect a new one.
   std::shared_ptr<RayletClientInterface> GetOrConnectRayletClient(
@@ -429,6 +431,29 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// bundles.
   void DestroyPlacementGroupPreparedBundleResources(
       const PlacementGroupID &placement_group_id);
+
+  /// Destroy bundles that failed to commit before the placement group is retried.
+  ///
+  /// \param placement_group_id The placement group whose commit attempt failed.
+  /// \param bundle_locations The uncommitted bundles grouped by their old locations.
+  /// \param callback Called after every live node has replied or exhausted retries.
+  void DestroyPlacementGroupUncommittedBundleResources(
+      const PlacementGroupID &placement_group_id,
+      const BundleLocations &bundle_locations,
+      rpc::StatusCallback callback);
+
+  /// Retry outstanding cleanup obligations retained from failed commit attempts.
+  ///
+  /// \param placement_group_id The placement group whose old bundle locations should be
+  /// retried.
+  void DestroyPlacementGroupOutstandingBundleResources(
+      const PlacementGroupID &placement_group_id);
+
+  /// Remove successfully cleaned bundles from the outstanding cleanup index.
+  void EraseOutstandingBundleCleanup(
+      const PlacementGroupID &placement_group_id,
+      const NodeID &node_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);
 
   /// Destroy the committed bundle resources with this placement group.
   /// The method is idempotent, meaning if all bundles are already cancelled,
@@ -470,6 +495,13 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// Set of placement group that have lease requests in flight to nodes.
   absl::flat_hash_map<PlacementGroupID, std::shared_ptr<LeaseStatusTracker>>
       placement_group_leasing_in_progress_;
+
+  /// Bundles that may have committed on a raylet after their commit reply was lost but
+  /// could not be cleaned before the placement group was rescheduled. A bundle can be
+  /// outstanding on multiple old nodes after multiple retries, so this index is separate
+  /// from the single current location in committed_bundle_location_index_.
+  absl::flat_hash_map<PlacementGroupID, absl::flat_hash_map<NodeID, BundleLocations>>
+      outstanding_bundle_cleanup_;
 
   /// The cached raylet clients used to communicate with raylets.
   rpc::RayletClientPool &raylet_client_pool_;
