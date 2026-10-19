@@ -744,6 +744,8 @@ def test_equalize_randomized(ray_start_regular_shared_2_cpus):
 
 
 def test_train_test_split(ray_start_regular_shared_2_cpus):
+    # NOTE: It's critical to preserve ordering for assertions in this test to work
+    DataContext.get_current().execution_options.preserve_order = True
     ds = ray.data.range(8)
 
     # float
