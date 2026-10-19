@@ -14,7 +14,6 @@ from ray.train.v2._internal.state.schema import (
     NcclCommunicatorState,
     NcclHangDetectorStatus,
     NcclHangDisabledReason,
-    NcclHangTrigger,
     RunAttemptStatus,
     RunStatus,
     TrainNcclHangEvent,
@@ -658,28 +657,18 @@ def _create_nccl_hang_event(**overrides) -> TrainNcclHangEvent:
         poll_index=44,
         timestamp_ms=1760000660123,
         detector_status=NcclHangDetectorStatus.ACTIVE,
-        triggers=[
-            NcclHangTrigger.SUSPECTED,
-            NcclHangTrigger.CONFIRMED,
-            NcclHangTrigger.RECOVERED,
-        ],
         ras_text_report="RAS report",
         diagnostics_dir="s3://bucket/run/hang_detector",
         communicators=[
-            NcclCommunicator(
-                communicator_id="0x8a3f1c2b",
-                state=NcclCommunicatorState.CONFIRMED,
-                stalled_since_ms=1760000060123,
-            ),
             NcclCommunicator(
                 communicator_id="0x11aa22bb",
                 state=NcclCommunicatorState.SUSPECTED,
                 stalled_since_ms=1760000600123,
             ),
             NcclCommunicator(
-                communicator_id="0x99cc00dd",
-                state=NcclCommunicatorState.RECOVERED,
-                stalled_since_ms=1760000500123,
+                communicator_id="0x8a3f1c2b",
+                state=NcclCommunicatorState.CONFIRMED,
+                stalled_since_ms=1760000060123,
             ),
         ],
     )
@@ -691,9 +680,7 @@ def test_export_nccl_hang_event(enable_export_api_write):
     """Every field of a hang event is exported to the hang log file, and none
     to the train state file."""
     state_actor = get_or_create_state_actor()
-    lifecycle = dict(
-        triggers=[], ras_text_report=None, diagnostics_dir=None, communicators=[]
-    )
+    lifecycle = dict(ras_text_report=None, diagnostics_dir=None, communicators=[])
     ray.get(
         [
             state_actor.export_train_nccl_hang_event.remote(_create_nccl_hang_event()),
@@ -724,24 +711,18 @@ def test_export_nccl_hang_event(enable_export_api_write):
         "poll_index": "44",
         "timestamp_ms": "1760000660123",
         "detector_status": "ACTIVE",
-        "triggers": ["SUSPECTED", "CONFIRMED", "RECOVERED"],
         "ras_text_report": "RAS report",
         "diagnostics_dir": "s3://bucket/run/hang_detector",
         "communicators": [
             {
-                "communicator_id": "0x8a3f1c2b",
-                "state": "COMMUNICATOR_CONFIRMED",
-                "stalled_since_ms": "1760000060123",
-            },
-            {
                 "communicator_id": "0x11aa22bb",
-                "state": "COMMUNICATOR_SUSPECTED",
+                "state": "SUSPECTED",
                 "stalled_since_ms": "1760000600123",
             },
             {
-                "communicator_id": "0x99cc00dd",
-                "state": "COMMUNICATOR_RECOVERED",
-                "stalled_since_ms": "1760000500123",
+                "communicator_id": "0x8a3f1c2b",
+                "state": "CONFIRMED",
+                "stalled_since_ms": "1760000060123",
             },
         ],
     }
@@ -751,7 +732,6 @@ def test_export_nccl_hang_event(enable_export_api_write):
         assert absent not in stopped["event_data"]
     assert disabled["event_data"]["detector_status"] == "DISABLED"
     assert disabled["event_data"]["disabled_reason"] == "INTERNAL_ERROR"
-    assert disabled["event_data"]["triggers"] == []
     assert disabled["event_data"]["communicators"] == []
 
     # The hang events never reach the train state file (which exists, empty,

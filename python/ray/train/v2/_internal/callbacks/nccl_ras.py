@@ -72,7 +72,6 @@ from ray.train.v2._internal.state.schema import (
     NcclCommunicatorState,
     NcclHangDetectorStatus,
     NcclHangDisabledReason,
-    NcclHangTrigger,
     TrainNcclHangEvent,
 )
 from ray.train.v2._internal.state.state_manager import NcclHangEventExporter
@@ -874,15 +873,9 @@ class PollOutcome:
     diagnostics: Dict[str, Optional[str]] = field(default_factory=dict)
 
     @property
-    def triggers(self) -> List[NcclHangTrigger]:
-        triggers = []
-        if self.suspected:
-            triggers.append(NcclHangTrigger.SUSPECTED)
-        if self.confirmed:
-            triggers.append(NcclHangTrigger.CONFIRMED)
-        if self.recovered:
-            triggers.append(NcclHangTrigger.RECOVERED)
-        return triggers
+    def reported(self) -> bool:
+        """Whether the poll reached a milestone the detector reports on."""
+        return bool(self.confirmed or self.suspected or self.recovered)
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
@@ -903,12 +896,13 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     queries and for improving the detection.
 
     Each poll is evaluated into a :class:`PollOutcome`, which is then logged,
-    exported and acted on. The detector's state is exported through the Train
-    state actor as ``EXPORT_TRAIN_NCCL_HANG`` events (see
-    ``export_train_nccl_hang.proto``): ACTIVE on an attempt's first poll and on
-    every poll that suspects, confirms or sees a recovery, STOPPED when the
-    attempt ends, and DISABLED when the detector gives up for the run.
-    Exporting never affects detection.
+    exported and acted on. The hung communicators are exported through the
+    Train state actor as ``EXPORT_TRAIN_NCCL_HANG`` events (see
+    ``export_train_nccl_hang.proto``): ACTIVE on every poll that suspects,
+    confirms or sees a recovery, STOPPED when an attempt ends with a hung
+    communicator, and DISABLED when the detector gives up for the run.
+    Nothing is exported for an attempt that never stalls. Exporting never
+    affects detection.
     """
 
     def __init__(self):
@@ -976,8 +970,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # Identify the exported events, set when a worker group starts.
         self._run_id: str = ""
         self._attempt_id: str = ""
-        # The attempt's latest event number, so `poll_index` of its events
-        # strictly increases.
+        # The attempt's polls, numbering its events so `poll_index` strictly
+        # increases.
         self._poll_index: int = 0
         # When the latest report was taken from the poller, in ms since epoch.
         self._poll_time_ms: int = 0
@@ -1016,9 +1010,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
     def before_worker_group_shutdown(self, worker_group):
         self._retire_poller()
-        # An attempt the detector watched ends with STOPPED, unless the
-        # detector was disabled, which already ended its events.
-        if self._poll_index > 0 and not self._is_ras_degraded:
+        # An attempt that ends with a hung communicator ends with STOPPED,
+        # unless the detector was disabled, which already ended its events.
+        if not self._is_ras_degraded and self.stalled_communicators():
             self.export_lifecycle(NcclHangDetectorStatus.STOPPED)
         self._worker_group = None
 
@@ -1336,7 +1330,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.warning(message)
 
     def stalled_communicators(self) -> List[NcclCommunicator]:
-        """Every stall past the suspicion threshold, ordered by communicator id."""
+        """The hung communicators, i.e. every stall past the suspicion
+        threshold, ordered by communicator id."""
         return [
             NcclCommunicator(
                 communicator_id=comm_id,
@@ -1352,16 +1347,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         ]
 
     def export_poll(self, outcome: PollOutcome) -> None:
-        """Export the poll as an ACTIVE event, if it's the attempt's first or
-        reached a milestone.
+        """Export the poll as an ACTIVE event, if it reached a milestone.
 
         Never raises, so exporting can never affect detection.
 
         Args:
             outcome: The poll's outcome.
         """
-        triggers = outcome.triggers
-        if not triggers and self._poll_index > 1:
+        if not outcome.reported:
             return
         try:
             diagnostics_uploaded = any(outcome.diagnostics.values())
@@ -1372,20 +1365,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     poll_index=self._poll_index,
                     timestamp_ms=self._poll_time_ms,
                     detector_status=NcclHangDetectorStatus.ACTIVE,
-                    triggers=triggers,
                     ras_text_report=outcome.ras_text_report or None,
                     diagnostics_dir=(
                         self.diagnostics_dir() if diagnostics_uploaded else None
                     ),
-                    communicators=self.stalled_communicators()
-                    + [
-                        NcclCommunicator(
-                            communicator_id=comm_id,
-                            state=NcclCommunicatorState.RECOVERED,
-                            stalled_since_ms=stall.since_ms,
-                        )
-                        for comm_id, stall in sorted(outcome.recovered.items())
-                    ],
+                    communicators=self.stalled_communicators(),
                 )
             )
         except Exception:  # noqa: BLE001
@@ -1399,7 +1383,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         disabled_reason: Optional[NcclHangDisabledReason] = None,
     ):
         """Export that the detector stopped watching the attempt or was
-        disabled, with the stalls still open.
+        disabled, with the communicators still hung.
 
         Never raises, as it runs on the paths that disable the detector.
 

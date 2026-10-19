@@ -552,29 +552,17 @@ class NcclHangDisabledReason(str, Enum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
-class NcclHangTrigger(str, Enum):
-    """What a NCCL hang detector poll reported."""
-
-    # A communicator newly reached the suspicion threshold, or the periodic
-    # "still suspected" warning fired.
-    SUSPECTED = "SUSPECTED"
-    # A communicator stalled for the confirm duration.
-    CONFIRMED = "CONFIRMED"
-    # A suspected or confirmed communicator made progress again.
-    RECOVERED = "RECOVERED"
-
-
 class NcclCommunicatorState(str, Enum):
-    """The NCCL hang detector's view of one communicator."""
+    """How hung the NCCL hang detector considers a communicator."""
 
+    # Stalled past the suspicion threshold.
     SUSPECTED = "SUSPECTED"
+    # Stalled for the confirm duration; it stays confirmed until it recovers.
     CONFIRMED = "CONFIRMED"
-    # Recovered on the poll of the event.
-    RECOVERED = "RECOVERED"
 
 
 class NcclCommunicator(BaseModel):
-    """One stalled (or just recovered) communicator in a ``TrainNcclHangEvent``."""
+    """A hung communicator in a ``TrainNcclHangEvent``."""
 
     communicator_id: str = Field(description="The NCCL RAS communicator hash.")
     state: NcclCommunicatorState = Field(description="The communicator's state.")
@@ -591,7 +579,7 @@ class TrainNcclHangEvent(BaseModel):
     run_id: str = Field(description="The Train run id.")
     attempt_id: str = Field(description="The Train run attempt id.")
     poll_index: int = Field(
-        description="The order of the attempt's events, strictly increasing from 1."
+        description="Orders the attempt's events, strictly increasing."
     )
     timestamp_ms: int = Field(
         description="When the poll was taken (the detector stopped, for "
@@ -603,9 +591,6 @@ class TrainNcclHangEvent(BaseModel):
     disabled_reason: Optional[NcclHangDisabledReason] = Field(
         None, description="Why the detector was disabled, for DISABLED."
     )
-    triggers: List[NcclHangTrigger] = Field(
-        default_factory=list, description="What this poll reported."
-    )
     ras_text_report: Optional[str] = Field(
         None, description="The `ncclras -f text` report fetched at this poll."
     )
@@ -614,6 +599,6 @@ class TrainNcclHangEvent(BaseModel):
     )
     communicators: List[NcclCommunicator] = Field(
         default_factory=list,
-        description="Every stalled communicator, plus those that recovered at "
-        "this poll.",
+        description="The hung communicators; empty on the poll where the last "
+        "one recovers.",
     )

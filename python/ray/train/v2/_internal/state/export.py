@@ -22,7 +22,6 @@ from ray.train.v2._internal.state.schema import (
     NcclCommunicatorState,
     NcclHangDetectorStatus,
     NcclHangDisabledReason,
-    NcclHangTrigger,
     RunAttemptStatus,
     RunConfig,
     RunSettings,
@@ -363,22 +362,9 @@ _NCCL_HANG_DISABLED_REASON_MAP = {
     ),
 }
 
-_NCCL_HANG_TRIGGER_MAP = {
-    NcclHangTrigger.SUSPECTED: ProtoTrainNcclHangEvent.Trigger.SUSPECTED,
-    NcclHangTrigger.CONFIRMED: ProtoTrainNcclHangEvent.Trigger.CONFIRMED,
-    NcclHangTrigger.RECOVERED: ProtoTrainNcclHangEvent.Trigger.RECOVERED,
-}
-
 _NCCL_COMMUNICATOR_STATE_MAP = {
-    NcclCommunicatorState.SUSPECTED: (
-        ProtoTrainNcclHangEvent.CommunicatorState.COMMUNICATOR_SUSPECTED
-    ),
-    NcclCommunicatorState.CONFIRMED: (
-        ProtoTrainNcclHangEvent.CommunicatorState.COMMUNICATOR_CONFIRMED
-    ),
-    NcclCommunicatorState.RECOVERED: (
-        ProtoTrainNcclHangEvent.CommunicatorState.COMMUNICATOR_RECOVERED
-    ),
+    NcclCommunicatorState.SUSPECTED: ProtoTrainNcclHangEvent.Communicator.SUSPECTED,
+    NcclCommunicatorState.CONFIRMED: ProtoTrainNcclHangEvent.Communicator.CONFIRMED,
 }
 
 
@@ -401,7 +387,6 @@ def train_nccl_hang_event_to_proto(
             if event.disabled_reason is not None
             else None
         ),
-        triggers=[_NCCL_HANG_TRIGGER_MAP[trigger] for trigger in event.triggers],
         ras_text_report=(
             _truncate_ras_report(event.ras_text_report)
             if event.ras_text_report is not None

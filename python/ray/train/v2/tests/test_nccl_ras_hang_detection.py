@@ -398,9 +398,10 @@ def _read_nccl_hang_events():
 
 
 def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
-    """An induced hang is exported as the attempt's first poll, a SUSPECTED
-    poll then a CONFIRMED poll (both with NCCL's report, the latter with the
-    diagnostics directory), then STOPPED as the failed worker group shuts down."""
+    """An induced hang is exported as a suspicion then a confirmation (both
+    with NCCL's report, the latter with the diagnostics directory), then
+    STOPPED, still listing the hung communicator, as the failed worker group
+    shuts down."""
     err = run_train_fn(straggler_train_fn, num_workers=2, storage_path=tmp_path)
     _assert_outcome(err, HANG)
 
@@ -409,11 +410,12 @@ def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
         lambda: "STOPPED" in [e["detector_status"] for e in _read_nccl_hang_events()]
     )
     events = _read_nccl_hang_events()
-    assert [(e["detector_status"], e["triggers"]) for e in events] == [
-        ("ACTIVE", []),
+    assert [
+        (e["detector_status"], [c["state"] for c in e["communicators"]]) for e in events
+    ] == [
         ("ACTIVE", ["SUSPECTED"]),
         ("ACTIVE", ["CONFIRMED"]),
-        ("STOPPED", []),
+        ("STOPPED", ["CONFIRMED"]),
     ]
     poll_indices = [int(e["poll_index"]) for e in events]
     assert poll_indices == sorted(set(poll_indices))
@@ -422,15 +424,14 @@ def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
     assert {e["run_id"] for e in events} == {run.id}
     assert len({e["attempt_id"] for e in events}) == 1
 
-    started, suspected, confirmed, stopped = events
-    assert started["communicators"] == []
+    suspected, confirmed, stopped = events
     assert suspected["ras_text_report"]
     assert confirmed["ras_text_report"]
     assert confirmed["diagnostics_dir"].endswith("hang_detector")
-    [comm] = confirmed["communicators"]
-    assert comm["state"] == "COMMUNICATOR_CONFIRMED"
-    assert comm["stalled_since_ms"] == suspected["communicators"][0]["stalled_since_ms"]
-    assert [c["state"] for c in stopped["communicators"]] == ["COMMUNICATOR_CONFIRMED"]
+    assert (
+        confirmed["communicators"][0]["stalled_since_ms"]
+        == suspected["communicators"][0]["stalled_since_ms"]
+    )
 
 
 if __name__ == "__main__":

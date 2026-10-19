@@ -43,17 +43,16 @@ def _nccl_hang_event(**overrides) -> ExportTrainNcclHangEventData:
         poll_index=44,
         timestamp_ms=1760000660123,
         detector_status=Data.ACTIVE,
-        triggers=[Data.SUSPECTED, Data.CONFIRMED],
         communicators=[
             Data.Communicator(
-                communicator_id="0x8a3f1c2b",
-                state=Data.COMMUNICATOR_CONFIRMED,
-                stalled_since_ms=1760000060123,
+                communicator_id="0x11aa22bb",
+                state=Data.Communicator.SUSPECTED,
+                stalled_since_ms=1760000600123,
             ),
             Data.Communicator(
-                communicator_id="0x11aa22bb",
-                state=Data.COMMUNICATOR_SUSPECTED,
-                stalled_since_ms=1760000600123,
+                communicator_id="0x8a3f1c2b",
+                state=Data.Communicator.CONFIRMED,
+                stalled_since_ms=1760000060123,
             ),
         ],
     )
@@ -91,7 +90,6 @@ def test_nccl_hang_event_json_shape(tmp_path, fresh_export_loggers):
             poll_index=45,
             detector_status=Data.DISABLED,
             disabled_reason=Data.RAS_UNAVAILABLE,
-            triggers=[],
             communicators=[],
         )
     )
@@ -109,19 +107,18 @@ def test_nccl_hang_event_json_shape(tmp_path, fresh_export_loggers):
         "poll_index": "44",
         "timestamp_ms": "1760000660123",
         "detector_status": "ACTIVE",
-        "triggers": ["SUSPECTED", "CONFIRMED"],
         "ras_text_report": "RAS report",
         "diagnostics_dir": "s3://b/hd",
         "communicators": [
             {
-                "communicator_id": "0x8a3f1c2b",
-                "state": "COMMUNICATOR_CONFIRMED",
-                "stalled_since_ms": "1760000060123",
+                "communicator_id": "0x11aa22bb",
+                "state": "SUSPECTED",
+                "stalled_since_ms": "1760000600123",
             },
             {
-                "communicator_id": "0x11aa22bb",
-                "state": "COMMUNICATOR_SUSPECTED",
-                "stalled_since_ms": "1760000600123",
+                "communicator_id": "0x8a3f1c2b",
+                "state": "CONFIRMED",
+                "stalled_since_ms": "1760000060123",
             },
         ],
     }
@@ -133,7 +130,6 @@ def test_nccl_hang_event_json_shape(tmp_path, fresh_export_loggers):
         "timestamp_ms": "1760000660123",
         "detector_status": "DISABLED",
         "disabled_reason": "RAS_UNAVAILABLE",
-        "triggers": [],
         "communicators": [],
     }
 
