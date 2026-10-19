@@ -129,7 +129,8 @@ class _FileInspector:
         The type comes from the first file in listing order with a selected
         message in ``time_range``. Files after it get the encoding check only.
         Stops at a selected channel that is not JSON. A file whose summary cannot
-        be read is skipped; its own read task reports the error.
+        be read is skipped, and so is a chunk or record that cannot be decoded;
+        the read task that owns it reports the error.
         """
         value_type: Optional[pa.DataType] = None
         for path, summary in _summaries(self._filesystem, paths, skip_unreadable=True):
@@ -204,7 +205,8 @@ class _FileInspector:
     ) -> Optional[pa.DataType]:
         """Type of the first selected message in ``time_range``.
 
-        Only the chunks that may hold one are read, in order, until one does.
+        Only the chunks that may hold one are read, in order, until one does. A
+        chunk that cannot be decoded is skipped.
         """
         candidates = [
             chunk_index
@@ -215,20 +217,36 @@ class _FileInspector:
             return None
         with self._filesystem.open_input_file(path) as f:
             for chunk_index in candidates:
-                message = self._first_selected_message(f, chunk_index, selected)
+                message = self._first_selected_message(f, path, chunk_index, selected)
                 if message is not None:
                     channel = summary.channels[message.channel_id]
                     return _decoded_value_type(channel, message.data, path)
         return None
 
     def _first_selected_message(
-        self, f: Any, chunk_index: "ChunkIndex", selected: Set[int]
+        self, f: Any, path: str, chunk_index: "ChunkIndex", selected: Set[int]
     ) -> Optional["Message"]:
-        """The chunk's first message on a ``selected`` channel in ``time_range``."""
+        """The chunk's first message on a ``selected`` channel in ``time_range``.
+
+        ``None`` too for a chunk that cannot be decoded. An error reading ``f``
+        still raises.
+        """
         from mcap.records import Message
         from mcap.stream_reader import breakup_chunk
 
-        for record in breakup_chunk(read_chunk(f, chunk_index)):
+        try:
+            records = breakup_chunk(read_chunk(f, chunk_index))
+        except OSError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a corrupt chunk
+            logger.debug(
+                "Skipping the chunk of %s at byte offset %d for the schema: %s",
+                path,
+                chunk_index.chunk_start_offset,
+                exc,
+            )
+            return None
+        for record in records:
             if (
                 isinstance(record, Message)
                 and record.channel_id in selected
@@ -243,7 +261,8 @@ class _FileInspector:
         The scan goes past the first JSON message, because a selected channel
         that is not JSON may be declared after it. Schema records are read where
         the writer put them, so ``message_types`` selects the same channels as
-        the reader. A message is decoded only with ``want_type``.
+        the reader. A message is decoded only with ``want_type``. A record that
+        does not parse ends the scan.
         """
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import StreamReader
@@ -251,7 +270,7 @@ class _FileInspector:
         value_type: Optional[pa.DataType] = None
         schemas: Dict[int, "Schema"] = {}
         channels: Dict[int, "Channel"] = {}
-        for record in StreamReader(f).records:
+        for record in _readable_records(StreamReader(f).records, path):
             if isinstance(record, Schema):
                 schemas[record.id] = record
             elif isinstance(record, Channel):
@@ -275,6 +294,25 @@ class _FileInspector:
         """Whether the selection keeps ``channel``, judged with its schema record."""
         schema = schemas.get(channel.schema_id) if channel.schema_id else None
         return self._selection.accepts_channel(channel, schema)
+
+
+def _readable_records(records: Iterable[Any], path: str) -> Iterator[Any]:
+    """``records`` up to the first one that does not parse.
+
+    An error reading the file still raises.
+    """
+    iterator = iter(records)
+    while True:
+        try:
+            record = next(iterator)
+        except StopIteration:
+            return
+        except OSError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a corrupt record
+            logger.debug("Scanning %s for the schema stopped early: %s", path, exc)
+            return
+        yield record
 
 
 def _summaries(
