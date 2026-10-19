@@ -4666,10 +4666,7 @@ class UserCallableWrapper:
 
         self._destructor_called = True
         try:
-            if (
-                isinstance(self._callable, TaskConsumerWrapper)
-                and graceful_shutdown_timeout_s is not None
-            ):
+            if isinstance(self._callable, TaskConsumerWrapper):
                 await self._call_func_or_gen(
                     self._callable._serve_graceful_shutdown,
                     args=(graceful_shutdown_timeout_s,),

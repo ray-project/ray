@@ -481,19 +481,20 @@ async def test_destructor_only_called_once(
 
 
 @pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
+@pytest.mark.parametrize("timeout_s", [None, 0.0, 123.0])
 @pytest.mark.asyncio
 async def test_task_consumer_destructor_receives_shutdown_timeout(
-    run_user_code_in_separate_thread: bool,
+    run_user_code_in_separate_thread: bool, timeout_s: Optional[float]
 ):
     class FakeTaskConsumer(TaskConsumerWrapper):
         def __init__(self):
-            self.shutdown_timeout_s = None
+            self.shutdown_timeouts = []
 
         def initialize_callable(self, consumer_concurrency: int):
             pass
 
         def _serve_graceful_shutdown(self, timeout_s=None):
-            self.shutdown_timeout_s = timeout_s
+            self.shutdown_timeouts.append(timeout_s)
 
     user_callable_wrapper = _make_user_callable_wrapper(
         FakeTaskConsumer,
@@ -501,9 +502,9 @@ async def test_task_consumer_destructor_receives_shutdown_timeout(
     )
     await user_callable_wrapper.initialize_callable()
 
-    await user_callable_wrapper.call_destructor(graceful_shutdown_timeout_s=123.0)
+    await user_callable_wrapper.call_destructor(graceful_shutdown_timeout_s=timeout_s)
 
-    assert user_callable_wrapper.user_callable.shutdown_timeout_s == 123.0
+    assert user_callable_wrapper.user_callable.shutdown_timeouts == [timeout_s]
 
 
 class gRPCClass:
