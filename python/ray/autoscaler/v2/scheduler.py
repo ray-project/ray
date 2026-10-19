@@ -33,7 +33,10 @@ from ray.core.generated.autoscaler_pb2 import (
     ResourceRequest,
     ResourceRequestByCount,
 )
-from ray.core.generated.common_pb2 import LabelSelectorOperator
+from ray.core.generated.common_pb2 import (
+    LabelSelectorConstraint,
+    LabelSelectorOperator,
+)
 from ray.core.generated.instance_manager_pb2 import (
     Instance,
     LaunchRequest,
@@ -727,7 +730,7 @@ class SchedulingNode:
                 gpu_ok = False
 
         # Check if node satisfies label requirements.
-        matches_labels = self._satisfies_label_constraints(sched_requests)
+        matches_labels = self.satisfies_label_constraints(sched_requests)
 
         # Prioritize avoiding gpu nodes for non-gpu workloads first,
         # then prioritize matching multiple resource types,
@@ -743,9 +746,7 @@ class SchedulingNode:
             else 0,
         )
 
-    def _satisfies_label_constraints(
-        self, sched_requests: List[ResourceRequest]
-    ) -> int:
+    def satisfies_label_constraints(self, sched_requests: List[ResourceRequest]) -> int:
         """Returns a higher value based on the priority of the label selector this node
         satisfies (first returns highest score, decreasing sequentially for fallback), 0 otherwise."""
         for req in sched_requests:
@@ -792,7 +793,7 @@ class SchedulingNode:
 
         # Enforce label selector constraints
         if request.label_selectors:
-            if self._satisfies_label_constraints([request]) == 0:
+            if self.satisfies_label_constraints([request]) == 0:
                 return False  # Node doesn't satisfy any label selector in request.
 
         # Check if there's placement constraints that are not satisfied.
@@ -1631,6 +1632,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             If there are requests from rescheduling placement groups due to node
             failures, these requests should not be scheduled on nodes with requests
             from the same placement group.
+        - For placement groups with a `topology_strategy`, all bundles are
+            scheduled within one value of the topology label.
 
 
         Args:
@@ -1660,18 +1663,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         for gang_req in sorted(
             gang_requests, key=_sort_gang_resource_requests, reverse=True
         ):
-            if gang_req.bundle_selectors:
-                # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
-                # for `fallback_strategy`.
-                requests = gang_req.bundle_selectors[0].resource_requests
-            else:
-                # Use legacy field if `bundle_selectors` not provided.
-                requests = gang_req.requests
-            # Try to combine requests with affinity constraints into the same request.
-            requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
-
-            nodes, infeasible = ResourceDemandScheduler._try_schedule(
-                ctx, requests, ResourceRequestSource.PENDING_DEMAND
+            nodes, infeasible = ResourceDemandScheduler._try_schedule_gang(
+                ctx, gang_req
             )
 
             if infeasible:
@@ -1684,6 +1677,234 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx.update(nodes)
 
         return infeasible_gang_requests
+
+    @staticmethod
+    def _add_label_constraints_to_requests(
+        requests: List[ResourceRequest],
+        constraints: List[LabelSelectorConstraint],
+    ) -> List[ResourceRequest]:
+        """Return copies of `requests` with `constraints` appended to every label
+        selector of each request (adding a selector when a request has none)."""
+        updated_requests = []
+        for req in requests:
+            req_copy = copy.deepcopy(req)
+            if req_copy.label_selectors:
+                for selector in req_copy.label_selectors:
+                    selector.label_constraints.extend(constraints)
+            else:
+                req_copy.label_selectors.add(label_constraints=constraints)
+            updated_requests.append(req_copy)
+        return updated_requests
+
+    @staticmethod
+    def _try_schedule_gang(
+        ctx: "ResourceDemandScheduler.ScheduleContext",
+        gang_req: GangResourceRequest,
+    ) -> Tuple[List[SchedulingNode], List[ResourceRequest]]:
+        """Schedule all bundles of `gang_req` or none of them.
+
+        If the gang has a `locality_requirement` (GCS sets one, always STRICT_PACK,
+        for a placement group with a `topology_strategy`), all bundles are placed on
+        nodes that share one value of the locality label: an existing or statically
+        configured value if the gang fits there (preferring the one that needs the
+        fewest new nodes), otherwise nodes outside every existing value. Pending or
+        new nodes used that way get a placeholder value so that a later gang in this
+        pass is not split between them and other nodes.
+
+        Args:
+            ctx: The schedule context.
+            gang_req: The gang resource request.
+
+        Returns:
+            The updated nodes and the requests that could not be scheduled.
+        """
+        locality_req = None
+        if gang_req.bundle_selectors:
+            # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
+            # for `fallback_strategy`.
+            bundle_selector = gang_req.bundle_selectors[0]
+            requests = bundle_selector.resource_requests
+            if bundle_selector.HasField("locality_requirement"):
+                locality_req = bundle_selector.locality_requirement
+        else:
+            # Use legacy field if `bundle_selectors` not provided.
+            requests = gang_req.requests
+
+        # Try to combine requests with affinity constraints into the same request.
+        requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
+
+        if locality_req is None:
+            return ResourceDemandScheduler._try_schedule(
+                ctx, requests, ResourceRequestSource.PENDING_DEMAND
+            )
+
+        # A rescheduling gang is pinned to the domain it was placed in.
+        if locality_req.label_selector.label_constraints:
+            requests = ResourceDemandScheduler._add_label_constraints_to_requests(
+                requests, locality_req.label_selector.label_constraints
+            )
+
+        locality_label = locality_req.locality_constraint.label_name
+        all_nodes = ctx.get_nodes()
+        nodes_by_domain = defaultdict(list)
+        for node in all_nodes:
+            domain_val = node.labels.get(locality_label)
+            if domain_val and node.status != SchedulingNodeStatus.TO_TERMINATE:
+                nodes_by_domain[domain_val].append(node)
+        static_domains = {
+            cfg.labels[locality_label]
+            for cfg in ctx.get_node_type_configs().values()
+            if cfg.labels.get(locality_label)
+        }
+        existing_domains = sorted(nodes_by_domain.keys() | static_domains)
+        shapes = _collect_unique_resource_shapes(requests)
+
+        def _bundle_capacity(resources: Dict[str, float]) -> List[float]:
+            """Return how many bundles of each request shape fit in `resources`."""
+            return [
+                min(resources.get(k, 0) // v for k, v in shape.items())
+                for shape in shapes
+                if shape
+            ]
+
+        def _can_host_a_bundle(node: SchedulingNode) -> bool:
+            # `_try_schedule` may resize an IPPR node beyond its current capacity.
+            if node.ippr_status is not None:
+                return True
+            available = node.get_available_resources(
+                ResourceRequestSource.PENDING_DEMAND
+            )
+            return any(
+                _fits(available, dict(r.resources_bundle))
+                and (not r.label_selectors or node.satisfies_label_constraints([r]))
+                for r in requests
+            )
+
+        # 1. Try existing or static locality domains.
+        best_with_launch: Optional[Tuple[int, List[SchedulingNode]]] = None
+        for domain_val in existing_domains:
+            domain_nodes = nodes_by_domain.get(domain_val, [])
+            # New nodes never carry a dynamic domain's value, so a dynamic domain
+            # none of whose nodes can take a bundle cannot host any of the gang.
+            if domain_val not in static_domains and not any(
+                _can_host_a_bundle(n) for n in domain_nodes
+            ):
+                continue
+            domain_requests = (
+                ResourceDemandScheduler._add_label_constraints_to_requests(
+                    requests,
+                    [
+                        LabelSelectorConstraint(
+                            label_key=locality_label,
+                            operator=LabelSelectorOperator.LABEL_OPERATOR_IN,
+                            label_values=[domain_val],
+                        )
+                    ],
+                )
+            )
+            # The domain is idle if each of its nodes can still take as many of the
+            # gang's bundles as when empty. Usage that leaves this count unchanged,
+            # such as a CPU task or objects in the object store, does not make a
+            # booting domain busy.
+            domain_is_idle = bool(domain_nodes) and all(
+                _bundle_capacity(
+                    n.get_available_resources(ResourceRequestSource.PENDING_DEMAND)
+                )
+                == _bundle_capacity(n.total_resources)
+                for n in domain_nodes
+            )
+            nodes, infeasible = ResourceDemandScheduler._try_schedule(
+                ctx, domain_requests, ResourceRequestSource.PENDING_DEMAND
+            )
+            # If the idle domain absorbed part of the gang, its other hosts may
+            # still be booting: pair the remaining requests with unlabelled pending
+            # nodes of the same node type.
+            if infeasible and domain_is_idle and len(infeasible) < len(domain_requests):
+                tagged_ids = set()
+                for n in nodes:
+                    if (
+                        n.node_type == domain_nodes[0].node_type
+                        and n.status == SchedulingNodeStatus.SCHEDULABLE
+                        and not n.ray_node_id
+                        and not n.labels.get(locality_label)
+                        and not n.get_sched_requests(
+                            ResourceRequestSource.PENDING_DEMAND
+                        )
+                    ):
+                        n.labels[locality_label] = domain_val
+                        tagged_ids.add(n.im_instance_id)
+                if tagged_ids:
+                    domain_ctx = copy.copy(ctx)
+                    domain_ctx.update(nodes)
+                    nodes, infeasible = ResourceDemandScheduler._try_schedule(
+                        domain_ctx, infeasible, ResourceRequestSource.PENDING_DEMAND
+                    )
+                    # Untag the pending nodes that the gang did not use.
+                    for n in nodes:
+                        if n.im_instance_id in tagged_ids and not n.get_sched_requests(
+                            ResourceRequestSource.PENDING_DEMAND
+                        ):
+                            del n.labels[locality_label]
+
+            if not infeasible:
+                num_to_launch = len(nodes) - len(all_nodes)
+                if num_to_launch == 0:
+                    return nodes, []
+                if best_with_launch is None or num_to_launch < best_with_launch[0]:
+                    best_with_launch = (num_to_launch, nodes)
+
+        if best_with_launch is not None:
+            return best_with_launch[1], []
+
+        # 2. Otherwise schedule onto pending or new nodes outside every existing
+        # domain, and tag the nodes the gang uses with a placeholder domain so that
+        # a later gang in this pass is not split between them and other nodes.
+        # Running nodes without `locality_label` have already registered with GCS
+        # without a domain and cannot host a topology-constrained gang.
+        pending_domain = f"__pending_domain_{uuid.uuid4().hex[:8]}"
+        unlabeled_running_ids = {
+            n.im_instance_id
+            for n in all_nodes
+            if n.ray_node_id and not n.labels.get(locality_label)
+        }
+        if unlabeled_running_ids:
+            for n in all_nodes:
+                if n.im_instance_id in unlabeled_running_ids:
+                    n.labels[locality_label] = pending_domain
+            step2_ctx = copy.copy(ctx)
+            step2_ctx.update(all_nodes)
+        else:
+            step2_ctx = ctx
+        new_domain_requests = (
+            ResourceDemandScheduler._add_label_constraints_to_requests(
+                requests,
+                [
+                    LabelSelectorConstraint(
+                        label_key=locality_label,
+                        operator=LabelSelectorOperator.LABEL_OPERATOR_NOT_IN,
+                        label_values=existing_domains
+                        + ([pending_domain] if unlabeled_running_ids else []),
+                    )
+                ],
+            )
+        )
+        scheduled_req_ids = {id(r) for r in new_domain_requests}
+        nodes, infeasible = ResourceDemandScheduler._try_schedule(
+            step2_ctx, new_domain_requests, ResourceRequestSource.PENDING_DEMAND
+        )
+        for n in nodes:
+            if n.im_instance_id in unlabeled_running_ids:
+                del n.labels[locality_label]
+            elif (
+                not infeasible
+                and not n.ray_node_id
+                and any(
+                    id(r) in scheduled_req_ids
+                    for r in n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+                )
+            ):
+                n.labels[locality_label] = pending_domain
+        return nodes, infeasible
 
     @staticmethod
     def _try_schedule(

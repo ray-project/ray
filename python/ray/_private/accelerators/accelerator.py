@@ -158,3 +158,19 @@ class AcceleratorManager(ABC):
             A dictionary mapping accelerator related label keys to values.
         """
         return None
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        node_selector: Dict[str, str],
+    ) -> Optional[Dict[str, str]]:
+        """Get accelerator-related Ray node labels for a node group from its
+        pod nodeSelector.
+
+        Args:
+            node_selector: The pod spec nodeSelector dictionary.
+
+        Returns:
+            A dictionary mapping accelerator-related label keys to values, or
+            None if not applicable.
+        """
+        return None

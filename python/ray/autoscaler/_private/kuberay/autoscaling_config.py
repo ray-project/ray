@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from ray._private.accelerators import get_all_accelerator_managers
 from ray._private.label_utils import (
     validate_node_label_syntax,
 )
@@ -320,10 +321,10 @@ def _get_labels_from_group_spec(
     group_spec: Dict[str, Any], group_name: str = ""
 ) -> Dict[str, str]:
     """
-    Parses Ray node labels for the autoscaling config based on the following
-    priority:
-    1. Top-level `labels` field in the group spec.
-    2. `labels` field in `rayStartParams`.
+    Parses Ray node labels for the autoscaling config. Labels in the group spec's
+    top-level `labels` field take precedence over accelerator labels derived from
+    the Pod `nodeSelector`. Labels set in `rayStartParams` are ignored with a
+    warning.
 
     Args:
         group_spec: The group specification dictionary.
@@ -361,6 +362,15 @@ def _get_labels_from_group_spec(
         labels_dict = group_spec.get("labels")
         # Validate node labels follow expected Kubernetes label syntax.
         validate_node_label_syntax(labels_dict)
+
+    node_selector = group_spec["template"]["spec"].get("nodeSelector") or {}
+    for accelerator_manager in get_all_accelerator_managers():
+        accel_labels = accelerator_manager.get_node_group_accelerator_labels(
+            node_selector
+        )
+        if accel_labels:
+            # Explicit group labels take precedence over derived ones.
+            labels_dict = {**accel_labels, **labels_dict}
 
     return labels_dict
 

@@ -26,6 +26,17 @@ GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
 
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
+GKE_TPU_ACCELERATOR_TO_GENERATION = {
+    "tpu-v4-podslice": "v4",
+    "tpu-v5-lite-device": "v5litepod",
+    "tpu-v5-lite-podslice": "v5litepod",
+    "tpu-v5p-slice": "v5p",
+    "tpu-v6e-slice": "v6e",
+    "tpu7x": "v7x",
+}
+
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
 # See https://cloud.google.com/compute/docs/metadata/overview
@@ -1112,3 +1123,21 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
         return tpu_labels
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        node_selector: Dict[str, str],
+    ) -> Optional[Dict[str, str]]:
+        """Derive TPU node-group labels from GKE TPU nodeSelectors."""
+        generation = GKE_TPU_ACCELERATOR_TO_GENERATION.get(
+            node_selector.get(GKE_TPU_ACCELERATOR_LABEL)
+        )
+        topology = node_selector.get(GKE_TPU_TOPOLOGY_LABEL)
+        pod_type = infer_tpu_pod_type_from_topology(topology, generation)
+        if not pod_type:
+            return None
+        return {
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: f"TPU-{generation.upper()}",
+            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology,
+            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: pod_type,
+        }
