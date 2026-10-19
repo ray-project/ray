@@ -1285,6 +1285,52 @@ def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
     assert rows_same(filtered_ds.to_pandas(), expected_pd)
 
 
+def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
+    """``Join.infer_schema`` only handles Arrow input schemas, so a join over
+    ``from_pandas`` inputs has no output schema. Pushdown must still route by
+    what the input schemas say: a column only one input has moves to that
+    side, while a colliding name (whose suffixed output name cannot be mapped
+    without the output schema) stays above the join."""
+    from ray.data._internal.logical.operators import Filter, Join
+    from ray.data.expressions import col
+
+    left_pd = pd.DataFrame(
+        {"k": [0, 1, 2, 3], "left_val": [0, 10, 20, 30], "val": [0, 1, 2, 3]}
+    )
+    right_pd = pd.DataFrame(
+        {"k": [0, 1, 2, 3], "right_val": [0, 1, 2, 3], "val": [10, 11, 12, 13]}
+    )
+    left_ds = ray.data.from_pandas(left_pd)
+    right_ds = ray.data.from_pandas(right_pd)
+    joined = left_ds.join(
+        right_ds,
+        join_type="inner",
+        num_partitions=2,
+        on=("k",),
+        left_suffix="_l",
+        right_suffix="_r",
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    unique_pred = col("left_val") >= 10
+    colliding_pred = col("val_r") == 11
+    filtered_ds = joined.filter(expr=unique_pred & colliding_pred)
+
+    plan = _optimized_plan(filtered_ds)
+    _assert_filter_with(plan.dag, colliding_pred)
+    join = plan.dag.input_dependencies[0]
+    assert isinstance(join, Join)
+    _assert_filter_with(join.input_dependencies[0], unique_pred)
+    assert not isinstance(join.input_dependencies[1], Filter)
+    _assert_num_filters(plan, 2)
+
+    expected_pd = left_pd.merge(right_pd, on="k", suffixes=("_l", "_r"))
+    expected_pd = expected_pd[
+        (expected_pd["left_val"] >= 10) & (expected_pd["val_r"] == 11)
+    ].reset_index(drop=True)
+    assert len(expected_pd) == 1  # k == 1
+    assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
+
+
 def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_cpus):
     """Executing a dataset rewires its logical DAG to the optimized one, so a
     second execution re-optimizes an already derived plan. The derived filters

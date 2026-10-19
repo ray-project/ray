@@ -219,28 +219,23 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def _output_to_input_columns(
         self,
     ) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
-        """For each side, the output column names it produces mapped to the
-        input names they come from; ``None`` if a schema is unknown.
+        """Per side, output column name -> the input column it comes from;
+        ``None`` if an input schema is unknown.
 
-        Mirrors the naming in ``execution/operators/join.py``: a non-key name
-        present on both inputs gets ``left_columns_suffix`` /
-        ``right_columns_suffix`` (Polars' default ``_right`` on the right when
-        only the left suffix is set, so the right keeps the bare name); left
-        keys keep their names and right keys are coalesced into them, except
-        for RIGHT_OUTER where the coalesced keys take the right names; a
-        semi/anti join emits one side unchanged. A key with the same name on
-        both sides is the one column both sides produce, equal on both inputs
-        for every matched row. Anything this mirror cannot place with
-        certainty is left out, so the predicate stays above the join.
+        Mirrors the naming in ``execution/operators/join.py``: colliding
+        payload names get the side's suffix, keys coalesce per join type,
+        semi/anti joins emit one side unchanged. Names the mirror cannot
+        place are left out, so a predicate on them stays above the join.
+        Without an inferred output schema to check against (non-Arrow input
+        schemas, e.g. ``from_pandas``) only names unique to one input and
+        shared keys are mapped.
 
-        Cached because ``infer_schema`` is not memoized and re-runs inference
-        over the whole input subtree, while predicate pushdown routes every
-        conjunct of a filter separately.
+        Cached: ``infer_schema`` is not memoized, and pushdown asks per
+        conjunct.
         """
         left_schema = self.input_dependencies[0].infer_schema()
         right_schema = self.input_dependencies[1].infer_schema()
-        output_schema = self.infer_schema()
-        if not left_schema or not right_schema or not output_schema:
+        if not left_schema or not right_schema:
             return None
         left_columns = list(left_schema.names)
         right_columns = list(right_schema.names)
@@ -259,6 +254,26 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
             if left_key == right_key
         }
+
+        output_schema = self.infer_schema()
+        if not output_schema:
+            # Keys are coalesced away on the non-preserved side, so only a
+            # shared key counts there; everything else needs a unique name.
+            left_set, right_set = set(left_columns), set(right_columns)
+            is_right_outer = self.join_type is JoinType.RIGHT_OUTER
+            return (
+                {
+                    c: c
+                    for c in left_columns
+                    if c in shared_keys
+                    or (c not in right_set and not (is_right_outer and c in left_keys))
+                },
+                {
+                    c: c
+                    for c in right_columns
+                    if c in shared_keys or (c not in left_set and c not in right_keys)
+                },
+            )
         # Right keys are coalesced into the left ones, so only right non-key
         # columns can collide with left columns.
         collisions = set(left_columns) & (set(right_columns) - right_keys)
