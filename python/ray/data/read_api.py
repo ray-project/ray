@@ -3444,6 +3444,9 @@ def read_mcap(
     the values each read task holds: a field that only some files have is null
     in the other rows, and a field whose type differs between files, such as a
     number in one and a string in another, fails where their rows are combined.
+    On the V2 datasource, ``Dataset.schema()`` types them before reading, from
+    the selected messages of the first chunk that holds one. A field that first
+    appears in a later chunk or file is missing from that schema.
 
     Examples:
         :noindex:

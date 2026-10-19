@@ -637,6 +637,26 @@ def test_read_mcap_v2_schema_matches_rows(
     assert block.schema.types == planned.types
 
 
+def test_read_mcap_schema_matches_messages_whose_fields_vary(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """``ds.schema()`` gives ``data`` the type its blocks hold when the first
+    message lacks a field and has an int where later messages have a float."""
+    path = os.path.join(tmp_path, "varying.mcap")
+    payloads = [{"x": 1}, {"x": 2.5, "y": "a"}, {"x": 3}]
+    create_test_mcap_file(
+        path,
+        [{"topic": "/a", "data": p, "log_time": i} for i, p in enumerate(payloads)],
+    )
+    ds = ray.data.read_mcap(path)
+
+    planned = ds.schema().base_schema.field("data").type
+    materialized = ds.materialize().schema().base_schema.field("data").type
+
+    assert planned == pa.struct([("x", pa.float64()), ("y", pa.string())])
+    assert materialized == planned
+
+
 @pytest.mark.parametrize("corruption", ["cut_short", "not_mcap"])
 def test_read_mcap_max_errored_blocks_skips_a_corrupt_recording(
     ray_start_regular_shared, tmp_path, datasource_v2, corruption
