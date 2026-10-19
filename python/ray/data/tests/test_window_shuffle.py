@@ -254,6 +254,34 @@ class WindowShuffleTests(unittest.TestCase):
             )
         self.assertEqual(sorted(self.ids(output)), list(range(37)))
 
+    def test_default_and_strict_shuffle_batch_sizes(self):
+        source = self.source([5, 5, 5, 5])
+        for strict, expected in ((False, [8, 2, 8, 2]), (True, [8, 8, 4])):
+            with self.subTest(strict=strict):
+                with patch.object(
+                    window_shuffle_impl, "_shuffle_window", _record_shuffle_batch
+                ):
+                    output = source.window_shuffle(8, strict=strict, seed=42)
+                # Iterator batches cross shuffle windows. Probe the actual
+                # shuffle inputs rather than inferring them from output blocks.
+                rows = [
+                    row
+                    for batch in output.iter_batches(
+                        batch_size=3, batch_format="pyarrow"
+                    )
+                    for row in batch.to_pylist()
+                ]
+                groups = {}
+                for row in rows:
+                    groups.setdefault(row["batch_start"], []).append(row["id"])
+                windows = [sorted(ids) for _, ids in sorted(groups.items())]
+                self.assertEqual([len(ids) for ids in windows], expected)
+                start = 0
+                for ids, size in zip(windows, expected):
+                    self.assertEqual(ids, list(range(start, start + size)))
+                    start += size
+                self.assertEqual(sorted(row["id"] for row in rows), list(range(20)))
+
     def test_default_matches_map_batches_membership(self):
         def members(dataset):
             groups = {}
@@ -286,7 +314,8 @@ class WindowShuffleTests(unittest.TestCase):
             with self.subTest(strict=strict):
                 output = source.window_shuffle(8, strict=strict, seed=42)
                 op = output._logical_plan.dag
-                self.assertEqual(op.batch_size, None if strict else 8)
+                self.assertEqual(op.window_size, 8)
+                self.assertEqual(op.strict, strict)
                 self.assertEqual(op.min_rows_per_bundled_input, None if strict else 8)
                 self.assertEqual(
                     isinstance(op.input_dependencies[0], StreamingRepartition), strict

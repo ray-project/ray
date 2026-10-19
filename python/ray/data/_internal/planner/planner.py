@@ -53,6 +53,7 @@ from ray.data._internal.logical.operators import (
     StreamingRepartition,
     StreamingSplit,
     Union,
+    WindowShuffle,
     Write,
     Zip,
 )
@@ -75,6 +76,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     plan_streaming_repartition_op,
     plan_udf_map_op,
 )
+from ray.data._internal.planner.plan_window_shuffle_op import plan_window_shuffle_op
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data._internal.usage import create_usage_callback
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
@@ -270,6 +272,7 @@ class Planner:
         Count: plan_count_op,
         Project: plan_project_op,
         StreamingRepartition: plan_streaming_repartition_op,
+        WindowShuffle: plan_window_shuffle_op,
         Join: plan_join_op,
         StreamingSplit: plan_streaming_split_op,
         Download: plan_download_op,

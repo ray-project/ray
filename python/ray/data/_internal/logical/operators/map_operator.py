@@ -22,6 +22,7 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
     Expr,
@@ -297,17 +298,39 @@ class MapBatches(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class WindowShuffle(MapBatches, LogicalOperatorPreservesSchema):
-    """Shuffle target-sized batches or strict windows with batch-map execution.
+class WindowShuffle(AbstractMap, LogicalOperatorPreservesSchema):
+    """Shuffle target-sized batches or prebuilt strict windows.
 
     Although this operation preserves rows and schema, it changes row order.
     Limit pushdown must stop here, and fusion must not rebundle its windows.
     """
 
+    window_size: int
+    seed_config: RandomSeedConfig
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    strict: bool = False
+    fn: Callable = field(init=False, repr=False)
     can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    compute: Optional[ComputeStrategy] = None
+    per_block_limit: Optional[int] = None
 
     def __post_init__(self):
-        super().__post_init__()
+        from ray.data._internal.window_shuffle import _shuffle_window
+
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.window_size <= 0:
+            raise ValueError(f"window_size must be positive, got {self.window_size}")
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(self, "fn", _shuffle_window)
+        object.__setattr__(
+            self,
+            "min_rows_per_bundled_input",
+            None if self.strict else self.window_size,
+        )
         object.__setattr__(self, "_name", "WindowShuffle")
 
 

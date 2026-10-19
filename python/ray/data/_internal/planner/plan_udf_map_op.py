@@ -4,7 +4,6 @@ import inspect
 import logging
 import queue
 from dataclasses import dataclass
-from functools import partial
 from threading import Thread
 from types import GeneratorType
 from typing import (
@@ -51,11 +50,9 @@ from ray.data._internal.logical.operators import (
     MapRows,
     Project,
     StreamingRepartition,
-    WindowShuffle,
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -318,28 +315,19 @@ def plan_udf_map_op(
     )
 
     compute = get_compute(op.compute)
-    if isinstance(op, WindowShuffle):
-        fn, init_fn = op.fn, None
-    else:
-        udf_is_callable_class = isinstance(op.fn, CallableClass)
-        fn, init_fn = _get_udf(
-            op.fn,
-            op.fn_args,
-            op.fn_kwargs,
-            op.fn_constructor_args if udf_is_callable_class else None,
-            op.fn_constructor_kwargs if udf_is_callable_class else None,
-            compute=compute,
-        )
+    udf_is_callable_class = isinstance(op.fn, CallableClass)
+    fn, init_fn = _get_udf(
+        op.fn,
+        op.fn_args,
+        op.fn_kwargs,
+        op.fn_constructor_args if udf_is_callable_class else None,
+        op.fn_constructor_kwargs if udf_is_callable_class else None,
+        compute=compute,
+    )
 
     if isinstance(op, MapBatches):
-        if isinstance(op, WindowShuffle):
-            batch_fn = partial(
-                _shuffle_windows, shuffle_fn=fn, seed_config=op.fn_args[0]
-            )
-        else:
-            batch_fn = _generate_transform_fn_for_map_batches(fn)
         transform_fn = BatchMapTransformFn(
-            batch_fn,
+            _generate_transform_fn_for_map_batches(fn),
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
@@ -371,8 +359,6 @@ def plan_udf_map_op(
         ray_remote_args_fn=op.ray_remote_args_fn,
         ray_remote_args=op.ray_remote_args,
         per_block_limit=op.per_block_limit,
-        # Preserve the shuffle's task grouping and task/batch-indexed RNG stream.
-        supports_fusion=not isinstance(op, WindowShuffle),
     )
 
 
@@ -647,20 +633,6 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
                         ) from e
                     else:
                         raise e from None
-
-
-def _shuffle_windows(
-    batches: Iterable[pa.Table],
-    _: TaskContext,
-    *,
-    shuffle_fn: Callable[..., pa.Table],
-    seed_config: RandomSeedConfig,
-) -> Iterable[pa.Table]:
-    """Apply per-batch permutations with retry-stable batch indices."""
-    # Enumeration restarts for each transform attempt, including in-process
-    # retries. Keep the batch index out of mutable task or worker state.
-    for batch_idx, batch in enumerate(batches):
-        yield shuffle_fn(batch, seed_config, batch_idx=batch_idx)
 
 
 def _generate_transform_fn_for_map_batches(

@@ -125,6 +125,7 @@ def measure(args, variant):
     median = statistics.median(durations)
     return {
         "parameters": vars(args),
+        "cluster_resources": ray.cluster_resources(),
         "native_ray_commit": ray.__commit__,
         "pyarrow": pa.__version__,
         "numpy": np.__version__,
@@ -151,7 +152,6 @@ def main():
     parser.add_argument("--variant", choices=BASELINES)
     parser.add_argument("--concurrency", type=int)
     parser.add_argument("--num-cpus", type=int)
-    parser.add_argument("--object-store-memory", type=int)
     args = parser.parse_args()
     if (
         min(
@@ -171,7 +171,6 @@ def main():
 
     ray.init(
         num_cpus=args.num_cpus,
-        object_store_memory=args.object_store_memory,
         runtime_env={
             "env_vars": {
                 "RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE": os.environ.get(

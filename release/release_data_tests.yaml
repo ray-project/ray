@@ -813,9 +813,7 @@
       take_enabled: ["1", "0"]
   run:
     timeout: 7200
-    script: >
-      python benchmark_window_shuffle.py --repeats=3
-      --object-store-memory=12884901888
+    script: python benchmark_window_shuffle.py --repeats=3
 
 - name: "iter_batches_{{format}}"
   python: "3.10"

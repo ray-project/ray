@@ -30,7 +30,6 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.data._internal import window_shuffle as window_shuffle_impl
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.dataset_id import generate_dataset_ulid
 from ray.data._internal.dataset_repr import (
@@ -2484,6 +2483,13 @@ class Dataset:
         Completed windows can also be emitted out of order.
         Output block sizes may differ from window sizes due to block shaping.
 
+        For example, with four consecutive input blocks of five rows each and
+        ``window_size=8``, default task grouping can produce shuffle batches of
+        ``[8, 2, 8, 2]`` rows: each task consumes two blocks and shuffles eight
+        rows followed by its two remaining rows. With ``strict=True``, the
+        shuffle windows contain ``[8, 8, 4]`` rows instead. These are shuffle
+        window sizes, independent of the batch size you choose when iterating.
+
         This is a lazy transformation and does not materialize the input or
         output. Batches can be shuffled and consumed before all input
         arrives. The streaming executor applies its existing backpressure to
@@ -2561,10 +2567,8 @@ class Dataset:
             source = self.repartition(
                 target_num_rows_per_block=window_size, strict=True
             )
-            batch_size = None
         else:
             source = self
-            batch_size = window_size
         remote_args = {}
         if num_cpus is not None:
             remote_args["num_cpus"] = num_cpus
@@ -2572,13 +2576,10 @@ class Dataset:
             remote_args["memory"] = memory
 
         op = WindowShuffle(
-            fn=window_shuffle_impl._shuffle_window,
             input_dependencies=[source._logical_plan.dag],
-            batch_size=batch_size,
-            min_rows_per_bundled_input=batch_size,
-            batch_format="pyarrow",
-            zero_copy_batch=True,
-            fn_args=(seed_config,),
+            window_size=window_size,
+            strict=strict,
+            seed_config=seed_config,
             compute=compute,
             ray_remote_args=remote_args,
         )
