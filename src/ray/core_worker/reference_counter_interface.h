@@ -703,11 +703,15 @@ class ReferenceCounterInterface {
    * @param[in] object_id The object that has been spilled.
    * @param[in] spilled_url The URL to which the object has been spilled.
    * @param[in] spilled_node_id The ID of the node on which the object was spilled.
+   * @param[in] reporter_node_id The node whose raylet spilled the object, set
+   * even when it spilled to external storage. A moved object's spill is
+   * recorded only when this node holds its primary copy.
    * @return True if the reference exists and is in scope, false otherwise.
    */
   virtual bool HandleObjectSpilled(const ObjectID &object_id,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id) = 0;
+                                   const NodeID &spilled_node_id,
+                                   const NodeID &reporter_node_id) = 0;
 
   /**
    * @brief Get locality data for object.
