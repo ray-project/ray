@@ -9,9 +9,11 @@ import pytest
 import requests
 import yaml
 
-from ray.autoscaler._private.kuberay.autoscaling_config import (
+from ray._private.accelerators.tpu import (
     GKE_TPU_ACCELERATOR_LABEL,
     GKE_TPU_TOPOLOGY_LABEL,
+)
+from ray.autoscaler._private.kuberay.autoscaling_config import (
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
@@ -20,7 +22,6 @@ from ray.autoscaler._private.kuberay.autoscaling_config import (
     _get_ray_resources_from_group_spec,
     _round_up_k8s_quantity,
 )
-from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
@@ -131,7 +132,6 @@ def _get_basic_autoscaling_config() -> dict:
                     "Custom2": 5,
                     "Custom3": 1,
                     "TPU": 4,
-                    "TPU-v4-16-head": 1,
                 },
             },
         },
@@ -419,8 +419,6 @@ def _get_ray_cr_with_tpu_v7x() -> dict[str, Any]:
 
 def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
-    config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
-    config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
     config["available_node_types"]["tpu-group"]["labels"].update(
         {
             "ray.io/accelerator-type": "TPU-V7X",
@@ -449,8 +447,6 @@ def _get_ray_cr_with_tpu_v5litepod() -> dict[str, Any]:
 
 def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
-    config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
-    config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
     config["available_node_types"]["tpu-group"]["labels"].update(
         {
             "ray.io/accelerator-type": "TPU-V5LITEPOD",
@@ -701,81 +697,6 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
             assert out == {"ok-key": "ok-value"}
 
 
-TPU_TYPES_ARGS = ",".join(
-    [
-        "accelerator",
-        "topology",
-        "expected_tpu_type",
-    ]
-)
-TPU_TYPES_DATA = (
-    []
-    if platform.system() == "Windows"
-    else [
-        pytest.param(
-            "tpu-v4-podslice",
-            None,
-            None,
-            id="tpu-none-topology",
-        ),
-        pytest.param(
-            None,
-            "2x2x2",
-            None,
-            id="tpu-none-accelerator",
-        ),
-        pytest.param(
-            "tpu-v4-podslice",
-            "2x2x2",
-            "v4-16",
-            id="tpu-v4-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-device",
-            "2x2",
-            "v5litepod-4",
-            id="tpu-v5e-device-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-podslice",
-            "2x4",
-            "v5litepod-8",
-            id="tpu-v5e-podslice-test",
-        ),
-        pytest.param(
-            "tpu-v5p-slice",
-            "2x2x4",
-            "v5p-32",
-            id="tpu-v5p-test",
-        ),
-        pytest.param(
-            "tpu-v6e-slice",
-            "16x16",
-            "v6e-256",
-            id="tpu-v6e-test",
-        ),
-        pytest.param(
-            "tpu7x",
-            "2x2x2",
-            "v7x-16",
-            id="tpu-v7x-test",
-        ),
-    ]
-)
-
-
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
-@pytest.mark.parametrize(TPU_TYPES_ARGS, TPU_TYPES_DATA)
-def test_tpu_node_selectors_to_type(
-    accelerator: str, topology: str, expected_tpu_type: str
-):
-    """Verify that tpu_node_selectors_to_type correctly returns TPU type from
-    TPU nodeSelectors.
-    """
-    tpu_type = tpu_node_selectors_to_type(topology, accelerator)
-    assert expected_tpu_type == tpu_type
-
-
 TPU_PARAM_ARGS = ",".join(
     [
         "ray_cr_in",
@@ -889,7 +810,6 @@ RAY_RESOURCES_TEST_DATA = (
                 "Custom2": 5,
                 "Custom3": 1,
                 "TPU": 4,
-                "TPU-v4-16-head": 1,
             },
             id="tpu-group",
         ),
@@ -938,7 +858,6 @@ RAY_RESOURCES_TEST_DATA = (
                 "Custom2": 5,
                 "Custom3": 1,
                 "TPU": 4,
-                "TPU-v7x-16-head": 1,
             },
             id="tpu-group-v7x",
         ),
@@ -951,7 +870,6 @@ RAY_RESOURCES_TEST_DATA = (
                 "Custom2": 5,
                 "Custom3": 1,
                 "TPU": 4,
-                "TPU-v5litepod-8-head": 1,
             },
             id="tpu-group-v5litepod",
         ),

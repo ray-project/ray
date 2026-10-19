@@ -24,6 +24,11 @@ def ray_tpu_single_host():
             num_cpus=4,
             resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
             env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
         )
 
         ray.init(address=cluster.address)
@@ -53,6 +58,8 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-A",
             "ray.io/tpu-worker-id": "0",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         slice_a_worker_env = {
             "TPU_NAME": "slice-A",
@@ -64,12 +71,13 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-A",
             "ray.io/tpu-worker-id": "1",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         cluster.add_node(
             num_cpus=8,
             resources={
                 "TPU": 4,
-                f"TPU-{pod_type}-head": 1,
                 "accelerator_type:TPU-V4": 1,
             },
             env_vars=slice_a_head_env,
@@ -92,6 +100,8 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-B",
             "ray.io/tpu-worker-id": "0",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         slice_b_worker_env = {
             "TPU_NAME": "slice-B",
@@ -103,12 +113,13 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-B",
             "ray.io/tpu-worker-id": "1",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         cluster.add_node(
             num_cpus=8,
             resources={
                 "TPU": 4,
-                f"TPU-{pod_type}-head": 1,
                 "accelerator_type:TPU-V4": 1,
             },
             env_vars=slice_b_head_env,

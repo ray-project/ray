@@ -60,7 +60,6 @@ def ray_tpu_cluster():
             resources={
                 "TPU": 8,
                 "accelerator_type:TPU-V6E": 1,
-                "TPU-v6e-8-head": 1,
             },
             env_vars={
                 "TPU_NAME": f"slice-single-{i}",
@@ -72,6 +71,8 @@ def ray_tpu_cluster():
                 "ray.io/tpu-slice-name": f"slice-single-{i}",
                 "ray.io/tpu-worker-id": "0",
                 "ray.io/tpu-pod-type": "v6e-8",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/accelerator-type": "TPU-V6E",
             },
         )
 
@@ -89,13 +90,13 @@ def ray_tpu_cluster():
             "ray.io/tpu-slice-name": "slice-A",
             "ray.io/tpu-worker-id": str(i),
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V6E",
         }
         resources = {
             "TPU": 4,
             "accelerator_type:TPU-V6E": 1,
         }
-        if i == 0:
-            resources[f"TPU-{pod_type}-head"] = 1
 
         cluster.add_node(
             num_cpus=4,
