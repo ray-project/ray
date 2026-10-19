@@ -199,7 +199,12 @@ def test_run_options_env_overrides_ray_and_job_env(auth_env):
     assert argv.index("JOB_VAR=from_run_options") > argv.index("JOB_VAR=from_env_vars")
 
 
-_RUN_OPTION_ENV = {"DIR": "/data dir", "HOME_DIR": "/home/ray", "EMPTY": ""}
+_RUN_OPTION_ENV = {
+    "DIR": "/data dir",
+    "HOME_DIR": "/home/ray",
+    "EMPTY": "",
+    "HOME": "/home/ray",
+}
 
 
 @pytest.mark.parametrize(
@@ -221,6 +226,14 @@ _RUN_OPTION_ENV = {"DIR": "/data dir", "HOME_DIR": "/home/ray", "EMPTY": ""}
         ("--label \"$UNSET\" ''", ["--label", "", ""]),
         ("$(id) `id` $5 $ $-", ["$(id)", "`id`", "$5", "$", "$-"]),
         ("", []),
+        ("-v $DIRé", ["-v", "/data diré"]),
+        ("a\vb a\u00a0b", ["a\vb", "a\u00a0b"]),
+        ("--rm \\\n-it", ["--rm", "-it"]),
+        ('--label "a\\\nb"', ["--label", "ab"]),
+        ("-v ~/d:/d ~", ["-v", "/home/ray/d:/d", "/home/ray"]),
+        ("'~/d' a~/d ~root/d $UNSET~", ["~/d", "a~/d", "~root/d", "~"]),
+        ("~\\\n/d a\\\n~/d", ["/home/ray/d", "a~/d"]),
+        ("$DI\\\nR '\\\n'", ["/data dir", "\\\n"]),
     ],
 )
 def test_split_run_option(run_option, expected):
@@ -235,7 +248,7 @@ def test_split_run_option_rejects_malformed(run_option):
         split_run_option(run_option, _RUN_OPTION_ENV)
 
 
-def test_malformed_run_option_fails_setup():
+def test_malformed_run_option_fails_setup(auth_env):
     with pytest.raises(ValueError, match="No closing quotation"):
         _launch(run_options=["--label 'a"])
 

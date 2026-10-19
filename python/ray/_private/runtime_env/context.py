@@ -19,18 +19,21 @@ logger = logging.getLogger(__name__)
 # reaches them as a read-only file mount instead.
 _NODE_SECRET_ENV_VARS = {"RAY_AUTH_TOKEN", RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR}
 
-_VAR_REFERENCE = re.compile(r"\$(?:([A-Za-z_]\w*)|\{([^}]*)\})")
-_VAR_NAME = re.compile(r"[A-Za-z_]\w*")
+_VAR_REFERENCE = re.compile(r"\$(?:([A-Za-z_]\w*)|\{([^}]*)\})", re.ASCII)
+_VAR_NAME = re.compile(r"[A-Za-z_]\w*", re.ASCII)
+_ARG_SEPARATORS = " \t\n"
 
 
 def split_run_option(run_option: str, env: Dict[str, str]) -> List[str]:
-    """Splits a `container.run_options` item into podman arguments like a POSIX
-    shell, expanding `$NAME` and `${NAME}` from `env`.
+    """Splits a `container.run_options` item into podman arguments, treating
+    quotes, backslashes, `$NAME`, `${NAME}` and a leading `~` like a POSIX
+    shell does, with values taken from `env`.
 
     Unlike a shell, nothing is executed: `$(...)` and backticks stay literal.
     An expanded value is never split, so it can't add arguments. As in a
     shell, single quotes and a backslash keep `$` literal, and an unset
-    variable expands to an empty string.
+    variable expands to an empty string. Other shell expansions, such as
+    `~user`, `$1` and `$'...'`, stay literal.
 
     Args:
         run_option: One `container.run_options` item.
@@ -43,13 +46,16 @@ def split_run_option(run_option: str, env: Dict[str, str]) -> List[str]:
         ValueError: On an unclosed quote, a trailing backslash, or a `${...}`
             that isn't a plain variable name.
     """
+    run_option = _remove_line_continuations(run_option)
     args: List[str] = []
     current: List[str] = []
     in_arg = False
+    at_word_start = True
     quote = None
     i = 0
     while i < len(run_option):
         char = run_option[i]
+        starts_word, at_word_start = at_word_start, False
         if quote == "'":
             if char == "'":
                 quote = None
@@ -85,7 +91,17 @@ def split_run_option(run_option: str, env: Dict[str, str]) -> List[str]:
             in_arg = True
         elif char == '"' and quote == '"':
             quote = None
-        elif char.isspace() and quote is None:
+        elif (
+            char == "~"
+            and quote is None
+            and starts_word
+            and run_option[i + 1 : i + 2] in ("", "/", *_ARG_SEPARATORS)
+            and "HOME" in env
+        ):
+            current.append(env["HOME"])
+            in_arg = True
+        elif char in _ARG_SEPARATORS and quote is None:
+            at_word_start = True
             if in_arg:
                 args.append("".join(current))
                 current = []
@@ -99,6 +115,30 @@ def split_run_option(run_option: str, env: Dict[str, str]) -> List[str]:
     if in_arg:
         args.append("".join(current))
     return args
+
+
+def _remove_line_continuations(text: str) -> str:
+    # A shell drops backslash-newline before reading words or names, except
+    # inside single quotes or when the backslash is itself escaped.
+    kept: List[str] = []
+    quote = None
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if quote == "'":
+            quote = None if char == "'" else quote
+        elif char == "\\":
+            if text[i + 1 : i + 2] == "\n":
+                i += 2
+                continue
+            kept.append(text[i : i + 2])
+            i += 2
+            continue
+        elif char in "'\"":
+            quote = None if quote == char else (quote or char)
+        kept.append(char)
+        i += 1
+    return "".join(kept)
 
 
 @DeveloperAPI
@@ -216,8 +256,8 @@ class RuntimeEnvContext:
         container_env: Dict[str, Optional[str]] = {
             name: None for name in launcher_env if name.startswith("RAY_")
         }
-        # Raw values: expanding ${VAR} against the host env would let a job
-        # copy node secrets into its container.
+        # Raw values, as master passed them single-quoted: expanding ${VAR}
+        # against os.environ would let a job copy node secrets.
         container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 
