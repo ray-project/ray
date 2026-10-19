@@ -6,8 +6,9 @@ import pytest
 
 import ray
 from ray.train.health import NodeProbe, ProbeResult
-from ray.train.health._internal.node_monitor import NodeMonitor, ScheduledProbe
+from ray.train.health._internal.node_monitor import NodeMonitor
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
+from ray.train.health._internal.probe_utils import ScheduledProbe
 
 
 class Temp(NodeProbe):

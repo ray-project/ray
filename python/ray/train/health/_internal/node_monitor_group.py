@@ -1,27 +1,18 @@
-import logging
 import time
 from dataclasses import dataclass
 from typing import Dict, List, NamedTuple, Optional
 
 import ray
 from ray.actor import ActorHandle
-from ray.train.health._internal.node_monitor import (
-    NodeMonitor,
-    NodeMonitorStatus,
-    ScheduledProbe,
+from ray.train.health._internal.constants import (
+    DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S,
+    DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
 )
+from ray.train.health._internal.node_monitor import NodeMonitor, NodeMonitorStatus
+from ray.train.health._internal.probe_utils import ScheduledProbe
 from ray.train.health.probe import NodeIdStr, NodeProbe
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-logger = logging.getLogger(__name__)
-
-# The time in seconds a NodeMonitor may leave a poll unanswered before it is
-# reported as failed.
-DEFAULT_NODE_MONITOR_HEALTH_CHECK_TIMEOUT_S = 60.0
-
-# Timeout in seconds for poll_status() to wait for the monitors.
-DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S = 1.0
 
 
 class _OngoingPoll(NamedTuple):
@@ -154,7 +145,6 @@ class NodeMonitorGroup:
             try:
                 node_monitor_statuses[node_id] = ray.get(done_poll)
             except Exception as e:
-                logger.warning("Polling the NodeMonitor on node %s failed.", node_id)
                 node_monitor_statuses[node_id] = NodeMonitorStatus(monitor_error=e)
 
         return node_monitor_statuses

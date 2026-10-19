@@ -1,16 +1,10 @@
 import threading
 import time
 from dataclasses import dataclass, field, replace
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, Optional
 
+from ray.train.health._internal.probe_utils import ScheduledProbe
 from ray.train.health.probe import NodeProbe, ProbeResult
-
-
-class ScheduledProbe(NamedTuple):
-    """A ``NodeProbe`` and the seconds between its polls."""
-
-    probe: NodeProbe
-    poll_interval_s: float
 
 
 @dataclass
