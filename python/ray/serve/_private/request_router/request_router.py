@@ -1017,7 +1017,9 @@ class RequestRouter(ABC):
                 t.cancel()
                 # Retrieve the result so an exception raised while the probe handles
                 # its cancellation isn't logged as "never retrieved".
-                t.add_done_callback(lambda task: task.cancelled() or task.exception())
+                t.add_done_callback(
+                    lambda task: None if task.cancelled() else task.exception()
+                )
             # Cancellation is cooperative, so wait for the cancelled probes to finish
             # before acting on the results. Bound the wait by the max response
             # deadline so a probe that is slow to handle its cancellation can't block
