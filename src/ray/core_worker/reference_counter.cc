@@ -1003,10 +1003,10 @@ std::optional<NodeID> ReferenceCounter::UpdateObjectPrimaryMoved(
   if (previous_primary.has_value() && *previous_primary != node_id) {
     node_to_free = previous_primary;
     it->second.locations_being_freed.insert(*node_to_free);
-    // Only the primary's raylet spills, so a spilled copy belongs to the
-    // previous primary, and the free deletes it as well.
-    if (it->second.spilled && (it->second.spilled_node_id.IsNil() ||
-                               it->second.spilled_node_id == *node_to_free)) {
+    // HandleObjectSpilled records a moved object's spill only from its primary's
+    // node, so a recorded spill is the previous primary's, and the free deletes
+    // it as well.
+    if (it->second.spilled) {
       it->second.spilled = false;
       it->second.spilled_url = "";
       it->second.spilled_node_id = NodeID::Nil();
@@ -1613,7 +1613,8 @@ ReferenceCounter::GetObjectLocationsForRecovery(const ObjectID &object_id) {
 
 bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
                                            const std::string &spilled_url,
-                                           const NodeID &spilled_node_id) {
+                                           const NodeID &spilled_node_id,
+                                           const NodeID &reporter_node_id) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -1626,6 +1627,22 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
     // evicted" notification to delete the copy at this spilled URL. Therefore,
     // we should not add this spill URL as a location.
     return false;
+  }
+  if (it->second.move_state_ == MoveState::MOVED) {
+    // A moved object has a primary copy on the producer's node and then on the
+    // consumer's node, and both may spill it. The owner frees the producer's
+    // copy, spill file included, so only the current primary's spill is
+    // recorded. While recovery is in flight there is no primary, and only a
+    // copy being freed is ignored.
+    const std::optional<NodeID> &primary = it->second.pinned_at_node_id_;
+    if (primary.has_value()
+            ? *primary != reporter_node_id
+            : it->second.locations_being_freed.contains(reporter_node_id)) {
+      RAY_LOG(DEBUG).WithField(object_id).WithField(reporter_node_id)
+          << "Ignoring the spill of a moved object by a node that does not hold its "
+             "primary copy";
+      return true;
+    }
   }
 
   // Decrement counter for old state

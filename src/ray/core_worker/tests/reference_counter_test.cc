@@ -798,7 +798,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true,
                      std::optional<NodeID>(node1));
-  rc->HandleObjectSpilled(obj1, "url1", node1);
+  rc->HandleObjectSpilled(obj1, "url1", node1, node1);
   rpc::WorkerObjectLocationsPubMessage object_info;
   rc->FillObjectInformation(obj1, &object_info);
   ASSERT_EQ(object_info.object_size(), object_size);
@@ -862,7 +862,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
 
   // Include spilled locations in locality data.
   rc->RemoveObjectLocation(obj1, node1);
-  rc->HandleObjectSpilled(obj1, "spill_loc", node1);
+  rc->HandleObjectSpilled(obj1, "spill_loc", node1, node1);
   locality_data_obj1 = rc->GetLocalityData(obj1);
   ASSERT_EQ(locality_data_obj1->nodes_containing_object,
             absl::flat_hash_set<NodeID>({node1}));
@@ -3082,7 +3082,7 @@ TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMovedToDeadNode) {
                                   /*add_local_ref=*/true,
                                   std::optional<NodeID>(producer));
   dead_consumer_rc.AddObjectLocation(id, producer);
-  dead_consumer_rc.HandleObjectSpilled(id, "file://spill", producer);
+  dead_consumer_rc.HandleObjectSpilled(id, "file://spill", producer, producer);
 
   EXPECT_EQ(dead_consumer_rc.UpdateObjectPrimaryMoved(id, consumer), std::nullopt);
   EXPECT_EQ(PinnedAt(dead_consumer_rc, id), producer);
@@ -3152,8 +3152,8 @@ TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMovedDropsSpilledCopy) {
                        /*add_local_ref=*/true,
                        std::optional<NodeID>(producer));
   }
-  rc->HandleObjectSpilled(on_disk, "file://spill", producer);
-  rc->HandleObjectSpilled(external, "s3://spill", NodeID::Nil());
+  rc->HandleObjectSpilled(on_disk, "file://spill", producer, producer);
+  rc->HandleObjectSpilled(external, "s3://spill", NodeID::Nil(), producer);
 
   for (const ObjectID &id : {on_disk, external}) {
     ASSERT_EQ(rc->UpdateObjectPrimaryMoved(id, consumer), producer);
@@ -3175,6 +3175,97 @@ TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMovedDropsSpilledCopy) {
   for (const ObjectID &id : {on_disk, external}) {
     rc->RemoveLocalReference(id, nullptr);
   }
+}
+
+namespace {
+
+std::string SpilledUrl(ReferenceCounterInterface &rc, const ObjectID &object_id) {
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  rc.FillObjectInformation(object_id, &object_info);
+  return object_info.spilled_url();
+}
+
+}  // namespace
+
+/// Both the producer's and the consumer's nodes pin a moved object for a while,
+/// and both may spill it. Only the current primary's spill is recorded, in
+/// whatever order the spill reports and the primary-moved update arrive.
+TEST_F(ReferenceCountTest, TestMovedObjectSpillRecordedOnlyFromPrimary) {
+  const NodeID producer = NodeID::FromRandom();
+  const NodeID consumer = NodeID::FromRandom();
+  auto add_moved_object = [&]() {
+    const ObjectID id = ObjectID::FromRandom();
+    rc->AddOwnedObject(id,
+                       {},
+                       rpc::Address(),
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/true,
+                       std::optional<NodeID>(producer),
+                       /*tensor_transport=*/std::nullopt,
+                       MoveState::MOVABLE);
+    RAY_CHECK(rc->TryCommitMoves({id}).ok());
+    rc->AddObjectLocation(id, producer);
+    return id;
+  };
+
+  // The producer spills before the move: recorded, then dropped with the free.
+  const ObjectID spilled_before = add_moved_object();
+  rc->HandleObjectSpilled(spilled_before, "file://producer", producer, producer);
+  EXPECT_EQ(SpilledUrl(*rc, spilled_before), "file://producer");
+  ASSERT_EQ(rc->UpdateObjectPrimaryMoved(spilled_before, consumer), producer);
+  EXPECT_EQ(SpilledUrl(*rc, spilled_before), "");
+  rc->HandleObjectSpilled(spilled_before, "s3://consumer", NodeID::Nil(), consumer);
+  EXPECT_EQ(SpilledUrl(*rc, spilled_before), "s3://consumer");
+
+  // The producer's spill reaches the owner after the move: ignored.
+  const ObjectID spilled_after = add_moved_object();
+  ASSERT_EQ(rc->UpdateObjectPrimaryMoved(spilled_after, consumer), producer);
+  rc->HandleObjectSpilled(spilled_after, "file://producer", producer, producer);
+  EXPECT_EQ(SpilledUrl(*rc, spilled_after), "");
+
+  // The producer's spill arrives after the consumer's: the consumer's stays.
+  const ObjectID both_spilled = add_moved_object();
+  ASSERT_EQ(rc->UpdateObjectPrimaryMoved(both_spilled, consumer), producer);
+  rc->HandleObjectSpilled(both_spilled, "file://consumer", consumer, consumer);
+  rc->HandleObjectSpilled(both_spilled, "file://producer", producer, producer);
+  EXPECT_EQ(SpilledUrl(*rc, both_spilled), "file://consumer");
+
+  // While recovery is in flight after the consumer's node died, the copy being
+  // freed is ignored, and any other node's spill is recorded.
+  const ObjectID recovering = add_moved_object();
+  const NodeID dead_consumer = NodeID::FromRandom();
+  ASSERT_EQ(rc->UpdateObjectPrimaryMoved(recovering, dead_consumer), producer);
+  rc->ResetObjectsOnRemovedNode(dead_consumer);
+  EXPECT_EQ(rc->FlushObjectsToRecover(), std::vector<ObjectID>{recovering});
+  rc->HandleObjectSpilled(recovering, "file://producer", producer, producer);
+  EXPECT_EQ(SpilledUrl(*rc, recovering), "");
+  const NodeID other = NodeID::FromRandom();
+  rc->HandleObjectSpilled(recovering, "file://other", other, other);
+  EXPECT_EQ(SpilledUrl(*rc, recovering), "file://other");
+
+  for (const ObjectID &id : {spilled_before, spilled_after, both_spilled, recovering}) {
+    rc->RemoveLocalReference(id, nullptr);
+  }
+}
+
+/// An object that is never moved records a spill from any node, as before.
+TEST_F(ReferenceCountTest, TestNotMovedObjectSpillRecordedFromAnyNode) {
+  const NodeID primary = NodeID::FromRandom();
+  const NodeID other = NodeID::FromRandom();
+  const ObjectID id = ObjectID::FromRandom();
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true,
+                     std::optional<NodeID>(primary));
+  rc->HandleObjectSpilled(id, "file://other", other, other);
+  EXPECT_EQ(SpilledUrl(*rc, id), "file://other");
+  rc->RemoveLocalReference(id, nullptr);
 }
 
 TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
@@ -3504,7 +3595,7 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ASSERT_EQ((size_metrics[{{"State", "InPlasma"}}]), 200);
 
   // Test 4: Object spilling
-  rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1);
+  rc->HandleObjectSpilled(pending_id2, "s3://bucket/object", node1, node1);
   rc->RecordOwnerMetrics();
   count_metrics = owned_object_count_metric_->GetTagToValue();
   ASSERT_EQ((count_metrics[{{"State", "InPlasma"}}]), 0);

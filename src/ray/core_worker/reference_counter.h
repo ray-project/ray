@@ -243,7 +243,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool HandleObjectSpilled(const ObjectID &object_id,
                            const std::string &spilled_url,
-                           const NodeID &spilled_node_id) override;
+                           const NodeID &spilled_node_id,
+                           const NodeID &reporter_node_id) override;
 
   std::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const override;
 
