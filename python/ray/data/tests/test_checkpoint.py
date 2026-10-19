@@ -421,6 +421,42 @@ def test_read_parquet_adds_generated_id_column(
     assert "generated_id" not in opted_out.take_all()[0]
 
 
+@pytest.mark.parametrize(
+    "batch_format,udf,expect_column",
+    [
+        ("pandas", lambda batch: batch, True),
+        ("pyarrow", lambda batch: batch.drop_columns(["generated_id"]), False),
+    ],
+    ids=["pandas_identity", "arrow_udf_drops_column"],
+)
+def test_generated_id_schema_after_udf_keeps_executed_schema(
+    ray_start_10_cpus_shared,
+    generate_sample_data_parquet,
+    tmp_path,
+    batch_format,
+    udf,
+    expect_column,
+):
+    """A UDF erases the statically-known schema, so the first ``schema()``
+    executes a block and caches the result. Later calls must serve that
+    cached answer — whether it's a pandas schema carrying the column or an
+    Arrow schema whose UDF dropped it — instead of discarding it for the
+    bound plan's unknowable schema and re-executing every time."""
+    config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
+    )
+    f_dir = generate_sample_data_parquet()
+    ds = ray.data.read_parquet(f_dir).map_batches(udf, batch_format=batch_format)
+    ds.context.checkpoint_config = config
+
+    fetched = ds.schema()
+    assert ("generated_id" in fetched.names) == expect_column
+
+    cached = ds.schema(fetch_if_missing=False)
+    assert cached is not None
+    assert cached.names == fetched.names
+
+
 def test_generated_id_plans_skip_at_the_source(
     ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
 ):
