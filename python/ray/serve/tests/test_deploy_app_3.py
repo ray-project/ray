@@ -552,7 +552,7 @@ def test_surge_rolling_update_stops_after_health_check_failures(serve_instance):
         # One snapshot: separate reads can straddle a replacement's last health
         # check, reporting the deployment settled while that replica still stops.
         replicas = _deployment_details(client).replicas
-        states = Counter(ReplicaState(r.state).value for r in replicas)
+        states = Counter(r.state.value for r in replicas)
         assert set(states) <= {"RUNNING"}, states
         assert {r.pid for r in replicas} <= set(initial_pids)
         return True
@@ -732,7 +732,7 @@ def test_lightweight_change_during_a_capacity_blocked_surge(serve_instance):
                 # One snapshot: separate reads can straddle the first replacement
                 # starting, just before which the counts already match the stall.
                 replicas = _deployment_details(client).replicas
-                states = Counter(ReplicaState(r.state).value for r in replicas)
+                states = Counter(r.state.value for r in replicas)
                 assert states.get("RUNNING", 0) >= 3, states
                 running = [r.pid for r in replicas if r.state == "RUNNING"]
                 assert len(set(running) & set(initial_pids)) >= 2, running
