@@ -309,7 +309,6 @@ class WindowShuffle(AbstractMap, LogicalOperatorPreservesSchema):
     seed_config: RandomSeedConfig
     input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
     strict: bool = False
-    fn: Callable = field(init=False, repr=False)
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
@@ -318,14 +317,11 @@ class WindowShuffle(AbstractMap, LogicalOperatorPreservesSchema):
     per_block_limit: Optional[int] = None
 
     def __post_init__(self):
-        from ray.data._internal.window_shuffle import _shuffle_window
-
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.window_size <= 0:
             raise ValueError(f"window_size must be positive, got {self.window_size}")
         if self.compute is None:
             object.__setattr__(self, "compute", TaskPoolStrategy())
-        object.__setattr__(self, "fn", _shuffle_window)
         object.__setattr__(
             self,
             "min_rows_per_bundled_input",

@@ -108,7 +108,7 @@ Choose a streaming row shuffle based on where you want the work to run and which
 
 Local and distributed window shuffling have different mixing scopes. For a dataset larger than the buffer or windows, these methods don't provide a uniform random permutation of all rows. Use {ref}`global shuffle <global-shuffle>` when you need that scope. You can combine either streaming method with {ref}`file order shuffling <shuffling_file_order>`.
 
-Larger windows mix more rows together and require more memory. Each distributed window must fit in a shuffle task's memory. Budget for input, output, indices, and temporary arrays. The `memory` argument is a scheduling reservation rather than a hard memory cap. It doesn't include object-store usage or strict window-construction tasks. Strict mode also adds intermediate window blocks, so measure its cost on your workload.
+Larger windows mix more rows together and require more memory. Each distributed window must fit in a shuffle task's memory. Budget for input, output, indices, and temporary arrays. Input blocks can exceed the shuffle window size, so `window_size` doesn't cap task input size or peak memory. The `memory` argument is a scheduling reservation rather than a hard memory cap. It doesn't include object-store usage or strict window-construction tasks. Strict mode also adds intermediate window blocks, so measure its cost on your workload.
 
 For reproducible distributed output, enable `DataContext.execution_options.preserve_order` and keep the input layout, mode, and task grouping fixed. Window boundaries follow the upstream execution order. {class}`~ray.data.RandomSeedConfig` controls reseeding between executions. Calling `materialize()` caches a particular shuffled order.
 

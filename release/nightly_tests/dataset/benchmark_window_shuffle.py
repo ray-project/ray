@@ -1,4 +1,4 @@
-"""Compare window_shuffle with the documented map_batches/PyArrow take recipe.
+"""Compare window_shuffle with a map_batches/PyArrow take UDF.
 
 Run on a single CPU node with online range_tensor input (4 KiB per row), parallel
 NumPy consumers, and no model computation. Strict mode's baseline constructs the

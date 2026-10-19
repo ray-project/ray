@@ -10,6 +10,7 @@ from functools import partial
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 
 import ray
@@ -30,6 +31,7 @@ from ray.data._internal.tensor_extensions import chunked_tensor_take
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data.context import DataContext
 from ray.data.dataset import MaterializedDataset
+from ray.data.expressions import col
 
 _ORIGINAL_SHUFFLE = window_shuffle_impl._shuffle_window
 _BACKPRESSURE_STATE = None
@@ -262,15 +264,15 @@ class WindowShuffleTests(unittest.TestCase):
                     window_shuffle_impl, "_shuffle_window", _record_shuffle_batch
                 ):
                     output = source.window_shuffle(8, strict=strict, seed=42)
-                # Iterator batches cross shuffle windows. Probe the actual
-                # shuffle inputs rather than inferring them from output blocks.
-                rows = [
-                    row
-                    for batch in output.iter_batches(
-                        batch_size=3, batch_format="pyarrow"
-                    )
-                    for row in batch.to_pylist()
-                ]
+                    # Iterator batches cross shuffle windows. Probe the actual
+                    # shuffle inputs rather than inferring them from output blocks.
+                    rows = [
+                        row
+                        for batch in output.iter_batches(
+                            batch_size=3, batch_format="pyarrow"
+                        )
+                        for row in batch.to_pylist()
+                    ]
                 groups = {}
                 for row in rows:
                     groups.setdefault(row["batch_start"], []).append(row["id"])
@@ -305,7 +307,8 @@ class WindowShuffleTests(unittest.TestCase):
                     output = source.window_shuffle(
                         8, seed=42, compute=TaskPoolStrategy(size=2)
                     )
-                self.assertEqual(members(output), members(reference))
+                    actual = members(output)
+                self.assertEqual(actual, members(reference))
                 self.assertEqual(sorted(self.ids(output)), list(range(sum(sizes))))
 
     def test_strict_selects_repartition(self):
@@ -457,6 +460,41 @@ class WindowShuffleTests(unittest.TestCase):
         for value in (None, 0, 1, "true"):
             with self.assertRaises(TypeError):
                 source.window_shuffle(8, strict=value)
+
+    def test_pandas_blocks_preserve_schema_dtypes_and_values(self):
+        DataContext.get_current().enable_pandas_block = True
+        frame = pd.DataFrame(
+            {
+                "id": np.arange(20),
+                "text": ["a", "b"] * 10,
+                "category": pd.Categorical(["a", "b"] * 10),
+                "nullable": pd.array([1, None] * 10, dtype="Int64"),
+                "all_null": np.full(20, np.nan),
+            },
+            index=np.arange(100, 120),
+        )
+        source = ray.data.from_pandas(
+            [frame.iloc[:5], frame.iloc[5:13], frame.iloc[13:]]
+        )
+        schema = source.schema()
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+                self.assertEqual(shuffled.schema(fetch_if_missing=False), schema)
+                output = shuffled.materialize()
+                self.assertEqual(output.schema(), schema)
+                self.assertTrue(
+                    all(
+                        isinstance(batch, pd.DataFrame)
+                        for batch in output.iter_batches(
+                            batch_size=None, batch_format=None
+                        )
+                    )
+                )
+                pd.testing.assert_frame_equal(
+                    output.to_pandas().sort_values("id").reset_index(drop=True),
+                    frame.reset_index(drop=True),
+                )
 
     def test_retry_replays_with_the_same_task_context(self):
         batch = pa.table({"id": list(range(32))})
@@ -673,6 +711,28 @@ class WindowShuffleTests(unittest.TestCase):
                     )
                 )
                 self.assertEqual(actual, expected)
+
+    def test_filter_stays_after_shuffle(self):
+        source = self.source([8, 8, 8, 8])
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+                expected = [row_id for row_id in self.ids(shuffled) if row_id < 13]
+                self.assertEqual(
+                    self.ids(shuffled.filter(expr=col("id") < 13)), expected
+                )
+
+    def test_serialized_lineage_replays_permutation(self):
+        source = ray.data.range(64, override_num_blocks=4)
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                shuffled = source.window_shuffle(8, strict=strict, seed=42)
+                restored = ray.data.Dataset.deserialize_lineage(
+                    shuffled.serialize_lineage()
+                )
+                expected = self.ids(shuffled)
+                self.assertEqual(sorted(expected), list(range(64)))
+                self.assertEqual(self.ids(restored), expected)
 
     def test_single_row_window_is_noop(self):
         source = self.source([7])

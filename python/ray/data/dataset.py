@@ -2508,9 +2508,11 @@ class Dataset:
         shuffle; use :meth:`random_shuffle` when that randomness is required.
 
         Memory usage depends on the bytes per window, including input data,
-        output data, indices, and temporary arrays. Larger windows may increase
-        data movement and require spilling. Eligible chunked tensor columns
-        use Ray's optimized row selection; other columns use existing fallbacks.
+        output data, indices, and temporary arrays. Input blocks can exceed the
+        window size, so ``window_size`` does not cap task input size or peak
+        memory. Larger windows may increase data movement and require spilling.
+        Eligible chunked tensor columns use Ray's optimized row selection;
+        other columns use existing fallbacks.
 
         Examples:
             >>> import ray
