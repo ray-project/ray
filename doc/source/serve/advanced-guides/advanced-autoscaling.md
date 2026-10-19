@@ -551,6 +551,63 @@ The instance lives only on the Serve controller and is never serialized after cr
 If you're using `@task_consumer` deployments for asynchronous inference, Ray Serve provides a built-in `AsyncInferenceAutoscalingPolicy` that scales based on message queue length. See [Asynchronous Inference: Autoscaling](serve-async-inference-autoscaling) for setup and configuration.
 :::
 
+### Experimental SLO-aware LLM policy
+
+For homogeneous vLLM deployments in which every replica performs both prefill
+and decode, Serve provides an experimental policy that learns a per-replica
+capacity model from Prometheus metrics. You configure mean time to first token
+(TTFT) and inter-token latency (ITL) targets in milliseconds:
+
+```python
+from ray.serve.config import AutoscalingPolicy
+
+autoscaling_config = {
+    "min_replicas": 1,
+    "max_replicas": 8,
+    # Preserve the capacity model's exact replica recommendation.
+    "upscaling_factor": 1.0,
+    "policy": AutoscalingPolicy(
+        policy_function=(
+            "ray.serve.experimental.llm_sla_autoscaling_policy:"
+            "SLAOnlineAutoscalingPolicy"
+        ),
+        policy_kwargs={
+            "ttft_ms": 300,
+            "itl_ms": 20,
+            # Observe recommendations before allowing them to change capacity.
+            "advisory": True,
+        },
+    ),
+}
+```
+
+The policy uses the existing Serve and vLLM Prometheus metrics for offered
+request rate, request lengths, prefix-cache hit rate, TTFT, and time per output
+token. It periodically refits two small histogram gradient-boosted tree models
+in a background thread. Prometheus requests and model fitting never run in the
+Serve controller's policy call. Inference is vectorized, rate-limited to once
+per second, and falls back to the built-in request-based policy when metrics or
+training coverage are insufficient.
+
+Install `scikit-learn` in the Serve controller's runtime environment before
+using the policy. The learned state is local to the controller and is rebuilt
+after a controller restart or deployment reconfiguration.
+
+Start with `advisory=True` and compare
+`ray_serve_sla_autoscaling_recommended_replicas` with the normal autoscaling
+decision. Test steady load, ramps, bursts, prompt/output-length changes, cache
+hit-rate changes, and scale-down before setting `advisory=False`. Compare SLO
+violation time as well as replica/GPU seconds; lower latency alone may simply
+reflect over-provisioning.
+
+:::{warning}
+This policy is experimental. Its SLO values are rolling means, not percentile
+guarantees. The initial implementation assumes routing is sufficiently even to
+approximate per-replica offered work as deployment offered work divided by the
+number of ready replicas. It does not support disaggregated prefill and decode
+pools.
+:::
+
 
 ### Application level autoscaling
 
