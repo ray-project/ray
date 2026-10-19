@@ -1,3 +1,11 @@
+"""Estimate ORC batch sizes from file-level metadata.
+
+This optimization depends on the undocumented ``ORCFile.reader`` attribute and
+its private ``pyarrow._orc.ORCReader.serialized_file_tail()`` method. If that
+interface is unavailable, log at DEBUG and return no estimate so the reader
+can use its default batch size.
+"""
+
 import logging
 import math
 from functools import lru_cache
@@ -28,11 +36,11 @@ class _FileTailFields(Protocol):
 
 @lru_cache(maxsize=1)
 def _file_tail_message_type() -> Type[Message]:
-    """Build the ORC Format 1.0 subset needed for batch sizing.
+    """Build the apache/orc-format 1.0.0 schema subset needed for batch sizing.
 
-    Field numbers and wire types also match ORC Format 1.1.1. Using protobuf's
-    dynamic messages preserves field presence without generated bindings or
-    a separate ORC dependency. Unknown fields are not used for estimation.
+    These fields are wire-compatible with the apache/orc-format 1.1.1 schema.
+    Using protobuf's dynamic messages preserves field presence without generated
+    bindings or a separate ORC dependency. Unknown fields are not used for estimation.
     """
     field = descriptor_pb2.FieldDescriptorProto
     definition = descriptor_pb2.FileDescriptorProto(
@@ -232,6 +240,8 @@ def estimate_batch_size(
 ) -> Optional[int]:
     """Estimate an initial batch row count from the first file's footer.
 
+    The selected columns' estimated Arrow bytes give a file-wide average row
+    width. This does not bound individual batch sizes or decoder memory usage.
     No data batches are read. Unsupported layouts, missing statistics and
     metadata failures return None so the reader can use its normal default.
 
@@ -255,7 +265,10 @@ def estimate_batch_size(
             get_tail = getattr(
                 getattr(reader, "reader", None), "serialized_file_tail", None
             )
-            if not callable(get_tail) or reader.writer_version == "ORIGINAL":
+            if not callable(get_tail):
+                logger.debug("ORC batch sizing: serialized_file_tail is unavailable")
+                return None
+            if reader.writer_version == "ORIGINAL":
                 return None
             physical_schema = reader.schema
             projected = [

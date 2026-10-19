@@ -1,4 +1,5 @@
 import io
+import logging
 import math
 from decimal import Decimal
 from typing import Any, cast
@@ -38,34 +39,61 @@ def test_first_wide_batch_tracks_target(tmp_path, compression):
 
 
 @pytest.mark.parametrize(
-    "array",
+    "array,expected_bytes",
     [
-        pa.array([True, None, False]),
-        pa.array([1, None, 3], type=pa.int8()),
-        pa.array([1, None, 3], type=pa.int64()),
-        pa.array([1.0, None, 3.0], type=pa.float32()),
-        pa.array([1, None, 3], type=pa.date32()),
-        pa.array([1, None, 3], type=pa.timestamp("ns")),
-        pa.array([Decimal("1.23"), None, Decimal("4.56")], type=pa.decimal128(10, 2)),
-        pa.array(["你好", None, ""]),
-        pa.array([b"abc", None, b""]),
-        pa.array(
-            [None, {"s": "x" * 64, "n": 1}, {"s": None, "n": None}],
-            type=pa.struct([("s", pa.string()), ("n", pa.int64())]),
+        # Three slots and one validity byte; bool values occupy one byte.
+        (pa.array([True, None, False]), 2),
+        (pa.array([1, None, 3], type=pa.int8()), 4),
+        (pa.array([1, None, 3], type=pa.int64()), 25),
+        (pa.array([1.0, None, 3.0], type=pa.float32()), 13),
+        (pa.array([1, None, 3], type=pa.date32()), 13),
+        (pa.array([1, None, 3], type=pa.timestamp("ns")), 25),
+        (
+            pa.array(
+                [Decimal("1.23"), None, Decimal("4.56")], type=pa.decimal128(10, 2)
+            ),
+            49,
         ),
-        pa.array([["x" * 64, "y"], None, []], type=pa.list_(pa.string())),
-        pa.array([[["x" * 64], []], None, []], type=pa.list_(pa.list_(pa.string()))),
-        pa.array(
-            [[{"s": "x" * 64}, {"s": None}], None, []],
-            type=pa.list_(pa.struct([("s", pa.string())])),
+        # One validity byte + four int32 offsets + UTF-8/binary payload bytes.
+        (pa.array(["你好", None, ""]), 23),
+        (pa.array([b"abc", None, b""]), 20),
+        (
+            pa.array(
+                [None, {"s": "x" * 64, "n": 1}, {"s": None, "n": None}],
+                type=pa.struct([("s", pa.string()), ("n", pa.int64())]),
+            ),
+            107,  # 1 + string (1 + 16 + 64) + int64 (1 + 24).
         ),
-        pa.array(
-            [[("a", "x" * 64), ("b", None)], None, []],
-            type=pa.map_(pa.string(), pa.string()),
+        (
+            pa.array([["x" * 64, "y"], None, []], type=pa.list_(pa.string())),
+            95,  # List (1 + 16) + two string slots (1 + 12 + 65).
         ),
-        pa.array(
-            [[("a", ["x" * 64]), ("b", None)], None, []],
-            type=pa.map_(pa.string(), pa.list_(pa.string())),
+        (
+            pa.array(
+                [[["x" * 64], []], None, []], type=pa.list_(pa.list_(pa.string()))
+            ),
+            103,  # Outer list (1 + 16) + inner lists (1 + 12) + string (1 + 8 + 64).
+        ),
+        (
+            pa.array(
+                [[{"s": "x" * 64}, {"s": None}], None, []],
+                type=pa.list_(pa.struct([("s", pa.string())])),
+            ),
+            95,  # List (1 + 16) + struct validity 1 + string (1 + 12 + 64).
+        ),
+        (
+            pa.array(
+                [[("a", "x" * 64), ("b", None)], None, []],
+                type=pa.map_(pa.string(), pa.string()),
+            ),
+            109,  # Map (1 + 16) + keys (1 + 12 + 2) + values (1 + 12 + 64).
+        ),
+        (
+            pa.array(
+                [[("a", ["x" * 64]), ("b", None)], None, []],
+                type=pa.map_(pa.string(), pa.list_(pa.string())),
+            ),
+            118,  # Map 17 + keys 15 + value lists 13 + string 73.
         ),
     ],
     ids=[
@@ -86,16 +114,16 @@ def test_first_wide_batch_tracks_target(tmp_path, compression):
         "map_list",
     ],
 )
-def test_supported_layouts_use_real_metadata(tmp_path, array):
+def test_supported_layouts_use_real_metadata(tmp_path, array, expected_bytes):
     table = pa.table({"value": array})
     fragment = _fragment(tmp_path, table)
     footer = _footer(fragment)
-    size = sizing._estimate_projected_size(
-        footer, orc.ORCFile(fragment.path).schema, ["value"]
+    assert (
+        sizing._estimate_projected_size(footer, table.schema, ["value"])
+        == expected_bytes
     )
-    assert size is not None and size > 0
     assert sizing.estimate_batch_size(fragment, None, 16) == min(
-        math.ceil(16 / (size / len(table))), len(table)
+        math.ceil(16 * len(table) / expected_bytes), len(table)
     )
     assert sizing.estimate_batch_size(fragment, None, 1_000_000) == len(table)
 
@@ -173,9 +201,8 @@ def test_projection_uses_original_type_ids(tmp_path):
     fragment = _fragment(tmp_path, table)
     assert sizing.estimate_batch_size(fragment, ["id"], 65536) == 256
     assert sizing.estimate_batch_size(fragment, ["payload"], 65536) == 16
-    assert sizing.estimate_batch_size(
-        fragment, ["id", "payload"], 65536
-    ) == sizing.estimate_batch_size(fragment, ["payload", "id"], 65536)
+    for columns in (["id", "payload"], ["payload", "id"]):
+        assert sizing.estimate_batch_size(fragment, columns, 65536) == 16
     assert sizing.estimate_batch_size(fragment, [], 65536) is None
     assert (
         sizing.estimate_batch_size(
@@ -266,27 +293,34 @@ def test_zero_payload_is_distinct_from_missing_statistics(tmp_path):
     assert sizing.estimate_batch_size(empty, None, 128) is None
 
 
-def test_indexless_collection_counts_fall_back(tmp_path):
+@pytest.mark.parametrize("row_index_stride", [0, 10000])
+def test_indexless_collection_counts_fall_back(tmp_path, monkeypatch, row_index_stride):
     table = pa.table(
         {
-            "nested": pa.array([[[]], []], type=pa.list_(pa.list_(pa.int64()))),
+            "nested": pa.array([[1, 2], [3]], type=pa.list_(pa.int64())),
             "id": [1, 2],
         }
     )
     fragment = _fragment(tmp_path, table)
-    footer = _footer(fragment)
-    assert (
-        sizing._estimate_projected_size(
-            footer, table.schema, ["nested"], collection_counts_valid=False
-        )
-        is None
-    )
-    assert (
-        sizing._estimate_projected_size(
-            footer, table.schema, ["id"], collection_counts_valid=False
-        )
-        is not None
-    )
+    native = orc.ORCFile
+
+    class OrcFile:
+        def __init__(self, source):
+            self._file = native(source)
+
+        @property
+        def row_index_stride(self):
+            return row_index_stride
+
+        def __getattr__(self, name):
+            return getattr(self._file, name)
+
+    # PyArrow 17/23 cannot write stride 0. Keep valid metadata and vary only
+    # the reader property to test propagation through the public estimator.
+    monkeypatch.setattr(orc, "ORCFile", OrcFile)
+    expected = None if row_index_stride == 0 else 1
+    assert sizing.estimate_batch_size(fragment, ["nested"], 16) == expected
+    assert sizing.estimate_batch_size(fragment, ["id"], 16) == 2
 
 
 @pytest.mark.parametrize("columns", [[], ["path"]])
@@ -370,6 +404,7 @@ def test_estimation_only_reads_metadata_and_releases_file(tmp_path, monkeypatch)
 @pytest.mark.parametrize(
     "failure",
     [
+        "missing_reader",
         "missing_interface",
         "bad_type",
         "bad_proto",
@@ -378,7 +413,9 @@ def test_estimation_only_reads_metadata_and_releases_file(tmp_path, monkeypatch)
         "io_error",
     ],
 )
-def test_metadata_failure_falls_back_and_closes_input(tmp_path, monkeypatch, failure):
+def test_metadata_failure_falls_back_and_closes_input(
+    tmp_path, monkeypatch, caplog, failure
+):
     fragment = _fragment(tmp_path, pa.table({"payload": ["x" * 4096] * 32}))
     filesystem = _TrackingFilesystem()
     tracked = Mock(spec=pds.FileFragment)
@@ -389,7 +426,12 @@ def test_metadata_failure_falls_back_and_closes_input(tmp_path, monkeypatch, fai
         def __init__(self, source):
             self._file = native(source)
             self.reader = Mock()
-            if failure == "missing_interface":
+            self.reader.serialized_file_tail.return_value = (
+                self._file.reader.serialized_file_tail()
+            )
+            if failure == "missing_reader":
+                del self.reader
+            elif failure == "missing_interface":
                 self.reader.serialized_file_tail = None
             elif failure == "bad_type":
                 self.reader.serialized_file_tail.return_value = None
@@ -397,20 +439,34 @@ def test_metadata_failure_falls_back_and_closes_input(tmp_path, monkeypatch, fai
                 self.reader.serialized_file_tail.side_effect = OSError(
                     "metadata unavailable"
                 )
-            else:
-                self.reader.serialized_file_tail.return_value = (
-                    b"\xff" if failure == "bad_proto" else b""
-                )
+            elif failure == "bad_proto":
+                self.reader.serialized_file_tail.return_value = b"\xff"
+            elif failure == "missing_footer":
+                self.reader.serialized_file_tail.return_value = b""
 
         @property
         def writer_version(self):
             return "ORIGINAL" if failure == "old_writer" else self._file.writer_version
 
         def __getattr__(self, name):
+            if failure == "missing_reader" and name == "reader":
+                raise AttributeError(name)
             return getattr(self._file, name)
 
     monkeypatch.setattr(orc, "ORCFile", OrcFile)
-    assert sizing.estimate_batch_size(tracked, None, 65536) is None
+    # Ray Data does not propagate records to caplog's root handler.
+    monkeypatch.setattr(sizing.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(sizing.logger, "propagate", False)
+    with caplog.at_level(logging.DEBUG, logger=sizing.__name__):
+        assert sizing.estimate_batch_size(tracked, None, 65536) is None
+    missing_interface = failure in {"missing_reader", "missing_interface"}
+    assert caplog.record_tuples.count(
+        (
+            sizing.__name__,
+            logging.DEBUG,
+            "ORC batch sizing: serialized_file_tail is unavailable",
+        )
+    ) == int(missing_interface)
     assert len(filesystem.files) == 1
     assert all(raw.closed and source.closed for raw, source in filesystem.files)
 

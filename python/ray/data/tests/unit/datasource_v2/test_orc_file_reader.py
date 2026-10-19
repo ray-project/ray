@@ -1273,7 +1273,9 @@ def test_orc_partitioned_empty_file_with_stored_partition_column(tmp_path):
 
 
 @pytest.mark.parametrize("kind", ["narrow", "wide", "nested"])
-def test_orc_reader_batch_sizing_feedback(tmp_path, orc_read_requests, kind):
+def test_orc_reader_batch_sizing_feedback(
+    tmp_path, monkeypatch, orc_read_requests, kind
+):
     path = tmp_path / "data.orc"
     payload = {
         "narrow": list(range(19)),
@@ -1282,14 +1284,24 @@ def test_orc_reader_batch_sizing_feedback(tmp_path, orc_read_requests, kind):
     }[kind]
     table = pa.table({"id": list(range(19)), "payload": payload})
     _write_orc(path, table)
+    # Isolate feedback from metadata sizing: every layout must change this value.
+    initial_size = 3
+    estimate = Mock(return_value=initial_size)
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
     scanner = OrcScanner(schema=table.schema, target_block_size=128)
     reader = scanner.create_reader()
 
     first = list(reader.read(_manifest(path)))
-    initial_size = {"narrow": 8, "wide": 1, "nested": 2}[kind]
     assert first[0].num_rows == initial_size
-    expected_size = max(math.ceil(128 / (first[0].nbytes / first[0].num_rows)), 1)
+    last = first[-1]
+    expected_size = max(math.ceil(128 / (last.nbytes / last.num_rows)), 1)
+    assert expected_size != initial_size
+    assert reader._sampled_batch_size == expected_size
     second = list(reader.read(_manifest(path)))
+    estimate.assert_called_once()
 
     assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
         initial_size,
@@ -1302,10 +1314,11 @@ def test_orc_reader_batch_sizing_feedback(tmp_path, orc_read_requests, kind):
     assert orc_read_requests["dataset_scans"] == []
     assert len(orc_read_requests["datasets"]) == 2
 
-    # A different reader starts with metadata, not another reader's feedback.
+    # A different reader starts with its own initial estimate.
     fresh = list(scanner.create_reader().read(_manifest(path)))
     assert pa.concat_tables(fresh).equals(table)
     assert orc_read_requests["scans"][-1]["batch_size"] == initial_size
+    assert estimate.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -1340,11 +1353,16 @@ def test_orc_reader_batch_sizing_explicit_and_disabled(
 
 @pytest.mark.parametrize("observation", ["empty", "zero_bytes"])
 def test_orc_reader_batch_sizing_ignores_invalid_observation(
-    tmp_path, orc_read_requests, observation
+    tmp_path, monkeypatch, orc_read_requests, observation
 ):
     path = tmp_path / "data.orc"
     table = pa.table({"id": list(range(7))})
     _write_orc(path, table)
+    estimate = Mock(return_value=1)
+    monkeypatch.setattr(
+        "ray.data._internal.datasource_v2.formats.orc.orc_file_reader.estimate_batch_size",
+        estimate,
+    )
     reader = OrcScanner(schema=table.schema, target_block_size=16).create_reader()
     invalid = (
         pa.table({"empty": pa.array([], type=pa.int64())})
@@ -1355,11 +1373,15 @@ def test_orc_reader_batch_sizing_ignores_invalid_observation(
     assert reader._sampled_batch_size is None
     first = list(reader.read(_manifest(path)))
     expected_size = math.ceil(16 / (first[0].nbytes / first[0].num_rows))
+    assert expected_size != 1
+    assert reader._sampled_batch_size == expected_size
     reader._on_batch_read(invalid)
+    assert reader._sampled_batch_size == expected_size
     second = list(reader.read(_manifest(path)))
     assert orc_read_requests["scans"][-1]["batch_size"] == expected_size
     assert second[0].num_rows == expected_size
     assert pa.concat_tables(second).equals(table)
+    estimate.assert_called_once()
 
 
 def test_orc_reader_batch_sizing_has_no_default_row_cap(tmp_path, orc_read_requests):
@@ -1412,7 +1434,7 @@ def test_orc_reader_batch_sizing_fragments_are_fixed(
     paths = [tmp_path / "first.orc", tmp_path / "second.orc"]
     tables = [
         pa.table({"id": [i] * 7, "payload": ["x" * width] * 7})
-        for i, width in enumerate([512, 1])
+        for i, width in enumerate([1, 512])
     ]
     for path, table in zip(paths, tables):
         _write_orc(path, table)
@@ -1425,9 +1447,14 @@ def test_orc_reader_batch_sizing_fragments_are_fixed(
     else:
         assert result.sort_by("id").equals(expected.sort_by("id"))
     assert [request["batch_size"] for request in orc_read_requests["scans"]] == [
-        1,
-        1,
+        7,
+        7,
     ]
+    observed_sizes = {
+        max(math.ceil(128 / (batch.nbytes / batch.num_rows)), 1) for batch in batches
+    }
+    assert 7 not in observed_sizes
+    assert reader._sampled_batch_size in observed_sizes
 
 
 @pytest.mark.parametrize("available", [False, True])

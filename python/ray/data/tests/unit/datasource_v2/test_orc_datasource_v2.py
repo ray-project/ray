@@ -185,7 +185,7 @@ def test_orc_batch_sizing_config_survives_pushdowns(
     monkeypatch.setattr(context, "target_max_block_size", 8)
     scanner = replace(scanner, batch_size=batch_size)
     pushed, residual = scanner.push_filters(col("id") > 0)
-    pushed = pushed.prune_columns(["id"]).push_limit(2)
+    pushed = pushed.prune_columns(["id"]).push_limit(3)
     assert isinstance(pushed, OrcScanner)
     reader = pushed.create_reader()
 
@@ -194,8 +194,9 @@ def test_orc_batch_sizing_config_survives_pushdowns(
     assert reader._target_block_size == target_block_size
     assert reader._explicit_batch_size == batch_size
     batches = list(reader.read(_manifest_of([path])))
-    assert pa.concat_tables(batches).to_pylist() == [{"id": 1}, {"id": 2}]
+    assert pa.concat_tables(batches).to_pylist() == [{"id": 1}, {"id": 2}, {"id": 3}]
     if batch_size is not None:
+        assert len(batches) > 1
         assert all(batch.num_rows <= batch_size for batch in batches)
 
 
