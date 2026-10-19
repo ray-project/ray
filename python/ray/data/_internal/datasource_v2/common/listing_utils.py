@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, Optional
 from collections.abc import Iterable
+from typing import TYPE_CHECKING, Optional
 
 import pyarrow as pa
 

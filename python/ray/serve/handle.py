@@ -3,6 +3,7 @@ import concurrent.futures
 import logging
 import time
 import warnings
+from collections.abc import AsyncIterator, Coroutine, Generator, Iterator
 from contextlib import asynccontextmanager
 from typing import (
     Any,
@@ -10,7 +11,6 @@ from typing import (
     TypeVar,
     cast,
 )
-from collections.abc import AsyncIterator, Coroutine, Generator, Iterator
 
 from typing_extensions import AsyncContextManager
 
