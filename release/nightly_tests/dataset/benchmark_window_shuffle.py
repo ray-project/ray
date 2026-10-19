@@ -1,11 +1,14 @@
-"""Compare window_shuffle with a map_batches/PyArrow take UDF.
+"""Compare local-buffer and distributed-window shuffle ingestion.
 
 Run on a single CPU node with online range_tensor input (4 KiB per row), parallel
 NumPy consumers, and no model computation. Strict mode's baseline constructs the
 same consecutive windows before calling PyArrow take. Each measured execution
 excludes iterator warmup; a separate untimed execution validates every payload.
-Set RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE before starting to measure its effect on
-the same window-shuffle pipelines. The native baselines do not use that flag.
+Local buffers and distributed windows have different mixing semantics; their
+configured row counts are matched, rather than their exact mixing scope or peak
+memory. Set RAY_DATA_ENABLE_CHUNKED_TENSOR_TAKE before starting to measure its
+effect on local-buffer and window-shuffle pipelines. The no-shuffle and native
+PyArrow baselines do not use that flag.
 """
 
 import argparse
@@ -28,6 +31,8 @@ BASELINES = {
     "window_shuffle_default": "map_batches_native_take",
     "strict_windows_native_take": "strict_windows_native_take",
     "window_shuffle_strict": "strict_windows_native_take",
+    "no_shuffle": None,
+    "local_buffer": None,
 }
 
 
@@ -37,10 +42,18 @@ def native_shuffle(batch: pa.Table) -> pa.Table:
 
 @ray.remote(num_cpus=1)
 class Consumer:
-    def consume(self, shard, args, validate_payload):
+    def consume(self, shard, args, validate_payload, local_shuffle):
+        shuffle_options = (
+            {"local_shuffle_buffer_size": args.window, "local_shuffle_seed": 42}
+            if local_shuffle
+            else {}
+        )
         iterator = iter(
             shard.iter_batches(
-                batch_size=args.batch_size, batch_format="numpy", prefetch_batches=1
+                batch_size=args.batch_size,
+                batch_format="numpy",
+                prefetch_batches=1,
+                **shuffle_options,
             )
         )
         row_ids = []
@@ -79,7 +92,7 @@ def run_pipeline(args, variant, *, validate_payload=False):
             compute=compute,
             num_cpus=1,
         )
-    else:
+    elif variant in ("map_batches_native_take", "strict_windows_native_take"):
         strict = variant == "strict_windows_native_take"
         if strict:
             dataset = dataset.repartition(
@@ -98,7 +111,9 @@ def run_pipeline(args, variant, *, validate_payload=False):
         shards = dataset.streaming_split(args.workers, equal=True)
         results = ray.get(
             [
-                consumer.consume.remote(shard, args, validate_payload)
+                consumer.consume.remote(
+                    shard, args, validate_payload, variant == "local_buffer"
+                )
                 for consumer, shard in zip(consumers, shards)
             ]
         )
@@ -203,6 +218,11 @@ def main():
                 result["speedup_vs_native_baseline"] = (
                     result["rows_per_s"] / baseline["rows_per_s"]
                 )
+            for reference in ("no_shuffle", "local_buffer"):
+                if reference in benchmark.result:
+                    result[f"throughput_ratio_vs_{reference}"] = (
+                        result["rows_per_s"] / benchmark.result[reference]["rows_per_s"]
+                    )
     finally:
         benchmark.write_result()
         ray.shutdown()
