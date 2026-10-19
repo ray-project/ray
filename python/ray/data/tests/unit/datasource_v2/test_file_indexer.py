@@ -14,12 +14,12 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     _shuffle_file_infos,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     EXCLUDED_READ_UNIT_IDS_KWARG_NAME,
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import PathPartitionFilter
 

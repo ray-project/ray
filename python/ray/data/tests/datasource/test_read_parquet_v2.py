@@ -22,6 +22,7 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
+from ray.data._internal.datasource_v2.interfaces.pushdown import SupportsLimitPushdown
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
@@ -1268,6 +1269,8 @@ def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):
     restore_ctx.use_datasource_v2 = False
     with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
         ray.data.read_parquet(str(path), merge_schema=True)
+
+
 def _write_global_ids(path, *, num_files, rows_per_file, row_group_size):
     """Like ``_write_row_groups``, but ``id`` is unique across files."""
     for i in range(num_files):
@@ -1305,7 +1308,9 @@ def test_small_chunks_shuffle_keeps_limit_out_of_listing(
 
     (list_files,) = [op for op in ops if isinstance(op, ListFiles)]
     (read_files,) = [op for op in ops if isinstance(op, ReadFiles)]
-    assert read_files.scanner.pushed_limit() == 7
+    scanner = read_files.scanner
+    assert isinstance(scanner, SupportsLimitPushdown)
+    assert scanner.pushed_limit() == 7
     assert list_files.limit == (7 if listing_limited else None)
 
 

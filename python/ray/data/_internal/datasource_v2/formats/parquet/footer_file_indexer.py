@@ -5,6 +5,7 @@ from collections import deque
 from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer
@@ -96,7 +97,12 @@ def _shuffle_row_group_runs(
     ``unit_sizes`` is ``list<null>``, a coalesced one ``list<int64>``), so their
     schemas need not match.
     """
-    rows = [row for manifest in manifests for row in manifest.as_block().to_pylist()]
+    rows = []
+    for manifest in manifests:
+        block = manifest.as_block()
+        # Listing manifests are always built as Arrow tables.
+        assert isinstance(block, pa.Table)
+        rows.extend(block.to_pylist())
     n = len(rows)
     if n == 0:
         return
@@ -210,12 +216,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        shuffle_row_groups = (
-            shuffle_config is not None and shuffle_config.small_chunks_shuffle
-        )
-        coalesce_bytes = self._coalesce_bytes
-        if shuffle_row_groups:
-            coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
         file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,
@@ -234,6 +234,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
 
@@ -265,6 +267,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
+            shuffle_config=shuffle_config,
+            execution_idx=execution_idx,
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
 
@@ -277,8 +281,16 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
+        shuffle_config: Optional["FileShuffleConfig"],
+        execution_idx: int,
         excluded_read_unit_ids: Optional[AbstractSet[str]],
     ) -> Iterator[FileManifest]:
+        shuffle_row_groups = (
+            shuffle_config is not None and shuffle_config.small_chunks_shuffle
+        )
+        coalesce_bytes = self._coalesce_bytes
+        if shuffle_row_groups:
+            coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
                 filesystem,
