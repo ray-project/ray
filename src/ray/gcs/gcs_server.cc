@@ -878,6 +878,10 @@ void GcsServer::InitGcsActorManager(
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      [this](const PlacementGroupID &placement_group_id) {
+        return gcs_placement_group_manager_->IsPlacementGroupRegistered(
+            placement_group_id);
+      },
       raylet_client_pool_,
       worker_client_pool_,
       *ray_event_recorder_,
@@ -913,6 +917,11 @@ void GcsServer::InitGcsPlacementGroupManager(
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
+      },
+      // gcs_actor_manager_ is constructed after this manager, but this callback only runs
+      // from the placement group table write callback, so it exists by then.
+      [this](const PlacementGroupID &placement_group_id) {
+        gcs_actor_manager_->OnPlacementGroupRemoved(placement_group_id);
       },
       placement_group_gauge,
       placement_group_creation_latency_in_ms_histogram,

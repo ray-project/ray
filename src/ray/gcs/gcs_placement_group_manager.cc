@@ -70,7 +70,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
       placement_group_count_gauge_(placement_group_count_gauge),
-      clock_(clock) {}
+      clock_(clock),
+      placement_group_removed_listener_([](const PlacementGroupID &) {}) {}
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
@@ -78,6 +79,7 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     gcs::GcsTableStorage *gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace,
+    std::function<void(const PlacementGroupID &)> placement_group_removed_listener,
     ray::observability::MetricInterface &placement_group_gauge,
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
@@ -95,7 +97,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
       placement_group_count_gauge_(placement_group_count_gauge),
-      clock_(clock) {
+      clock_(clock),
+      placement_group_removed_listener_(std::move(placement_group_removed_listener)) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   // On change, only retract states that dropped to zero (emit their final 0). Live
@@ -432,9 +435,6 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
     }
   }
 
-  // Destroy all bundles.
-  gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
-      placement_group_id);
   // Cancel the scheduling request if necessary.
   if (IsSchedulingInProgress(placement_group_id)) {
     // If the placement group is scheduling.
@@ -466,6 +466,11 @@ void GcsPlacementGroupManager::RemovePlacementGroup(
       placement_group->GetPlacementGroupTableData(),
       {[this, on_placement_group_removed, placement_group_id](Status status) {
          RAY_CHECK_OK(status);
+         // The REMOVED state is persisted at this point, so if the GCS dies before the
+         // cleanup below finishes, it can redo the cleanup when it restarts.
+         placement_group_removed_listener_(placement_group_id);
+         gcs_placement_group_scheduler_->DestroyPlacementGroupBundleResourcesIfExists(
+             placement_group_id);
          // If there is a driver waiting for the creation done, then send a message that
          // the placement group has been removed.
          auto it = placement_group_to_create_callbacks_.find(placement_group_id);
@@ -990,6 +995,11 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
     });
   }
   SchedulePendingPlacementGroups();
+}
+
+bool GcsPlacementGroupManager::IsPlacementGroupRegistered(
+    const PlacementGroupID &placement_group_id) const {
+  return registered_placement_groups_.contains(placement_group_id);
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {

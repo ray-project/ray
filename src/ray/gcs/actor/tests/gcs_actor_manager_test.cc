@@ -199,6 +199,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
+        [](const PlacementGroupID &) { return true; },
         *raylet_client_pool_,
         *worker_client_pool_,
         *fake_ray_event_recorder_,
@@ -281,6 +282,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
+        [](const PlacementGroupID &) { return true; },
         *raylet_client_pool_,
         *worker_client_pool_,
         *fake_ray_event_recorder_,
@@ -3033,6 +3035,45 @@ TEST_F(GcsActorManagerTest, TestInitializeMarksDeadWhenOwnerJobDeadAndReloads) {
   const auto *reloaded_info = GetActorInfo(*reloaded_manager, actor_id);
   ASSERT_NE(reloaded_info, nullptr);
   ASSERT_EQ(reloaded_info->state(), rpc::ActorTableData::DEAD);
+}
+
+TEST_F(GcsActorManagerTest, TestRemovedPlacementGroupCancelsPendingActorLease) {
+  // Tests that an actor lease that requires a placement group is cancelled when that
+  // placement group is removed, even if the lease is still being scheduled on a node
+  // that does not hold any of its bundles (usually the submitter node).
+  auto job_id = JobID::FromInt(1);
+  auto placement_group_id = PlacementGroupID::Of(job_id);
+  auto request = GenRegisterActorRequest(job_id, /*max_restarts=*/0, /*detached=*/false);
+  request.mutable_task_spec()
+      ->mutable_scheduling_strategy()
+      ->mutable_placement_group_scheduling_strategy()
+      ->set_placement_group_id(placement_group_id.Binary());
+  rpc::RegisterActorReply register_reply;
+  gcs_actor_manager_->HandleRegisterActor(
+      request, &register_reply, [](auto, auto, auto) {});
+  drain_io_context();
+
+  rpc::CreateActorRequest create_request;
+  create_request.mutable_task_spec()->CopyFrom(request.task_spec());
+  rpc::CreateActorReply create_reply;
+  gcs_actor_manager_->HandleCreateActor(
+      create_request, &create_reply, [](auto, auto, auto) {});
+  drain_io_context();
+  ASSERT_FALSE(fake_actor_scheduler_->actors.empty());
+  auto actor = fake_actor_scheduler_->actors.back();
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::PENDING_CREATION);
+  auto node_id = NodeID::FromRandom();
+  rpc::Address address;
+  address.set_node_id(node_id.Binary());
+  actor->UpdateAddress(address);
+
+  gcs_actor_manager_->OnPlacementGroupRemoved(placement_group_id);
+  ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
+  ASSERT_TRUE(actor->GetActorTableData().death_cause().has_actor_unschedulable_context());
+  ASSERT_EQ(fake_actor_scheduler_->cancel_on_leasing_calls.size(), 1);
+  ASSERT_EQ(std::get<0>(fake_actor_scheduler_->cancel_on_leasing_calls[0]), node_id);
+  ASSERT_EQ(std::get<1>(fake_actor_scheduler_->cancel_on_leasing_calls[0]),
+            actor->GetActorID());
 }
 
 }  // namespace gcs

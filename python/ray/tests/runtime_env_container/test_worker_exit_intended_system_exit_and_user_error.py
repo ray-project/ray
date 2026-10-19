@@ -95,7 +95,7 @@ def verify_exit_by_pg_removed():
     assert verify_failed_task(
         name="sleep",
         error_type="ACTOR_DIED",
-        error_message=["INTENDED_SYSTEM_EXIT", "placement group was removed"],
+        error_message="placement group was removed",
     )
     return type == "INTENDED_SYSTEM_EXIT" and "placement group was removed" in detail
 
