@@ -5785,6 +5785,20 @@ class DeploymentState:
         # about how rollouts work in the deployment state machine.
         self._maybe_check_rank_consistency()
 
+        # Periodically, export the current state of all replicas to the replica_state_gauge metric.
+        now = time.time()
+        if (
+            self._last_replica_state_gauge_refresh_time is None
+            or now - self._last_replica_state_gauge_refresh_time
+            >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
+        ):
+            for replica in self._replicas.get():
+                self.replica_state_gauge.set(
+                    replica.actor_details.state.to_numeric(),
+                    tags={"replica": replica.replica_id.unique_id},
+                )
+            self._last_replica_state_gauge_refresh_time = now
+
     def _maybe_check_rank_consistency(self) -> None:
         """Run the rank-consistency pass only when replica membership changed.
 
@@ -5818,20 +5832,6 @@ class DeploymentState:
         # Reconfigure replicas that had their ranks reassigned
         self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
         self._last_rank_membership_ids = active_replica_ids
-
-        # Periodically, export the current state of all replicas to the replica_state_gauge metric.
-        now = time.time()
-        if (
-            self._last_replica_state_gauge_refresh_time is None
-            or now - self._last_replica_state_gauge_refresh_time
-            >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
-        ):
-            for replica in self._replicas.get():
-                self.replica_state_gauge.set(
-                    replica.actor_details.state.to_numeric(),
-                    tags={"replica": replica.replica_id.unique_id},
-                )
-            self._last_replica_state_gauge_refresh_time = now
 
     def _handle_deployment_actor_failed_health_check(
         self,
