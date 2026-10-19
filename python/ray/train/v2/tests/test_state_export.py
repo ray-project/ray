@@ -656,7 +656,7 @@ def _create_nccl_hang_event(**overrides) -> TrainNcclHangEvent:
         attempt_id="attempt_id",
         poll_index=44,
         timestamp_ms=1760000660123,
-        detector_status=NcclHangDetectorStatus.ACTIVE,
+        detector_status=NcclHangDetectorStatus.MONITORING,
         ras_text_report="RAS report",
         diagnostics_dir="s3://bucket/run/hang_detector",
         communicators=[
@@ -718,7 +718,7 @@ def test_export_nccl_hang_event(enable_export_api_write):
     assert active == {
         **common,
         "poll_index": "44",
-        "detector_status": "ACTIVE",
+        "detector_status": "MONITORING",
         "ras_text_report": "RAS report",
         "diagnostics_dir": "s3://bucket/run/hang_detector",
         "communicators": [

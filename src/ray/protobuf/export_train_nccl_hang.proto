@@ -26,11 +26,13 @@ package ray.rpc;
 // (suspected or confirmed), so the newest event of an attempt (by
 // `poll_index`) is the detector's current state for that attempt. Nothing is
 // emitted for an attempt that never stalls. Events are emitted:
-//   - ACTIVE on each poll that newly suspects or confirms a communicator, on
-//     the periodic "still suspected" warning, and on each poll where a
+//   - MONITORING on each poll that newly suspects or confirms a communicator,
+//     on the periodic "still suspected" warning, and on each poll where a
 //     communicator recovers (an empty `communicators` once the last one has).
-//   - STOPPED when the attempt's worker group shuts down with a communicator
-//     still hung. A later attempt of the run starts with no hung communicators.
+//   - STOPPED when the attempt's worker group shuts down (it crashed, was
+//     retried, finished or was stopped) with a communicator still hung. A
+//     later attempt of the run starts with no hung communicators, and its
+//     `poll_index` restarts.
 //   - DISABLED when the detector gives up for the rest of the run. No further
 //     events are emitted for the run, for this or any later attempt.
 //
@@ -48,9 +50,11 @@ package ray.rpc;
 message ExportTrainNcclHangEventData {
   enum DetectorStatus {
     DETECTOR_STATUS_UNSPECIFIED = 0;
-    // Watching the attempt.
-    ACTIVE = 1;
-    // Stopped watching the attempt, as its worker group shut down.
+    // Monitoring the attempt. Whether a hang is suspected or confirmed is
+    // given by `communicators`, not by this status.
+    MONITORING = 1;
+    // Stopped monitoring the attempt, as its worker group shut down while a
+    // communicator was hung.
     STOPPED = 2;
     // Disabled for the rest of the run.
     DISABLED = 3;
@@ -90,7 +94,8 @@ message ExportTrainNcclHangEventData {
   string run_id = 2;
   // The run attempt id (the `attempt_id` of ExportTrainRunAttemptEventData).
   string attempt_id = 3;
-  // Orders the events of an attempt, strictly increasing.
+  // Orders the events of an attempt, strictly increasing. It restarts with
+  // each attempt, so it only orders events with the same `attempt_id`.
   int64 poll_index = 4;
   // When the poll was taken (when the detector stopped, for STOPPED and
   // DISABLED), in milliseconds since the UNIX epoch.

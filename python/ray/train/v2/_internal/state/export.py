@@ -348,7 +348,7 @@ def _truncate_ras_report(report: str, max_bytes: int = _MAX_RAS_REPORT_BYTES) ->
 
 
 _NCCL_HANG_DETECTOR_STATUS_MAP = {
-    NcclHangDetectorStatus.ACTIVE: ProtoTrainNcclHangEvent.DetectorStatus.ACTIVE,
+    NcclHangDetectorStatus.MONITORING: ProtoTrainNcclHangEvent.DetectorStatus.MONITORING,
     NcclHangDetectorStatus.STOPPED: ProtoTrainNcclHangEvent.DetectorStatus.STOPPED,
     NcclHangDetectorStatus.DISABLED: ProtoTrainNcclHangEvent.DetectorStatus.DISABLED,
 }

@@ -898,7 +898,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     Each poll is evaluated into a :class:`PollOutcome`, which is then logged,
     exported and acted on. The hung communicators are exported through the
     Train state actor as ``EXPORT_TRAIN_NCCL_HANG`` events (see
-    ``export_train_nccl_hang.proto``): ACTIVE on every poll that suspects,
+    ``export_train_nccl_hang.proto``): MONITORING on every poll that suspects,
     confirms or sees a recovery, STOPPED when an attempt ends with a hung
     communicator, and DISABLED when the detector gives up for the run.
     Nothing is exported for an attempt that never stalls. Exporting never
@@ -1347,7 +1347,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         ]
 
     def export_poll(self, outcome: PollOutcome) -> None:
-        """Export the poll as an ACTIVE event, if it reached a milestone.
+        """Export the poll as an MONITORING event, if it reached a milestone.
 
         Never raises, so exporting can never affect detection.
 
@@ -1364,7 +1364,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     attempt_id=self._attempt_id,
                     poll_index=self._poll_index,
                     timestamp_ms=self._poll_time_ms,
-                    detector_status=NcclHangDetectorStatus.ACTIVE,
+                    detector_status=NcclHangDetectorStatus.MONITORING,
                     ras_text_report=outcome.ras_text_report or None,
                     diagnostics_dir=(
                         self.diagnostics_dir() if diagnostics_uploaded else None

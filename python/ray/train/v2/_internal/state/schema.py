@@ -535,9 +535,10 @@ class TrainRunsResponse(BaseModel):
 class NcclHangDetectorStatus(str, Enum):
     """The NCCL hang detector's status in a ``TrainNcclHangEvent``."""
 
-    # Watching the attempt.
-    ACTIVE = "ACTIVE"
-    # Stopped watching the attempt, as its worker group shut down.
+    # Monitoring the attempt; the hang state is given by the communicators.
+    MONITORING = "MONITORING"
+    # Stopped monitoring the attempt, as its worker group shut down while a
+    # communicator was hung.
     STOPPED = "STOPPED"
     # Disabled for the rest of the run; no further events follow.
     DISABLED = "DISABLED"

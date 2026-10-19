@@ -417,8 +417,8 @@ def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
     assert [
         (e["detector_status"], [c["state"] for c in e["communicators"]]) for e in events
     ] == [
-        ("ACTIVE", ["SUSPECTED"]),
-        ("ACTIVE", ["CONFIRMED"]),
+        ("MONITORING", ["SUSPECTED"]),
+        ("MONITORING", ["CONFIRMED"]),
         ("STOPPED", ["CONFIRMED"]),
     ]
     poll_indices = [int(e["poll_index"]) for e in events]

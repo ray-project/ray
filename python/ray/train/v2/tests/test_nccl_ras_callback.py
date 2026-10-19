@@ -2141,7 +2141,7 @@ def summarize(events: List[TrainNcclHangEvent]) -> List[tuple]:
     ]
 
 
-ACTIVE = NcclHangDetectorStatus.ACTIVE
+MONITORING = NcclHangDetectorStatus.MONITORING
 STOPPED = NcclHangDetectorStatus.STOPPED
 DISABLED = NcclHangDetectorStatus.DISABLED
 SUSPECTED = NcclCommunicatorState.SUSPECTED
@@ -2177,8 +2177,8 @@ def test_stall_that_confirms(monkeypatch, emitted, action):
 
     # The confirmation is exported even when fail mode raises.
     assert summarize(emitted) == [
-        (ACTIVE, {_COMM_A: SUSPECTED}),
-        (ACTIVE, {_COMM_A: CONFIRMED}),
+        (MONITORING, {_COMM_A: SUSPECTED}),
+        (MONITORING, {_COMM_A: CONFIRMED}),
     ]
     suspected, confirmed = emitted
     assert [e.poll_index for e in emitted] == [2, 4]
@@ -2219,7 +2219,7 @@ def test_confirmed_without_diagnostics_has_no_directory(monkeypatch, emitted):
     )
     callback._worker_group._storage_context.experiment_fs_path = "/exp"
     confirm_hang(callback)
-    assert summarize(emitted)[-1] == (ACTIVE, {_COMM_A: CONFIRMED})
+    assert summarize(emitted)[-1] == (MONITORING, {_COMM_A: CONFIRMED})
     assert emitted[-1].diagnostics_dir is None
 
 
@@ -2231,8 +2231,8 @@ def test_reminders_are_exported_without_the_report(monkeypatch, emitted):
         tick(callback)  # baseline, suspected (1), -, reminder (3)
 
     assert summarize(emitted) == [
-        (ACTIVE, {_COMM_A: SUSPECTED}),
-        (ACTIVE, {_COMM_A: SUSPECTED}),
+        (MONITORING, {_COMM_A: SUSPECTED}),
+        (MONITORING, {_COMM_A: SUSPECTED}),
     ]
     # The report is fetched once per suspected hang.
     assert emitted[0].ras_text_report == FakePoller.TEXT_REPORT
@@ -2259,7 +2259,7 @@ def test_recovery_empties_the_hung_communicators(monkeypatch, emitted, resumed):
     callback.before_worker_group_shutdown(MagicMock())
 
     # Nothing is hung at the shutdown, so no STOPPED follows the recovery.
-    assert summarize(emitted) == [(ACTIVE, {_COMM_A: SUSPECTED}), (ACTIVE, {})]
+    assert summarize(emitted) == [(MONITORING, {_COMM_A: SUSPECTED}), (MONITORING, {})]
     assert emitted[-1].ras_text_report is None
 
 
@@ -2275,8 +2275,8 @@ def test_recovery_of_one_communicator_keeps_the_other(monkeypatch, emitted):
     for _ in range(3):
         tick(callback)
     assert summarize(emitted) == [
-        (ACTIVE, {_COMM_A: SUSPECTED, _COMM_B: SUSPECTED}),
-        (ACTIVE, {_COMM_B: SUSPECTED}),
+        (MONITORING, {_COMM_A: SUSPECTED, _COMM_B: SUSPECTED}),
+        (MONITORING, {_COMM_B: SUSPECTED}),
     ]
 
 
@@ -2305,9 +2305,9 @@ def test_new_stall_after_recovery_is_dated_afresh(monkeypatch, emitted):
         tick(callback)
 
     assert summarize(emitted) == [
-        (ACTIVE, {_COMM_A: SUSPECTED}),
-        (ACTIVE, {}),
-        (ACTIVE, {_COMM_A: SUSPECTED}),
+        (MONITORING, {_COMM_A: SUSPECTED}),
+        (MONITORING, {}),
+        (MONITORING, {_COMM_A: SUSPECTED}),
     ]
     first, _, second = emitted
     # The new stall began at the poll before its first frozen poll (the
@@ -2380,7 +2380,7 @@ def test_unexpected_error_exports_disabled_with_the_hung_communicators(
     callback.before_worker_group_shutdown(MagicMock())
 
     assert summarize(emitted) == [
-        (ACTIVE, {_COMM_A: SUSPECTED}),
+        (MONITORING, {_COMM_A: SUSPECTED}),
         (DISABLED, {_COMM_A: SUSPECTED}),
     ]
     assert emitted[-1].disabled_reason == NcclHangDisabledReason.INTERNAL_ERROR
