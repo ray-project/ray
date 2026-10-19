@@ -5,7 +5,8 @@ set. Listing reads each file's summary, drops files that cannot match the
 selection, and emits one row per chunk (``MCAPSummaryIndexer``), weighted by
 the memory reading it is estimated to need. ``OnlineBinPacker`` groups the
 chunks into read tasks of about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that
-estimate (128 MiB by default).
+estimate (128 MiB by default). When the read keeps order, ``OrderedFileGrouper``
+first joins each file's chunks so that one task reads the file (``mcap_file_cuts``).
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
@@ -34,6 +35,9 @@ from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.mcap.mcap_data_column import (
     infer_data_type,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_file_cuts import (
+    OrderedFileGrouper,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_file_indexer import (
     MCAPSummaryIndexer,
@@ -165,7 +169,8 @@ class MCAPDatasourceV2(FileDataSourceV2):
 
     def get_file_partitioner(self, **kwargs):
         # Each listing row is one chunk weighted by its estimated read memory,
-        # so chunks are packed into read tasks by that estimate.
+        # so chunks are packed into read tasks by that estimate. When the read
+        # keeps order, each file is kept in one task (``mcap_file_cuts``).
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the
@@ -174,11 +179,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
             OnlineBinPacker,
         )
 
-        return OnlineBinPacker(
+        packer = OnlineBinPacker(
             max_bin_bytes=_BIN_PACKING_BYTES,
             max_shared_open_bins=_BIN_PACKING_MAX_SHARED_OPEN_BINS,
             requires_global_input=False,
         )
+        return OrderedFileGrouper(packer)
 
     @property
     @override
