@@ -135,7 +135,7 @@ def _deduce_default_shuffle_compression() -> str:
             "RAY_DATA_SHUFFLE_COMPRESSION instead"
         )
 
-    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "lz4")
 
 
 DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
@@ -708,13 +708,10 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` routes through
-            the DataSourceV2 pipeline (``ListFiles → ReadFiles`` logical chain,
-            driver-side first-file sampling for schema inference,
-            ``ParquetScanner`` / ``ParquetFileReader``). Defaults to True;
-            override with ``RAY_DATA_USE_DATASOURCE_V2`` (``0`` for V1, ``1`` for
-            V2). Parquet is the only reader migrated to V2 so far; the others
-            read through V1 for now regardless of this flag.
+        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
+            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
+            Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
+            (``0`` for V1, ``1`` for V2).
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -888,7 +885,7 @@ class DataContext:
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         shuffle_compression: Codec used to compress shuffle intermediate
-            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            shards: "none", "lz4", or "zstd" (default "lz4"). Deprecated
             alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
@@ -907,7 +904,7 @@ class DataContext:
             at the cost of more, smaller intermediate shard objects. Set to
             ``0`` to disable batching, processing each input bundle
             individually. Defaults to 1GiB.
-        use_disk_based_hash_shuffle: Whether keyed ``repartition()``,
+        use_disk_based_hash_shuffle: Whether ``repartition()`` with keys or shuffle,
             aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
             disk-based (file-transport) shuffle instead of the object
             store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
@@ -1356,21 +1353,16 @@ class DataContext:
         Changes to `DataContext.get_current()` will not impact existing Datasets.
 
         Examples:
-
-            .. testcode::
-                import ray
-
-                context = ray.data.DataContext.get_current()
-
-                context.target_max_block_size = 100 * 1024 ** 2
-                ds1 = ray.data.range(1)
-                context.target_max_block_size = 1 * 1024 ** 2
-                ds2 = ray.data.range(1)
-
-                # ds1's target_max_block_size will be 100MB
-                ds1.take_all()
-                # ds2's target_max_block_size will be 1MB
-                ds2.take_all()
+            >>> import ray
+            >>> context = ray.data.DataContext.get_current()
+            >>> context.target_max_block_size = 100 * 1024 ** 2
+            >>> ds1 = ray.data.range(1)
+            >>> context.target_max_block_size = 1 * 1024 ** 2
+            >>> ds2 = ray.data.range(1)
+            >>> # ds1's target_max_block_size will be 100MB
+            >>> _ = ds1.take_all()
+            >>> # ds2's target_max_block_size will be 1MB
+            >>> _ = ds2.take_all()
 
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the

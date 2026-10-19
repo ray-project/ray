@@ -93,7 +93,7 @@ tuner = tune.Tuner(
 results = tuner.fit()
 ```
 
-You can find an example of this in the {doc}`Keras MNIST example </tune/examples/tune_mnist_keras>`.
+You can find an example of this in the {doc}`Keras MNIST example </tune/examples/tune-mnist-keras>`.
 
 :::{warning}
 If `gpu` is not set, `CUDA_VISIBLE_DEVICES` environment variable will be set as empty, disallowing GPU access.

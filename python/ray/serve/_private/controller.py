@@ -82,6 +82,10 @@ from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespac
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -130,6 +134,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
+# Retained across Serve shutdowns so generations are not reused within a cluster.
+ROUTING_CONFIG_GENERATION_KEY = "serve-routing-config-generation"
 
 
 class ServeController:
@@ -180,6 +186,12 @@ class ServeController:
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self._routing_config_generation = self._get_next_routing_config_generation()
+        self._routing_config_sequence = 0
+        self._routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
@@ -800,7 +812,17 @@ class ServeController:
             # control loop retries the reconcile next tick instead of skipping it.
             self._last_ingress_membership_version = version
 
-    def broadcast_target_groups_if_changed(self) -> None:
+    def _get_next_routing_config_generation(self) -> int:
+        """Persist and return the generation for this controller process."""
+        checkpoint = self.kv_store.get(ROUTING_CONFIG_GENERATION_KEY)
+        generation = int(checkpoint) + 1 if checkpoint is not None else 1
+        self.kv_store.put(
+            ROUTING_CONFIG_GENERATION_KEY,
+            str(generation).encode(),
+        )
+        return generation
+
+    def broadcast_target_groups_if_changed(self) -> RoutingConfigVersion:
         """Broadcast target groups over long poll if they have changed.
 
         Keeps an in-memory record of the last target groups that were broadcast
@@ -812,12 +834,34 @@ class ServeController:
 
         # Check if target groups have changed by comparing the objects directly
         if self._last_broadcasted_target_groups == target_groups:
-            return
+            return self._routing_config_version
+
+        self._routing_config_sequence += 1
+        routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.TARGET_GROUPS: target_groups}
+            {
+                LongPollNamespace.TARGET_GROUPS: RoutingConfigSnapshot(
+                    target_groups=target_groups,
+                    version=routing_config_version,
+                )
+            }
         )
         self._last_broadcasted_target_groups = target_groups
+        self._routing_config_version = routing_config_version
+        return routing_config_version
+
+    async def get_routing_config_version(self) -> RoutingConfigVersion:
+        """Return the version containing the controller's current routing state.
+
+        Broadcast before returning so the version is guaranteed to cover target
+        groups generated from the latest reconciled application state.
+        """
+        await self.done_recovering_event.wait()
+        return self.broadcast_target_groups_if_changed()
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""

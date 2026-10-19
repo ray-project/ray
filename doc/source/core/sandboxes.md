@@ -38,7 +38,7 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
 * **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
-* **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node.
+* **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node. The `nsenter` and `setpriv` commands from util-linux 2.33 or later, which Ubuntu 20.04 and later include, must also be on the `$PATH`.
 
 To install `runsc` on a Linux worker node, see the [gVisor installation guide](https://gvisor.dev/docs/user_guide/install/). gVisor's prebuilt `runsc` only supports 4 KiB pages, so on nodes whose kernel uses 64 KiB pages, build it from source with `--define=pagesize=64k`. `slirp4netns` ships as a package on Debian, Ubuntu, and Fedora, or as a [static build](https://github.com/rootless-containers/slirp4netns/releases) for x86_64 and aarch64. On Ubuntu 24.04 or Debian 13 with a kernel page size of 4 KiB, install the `erofs-utils` package from the distribution's repositories. On Ubuntu 22.04, this package is too old, so you need to build a release from the [erofs-utils repository](https://github.com/erofs/erofs-utils) instead. Install `autoconf`, `automake`, `libtool`, `pkg-config`, `liblz4-dev`, and `uuid-dev`, then run `./autogen.sh && ./configure --disable-fuse && make && make install`. On nodes whose kernel uses 64 KiB pages, you need to build from source in all cases (regardless of distribution). Follow the instructions above, but additionally pass `MAX_BLOCK_SIZE=65536` to `./configure`. This is required because `runsc` only accepts EROFS images whose block size is a multiple of the node's page size, and distro packages build with 4 KiB blocks.
 
@@ -213,6 +213,18 @@ print("Result:", output_bytes.decode("utf-8"))
 ray.get(sb.delete.remote())
 ```
 
+### Cap disk use
+
+A writable sandbox (`readonly=False`) keeps the files it writes in a private overlay, which is a file on the node's disk. Set `disk` to cap that overlay, so that a runaway build or download in one sandbox can't fill the node's disk:
+
+```python
+sb = sandbox.create(image="python:3.12-slim", readonly=False, disk="10Gi")
+```
+
+Writes past the cap fail inside the sandbox with `ENOSPC` ("No space left on device"), and the sandbox keeps running. Deleting files frees space again. `disk` takes the units that `memory` takes and also counts `/tmp`. In-memory mounts such as `/dev/shm` count toward the sandbox's memory instead.
+
+A `readonly=True` sandbox with a `workdir` also runs on a private overlay (see [Container images](#container-images)), so `disk` caps it too, and its `workdir` then lives in the overlay instead of a directory on the node. A read-only sandbox without a `workdir` has no overlay to cap, so `disk` requires `readonly=False` or a `workdir`.
+
 ### Schedule a Sandbox actor with custom resources
 
 Because `Sandbox` is a standard Ray actor, you can instantiate it directly with Ray actor scheduling options such as `num_cpus`, `memory`, and custom accelerator or placement constraints.
@@ -333,11 +345,11 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. One consequence: a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image; its writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. One consequence: a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image; its writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
 
 ### Bound the image cache
 
-The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem that holds the cache. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` on worker nodes to choose a cap in bytes, or set it to `0` to disable eviction.
+The cache is bounded so that a node that runs many distinct images doesn't fill its disk. Before each pull, Ray evicts the least recently extracted images until the cache fits under the cap and the filesystem that holds the cache has a minimum of free space, so the cache gives way when sandboxes' writable overlays, logs, or spilled objects fill the disk. Images that a running sandbox uses are never evicted. The cap defaults to half of the filesystem and the free-space floor to a tenth of it, the level at which the kubelet starts evicting Pods. Set `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` and `RAY_SANDBOX_IMAGE_CACHE_MIN_FREE_BYTES` on worker nodes to choose either in bytes, or set both to `0` to disable eviction.
 
 ### Route Docker Hub pulls through a mirror
 
@@ -447,7 +459,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When internet access is needed, `network="public"` grants egress without handing over the host's resolver configuration or network identity; see [Networking and DNS](#networking-and-dns).
-* **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors.
+* **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors. A `disk` cap bounds a sandbox's writable overlay on the node's disk.
 
 ## HTTP API service
 
@@ -476,7 +488,7 @@ Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..
 Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
-* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits.
+* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits. `disk_limit_mb` caps the writable root filesystem (see [Cap disk use](#cap-disk-use)) and requires `readonly: false` or a `workdir`.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
 * **Network modes**: These are the Python API's modes, which Ray validates: `none` (the default), `public` for egress with generated DNS that `dns` overrides, `host`, and `sandbox`. See [Networking and DNS](#networking-and-dns).
 
@@ -555,16 +567,18 @@ docker run --privileged -p 8000:8000 \
 
 `ray.experimental.sandbox.http.grpc_facade` serves the same detached sandbox actors over gRPC. It implements the subset of a third-party sandbox SDK's control-plane and command-router services that the SDK's Sandbox API uses, so you can point an unmodified client at a Ray cluster to create sandboxes, run commands, and use the client's filesystem API.
 
-The facade requires `grpclib` and `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
+The facade requires `ray[default]`, not the Serve extra. Run it on a node that can reach the cluster, with a token that clients must present:
 
 ```bash
-pip install grpclib
+pip install "ray[default]"
 export RAY_SANDBOX_API_TOKEN=$(openssl rand -hex 32)
 python -m ray.experimental.sandbox.http.grpc_facade \
   --host 0.0.0.0 --port 50051 --advertise-url https://<facade-endpoint>
 ```
 
 Clients connect to the URL that the facade advertises. Current client SDKs accept a plaintext `http://` URL only when their server URL is on `localhost`, so either terminate TLS in front of the facade and advertise that `https://` endpoint, or forward a local port to the facade and advertise `http://127.0.0.1:<port>`.
+
+The facade serves the client SDK's original sandbox API. The SDK's 1.6 release made a newer API its default, so set `MODAL_SANDBOX_V2=0` in clients on 1.6 or later.
 
 #### Authentication
 
@@ -580,6 +594,64 @@ Keep these limits in mind:
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
 * **State**: The facade keeps exec state in memory, so run one facade process per cluster.
 * **Network**: The facade rejects network allowlists, which it can't enforce. Sandboxes get open egress unless the client blocks networking, and open egress reaches any address the node can, including other Ray nodes. See [Networking and DNS](#networking-and-dns).
+
+#### Serve the facade with Ray Serve
+
+`ray.experimental.sandbox.http.grpc_app` serves the facade through Ray Serve's gRPC proxy instead of the facade's own server, so you can deploy it as a Serve application, such as an Anyscale service. Name two functions in the Serve config: the facade's `add_servicers_to_server` registers its gRPC services with the proxy, and `grpc_app.build_app` builds the application.
+
+```yaml
+grpc_options:
+  grpc_servicer_functions:
+    - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
+applications:
+  - name: sandbox-facade
+    route_prefix: /
+    import_path: ray.experimental.sandbox.http.grpc_app:build_app
+```
+
+The application needs `ray[serve]`. Set `RAY_SANDBOX_API_TOKEN` both where the application is built and where its replica runs: `build_app` and the replica each refuse to start without a token, because Serve's proxies listen on every node's address, where sandboxes with network access can reach them. The application runs one replica, because the facade keeps exec state in memory. Keep it the only application on its Serve instance, because clients don't send the `application` metadata that Serve uses to choose among several.
+
+Clients use the address of Serve's gRPC proxy as their server URL. By default, the facade gives each client `https://` plus the host it dialed as its command-router URL, which suits a TLS endpoint on port 443 in front of the proxy. For any other setup, set `advertise_url` in the application's `args`, such as `http://127.0.0.1:9000` for clients of a local proxy.
+
+On Anyscale, list both of the facade's gRPC services and turn off the service's own token check, which limits a service to one gRPC service name. The facade checks `RAY_SANDBOX_API_TOKEN` itself, which also covers traffic from inside the cluster that the service's check doesn't see:
+
+```yaml
+query_auth_token_enabled: false
+grpc_options:
+  service_names:
+    - modal.client.ModalClient
+    - modal.task_command_router.TaskCommandRouter
+  grpc_servicer_functions:
+    - ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server
+applications:
+  - name: sandbox-facade
+    route_prefix: /
+    import_path: ray.experimental.sandbox.http.grpc_app:build_app
+```
+
+The TLS endpoint in front of the facade must accept HTTP/2 from a client that doesn't negotiate it. The client SDK's command-router connection, which carries commands and file operations, offers no ALPN in its TLS handshake (releases through 1.6.1) and then speaks HTTP/2 anyway. Envoy accepts that connection, because it detects HTTP/2 from the client's connection preface. ingress-nginx doesn't: behind it, creating and terminating sandboxes works, but running commands and file operations fail. On Anyscale, deploy the service to a Kubernetes cloud whose operator routes services through an Envoy Gateway (`networking.gateway` in the operator's Helm values) rather than ingress-nginx.
+
+A proxy in front of the facade also limits each HTTP/2 stream. The client SDK sends a file write as one request stream, and it reads a command's output on a stream that stays quiet until the command exits. Envoy doesn't limit request size by default, but its default route timeout ends any response that takes longer than 15 seconds, a command's output stream included. With Envoy Gateway, turn that timeout off on the Gateway that serves the facade. On Anyscale, that's the Gateway named in the operator's `networking.gateway` values:
+
+```yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: sandbox-facade-streams
+  namespace: <the Gateway's namespace>
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: <the Gateway's name>
+  timeout:
+    http:
+      requestTimeout: 0s
+      maxStreamDuration: 0s
+      connectionIdleTimeout: 1h
+```
+
+ingress-nginx defaults to 1 MiB per request and 60 seconds without data from the backend, which cap file writes at about 7.5 MiB and output reads on a running command at about 11 minutes, once the SDK's retries run out. The annotations `nginx.ingress.kubernetes.io/proxy-body-size: "0"`, `nginx.ingress.kubernetes.io/proxy-read-timeout`, and `nginx.ingress.kubernetes.io/proxy-send-timeout` on the facade's Ingress raise those limits, but no ingress-nginx setting lets it serve the client SDK's command-router connection.
 
 ## API reference
 
