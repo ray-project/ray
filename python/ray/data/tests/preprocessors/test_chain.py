@@ -646,14 +646,23 @@ def test_dag_structure(deferred_fit_enabled):
         assert not node.dependencies
 
 
-def _make_undeclared_in_place_scale(column: str, factor: float) -> Preprocessor:
+def _make_undeclared_in_place_scale(
+    column: str, factor: float, declare_inputs: bool = False
+) -> Preprocessor:
     """Non-fittable preprocessor that rewrites a column in place without
-    declaring the columns it reads or writes (the default for user-defined
-    preprocessors). Defined in a function for the same reason as `_make_add_one`.
+    declaring the columns it writes (the default for user-defined
+    preprocessors). With `declare_inputs`, it sets `columns` like many
+    user-defined preprocessors do, so only its input columns are declared.
+    Defined in a function for the same reason as `_make_add_one`.
     """
 
     class _UndeclaredScale(Preprocessor):
         _is_fittable = False
+
+        def __init__(self):
+            super().__init__()
+            if declare_inputs:
+                self.columns = [column]
 
         def _transform_pandas(self, df):
             df[column] = df[column] * factor
@@ -662,12 +671,16 @@ def _make_undeclared_in_place_scale(column: str, factor: float) -> Preprocessor:
     return _UndeclaredScale()
 
 
+@pytest.mark.parametrize("declare_inputs", [False, True])
 @pytest.mark.parametrize("nested", [False, True])
-def test_member_without_declared_columns_is_a_barrier(deferred_fit_enabled, nested):
-    """A member that doesn't declare its columns may write any column, so later
-    members must not compute statistics until its transform has been applied."""
+def test_member_without_declared_columns_is_a_barrier(
+    deferred_fit_enabled, nested, declare_inputs
+):
+    """A member that doesn't declare both its input and output columns may
+    write any column, so later members must not compute statistics until its
+    transform has been applied."""
     ds = ray.data.from_pandas(pd.DataFrame({"a": [1.0, 2.0, 3.0]}))
-    custom = _make_undeclared_in_place_scale("a", 10)
+    custom = _make_undeclared_in_place_scale("a", 10, declare_inputs=declare_inputs)
     scaler = StandardScaler(["a"])
     chain = Chain(Chain(custom) if nested else custom, scaler)
 
@@ -676,6 +689,30 @@ def test_member_without_declared_columns_is_a_barrier(deferred_fit_enabled, nest
     # Same statistics as fitting step by step: computed on a * 10.
     assert scaler.stats_["mean(a)"] == pytest.approx(20.0)
     assert list(out["a"]) == pytest.approx([-1.2247449, 0.0, 1.2247449])
+
+
+def test_member_without_base_init(deferred_fit_enabled):
+    """A non-fittable user-defined member that doesn't call
+    `Preprocessor.__init__` (and so has no stat computation plan) works in a
+    deferred chain, as it does with eager fitting."""
+
+    class _NoBaseInit(Preprocessor):
+        _is_fittable = False
+
+        def __init__(self):
+            # NOTE: Intentionally doesn't call `super().__init__()`.
+            pass
+
+        def _transform_pandas(self, df):
+            df["a"] = df["a"] * 10
+            return df
+
+    ds = ray.data.from_pandas(pd.DataFrame({"a": [1.0, 2.0, 3.0]}))
+    scaler = StandardScaler(["a"])
+
+    Chain(_NoBaseInit(), scaler).fit_transform(ds).to_pandas()
+
+    assert scaler.stats_["mean(a)"] == pytest.approx(20.0)
 
 
 def test_later_member_does_not_rewrite_data_before_earlier_member_fits(

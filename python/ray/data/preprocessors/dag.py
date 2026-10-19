@@ -16,9 +16,10 @@ class _DAGNode:
     that touch disjoint columns can have their statistics computed in the same
     dataset scan.
 
-    A member that declares no input or output columns may read and write any
-    column, so its node is treated as reading and writing every column: it
-    depends on every earlier node, and every later node depends on it.
+    A member that doesn't declare both its input and output columns may read
+    and write any column, so its node is treated as reading and writing every
+    column: it depends on every earlier node, and every later node depends on
+    it.
 
     Args:
         preprocessor: The preprocessor this node belongs to.
@@ -78,15 +79,20 @@ class _PlaceholderNode(_DAGNode):
 
 
 def _declares_columns(preprocessor: Preprocessor) -> bool:
-    """Whether a preprocessor declares the columns it reads or writes.
+    """Whether a preprocessor declares both the columns it reads and writes.
 
-    A Chain declares its columns only if every member does.
+    Declaring only one side isn't enough: a user-defined member that sets
+    ``columns`` and rewrites them in place declares no output columns, yet
+    writes the columns it reads. A Chain declares its columns only if every
+    member does.
     """
     from ray.data.preprocessors.chain import Chain
 
     if isinstance(preprocessor, Chain):
         return all(_declares_columns(p) for p in preprocessor.preprocessors)
-    return bool(preprocessor.get_input_columns() or preprocessor.get_output_columns())
+    return bool(preprocessor.get_input_columns()) and bool(
+        preprocessor.get_output_columns()
+    )
 
 
 def _build_aggregation_dag(
@@ -97,7 +103,7 @@ def _build_aggregation_dag(
     Each fittable member contributes one node per aggregation registered on
     its plan; every other member contributes a placeholder node. A later node
     depends on an earlier one iff it reads a column the earlier one writes, or
-    either of them doesn't declare its columns.
+    either of them doesn't declare both its input and output columns.
 
     Args:
         preprocessors: The chain's members, in chain order.

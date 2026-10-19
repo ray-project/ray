@@ -197,8 +197,11 @@ class Chain(SerializablePreprocessorBase):
         """
         ds = self._fit_ds
 
+        # NOTE: Only fittable members are checked; a non-fittable user-defined
+        #       member may not call `Preprocessor.__init__` and so have no plan.
         if any(
-            p._stat_computation_plan.has_custom_stat_fn() for p in self._preprocessors
+            p._is_fittable and p._stat_computation_plan.has_custom_stat_fn()
+            for p in self._preprocessors
         ):
             self._fallback_to_serial_execution(ds)
             self._stats_materialized = True
