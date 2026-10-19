@@ -12,32 +12,22 @@ from ray.train.health import (
     HealthCheck,
     NodeProbe,
     Noop,
+    PeriodicHealthCheck,
     ProbeResult,
     Reattempt,
     WorkerProbe,
 )
-from ray.train.health._internal.manager import (
-    MAX_WINDOW_SIZE,
-    HealthManager,
-    merge_decisions,
-)
-
-
-class Loss(WorkerProbe):
-    def poll(self):
-        return ProbeResult(metrics={"loss": 1.0})
+from ray.train.health._internal.manager import HealthManager, merge_decisions
+from ray.train.health._internal.node_monitor import NodeMonitorStatus
+from ray.train.health._internal.node_monitor_group import NodeMonitorGroupPollStatus
 
 
 class Temp(NodeProbe):
-    poll_interval_s = 0.1
-
     def poll(self):
         return ProbeResult(metrics={"temp_c": 60.0})
 
 
 class Comms(ControllerProbe):
-    poll_interval_s = 3600.0
-
     def __init__(self):
         self.polls = 0
 
@@ -56,20 +46,15 @@ class StackDump(WorkerProbe):
         return ProbeResult()
 
 
-def _latest(state, probe_cls):
-    """{key: latest reading} of one probe."""
-    windows = state.probe_results.get(probe_cls.probe_name(), {})
-    return {key: window[-1] for key, window in windows.items() if window}
-
-
 class EvictHot(Evaluator):
-    """Evicts every node whose latest ``Temp`` reading is over 90C."""
+    """Evicts every node whose ``Temp`` is over 90C."""
 
     def __init__(self):
         self.starts = 0
 
     def evaluate(self, state):
-        hot = [n for n, r in _latest(state, Temp).items() if r.metrics["temp_c"] > 90]
+        temps = state.probe_results.get("Temp", {})
+        hot = [n for n, r in temps.items() if r.metrics["temp_c"] > 90]
         return Evict(reason="hot", target_nodes=hot) if hot else Noop()
 
     def on_worker_group_start(self):
@@ -93,6 +78,14 @@ class Raises(Evaluator):
     def evaluate(self, state):
         self.calls += 1
         raise RuntimeError("bug in evaluator")
+
+
+def _check(poll_interval_s=1e-6, probes=(), evaluators=()):
+    return PeriodicHealthCheck(
+        probe_creator=lambda: list(probes),
+        evaluator_creator=lambda: list(evaluators),
+        poll_interval_s=poll_interval_s,
+    )
 
 
 def _diagnose(**kwargs):
@@ -133,95 +126,108 @@ def test_restarts_are_combined_into_one(decisions, merged):
 
 
 def test_diagnoses_are_carried_out_one_by_one():
-    first = _diagnose(target_ranks=[3])
-    second = _diagnose(target_nodes=["n1"])
+    first, second = _diagnose(reason="slow rank"), _diagnose(reason="hot node")
     assert merge_decisions([first, Noop(), second]) == [first, second]
 
 
-def test_already_evicted_nodes_are_not_acted_on_again():
+def test_already_evicted_nodes_are_not_evicted_again():
     assert merge_decisions([Evict(target_nodes=["n1"])], evicted_nodes=["n1"]) == []
     merged = merge_decisions([Evict(target_nodes=["n1", "n2"])], evicted_nodes=["n1"])
     assert merged == [Evict(target_nodes=["n2"])]
-    assert merge_decisions([_diagnose(target_nodes=["n1"])], evicted_nodes=["n1"]) == []
-    every_node = _diagnose()
-    assert merge_decisions([every_node], evicted_nodes=["n1"]) == [every_node]
 
 
-def test_an_evict_with_no_nodes_is_dropped():
-    assert merge_decisions([Evict(target_nodes=[])]) == []
-
-
-def test_probes_are_split_by_kind():
+def test_a_probe_in_two_checks_is_polled_once_at_the_shorter_interval():
+    first, second = Comms(), Comms()
     manager = HealthManager(
-        [HealthCheck(probe_creator=lambda: [Loss(), Temp(), Comms()])]
+        [_check(3600.0, probes=[first]), _check(1e-6, probes=[second])]
     )
-    assert [type(p) for p in manager.worker_probes()] == [Loss]
-    assert [type(p) for p in manager.node_probes()] == [Temp]
-    assert [type(p) for p in manager.controller_probes()] == [Comms]
+    manager.poll(timeout=0)
+    manager.poll(timeout=0)
+    assert first.polls == 2
+    assert second.polls == 0
 
 
-def test_no_checks_means_disabled():
-    assert not HealthManager([]).enabled
+def test_two_different_probes_with_the_same_name_are_rejected():
+    class Other(Comms):
+        name = "Comms"
+
+    with pytest.raises(ValueError, match="'Comms'"):
+        HealthManager([_check(probes=[Comms()]), _check(probes=[Other()])])
 
 
-def test_creators_are_called_once_per_manager():
-    calls = []
-    check = HealthCheck(probe_creator=lambda: calls.append(1) or [Temp()])
-    HealthManager([check])
-    HealthManager([check])
-    assert len(calls) == 2
+def test_controller_results_are_stamped_and_a_failing_probe_is_skipped():
+    manager = HealthManager([_check(probes=[Comms(), BrokenComms()])])
+    manager.poll(timeout=0)
+
+    results = manager._results
+    assert results["Comms"]["comm0"].metrics == {"polls": 1.0}
+    assert results["Comms"]["comm0"].timestamp_s is not None
+    assert "BrokenComms" not in results
 
 
-@pytest.mark.parametrize("window_size", [0, MAX_WINDOW_SIZE + 1])
-def test_a_window_size_out_of_range_is_rejected(window_size):
-    class Odd(Loss):
-        pass
-
-    Odd.window_size = window_size
-    with pytest.raises(ValueError, match="window_size"):
-        HealthManager([HealthCheck(probe_creator=lambda: [Odd()])])
-
-
-def _loss(value, timestamp_s):
-    return ProbeResult(metrics={"loss": value}, timestamp_s=timestamp_s)
-
-
-def test_worker_readings_are_stored_per_rank_and_stamped():
-    manager = HealthManager([HealthCheck(probe_creator=lambda: [Loss()])])
-    manager.store_worker_results(0, {"Loss": _loss(2.0, 1.0)})
+def test_worker_results_are_stored_per_rank_and_stamped():
+    manager = HealthManager([])
+    manager.store_worker_results(0, {"Loss": ProbeResult(timestamp_s=1.0)})
     manager.store_worker_results(1, {"Loss": ProbeResult()})
-
-    latest = _latest(manager.build_state(), Loss)
-    assert latest[0] == _loss(2.0, 1.0)
-    assert latest[1].timestamp_s is not None
+    assert manager._results["Loss"][0].timestamp_s == 1.0
+    assert manager._results["Loss"][1].timestamp_s is not None
 
 
-def test_a_probe_keeps_its_window_and_a_repeated_reading_is_stored_once():
-    class LossWindow(Loss):
-        window_size = 3
-
-    manager = HealthManager([HealthCheck(probe_creator=lambda: [LossWindow()])])
-    for t, value in enumerate([4.0, 3.0, 2.0, 1.0]):
-        manager.store_worker_results(0, {"LossWindow": _loss(value, float(t))})
-    manager.store_worker_results(0, {"LossWindow": _loss(1.0, 3.0)})
-
-    assert manager.build_state().probe_results["LossWindow"][0] == [
-        _loss(3.0, 1.0),
-        _loss(2.0, 2.0),
-        _loss(1.0, 3.0),
-    ]
+def test_each_check_runs_its_evaluators_at_its_own_interval():
+    fast, slow = Always(Noop()), Always(Noop())
+    manager = HealthManager(
+        [_check(1e-6, evaluators=[fast]), _check(3600.0, evaluators=[slow])]
+    )
+    for _ in range(3):
+        manager.poll(timeout=0)
+    assert fast.calls == 3
+    assert slow.calls == 1
 
 
-def test_controller_probes_are_polled_when_due_and_a_failing_one_is_skipped():
-    comms = Comms()
-    manager = HealthManager([HealthCheck(probe_creator=lambda: [comms, BrokenComms()])])
-    manager.poll_probes()
-    manager.poll_probes()
+def test_an_evict_is_decided_once_and_the_node_stays_evicted_across_restarts():
+    evaluator = EvictHot()
+    manager = HealthManager([_check(evaluators=[evaluator])])
+    manager._results["Temp"] = {"n1": ProbeResult(metrics={"temp_c": 95.0})}
 
-    state = manager.build_state()
-    assert comms.polls == 1
-    assert _latest(state, Comms)["comm0"].metrics == {"polls": 1.0}
-    assert _latest(state, BrokenComms) == {}
+    assert manager.poll(timeout=0) == [Evict(reason="hot", target_nodes=["n1"])]
+    assert manager.poll(timeout=0) == []
+    assert manager.evicted_nodes == ["n1"]
+
+    manager.reset([])
+    assert manager._results == {}
+    assert evaluator.starts == 1
+    assert manager.evicted_nodes == ["n1"]
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [Raises(), Always(None), Always([Reattempt()])],
+    ids=["raises", "returns_none", "returns_a_list"],
+)
+def test_a_failing_evaluator_is_skipped_and_the_rest_keep_running(broken):
+    healthy = Always(Reattempt(reason="hang"))
+    manager = HealthManager([_check(evaluators=[broken, healthy])])
+    assert manager.poll(timeout=0) == [Reattempt(reason="hang")]
+    assert manager.poll(timeout=0) == [Reattempt(reason="hang")]
+    assert broken.calls == 2
+    assert healthy.calls == 2
+
+
+def test_a_failing_node_probe_is_logged_once_until_it_recovers(caplog):
+    manager = HealthManager([])
+    failing = NodeMonitorStatus(
+        probe_results={"Temp": ProbeResult(error=RuntimeError("sensor gone"))}
+    )
+    ok = NodeMonitorStatus(probe_results={"Temp": ProbeResult(timestamp_s=1.0)})
+    statuses = iter([failing, failing, ok, failing])
+    manager._node_monitor_group.poll_status = lambda timeout: (
+        NodeMonitorGroupPollStatus(node_monitor_statuses={"n1": next(statuses)})
+    )
+    for _ in range(4):
+        manager.poll(timeout=0)
+    logged = [r for r in caplog.records if "Node probe Temp failed" in r.getMessage()]
+    assert len(logged) == 2
+    assert isinstance(manager._results["Temp"]["n1"].error, RuntimeError)
 
 
 def _wait_for(fn, timeout_s=15.0):
@@ -235,71 +241,32 @@ def _wait_for(fn, timeout_s=15.0):
 
 
 def _node_temps(manager):
-    manager.poll_probes(timeout=10)
-    return _latest(manager.build_state(), Temp)
+    manager.poll(timeout=10)
+    return manager._results.get("Temp", {})
 
 
-def test_node_probes_are_sampled_on_each_node_and_a_failed_monitor_restarts(
-    ray_start_4_cpus,
-):
+def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
     node_id = ray.get_runtime_context().get_node_id()
-    manager = HealthManager([HealthCheck(probe_creator=lambda: [Temp()])])
-    manager.start([node_id])
+    manager = HealthManager([_check(0.1, probes=[Temp()])])
+    manager.reset([node_id])
     try:
         temps = _wait_for(lambda: _node_temps(manager))
         assert temps[node_id].metrics == {"temp_c": 60.0}
 
-        old_monitor = manager._node_monitors._monitors[node_id]
+        old_monitor = manager._node_monitor_group._monitors[node_id]
         killed_at = time.time()
         ray.kill(old_monitor)
 
-        # The failed monitor is replaced, and readings resume from the new one.
+        # The failed monitor is replaced, and samples resume from the new one.
         _wait_for(
             lambda: _node_temps(manager)[node_id].timestamp_s > killed_at
-            and manager._node_monitors._monitors[node_id] is not old_monitor
+            and manager._node_monitor_group._monitors[node_id] is not old_monitor
         )
-    finally:
-        manager.shutdown()
 
-
-def test_reset_moves_the_monitors_to_the_new_nodes(ray_start_4_cpus):
-    node_id = ray.get_runtime_context().get_node_id()
-    manager = HealthManager([HealthCheck(probe_creator=lambda: [Temp()])])
-    manager.start([node_id])
-    try:
         manager.reset([])
-        assert manager._node_monitors.node_ids == []
-        manager.reset([node_id])
-        assert manager._node_monitors.node_ids == [node_id]
+        assert manager._node_monitor_group.node_ids == []
     finally:
         manager.shutdown()
-
-
-def test_an_evict_is_decided_once_and_the_node_stays_evicted_across_restarts():
-    evaluator = EvictHot()
-    manager = HealthManager([HealthCheck(evaluator_creator=lambda: [evaluator])])
-    manager._store({"Temp": {"n1": ProbeResult(metrics={"temp_c": 95.0})}})
-
-    assert manager.poll_decisions() == [Evict(reason="hot", target_nodes=["n1"])]
-    assert manager.poll_decisions() == []
-    assert manager.evicted_nodes == ["n1"]
-
-    manager.reset([])
-    assert manager.build_state().probe_results == {}
-    assert evaluator.starts == 1
-    assert manager.evicted_nodes == ["n1"]
-
-
-@pytest.mark.parametrize(
-    "broken", [Raises(), Always(None), Always([Reattempt()])], ids=repr
-)
-def test_a_failing_evaluator_is_disabled_and_the_rest_keep_running(broken):
-    healthy = Always(Reattempt(reason="hang"))
-    manager = HealthManager([HealthCheck(evaluator_creator=lambda: [broken, healthy])])
-    assert manager.poll_decisions() == [Reattempt(reason="hang")]
-    assert manager.poll_decisions() == [Reattempt(reason="hang")]
-    assert broken.calls == 1
-    assert healthy.calls == 2
 
 
 if __name__ == "__main__":

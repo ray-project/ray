@@ -35,12 +35,9 @@ class Probe(abc.ABC):
     Attributes:
         name: The probe's name, which identifies its readings. Defaults to the
             class name. Set on the class.
-        window_size: How many of the latest readings to keep per worker, node
-            or key. At least 1.
     """
 
     name: Optional[str] = None
-    window_size: int = 1
 
     @classmethod
     def probe_name(cls) -> str:

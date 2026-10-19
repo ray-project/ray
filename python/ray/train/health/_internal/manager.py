@@ -1,48 +1,34 @@
 import logging
 import time
-from collections import deque
-from dataclasses import replace
-from typing import Deque, Dict, Iterable, List, Mapping, Optional, Sequence, Set
+from dataclasses import dataclass, replace
+from typing import Any, Dict, Iterable, List, Mapping, Sequence, Set
 
-from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
-from ray.train.health.check import Evaluator, HealthCheck
+from ray.train.health._internal.node_monitor import ScheduledProbe
+from ray.train.health._internal.node_monitor_group import (
+    DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
+    NodeMonitorGroup,
+)
+from ray.train.health.check import PeriodicHealthCheck
 from ray.train.health.decision import Diagnose, Evict, HealthDecision, Noop, Reattempt
+from ray.train.health.evaluator import Evaluator
 from ray.train.health.probe import (
     ControllerProbe,
     NodeIdStr,
     NodeProbe,
     Probe,
     ProbeResult,
-    WorkerProbe,
 )
-from ray.train.health.state import HealthState, ResultKey
+from ray.train.health.state import HealthState
 
 logger = logging.getLogger(__name__)
 
-# {probe name: {world rank, node ID or key: reading}}
-ProbeResults = Dict[str, Dict[ResultKey, ProbeResult]]
-
-# The largest window_size a probe may ask for. At ~1.2 KB per reading with 10
-# metrics, a WorkerProbe on 1,000 workers at this size holds ~120 MB.
-MAX_WINDOW_SIZE = 100
+_SEVERITY = {Noop: 0, Diagnose: 1, Reattempt: 2, Evict: 3}
 
 
-def _dedup(values: Iterable) -> List:
-    return list(dict.fromkeys(values))
-
-
-def _without_evicted(
-    decision: HealthDecision, evicted: Set[NodeIdStr]
-) -> Optional[HealthDecision]:
-    """The decision without already-evicted nodes, or ``None`` if it named only
-    evicted nodes. A ``Diagnose`` with no ``target_nodes`` means all nodes, and
-    an ``Evict`` with none has nothing to do."""
-    if isinstance(decision, Evict) or (
-        isinstance(decision, Diagnose) and decision.target_nodes
-    ):
-        nodes = [n for n in decision.target_nodes if n not in evicted]
-        return replace(decision, target_nodes=nodes) if nodes else None
-    return decision
+def _stamped(result: ProbeResult, now: float) -> ProbeResult:
+    if result.timestamp_s is None:
+        return replace(result, timestamp_s=now)
+    return result
 
 
 def merge_decisions(
@@ -52,262 +38,243 @@ def merge_decisions(
 ) -> List[HealthDecision]:
     """Merge the evaluators' decisions into the ones to carry out.
 
-    Only the most severe kind is carried out. ``Reattempt``\\ s and ``Evict``\\ s
-    are combined into one, because one restart covers all of them.
-    ``Diagnose``\\ s are carried out one by one.
+    Only the most severe kind is kept. ``Reattempt``\\ s and ``Evict``\\ s are
+    combined into one, and ``Diagnose``\\ s are kept one by one.
 
     Args:
-        decisions: One decision per evaluator.
-        evicted_nodes: Nodes already evicted from the run; decisions about
-            them are dropped.
+        decisions: The evaluators' decisions.
+        evicted_nodes: Nodes already evicted, which an ``Evict`` drops.
 
     Returns:
         The decisions to carry out. Empty if there is nothing to do.
     """
     evicted = set(evicted_nodes)
-    live = [
-        d
-        for d in (_without_evicted(d, evicted) for d in decisions)
-        if d is not None and not isinstance(d, Noop)
-    ]
+    live = []
+    for decision in decisions:
+        if isinstance(decision, Evict):
+            nodes = [n for n in decision.target_nodes if n not in evicted]
+            decision = replace(decision, target_nodes=nodes) if nodes else Noop()
+        if not isinstance(decision, Noop):
+            live.append(decision)
     if not live:
         return []
 
-    top = max(d._severity for d in live)
-    winners = [d for d in live if d._severity == top]
-    if isinstance(winners[0], Diagnose):
+    kind = max((type(d) for d in live), key=lambda t: _SEVERITY[t])
+    winners = [d for d in live if type(d) is kind]
+    if kind is Diagnose:
         return winners
-
-    reason = "; ".join(_dedup(d.reason for d in winners if d.reason))
-    if isinstance(winners[0], Evict):
-        nodes = _dedup(n for d in winners for n in d.target_nodes)
-        return [Evict(reason=reason, target_nodes=nodes)]
+    reason = "; ".join(dict.fromkeys(d.reason for d in winners if d.reason))
+    if kind is Evict:
+        nodes = dict.fromkeys(n for d in winners for n in d.target_nodes)
+        return [Evict(reason=reason, target_nodes=list(nodes))]
     return [Reattempt(reason=reason)]
 
 
+@dataclass
+class _Check:
+    poll_interval_s: float
+    evaluators: List[Evaluator]
+    next_run: float = 0.0
+
+
 class HealthManager:
-    """Runs mid-training health checks: keeps their probes and evaluators,
-    samples ``NodeProbe``\\ s through a ``NodeMonitor`` on each node, polls
-    ``ControllerProbe``\\ s, stores recent readings, and turns them into
-    decisions.
+    """Runs in-flight health checks: samples their ``NodeProbe``\\ s through a
+    ``NodeMonitor`` on each node, polls their ``ControllerProbe``\\ s, and runs
+    each check's evaluators every ``poll_interval_s`` of the check.
+
+    A probe in several checks runs once, at the shortest of their intervals.
 
     Args:
-        checks: The mid-training health checks. Their creators are called
+        inflight_checks: The in-flight health checks. Their creators are called
             here, once.
 
     Raises:
-        ValueError: If a probe's ``window_size`` is not between 1 and
-            ``MAX_WINDOW_SIZE``.
+        ValueError: If two different probe classes have the same name.
     """
 
-    def __init__(self, checks: Sequence[HealthCheck]):
-        self._probes: List[Probe] = []
-        self._evaluators: List[Evaluator] = []
-        for check in checks:
-            if check.probe_creator:
-                self._probes.extend(check.probe_creator())
-            if check.evaluator_creator:
-                self._evaluators.extend(check.evaluator_creator())
-
-        self._window_sizes: Dict[str, int] = {}
-        for probe in self._probes:
-            if not 1 <= probe.window_size <= MAX_WINDOW_SIZE:
-                raise ValueError(
-                    f"{probe.probe_name()}.window_size must be between 1 and "
-                    f"{MAX_WINDOW_SIZE}, got {probe.window_size}."
-                )
-            name = probe.probe_name()
-            self._window_sizes[name] = max(
-                self._window_sizes.get(name, 1), probe.window_size
+    def __init__(self, inflight_checks: Sequence[PeriodicHealthCheck]):
+        self._checks: List[_Check] = []
+        self._probes: Dict[str, Probe] = {}
+        self._poll_intervals_s: Dict[str, float] = {}
+        for check in inflight_checks:
+            self._checks.append(
+                _Check(check.poll_interval_s, check.evaluator_creator())
             )
+            for probe in check.probe_creator():
+                name = probe.probe_name()
+                existing = self._probes.setdefault(name, probe)
+                if type(existing) is not type(probe):
+                    raise ValueError(
+                        f"Two different probes are named {name!r}: "
+                        f"{type(existing).__name__} and {type(probe).__name__}."
+                    )
+                self._poll_intervals_s[name] = min(
+                    self._poll_intervals_s.get(name, check.poll_interval_s),
+                    check.poll_interval_s,
+                )
 
-        self._node_monitors = NodeMonitorGroup(self.node_probes())
-        # {probe name: {key: the latest readings, oldest first}}
-        self._results: Dict[str, Dict[ResultKey, Deque[ProbeResult]]] = {}
-        self._controller_probe_next_poll: Dict[int, float] = {}
-        self._failing_probes: Set[str] = set()
-        # Kept across restarts: an evicted node stays out for the whole run.
+        self._node_monitor_group = NodeMonitorGroup(
+            [
+                ScheduledProbe(probe, self._poll_intervals_s[name])
+                for name, probe in self._probes.items()
+                if isinstance(probe, NodeProbe)
+            ]
+        )
+        # {probe name: {world rank, node ID or key: the latest ProbeResult}}
+        self._results: Dict[str, Dict[Any, ProbeResult]] = {}
+        # {controller probe name: when it is next due}
+        self._next_poll: Dict[str, float] = {}
+        # The probes and evaluator IDs whose current failure was logged.
+        self._failing: Set[Any] = set()
+        # The nodes evicted so far. reset() keeps them.
         self._evicted: Set[NodeIdStr] = set()
-        self._disabled: Set[int] = set()
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self._probes or self._evaluators)
-
-    def worker_probes(self) -> List[WorkerProbe]:
-        return [p for p in self._probes if isinstance(p, WorkerProbe)]
-
-    def node_probes(self) -> List[NodeProbe]:
-        return [p for p in self._probes if isinstance(p, NodeProbe)]
-
-    def controller_probes(self) -> List[ControllerProbe]:
-        return [p for p in self._probes if isinstance(p, ControllerProbe)]
 
     @property
     def evicted_nodes(self) -> List[NodeIdStr]:
         return sorted(self._evicted)
 
-    #####################################################################################
-    # Lifecycle
-    #####################################################################################
-
-    def start(self, node_ids: List[NodeIdStr]) -> None:
-        """Start sampling ``NodeProbe``\\ s on these nodes.
-
-        Args:
-            node_ids: The nodes to sample.
-        """
-        if self.node_probes():
-            self._node_monitors.start(node_ids)
-
     def reset(self, node_ids: List[NodeIdStr]) -> None:
-        """Prepare for a new attempt of the training run: drop the readings so
-        far, call each evaluator's ``on_worker_group_start()``, and move the
-        ``NodeMonitor``\\ s to the given nodes.
+        """Start an attempt of the training run: drop the results so far,
+        restart the ``NodeMonitor``\\ s on the given nodes, and call each
+        evaluator's ``on_worker_group_start()``.
 
         Args:
-            node_ids: The nodes the new attempt's workers run on.
+            node_ids: The nodes the attempt's workers run on.
         """
         self._results.clear()
-        stale = [n for n in self._node_monitors.node_ids if n not in node_ids]
-        self._node_monitors.shutdown(stale)
-        self.start(node_ids)
-        for evaluator in self._evaluators:
-            try:
-                evaluator.on_worker_group_start()
-            except Exception:
-                logger.warning(
-                    "Evaluator %s raised in on_worker_group_start().",
-                    type(evaluator).__name__,
-                    exc_info=True,
-                )
+        self._node_monitor_group.shutdown()
+        if any(isinstance(p, NodeProbe) for p in self._probes.values()):
+            self._node_monitor_group.start(node_ids)
+        for check in self._checks:
+            for evaluator in check.evaluators:
+                try:
+                    evaluator.on_worker_group_start()
+                except Exception:
+                    logger.warning(
+                        "Evaluator %s raised in on_worker_group_start().",
+                        type(evaluator).__name__,
+                        exc_info=True,
+                    )
 
     def shutdown(self) -> None:
         """Stop every ``NodeMonitor``."""
-        self._node_monitors.shutdown()
-
-    #####################################################################################
-    # Collecting readings
-    #####################################################################################
-
-    def poll_probes(self, timeout: float = 0.0) -> None:
-        """Collect the latest readings of the probes that run outside the
-        workers: poll each ``ControllerProbe`` that is due, and collect the
-        ``NodeMonitor``\\ s' samples. A monitor that reports an error is
-        restarted.
-
-        Args:
-            timeout: How long to wait for the ``NodeMonitor``\\ s to answer.
-        """
-        self._store(self._poll_controller_probes())
-        self._store(self._poll_node_monitors(timeout))
+        self._node_monitor_group.shutdown()
 
     def store_worker_results(
         self, world_rank: int, results: Mapping[str, ProbeResult]
     ) -> None:
-        """Store one worker's ``WorkerProbe`` readings.
+        """Store one worker's ``WorkerProbe`` results. A result without a
+        ``timestamp_s`` is stamped with the time it arrives.
 
         Args:
             world_rank: The worker's world rank.
             results: ``{probe name: ProbeResult}``.
         """
-        self._store({name: {world_rank: r} for name, r in results.items()})
-
-    def build_state(self) -> HealthState:
-        return HealthState(
-            probe_results={
-                name: {key: list(window) for key, window in windows.items()}
-                for name, windows in self._results.items()
-            }
-        )
-
-    def _poll_controller_probes(self) -> ProbeResults:
-        results: ProbeResults = {}
-        now = time.monotonic()
-        for probe in self.controller_probes():
-            if now < self._controller_probe_next_poll.get(id(probe), 0.0):
-                continue
-            self._controller_probe_next_poll[id(probe)] = now + probe.poll_interval_s
-            name = probe.probe_name()
-            try:
-                polled = probe.poll()
-            except Exception:
-                if name not in self._failing_probes:
-                    self._failing_probes.add(name)
-                    logger.warning("Controller probe %s failed.", name, exc_info=True)
-                continue
-            self._failing_probes.discard(name)
-            results.setdefault(name, {}).update(polled)
-        return results
-
-    def _poll_node_monitors(self, timeout: float) -> ProbeResults:
-        status = self._node_monitors.poll_status(timeout=timeout)
-        results: ProbeResults = {}
-        for node_id, node_monitor_status in status.node_monitor_statuses.items():
-            if node_monitor_status.error is not None:
-                logger.warning(
-                    "The NodeMonitor on node %s failed; restarting it: %s",
-                    node_id,
-                    node_monitor_status.error,
-                )
-                self._node_monitors.shutdown([node_id])
-                self._node_monitors.start([node_id])
-                continue
-            for name, result in node_monitor_status.probe_results.items():
-                results.setdefault(name, {})[node_id] = result
-        return results
-
-    def _store(self, results: ProbeResults) -> None:
-        """Append readings to their windows. A reading without a
-        ``timestamp_s`` is stamped with the current time; one already stored,
-        with the same ``timestamp_s``, is not stored again."""
         now = time.time()
-        for name, per_key in results.items():
-            windows = self._results.setdefault(name, {})
-            size = self._window_sizes.get(name, 1)
-            for key, result in per_key.items():
-                if result.timestamp_s is None:
-                    result = replace(result, timestamp_s=now)
-                window = windows.setdefault(key, deque(maxlen=size))
-                if window and window[-1].timestamp_s == result.timestamp_s:
-                    continue
-                window.append(result)
+        for name, result in results.items():
+            self._results.setdefault(name, {})[world_rank] = _stamped(result, now)
 
-    #####################################################################################
-    # Deciding
-    #####################################################################################
+    def poll(
+        self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
+    ) -> List[HealthDecision]:
+        """Collect the ``NodeMonitor``\\ s' latest samples, poll the
+        ``ControllerProbe``\\ s that are due, and run the evaluators of the
+        checks that are due.
 
-    def poll_decisions(self) -> List[HealthDecision]:
-        """Run every evaluator on the current readings and merge their
-        decisions.
+        Args:
+            timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s.
 
         Returns:
             The decisions to carry out. Empty if there is nothing to do.
         """
-        decisions: List[HealthDecision] = []
-        state = self.build_state()
-        for evaluator in self._evaluators:
-            if id(evaluator) in self._disabled:
-                continue
-            try:
-                decision = evaluator.evaluate(state)
-                if not hasattr(decision, "_severity"):
-                    raise TypeError(
-                        "evaluate() must return a Noop, Reattempt, Evict or "
-                        f"Diagnose, not {decision!r}."
-                    )
-            except Exception:
-                logger.exception(
-                    "Evaluator %s failed; it will not be called again during "
-                    "this run.",
-                    type(evaluator).__name__,
-                )
-                self._disabled.add(id(evaluator))
-                continue
-            decisions.append(decision)
+        self._collect_node_samples(timeout)
+        now = time.monotonic()
+        self._poll_controller_probes(now)
+
+        state = HealthState(
+            probe_results={name: dict(r) for name, r in self._results.items()}
+        )
+        decisions = []
+        for check in self._checks:
+            if now >= check.next_run:
+                check.next_run = now + check.poll_interval_s
+                decisions += [self._evaluate(e, state) for e in check.evaluators]
 
         merged = merge_decisions(decisions, evicted_nodes=self._evicted)
         for decision in merged:
             if isinstance(decision, Evict):
                 self._evicted.update(decision.target_nodes)
         return merged
+
+    def _collect_node_samples(self, timeout: float) -> None:
+        """Store the ``NodeMonitor``\\ s' latest samples, and restart each
+        monitor that reports an error."""
+        status = self._node_monitor_group.poll_status(timeout)
+        for node_id, node_monitor_status in status.node_monitor_statuses.items():
+            if node_monitor_status.monitor_error is not None:
+                logger.warning(
+                    "The NodeMonitor on node %s failed; restarting it: %s",
+                    node_id,
+                    node_monitor_status.monitor_error,
+                )
+                self._node_monitor_group.shutdown([node_id])
+                self._node_monitor_group.start([node_id])
+                continue
+            for name, result in node_monitor_status.probe_results.items():
+                self._results.setdefault(name, {})[node_id] = result
+                if result.error is None:
+                    self._failing.discard((name, node_id))
+                else:
+                    self._log_failure_once(
+                        (name, node_id),
+                        result.error,
+                        "Node probe %s failed on node %s.",
+                        name,
+                        node_id,
+                    )
+
+    def _poll_controller_probes(self, now: float) -> None:
+        """Poll each ``ControllerProbe`` that is due. A result without a
+        ``timestamp_s`` is stamped with the time the poll returned."""
+        for name, probe in self._probes.items():
+            if not isinstance(probe, ControllerProbe):
+                continue
+            if now < self._next_poll.get(name, 0.0):
+                continue
+            self._next_poll[name] = now + self._poll_intervals_s[name]
+            try:
+                results = probe.poll()
+            except Exception as e:
+                self._log_failure_once(name, e, "Controller probe %s failed.", name)
+                continue
+            self._failing.discard(name)
+            polled_at = time.time()
+            self._results[name] = {
+                key: _stamped(result, polled_at) for key, result in results.items()
+            }
+
+    def _evaluate(self, evaluator: Evaluator, state: HealthState) -> HealthDecision:
+        """Run one evaluator. Return ``Noop()`` if it raised or did not return a
+        ``Noop``, ``Reattempt``, ``Evict`` or ``Diagnose``."""
+        try:
+            decision = evaluator.evaluate(state)
+            if type(decision) not in _SEVERITY:
+                raise TypeError(
+                    "evaluate() must return a Noop, Reattempt, Evict or "
+                    f"Diagnose, not {decision!r}."
+                )
+        except Exception as e:
+            self._log_failure_once(
+                id(evaluator), e, "Evaluator %s failed.", type(evaluator).__name__
+            )
+            return Noop()
+        self._failing.discard(id(evaluator))
+        return decision
+
+    def _log_failure_once(
+        self, key: Any, error: Exception, message: str, *args: Any
+    ) -> None:
+        """Log ``error`` unless ``key`` is already failing."""
+        if key not in self._failing:
+            self._failing.add(key)
+            logger.warning(message, *args, exc_info=error)
