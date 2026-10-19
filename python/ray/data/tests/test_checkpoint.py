@@ -457,6 +457,35 @@ def test_generated_id_schema_after_udf_keeps_executed_schema(
     assert cached.names == fetched.names
 
 
+def test_generated_id_schema_cached_before_config_is_refreshed(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """Ray Train sets ``checkpoint_config`` on an already-built dataset. A
+    schema a UDF plan cached by execution before that predates the bound ID
+    column, so once the config exists ``schema()`` must re-derive it instead
+    of serving the stale cached answer forever."""
+    f_dir = generate_sample_data_parquet()
+    ds = ray.data.read_parquet(f_dir).map_batches(
+        lambda batch: batch, batch_format="pyarrow"
+    )
+
+    # Cache the schema by execution while no config is set.
+    assert "generated_id" not in ds.schema().names
+    assert "generated_id" not in ds.schema(fetch_if_missing=False).names
+
+    ds.context.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
+    )
+
+    # The pre-config cache entry no longer answers without a fetch, and a
+    # fetch returns the schema execution now produces.
+    assert ds.schema(fetch_if_missing=False) is None
+    assert "generated_id" in ds.schema().names
+    # The refreshed answer is cached under the new binding.
+    assert "generated_id" in ds.schema(fetch_if_missing=False).names
+    assert "generated_id" in ds.take(1)[0]
+
+
 def test_generated_id_plans_skip_at_the_source(
     ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
 ):
