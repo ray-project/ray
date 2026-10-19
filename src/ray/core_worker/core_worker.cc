@@ -4327,9 +4327,15 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     }
 
     if (object_location_update.has_primary_moved_to_node_id()) {
-      reference_counter_->UpdateObjectPinnedAtRaylet(
-          object_id,
-          NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
+      // The object was moved: the consumer's node now pins the primary copy,
+      // so the copy on the previous primary's node is freed.
+      const std::optional<NodeID> node_to_free =
+          reference_counter_->UpdateObjectPrimaryMoved(
+              object_id,
+              NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
+      if (node_to_free.has_value()) {
+        FreeObjectOnNodesAsync(object_id, {*node_to_free});
+      }
     }
   }
 

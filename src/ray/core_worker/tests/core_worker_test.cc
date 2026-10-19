@@ -2137,5 +2137,46 @@ TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
   EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 }
 
+// Tests that when the primary copy moves to the consumer's node, the owner frees
+// the copy on the previous primary's node once, and a repeated update frees
+// nothing.
+TEST_F(CoreWorkerTest, PrimaryMovedFreesPreviousPrimaryCopy) {
+  const NodeID producer = core_worker_->GetCurrentNodeId();
+  const NodeID consumer = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true,
+                                     std::optional<NodeID>(producer));
+  auto report_primary_moved = [&]() {
+    rpc::UpdateObjectLocationBatchRequest request;
+    request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+    request.set_node_id(consumer.Binary());
+    auto *update = request.add_object_location_updates();
+    update->set_object_id(object_id.Binary());
+    update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+    update->set_primary_moved_to_node_id(consumer.Binary());
+    rpc::UpdateObjectLocationBatchReply reply;
+    core_worker_->HandleUpdateObjectLocationBatch(
+        request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+  };
+
+  report_primary_moved();
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+  ASSERT_TRUE(local_raylet_client_->ReplyFreeLocalObjects());
+
+  report_primary_moved();
+  EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+  EXPECT_FALSE(local_raylet_client_->ReplyFreeLocalObjects());
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+}
+
 }  // namespace core
 }  // namespace ray
