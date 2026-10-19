@@ -362,13 +362,14 @@ class BayesOptSearch(Searcher):
             analysis: Optionally, the previous analysis
                 to integrate.
         """
-        for (_, report), params in zip(
-            analysis.dataframe(metric=self._metric, mode=self._mode).iterrows(),
-            analysis.get_all_configs().values(),
-        ):
+        configs = analysis.get_all_configs()
+        for _, report in analysis.dataframe(
+            metric=self._metric, mode=self._mode
+        ).iterrows():
             # We add the obtained results to the
-            # gaussian process optimizer
-            self._register_result(params, report)
+            # gaussian process optimizer. Trials without results are missing
+            # from the dataframe, so look each config up by trial id.
+            self._register_result(configs[report["trial_id"]], report)
 
     def on_trial_complete(
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
