@@ -176,6 +176,10 @@ class PushSplitReceiverMixin:
         block: Optional[Block] = None,
     ) -> None:
         receiver = _RECEIVER_REGISTRY.get(key)
+        # None when the delivery arrives after iteration ended (the iterator
+        # drops its receiver then) or after this process restarted. Either
+        # way the delivery is stale, so it's dropped. It can't arrive before
+        # the receiver exists: the iterator creates it before registering.
         if receiver is not None:
             receiver.deliver(epoch_id, seq, item, block)
 
@@ -183,6 +187,7 @@ class PushSplitReceiverMixin:
         self, key: str, epoch_id: int, error: _ExecutorError
     ) -> None:
         receiver = _RECEIVER_REGISTRY.get(key)
+        # None for stale deliveries; see _push_split_deliver.
         if receiver is not None:
             receiver.deliver_error(epoch_id, error)
 
