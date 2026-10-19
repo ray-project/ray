@@ -11,7 +11,10 @@ from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
 from ray._private.authentication.authentication_utils import is_token_auth_enabled
-from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.context import (
+    RuntimeEnvContext,
+    split_run_option,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
 default_logger = logging.getLogger(__name__)
@@ -137,9 +140,11 @@ def _modify_context_impl(
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             container_env["RAY_AUTH_TOKEN_PATH"] = token_path
 
-    split_run_options = [
-        arg for run_option in run_options or [] for arg in shlex.split(run_option)
-    ]
+    run_options = list(run_options or [])
+    # Expanded at exec time, but checked here so a malformed item fails
+    # runtime_env setup instead of every worker start.
+    for run_option in run_options:
+        split_run_option(run_option, {})
     # TODO(chenk008): add resource limit
 
     # Example:
@@ -148,13 +153,13 @@ def _modify_context_impl(
     # --userns=keep-id rayproject/ray:nightly-py39
     logger.info(
         "Starting worker in container with prefix %s %s",
-        shlex.join(container_command + split_run_options),
+        " ".join([shlex.join(container_command), *run_options]),
         image_uri,
     )
 
     context.container = {
         "command": container_command,
-        "run_options": split_run_options,
+        "run_options": run_options,
         "image": image_uri,
         "entrypoint": "python",
         "env_vars": container_env,

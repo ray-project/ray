@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -17,6 +18,87 @@ logger = logging.getLogger(__name__)
 # Node credentials that containerized workers must not inherit. The auth token
 # reaches them as a read-only file mount instead.
 _NODE_SECRET_ENV_VARS = {"RAY_AUTH_TOKEN", RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR}
+
+_VAR_REFERENCE = re.compile(r"\$(?:([A-Za-z_]\w*)|\{([^}]*)\})")
+_VAR_NAME = re.compile(r"[A-Za-z_]\w*")
+
+
+def split_run_option(run_option: str, env: Dict[str, str]) -> List[str]:
+    """Splits a `container.run_options` item into podman arguments like a POSIX
+    shell, expanding `$NAME` and `${NAME}` from `env`.
+
+    Unlike a shell, nothing is executed: `$(...)` and backticks stay literal.
+    An expanded value is never split, so it can't add arguments. As in a
+    shell, single quotes and a backslash keep `$` literal, and an unset
+    variable expands to an empty string.
+
+    Args:
+        run_option: One `container.run_options` item.
+        env: The variables `$NAME` and `${NAME}` expand from.
+
+    Returns:
+        The podman arguments.
+
+    Raises:
+        ValueError: On an unclosed quote, a trailing backslash, or a `${...}`
+            that isn't a plain variable name.
+    """
+    args: List[str] = []
+    current: List[str] = []
+    in_arg = False
+    quote = None
+    i = 0
+    while i < len(run_option):
+        char = run_option[i]
+        if quote == "'":
+            if char == "'":
+                quote = None
+            else:
+                current.append(char)
+        elif char == "\\":
+            i += 1
+            if i == len(run_option):
+                raise ValueError(f"Trailing backslash in run_option {run_option!r}.")
+            escaped = run_option[i]
+            # Inside double quotes, a backslash only escapes these characters.
+            if quote == '"' and escaped not in '$`"\\':
+                current.append(char)
+            current.append(escaped)
+            in_arg = True
+        elif run_option.startswith("${", i) and not _VAR_REFERENCE.match(run_option, i):
+            raise ValueError(f"Unclosed '${{' in run_option {run_option!r}.")
+        elif char == "$" and (match := _VAR_REFERENCE.match(run_option, i)):
+            name = match.group(1) or match.group(2)
+            if not _VAR_NAME.fullmatch(name):
+                raise ValueError(
+                    f"Unsupported expansion {match.group(0)!r} in run_option "
+                    f"{run_option!r}: only $NAME and ${{NAME}} are expanded."
+                )
+            value = env.get(name, "")
+            current.append(value)
+            # An unquoted variable that expands to nothing adds no argument.
+            in_arg = in_arg or bool(value) or quote is not None
+            i = match.end()
+            continue
+        elif char in "'\"" and quote is None:
+            quote = char
+            in_arg = True
+        elif char == '"' and quote == '"':
+            quote = None
+        elif char.isspace() and quote is None:
+            if in_arg:
+                args.append("".join(current))
+                current = []
+                in_arg = False
+        else:
+            current.append(char)
+            in_arg = True
+        i += 1
+    if quote is not None:
+        raise ValueError(f"No closing quotation in run_option {run_option!r}.")
+    if in_arg:
+        args.append("".join(current))
+    return args
 
 
 @DeveloperAPI
@@ -143,8 +225,11 @@ class RuntimeEnvContext:
         for name, value in container_env.items():
             cmd.extend(["--env", name if value is None else f"{name}={value}"])
         # After the --env flags, so a user's `--env NAME=VALUE` wins, as podman
-        # applies the last value given for a name.
-        cmd.extend(self.container["run_options"])
+        # applies the last value given for a name. Expanded from what a shell
+        # running podman would have seen, minus the node secrets.
+        run_option_env = {**launcher_env, **self.env_vars}
+        for run_option in self.container["run_options"]:
+            cmd.extend(split_run_option(run_option, run_option_env))
         cmd.extend(
             [
                 "--entrypoint",

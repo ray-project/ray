@@ -8,7 +8,7 @@ from unittest import mock
 import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
-from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.context import RuntimeEnvContext, split_run_option
 from ray._private.runtime_env.image_uri import (
     _modify_context_impl,
     _write_owner_only_file,
@@ -197,6 +197,72 @@ def test_run_options_env_overrides_ray_and_job_env(auth_env):
     # podman applies the last --env for a name, so run_options must come last.
     assert argv.index("RAY_RAYLET_PID=5678") > argv.index("RAY_RAYLET_PID")
     assert argv.index("JOB_VAR=from_run_options") > argv.index("JOB_VAR=from_env_vars")
+
+
+_RUN_OPTION_ENV = {"DIR": "/data dir", "HOME_DIR": "/home/ray", "EMPTY": ""}
+
+
+@pytest.mark.parametrize(
+    "run_option,expected",
+    [
+        ("--cap-drop SYS_ADMIN", ["--cap-drop", "SYS_ADMIN"]),
+        ("  --rm\t-it  ", ["--rm", "-it"]),
+        ("--label 'a b'", ["--label", "a b"]),
+        ("--label=x' 'y", ["--label=x y"]),
+        ("-v $DIR:/data", ["-v", "/data dir:/data"]),
+        ("-v ${DIR}x", ["-v", "/data dirx"]),
+        ("-v $DIRx", ["-v"]),
+        ('--label "home=$HOME_DIR"', ["--label", "home=/home/ray"]),
+        ("--label '$HOME_DIR'", ["--label", "$HOME_DIR"]),
+        ("--label \\$HOME_DIR", ["--label", "$HOME_DIR"]),
+        ('--label "\\$HOME_DIR \\" \\a"', ["--label", '$HOME_DIR " \\a']),
+        ("--env X=$UNSET", ["--env", "X="]),
+        ("--rm $UNSET $EMPTY", ["--rm"]),
+        ("--label \"$UNSET\" ''", ["--label", "", ""]),
+        ("$(id) `id` $5 $ $-", ["$(id)", "`id`", "$5", "$", "$-"]),
+        ("", []),
+    ],
+)
+def test_split_run_option(run_option, expected):
+    assert split_run_option(run_option, _RUN_OPTION_ENV) == expected
+
+
+@pytest.mark.parametrize(
+    "run_option", ["--label 'a", '--label "a', "--rm \\", "${A:-b}", "${}", "${A"]
+)
+def test_split_run_option_rejects_malformed(run_option):
+    with pytest.raises(ValueError):
+        split_run_option(run_option, _RUN_OPTION_ENV)
+
+
+def test_malformed_run_option_fails_setup():
+    with pytest.raises(ValueError, match="No closing quotation"):
+        _launch(run_options=["--label 'a"])
+
+
+def test_run_options_expand_from_launcher_and_job_env(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    auth_env.setenv("HOST_DIR", "/host data")
+    auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
+    auth_env.setenv("RAY_RUNTIME_ENV_BEARER_TOKEN", "bearer-secret")
+    context = RuntimeEnvContext(env_vars={"JOB_VAR": "job value"})
+
+    argv, _ = _launch(
+        context,
+        run_options=[
+            "-v $HOST_DIR:/data",
+            "--label job=$JOB_VAR",
+            "--label stolen=${RAY_AUTH_TOKEN}$RAY_RUNTIME_ENV_BEARER_TOKEN",
+        ],
+    )
+
+    assert argv[argv.index("/host data:/data") - 1] == "-v"
+    assert "job=job value" in argv
+    # Node secrets are not in the expansion environment.
+    assert "stolen=" in argv
+    assert TOKEN not in " ".join(argv)
+    assert "bearer-secret" not in " ".join(argv)
 
 
 def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
