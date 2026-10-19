@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Optional, Union
 
 from ray.actor import ActorHandle
@@ -6,6 +7,10 @@ from ray.experimental.sandbox.backend.base import (
     ExecResult,
     ExecutionResult,
     SandboxStatus,
+)
+from ray.experimental.sandbox.backend.checkpoint_utils import (
+    CheckpointPath,
+    load_checkpoint_manifest,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
@@ -28,6 +33,7 @@ from ray.experimental.sandbox.image_manager import (
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
 from ray.util.annotations import PublicAPI
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 @PublicAPI(stability="alpha")
@@ -92,6 +98,13 @@ def create(
         A Sandbox actor handle.
     """
     actor_opts = {}
+    # Separate Ray actor options from Sandbox container configuration
+    from ray._common.ray_option_utils import actor_options as _RAY_ACTOR_OPTIONS_SCHEMA
+
+    for key in list(kwargs.keys()):
+        if key in _RAY_ACTOR_OPTIONS_SCHEMA:
+            actor_opts[key] = kwargs.pop(key)
+
     # Ray actors default to num_cpu=1 if not set
     if cpu is not None and cpu >= 0:
         actor_opts["num_cpus"] = cpu
@@ -120,8 +133,119 @@ def create(
     )
 
 
+@PublicAPI(stability="alpha")
+def restore(
+    checkpoint_path: Union[str, CheckpointPath],
+    cpu: Optional[float] = None,
+    memory: Optional[Union[str, int, float]] = None,
+    ttl_seconds: Optional[int] = None,
+    timeout_seconds: float = 30.0,
+    remote: Optional[bool] = None,
+    resources: Optional[Dict[str, float]] = None,
+    **kwargs,
+) -> ActorHandle:
+    """Restore a remote sandbox environment from a checkpoint managed by a Ray actor.
+
+    The restored sandbox preserves the full execution state, network mode,
+    mounts, Linux capabilities, and process environment of the checkpointed
+    sandbox. Cgroup resource allocations (cpu, memory) and lifecycle limits
+    (ttl_seconds, timeout_seconds) can optionally be overridden.
+
+    Args:
+        checkpoint_path: Path to the checkpoint bundle directory, or a
+            :class:`~ray.experimental.sandbox.backend.checkpoint_utils.CheckpointPath`
+            instance returned by ``Sandbox.checkpoint()`` or
+            ``SandboxRuntime.checkpoint()``.
+        cpu: Optional CPU allocation override.
+        memory: Optional memory allocation override.
+        ttl_seconds: Optional time-to-live in seconds.
+        timeout_seconds: Timeout in seconds for restore.
+        remote: If True, allow restore to be scheduled on any VM node in the cluster
+            (for shared/remote mounts). If False, pin restore to the VM node where
+            the checkpoint was created. If None (default), inherits from the
+            checkpoint manifest or CheckpointPath metadata.
+        resources: Custom logical resource requirements for the Ray actor.
+        **kwargs: Additional options.
+
+    Returns:
+        A Sandbox actor handle.
+    """
+    recorded_cpu = None
+    recorded_memory = None
+    manifest_remote = False
+    target_node_id = None
+
+    if isinstance(checkpoint_path, CheckpointPath):
+        recorded_cpu = checkpoint_path.cpu
+        recorded_memory = checkpoint_path.memory
+        manifest_remote = checkpoint_path.remote
+        target_node_id = checkpoint_path.node_id
+
+    manifest_file = os.path.join(str(checkpoint_path), "manifest.json")
+    if os.path.isfile(manifest_file):
+        manifest, _ = load_checkpoint_manifest(str(checkpoint_path))
+        recorded_config = manifest.get("config", {})
+        if recorded_cpu is None:
+            recorded_cpu = recorded_config.get("cpu")
+        if recorded_memory is None:
+            recorded_memory = recorded_config.get("memory")
+        if "remote" in manifest:
+            manifest_remote = bool(manifest.get("remote"))
+        if target_node_id is None:
+            target_node_id = manifest.get("node_id")
+    elif remote is not True and not isinstance(checkpoint_path, CheckpointPath):
+        # Trigger standard manifest validation error if path is not on caller filesystem and remote is not True
+        load_checkpoint_manifest(str(checkpoint_path))
+
+    is_remote = remote if remote is not None else manifest_remote
+
+    effective_cpu = cpu if cpu is not None else recorded_cpu
+    effective_memory = memory if memory is not None else recorded_memory
+
+    actor_opts = {}
+    from ray._common.ray_option_utils import actor_options as _RAY_ACTOR_OPTIONS_SCHEMA
+
+    for key in list(kwargs.keys()):
+        if key in _RAY_ACTOR_OPTIONS_SCHEMA:
+            actor_opts[key] = kwargs.pop(key)
+
+    if effective_cpu is not None and effective_cpu >= 0:
+        actor_opts["num_cpus"] = effective_cpu
+    if effective_memory is not None:
+        parsed_mem = parse_memory_bytes(effective_memory)
+        if parsed_mem is not None and parsed_mem > 0:
+            actor_opts["memory"] = parsed_mem
+    if resources:
+        actor_opts["resources"] = resources
+
+    if not is_remote and target_node_id and "scheduling_strategy" not in actor_opts:
+        try:
+            actor_opts["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+                node_id=target_node_id,
+                soft=False,
+            )
+        except (ValueError, TypeError):
+            pass
+
+    remote_arg = (
+        remote if remote is not None else (manifest_remote if manifest_remote else None)
+    )
+
+    return Sandbox.options(**actor_opts).remote(
+        restore_from=checkpoint_path,
+        cpu=cpu,
+        memory=memory,
+        ttl_seconds=ttl_seconds,
+        remote=remote_arg,
+        timeout_seconds=timeout_seconds,
+        **kwargs,
+    )
+
+
 __all__ = [
     "create",
+    "restore",
+    "CheckpointPath",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",
