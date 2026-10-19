@@ -55,8 +55,8 @@ from ray.data.checkpoint.util import PrefixTrie
 from ray.data.context import DataContext
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
 from ray.data.datasource.path_util import _unwrap_protocol
-from ray.data.tests.conftest import *
-from ray.tests.conftest import *
+from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 # User-provided ID column name
 ID_COL = "id"

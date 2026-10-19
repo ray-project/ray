@@ -1,6 +1,6 @@
 import asyncio
-from typing import Any, Protocol
 from collections.abc import Callable
+from typing import Any, Protocol
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME

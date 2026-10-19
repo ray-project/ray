@@ -1,8 +1,8 @@
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
-from collections.abc import Awaitable, Callable
 
 from starlette.types import Scope
 
