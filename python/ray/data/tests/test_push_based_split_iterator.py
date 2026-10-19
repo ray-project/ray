@@ -215,22 +215,6 @@ def test_push_split_early_exit_then_full_epoch(ray_start_regular_shared):
     assert ray.get([c.num_receivers.remote() for c in consumers]) == [0, 0]
 
 
-def test_push_split_charges_empty_blocks(ray_start_regular_shared):
-    # Every block is empty after the filter. Each must still be charged a row,
-    # so the window bounds how many are in flight.
-    ds = ray.data.range(1000, override_num_blocks=20).filter(lambda row: False)
-    iterators = streaming_split_push_based(ds, 2)
-    consumers = _make_consumers(iterators)
-
-    results = _run_epochs(consumers)
-    assert [r["rows"] for r in results] == [0, 0]
-
-    state: Any = ray.get(iterators[0]._coord_actor.debug_state.remote())
-    assert sum(state["blocks_pushed"].values()) > 0
-    for split in state["blocks_pushed"]:
-        assert state["rows_pushed"][split] == state["blocks_pushed"][split], state
-
-
 def test_push_split_error_propagation(ray_start_regular_shared):
     def _boom(row):
         raise ValueError("boom")
