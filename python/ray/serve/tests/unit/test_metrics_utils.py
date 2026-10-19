@@ -215,6 +215,29 @@ class TestMetricsPusher:
         assert not metrics_pusher.stop_event.is_set()
         assert all(t.done() for t in new_tasks)
 
+    @pytest.mark.asyncio
+    async def test_a_task_cancelled_mid_run_ends_cleanly(self):
+        """Its function may swallow the cancel, as the replica self-check does, and the
+        loop must then stop rather than reread the registration cancel_task removed."""
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.start()
+        started = asyncio.Event()
+
+        async def swallows_the_cancel():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                pass
+
+        metrics_pusher.register_or_update_task("hung", swallows_the_cancel, 0.01)
+        task = metrics_pusher._async_tasks["hung"]
+        await started.wait()
+        # Shutdown sets the stop event before cancelling, so do the same here.
+        metrics_pusher.stop_event.set()
+        metrics_pusher.cancel_task("hung")
+        await asyncio.wait_for(task, timeout=1)
+
 
 def assert_timeseries_equal(actual, expected):
     assert len(actual) == len(
