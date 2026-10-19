@@ -6,36 +6,36 @@ myst:
 
 (kuberay-gke-tpu-cluster-setup)=
 
-# Start Google Cloud GKE Cluster with TPUs for KubeRay
+# Start a Google Cloud GKE cluster with TPUs for KubeRay
 
-See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how-to/tpus>) for full details, or continue reading for a quick start.
+This page shows how to create a Google Kubernetes Engine (GKE) cluster with Tensor Processing Unit (TPU) node pools for KubeRay. For full GKE TPU documentation, see [Deploy TPU workloads in GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus).
 
 ## Step 1: Create a Kubernetes cluster on GKE
 
-First, set the following environment variables to be used for GKE cluster creation:
-```sh
-export CLUSTER_NAME=CLUSTER_NAME
-export ZONE=ZONE
-export CLUSTER_VERSION=CLUSTER_VERSION
+First, set the following environment variables for GKE cluster creation:
+
+```bash
+export CLUSTER_NAME=<cluster-name>
+export ZONE=<zone>
 ```
+
 Replace the following:
-- CLUSTER_NAME: The name of the GKE cluster to be created.
-- ZONE: The zone with available TPU quota, for a list of TPU availability by zones, see the [GKE documentation](https://cloud.google.com/tpu/docs/regions-zones).
-- CLUSTER_VERSION: The GKE version to use. GKE supports TPU v6e in version 1.31.2-gke.1115000 and later, and TPU7x in version 1.34.1-gke.2541000 and later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
+- `<cluster-name>`: The name of the GKE cluster to create.
+- `<zone>`: The zone with available TPU quota. For a list of TPU availability by zone, see [TPU regions and zones](https://cloud.google.com/tpu/docs/regions-zones).
 
-Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
+Run the following commands on your local machine or in [Google Cloud Shell](https://cloud.google.com/shell). If you run them from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
-Create a Standard GKE cluster and enable the Ray Operator:
+Create a Standard GKE cluster and enable the Ray Operator add-on. GKE supports TPU v6e in version 1.31.2-gke.1115000 and later, and TPU7x in version 1.34.1-gke.2541000 and later. For minimum GKE versions by TPU generation, see [TPUs in GKE](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types):
 
-```sh
+```bash
 gcloud container clusters create $CLUSTER_NAME \
+    --location=$ZONE \
     --addons=RayOperator \
-    --machine-type=n1-standard-16 \
-    --cluster-version=$CLUSTER_VERSION \
-    --location=$ZONE
+    --machine-type=e2-standard-16 \
+    --num-nodes=1
 ```
 
-Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
+Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
 
 ::::{tab-set}
 
@@ -89,7 +89,6 @@ gcloud compute resource-policies create workload-policy tpu7x-2x2x2-policy \
 gcloud container node-pools create tpu7x-multihost \
     --location=$ZONE \
     --cluster=$CLUSTER_NAME \
-    --node-locations=$ZONE \
     --machine-type=tpu7x-standard-4t \
     --placement-policy=tpu7x-2x2x2-policy \
     --num-nodes=2 \
@@ -115,38 +114,38 @@ Configure the following node pool options based on your workload:
 
 ## Step 2: Connect to the GKE cluster
 
-Run the following command to download Google Cloud credentials and configure the Kubernetes CLI to use them.
+Run the following command to download Google Cloud credentials and configure `kubectl` to use them:
 
-```sh
-gcloud container clusters get-credentials $CLUSTER_NAME --zone $ZONE
+```bash
+gcloud container clusters get-credentials $CLUSTER_NAME --location=$ZONE
 ```
 
-The remote GKE cluster is now reachable through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+The remote GKE cluster is reachable through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
 
+### Optional: Manually install KubeRay and the TPU webhook
 
-### [Optional] Manually install KubeRay and the TPU webhook in a GKE cluster without the Ray Operator Addon:
+In a cluster without the Ray Operator add-on enabled, install KubeRay with Helm by running the following commands. See {ref}`KubeRay operator installation <kuberay-operator-deploy>` for the full installation guide:
 
-In a cluster without the Ray Operator Addon enabled, KubeRay can be manually installed using Helm with the following commands. See {ref}`KubeRay Operator Installation <kuberay-operator-deploy>` for the full installation guide.
-
-```sh
+```bash
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 
 # Install both CRDs and KubeRay operator v1.7.0.
 helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 ```
 
-GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap environment variables used for [JAX](https://github.com/google/jax) and TorchTPU initialization. The Ray TPU webhook requires a KubeRay operator version of at least v1.1.0. GKE automatically installs the Ray TPU webhook through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.
+GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap environment variables for [JAX](https://github.com/google/jax) and TorchTPU initialization. The Ray TPU webhook requires KubeRay operator v1.1.0 or later. GKE automatically installs the Ray TPU webhook through the [Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) in GKE version 1.30.0-gke.1747000 and later.
 
-When manually installing the webhook, [cert-manager](https://github.com/cert-manager/cert-manager) is required to handle TLS certificate injection. You can install cert-manager in both GKE Standard and Autopilot clusters using the following helm commands:
+When you install the webhook manually, [cert-manager](https://github.com/cert-manager/cert-manager) handles TLS certificate injection. Install cert-manager in a GKE Standard or Autopilot cluster with the following Helm commands:
 
-Install cert-manager:
-```
+```bash
 helm repo add jetstack https://charts.jetstack.io
 helm repo update
 helm install --create-namespace --namespace cert-manager --set installCRDs=true --set global.leaderElection.namespace=cert-manager cert-manager jetstack/cert-manager
 ```
 
-Next, deploy the Ray TPU initialization webhook:
-1. `git clone https://github.com/ai-on-gke/kuberay-tpu-webhook.git`
-1. `cd kuberay-tpu-webhook`
-1. `make deploy deploy-cert`
+Next, authenticate with Artifact Registry and install the Ray TPU initialization webhook chart with Helm:
+
+```bash
+gcloud auth configure-docker us-docker.pkg.dev
+helm install kuberay-tpu-webhook oci://us-docker.pkg.dev/ai-on-gke/kuberay-tpu-webhook-helm/kuberay-tpu-webhook
+```
