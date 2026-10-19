@@ -7,11 +7,20 @@ plan. Order of the checks::
     each sampled file, in listing order:
         summary settles the selection?
           yes -> a selected channel is not JSON: binary
-                 no type yet: type from its first in-range chunk
+                 no type yet: type from the selected messages of its first
+                              in-range chunk
           no  -> the same checks by a scan, for up to _MAX_SCANNED_FILES files
     no type yet -> the same from summaries of up to _MAX_WALKED_FILES more
                    listed files, until one types data or gives binary
     still none  -> binary, with a warning
+
+The type comes from up to ``_MAX_TYPED_MESSAGES`` selected messages, the way a
+read task types the messages it holds (``convert_to_pyarrow_array``). So a field
+that only some of the first chunk's messages have, or a number that is an int in
+one and a float in another, is planned as the blocks hold it. A field that first
+appears in a later chunk or file is not, and ``Dataset.schema()`` then differs
+from those blocks. A payload that does not decode is left out; the read task
+that owns it reports the error.
 """
 
 import itertools
@@ -56,6 +65,9 @@ _MAX_SCANNED_FILES = 4
 # Listed files past the sample that planning checks, by summary only, when no
 # sampled file types ``data``.
 _MAX_WALKED_FILES = 256
+# Selected messages that type ``data``: those of the first in-range chunk, or
+# the first ones a scan meets, up to this many.
+_MAX_TYPED_MESSAGES = 1000
 
 
 @dataclass(frozen=True)
@@ -65,8 +77,8 @@ class _DataSignature:
     Attributes:
         has_non_json: A selected channel is not JSON-encoded, so ``data`` holds
             the payload bytes.
-        value_type: Type of the first selected message in ``time_range``, if
-            one was decoded.
+        value_type: Type of the selected messages in ``time_range`` that were
+            decoded, if any.
     """
 
     has_non_json: bool = False
@@ -81,8 +93,8 @@ def infer_data_type(
 ) -> Optional[pa.DataType]:
     """Type of ``data`` when it holds decoded JSON; ``None`` when it is ``binary``.
 
-    The type is that of one message. Blocks whose structs differ are unified
-    downstream.
+    The type is that of the first selected messages (see the module
+    docstring). Blocks whose structs differ are unified downstream.
 
     Args:
         selection: The read's topic, schema and time filters.
@@ -92,7 +104,7 @@ def infer_data_type(
             filter. Called only when no sampled file types ``data``.
 
     Returns:
-        The type of one decoded JSON value, or ``None`` for ``binary``.
+        The type of the sampled JSON values, or ``None`` for ``binary``.
     """
     inspector = _FileInspector(selection, filesystem)
     signature = inspector.inspect_sample(sampled_paths)
@@ -203,7 +215,8 @@ class _FileInspector:
     def _type_from_chunks(
         self, path: str, summary: "Summary", selected: Set[int]
     ) -> Optional[pa.DataType]:
-        """Type of the first selected message in ``time_range``.
+        """Type of the selected messages of the first chunk that holds one in
+        ``time_range``.
 
         Only the chunks that may hold one are read, in order, until one does. A
         chunk that cannot be decoded is skipped.
@@ -217,18 +230,21 @@ class _FileInspector:
             return None
         with self._filesystem.open_input_file(path) as f:
             for chunk_index in candidates:
-                message = self._first_selected_message(f, path, chunk_index, selected)
-                if message is not None:
-                    channel = summary.channels[message.channel_id]
-                    return _decoded_value_type(channel, message.data, path)
+                messages = self._selected_messages(f, path, chunk_index, selected)
+                values = _decoded_values(
+                    ((summary.channels[m.channel_id], m.data) for m in messages), path
+                )
+                if values:
+                    return _value_type(values)
         return None
 
-    def _first_selected_message(
+    def _selected_messages(
         self, f: Any, path: str, chunk_index: "ChunkIndex", selected: Set[int]
-    ) -> Optional["Message"]:
-        """The chunk's first message on a ``selected`` channel in ``time_range``.
+    ) -> List["Message"]:
+        """The chunk's messages on ``selected`` channels in ``time_range``, up to
+        ``_MAX_TYPED_MESSAGES``.
 
-        ``None`` too for a chunk that cannot be decoded. An error reading ``f``
+        Empty too for a chunk that cannot be decoded. An error reading ``f``
         still raises.
         """
         from mcap.records import Message
@@ -245,15 +261,15 @@ class _FileInspector:
                 chunk_index.chunk_start_offset,
                 exc,
             )
-            return None
-        for record in records:
-            if (
-                isinstance(record, Message)
-                and record.channel_id in selected
-                and self._selection.in_time_range(record.log_time)
-            ):
-                return record
-        return None
+            return []
+        messages = (
+            record
+            for record in records
+            if isinstance(record, Message)
+            and record.channel_id in selected
+            and self._selection.in_time_range(record.log_time)
+        )
+        return list(itertools.islice(messages, _MAX_TYPED_MESSAGES))
 
     def _by_scanning(self, f: Any, path: str, want_type: bool) -> _DataSignature:
         """Scan the file's records, stopping at a selected channel that is not JSON.
@@ -261,13 +277,13 @@ class _FileInspector:
         The scan goes past the first JSON message, because a selected channel
         that is not JSON may be declared after it. Schema records are read where
         the writer put them, so ``message_types`` selects the same channels as
-        the reader. A message is decoded only with ``want_type``. A record that
-        does not parse ends the scan.
+        the reader. Messages are decoded only with ``want_type``, up to
+        ``_MAX_TYPED_MESSAGES``. A record that does not parse ends the scan.
         """
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import StreamReader
 
-        value_type: Optional[pa.DataType] = None
+        sampled: List[Tuple["Channel", bytes]] = []
         schemas: Dict[int, "Schema"] = {}
         channels: Dict[int, "Channel"] = {}
         for record in _readable_records(StreamReader(f).records, path):
@@ -280,15 +296,16 @@ class _FileInspector:
             elif (
                 isinstance(record, Message)
                 and want_type
-                and value_type is None
+                and len(sampled) < _MAX_TYPED_MESSAGES
                 and self._selection.in_time_range(record.log_time)
             ):
                 # Only a message the read returns can type ``data``. One outside
                 # ``time_range`` may be malformed, and the read never decodes it.
                 channel = channels.get(record.channel_id)
                 if channel is not None and self._accepts(channel, schemas):
-                    value_type = _decoded_value_type(channel, record.data, path)
-        return _DataSignature(value_type=value_type)
+                    sampled.append((channel, record.data))
+        values = _decoded_values(sampled, path)
+        return _DataSignature(value_type=_value_type(values) if values else None)
 
     def _accepts(self, channel: "Channel", schemas: Dict[int, "Schema"]) -> bool:
         """Whether the selection keeps ``channel``, judged with its schema record."""
@@ -340,7 +357,24 @@ def _paths_past_sample(listed: Iterable[str], sampled: Set[str]) -> List[str]:
     return list(itertools.islice(unsampled, _MAX_WALKED_FILES))
 
 
-def _decoded_value_type(channel: "Channel", data: bytes, path: str) -> pa.DataType:
-    """Decode a JSON payload sampled for the schema and return its Arrow type."""
+def _decoded_values(
+    payloads: Iterable[Tuple["Channel", bytes]], path: str
+) -> List[Any]:
+    """Decode the JSON payloads sampled for the schema.
+
+    A payload that does not decode is left out, with a debug log; the read task
+    that holds it reports the error.
+    """
     where = f"{path} (sampled for the schema)"
-    return convert_to_pyarrow_array([decode_payload(channel, data, where)], "data").type
+    values = []
+    for channel, data in payloads:
+        try:
+            values.append(decode_payload(channel, data, where))
+        except ValueError as exc:
+            logger.debug("Leaving a payload out of the schema: %s", exc)
+    return values
+
+
+def _value_type(values: List[Any]) -> pa.DataType:
+    """The Arrow type a read task gives ``values`` (see the module docstring)."""
+    return convert_to_pyarrow_array(values, "data").type

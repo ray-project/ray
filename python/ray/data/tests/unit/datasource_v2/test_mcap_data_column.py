@@ -360,6 +360,64 @@ def test_planning_types_data_from_messages_in_the_time_range(tmp_path, index):
     assert table.column("data").to_pylist() == [{"seq": 1}, {"seq": 2}, {"seq": 3}]
 
 
+def write_one_chunk(path: str, payloads: list, *, index: bool = True) -> str:
+    """Write ``payloads`` on ``/a``, one message each, all in one chunk."""
+    messages = [
+        {"topic": "/a", "log_time": BASE_TIME + i * STEP, "data": data}
+        for i, data in enumerate(payloads)
+    ]
+    write_mcap(path, messages, chunk_size=1 << 20, index=index)
+    return path
+
+
+@pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
+def test_planning_types_data_as_the_read_task_does(tmp_path, index):
+    """Planning types ``data`` from every selected message of the first chunk,
+    so a field only some messages have, and an int that is a float elsewhere,
+    are planned as the block holds them."""
+    path = write_one_chunk(
+        os.path.join(tmp_path, "mixed.mcap"),
+        [{"x": 1}, {"x": 2.5, "y": "a"}, {"x": 3}],
+        index=index,
+    )
+    datasource = MCAPDatasourceV2([path])
+
+    planned = infer_schema(datasource).field("data").type
+    table = read_all(datasource, list_manifests(datasource)[0])
+
+    assert planned == pa.struct([("x", pa.float64()), ("y", pa.string())])
+    assert table.schema.field("data").type == planned
+
+
+@pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
+def test_a_payload_that_does_not_decode_is_left_out_of_the_type(tmp_path, index):
+    """A malformed payload among the sampled messages does not fail planning.
+    ``data`` is typed from the others, and the read task reports the payload."""
+    path = write_one_chunk(
+        os.path.join(tmp_path, "garbage.mcap"),
+        [b"{not json", {"x": 1}, {"x": 2}],
+        index=index,
+    )
+
+    assert infer([path], selection=ONLY_A) == pa.struct([("x", pa.int64())])
+
+
+@pytest.mark.parametrize("index", [True, False], ids=["indexed", "unindexed"])
+def test_planning_types_data_from_at_most_max_typed_messages(
+    tmp_path, monkeypatch, index
+):
+    """Planning decodes at most ``_MAX_TYPED_MESSAGES`` messages, so a field
+    that first appears after them is not planned."""
+    monkeypatch.setattr(mcap_data_column, "_MAX_TYPED_MESSAGES", 2)
+    path = write_one_chunk(
+        os.path.join(tmp_path, "late_field.mcap"),
+        [{"x": 1}, {"x": 2}, {"x": 3, "y": "a"}],
+        index=index,
+    )
+
+    assert infer([path], selection=ONLY_A) == pa.struct([("x", pa.int64())])
+
+
 def test_schema_walk_does_not_scan_files_whose_summary_lacks_schemas(
     tmp_path, monkeypatch
 ):
