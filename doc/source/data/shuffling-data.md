@@ -118,11 +118,11 @@ For reproducible distributed output, enable `DataContext.execution_options.prese
 
 If iterator-local shuffling becomes a bottleneck, try `window_shuffle` to move shuffle work into parallel Ray Data tasks. This reduces shuffle work inside each consumer. Choose the window mode based on your mixing requirements, then measure the effect on your workload.
 
-The [four-GPU training benchmark in #62576](https://github.com/ray-project/ray/pull/62576) reported approximately 6–10× higher throughput for a parallel `map_batches` shuffle stage than for local buffer shuffling in its synthetic workload. Those measurements predate the chunked tensor take optimizations.
+The [four-GPU training benchmark in #62576](https://github.com/ray-project/ray/pull/62576) illustrates how moving iterator-local shuffle work into a parallel `map_batches` stage can improve throughput in an ingestion-limited workload. Those measurements predate the chunked tensor take optimizations.
 
-Separate benchmarks for eligible large [fixed-shaped tensors](https://github.com/ray-project/ray/pull/64961) and [variable-shaped tensors](https://github.com/ray-project/ray/pull/66197) reported approximately 2.7–5.5× and 3.4–5.3× ingestion speedups with the tensor take fast path enabled versus disabled. Those pipelines include data generation and local buffer shuffling, with model computation excluded. Both local buffer shuffling and `window_shuffle` use these optimizations for eligible columns.
+Separate benchmarks for eligible large [fixed-shaped tensors](https://github.com/ray-project/ray/pull/64961) and [variable-shaped tensors](https://github.com/ray-project/ray/pull/66197) reported several-fold ingestion speedups with the tensor take fast path enabled versus disabled. Those pipelines include data generation and local buffer shuffling, with model computation excluded. Both local buffer shuffling and `window_shuffle` use these optimizations for eligible columns.
 
-These benchmarks use different workloads and comparisons. Their speedups don't multiply, and they aren't measurements of `window_shuffle` against the optimized local buffer implementation.
+These results come from different workloads and aren't measurements of `window_shuffle` against the optimized local buffer implementation.
 
 (randomizing-block-order)=
 
