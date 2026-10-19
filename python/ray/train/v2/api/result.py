@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 import pyarrow
@@ -29,10 +29,10 @@ class Result(ResultV1):
     """The output of ``trainer.fit()``.
 
     Attributes:
-        metrics: The latest set of metrics reported by the training function
-            via :func:`ray.train.report`.
+        metrics: The metrics attached to the latest checkpoint saved by the
+            training function with :func:`ray.train.report`.
         checkpoint: The latest checkpoint saved by the training function
-            via :func:`ray.train.report`.
+            with :func:`ray.train.report`.
         return_value: The value returned by the user-defined training function on the
             rank 0 worker, or ``None`` if no value was returned or if training did
             not complete successfully. The return value must be serializable.
@@ -50,10 +50,10 @@ class Result(ResultV1):
             wrapping the original exception.
     """
 
-    checkpoint: Checkpoint | None
-    error: TrainingFailedError | None
-    best_checkpoints: list[tuple[Checkpoint, dict[str, Any]]] | None = None
-    return_value: Any | None = None
+    checkpoint: Optional[Checkpoint]
+    error: Optional[TrainingFailedError]
+    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
+    return_value: Optional[Any] = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
@@ -64,8 +64,8 @@ class Result(ResultV1):
     @classmethod
     def from_path(
         cls,
-        path: str | os.PathLike,
-        storage_filesystem: pyarrow.fs.FileSystem | None = None,
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
     ) -> "Result":
         """Restore a training result from a previously saved training run path.
 
@@ -85,9 +85,8 @@ class Result(ResultV1):
         # Remove trailing slashes to handle paths correctly
         # os.path.basename() returns empty string for paths with trailing slashes
         fs_path = fs_path.rstrip("/")
-        storage_path, experiment_dir_name = (
-            os.path.dirname(fs_path),
-            os.path.basename(fs_path),
+        storage_path, experiment_dir_name = os.path.dirname(fs_path), os.path.basename(
+            fs_path
         )
 
         storage_context = StorageContext(
@@ -124,7 +123,7 @@ class Result(ResultV1):
         cls,
         checkpoint_manager: CheckpointManager,
         storage_context: StorageContext,
-        error: TrainingFailedError | None = None,
+        error: Optional[TrainingFailedError] = None,
     ) -> "Result":
         """Create a Result object from a CheckpointManager."""
         latest_checkpoint_result = checkpoint_manager.latest_checkpoint_result
@@ -156,7 +155,7 @@ class Result(ResultV1):
 
     @property
     @Deprecated
-    def config(self) -> dict[str, Any] | None:
+    def config(self) -> Optional[Dict[str, Any]]:
         raise DeprecationWarning(
             "The `config` property for a `ray.train.Result` is deprecated, "
             "since it is only relevant in the context of Ray Tune."

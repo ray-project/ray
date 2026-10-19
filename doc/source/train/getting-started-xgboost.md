@@ -12,7 +12,7 @@ This tutorial shows how to convert an existing XGBoost script to use Ray Train.
 
 In this tutorial, you learn how to do the following:
 
-1. Configure a {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
+1. Configure a {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
 1. Launch a distributed training job with a {class}`~ray.train.xgboost.XGBoostTrainer`.
 

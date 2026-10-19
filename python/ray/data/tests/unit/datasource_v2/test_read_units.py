@@ -8,7 +8,6 @@ for one Parquet row group. Whole files are dropped before any footer read, row
 groups inside the footer reader before predicate pruning and limit accounting,
 so the partitioner only ever sees the remaining work.
 """
-
 from dataclasses import dataclass
 
 import pyarrow as pa
@@ -199,7 +198,7 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     reading actors and hands the remaining ids to those actors."""
     import ray
 
-    path_a, _size_a = _write_file(tmp_path / "a.parquet")
+    path_a, size_a = _write_file(tmp_path / "a.parquet")
     path_b, size_b = _write_file(tmp_path / "b.parquet")
     excluded = {path_a, _row_group_unit_id(path_b, 0)}
     actor_kwargs = []
@@ -241,7 +240,17 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     assert footer_batches == [[FileInfo(path_b, size_b)]]
 
 
-def test_list_task_forwards_excluded_ids_from_task_kwargs(tmp_path):
+@pytest.mark.parametrize(
+    "as_ids",
+    [
+        set,
+        lambda ids: pa.array(sorted(ids)),
+        lambda ids: pa.chunked_array([sorted(ids)]),
+    ],
+    ids=["set", "arrow_array", "chunked_array"],
+)
+def test_list_task_forwards_excluded_ids_from_task_kwargs(tmp_path, as_ids):
+    """Excluded ids may arrive as strings or as an Arrow string array."""
     path_a, _ = _write_file(tmp_path / "a.parquet")
     path_b, _ = _write_file(tmp_path / "b.parquet")
 
@@ -255,10 +264,10 @@ def test_list_task_forwards_excluded_ids_from_task_kwargs(tmp_path):
         return sorted(str(p) for block in blocks for p in FileManifest(block).paths)
 
     assert _listed(_task_context()) == [path_a, path_b]
-    ctx = _task_context(**{EXCLUDED_READ_UNIT_IDS_KWARG_NAME: {path_a}})
+    ctx = _task_context(**{EXCLUDED_READ_UNIT_IDS_KWARG_NAME: as_ids({path_a})})
     assert _listed(ctx) == [path_b]
     # Everything finished: the task yields no block at all.
-    ctx = _task_context(**{EXCLUDED_READ_UNIT_IDS_KWARG_NAME: {path_a, path_b}})
+    ctx = _task_context(**{EXCLUDED_READ_UNIT_IDS_KWARG_NAME: as_ids({path_a, path_b})})
     assert _listed(ctx) == []
 
 
