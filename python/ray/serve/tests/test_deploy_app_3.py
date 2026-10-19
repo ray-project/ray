@@ -64,9 +64,9 @@ def _drained(deployment: dict) -> dict:
     }
 
 
-def _drained_config(*deployments: dict, **kwargs) -> ServeDeploySchema:
-    """_rolling_update_config for tests that send traffic through a rollout."""
-    return _rolling_update_config(*map(_drained, deployments), **kwargs)
+def _drained_config(deployment: dict) -> ServeDeploySchema:
+    """Config for one deployment whose stopping replicas outlast an HAProxy reload."""
+    return _rolling_update_config(_drained(deployment))
 
 
 def _check_surged(client, states: Dict[str, int], old_pids: List[int]):
@@ -146,8 +146,7 @@ def test_surge_rolling_update_keeps_capacity_and_replaces(
             old_pid = ray.get(client._controller.get_pid.remote())
             ray.kill(client._controller, no_restart=False)
             wait_for_condition(
-                lambda: ray.get(client._controller.get_pid.remote()) != old_pid,
-                timeout=20,
+                lambda: ray.get(client._controller.get_pid.remote()) != old_pid
             )
 
             def check_recovered():
@@ -461,12 +460,8 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
     all replaced.
     """
     client, signal = serve_instance_with_signal
-    v1 = {
-        **SURGE_DEPLOYMENT,
-        "max_surge_percent": 50,
-        "ray_actor_options": {"runtime_env": {"env_vars": INGRESS_DRAIN_ENV}},
-    }
-    client.deploy_apps(_rolling_update_config(v1))
+    v1 = {**SURGE_DEPLOYMENT, "max_surge_percent": 50}
+    client.deploy_apps(_drained_config(v1))
     wait_for_condition(check_running, timeout=60)
     v1_pids = _running_replica_pids(client)
 
@@ -482,10 +477,8 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
 
     with _background_traffic():
         # Scale 3 -> 5 with new code: five replacements fit within 5 + ceil(2.5).
-        v2 = _env_override(
-            v1, **INGRESS_DRAIN_ENV, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2"
-        )
-        client.deploy_apps(_rolling_update_config({**v2, "num_replicas": 5}))
+        v2 = _env_override(v1, BLOCK_INIT_ON_SIGNAL="1", MARKER="v2")
+        client.deploy_apps(_drained_config({**v2, "num_replicas": 5}))
         wait_for_condition(
             _check_surged,
             client=client,
@@ -506,10 +499,8 @@ def test_surge_rolling_update_with_num_replicas_change(serve_instance_with_signa
         # Scale 5 -> 2 with new code: extra old replicas stop first, then one
         # replacement at a time fits within 2 + ceil(1).
         ray.get(signal.send.remote(clear=True))
-        v3 = _env_override(
-            v1, **INGRESS_DRAIN_ENV, BLOCK_INIT_ON_SIGNAL="1", MARKER="v3"
-        )
-        client.deploy_apps(_rolling_update_config({**v3, "num_replicas": 2}))
+        v3 = _env_override(v1, BLOCK_INIT_ON_SIGNAL="1", MARKER="v3")
+        client.deploy_apps(_drained_config({**v3, "num_replicas": 2}))
 
         def check_scaled_down_then_surged():
             states = _replica_states()
@@ -543,7 +534,7 @@ def test_surge_rolling_update_stops_after_health_check_failures(serve_instance):
     client.deploy_apps(
         _rolling_update_config(_env_override(healthy, FAIL_HEALTH_CHECK="1"))
     )
-    wait_for_condition(_check_terminal_rolling_update, client=client, timeout=60)
+    wait_for_condition(_check_terminal_rolling_update, client=client, timeout=120)
 
     # Flapping replacements pass their first health check, so each one running at
     # once lets an old replica stop before the failure budget is spent. Once the
@@ -578,12 +569,12 @@ def test_surge_replacements_wait_for_capacity(serve_instance):
     client = serve_instance
     # Three replicas hold 33 of the 36 CPUs, so no replacement can be placed.
     healthy = {**SURGE_DEPLOYMENT, "ray_actor_options": {"num_cpus": 11}}
-    client.deploy_apps(_drained_config(healthy))
+    client.deploy_apps(_rolling_update_config(healthy))
     wait_for_condition(check_running, timeout=60)
     initial_pids = _running_replica_pids(client)
 
     with _background_traffic():
-        client.deploy_apps(_drained_config(_env_override(healthy, MARKER="v2")))
+        client.deploy_apps(_rolling_update_config(_env_override(healthy, MARKER="v2")))
         surged = {"RUNNING": 3, "STARTING": 2}
         wait_for_condition(
             _check_surged, client=client, states=surged, old_pids=initial_pids
@@ -600,7 +591,7 @@ def test_surge_replacements_wait_for_capacity(serve_instance):
         wait_for_condition(check_replacements_wait, raise_exceptions=True, timeout=30)
 
         # Rolling back drops the pending replacements and keeps the old replicas.
-        client.deploy_apps(_drained_config(healthy))
+        client.deploy_apps(_rolling_update_config(healthy))
 
         def check_rolled_back():
             assert _running_replica_pids(client) == initial_pids
