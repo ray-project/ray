@@ -955,12 +955,9 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
 
 
 def _optimized_plan(ds: Dataset):
-    """Optimize ``ds``'s (never executed) logical plan.
-
-    Also checks that optimizing the result again changes nothing: executing a
-    dataset rewires its logical DAG to the optimized one (see
-    ``get_execution_plan``), so a rule that is not idempotent on its own output
-    would stack duplicate operators on every re-plan.
+    """Optimize ``ds``'s never-executed plan and check that optimizing the result
+    again changes nothing: execution rewires the dataset's DAG to the optimized
+    one, so every rule must be idempotent on its own output.
     """
     from ray.data._internal.logical.optimizers import LogicalOptimizer
     from ray.data.tests.test_util import assert_plans_structurally_equal
@@ -1445,10 +1442,9 @@ def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_c
         ("inner", "_l", None, "val_l", "left"),
         ("inner", "_l", "_r", "val_l", "left"),
         ("inner", "_l", "_r", "val_r", "right"),
-        # The bare ``val`` is the left column; a right outer join cannot push
-        # to the left, so the filter stays above the join instead of being
-        # evaluated on the right input's ``val`` (which would return wrong
-        # rows).
+        # ``val`` is the left column and a right outer join cannot push left,
+        # so the filter stays above the join (evaluating it on the right
+        # input's ``val`` would return wrong rows).
         ("right_outer", None, "_r", "val", None),
         ("right_outer", None, "_r", "val_r", "right"),
     ],
@@ -1479,8 +1475,7 @@ def test_join_colliding_payload_column_routes_by_suffix(
         aggregator_ray_remote_args={"num_cpus": 0.01},
     )
     # Left values are 0-3, right values 10-15; both targets select k == 1.
-    # The bare ``val`` is the left column exactly when the left side keeps
-    # its name (no left suffix).
+    # ``val`` is the left column exactly when there is no left suffix.
     is_left_column = column == "val_l" or (column == "val" and left_suffix is None)
     target = 1 if is_left_column else 11
     predicate = col(column) == target
