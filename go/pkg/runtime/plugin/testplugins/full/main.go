@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/ray-project/ray/go/internal/runtime/base"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
@@ -32,5 +33,13 @@ func NewLogBatchPublisher(client gcs.Client) (gcs.LogBatchPublisher, error) {
 func Initialize(opts options.InitializeOptions) (contract.RuntimeHandle, error) {
 	return nil, nil
 }
+
+// Shutdown and RunTaskExecutionLoop are stubbed so the full test plugin
+// exports the complete symbol surface validated by the startup pre-check.
+// They mirror the real export surface (go/cmd/plugin), which takes
+// base.RuntimeHandle.
+func Shutdown(handle base.RuntimeHandle) error { return nil }
+
+func RunTaskExecutionLoop(handle base.RuntimeHandle) error { return nil }
 
 func main() {}

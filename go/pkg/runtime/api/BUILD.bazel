@@ -64,6 +64,7 @@ go_test(
     srcs = [
         "actor_get_python_test.go",
         "actor_registration_test.go",
+        "actor_task_arity_test.go",
         "api_test.go",
         "call_convert_arg_test.go",
         "call_test.go",
@@ -102,23 +103,6 @@ go_test(
     srcs = ["internal_test.go"],
     embed = [":api"],
     gotags = ["apiinternal"],
-)
-
-# worker handle-attach tests, gated behind the "apihandle" build tag because
-# storeHandleLocked mutates package-global handle state.
-go_test(
-    name = "api_handle_test",
-    srcs = ["handle_test.go"],
-    embed = [":api"],
-    gotags = ["apihandle"],
-    deps = [
-        "//go/pkg/errors",
-        "//go/pkg/ids",
-        "//go/pkg/runtime/contract",
-        "//go/pkg/runtime/function",
-        "//go/pkg/runtime/object",
-        "//go/pkg/runtime/submitter",
-    ],
 )
 
 # Re-init lifecycle tests, gated behind the "apireinit" build tag because

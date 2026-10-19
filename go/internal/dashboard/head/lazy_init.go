@@ -273,7 +273,7 @@ func initWithConfig(cfg *HeadConfig) error {
 	// still missing, so the next request retries.
 	if initOpts.Runtime.StoreSocket == "" || initOpts.Runtime.RayletSocket == "" ||
 		initOpts.Network.NodeManagerPort == 0 {
-		return fmt.Errorf("%w for %s", errNoNodeInfo, cfg.NodeIPAddress)
+		return fmt.Errorf("%w for node %s (gcs %s)", errNoNodeInfo, cfg.NodeIPAddress, cfg.GCSAddress)
 	}
 
 	// Preflight the raylet's node_manager_port before base.Initialize.

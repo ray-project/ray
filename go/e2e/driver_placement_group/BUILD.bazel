@@ -1,0 +1,42 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# driver_placement_group verifies the Placement Group user API end to end:
+# PG lifecycle (create/wait/get/getByName/getAll/remove) via the
+# api.PlacementGroups facade and the submitter + GCS paths, task/actor placement
+# via WithPlacementGroup (call.go taskOptions[T]/actorOptions[T] main paths),
+# negative binding to a removed PG, option validation, and the local-mode
+# change simulation with not-found queries.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/driver_placement_group
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/driver_placement_group_/driver_placement_group job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./driver_placement_group
+#   ./driver_placement_group --run-mode=local
+go_binary(
+    name = "driver_placement_group",
+    embed = [":driver_placement_group_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_placement_group",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "driver_placement_group_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_placement_group",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
+    ],
+)

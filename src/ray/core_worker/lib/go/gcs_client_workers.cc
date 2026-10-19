@@ -34,7 +34,8 @@ int ray_gcs_client_workers_get_all_worker_info(CGcsClient *client,
                                                int **sizes_out,
                                                int *count_out,
                                                char **error_out) {
-  if (!client || !client->global_state_accessor || !serialized_out || !count_out) {
+  if (!client || !client->global_state_accessor || !serialized_out || !sizes_out ||
+      !count_out) {
     set_error(error_out, "Invalid arguments");
     return 0;
   }

@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -119,14 +120,25 @@ func TestValidatePluginLoadable(t *testing.T) {
 			t.Fatalf("ValidatePluginLoadable() error = %v", err)
 		}
 	})
-	t.Run("missing ConnectClient symbol", func(t *testing.T) {
+	t.Run("missing worker and publisher symbols", func(t *testing.T) {
 		setPluginPath(t, incomplete)
 		err := ValidatePluginLoadable()
 		if err == nil {
-			t.Fatal("ValidatePluginLoadable() = nil error, want error for missing ConnectClient")
+			t.Fatal("ValidatePluginLoadable() = nil error, want error for missing Shutdown")
 		}
-		if !strings.Contains(err.Error(), "ConnectClient") {
-			t.Fatalf("error %q does not mention ConnectClient", err)
+		if !strings.Contains(err.Error(), "Shutdown") {
+			t.Fatalf("error %q does not mention the first missing symbol Shutdown", err)
+		}
+	})
+	t.Run("missing publisher symbol with driver symbols present", func(t *testing.T) {
+		_, bad, _ := pluginPaths(t)
+		setPluginPath(t, bad)
+		err := ValidatePluginLoadable()
+		if err == nil {
+			t.Fatal("ValidatePluginLoadable() = nil error, want error for missing Shutdown on a plugin that exports only Initialize/ConnectClient")
+		}
+		if !strings.Contains(err.Error(), "Shutdown") {
+			t.Fatalf("error %q does not mention Shutdown", err)
 		}
 	})
 	t.Run("missing plugin file", func(t *testing.T) {
@@ -135,6 +147,49 @@ func TestValidatePluginLoadable(t *testing.T) {
 			t.Fatal("ValidatePluginLoadable() = nil error, want error for missing plugin")
 		}
 	})
+}
+
+func TestResolvePluginPathRetriesAfterFailure(t *testing.T) {
+	t.Setenv("RAY_GO_RUNTIME_PATH", "")
+	orig := findPluginPathFn
+	t.Cleanup(func() { findPluginPathFn = orig })
+
+	calls := 0
+	findPluginPathFn = func() (string, error) {
+		calls++
+		if calls == 1 {
+			return "", fmt.Errorf("transient discovery failure")
+		}
+		return "/fake/go_runtime.so", nil
+	}
+	if _, err := resolvePluginPath(); err == nil {
+		t.Fatal("first call should fail")
+	}
+	path, err := resolvePluginPath()
+	if err != nil {
+		t.Fatalf("second call should succeed after transient failure, got %v", err)
+	}
+	if path != "/fake/go_runtime.so" {
+		t.Fatalf("path = %q, want /fake/go_runtime.so", path)
+	}
+	// Success stays cached: a later discovery failure must not evict it.
+	findPluginPathFn = func() (string, error) { return "", fmt.Errorf("later failure") }
+	path, err = resolvePluginPath()
+	if err != nil || path != "/fake/go_runtime.so" {
+		t.Fatalf("cached path evicted: path=%q err=%v", path, err)
+	}
+}
+
+func TestLoadLogBatchPublisherNilClient(t *testing.T) {
+	good, _, _ := pluginPaths(t)
+	setPluginPath(t, good)
+	_, err := LoadLogBatchPublisher(nil)
+	if err == nil {
+		t.Fatal("LoadLogBatchPublisher(nil) = nil error, want explicit nil-client error")
+	}
+	if !strings.Contains(err.Error(), "nil") {
+		t.Fatalf("error %q should state the nil client", err)
+	}
 }
 
 // fakeClient satisfies gcs.Client by embedding the interface.

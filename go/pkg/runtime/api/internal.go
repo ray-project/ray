@@ -29,7 +29,7 @@ const submitterNotAvailable = "submitter_not_available"
 // It is the Go equivalent of Java's Ray.internal():
 //   - Java: Ray.internal() returns the RayRuntime singleton injected by Ray.init()
 //   - Go:   internal() returns the contract.Runtime obtained from the handle
-//     injected by InitWithOptions / SetRuntimeHandleForWorker.
+//     injected by InitWithOptions.
 //
 // Callers should handle the returned error instead of panicking (Go idiom).
 func internal() (contract.Runtime, error) {

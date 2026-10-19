@@ -1,0 +1,37 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# driver_metrics verifies the user Metrics API end to end: tag key
+# registration, Count/Gauge/Sum/Histogram registration + Record through the cgo
+# metric backend (metric_ops bridge -> stats::Metric), Unregister, stale-handle
+# rejection, and the local-mode not-supported behavior.
+#
+# Usage:
+#   bazel build //go/e2e/driver_metrics
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/driver_metrics_/driver_metrics job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./driver_metrics
+#   ./driver_metrics --run-mode=local
+go_binary(
+    name = "driver_metrics",
+    embed = [":driver_metrics_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_metrics",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "driver_metrics_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_metrics",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
+        "//go/pkg/runtime/metric",
+    ],
+)

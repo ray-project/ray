@@ -16,6 +16,7 @@ package errors
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -453,4 +454,21 @@ func TestErrorChaining(t *testing.T) {
 			t.Errorf("Component = %v, expected outer", sysErr.Component)
 		}
 	})
+}
+
+// TestIsActorNotExistsAcceptsWrappedSentinel verifies that IsActorNotExists
+// recognizes the ErrActorNotFound sentinel (whose State is "actor_not_found"),
+// including through a wrapped error, and still rejects unrelated errors.
+func TestIsActorNotExistsAcceptsWrappedSentinel(t *testing.T) {
+	if !IsActorNotExists(ErrActorNotFound) {
+		t.Fatal("IsActorNotExists(ErrActorNotFound) = false, want true")
+	}
+	wrapped := fmt.Errorf("lookup failed: %w", ErrActorNotFound)
+	if !IsActorNotExists(wrapped) {
+		t.Fatal("IsActorNotExists(wrapped ErrActorNotFound) = false, want true")
+	}
+	other := NewRuntimeError("api_call", "timeout")
+	if IsActorNotExists(other) {
+		t.Fatal("IsActorNotExists(unrelated RuntimeError) = true, want false")
+	}
 }

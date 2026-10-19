@@ -81,7 +81,8 @@ int ray_gcs_client_node_resources_get_all_available(CGcsClient *client,
                                                     int **sizes_out,
                                                     int *count_out,
                                                     char **error_out) {
-  if (!client || !client->global_state_accessor || !serialized_out || !count_out) {
+  if (!client || !client->global_state_accessor || !serialized_out || !sizes_out ||
+      !count_out) {
     set_error(error_out, "Invalid arguments");
     return 0;
   }
@@ -106,7 +107,8 @@ int ray_gcs_client_node_resources_get_all_total(CGcsClient *client,
                                                 int **sizes_out,
                                                 int *count_out,
                                                 char **error_out) {
-  if (!client || !client->global_state_accessor || !serialized_out || !count_out) {
+  if (!client || !client->global_state_accessor || !serialized_out || !sizes_out ||
+      !count_out) {
     set_error(error_out, "Invalid arguments");
     return 0;
   }
@@ -239,6 +241,7 @@ int ray_gcs_client_node_resources_get_draining_nodes(CGcsClient *client,
         for (int i = 0; i < count; i++) free((*node_ids_hex_out)[i]);
         free(*node_ids_hex_out);
         *node_ids_hex_out = nullptr;
+        *count_out = 0;
         set_error(error_out, "Failed to allocate memory for draining deadlines");
         return 0;
       }

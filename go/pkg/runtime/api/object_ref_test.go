@@ -231,14 +231,12 @@ func (r *getErrorObjectRuntime) GetObjectStore() object.ObjectStore {
 	return r.store
 }
 
-// getErrorObjectHandle is a minimal RuntimeHandle stub exposing the runtime.
-type getErrorObjectHandle struct {
-	contract.RuntimeHandle
-	rt contract.Runtime
-}
-
-func (h *getErrorObjectHandle) Runtime() contract.Runtime {
-	return h.rt
+// setErrorObjectHandle installs an object store behind the package's canonical
+// recordingHandle type. Every handle-injecting test in this binary must store
+// that same concrete type: currentHandle is an atomic.Value, and storing a
+// second concrete type panics ("store of inconsistently typed value").
+func setErrorObjectHandle(store object.ObjectStore) {
+	setHandle(recordingHandle{rt: &getErrorObjectRuntime{store: store}})
 }
 
 // TestObjectRefGet_ReturnsErrorObjectException verifies that Get and GetWithTimeout surface a
@@ -253,7 +251,7 @@ func TestObjectRefGet_ReturnsErrorObjectException(t *testing.T) {
 	// Note: setHandle panics if called twice (initialized is a package-level flag), so both
 	// scenarios share a single handle set up here.
 	store := &getErrorObjectStore{metadata: []byte("33")}
-	setHandle(&getErrorObjectHandle{rt: &getErrorObjectRuntime{store: store}})
+	setErrorObjectHandle(store)
 	// Restore the un-initialized state so the other tests in this package that expect
 	// ErrRuntimeNotInitialized are unaffected by this test's handle.
 	t.Cleanup(func() {
@@ -299,7 +297,7 @@ func TestObjectRefGet_GoWorkerTaskExecutionError(t *testing.T) {
 		metadata: []byte(`{"type":"error"}`),
 		data:     []byte(`{"error_type":"RayTaskException","error_message":"Task execution panicked: PanicDiv: divide by zero"}`),
 	}
-	setHandle(&getErrorObjectHandle{rt: &getErrorObjectRuntime{store: store}})
+	setErrorObjectHandle(store)
 	// Restore the un-initialized state so the other tests in this package that expect
 	// ErrRuntimeNotInitialized are unaffected by this test's handle.
 	t.Cleanup(func() {

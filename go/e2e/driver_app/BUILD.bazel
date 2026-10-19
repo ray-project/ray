@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# driver_app is a Ray Go driver application that submits tasks to a Ray
+# cluster. It demonstrates defining user functions in the userfuncs package,
+# compiling them into a shared plugin for worker loading, and submitting remote
+# tasks in driver mode (or running purely in-process via --run-mode=local).
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/driver_app
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/driver_app_/driver_app job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./driver_app
+go_library(
+    name = "driver_app_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_app",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/ids",
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
+    ],
+)
+
+go_binary(
+    name = "driver_app",
+    embed = [":driver_app_lib"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_app",
+    visibility = ["//visibility:public"],
+)

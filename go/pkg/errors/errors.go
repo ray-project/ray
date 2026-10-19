@@ -597,10 +597,14 @@ func IsTimeout(err error) bool {
 }
 
 // IsActorNotExists checks if an error indicates that an actor does not exist.
+// It accepts both the legacy "actor_not_exists" state and the ErrActorNotFound
+// sentinel's "actor_not_found" state, including through wrapped errors.
 // This function is provided for Java API consistency.
 func IsActorNotExists(err error) bool {
-	if runtimeErr, ok := err.(*RuntimeError); ok {
+	var runtimeErr *RuntimeError
+	if std.As(err, &runtimeErr) {
 		return runtimeErr.State == "actor_not_exists" ||
+			runtimeErr.State == "actor_not_found" ||
 			strings.Contains(runtimeErr.Message(), "actor does not exist")
 	}
 	return false
@@ -663,4 +667,43 @@ func NewRayInvalidArgumentException(message string) *ValidationError {
 // This function is provided for Java API consistency.
 func NewRayIntentionalSystemExitException(message string) *ActorExitError {
 	return NewActorExitError(message)
+}
+
+// Serialized Error Contract (CGO boundary)
+// ============================================================================
+
+// SerializedRayError is the serialized form of a Ray error propagated across
+// the CGO boundary between the Go worker and the driver.
+//
+// It is compatible with the Java RayTaskException protobuf format: the Go
+// worker serializes task/actor execution errors into this structure (see
+// go/internal/errors ToSerializedForm and go/internal/runtime/cgo
+// task_executor.go), and the driver-side pkg packages deserialize it through
+// the same type. The single definition in pkg/errors keeps the JSON wire
+// format shared by both ends (dependency inversion: go/internal depends on
+// go/pkg, never the reverse).
+type SerializedRayError struct {
+	// ErrorCode is the error code (e.g., "TASK_EXECUTION_FAILED")
+	ErrorCode string `json:"error_code"`
+	// ErrorType is the error type name (e.g., "RayTaskException")
+	ErrorType string `json:"error_type"`
+	// ErrorMessage is the full error message including context
+	ErrorMessage string `json:"error_message"`
+	// BaseMessage is the original, unformatted error message. Populated by
+	// Go serializers; preferred over parsing ErrorMessage on deserialization.
+	BaseMessage string `json:"base_message,omitempty"`
+	// CauseMessage is the underlying cause message
+	CauseMessage string `json:"cause_message"`
+	// StackTrace is the stack trace as a string
+	StackTrace string `json:"stack_trace"`
+	// PID is the process ID where the error occurred
+	PID int `json:"pid"`
+	// IPAddress is the IP address of the node where the error occurred
+	IPAddress string `json:"ip_address"`
+	// TaskID is the ID of the task where the error occurred (if applicable)
+	TaskID string `json:"task_id,omitempty"`
+	// ActorID is the ID of the actor where the error occurred (if applicable)
+	ActorID string `json:"actor_id,omitempty"`
+	// JobID is the ID of the job where the error occurred (if applicable)
+	JobID string `json:"job_id,omitempty"`
 }

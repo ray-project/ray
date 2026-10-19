@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# runtime_context_driver verifies the RuntimeContext and resource-ID APIs end
+# to end on a real cluster: the driver
+# (non-actor) context, the actor context via the userfuncs.RuntimeContextProbe
+# actor, and the filtered actor listing.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/runtime_context_driver
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/runtime_context_driver_/runtime_context_driver job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./runtime_context_driver
+go_binary(
+    name = "runtime_context_driver",
+    embed = [":runtime_context_driver_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/runtime_context_driver",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "runtime_context_driver_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/runtime_context_driver",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+    ],
+)

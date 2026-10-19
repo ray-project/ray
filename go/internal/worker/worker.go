@@ -378,11 +378,9 @@ func (w *Worker) Run() error {
 	}
 
 	// The handle is attached to the api package by InitWithOptions (setHandle);
-	// obtain it via api.Internal().
+	// obtain it via api.Internal(). api.Internal panics when the runtime is
+	// not initialized, so no nil check is needed here.
 	w.handle = api.Internal()
-	if w.handle == nil {
-		return rayerrors.NewInitializationError("runtime", "api.Internal() returned nil handle")
-	}
 
 	logger.Info("Ray runtime initialized successfully", "handle", w.handle)
 

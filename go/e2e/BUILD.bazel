@@ -1,0 +1,21 @@
+# go/e2e hosts the Ray Go E2E test cases and the shared userfuncs package.
+#
+# - Each E2E case is a standalone driver binary submitted against a real
+#   cluster via `ray job submit`:
+#     bazel build //go/e2e/driver_app
+#     bazel build //go/e2e/actor_integration_driver
+#     bazel build //go/e2e/driver_parallel_actor
+#     bazel build //go/e2e/driver_call_python
+#     bazel build //go/e2e/runtime_context_driver
+#     bazel build //go/e2e/global_state_accessor_driver
+#     bazel build //go/e2e/runtime_env_driver
+#     bazel build //go/e2e/driver_placement_group
+#     bazel build //go/e2e/driver_gcs_client
+#     bazel build //go/e2e/driver_metrics
+#     bazel build //go/e2e/zero_copy_benchmark
+#
+# - The shared user function package and its plugin live under userfuncs/:
+#     bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#
+# This directory has no go_test target: the end-to-end behavior of every case
+# is exercised by the driver binaries against a real cluster (see README.md).

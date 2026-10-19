@@ -445,10 +445,6 @@ type actorOptions[T any] struct {
 	// self points to the owning creator so builder methods can return the
 	// concrete creator type for chaining.
 	self T
-	// err is a deferred error from a builder call that requested an option the
-	// backends cannot honor. It is surfaced by Create so an unsupported option
-	// fails loudly instead of silently becoming a no-op.
-	err error
 }
 
 // newActorOptions creates actor options with a default empty ActorCreationOptions
@@ -488,25 +484,24 @@ func (o *actorOptions[T]) WithNamespace(namespace string) T {
 
 // WithPlacementGroup binds the actor to the given placement group bundle.
 //
-// Actor-level placement-group binding is not supported by the current backends:
-// the native path's C++ ActorCreationOptions has no placement-group fields
-// (task_submitter_ops.cc), and local mode does not schedule against bundles.
-// Instead of silently ignoring the request, the creator records an error that
-// Create surfaces so the caller learns the option was not applied.
+// The binding is recorded on the actor creation options and consumed by the
+// native path (C++ BuildActorOptions) and by local mode's task submitter, so
+// it is applied rather than dropped. It mirrors the task-level
+// WithPlacementGroup conversion in options.go.
 //
 // Parameters:
 //   - group: The placement group to bind to.
 //   - bundleIndex: The index of the bundle to use.
 //
 // Returns:
-//   - T: The same actor creator for chaining; Create will fail if the binding
-//     is unsupported.
+//   - T: The same actor creator for chaining.
 func (o *actorOptions[T]) WithPlacementGroup(group *PlacementGroup, bundleIndex int) T {
 	if group == nil {
 		return o.self
 	}
-	if o.err == nil {
-		o.err = errors.NewRuntimeError("create_actor", "actor placement-group binding is not supported on this path")
+	o.options.PlacementGroup = &submitter.PlacementGroupOptions{
+		ID:          group.ID(),
+		BundleIndex: bundleIndex,
 	}
 	return o.self
 }
@@ -639,6 +634,10 @@ type ActorCreator[T any] struct {
 	functionDescriptor *function.GoFunctionDescriptor
 	// args are the constructor arguments.
 	args []function.FunctionArg
+	// err is the deferred descriptor-resolution error surfaced by Create. It is
+	// declared explicitly (rather than read from the embedded builder state) so
+	// the creator carries its own creation-time error.
+	err error
 	// actorOptions are the shared actor creation options and builder state.
 	actorOptions[*ActorCreator[T]]
 }
@@ -1002,24 +1001,23 @@ func (c *PythonActorCreator) WithNamespace(namespace string) *PythonActorCreator
 
 // WithPlacementGroup binds the Python actor to the given placement group bundle.
 //
-// Actor-level placement-group binding is not supported by the current backends,
-// so the creator records an error that Create surfaces rather than silently
-// dropping the binding. It mirrors actorOptions.WithPlacementGroup so the Go,
-// C++ and Python creators all fail loudly on an unsupported actor binding.
+// The binding is recorded on the actor creation options so the native path can
+// consume it, mirroring actorOptions.WithPlacementGroup (the Go and C++ actor
+// creators share that implementation).
 //
 // Parameters:
 //   - group: The placement group to bind to.
 //   - bundleIndex: The index of the bundle to use.
 //
 // Returns:
-//   - *PythonActorCreator: The same actor creator for chaining; Create will
-//     fail if the binding is unsupported.
+//   - *PythonActorCreator: The same actor creator for chaining.
 func (c *PythonActorCreator) WithPlacementGroup(group *PlacementGroup, bundleIndex int) *PythonActorCreator {
 	if group == nil {
 		return c
 	}
-	if c.err == nil {
-		c.err = errors.NewRuntimeError("create_actor", "actor placement-group binding is not supported on this path")
+	c.options.PlacementGroup = &submitter.PlacementGroupOptions{
+		ID:          group.ID(),
+		BundleIndex: bundleIndex,
 	}
 	return c
 }
@@ -1317,14 +1315,6 @@ func RemoteCppActor(createFunctionName, className string) *CppActorCreator {
 func (c *CppActorCreator) Create(args ...interface{}) (*CppActorHandle, error) {
 	if c.err != nil {
 		return nil, c.err
-	}
-	// Surface the deferred error recorded by the embedded actorOptions builders
-	// (c.actorOptions.err), e.g. an unsupported actor-level placement-group
-	// binding, so it fails loudly instead of being dropped. c.err above is the
-	// CppActorCreator's own descriptor-validation error, which shadows the
-	// embedded field of the same name.
-	if c.actorOptions.err != nil {
-		return nil, c.actorOptions.err
 	}
 
 	functionArgs := convertArgs(args...)
@@ -1814,12 +1804,20 @@ func (a *ActorHandleImpl[T]) Task(method interface{}, args ...interface{}) *Acto
 		functionArgs[i] = convertArgToFunctionArg(arg)
 	}
 
+	// Derive the return count from the method signature so void and
+	// error-only methods submit zero returns, matching what the worker will
+	// produce (same derivation as the parallel-actor caller).
+	numReturns := 1
+	if funcType := reflect.TypeOf(method); funcType != nil && funcType.Kind() == reflect.Func {
+		numReturns = function.NonErrorReturnCount(funcType)
+	}
+
 	return &ActorTaskCaller[T]{
 		actorID:          a.NativeActorHandle.ActorID,
 		methodDescriptor: methodDesc,
 		args:             functionArgs,
 		options:          &submitter.TaskOptions{},
-		numReturns:       1,
+		numReturns:       numReturns,
 	}
 }
 

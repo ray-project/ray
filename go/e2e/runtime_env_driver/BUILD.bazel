@@ -1,0 +1,51 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# runtime_env_driver verifies the user-facing RuntimeEnv API and the autoscaler
+# state report path end to end on a real cluster: the RuntimeEnv value-object
+# API builds/serializes/round-trips runtime envs and submits them via
+# WithRuntimeEnv to an actor (ActorCreationOptions path) and a remote task
+# (CallOptions path), whose workers report them back through
+# RuntimeContext.RuntimeEnv(); the autoscaler path asserts
+# gcs.GetClient() resolves to a production client and
+# ReportAutoscalingState -> GetAutoscalerStatus closes the loop.
+#
+# Prerequisite: the driver loads go_runtime.so and spawns workers via the raygo
+# binary discovered from the Python site-packages, so those artifacts must be
+# rebuilt and synced first (`bazel run //go:gen_ray_go_pkg`, then copy into
+# <site-packages>/ray/go/lib and <site-packages>/ray/go/cmd). Otherwise the
+# plugin fails to load (package version mismatch) or the new RuntimeEnv /
+# autoscaler-report paths error at runtime.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/runtime_env_driver
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/runtime_env_driver_/runtime_env_driver job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./runtime_env_driver
+go_binary(
+    name = "runtime_env_driver",
+    embed = [":runtime_env_driver_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/runtime_env_driver",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "runtime_env_driver_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/runtime_env_driver",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/gcs",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/proto",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

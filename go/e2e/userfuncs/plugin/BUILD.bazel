@@ -1,0 +1,35 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# userfuncs_plugin builds the userfuncs plugin as a .so shared library.
+# This is the main target for building the plugin.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#
+# Output:
+#   bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so
+#
+# The plugin exports the RegisterFunctions symbol (func() error), which the Go
+# worker invokes via plugin.Lookup when the .so is loaded from code_search_path.
+go_binary(
+    name = "userfuncs_plugin",
+    out = "userfuncs.so",
+    embed = [":plugin_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/userfuncs/plugin",
+    # Build as plugin mode using rules_go's native linkmode attribute
+    linkmode = "plugin",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "plugin_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/userfuncs/plugin",
+    visibility = ["//visibility:private"],
+    deps = ["//go/e2e/userfuncs"],
+)

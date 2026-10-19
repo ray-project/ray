@@ -609,17 +609,21 @@ func (s *pgLocalStoreSubmitter) ListPlacementGroupsLocal(ctx context.Context) ma
 	return out
 }
 
-func TestActorWithPlacementGroupFailsLoudly(t *testing.T) {
-	// Actor-level placement-group binding is unsupported on every backend, so
-	// the builder must fail loudly at Create rather than silently ignoring the
-	// binding. No runtime is needed: the error is recorded by WithPlacementGroup
-	// and surfaced before the submitter is consulted.
+func TestActorWithPlacementGroupCarriesBinding(t *testing.T) {
+	// Actor-level placement-group binding is recorded on the creation options
+	// by WithPlacementGroup and consumed by the native/local backends. No
+	// runtime is needed to observe the recorded options.
 	pg := &PlacementGroup{id: ids.OfPlacementGroupID(ids.NewJobID())}
-	_, err := Actor[*struct{}](&struct{}{}).WithPlacementGroup(pg, 0).Create()
-	if err == nil {
-		t.Fatal("expected error for actor placement-group binding, got nil")
+	creator := Actor[*struct{}](&struct{}{}).WithPlacementGroup(pg, 0)
+	if creator.options.PlacementGroup == nil {
+		t.Fatal("expected placement group binding to be recorded on the actor creation options")
 	}
-	assertRuntimeErrorState(t, err, "create_actor", "actor placement-group binding is not supported on this path")
+	if creator.options.PlacementGroup.ID != pg.ID() {
+		t.Fatalf("PlacementGroup.ID = %v, want %v", creator.options.PlacementGroup.ID, pg.ID())
+	}
+	if creator.options.PlacementGroup.BundleIndex != 0 {
+		t.Fatalf("PlacementGroup.BundleIndex = %d, want 0", creator.options.PlacementGroup.BundleIndex)
+	}
 }
 
 func TestGetPlacementGroupFactoryNotRegistered(t *testing.T) {

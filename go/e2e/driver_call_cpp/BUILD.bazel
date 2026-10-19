@@ -1,0 +1,61 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+# driver_call_cpp is a Ray Go driver that verifies Go -> C++ cross-language
+# calls and the C++ function descriptor. Build it, then
+# submit via `ray job submit --working-dir .` against a cluster
+# whose raylet has a C++ worker command configured and whose C++ worker loads
+# cpp_xlang_worker.so (see README.md).
+#
+#   bazel build //go/e2e/driver_call_cpp:driver_call_cpp
+#   bazel build //go/e2e/driver_call_cpp:cpp_xlang_worker.so
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/driver_call_cpp_/driver_call_cpp job_dir/
+#   cp bazel-bin/go/e2e/driver_call_cpp/cpp_xlang_worker.so job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./driver_call_cpp
+go_binary(
+    name = "driver_call_cpp",
+    embed = [":driver_call_cpp_lib"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_call_cpp",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "driver_call_cpp_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_call_cpp",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/function",
+    ],
+)
+
+# cpp_xlang_worker.so registers the C++ functions/actors the Go driver calls
+# over the cross-language channel. It mirrors //cpp:plus.so / //cpp:counter.so
+# but under the exact function names ("add", "Calculator", ...) used by the
+# driver_call_cpp acceptance criteria.
+cc_binary(
+    name = "cpp_xlang_worker.so",
+    testonly = True,
+    srcs = [
+        "cpp_xlang_worker.cc",
+    ],
+    copts = select({
+        "@platforms//os:windows": ["/std:c++17"],
+        "//conditions:default": ["-std=c++17"],
+    }),
+    linkopts = ["-shared"],
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//cpp:ray_cpp_lib",
+        "@boost//:callable_traits",
+        "@boost//:optional",
+        "@msgpack",
+        "@nlohmann_json",
+    ],
+)

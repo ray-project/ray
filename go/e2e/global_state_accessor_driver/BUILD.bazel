@@ -1,0 +1,42 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# global_state_accessor_driver verifies the GlobalStateAccessor production
+# implementation and the actor-list state filter end to end on a real cluster:
+# the singleton resolves to a working
+# implementation with live GCS queries, and GetAllActorInfo(jobID, state)
+# pushes the actor-state filter down to the GCS (ALIVE vs DEAD), cross-checked
+# against RuntimeContext.GetAllActorInfoByFilter.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/global_state_accessor_driver
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/global_state_accessor_driver_/global_state_accessor_driver job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./global_state_accessor_driver
+go_binary(
+    name = "global_state_accessor_driver",
+    embed = [":global_state_accessor_driver_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/global_state_accessor_driver",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "global_state_accessor_driver_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/global_state_accessor_driver",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/proto",
+    ],
+)

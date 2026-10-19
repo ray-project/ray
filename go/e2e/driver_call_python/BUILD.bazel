@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# driver_call_python is a Ray Go driver that verifies Go -> Python
+# cross-language calls. Build it, then submit via
+# `ray job submit --working-dir . -- ./driver_call_python` together with
+# test_go_call_python.py in the working directory.
+go_binary(
+    name = "driver_call_python",
+    embed = [":driver_call_python_lib"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_call_python",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "driver_call_python_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_call_python",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/pkg/log",
+        "//go/pkg/log/zap",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+    ],
+)

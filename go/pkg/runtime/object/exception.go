@@ -19,7 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/ray-project/ray/go/internal/errors"
+	pkgerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/vmihailenco/msgpack/v5"
 	"google.golang.org/protobuf/encoding/protowire"
 )
@@ -436,7 +436,7 @@ func ParseErrorType(metadata []byte) (int, bool) {
 
 // goWorkerErrorMetadata is the metadata value the Go worker attaches to task execution error
 // objects (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go). Its data payload
-// is a JSON object serialized from go/internal/errors.SerializedRayError.
+// is a JSON object serialized from go/pkg/errors.SerializedRayError.
 const goWorkerErrorMetadata = `{"type":"error"}`
 
 // Precomputed byte forms of the metadata values compared in ErrorObjectFromNative. Comparing
@@ -445,13 +445,15 @@ var goWorkerErrorMetadataBytes = []byte(goWorkerErrorMetadata)
 var metadataTypeTaskExecutionExceptionBytes = []byte(MetadataTypeTaskExecutionException)
 
 // taskExceptionFromGoWorkerError builds a readable task execution exception from a Go worker
-// error object. The worker serializes the error payload via go/internal/errors.SerializedRayError
-// (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go), so the same type is reused
-// here to avoid maintaining a second copy of the wire format. When the JSON payload cannot be
-// parsed it still returns a readable exception carrying the raw data, so the driver never sees a
-// silent/generic deserialization failure.
+// error object. The worker serializes the error payload via the internal errors type's
+// ToSerializedForm (see convertGoResultToC in go/internal/runtime/cgo/task_executor.go), whose
+// wire form is shared with -- and pinned against -- pkg/errors.SerializedRayError. This package
+// deserializes the same shared contract type, so the JSON wire format stays in a single
+// definition (dependency inversion: go/internal depends on go/pkg, never the reverse). When the
+// JSON payload cannot be parsed it still returns a readable exception carrying the raw data, so
+// the driver never sees a silent/generic deserialization failure.
 func taskExceptionFromGoWorkerError(data []byte) RayException {
-	var payload errors.SerializedRayError
+	var payload pkgerrors.SerializedRayError
 	message := ""
 	stackTrace := ""
 	if err := json.Unmarshal(data, &payload); err == nil {

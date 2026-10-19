@@ -1,0 +1,44 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# driver_gcs_client verifies the user-facing GCSClient interface extension end
+# to end: api.GetGCSClient() resolves, the six added query methods
+# (GetPlacementGroupInfo / GetPlacementGroupInfoByName / GetAllPlacementGroupInfo
+# / GetInternalKV / GetAllNodeInfo / GetAllActorInfo) return live GCS data, and
+# local mode reports a not-supported error because the GCS client factory is not
+# registered.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/driver_gcs_client
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/driver_gcs_client_/driver_gcs_client job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./driver_gcs_client
+#   ./driver_gcs_client --run-mode=local
+go_binary(
+    name = "driver_gcs_client",
+    embed = [":driver_gcs_client_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_gcs_client",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "driver_gcs_client_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/driver_gcs_client",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/gcs",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
+        "//go/proto",
+    ],
+)

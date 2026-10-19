@@ -15,9 +15,12 @@
 package errors
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+
+	pkgerrors "github.com/ray-project/ray/go/pkg/errors"
 )
 
 // TestSentinelErrors tests that all sentinel errors are defined.
@@ -280,6 +283,45 @@ func TestHelperFunctions(t *testing.T) {
 	}
 	if err.Category() != CategorySystem {
 		t.Errorf("NewSystemError Category() = %v, expected %v", err.Category(), CategorySystem)
+	}
+}
+
+// TestSerializedRayErrorWireCompatWithPkgErrors verifies that the internal
+// SerializedRayError and the pkg/errors.SerializedRayError share the same JSON
+// wire format, so errors serialized by the Go worker can be deserialized by the
+// driver-side pkg packages (and vice versa). The internal-to-pkg import
+// direction is the allowed one under the dependency inversion.
+func TestSerializedRayErrorWireCompatWithPkgErrors(t *testing.T) {
+	src := SerializedRayError{
+		ErrorCode:    "TASK_EXECUTION_FAILED",
+		ErrorType:    "RayTaskException",
+		ErrorMessage: "task failed: boom",
+		BaseMessage:  "boom",
+		CauseMessage: "cause",
+		StackTrace:   "goroutine 1 [running]",
+		PID:          42,
+		IPAddress:    "10.0.0.5",
+		TaskID:       "f0000000000000000000000000000000000ffffffffffffffffffffffff",
+		ActorID:      "a0000000000000000000000000000000000ffffffffffffffffffffffff",
+		JobID:        "01000000",
+	}
+	data, err := json.Marshal(src)
+	if err != nil {
+		t.Fatalf("marshal internal form: %v", err)
+	}
+	var dst pkgerrors.SerializedRayError
+	if err := json.Unmarshal(data, &dst); err != nil {
+		t.Fatalf("unmarshal into pkg/errors.SerializedRayError: %v", err)
+	}
+	// Assert all 11 shared wire fields survive the roundtrip, including
+	// BaseMessage (the field this package's pkg/errors reconciliation added).
+	if dst.ErrorCode != src.ErrorCode || dst.ErrorType != src.ErrorType ||
+		dst.ErrorMessage != src.ErrorMessage || dst.BaseMessage != src.BaseMessage ||
+		dst.CauseMessage != src.CauseMessage || dst.StackTrace != src.StackTrace ||
+		dst.PID != src.PID || dst.IPAddress != src.IPAddress ||
+		dst.TaskID != src.TaskID || dst.ActorID != src.ActorID ||
+		dst.JobID != src.JobID {
+		t.Fatalf("shared wire fields lost: %+v", dst)
 	}
 }
 

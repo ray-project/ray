@@ -121,17 +121,21 @@ func TestRemotePythonActor_InvalidModuleName(t *testing.T) {
 	}
 }
 
-func TestRemotePythonActor_WithPlacementGroupFailsLoudly(t *testing.T) {
-	// Actor-level placement-group binding is unsupported on the current
-	// backends, so the builder must fail loudly at Create instead of silently
-	// dropping the binding. The error is recorded by WithPlacementGroup and
-	// surfaced by Create before the submitter is consulted.
+func TestRemotePythonActor_WithPlacementGroupCarriesBinding(t *testing.T) {
+	// Actor-level placement-group binding is recorded on the creation options
+	// by WithPlacementGroup, which the Python actor creator shares with the Go
+	// actor creator.
 	pg := &PlacementGroup{id: ids.OfPlacementGroupID(ids.NewJobID())}
-	_, err := RemotePythonActor("calculator", "Calculator").WithPlacementGroup(pg, 0).Create()
-	if err == nil {
-		t.Fatal("expected error for actor placement-group binding, got nil")
+	creator := RemotePythonActor("calculator", "Calculator").WithPlacementGroup(pg, 1)
+	if creator.options.PlacementGroup == nil {
+		t.Fatal("expected placement group binding to be recorded on the actor creation options")
 	}
-	assertRuntimeErrorState(t, err, "create_actor", "actor placement-group binding is not supported on this path")
+	if creator.options.PlacementGroup.ID != pg.ID() {
+		t.Fatalf("PlacementGroup.ID = %v, want %v", creator.options.PlacementGroup.ID, pg.ID())
+	}
+	if creator.options.PlacementGroup.BundleIndex != 1 {
+		t.Fatalf("PlacementGroup.BundleIndex = %d, want 1", creator.options.PlacementGroup.BundleIndex)
+	}
 }
 
 func TestPythonActorHandle_ActorTask(t *testing.T) {

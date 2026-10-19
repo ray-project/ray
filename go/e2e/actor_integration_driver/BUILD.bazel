@@ -1,0 +1,38 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# actor_integration_driver exercises the stateful actor execution framework end
+# to end as a standalone driver binary, so it can be submitted via
+# `ray job submit`.
+#
+# Usage:
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/actor_integration_driver
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/actor_integration_driver_/actor_integration_driver job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./actor_integration_driver
+go_binary(
+    name = "actor_integration_driver",
+    embed = [":actor_integration_driver_lib"],
+    # Strip symbol table and DWARF debug info to shrink the uploaded package.
+    gc_linkopts = [
+        "-s",
+        "-w",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/actor_integration_driver",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "actor_integration_driver_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/actor_integration_driver",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/ids",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/submitter",
+    ],
+)

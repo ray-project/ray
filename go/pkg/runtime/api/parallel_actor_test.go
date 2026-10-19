@@ -95,7 +95,7 @@ func (r mockRuntime) GetTaskSubmitter() submitter.TaskSubmitter { return r.sub }
 func initMockRuntime(t *testing.T, sub submitter.TaskSubmitter) {
 	t.Helper()
 	object.SetSerializer(testSerializer{})
-	SetRuntimeHandleForWorker(recordingHandle{rt: mockRuntime{sub: sub}})
+	setHandle(recordingHandle{rt: mockRuntime{sub: sub}})
 	t.Cleanup(clearHandle)
 }
 

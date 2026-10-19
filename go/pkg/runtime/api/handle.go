@@ -235,28 +235,6 @@ func setHandle(h contract.RuntimeHandle) {
 	storeHandleLocked(h)
 }
 
-// SetRuntimeHandleForWorker sets the runtime handle for worker processes that
-// initialize the runtime through the internal base.Initialize path (instead of
-// api.InitWithOptions). This makes handle-dependent API functions (e.g.
-// ExitActor) work inside user code executing on the worker, including code
-// loaded from Go plugins, which share this package's state.
-//
-// It is a no-op if the runtime has already been initialized or if h is nil.
-//
-// Retained for backward compatibility. The default_worker rework initializes
-// through api.InitWithOptions, which attaches the handle itself, so this is no
-// longer called by the worker; worker shutdown now uses api.Shutdown (full
-// plugin teardown).
-func SetRuntimeHandleForWorker(h contract.RuntimeHandle) {
-	initMu.Lock()
-	defer initMu.Unlock()
-
-	if initialized.Load() || h == nil {
-		return
-	}
-	storeHandleLocked(h)
-}
-
 // storeHandleLocked stores the handle and marks the runtime initialized.
 // The caller must hold initMu.
 func storeHandleLocked(h contract.RuntimeHandle) {

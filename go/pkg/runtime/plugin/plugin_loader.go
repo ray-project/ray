@@ -925,29 +925,42 @@ func LoadRuntimePlugin(pluginPath string, opts options.InitializeOptions) (*Runt
 // another location. When the env var is unset, FindPluginPath's multi-tier
 // fallback is consulted.
 //
-// When RAY_GO_RUNTIME_PATH is unset, the FindPluginPath result is cached so
-// repeated calls -- e.g. a subcommand's pre-check plus its GCS client load, or
-// the log_monitor retry loop -- do not re-run FindPluginPath (which may spawn
-// python subprocesses) on every call. An explicitly set env var is returned
-// directly and never cached.
+// When RAY_GO_RUNTIME_PATH is unset, a successful FindPluginPath result is
+// cached so repeated calls -- e.g. a subcommand's pre-check plus its GCS client
+// load, or the log_monitor retry loop -- do not re-run FindPluginPath (which
+// may spawn python subprocesses) on every call; a failed discovery is retried
+// on the next call instead of being latched. An explicitly set env var is
+// returned directly and never cached.
 func resolvePluginPath() (string, error) {
 	envPath := os.Getenv("RAY_GO_RUNTIME_PATH")
 	if envPath != "" {
 		return envPath, nil
 	}
-	resolvedPluginPathOnce.Do(func() {
-		resolvedPluginPath, resolvedPluginPathErr = FindPluginPath()
-	})
-	return resolvedPluginPath, resolvedPluginPathErr
+	resolvePluginPathMu.Lock()
+	defer resolvePluginPathMu.Unlock()
+	if resolvedPluginPathValid {
+		return resolvedPluginPath, nil
+	}
+	p, err := findPluginPathFn()
+	if err != nil {
+		return "", err
+	}
+	resolvedPluginPath = p
+	resolvedPluginPathValid = true
+	return p, nil
 }
 
-// resolvedPluginPath* cache the result of FindPluginPath for the env-unset
-// case. The cache is only consulted when RAY_GO_RUNTIME_PATH is not set, so an
-// explicit env var (or a test that sets one) always bypasses it.
+// findPluginPathFn is the seam used by tests to inject discovery outcomes.
+var findPluginPathFn = FindPluginPath
+
+// resolvedPluginPath* cache the SUCCESS result of FindPluginPath for the
+// env-unset case only (an explicit RAY_GO_RUNTIME_PATH always bypasses it).
+// A sync.Once here would latch a transient discovery failure forever; the
+// mutex + valid flag retries after failures and caches successes.
 var (
-	resolvedPluginPathOnce sync.Once
-	resolvedPluginPath     string
-	resolvedPluginPathErr  error
+	resolvePluginPathMu     sync.Mutex
+	resolvedPluginPath      string
+	resolvedPluginPathValid bool
 )
 
 // openPlugin resolves the plugin path via resolvePluginPath, validates it, and
@@ -1017,6 +1030,9 @@ func LoadGCSClient(opts gcs.ClientOptions) (gcs.Client, error) {
 // LoadLogBatchPublisher reflect-calls the plugin's exported NewLogBatchPublisher
 // with the given gcs.Client, returning the pkg-level gcs.LogBatchPublisher.
 func LoadLogBatchPublisher(client gcs.Client) (gcs.LogBatchPublisher, error) {
+	if client == nil {
+		return nil, fmt.Errorf("NewLogBatchPublisher requires a non-nil gcs client")
+	}
 	results, err := loadPluginFunc(symNewLogBatchPublisher, []reflect.Value{reflect.ValueOf(client)}, 2,
 		func(v reflect.Value) error {
 			_, ok := v.Interface().(gcs.LogBatchPublisher)
@@ -1053,10 +1069,18 @@ func ErrPluginNotLoadable(err error) error {
 	return fmt.Errorf("go_runtime.so plugin not loadable: %w", err)
 }
 
+// precheckSymbols lists every symbol the thin layer loads from go_runtime.so
+// across its subcommands: Initialize/Shutdown/RunTaskExecutionLoop for the
+// runtime lifecycle (driver and worker modes), ConnectClient and
+// NewLogBatchPublisher for the GCS surface. A plugin missing any of them is
+// a broken pair and must fail the startup pre-check.
+var precheckSymbols = []string{
+	symInitialize, symShutdown, symRunTaskExecutionLoop, symConnectClient, symNewLogBatchPublisher,
+}
+
 // ValidatePluginLoadable is the startup plugin loadability pre-check: resolve
-// the plugin path,
-// validate it, plugin.Open it, and confirm the Initialize and ConnectClient
-// symbols exist -- WITHOUT calling Initialize. A failure here is a
+// the plugin path, validate it, plugin.Open it, and confirm every symbol the
+// thin layer loads exists -- WITHOUT calling Initialize. A failure here is a
 // deployment/build error (missing go_runtime.so, package-hash mismatch) and
 // every plugin-using subcommand fails fast on it. plugin.Open is idempotent,
 // so this is free once any later LoadGCSClient/InitWithOptions runs.
@@ -1070,7 +1094,7 @@ func ValidatePluginLoadable() error {
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{symInitialize, symConnectClient} {
+	for _, name := range precheckSymbols {
 		if _, err := p.Lookup(name); err != nil {
 			return fmt.Errorf("failed to lookup %s symbol: %w", name, err)
 		}

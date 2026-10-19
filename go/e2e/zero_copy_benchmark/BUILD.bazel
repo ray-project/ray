@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+# zero_copy_benchmark measures the cross-process zero-copy Get path against a
+# real cluster. Build the plugin, copy both artifacts into a job dir, and submit
+# via `ray job submit` (see main.go usage comment).
+#
+#   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+#   bazel build //go/e2e/zero_copy_benchmark:zero_copy_benchmark
+#   mkdir -p job_dir
+#   cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so job_dir/
+#   cp bazel-bin/go/e2e/zero_copy_benchmark_/zero_copy_benchmark job_dir/
+#   cd job_dir && ray job submit --working-dir . -- ./zero_copy_benchmark
+go_binary(
+    name = "zero_copy_benchmark",
+    embed = [":zero_copy_benchmark_lib"],
+    importpath = "github.com/ray-project/ray/go/e2e/zero_copy_benchmark",
+    visibility = ["//visibility:public"],
+)
+
+go_library(
+    name = "zero_copy_benchmark_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/ray-project/ray/go/e2e/zero_copy_benchmark",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//go/e2e/userfuncs",
+        "//go/pkg/options",
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/local",
+    ],
+)

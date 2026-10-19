@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+# go_library for userfuncs package
+# This is used when compiling as part of a larger binary
+go_library(
+    name = "userfuncs",
+    srcs = [
+        "actors.go",
+        "doc.go",
+        "echo_bytes.go",
+        "funcs.go",
+        "generated_registry.go",
+        "generated_wrappers.go",
+        "report_node.go",
+    ],
+    importpath = "github.com/ray-project/ray/go/e2e/userfuncs",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//go/pkg/runtime/api",
+        "//go/pkg/runtime/function",
+        "@com_github_vmihailenco_msgpack_v5//:msgpack",
+    ],
+)
