@@ -938,7 +938,8 @@ def test_build_run_command_public_installs_ruleset_before_runsc():
         assert install in script
         tap_ready = script.index("[ -s /tmp/rd/slirp4netns.ready ] ||")
         runsc_start = script.index(
-            "exec nsenter --preserve-credentials -U -n -t $NSPID -- runsc"
+            "nsenter --preserve-credentials -U -n -t $NSPID -- "
+            "setpriv --pdeathsig KILL -- runsc"
         )
         assert tap_ready < script.index(install) < runsc_start
 
