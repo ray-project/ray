@@ -94,7 +94,7 @@ See the [Amazon documentation](https://awslabs.github.io/data-on-eks/docs/ai-ml/
 :::{tip}
 You can set the `TPU_VISIBLE_CHIPS` environment variable before starting a Ray node to limit the Google TPUs that are visible to Ray. For example, `TPU_VISIBLE_CHIPS=1,3 ray start --head --resources='{"TPU": 2}'` lets Ray only see devices 1 and 3.
 
-By default, Ray registers one `TPU` resource per physical chip, such as `{"TPU": 4}` on a four-chip host. On TPU7x, where each physical chip contains two compute chiplets that each register as a logical TPU device, set `RAY_TPU_RESOURCE_PER_CHIP=2` and `--resources='{"TPU": 8}'` to run one process per logical device. For details, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
+On TPU7x, where each physical chip contains two compute chiplets, set `RAY_TPU_RESOURCE_PER_CHIP=2` to expose one `TPU` resource per logical device. See {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 :::
 ::::
 

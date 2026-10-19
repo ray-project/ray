@@ -26,7 +26,7 @@ Replace the following:
 
 Run the following commands on your local machine or in [Google Cloud Shell](https://cloud.google.com/shell). If you run them from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
-Create a Standard GKE cluster and enable the Ray Operator add-on. GKE supports TPU v6e in version 1.31.2-gke.1115000 and later, and TPU7x in version 1.34.1-gke.2541000 and later. For minimum GKE versions by TPU generation, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#choose-tpu-version):
+Create a Standard GKE cluster and enable the Ray Operator add-on. For supported GKE versions by TPU generation, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#choose-tpu-version):
 
 ```bash
 gcloud container clusters create $CLUSTER_NAME \
@@ -134,7 +134,7 @@ helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
 ```
 
-GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap environment variables for [JAX](https://github.com/google/jax) and [TorchTPU](https://torchtpu.readthedocs.io/en/latest/) initialization. The Ray TPU webhook requires KubeRay operator v1.1.0 or later. GKE automatically installs the Ray TPU webhook through the [Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) in GKE version 1.30.0-gke.1747000 and later.
+GKE provides a [validating and mutating webhook](https://github.com/ai-on-gke/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap environment variables for [JAX](https://github.com/google/jax) and [TorchTPU](https://torchtpu.readthedocs.io/en/latest/) initialization. GKE automatically installs the Ray TPU webhook through the [Ray Operator add-on](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke).
 
 When you install the webhook manually, [cert-manager](https://github.com/cert-manager/cert-manager) handles TLS certificate injection. Install cert-manager in a GKE Standard or Autopilot cluster with the following Helm commands:
 

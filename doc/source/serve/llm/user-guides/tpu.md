@@ -135,5 +135,5 @@ This example serves `google/gemma-4-31B-it` on one v6e `4x4` slice with `tensor_
 ## See also
 
 - {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`
-- [Serve Gemma open models using multi-host TPUs on GKE with Ray](https://docs.cloud.google.com/kubernetes-engine/docs/tutorials/serve-multi-host-tpu-llm)
+- [Serve Gemma open models using multi-host TPUs on GKE with Ray](https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-multi-host-tpu-llm)
 - [Serve an LLM on multi-host TPUs with Ray Serve and TorchTPU](https://cloud.google.com/kubernetes-engine/docs/tutorials/serve-llm-tpu-ray-torchtpu)
