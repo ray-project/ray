@@ -226,6 +226,10 @@ def register_nixl_memory(tensor: "torch.Tensor") -> None:
 
     If called on a tensor that is already registered with NIXL, we still prevent the tensor's memory from being deregistered.
 
+    The registration covers the tensor's whole underlying storage and is not resized afterwards. If a registered storage is freed without
+    calling :func:`ray.experimental.deregister_nixl_memory` and a larger storage is later allocated at the same address, a ``ValueError``
+    is raised. Resizing a pre-registered buffer is also not free, so allocate it at its full intended size up front.
+
     Args:
         tensor: A PyTorch tensor whose memory should be registered with NIXL.
 

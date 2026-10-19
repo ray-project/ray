@@ -65,7 +65,12 @@ class RewardPredictor(nn.Module):
             upper_bound=upper_bound,
         )
 
-    def forward(self, h, z, return_logits=False):
+    def forward(
+        self,
+        h: "torch.Tensor",
+        z: "torch.Tensor",
+        return_logits: bool = False,
+    ):
         """Computes the expected reward using N equal sized buckets of possible values.
 
         Args:
@@ -74,6 +79,11 @@ class RewardPredictor(nn.Module):
                 observation input. [B, num_categoricals, num_classes].
             return_logits: Whether to return the logits over the reward buckets
                 as a second return value (besides the expected reward).
+
+        Returns:
+            The expected (symlog'd) rewards of shape (B,). If `return_logits` is
+            True, a tuple of these expected rewards and the logits over the
+            `num_buckets` reward buckets.
         """
         # Flatten last two dims of z.
         z_shape = z.shape

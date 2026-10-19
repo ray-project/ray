@@ -769,8 +769,8 @@ config = (
                 Columns.NEXT_OBS,
                 Columns.REWARDS,
                 Columns.ACTIONS,
-                Columns.TERMINATED,
-                Columns.TRUNCATED,
+                Columns.TERMINATEDS,
+                Columns.TRUNCATEDS,
             ],
         },
     )
@@ -808,7 +808,7 @@ Tuning the **Post-Processing (Pre-Learner)** layer is generally more straightfor
 Internally, a {py:meth}`~ray.data.Dataset.map_batches` operation defines the **Post-Processing (PreLearner)** layer and starts an {py:class}`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an {py:class}`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` instance to transform batches on their way from disk to RLlib's {py:class}`~ray.rllib.core.learner.learner.Learner`. The size of this {py:class}`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` determines the layer's throughput, so fine-tune it against the previous layer's throughput to avoid backpressure. Use `concurrency` in RLlib's `map_batches_kwargs` parameter to define this pool size:
 
 ```python
-from ray.rllib.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 config = (
     AlgorithmConfig()
@@ -829,7 +829,7 @@ With the preceding code, {ref}`Ray Data <data>` starts up to `4` parallel {py:cl
 You can also enable auto-scaling in your **Post-Processing (PreLearner)** by providing an interval instead of a straight number:
 
 ```python
-from ray.rllib.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 config = (
     AlgorithmConfig()

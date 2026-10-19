@@ -4,7 +4,7 @@ import os
 import re
 from copy import deepcopy
 from functools import partial
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import yaml
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 @DeveloperAPI
-def from_config(cls, config: Optional["FromConfigSpec"] = None, **kwargs):
+def from_config(cls: Any, config: Optional["FromConfigSpec"] = None, **kwargs) -> Any:
     """Uses the given config to create an object.
 
     If `config` is a dict, an optional "type" key can be used as a
@@ -43,12 +43,11 @@ def from_config(cls, config: Optional["FromConfigSpec"] = None, **kwargs):
         module+class (e.g. "ray.rllib. [...] .[some class name]")
 
     Args:
-        cls: The class to build an instance for (from `config`).
-        config (Optional[dict, str]): The config dict or type-string or
-            filename.
-
-    Keyword Args:
-        kwargs: Optional possibility to pass the constructor arguments in
+        cls: The class to build an instance for (from `config`). May also be the
+            config itself (a dict or type-string), in which case `config` must
+            be None.
+        config: The config dict or type-string or filename.
+        **kwargs: Optional possibility to pass the constructor arguments in
             here and use `config` as the type-only info. Then we can call
             this like: from_config([type]?, [**kwargs for constructor])
             If `config` is already a dict, then `kwargs` will be merged
@@ -59,7 +58,7 @@ def from_config(cls, config: Optional["FromConfigSpec"] = None, **kwargs):
             (e.g. kwargs={"_args": [arg1, arg2, arg3]}).
 
     Returns:
-        any: The object generated from the config.
+        The object generated from the config.
     """
     # `cls` is the config (config is None).
     if config is None and isinstance(cls, (dict, str)):
@@ -216,15 +215,19 @@ def from_config(cls, config: Optional["FromConfigSpec"] = None, **kwargs):
 
 
 @DeveloperAPI
-def from_file(cls, filename, *args, **kwargs):
+def from_file(cls: Any, filename: str, *args, **kwargs) -> Any:
     """
     Create object from config saved in filename. Expects json or yaml file.
 
     Args:
+        cls: The class to build an instance for (from the file's config).
         filename: File containing the config (json or yaml).
+        *args: Positional args for the constructor, passed on via the config's
+            special `_args` key.
+        **kwargs: Additional constructor kwargs, merged into the file's config.
 
     Returns:
-        any: The object generated from the file.
+        The object generated from the file.
     """
     path = os.path.join(os.getcwd(), filename)
     if not os.path.isfile(path):

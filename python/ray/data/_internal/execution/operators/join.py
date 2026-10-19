@@ -419,21 +419,6 @@ def _validate_suffix_collision(
         )
 
 
-_POLARS_MAX_THREADS_ENV_VAR = "POLARS_MAX_THREADS"
-
-
-def _with_polars_thread_cap(
-    ray_remote_args: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
-    args = dict(ray_remote_args or {})
-    runtime_env = dict(args.get("runtime_env") or {})
-    env_vars = dict(runtime_env.get("env_vars") or {})
-    env_vars.setdefault(_POLARS_MAX_THREADS_ENV_VAR, "1")
-    runtime_env["env_vars"] = env_vars
-    args["runtime_env"] = runtime_env
-    return args
-
-
 def _require_polars():
     try:
         import polars as pl
