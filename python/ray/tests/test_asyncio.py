@@ -1,5 +1,8 @@
 # coding: utf-8
 import asyncio
+import contextlib
+import ctypes
+import gc
 import os
 import sys
 import threading
@@ -557,6 +560,182 @@ def test_async_actor_finalizes_objects_dropped_on_fiber(ray_start_regular_shared
         f"{num_tasks - num_finalized} of {num_tasks} payloads returned by an async "
         "actor were never finalized in the actor process, so their deallocation is "
         "being deferred and never completed"
+    )
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 14)
+    or sys.platform == "win32"
+    or not hasattr(ctypes.pythonapi, "PyUnstable_ThreadState_SetStackProtection")
+    or ctypes.sizeof(ctypes.c_void_p) != 8,
+    reason="Fiber stack re-anchoring only applies to 64-bit CPython >= 3.14.2.",
+)
+def test_async_actor_reanchors_fiber_stack_before_first_python_call(
+    ray_start_regular_shared,
+):
+    """
+    Checks Stack protection must be re-anchored before any Python runs on a new fiber.
+
+    While any fiber is in flight, all fibers on the runner thread share one
+    thread state, so a new fiber starts with the stack bounds left by the last
+    fiber that ran. If the first Python call in task_execution_handler runs
+    before the re-anchor, CPython checks it against those stale bounds. Whether
+    that crashes depends on where the new fiber stack was allocated
+    (https://github.com/ray-project/ray/issues/66399), so this test makes the
+    stale bounds deterministic: every task poisons the bounds as it exits, and
+    the next task checks them on entry.
+
+    The poisoned bounds sit above every real stack. This makes python think
+    its hopelessly overflowed so _Py_Dealloc defers the deallocation of every
+    GC object. Thus a canary dropped in the first Python call is freed
+    immediately only if the bounds were re-anchored before that call.
+    """
+    # The poisoned stack base must sit above every real stack pointer.
+    poisoned_stack_base = 1 << 62
+    # FiberState::kStackSize, the size of a real fiber stack.
+    fiber_stack_size = 256 * 1024
+
+    @ray.remote
+    class Probe:
+        def __init__(self):
+            api = ctypes.pythonapi
+            api.PyThreadState_Get.restype = ctypes.c_void_p
+            set_stack_protection = api.PyUnstable_ThreadState_SetStackProtection
+            set_stack_protection.argtypes = [
+                ctypes.c_void_p,
+                ctypes.c_void_p,
+                ctypes.c_size_t,
+            ]
+            set_stack_protection.restype = ctypes.c_int
+
+            class Canary:
+                pass
+
+            def canary_freed_immediately():
+                freed = []
+                canary = Canary()
+                ref = weakref.ref(canary, lambda _: freed.append(True))  # noqa: F841
+                del canary
+                return bool(freed)
+
+            self._parked = asyncio.Event()
+            self._release = asyncio.Event()
+            self._poisoned = False
+            self._freed_on_entry = []
+            real_disable_client_hook = ray._raylet.disable_client_hook
+
+            # Stands in for disable_client_hook(), the first Python call that
+            # task_execution_handler makes on the fiber. Installing it here
+            # covers every later task. The creation task itself runs on a
+            # regular thread, not a fiber, and already entered the real hook.
+            @contextlib.contextmanager
+            def probing_disable_client_hook():
+                if self._poisoned:
+                    self._freed_on_entry.append(canary_freed_immediately())
+                try:
+                    with real_disable_client_hook():
+                        yield
+                finally:
+                    assert (
+                        set_stack_protection(
+                            api.PyThreadState_Get(),
+                            poisoned_stack_base,
+                            fiber_stack_size,
+                        )
+                        == 0
+                    )
+                    self._poisoned = True
+
+            ray._raylet.disable_client_hook = probing_disable_client_hook
+
+        async def park(self):
+            self._parked.set()
+            await self._release.wait()
+
+        async def run(self):
+            await self._parked.wait()
+
+        async def release(self):
+            self._release.set()
+
+        async def freed_on_entry(self):
+            return self._freed_on_entry
+
+    probe = Probe.remote()
+    # The parked task keeps the runner thread's thread state alive, as other
+    # in-flight tasks do under load. Without it, each task gets a fresh thread
+    # state and never sees the bounds the previous task left behind.
+    parked = probe.park.remote()
+    # Submit one at a time so that each task starts on the bounds the previous
+    # task left behind, with no other fiber re-anchoring in between.
+    for _ in range(5):
+        ray.get(probe.run.remote())
+
+    freed_on_entry = ray.get(probe.freed_on_entry.remote())
+    ray.get(probe.release.remote())
+    ray.get(parked)
+    ray.kill(probe)
+    assert freed_on_entry and all(freed_on_entry), (
+        f"Deallocation was deferred on entry to async actor tasks {freed_on_entry}: "
+        "the first Python call ran before the fiber stack was re-anchored"
+    )
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 14)
+    or sys.platform == "win32"
+    or not hasattr(ctypes.pythonapi, "PyUnstable_ThreadState_SetStackProtection"),
+    reason="Fiber stack re-anchoring only applies to CPython >= 3.14.2.",
+)
+def test_idle_async_actor_internal_task_does_not_leak(ray_start_regular_shared):
+    """A task that never yields its fiber must not leak on an idle async actor.
+
+    The test calls `__ray_ready__` many times on an async actor, waiting for each
+    call to finish before sending the next, so that the actor has nothing else
+    running when each call starts. It counts the memory blocks the actor has
+    allocated before and after the calls. If each call leaves some objects
+    behind, the count grows with the number of calls.
+
+    Both the idle actor and `__ray_ready__` are needed to expose the leak. When
+    no other task is in flight, a task that is not re-anchored at start runs with
+    the stack bounds of the OS thread that runs the actor's fibers, rather than
+    the previous fiber's own stack. CPython then thinks the stack is nearly full,
+    so it defers freeing objects instead of freeing them. Ordinary async methods
+    are re-anchored when they hand off to the event loop, and the deferred
+    objects are freed then. `__ray_ready__` never hands off, so without the
+    re-anchor at start, everything it defers is lost when it finishes.
+    """
+
+    @ray.remote
+    class AsyncActor:
+        async def unused(self):
+            pass
+
+    def allocated_blocks(self):
+        # Deferred objects are untracked by the GC, so collecting only rules out
+        # garbage cycles that are merely awaiting collection.
+        gc.collect()
+        return sys.getallocatedblocks()
+
+    actor = AsyncActor.remote()
+    # Warm up, so one-time allocations on this path are not counted.
+    for _ in range(100):
+        ray.get(actor.__ray_ready__.remote())
+
+    # __ray_call__ deserializes its argument on the event loop, so it yields and
+    # is re-anchored: measuring does not leak by itself.
+    blocks_before = ray.get(actor.__ray_call__.remote(allocated_blocks))
+    num_tasks = 1000
+    # Submit one at a time, so that the actor is idle when each task starts.
+    for _ in range(num_tasks):
+        ray.get(actor.__ray_ready__.remote())
+    blocks_after = ray.get(actor.__ray_call__.remote(allocated_blocks))
+
+    # Each leaking task strands ~170 blocks; a non-leaking run grows by a few.
+    assert blocks_after - blocks_before < num_tasks, (
+        f"{blocks_after - blocks_before} memory blocks were leaked by {num_tasks} "
+        "__ray_ready__ calls on an idle async actor, so deallocation is being "
+        "deferred and never completed"
     )
 
 
