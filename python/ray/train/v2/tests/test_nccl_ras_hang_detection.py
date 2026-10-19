@@ -374,7 +374,11 @@ def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus, tmp_path):
 
 
 @pytest.fixture
-def ray_start_with_hang_export(nccl_ras_env):
+def ray_start_with_hang_export(nccl_ras_env, monkeypatch):
+    # Like the train run and attempt events, the hang events go through the
+    # Train state actor, which only exists when state tracking is enabled. The
+    # trainer reads this on the driver.
+    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
     runtime_env = copy.deepcopy(nccl_ras_env)
     runtime_env.setdefault("env_vars", {})[
         "RAY_enable_export_api_write_config"

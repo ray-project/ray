@@ -702,14 +702,22 @@ def test_export_nccl_hang_event(enable_export_api_write):
         ]
     )
 
-    active, stopped, disabled = _get_exported_data(_get_nccl_hang_export_file_path())
-    assert active["source_type"] == "EXPORT_TRAIN_NCCL_HANG"
-    assert active["event_data"] == {
+    # The JSON line is the contract with readers such as Anyscale: enums are
+    # their names, int64 fields are strings, unset optional fields are left
+    # out (so readers can tell them from "") and empty repeated fields are kept.
+    events = _get_exported_data(_get_nccl_hang_export_file_path())
+    assert [e["source_type"] for e in events] == ["EXPORT_TRAIN_NCCL_HANG"] * 3
+    assert all(isinstance(e["timestamp"], int) for e in events)
+    active, stopped, disabled = [e["event_data"] for e in events]
+    common = {
         "schema_version": 1,
         "run_id": "run_id",
         "attempt_id": "attempt_id",
-        "poll_index": "44",
         "timestamp_ms": "1760000660123",
+    }
+    assert active == {
+        **common,
+        "poll_index": "44",
         "detector_status": "ACTIVE",
         "ras_text_report": "RAS report",
         "diagnostics_dir": "s3://bucket/run/hang_detector",
@@ -726,13 +734,19 @@ def test_export_nccl_hang_event(enable_export_api_write):
             },
         ],
     }
-    # Unset optional fields are left out, so readers can tell them from "".
-    assert stopped["event_data"]["detector_status"] == "STOPPED"
-    for absent in ("disabled_reason", "ras_text_report", "diagnostics_dir"):
-        assert absent not in stopped["event_data"]
-    assert disabled["event_data"]["detector_status"] == "DISABLED"
-    assert disabled["event_data"]["disabled_reason"] == "INTERNAL_ERROR"
-    assert disabled["event_data"]["communicators"] == []
+    assert stopped == {
+        **common,
+        "poll_index": "45",
+        "detector_status": "STOPPED",
+        "communicators": [],
+    }
+    assert disabled == {
+        **common,
+        "poll_index": "46",
+        "detector_status": "DISABLED",
+        "disabled_reason": "INTERNAL_ERROR",
+        "communicators": [],
+    }
 
     # The hang events never reach the train state file (which exists, empty,
     # as every export type is enabled).
