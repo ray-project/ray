@@ -16,7 +16,7 @@ When you consume or iterate over a Ray Data {class}`Dataset <ray.data.dataset.Da
 
 Ray Data provides several options for shuffling data. Each option trades off the granularity of shuffle control against memory consumption and runtime. The following sections describe each option and its trade-offs. Choose the method that fits your use case.
 
-For streaming row shuffling, use an iterator-local rolling buffer or distribute window shuffling across Ray Data tasks. The distributed option has two modes: target-sized batches and exact consecutive windows. See the {ref}`comparison below <row-shuffle-comparison>` to choose between them.
+For streaming row shuffling, use an iterator-local rolling buffer or distribute window shuffling across Ray Data tasks. The distributed option has two modes: target-sized batches and exact consecutive windows. See the {ref}`comparison below <row-shuffle-comparison>` for mixing behavior and the {ref}`performance discussion <row-shuffle-performance>` for benchmark evidence.
 
 (shuffling_file_order)=
 
@@ -60,7 +60,7 @@ for batch in ds.iter_batches(
 ```
 
 :::{tip}
-If throughput drops when you use `local_shuffle_buffer_size`, check the total time spent in batch creation. In the `ds.stats()` output, find `In batch formatting` under `Batch iteration time breakdown`. If this time is much larger than the time spent in other steps, decrease `local_shuffle_buffer_size` or move the shuffle work to {ref}`distributed windows <window_shuffle>`. You can combine either method with {ref}`file order shuffling <shuffling_file_order>`.
+If throughput drops when you use `local_shuffle_buffer_size`, inspect `In batch creation` and `In batch formatting` under `Batch iteration time breakdown` in the `ds.stats()` output. If local shuffling is a bottleneck, decrease `local_shuffle_buffer_size` or try {ref}`distributed window shuffling <window_shuffle>` to move shuffle work into parallel Ray Data tasks. You can combine either method with {ref}`file order shuffling <shuffling_file_order>`.
 :::
 
 (window_shuffle)=
@@ -111,6 +111,18 @@ Local and distributed window shuffling have different mixing scopes. For a datas
 Larger windows mix more rows together and require more memory. Each distributed window must fit in a shuffle task's memory. Budget for input, output, indices, and temporary arrays. Input blocks can exceed the shuffle window size, so `window_size` doesn't cap task input size or peak memory. The `memory` argument is a scheduling reservation rather than a hard memory cap. It doesn't include object-store usage or strict window-construction tasks. Strict mode also adds intermediate window blocks, so measure its cost on your workload.
 
 For reproducible distributed output, enable `DataContext.execution_options.preserve_order` and keep the input layout, mode, and task grouping fixed. Window boundaries follow the upstream execution order. {class}`~ray.data.RandomSeedConfig` controls reseeding between executions. Calling `materialize()` caches a particular shuffled order.
+
+(row-shuffle-performance)=
+
+#### When can distributed window shuffling improve throughput?
+
+If iterator-local shuffling becomes a bottleneck, try `window_shuffle` to move shuffle work into parallel Ray Data tasks. This reduces shuffle work inside each consumer. Choose the window mode based on your mixing requirements, then measure the effect on your workload.
+
+The [four-GPU training benchmark in #62576](https://github.com/ray-project/ray/pull/62576) reported approximately 6–10× higher throughput for a parallel `map_batches` shuffle stage than for local buffer shuffling in its synthetic workload. Those measurements predate the chunked tensor take optimizations.
+
+Separate benchmarks for eligible large [fixed-shaped tensors](https://github.com/ray-project/ray/pull/64961) and [variable-shaped tensors](https://github.com/ray-project/ray/pull/66197) reported approximately 2.7–5.5× and 3.4–5.3× ingestion speedups with the tensor take fast path enabled versus disabled. Those pipelines include data generation and local buffer shuffling, with model computation excluded. Both local buffer shuffling and `window_shuffle` use these optimizations for eligible columns.
+
+These benchmarks use different workloads and comparisons. Their speedups don't multiply, and they aren't measurements of `window_shuffle` against the optimized local buffer implementation.
 
 (randomizing-block-order)=
 
