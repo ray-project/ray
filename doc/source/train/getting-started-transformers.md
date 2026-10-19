@@ -12,7 +12,7 @@ This tutorial shows you how to convert an existing Hugging Face Transformers scr
 
 In this guide, you learn how to do the following:
 
-1. Configure a {ref}`training function <train-overview-training-function>` that reports metrics and saves checkpoints.
+1. Configure a {ref}`training function <train-overview-training-function>` that saves checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your distributed training job.
 1. Launch a distributed training job with {class}`~ray.train.torch.TorchTrainer`.
 
@@ -238,9 +238,9 @@ When you use Hugging Face Datasets or Evaluate, always call `datasets.load_datas
 :::
 
 
-### Report checkpoints and metrics
+### Save checkpoints for fault tolerance
 
-To persist checkpoints and monitor training progress, add a {class}`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Transformers `Trainer`:
+To persist checkpoints so that training can recover from failures, add a {class}`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Transformers `Trainer`:
 
 
 ```diff
