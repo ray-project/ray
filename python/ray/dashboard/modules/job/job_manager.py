@@ -628,12 +628,18 @@ class JobManager:
                 "or timed out during submission."
             )
             driver_logger.warning(message)
-            await self._job_info_client.put_status(
-                submission_id,
-                JobStatus.FAILED,
-                message=message,
-                error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
-            )
+            try:
+                await self._job_info_client.put_status(
+                    submission_id,
+                    JobStatus.FAILED,
+                    message=message,
+                    error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+                )
+            except Exception as e:
+                # Don't let a failed status update replace the CancelledError.
+                driver_logger.warning(
+                    f"Failed to mark cancelled job {submission_id} as FAILED: '{e}'"
+                )
             raise
         except Exception as e:
             tb_str = traceback.format_exc()
