@@ -147,6 +147,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # TODO revert once zip becomes streaming
         return True
 
+    @property
+    def is_blocking_materializing(self) -> bool:
+        # TODO revert once zip becomes streaming
+        return True
+
     def _zip(
         self,
         left_input: FIFOBundleQueue,

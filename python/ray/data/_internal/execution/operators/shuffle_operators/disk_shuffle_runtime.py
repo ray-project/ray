@@ -6,7 +6,9 @@ import errno
 import json
 import logging
 import os
+import pickle
 import struct
+import tempfile
 import threading
 import time
 import uuid
@@ -32,12 +34,12 @@ import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.util import MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.data.block import BlockExecStats
 from ray.exceptions import (
     ActorDiedError,
     ActorUnavailableError,
     ActorUnschedulableError,
 )
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +161,6 @@ class ShuffleHandle(TypedDict, total=False):
     num_partitions: int
     total_bytes: int
     compression: Optional[str]
-    exec_stats: Optional["BlockExecStats"]
 
 
 class _Endpoint(NamedTuple):
@@ -195,13 +196,15 @@ def _is_disk_exhausted(exc: BaseException) -> bool:
 class ShuffleFileServerAnomalyError(RuntimeError):
     """Terminal shuffle file-server failure: a driver-level retry cannot fix it.
 
-    We run with ``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
-    the actor on any mid-life crash and surfaces ``ActorUnavailableError``
-    during the restart window. So the anomalous states we key off of are:
+    The server is a named actor owned by the driver-side reduce operator,
+    created with ``max_restarts=-1`` and
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``. Ray auto-restarts
+    it on any mid-life crash and surfaces ``ActorUnavailableError`` during the
+    restart window. So the anomalous states we key off of are:
 
-    - ``ActorDiedError``          -> ``__init__`` raised, or external
-                                    ``ray.kill(actor, no_restart=True)``.
+    - ``ActorDiedError``          -> ``__init__`` raised, the owning driver
+                                    exited, or ``ray.kill(actor, no_restart=True)``
+                                    (the reduce operator's shutdown).
     - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
                                     relocation. Terminal at the shuffle layer;
                                     an upstream lineage layer must re-execute
@@ -398,8 +401,12 @@ def _make_flight_server(host: str, base_dir: str):
 @ray.remote(num_cpus=0, max_restarts=-1)
 class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
-    byte-ranges of local shuffle files to remote reducers. Survives individual
-    map/reduce workers; in a real cluster, one per node (NodeAffinity)."""
+    byte-ranges of local shuffle files to remote reducers.
+
+    One per (shuffle, node), pinned with NodeAffinity. Created and owned by
+    the driver-side ``DiskHashShuffleReduceOp`` when the first mapper handle
+    from that node arrives, and killed at its shutdown; survives individual
+    map/reduce workers but not the driver."""
 
     def __init__(
         self,
@@ -427,6 +434,31 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
 
     shutil.rmtree(map_dir, ignore_errors=True)
     shutil.rmtree(reduce_dir, ignore_errors=True)
+
+
+def teardown_disk_shuffle(shuffle_nodes: Iterable[Tuple[str, str]]) -> None:
+    """Remove the shuffle directories of every ``(shuffle_id, node_id)`` in
+    ``shuffle_nodes`` on that node. Called once by the reduce operator at
+    shutdown, when no reducer can still need the files. The node's
+    ``ShuffleFileServer`` is owned by the reduce operator and killed there;
+    serving a removed directory is harmless, so the two need no ordering.
+    """
+    cleanup_refs = []
+    for shuffle_id, node_id in shuffle_nodes:
+        try:
+            map_dir, reduce_dir = disk_shuffle_dirs(shuffle_id)
+            cleanup_refs.append(
+                _cleanup_shuffle_dir.options(
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                        node_id, soft=False
+                    ),
+                ).remote(map_dir, reduce_dir)
+            )
+        except Exception:
+            pass
+
+    if cleanup_refs:
+        ray.wait(cleanup_refs, num_returns=len(cleanup_refs), timeout=5.0)
 
 
 # =============================================================================
@@ -697,7 +729,35 @@ def _chunk_members_by_bytes(
         yield batch
 
 
-def _handle_batch_size(handles, batch_bytes):
+def disk_shuffle_dirs(shuffle_id: str) -> Tuple[str, str]:
+    prefix = os.path.join(tempfile.gettempdir(), f"ray_shuffle_disk_{shuffle_id}")
+    return f"{prefix}_map", f"{prefix}_reduce"
+
+
+_HANDLE_COLUMN = "__disk_shuffle_handle__"
+
+
+def handle_to_block(handle: "ShuffleHandle") -> pa.Table:
+    """Wrap a ``ShuffleHandle`` in a one-row Arrow block."""
+    return pa.table({_HANDLE_COLUMN: pa.array([pickle.dumps(handle)], pa.binary())})
+
+
+def handle_from_block(block: pa.Table) -> "ShuffleHandle":
+    """Inverse of ``handle_to_block``; raises if ``block`` isn't a handle block."""
+    if not (
+        isinstance(block, pa.Table)
+        and block.column_names == [_HANDLE_COLUMN]
+        and block.num_rows == 1
+    ):
+        raise ValueError(
+            "Expected a one-row disk-shuffle handle block, got "
+            f"{type(block).__name__} with columns "
+            f"{getattr(block, 'column_names', None)}"
+        )
+    return pickle.loads(block.column(0)[0].as_py())
+
+
+def _handle_batch_size(handles: List["ray.ObjectRef"], batch_bytes: int) -> int:
     """#handles to resolve per batch so materialized metadata stays ≈ batch_bytes.
 
     Peeks one handle for ``num_partitions`` (each handle ≈ num_partitions × 32
@@ -707,9 +767,7 @@ def _handle_batch_size(handles, batch_bytes):
     """
     if not handles:
         return 1
-    probe = handles[0]
-    if not isinstance(probe, dict):
-        probe = cast(dict, ray.get(probe))
+    probe = handle_from_block(ray.get(handles[0]))
     try:
         npart = int(probe.get("num_partitions") or len(probe["index_ranges"]))
     except Exception:
@@ -719,13 +777,13 @@ def _handle_batch_size(handles, batch_bytes):
 
 
 def _handles_to_sources(
-    handles: List["ShuffleHandle"],
+    handles: List["ray.ObjectRef"],
     partition_id: int,
     batch_bytes: int = _DEFAULT_HANDLE_BATCH_BYTES,
 ) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
-    """Extract per-partition source refs from a reducer's input handles.
+    """Extract per-partition source refs from a reducer's input handle blocks.
 
-    Resolves handle refs in ≈``batch_bytes`` batches, reads this partition's row
+    Resolves handle-block refs in ≈``batch_bytes`` batches, reads this partition's row
     out of each handle's dense range index, then frees the batch — so in-flight
     handle memory stays constant, not O(maps × partitions). Skips handles with
     ``index_ranges[p].length == 0`` (no on-disk frame); picks the first
@@ -739,13 +797,9 @@ def _handles_to_sources(
     batch_size = _handle_batch_size(handles, batch_bytes)
     for start in range(0, len(handles), batch_size):
         batch = handles[start : start + batch_size]
-        refs = [handle for handle in batch if not isinstance(handle, dict)]
         # pyrefly: ignore[no-matching-overload]
-        vals = iter(ray.get(refs)) if refs else iter(())
-        resolved = [
-            handle if isinstance(handle, dict) else next(vals) for handle in batch
-        ]
-        for handle in resolved:
+        for block in ray.get(batch):
+            handle = handle_from_block(block)
             if output_schema is None:
                 output_schema = handle.get("schema")
             # Dense index: partition_id is the row; only this row materializes
@@ -763,7 +817,6 @@ def _handles_to_sources(
                         ),
                     )
                 )
-        del resolved, vals
     return sources, output_schema
 
 
