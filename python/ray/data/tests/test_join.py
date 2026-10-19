@@ -963,13 +963,10 @@ def _optimized_plan(ds: Dataset):
     would stack duplicate operators on every re-plan.
     """
     from ray.data._internal.logical.optimizers import LogicalOptimizer
+    from ray.data.tests.test_util import assert_plans_structurally_equal
 
     plan = LogicalOptimizer().optimize(ds._logical_plan)
-    reoptimized = LogicalOptimizer().optimize(plan)
-    assert reoptimized.dag.dag_str == plan.dag.dag_str, (
-        f"Re-optimizing is not a no-op:\n{plan.dag.dag_str}\n-> "
-        f"{reoptimized.dag.dag_str}"
-    )
+    assert_plans_structurally_equal(LogicalOptimizer().optimize(plan), plan)
     return plan
 
 
@@ -1318,16 +1315,35 @@ def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_c
     assert rows_same(first, second)
 
 
-@pytest.mark.parametrize("join_type", ["inner", "right_outer"])
-def test_join_same_name_payload_column_is_not_pushed(
-    ray_start_regular_shared_2_cpus, join_type
+@pytest.mark.parametrize(
+    "join_type,left_suffix,right_suffix,column,pushed_to",
+    [
+        ("inner", None, "_r", "val", "left"),
+        ("inner", None, "_r", "val_r", "right"),
+        ("inner", "_l", None, "val", "right"),
+        ("inner", "_l", None, "val_l", "left"),
+        ("inner", "_l", "_r", "val_l", "left"),
+        ("inner", "_l", "_r", "val_r", "right"),
+        # The bare ``val`` is the left column; a right outer join cannot push
+        # to the left, so the filter stays above the join instead of being
+        # evaluated on the right input's ``val`` (which would return wrong
+        # rows).
+        ("right_outer", None, "_r", "val", None),
+        ("right_outer", None, "_r", "val_r", "right"),
+    ],
+)
+def test_join_colliding_payload_column_routes_by_suffix(
+    ray_start_regular_shared_2_cpus,
+    join_type,
+    left_suffix,
+    right_suffix,
+    column,
+    pushed_to,
 ):
-    """A non-key column present on both inputs is renamed on at least one side
-    by the join (here the right ``val`` becomes ``val_r``), so the output's
-    bare ``val`` belongs to one specific input. Routing by name alone would
-    evaluate ``val == 1`` on the wrong input (the right one for a right outer
-    join); the filter must stay above the join instead."""
-    from ray.data._internal.logical.operators import Join
+    """``val`` exists on both inputs, so the join renames one or both sides by
+    suffix. A filter on an output name is pushed to the input that produces
+    it, rebound to the input's own column name (``val_r`` -> ``val``)."""
+    from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
 
     left_ds = ray.data.from_items([{"k": i, "val": i} for i in range(4)])
@@ -1337,26 +1353,41 @@ def test_join_same_name_payload_column_is_not_pushed(
         join_type=join_type,
         num_partitions=2,
         on=("k",),
-        right_suffix="_r",
+        left_suffix=left_suffix,
+        right_suffix=right_suffix,
         aggregator_ray_remote_args={"num_cpus": 0.01},
     )
-    predicate = col("val") == 1
+    # Left values are 0-3, right values 10-15; both targets select k == 1.
+    # The bare ``val`` is the left column exactly when the left side keeps
+    # its name (no left suffix).
+    is_left_column = column == "val_l" or (column == "val" and left_suffix is None)
+    target = 1 if is_left_column else 11
+    predicate = col(column) == target
     filtered_ds = joined.filter(expr=predicate)
 
     plan = _optimized_plan(filtered_ds)
-    _assert_filter_with(plan.dag, predicate)
-    assert isinstance(plan.dag.input_dependencies[0], Join)
-    _assert_num_filters(plan, 1)
+    if pushed_to is None:
+        _assert_filter_with(plan.dag, predicate)
+        join = plan.dag.input_dependencies[0]
+        assert isinstance(join, Join)
+        assert not any(isinstance(op, Filter) for op in join.input_dependencies)
+        _assert_num_filters(plan, 1)
+    else:
+        join = plan.dag
+        assert isinstance(join, Join), f"Expected no filter above the join: {plan.dag}"
+        side = 0 if pushed_to == "left" else 1
+        _assert_filter_with(join.input_dependencies[side], col("val") == target)
+        assert not isinstance(join.input_dependencies[1 - side], Filter)
+        _assert_num_filters(plan, 1)
 
     expected_pd = left_ds.to_pandas().merge(
         right_ds.to_pandas(),
         on="k",
         how="inner" if join_type == "inner" else "right",
-        suffixes=("", "_r"),
+        suffixes=(left_suffix, right_suffix),
     )
-    expected_pd = expected_pd[expected_pd["val"] == 1].reset_index(drop=True)
-    assert len(expected_pd) == 1  # k == 1: left val 1, right val_r 11
-    # A right outer join emits the left payload before the key; compare by name.
+    expected_pd = expected_pd[expected_pd[column] == target].reset_index(drop=True)
+    assert len(expected_pd) == 1
     assert rows_same(filtered_ds.to_pandas()[list(expected_pd.columns)], expected_pd)
 
 

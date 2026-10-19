@@ -1291,29 +1291,22 @@ def test_limit_over_partition_filter_without_partitioning_spec(
     assert pushdown.partition_pruner is None
 
 
-def test_disjunction_over_two_joined_scans_prunes_both_reads(
-    ray_start_regular_shared, tmp_path
-):
-    """TPC-H q7 shape on real Parquet reads (#66832).
-
-    ``nation`` is read twice (supplier's nation and customer's nation), each
-    read renamed so the two sides don't collide, and the final filter is an
-    ``OR`` referencing both. The ``OR`` itself can't move, but each read ends
-    up with the weaker predicate it implies, rebound through the rename back
-    to the scan's own column name.
-    """
-    from ray.data._internal.logical.interfaces import (
-        LogicalOperatorSupportsPredicatePushdown,
-    )
-
+def _write_q7_tables(tmp_path, partition_nation_by_name: bool):
+    """A ``nation`` table and a (supplier nation, customer nation) fact table;
+    only the FRANCE<->GERMANY pairs (volumes 10 and 20) satisfy q7's filter."""
     nations = ["FRANCE", "GERMANY", "JAPAN", "BRAZIL"]
-    nation_path = tmp_path / "nation.parquet"
-    pq.write_table(
-        pa.table({"n_nationkey": list(range(len(nations))), "n_name": nations}),
-        nation_path,
+    nation_table = pa.table(
+        {"n_nationkey": list(range(len(nations))), "n_name": nations}
     )
+    nation_path = tmp_path / "nation"
+    if partition_nation_by_name:
+        pq.write_to_dataset(
+            nation_table, root_path=str(nation_path), partition_cols=["n_name"]
+        )
+    else:
+        nation_path.mkdir()
+        pq.write_table(nation_table, nation_path / "nation.parquet")
     trade_path = tmp_path / "trade.parquet"
-    # (supplier nation, customer nation) pairs; only FRANCE<->GERMANY survive.
     pq.write_table(
         pa.table(
             {
@@ -1324,11 +1317,34 @@ def test_disjunction_over_two_joined_scans_prunes_both_reads(
         ),
         trade_path,
     )
+    return nation_path, trade_path
 
-    supp_nation = ray.data.read_parquet(str(nation_path)).rename_columns(
+
+@pytest.mark.parametrize("hive_partitioned", [False, True], ids=["plain", "hive"])
+def test_disjunction_over_two_joined_scans_prunes_both_reads(
+    ray_start_regular_shared, tmp_path, hive_partitioned
+):
+    """TPC-H q7 shape on real Parquet reads (#66832).
+
+    ``nation`` is read twice (supplier's nation and customer's nation), each
+    read renamed so the two sides don't collide, and the final filter is an
+    ``OR`` referencing both. The ``OR`` itself can't move, but each read ends
+    up with the weaker predicate it implies, rebound through the rename back
+    to the scan's own column name. With ``nation`` hive-partitioned by
+    ``n_name`` the derived predicate prunes partitions instead of rows.
+    """
+    from ray.data._internal.logical.interfaces import (
+        LogicalOperatorSupportsPredicatePushdown,
+    )
+    from ray.data.tests.test_util import assert_plans_structurally_equal
+
+    nation_path, trade_path = _write_q7_tables(tmp_path, hive_partitioned)
+    read_kwargs = {"partitioning": Partitioning("hive")} if hive_partitioned else {}
+
+    supp_nation = ray.data.read_parquet(str(nation_path), **read_kwargs).rename_columns(
         {"n_nationkey": "supp_nation", "n_name": "supp_nation_name"}
     )
-    cust_nation = ray.data.read_parquet(str(nation_path)).rename_columns(
+    cust_nation = ray.data.read_parquet(str(nation_path), **read_kwargs).rename_columns(
         {"n_nationkey": "cust_nation", "n_name": "cust_nation_name"}
     )
     join_kwargs = dict(
@@ -1349,7 +1365,7 @@ def test_disjunction_over_two_joined_scans_prunes_both_reads(
     plan = LogicalOptimizer().optimize(ds._logical_plan)
     # Re-optimizing an optimized plan (what a second execution does) must be
     # a no-op; the derivation must not stack another predicate onto the scans.
-    assert LogicalOptimizer().optimize(plan).dag.dag_str == plan.dag.dag_str
+    assert_plans_structurally_equal(LogicalOptimizer().optimize(plan), plan)
 
     assert isinstance(plan.dag, Filter)
     assert plan.dag.predicate_expr.structurally_equals(predicate)

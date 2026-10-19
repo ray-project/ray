@@ -57,6 +57,49 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
 # These provide type-safe alternatives to string-based plan matching
 
 
+def assert_plans_structurally_equal(actual: LogicalPlan, expected: LogicalPlan) -> None:
+    """Assert two logical plans have the same operators in post order, with
+    structurally equal Filter predicates and read predicates.
+
+    ``dag_str`` is not enough for this: it omits the predicate a read pushed
+    into its scanner and truncates long expressions.
+    """
+    from ray.data._internal.logical.interfaces import (
+        LogicalOperatorSupportsPredicatePushdown,
+    )
+    from ray.data._internal.logical.operators import Filter
+
+    actual_ops = list(actual.dag.post_order_iter())
+    expected_ops = list(expected.dag.post_order_iter())
+    assert len(actual_ops) == len(expected_ops), (
+        f"Different number of operators:\n{actual.dag.dag_str}\n"
+        f"{expected.dag.dag_str}"
+    )
+    for actual_op, expected_op in zip(actual_ops, expected_ops):
+        assert type(actual_op) is type(expected_op) and (
+            actual_op.name == expected_op.name
+        ), f"{actual_op} != {expected_op}"
+        if isinstance(actual_op, Filter) and actual_op.predicate_expr is not None:
+            assert expected_op.predicate_expr is not None
+            assert actual_op.predicate_expr.structurally_equals(
+                expected_op.predicate_expr
+            ), f"{actual_op.predicate_expr!r} != {expected_op.predicate_expr!r}"
+        if (
+            isinstance(actual_op, LogicalOperatorSupportsPredicatePushdown)
+            and actual_op.supports_predicate_pushdown()
+        ):
+            actual_pred = actual_op.get_current_predicate()
+            expected_pred = expected_op.get_current_predicate()
+            if actual_pred is None or expected_pred is None:
+                assert (
+                    actual_pred is None and expected_pred is None
+                ), f"{actual_pred!r} != {expected_pred!r}"
+            else:
+                assert actual_pred.structurally_equals(
+                    expected_pred
+                ), f"{actual_pred!r} != {expected_pred!r}"
+
+
 def plan_has_operator(plan: LogicalPlan, op_type: Type[LogicalOperator]) -> bool:
     """Check if plan contains at least one operator of given type.
 
