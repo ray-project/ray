@@ -2858,8 +2858,10 @@ cdef void gc_collect() nogil:
             if RayConfig.instance().start_python_gc_manager_thread():
                 worker = ray._private.worker.global_worker
                 core_worker = getattr(worker, "core_worker", None)
-                # LocalGC can arrive before CoreWorker construction has returned
-                # and worker.core_worker has been assigned.
+                # LocalGC can arrive after the worker announces its port to the
+                # raylet but before worker.core_worker is assigned. Skipping is
+                # safe: no task has run yet, so there are no ObjectRefs or actor
+                # handles for a Ray-triggered GC to free.
                 if core_worker is None:
                     return
                 start = time.perf_counter()
@@ -2875,8 +2877,10 @@ cdef void gc_collect() nogil:
                         "gc.collect() freed {} refs in {} seconds".format(
                             num_freed, end - start))
         except BaseException:
-            # This callback runs on a C++ thread without a Python caller to
-            # receive exceptions, including SystemExit and KeyboardInterrupt.
+            # This is here for defensive measure. No known path raises here.
+            # This callback runs on a C++ thread with no Python caller, so any
+            # escaping exception (including SystemExit and KeyboardInterrupt)
+            # crashes the process.
             logger.exception("Error during garbage collection")
 
 
