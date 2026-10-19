@@ -552,6 +552,7 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+    max_surge_percent: Default[int] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -641,6 +642,17 @@ def deployment(
         rolling_update_percentage: The fraction of replicas to update at a
             time during a rolling update. Must be in ``(0.0, 1.0]``.
             Defaults to ``0.2`` (20%).
+        max_surge_percent: Extra replicas allowed during a rolling restart,
+            as a percentage of the target count. Must be in ``[0, 100]``;
+            rounds up to whole replicas or gangs. With a positive value, old
+            replicas keep serving until replacements are ready. Stopping
+            replicas do not count toward the limit, so live actors and resource
+            usage can exceed the target plus surge while old replicas drain.
+            Lightweight configuration changes to replicas on the new code wait
+            until restarts finish. During a surge, replacement ranks may be at
+            or above ``world_size``. Ranks are reassigned after the deployment
+            becomes healthy. Defaults to ``0``, which stops old replicas before
+            starting replacements.
 
     Returns:
         `Deployment`
@@ -724,6 +736,7 @@ def deployment(
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
         rolling_update_percentage=rolling_update_percentage,
+        max_surge_percent=max_surge_percent,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

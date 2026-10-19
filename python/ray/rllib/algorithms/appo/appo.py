@@ -181,8 +181,8 @@ class APPOConfig(IMPALAConfig):
         circular_buffer_iterations_per_batch: Optional[int] = NotProvided,
         simple_queue_size: Optional[int] = NotProvided,
         # Deprecated keys.
-        target_update_frequency=DEPRECATED_VALUE,
-        use_critic=DEPRECATED_VALUE,
+        target_update_frequency: Optional[int] = DEPRECATED_VALUE,
+        use_critic: Optional[bool] = DEPRECATED_VALUE,
         **kwargs,
     ) -> Self:
         """Sets the training related configuration.
@@ -211,13 +211,11 @@ class APPOConfig(IMPALAConfig):
                 learner).
                 The authors in [1] suggests that this setting is robust to a range of
                 choices (try values between 0.125 and 4).
-            target_network_update_freq: The frequency to update the target policy and
-                tune the kl loss coefficients that are used during training. After
-                setting this parameter, the algorithm waits for at least
-                `target_network_update_freq` number of environment samples to be trained
-                on before updating the target networks and tune the kl loss
-                coefficients. NOTE: This parameter is only applicable when using the
-                Learner API (enable_rl_module_and_learner=True).
+                This setting also controls how often the kl loss coefficients are
+                tuned: The algorithm waits for at least
+                `target_network_update_freq` number of environment samples to be
+                trained on before updating the target networks and tuning the kl
+                loss coefficients.
             tau: The factor by which to update the target policy network towards
                 the current policy network. Can range between 0 and 1.
                 e.g. updated_param = tau * current_param + (1 - tau) * target_param
@@ -237,6 +235,11 @@ class APPOConfig(IMPALAConfig):
                 being sampled.
             simple_queue_size: The size of the simple queue (if `use_circular_buffer`
                 is False) for storing training batches.
+            target_update_frequency: Deprecated. Use `target_network_update_freq`
+                instead.
+            use_critic: Deprecated. APPO always uses a value function (critic).
+            **kwargs: Additional config settings, forwarded to the parent
+                `IMPALAConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.

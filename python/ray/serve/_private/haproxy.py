@@ -79,10 +79,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
-    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
@@ -94,6 +94,10 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy import (
     ProxyActorInterface,
     apply_per_node_port_overrides,
+)
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
 )
 from ray.serve._private.utils import get_head_node_id, is_grpc_enabled
 from ray.serve.config import HTTPOptions, gRPCOptions
@@ -1271,10 +1275,7 @@ class HAProxyApi(ProxyApi):
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
-            # HAProxy's req_get_headers() returns lowercase header keys,
-            # so lowercase here for the Lua lookup. Empty string disables
-            # forwarding entirely.
-            SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
             METRICS_PRE_CALL_ROUTER=metrics_pre,
@@ -1740,7 +1741,11 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
+        self._target_groups_version: Optional[RoutingConfigVersion] = None
         self._received_target_groups_broadcast = False
+        # Last target groups installed by a successful HAProxy reload.
+        self._applied_target_groups: Optional[List[TargetGroup]] = None
+        self._applied_target_groups_version: Optional[RoutingConfigVersion] = None
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1903,7 +1908,11 @@ class HAProxyManager(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the HAProxy process to be ready to serve requests."""
         if not wait_for_applications_running:
             return
@@ -1920,6 +1929,22 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
+            # Desired target groups may have a pending HAProxy reload.
+            target_groups = self._applied_target_groups
+            if target_groups is None:
+                await asyncio.sleep(0.2)
+                continue
+
+            if expected_routing_config_version is not None:
+                if (
+                    self._applied_target_groups_version is None
+                    or not self._applied_target_groups_version.is_at_least(
+                        expected_routing_config_version
+                    )
+                ):
+                    await asyncio.sleep(0.2)
+                    continue
+
             # When gRPC is used, haproxy relies on the fallback serve proxy to
             # handle ListApplications requests, so we block until HAProxy reprots
             # an UP server in grpc_fallback_backend.
@@ -1934,7 +1959,7 @@ class HAProxyManager(ProxyActorInterface):
                 self._generate_backend_name(tg): {
                     self._generate_server_name(target) for target in tg.targets
                 }
-                for tg in self._target_groups
+                for tg in target_groups
             }
             fallback_servers = {
                 self._generate_server_name(target)
@@ -2116,8 +2141,11 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy.reload()
 
     async def _update_haproxy_backends(self) -> None:
+        # Preserve the exact target groups installed by this reload.
+        target_groups = self._target_groups
+        target_groups_version = self._target_groups_version
         backend_configs = []
-        for target_group in self._target_groups:
+        for target_group in target_groups:
             fallback_target = None
             if target_group.protocol == RequestProtocol.HTTP:
                 fallback_target = self._http_fallback_target
@@ -2146,9 +2174,12 @@ class HAProxyManager(ProxyActorInterface):
         self._haproxy.set_grpc_fallback_server(grpc_fallback_server)
 
         await self._reload_haproxy()
+        self._applied_target_groups = target_groups
+        self._applied_target_groups_version = target_groups_version
 
-    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
-        self._target_groups = target_groups
+    def update_target_groups(self, routing_config: RoutingConfigSnapshot) -> None:
+        self._target_groups = routing_config.target_groups
+        self._target_groups_version = routing_config.version
         self._received_target_groups_broadcast = True
         self._schedule_haproxy_update()
 

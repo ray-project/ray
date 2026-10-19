@@ -1,4 +1,4 @@
-from typing import Optional, Type, Union
+from typing import Any, Optional, Type, Union
 
 from typing_extensions import Self
 
@@ -241,6 +241,8 @@ class MARWILConfig(AlgorithmConfig):
             grad_clip: If specified, clip the global norm of gradients by this amount.
             burnin_len: Number of initial time steps to "burn in" when using
                 RNNs. These time steps will not be included in the training loss.
+            **kwargs: Additional config settings, forwarded to the parent
+                `AlgorithmConfig.training()` method.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -296,9 +298,14 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def evaluation(
         self,
-        **kwargs,
+        **kwargs: Any,
     ) -> Self:
         """Sets the evaluation related configuration.
+
+        Args:
+            **kwargs: Evaluation config settings, forwarded to the parent
+                `AlgorithmConfig.evaluation()` method.
+
         Returns:
             This updated AlgorithmConfig object.
         """

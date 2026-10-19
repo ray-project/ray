@@ -520,7 +520,7 @@ def test_partition_writer_combine_path():
 
     # (1) non-extension -> native; frame round-trips to the combined table.
     buf = io.BytesIO()
-    w = _PartitionWriter(buf, map_id=0, compression="zstd")
+    w = _PartitionWriter(buf, map_id=0, compression="lz4")
     w.add_shard(0, pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
     w.add_shard(0, pa.table({"a": [4, 5], "b": ["p", "q"]}))
     w.flush_all()

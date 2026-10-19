@@ -109,7 +109,7 @@ class RunningStat:
         other.sum_sq_diff_delta_array = np.copy(self.sum_sq_diff_delta_array)
         return other
 
-    def push(self, x):
+    def push(self, x: np.ndarray) -> None:
         """Updates a `RunningStat` instance by a new value.
 
         Args:
@@ -117,7 +117,7 @@ class RunningStat:
                 same shape like the mean.
 
         Raises:
-            `ValueError` in case of a shape mismatch.
+            ValueError: In case of a shape mismatch.
         """
         x = np.asarray(x)
         if x.shape != self.mean_array.shape:
@@ -150,7 +150,7 @@ class RunningStat:
             # Update the mean sum of squares.
             self.sum_sq_diff_delta_array[...] += delta * (x - self.mean_array)
 
-    def update(self, other):
+    def update(self, other: "RunningStat") -> None:
         """Update this `RunningStat` instance by another one.
 
         Args:
@@ -309,6 +309,8 @@ class MeanStdFilter(Filter):
             other: Other filter to apply info from
             with_buffer: Flag for specifying if the buffer should be
                 copied from other.
+            *args: Ignored, for compatibility with the `Filter` API.
+            **kwargs: Ignored, for compatibility with the `Filter` API.
 
         .. testcode::
             :skipif: True

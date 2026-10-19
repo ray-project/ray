@@ -156,8 +156,12 @@ class FootsiesEnv(MultiAgentEnv):
         """Resets the environment to the starting state
         and returns the initial observations for all agents.
 
-        :return: Tuple of observations and infos for each agent.
-        :rtype: tuple[dict[AgentID, ObsType], dict[AgentID, Any]]
+        Args:
+            seed: Unused. The underlying game does not support seeding.
+            options: Unused. The underlying game takes no reset options.
+
+        Returns:
+            Tuple of observations and infos for each agent.
         """
         self.t = 0
         self.game.reset_game()
@@ -181,10 +185,12 @@ class FootsiesEnv(MultiAgentEnv):
     ]:
         """Step the environment with the provided actions for all agents.
 
-        :param actions: Dictionary mapping agent ids to their actions for this step.
-        :type actions: dict[AgentID, ActionType]
-        :return: Tuple of observations, rewards, terminates, truncateds and infos for all agents.
-        :rtype: tuple[ dict[AgentID, ObsType], dict[AgentID, float], dict[AgentID, bool], dict[AgentID, bool], dict[AgentID, dict[str, Any]], ]
+        Args:
+            actions: Dictionary mapping agent ids to their actions for this step.
+
+        Returns:
+            Tuple of observations, rewards, terminateds, truncateds and infos
+            for all agents.
         """
         self.t += 1
 

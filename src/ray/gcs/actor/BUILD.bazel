@@ -8,6 +8,11 @@ ray_cc_library(
     hdrs = [
         "gcs_actor.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:lease",
@@ -34,6 +39,11 @@ ray_cc_library(
     hdrs = [
         "gcs_actor_scheduler.h",
     ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         ":gcs_actor",
         "//src/ray/asio:instrumented_io_context",
@@ -56,6 +66,7 @@ ray_cc_library(
     name = "fake_gcs_actor_manager",
     testonly = True,
     hdrs = ["fake_gcs_actor_manager.h"],
+    visibility = ["//src/ray/gcs/tests:__pkg__"],
     deps = [
         ":gcs_actor_manager",
         "//src/ray/asio:instrumented_io_context",
@@ -74,6 +85,11 @@ ray_cc_library(
     ],
     hdrs = [
         "gcs_actor_manager.h",
+    ],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
     ],
     deps = [
         ":gcs_actor",

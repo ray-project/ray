@@ -26,6 +26,11 @@ def convert_numpy_to_python_primitives(obj: Any):
 
     Args:
         obj: The object to convert.
+
+    Returns:
+        The object with all contained numpy scalars/arrays recursively converted
+        into their python primitive equivalents (dicts, tuples and lists are
+        traversed).
     """
     if isinstance(obj, dict):
         return {
@@ -218,7 +223,7 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     """De-serialize a dict into gym Space.
 
     Args:
-        str: serialized JSON str.
+        d: The serialized gym space (as returned by `gym_space_to_dict`).
 
     Returns:
         De-serialized gym space.
@@ -336,7 +341,7 @@ def check_if_args_kwargs_serializable(args: Sequence[Any], kwargs: Dict[str, Any
         kwargs: keyword arguments to be checked.
 
     Raises:
-        NoteSerializable if either args are kwargs are not serializable
+        NotSerializable: If either `args` or `kwargs` are not serializable
             by ray.
     """
     for arg in args:

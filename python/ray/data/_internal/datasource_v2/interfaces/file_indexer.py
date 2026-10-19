@@ -37,6 +37,11 @@ class FileIndexer(ABC):
         Default ``None`` means "cannot provide it", so such consumers decline
         and fall back to a real read. Fail-closed on purpose: a wrong ``count()``
         is silent, a declined optimization is merely slower.
+
+        Override this when your indexer splits files or reads metadata while
+        listing but can still produce a plain one-row-per-file listing.
+        ``NonSamplingFileIndexer`` does this by returning a base instance
+        with the same traversal settings.
         """
         return None
 
@@ -56,6 +61,11 @@ class FileIndexer(ABC):
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
+
+        Implement this directly only for a source that finds its own data
+        through a catalog or database. File formats extend
+        ``NonSamplingFileIndexer`` instead and override its ``list_files``
+        when per-piece metadata is worth reading.
 
         Args:
             paths: A column of paths pointing to files or directories.
@@ -110,6 +120,30 @@ class FileIndexer(ABC):
         manifest rows.
         """
         ...
+
+    def list_files_from_file_infos(
+        self,
+        file_infos: Iterable["FileInfo"],
+        *,
+        filesystem: Optional["FileSystem"],
+        preserve_order: bool = False,
+        predicate: Optional["Expr"] = None,
+        limit: Optional[int] = None,
+        projected_columns: Optional[List[str]] = None,
+        shuffle_config: Optional["FileShuffleConfig"] = None,
+        execution_idx: int = 0,
+        excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
+    ) -> Iterable[FileManifest]:
+        """Process a previously discovered, filtered stream of file infos.
+
+        File-based indexers can implement this to reuse one planning-time
+        listing during execution. The input keeps discovery order; a file shuffle
+        may reorder it, while ``preserve_order`` governs metadata result order.
+        Metadata-backed indexers need not support it.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} cannot process prelisted file infos"
+        )
 
 
 @dataclass(frozen=True)
