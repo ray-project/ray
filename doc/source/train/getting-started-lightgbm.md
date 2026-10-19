@@ -35,9 +35,9 @@ trainer = LightGBMTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the Python code that executes on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-1. {class}`~ray.train.lightgbm.LightGBMTrainer` launches the distributed training job.
+- `train_func` is the Python code that executes on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+- {class}`~ray.train.lightgbm.LightGBMTrainer` launches the distributed training job.
 
 Compare a LightGBM training script with and without Ray Train.
 
@@ -252,9 +252,9 @@ For details, see {ref}`data-ingest-torch`.
 
 Outside your training function, create a {class}`~ray.train.ScalingConfig` object to configure the following:
 
-1. {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
-1. {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU or a CPU.
-1. {class}`resources_per_worker <ray.train.ScalingConfig>`: The number of CPUs or GPUs per worker.
+- {class}`num_workers <ray.train.ScalingConfig>`: The number of distributed training worker processes.
+- {class}`use_gpu <ray.train.ScalingConfig>`: Whether each worker uses a GPU or a CPU.
+- {class}`resources_per_worker <ray.train.ScalingConfig>`: The number of CPUs or GPUs per worker.
 
 ```{testcode}
 from ray.train import ScalingConfig

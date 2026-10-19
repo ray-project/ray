@@ -12,7 +12,7 @@ This tutorial shows you how to convert an existing Hugging Face Transformers scr
 
 In this guide, you learn how to do the following:
 
-1. Configure a {ref}`training function <train-overview-training-function>` that reports metrics and saves checkpoints.
+1. Configure a {ref}`training function <train-overview-training-function>` that saves checkpoints so that training can recover from failures.
 1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for your distributed training job.
 1. Launch a distributed training job with {class}`~ray.train.torch.TorchTrainer`.
 
@@ -47,9 +47,9 @@ result = trainer.fit()
 
 The code has three key components:
 
-1. `train_func`: Python code that runs on each distributed training worker.
-1. {class}`~ray.train.ScalingConfig`: Defines the number of distributed training workers and GPU usage.
-1. {class}`~ray.train.torch.TorchTrainer`: Launches and manages the distributed training job.
+- `train_func`: Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig`: Defines the number of distributed training workers and GPU usage.
+- {class}`~ray.train.torch.TorchTrainer`: Launches and manages the distributed training job.
 
 (code-comparison-hugging-face-transformers-vs-ray-train-integration)=
 
@@ -238,9 +238,9 @@ When you use Hugging Face Datasets or Evaluate, always call `datasets.load_datas
 :::
 
 
-### Report checkpoints and metrics
+### Save checkpoints for fault tolerance
 
-To persist checkpoints and monitor training progress, add a {class}`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Transformers `Trainer`:
+To persist checkpoints so that training can recover from failures, add a {class}`ray.train.huggingface.transformers.RayTrainReportCallback` utility callback to your Transformers `Trainer`:
 
 
 ```diff
@@ -260,7 +260,7 @@ Report metrics and checkpoints to Ray Train to integrate with Ray Tune and suppo
 
 ### Prepare a Transformers `Trainer`
 
-Pass your Transformers `Trainer` to {meth}`~ray.train.huggingface.transformers.prepare_trainer` to validate its configurations and integrate it with Ray Data:
+Pass your Transformers `Trainer` to {meth}`~ray.train.huggingface.transformers.prepare_trainer` to integrate it with Ray Data:
 
 
 ```diff

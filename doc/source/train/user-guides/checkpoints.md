@@ -12,8 +12,8 @@ Save snapshots of training progress with Ray Train {class}`Checkpoints <ray.trai
 
 Use checkpoints for the following:
 
+- **Fault tolerance:** Handle worker process and node failures in a long-running training job, and use preemptible machines. When you {ref}`enable worker fault tolerance <train-worker-fault-tolerance>`, Ray Train restarts the workers after a failure, and a training function that {ref}`loads the latest checkpoint <train-dl-loading-checkpoints>` resumes from it.
 - **Storing the best-performing model weights:** Save your model to persistent storage, and use it for downstream serving or inference.
-- **Fault tolerance:** Handle worker process and node failures in a long-running training job, and use preemptible machines.
 - **Distributed checkpointing:** {ref}`Upload model shards from multiple workers in parallel <train-distributed-checkpointing>`.
 
 (train-dl-saving-checkpoints)=
@@ -38,8 +38,9 @@ To save a checkpoint in the training loop, do the following:
 
 1. Report the checkpoint to Ray Train using {func}`ray.train.report(metrics, checkpoint=...) <ray.train.report>`.
 
-   - Ray Train uses the metrics you report alongside the checkpoint to {ref}`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
    - This call uploads the checkpoint to persistent storage, if configured. See {ref}`persistent-storage-guide`.
+   - After a failure, {func}`ray.train.get_checkpoint` returns the latest reported checkpoint so that the training function can resume from it. See {ref}`train-dl-loading-checkpoints`.
+   - Ray Train uses the metrics you report alongside the checkpoint to {ref}`keep track of the best-performing checkpoints <train-dl-configure-checkpoints>`.
 
 
 ```{figure} ../images/checkpoint_lifecycle.png
@@ -221,7 +222,7 @@ To start the next training step while the checkpoint uploads, use `ray.train.Che
 
 Each `report` call blocks until the previous call's checkpoint upload completes, then starts a new checkpoint upload thread. Ray Train does this to avoid accumulating too many upload threads and potentially running out of memory.
 
-Because `report` returns without waiting for the checkpoint upload to complete, you must keep the local checkpoint directory alive until the checkpoint upload completes. You can't use a temporary directory that Ray Train may delete before the upload finishes, for example from `tempfile.TemporaryDirectory`. `report` also has a `delete_local_checkpoint_after_upload` parameter, which defaults to `True` if `checkpoint_upload_mode` is `ray.train.CheckpointUploadMode.ASYNC`.
+Because `report` returns before the checkpoint upload completes, keep the local checkpoint directory alive until the upload finishes. Don't write the checkpoint to a `tempfile.TemporaryDirectory`, because Python deletes that directory when its `with` block exits, which can happen before the upload finishes. A `tempfile.TemporaryDirectory` works with `ray.train.CheckpointUploadMode.SYNC`, because `report` returns only after the upload completes. The following example uses `tempfile.mkdtemp` instead. `report` also has a `delete_local_checkpoint_after_upload` parameter, which defaults to `True` with `ray.train.CheckpointUploadMode.ASYNC`, so Ray Train deletes the local checkpoint directory after the upload completes.
 
 ```{literalinclude} ../doc_code/checkpoints.py
 :language: python
