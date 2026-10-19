@@ -341,6 +341,7 @@ steps:
     depends_on: datamongobuild-multipy
 
   - label: ":database: data: HiveServer2 integration tests"
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
     instance_type: medium
