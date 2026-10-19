@@ -1064,10 +1064,7 @@ class RequestRouter(ABC):
                     # the same as ActorDiedError — the replica is gone and
                     # should not be considered for future requests.
                     self.on_replica_actor_died(replica.replica_id)
-                    msg += (
-                        " This replica will no longer be considered for "
-                        "requests."
-                    )
+                    msg += " This replica will no longer be considered for " "requests."
 
                 logger.warning(msg)
             else:

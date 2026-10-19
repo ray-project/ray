@@ -1122,9 +1122,7 @@ class AsyncioRouter:
             # so we treat it identically to ActorDiedError — drop the
             # replica from rotation and retry with another.
             if replica is not None:
-                self._active_request_router.on_replica_actor_died(
-                    replica.replica_id
-                )
+                self._active_request_router.on_replica_actor_died(replica.replica_id)
                 logger.warning(
                     f"{replica.replica_id} actor handle lookup failed "
                     "(ValueError); marking as dead."
