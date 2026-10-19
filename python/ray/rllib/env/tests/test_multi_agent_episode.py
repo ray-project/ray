@@ -566,6 +566,22 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
         self.assertTrue(episode.is_terminated)
 
+    def test_add_env_step_without_observations_keeps_episode_open(self):
+        # A step in which the only live agent does not observe must not end the
+        # episode. Catches a Case 2 check that only looks at `observations`.
+        episode = MultiAgentEpisode(agent_module_ids={"a0": "p"})
+        episode.add_env_reset(
+            observations={"a0": np.zeros(1, np.float32)}, infos={"a0": {}}
+        )
+        episode.add_env_step(
+            observations={},
+            actions={"a0": 0},
+            rewards={},
+            terminateds={"__all__": False},
+            truncateds={"__all__": False},
+        )
+        self.assertFalse(episode.is_done)
+
     def test_get_observations(self):
         # Generate simple records for a multi agent environment.
         (
