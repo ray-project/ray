@@ -2986,6 +2986,197 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
 }
 
+namespace {
+
+NodeID PinnedAt(ReferenceCounterInterface &rc, const ObjectID &object_id) {
+  bool owned_by_us = false;
+  NodeID pinned_at;
+  bool spilled = false;
+  RAY_CHECK(
+      rc.IsPlasmaObjectPinnedOrSpilled(object_id, &owned_by_us, &pinned_at, &spilled));
+  return pinned_at;
+}
+
+}  // namespace
+
+/// A move picks the previous primary's copy to free once, and recovery skips
+/// that copy until its node reports it removed.
+TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMoved) {
+  const ObjectID id = ObjectID::FromRandom();
+  const NodeID producer = NodeID::FromRandom();
+  const NodeID consumer = NodeID::FromRandom();
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true,
+                     std::optional<NodeID>(producer));
+  rc->AddObjectLocation(id, producer);
+  rc->AddObjectLocation(id, consumer);
+
+  EXPECT_EQ(rc->UpdateObjectPrimaryMoved(id, consumer), producer);
+  EXPECT_EQ(PinnedAt(*rc, id), consumer);
+  EXPECT_EQ(*rc->GetObjectLocations(id),
+            (absl::flat_hash_set<NodeID>{producer, consumer}));
+  EXPECT_EQ(*rc->GetObjectLocationsForRecovery(id),
+            absl::flat_hash_set<NodeID>{consumer});
+
+  // The same move reported again frees nothing: the previous primary is now
+  // the consumer's node.
+  EXPECT_EQ(rc->UpdateObjectPrimaryMoved(id, consumer), std::nullopt);
+  EXPECT_EQ(PinnedAt(*rc, id), consumer);
+
+  // Once the producer's node reports the copy removed, a later copy there is
+  // a location recovery may use again.
+  rc->RemoveObjectLocation(id, producer);
+  rc->AddObjectLocation(id, producer);
+  EXPECT_EQ(*rc->GetObjectLocationsForRecovery(id),
+            (absl::flat_hash_set<NodeID>{producer, consumer}));
+  rc->RemoveLocalReference(id, nullptr);
+}
+
+/// Nothing is freed while there is no primary, for example while recovery is
+/// in flight.
+TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMovedWithoutPrimary) {
+  const ObjectID id = ObjectID::FromRandom();
+  const NodeID consumer = NodeID::FromRandom();
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
+  EXPECT_EQ(rc->UpdateObjectPrimaryMoved(id, consumer), std::nullopt);
+  EXPECT_EQ(PinnedAt(*rc, id), consumer);
+  rc->RemoveLocalReference(id, nullptr);
+}
+
+/// When the consumer's node is already dead, nothing changes: the producer's
+/// copy was never freed and stays the primary, spilled or not.
+TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMovedToDeadNode) {
+  const NodeID producer = NodeID::FromRandom();
+  const NodeID consumer = NodeID::FromRandom();
+  auto publisher = std::make_shared<pubsub::FakePublisher>();
+  auto subscriber = std::make_shared<pubsub::FakeSubscriber>();
+  ray::observability::FakeGauge owned_object_count_metric;
+  ray::observability::FakeGauge owned_object_size_metric;
+  ReferenceCounter dead_consumer_rc(
+      rpc::Address(),
+      publisher.get(),
+      subscriber.get(),
+      /*is_node_dead=*/[&](const NodeID &node_id) { return node_id == consumer; },
+      /*free_object_on_nodes_async=*/
+      [](const ObjectID &, const absl::flat_hash_set<NodeID> &) {},
+      owned_object_count_metric,
+      owned_object_size_metric);
+  const ObjectID id = ObjectID::FromRandom();
+  dead_consumer_rc.AddOwnedObject(id,
+                                  {},
+                                  rpc::Address(),
+                                  "",
+                                  0,
+                                  LineageReconstructionEligibility::ELIGIBLE,
+                                  /*add_local_ref=*/true,
+                                  std::optional<NodeID>(producer));
+  dead_consumer_rc.AddObjectLocation(id, producer);
+  dead_consumer_rc.HandleObjectSpilled(id, "file://spill", producer);
+
+  EXPECT_EQ(dead_consumer_rc.UpdateObjectPrimaryMoved(id, consumer), std::nullopt);
+  EXPECT_EQ(PinnedAt(dead_consumer_rc, id), producer);
+  EXPECT_TRUE(dead_consumer_rc.FlushObjectsToRecover().empty());
+  rpc::WorkerObjectLocationsPubMessage object_info;
+  dead_consumer_rc.FillObjectInformation(id, &object_info);
+  EXPECT_EQ(object_info.spilled_url(), "file://spill");
+  EXPECT_EQ(*dead_consumer_rc.GetObjectLocationsForRecovery(id),
+            absl::flat_hash_set<NodeID>{producer});
+  dead_consumer_rc.RemoveLocalReference(id, nullptr);
+}
+
+/// The copy being freed becomes usable for recovery again when its node dies
+/// or the object is freed.
+TEST_F(ReferenceCountTest, TestCopyBeingFreedClearedOnNodeDeathAndFree) {
+  const NodeID consumer = NodeID::FromRandom();
+  const ObjectID died = ObjectID::FromRandom();
+  const NodeID died_producer = NodeID::FromRandom();
+  const ObjectID freed = ObjectID::FromRandom();
+  const NodeID freed_producer = NodeID::FromRandom();
+  for (const auto &[id, producer] :
+       {std::pair{died, died_producer}, std::pair{freed, freed_producer}}) {
+    rc->AddOwnedObject(id,
+                       {},
+                       rpc::Address(),
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/true,
+                       std::optional<NodeID>(producer));
+    rc->AddObjectLocation(id, producer);
+    ASSERT_EQ(rc->UpdateObjectPrimaryMoved(id, consumer), producer);
+    EXPECT_TRUE(rc->GetObjectLocationsForRecovery(id)->empty());
+  }
+
+  rc->ResetObjectsOnRemovedNode(died_producer);
+  // The primary is on the consumer's node, so nothing needs recovery.
+  EXPECT_TRUE(rc->FlushObjectsToRecover().empty());
+  rc->AddObjectLocation(died, died_producer);
+  EXPECT_EQ(*rc->GetObjectLocationsForRecovery(died),
+            absl::flat_hash_set<NodeID>{died_producer});
+
+  rc->FreePlasmaObjects({freed});
+  EXPECT_EQ(*rc->GetObjectLocationsForRecovery(freed),
+            absl::flat_hash_set<NodeID>{freed_producer});
+
+  for (const ObjectID &id : {died, freed}) {
+    rc->RemoveLocalReference(id, nullptr);
+  }
+}
+
+/// A primary spilled by the producer's node, to its own disk or to external
+/// storage, is deleted by the free, so its spill location is dropped. Then the
+/// producer's node dying leaves the consumer's primary alone.
+TEST_F(ReferenceCountTest, TestUpdateObjectPrimaryMovedDropsSpilledCopy) {
+  const NodeID producer = NodeID::FromRandom();
+  const NodeID consumer = NodeID::FromRandom();
+  const ObjectID on_disk = ObjectID::FromRandom();
+  const ObjectID external = ObjectID::FromRandom();
+  for (const ObjectID &id : {on_disk, external}) {
+    rc->AddOwnedObject(id,
+                       {},
+                       rpc::Address(),
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/true,
+                       std::optional<NodeID>(producer));
+  }
+  rc->HandleObjectSpilled(on_disk, "file://spill", producer);
+  rc->HandleObjectSpilled(external, "s3://spill", NodeID::Nil());
+
+  for (const ObjectID &id : {on_disk, external}) {
+    ASSERT_EQ(rc->UpdateObjectPrimaryMoved(id, consumer), producer);
+    bool owned_by_us = false;
+    NodeID pinned_at;
+    bool spilled = true;
+    ASSERT_TRUE(
+        rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
+    EXPECT_FALSE(spilled);
+    rpc::WorkerObjectLocationsPubMessage object_info;
+    rc->FillObjectInformation(id, &object_info);
+    EXPECT_EQ(object_info.spilled_url(), "");
+    EXPECT_TRUE(NodeID::FromBinary(object_info.spilled_node_id()).IsNil());
+  }
+
+  rc->ResetObjectsOnRemovedNode(producer);
+  EXPECT_TRUE(rc->FlushObjectsToRecover().empty());
+  EXPECT_EQ(PinnedAt(*rc, on_disk), consumer);
+  for (const ObjectID &id : {on_disk, external}) {
+    rc->RemoveLocalReference(id, nullptr);
+  }
+}
+
 TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
   // https://github.com/ray-project/ray/issues/18557.
   // Check that we track an ObjectRef nested inside another borrowed ObjectRef.

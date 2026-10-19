@@ -200,6 +200,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                   const NodeID &node_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
+  std::optional<NodeID> UpdateObjectPrimaryMoved(const ObjectID &object_id,
+                                                 const NodeID &node_id) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   bool IsPlasmaObjectPinnedOrSpilled(const ObjectID &object_id,
                                      bool *owned_by_us,
                                      NodeID *pinned_at,
@@ -225,6 +229,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::optional<absl::flat_hash_set<NodeID>> GetObjectLocations(
+      const ObjectID &object_id) override ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::optional<absl::flat_hash_set<NodeID>> GetObjectLocationsForRecovery(
       const ObjectID &object_id) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   void PublishObjectLocationSnapshot(const ObjectID &object_id) override
@@ -447,6 +454,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// If this object is owned by us and stored in plasma, this contains all
     /// object locations.
     absl::flat_hash_set<NodeID> locations;
+    /// Nodes whose copy is being freed because the object's primary moved away
+    /// from them. Recovery must not pin these copies: the free can land right
+    /// after the pin and delete the copy that is then recorded as the primary.
+    /// A node leaves the set when it reports the copy removed or dies, and the
+    /// set is cleared when the object goes out of scope.
+    absl::flat_hash_set<NodeID> locations_being_freed;
     /// Set once a raylet subscribes to this object's locations. This acts like a
     /// prefilter. Inline objects would never have a subscription, so those objects
     /// that never had one could skip all subscriber related operations and
