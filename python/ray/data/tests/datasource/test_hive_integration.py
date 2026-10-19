@@ -13,9 +13,6 @@ import pytest
 
 import ray
 import ray.data
-from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
-    _connect as connect_read_hive,
-)
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
@@ -67,6 +64,7 @@ def _make_connection_factory(options: _ConnectionOptions):
     def connection_factory():
         from impala.dbapi import connect
 
+        connect_kwargs = dict(options)
         password = None
         if options["auth_mechanism"] == "PLAIN":
             password = os.environ.get("HIVE_TEST_PASSWORD") or os.environ.get(
@@ -74,14 +72,22 @@ def _make_connection_factory(options: _ConnectionOptions):
             )
             if not password:
                 raise ValueError("PLAIN integration requires HIVE_TEST_PASSWORD")
+        elif options["auth_mechanism"] == "NOSASL":
+            connect_kwargs.pop("kerberos_service_name", None)
         return connect(
-            **options, password=password, verify_cert=options["use_ssl"], retries=1
+            **connect_kwargs,
+            password=password,
+            verify_cert=options["use_ssl"],
+            retries=1,
         )
 
     return connection_factory
 
 
 def _connect(options: _ConnectionOptions):
+    from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
+        _connect as connect_read_hive,
+    )
     return connect_read_hive(_make_connection_factory(options))
 
 
@@ -292,13 +298,78 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
 
     mismatched_host_options = options.copy()
     mismatched_host_options["host"] = wrong_host
-    with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
+    with pytest.raises(
+        RuntimeError,
+        match="HiveServer2 connection failed: TLS certificate verification failed due to hostname mismatch",
+    ):
         _connect(mismatched_host_options)
 
     untrusted_ca_options = options.copy()
     untrusted_ca_options["ca_cert"] = None
-    with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
+    with pytest.raises(
+        RuntimeError,
+        match="HiveServer2 connection failed: TLS certificate verification failed",
+    ):
         _connect(untrusted_ca_options)
+
+    # Verify driver-side metadata lookup fails closed with descriptive TLS error.
+    with pytest.raises(
+        RuntimeError,
+        match="TLS certificate verification failed",
+    ):
+        ray.data.read_hive(
+            "default.dummy_table",
+            connection_factory=_make_connection_factory(untrusted_ca_options),
+        )
+
+    # Verify worker-side data read fails closed with descriptive TLS error.
+    ray.init(num_cpus=2, include_dashboard=False)
+    try:
+        query_ds = ray.data.read_hive(
+            query="SELECT 1",
+            schema=pa.schema([("col", pa.int64())]),
+            connection_factory=_make_connection_factory(untrusted_ca_options),
+        )
+        with pytest.raises(Exception, match="TLS certificate verification failed"):
+            query_ds.take_all()
+    finally:
+        ray.shutdown()
+
+
+def test_hive_auth_rejects_invalid_credentials():
+    options = _connection_options()
+    if options["auth_mechanism"] == "NOSASL":
+        pytest.skip("NOSASL mode does not authenticate credentials")
+
+    invalid_options = options.copy()
+    if options["auth_mechanism"] == "PLAIN":
+
+        def invalid_factory():
+            from impala.dbapi import connect
+            from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
+                _connect as hs2_connect,
+            )
+
+            return hs2_connect(
+                lambda: connect(
+                    **{
+                        **invalid_options,
+                        "password": "wrong_password_test_reject",
+                        "verify_cert": invalid_options["use_ssl"],
+                        "retries": 1,
+                    }
+                )
+            )
+
+        with pytest.raises(
+            RuntimeError,
+            match="Authentication failed \\(missing or invalid credentials",
+        ):
+            invalid_factory()
+    elif options["auth_mechanism"] == "GSSAPI":
+        invalid_options["kerberos_service_name"] = "nonexistent_service_name"
+        with pytest.raises(RuntimeError, match="Kerberos/GSSAPI"):
+            _connect(invalid_options)
 
 
 if __name__ == "__main__":
