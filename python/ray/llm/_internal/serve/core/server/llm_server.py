@@ -29,6 +29,9 @@ from ray.llm._internal.serve.constants import (
     RAYLLM_VLLM_ENGINE_CLS_ENV,
     get_llm_serve_runtime_env,
 )
+from ray.llm._internal.serve.core.configs.accelerators import (
+    prepare_tpu_bundles_and_label_selector,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -831,6 +834,18 @@ class LLMServer(LLMServerProtocol):
             pg_bundles = _merge_replica_actor_and_child_actor_bundles(
                 engine_config.placement_bundles, replica_actor_resources
             )
+            if any(b.get("TPU", 0) > 0 for b in pg_bundles):
+                pg_bundles, label_selector = prepare_tpu_bundles_and_label_selector(
+                    pg_bundles, llm_config.accelerator_type
+                )
+                if (
+                    label_selector is not None
+                    and "placement_group_bundle_label_selector"
+                    not in deployment_options
+                ):
+                    deployment_options[
+                        "placement_group_bundle_label_selector"
+                    ] = label_selector
 
             deployment_options.update(
                 {

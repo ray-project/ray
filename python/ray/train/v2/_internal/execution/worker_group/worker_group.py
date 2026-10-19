@@ -384,7 +384,7 @@ class WorkerGroup(ExecutionGroup):
             # TODO: change after we support replica groups of size > 1.
             workers = self._create_workers(
                 worker_group_context.num_workers,
-                pg_handle.placement_group,
+                pg_handle.placement_groups,
                 worker_group_context.resources_per_worker,
                 replica_group_size=1 if self._manages_replica_groups else None,
             )
@@ -493,7 +493,7 @@ class WorkerGroup(ExecutionGroup):
     def _create_workers(
         self,
         num_workers: int,
-        placement_group: PlacementGroup,
+        placement_group: Union[PlacementGroup, List[PlacementGroup]],
         resources_per_worker: Dict[str, float],
         placement_group_bundle_indices: Optional[List[int]] = None,
         starting_world_rank: int = 0,
@@ -504,7 +504,8 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             num_workers: Number of workers to create.
-            placement_group: The placement group to schedule workers in.
+            placement_group: The placement group (or list of placement groups
+                for multi-slice TPU topologies) to schedule workers in.
             resources_per_worker: Resources per worker.
             placement_group_bundle_indices: Optional explicit bundle indices to use.
                 If None, uses range(num_workers).
@@ -529,6 +530,10 @@ class WorkerGroup(ExecutionGroup):
             if placement_group_bundle_indices is not None
             else list(range(num_workers))
         )
+        pgs = (
+            placement_group if isinstance(placement_group, list) else [placement_group]
+        )
+        bundles_per_pg = pgs[0].bundle_count if len(pgs) > 1 else None
 
         runtime_env = self._get_worker_runtime_env(
             custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
@@ -541,7 +546,12 @@ class WorkerGroup(ExecutionGroup):
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=placement_group, placement_group_bundle_index=i
+                    placement_group=pgs[i // bundles_per_pg]
+                    if bundles_per_pg
+                    else pgs[0],
+                    placement_group_bundle_index=i % bundles_per_pg
+                    if bundles_per_pg
+                    else i,
                 ),
             ).remote()
             for i in indices
@@ -663,22 +673,17 @@ class WorkerGroup(ExecutionGroup):
                     num_slices=worker_group_context.num_slices,
                     resources_per_bundle=worker_group_context.resources_per_worker,
                     strategy=worker_group_context.placement_strategy,
-                    head_reservation_timeout_s=self._worker_group_start_timeout_s,
+                    bundle_label_selector=(
+                        worker_group_context.label_selector
+                        if scaling_config.label_selector
+                        else None
+                    ),
                 )
 
                 return SlicePlacementGroupHandle(spg)
 
-            except TimeoutError as e:
-                # Unlike the default placement group path, ``SlicePlacementGroup``
-                # synchronously reserves a TPU head placement group inside its
-                # constructor and raises ``TimeoutError`` when the cluster does
-                # not yet have enough TPU capacity (e.g. autoscaler is still
-                # bringing up nodes). Convert this into the standard
-                # ``WorkerGroupStartupTimeoutError`` so the controller retries
-                # via SCHEDULING -> RESCHEDULING instead of failing the run.
-                raise WorkerGroupStartupTimeoutError(
-                    num_workers=worker_group_context.num_workers
-                ) from e
+            except ValueError:
+                raise
             except Exception as e:
                 raise WorkerGroupStartupFailedError(
                     f"Failed to reserve TPU slice(s): {e}"
@@ -975,10 +980,10 @@ class WorkerGroup(ExecutionGroup):
         ray.get(sync_actor.reset.remote())
 
         # Create new workers with old replica group state.
-        pg = self._worker_group_state.placement_group_handle.placement_group
+        pg_handle = self._worker_group_state.placement_group_handle
         new_workers = self._create_workers(
             num_workers=len(old_workers),
-            placement_group=pg,
+            placement_group=pg_handle.placement_groups,
             resources_per_worker=self._worker_group_context.resources_per_worker,
             placement_group_bundle_indices=old_placement_group_bundle_indices,
             # TODO: change after we support replica groups of size > 1.

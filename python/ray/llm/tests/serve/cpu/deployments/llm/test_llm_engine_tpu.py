@@ -80,7 +80,7 @@ def test_tpu_slice_placement_group_creation_host_resources(ray_tpu_cluster):
         assert isinstance(pg, PlacementGroup)
 
         pg_table = placement_group_table(pg)
-        assert pg_table["strategy"] == "STRICT_SPREAD"
+        assert pg_table["strategy"] == "PACK"
         # We should provision 4 host-level bundles instead of the default 16 chip-level bundles.
         assert len(pg_table["bundles"]) == 4
         for bundle in pg_table["bundles"].values():
@@ -114,6 +114,12 @@ def test_single_tpu_fallback(ray_tpu_cluster):
     # Verify it falls back to the default PACK strategy for 1 GPU/TPU
     assert len(pg_table["bundles"]) == 1
     assert pg_table["strategy"] == "PACK"
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert serve_options["placement_group_bundles"] == [{"CPU": 1, "GPU": 0, "TPU": 1}]
+    assert serve_options["placement_group_bundle_label_selector"] == [
+        {"ray.io/accelerator-type": "TPU-V6E"}
+    ]
 
     # Let the backend tear down its own resources if it has any
     engine_config.accelerator.shutdown()
@@ -250,26 +256,15 @@ def test_tpu_serve_deployment_default_host_level_bundles(ray_tpu_cluster):
         {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
     )
 
-    assert (
-        len(active_pgs) == 2
-    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
-
-    tpu_head_resource = "TPU-v6e-16-head"
-    head_pgs = [
-        pg
-        for pg in active_pgs
-        if len(pg["bundles"]) == 1
-        and tpu_head_resource in list(pg["bundles"].values())[0]
-    ]
-    assert len(head_pgs) == 1
-
-    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+    assert len(active_pgs) == 1, "Expected 1 topology-aware PG for the TPU slice"
+    worker_pg = active_pgs[0]
 
     assert worker_pg["strategy"] == "PACK"
     # 4x4 topology = 16 chips. Default is 4 bundles of 4 TPUs (per-host).
     assert len(worker_pg["bundles"]) == 4
     for bundle in worker_pg["bundles"].values():
         assert bundle.get("TPU", 0) == 4
+        assert "accelerator_type:TPU-V6E" not in bundle
 
     serve.shutdown()
 
@@ -295,26 +290,15 @@ def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
         {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
     )
 
-    assert (
-        len(active_pgs) == 2
-    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
-
-    tpu_head_resource = "TPU-v6e-16-head"
-    head_pgs = [
-        pg
-        for pg in active_pgs
-        if len(pg["bundles"]) == 1
-        and tpu_head_resource in list(pg["bundles"].values())[0]
-    ]
-    assert len(head_pgs) == 1
-
-    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+    assert len(active_pgs) == 1, "Expected 1 topology-aware PG for the TPU slice"
+    worker_pg = active_pgs[0]
 
     assert worker_pg["strategy"] == "PACK"
     # 4x4 topology = 16 chips. With 4 TPUs per bundle, expect exactly 4 bundles.
     assert len(worker_pg["bundles"]) == 4
     for bundle in worker_pg["bundles"].values():
         assert bundle.get("TPU", 0) == 4
+        assert "accelerator_type:TPU-V6E" not in bundle
 
     serve.shutdown()
 
@@ -340,26 +324,15 @@ def test_tpu_serve_deployment_explicit_per_chip_bundles(ray_tpu_cluster):
         {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
     )
 
-    assert (
-        len(active_pgs) == 2
-    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
-
-    tpu_head_resource = "TPU-v6e-16-head"
-    head_pgs = [
-        pg
-        for pg in active_pgs
-        if len(pg["bundles"]) == 1
-        and tpu_head_resource in list(pg["bundles"].values())[0]
-    ]
-    assert len(head_pgs) == 1
-
-    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+    assert len(active_pgs) == 1, "Expected 1 topology-aware PG for the TPU slice"
+    worker_pg = active_pgs[0]
 
     assert worker_pg["strategy"] == "PACK"
     # 4x4 topology = 16 chips. Explicitly requested 16 bundles of 1 TPU.
     assert len(worker_pg["bundles"]) == 16
     for bundle in worker_pg["bundles"].values():
         assert bundle.get("TPU", 0) == 1.0
+        assert "accelerator_type:TPU-V6E" not in bundle
 
     serve.shutdown()
 

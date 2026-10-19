@@ -1,8 +1,8 @@
 import logging
+import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, List, Union
 
-from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, remove_placement_group
 
 if TYPE_CHECKING:
@@ -25,13 +25,10 @@ class PlacementGroupHandle(ABC):
         """The underlying PlacementGroup for worker scheduling."""
         ...
 
-    @abstractmethod
-    def ready(self) -> ObjectRef:
-        """Returns an ObjectRef to check if the placement group is ready.
-
-        Compatible with ray.get() and ray.wait().
-        """
-        ...
+    @property
+    def placement_groups(self) -> List[PlacementGroup]:
+        """All underlying PlacementGroups for worker scheduling."""
+        return [self.placement_group]
 
     @abstractmethod
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
@@ -62,9 +59,6 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
     def placement_group(self) -> PlacementGroup:
         return self._pg
 
-    def ready(self) -> ObjectRef:
-        return self._pg.ready()
-
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:
             return self._pg.wait(timeout_seconds)
@@ -80,21 +74,35 @@ class DefaultPlacementGroupHandle(PlacementGroupHandle):
 
 
 class SlicePlacementGroupHandle(PlacementGroupHandle):
-    """Wrapper for SlicePlacementGroup that delegates to its underlying PlacementGroup."""
+    """Wrapper for SlicePlacementGroup that delegates to its underlying PlacementGroup(s)."""
 
     def __init__(self, spg: "SlicePlacementGroup"):
         self._spg = spg
 
     @property
-    def placement_group(self) -> PlacementGroup:
-        return self._spg.placement_group
+    def placement_groups(self) -> List[PlacementGroup]:
+        return self._spg.placement_groups
 
-    def ready(self) -> ObjectRef:
-        return self._spg.placement_group.ready()
+    @property
+    def placement_group(self) -> PlacementGroup:
+        pgs = self.placement_groups
+        if len(pgs) > 1:
+            raise ValueError(
+                f"Cannot access singular `placement_group` when managing {len(pgs)} slices. "
+                "Please use `placement_groups` instead."
+            )
+        return pgs[0]
 
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:
-            return self._spg.placement_group.wait(timeout_seconds)
+            pgs = self.placement_groups
+            if not pgs:
+                return False
+            deadline = time.monotonic() + timeout_seconds
+            for pg in pgs:
+                if not pg.wait(max(0.0, deadline - time.monotonic())):
+                    return False
+            return True
         except Exception:
             logger.warning(
                 "Slice placement group wait failed; treating as not ready.",

@@ -71,6 +71,52 @@ def test_scaling_config_accelerator_type():
     }
 
 
+def test_scaling_config_tpu_labels_and_resources():
+    scaling_config = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+    )
+    assert scaling_config._resources_per_worker_not_none == {"CPU": 1, "TPU": 4}
+    assert (
+        scaling_config._label_selector_per_worker(4)
+        == [{"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "4x4"}] * 4
+    )
+
+    shorthand_config = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology=" 2X2X2 ",
+        accelerator_type="tpu7x",
+    )
+    assert (
+        shorthand_config._label_selector_per_worker(2)
+        == [{"ray.io/accelerator-type": "TPU-V7X", "ray.io/tpu-topology": "2x2x2"}] * 2
+    )
+
+    single_worker_custom = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"CPU": 2},
+        label_selector={"market-type": "spot"},
+    )
+    assert single_worker_custom._resources_per_worker_not_none == {"CPU": 2, "TPU": 1}
+    assert single_worker_custom._label_selector_per_worker(1) == [
+        {"ray.io/accelerator-type": "TPU-V6E", "market-type": "spot"}
+    ]
+
+    topology_custom_cpu = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+        resources_per_worker={"CPU": 2},
+    )
+    assert topology_custom_cpu._resources_per_worker_not_none == {"CPU": 2, "TPU": 4}
+
+
 def test_scaling_config_tpu_min_workers_multiple():
     with pytest.raises(ValueError, match="min_workers"):
         ScalingConfig(
@@ -79,6 +125,17 @@ def test_scaling_config_tpu_min_workers_multiple():
             topology="2x2x2",
             accelerator_type="TPU-V4",
             resources_per_worker={"TPU": 4},
+        )
+
+    with pytest.raises(
+        ValueError, match="evenly divide the logical TPU devices per host"
+    ):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="4x4",
+            accelerator_type="TPU-V6E",
+            resources_per_worker={"TPU": 8},
         )
 
 
