@@ -40,7 +40,7 @@ llm_config = LLMConfig(
     ),
     accelerator_type="TPU-V6E",
     accelerator_config={"kind": "tpu", "topology": "4x4"},
-    # vLLM-TorchTPU runs one RayWorkerWrapper actor per logical TPU device.
+    # Run one vLLM worker actor per logical TPU device.
     placement_group_config={"bundle_per_worker": {"TPU": 1}},
     runtime_env={
         "env_vars": {

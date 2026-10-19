@@ -67,7 +67,7 @@ The executor then does the following:
 
 With the default topology-aware bundles, one vLLM worker actor maps to one TPU host and consumes all local TPU chips on that host. The worker process uses the chips across the multi-host slice. Otherwise, manually setting `{"TPU": 1}` results in the creation of one worker per chip.
 
-When serving with **vLLM-TorchTPU**, vLLM runs one worker actor per logical TPU device. Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` and `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env` on `LLMConfig`. For TPU7x configuration, see {ref}`TPU7x configuration <kuberay-tpu7x-dual-chiplet>`.
+When you serve with vLLM-TorchTPU, vLLM runs one worker actor per logical TPU device. Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` and `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env` on `LLMConfig`. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 
 ## Example
 

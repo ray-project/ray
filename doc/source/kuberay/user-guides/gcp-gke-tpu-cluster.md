@@ -21,7 +21,7 @@ export CLUSTER_VERSION=CLUSTER_VERSION
 Replace the following:
 - CLUSTER_NAME: The name of the GKE cluster to be created.
 - ZONE: The zone with available TPU quota, for a list of TPU availability by zones, see the [GKE documentation](https://cloud.google.com/tpu/docs/regions-zones).
-- CLUSTER_VERSION: The GKE version to use. TPU v6e is supported in GKE versions 1.31.2-gke.1115000 or later, and TPU7x is supported in GKE versions 1.34.1-gke.2541000 or later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
+- CLUSTER_VERSION: The GKE version to use. GKE supports TPU v6e in version 1.31.2-gke.1115000 and later, and TPU7x in version 1.34.1-gke.2541000 and later. See the [GKE documentation](https://cloud.google.com/tpu/docs/tpus-in-gke#tpu-machine-types) for TPU generations and their minimum supported version.
 
 Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
@@ -41,9 +41,9 @@ Run the following command to add a TPU node pool to the cluster. You can also cr
 
 :::{tab-item} TPU v6e single-host (2x4)
 
-Create a single-host TPU v6e node pool using `ct6e-standard-8t`, which has eight chips in a `2x4` topology on one host:
+Create a single-host TPU v6e node pool with the `ct6e-standard-8t` machine type, which has eight chips in a `2x4` topology on one host:
 
-```sh
+```bash
 gcloud container node-pools create tpu-v6e-singlehost \
     --location=$ZONE \
     --cluster=$CLUSTER_NAME \
@@ -60,7 +60,7 @@ gcloud container node-pools create tpu-v6e-singlehost \
 
 Create a multi-host TPU v6e node pool with a `4x4` topology across four `ct6e-standard-4t` hosts:
 
-```sh
+```bash
 gcloud container node-pools create tpu-v6e-multihost \
     --location=$ZONE \
     --cluster=$CLUSTER_NAME \
@@ -76,9 +76,9 @@ gcloud container node-pools create tpu-v6e-multihost \
 
 :::{tab-item} TPU7x multi-host (2x2x2)
 
-[TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) multi-host node pools use a `HIGH_THROUGHPUT` Compute Engine workload policy to define the 3D torus topology. The following command creates a `2x2x2` slice with eight dual-chiplet chips across two hosts:
+[TPU7x](https://cloud.google.com/kubernetes-engine/docs/concepts/tpu-ironwood) multi-host node pools use a `HIGH_THROUGHPUT` Compute Engine workload policy to define the 3D torus topology. The following commands create a `2x2x2` slice with eight dual-chiplet chips across two hosts:
 
-```sh
+```bash
 export REGION=${ZONE%-*}
 
 gcloud compute resource-policies create workload-policy tpu7x-2x2x2-policy \
@@ -102,7 +102,7 @@ gcloud container node-pools create tpu7x-multihost \
 
 ::::
 
-The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has 4 chips, so a `4x4` v6e slice has 16 chips across 4 TPU hosts, each scheduled on its own node. GKE treats multi-host TPU slices as atomic units, and scales them using node pools rather than singular nodes. Therefore, the number of TPU hosts should always equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [ClusterAutoscaler custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/tpus).
+The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes, so the number of TPU hosts must equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [ClusterAutoscaler custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-class). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
 GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
 
@@ -110,8 +110,8 @@ GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired ma
 
 Configure the following node pool options based on your workload:
 
-- **Consumption options:** Add `--spot` for Spot VMs, `--flex-start` with `--num-nodes=0 --enable-autoscaling` for Dynamic Workload Scheduler Flex-Start, or `--reservation-affinity=specific --reservation=<reservation-name>` for reserved capacity. See [Choose a TPU consumption option](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#tpu_reservation).
-- **Multi-NIC networking:** Multi-host TPU VMs include multiple network interfaces for high-bandwidth data center network traffic alongside the optical inter-chip interconnect. For multi-slice training or disaggregated RL weight transfer, enable GKE Dataplane V2 with `--enable-dataplane-v2` when creating the cluster. Then pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` when creating the node pool. See [Configure automated multi-network support for TPUs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
+- **Consumption options**: Add `--spot` for Spot VMs, `--flex-start` with `--num-nodes=0 --enable-autoscaling` for Dynamic Workload Scheduler Flex-Start, or `--reservation-affinity=specific --reservation=<reservation-name>` for reserved capacity. See [Choose a TPU consumption option](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#tpu_reservation).
+- **Multi-NIC networking**: Multi-host TPU VMs include multiple network interfaces for high-bandwidth data center network traffic alongside the inter-chip interconnect. For multi-slice training or disaggregated reinforcement learning weight transfer, enable GKE Dataplane V2 with `--enable-dataplane-v2` when creating the cluster. Then pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` when creating the node pool. See [Configure automated multi-network support for TPUs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
 
 ## Step 2: Connect to the GKE cluster
 
@@ -148,5 +148,5 @@ helm install --create-namespace --namespace cert-manager --set installCRDs=true 
 
 Next, deploy the Ray TPU initialization webhook:
 1. `git clone https://github.com/ai-on-gke/kuberay-tpu-webhook.git`
-2. `cd kuberay-tpu-webhook`
-3. `make deploy deploy-cert`
+1. `cd kuberay-tpu-webhook`
+1. `make deploy deploy-cert`

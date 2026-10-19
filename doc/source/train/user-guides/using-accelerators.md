@@ -47,7 +47,7 @@ To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. Also 
 
 Each worker maps to one TPU VM host. The total number of workers must be a multiple of the number of hosts in a single slice. For example, a `v6e` TPU slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
 
-For PyTorch workloads using TorchTPU and {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device, and set `num_workers` to the total number of logical TPU devices across your slices. For TPU7x configuration, see {ref}`TPU7x configuration <kuberay-tpu7x-dual-chiplet>`.
+For PyTorch workloads that use TorchTPU with {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device, and set `num_workers` to the total number of logical TPU devices across your slices. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 
 For details on how TPU topologies map to the number of hosts, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
@@ -72,7 +72,7 @@ scaling_config = ScalingConfig(
     accelerator_type="TPU-V6E",
 )
 
-# Single slice with TorchTPU: 16 device workers on a v6e 4x4 slice
+# Launch 16 per-device workers on a v6e 4x4 slice with TorchTPU.
 scaling_config = ScalingConfig(
     num_workers=16,
     use_tpu=True,
@@ -94,7 +94,7 @@ scaling_config = ScalingConfig(
 :sync: GPU
 When you set `use_gpu=True`, Ray Train automatically sets up environment variables, such as `CUDA_VISIBLE_DEVICES`, in your training function so that your code can detect and use the GPUs.
 
-Get the associated device with {meth}`ray.train.torch.get_device`.
+Get the associated device with {func}`ray.train.torch.get_device`.
 
 ```{testcode}
 import torch
@@ -150,7 +150,7 @@ trainer = JaxTrainer(
 trainer.fit()
 ```
 
-In Ray 2.58.0 and later, when you use `TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for TorchTPU, sets `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` via {meth}`ray.train.torch.get_device`:
+As of Ray 2.58.0, when you use `TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for TorchTPU, sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`:
 
 ```{testcode}
 :skipif: True
