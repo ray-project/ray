@@ -181,7 +181,7 @@ See the [documentation](https://github.com/NVIDIA/KAI-Scheduler/tree/main/docs/p
 
 ## Step 4: Submitting Ray workers with GPU sharing 
 
-This example creates two workers that share a single GPU, 0.5 each with time-slicing, within a RayCluster. See the [YAML file](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml)):
+This example creates two workers that share a single GPU, 0.5 each with time-slicing, within a RayCluster. See the [YAML file](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml).
 
 ```bash
 curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.kai-gpu-sharing.yaml
