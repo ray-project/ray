@@ -863,6 +863,20 @@ from api_mock_imports import BUILD_ONLY_MOCK_MODULES, THIRD_PARTY_MOCK_MODULES
 
 autodoc_mock_imports = THIRD_PARTY_MOCK_MODULES + BUILD_ONLY_MOCK_MODULES
 
+# Mirror the same mock list for autosummary. Sphinx 8.x introduced a
+# separate ``autosummary_mock_imports`` config whose default is a lambda
+# that reads ``autodoc_mock_imports``, but the lambda can resolve to an
+# empty list in some Sphinx startup orderings — particularly when the
+# autosummary extension accesses it during ``builder-inited`` before the
+# lambda's config dependencies are fully resolved. Setting it explicitly
+# here guarantees autosummary's ``process_generate_options`` (which wraps
+# its module resolution in ``with mock(autosummary_mock_imports)``) sees
+# the same set of mocked modules that autodoc does. Without this,
+# autosummary's import of ``ray.serve`` fails in RTD builds because the
+# generated/compiled Ray modules (``ray.core.generated.*`` etc.) are not
+# present in the source-tree checkout.
+autosummary_mock_imports = autodoc_mock_imports
+
 for mock_target in autodoc_mock_imports:
     if mock_target in sys.modules:
         logger.info(
