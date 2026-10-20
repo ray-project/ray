@@ -23,6 +23,35 @@ import click
 
 import ray
 
+# Packages and files under python/ray that this script links into the installed
+# Ray package. The value is an optional source path for the package; `None`
+# means the default `../<package>` path relative to this file.
+PACKAGES_TO_LINK = {
+    "llm": None,
+    "serve/llm": None,
+    "data/llm.py": None,
+    "rllib": None,
+    "air": None,
+    "tune": None,
+    "train": None,
+    "autoscaler": None,
+    "cloudpickle": None,
+    "data": None,
+    "scripts": None,
+    "internal": None,
+    "tests": None,
+    "experimental": None,
+    "util": None,
+    "workflow": None,
+    "serve": None,
+    "dag": None,
+    "widgets": None,
+    "cluster_utils.py": None,
+    "_private": None,
+    "_common": None,
+    "dashboard": None,
+}
+
 
 def do_link(package, force=False, skip_list=None, allow_list=None, local_path=None):
     if skip_list and package in skip_list:
@@ -149,35 +178,8 @@ if __name__ == "__main__":
     if not args.yes:
         print("NOTE: Use '-y' to override all python files without confirmation.")
 
-    # Dictionary of packages to link, with optional local_path
-    packages_to_link = {
-        "llm": None,
-        "serve/llm": None,
-        "data/llm.py": None,
-        "rllib": None,
-        "air": None,
-        "tune": None,
-        "train": None,
-        "autoscaler": None,
-        "cloudpickle": None,
-        "data": None,
-        "scripts": None,
-        "internal": None,
-        "tests": None,
-        "experimental": None,
-        "util": None,
-        "workflow": None,
-        "serve": None,
-        "dag": None,
-        "widgets": None,
-        "cluster_utils.py": None,
-        "_private": None,
-        "_common": None,
-        "dashboard": None,
-    }
-
     # Link all packages using a for loop
-    for package, local_path in packages_to_link.items():
+    for package, local_path in PACKAGES_TO_LINK.items():
         do_link(
             package,
             force=args.yes,
