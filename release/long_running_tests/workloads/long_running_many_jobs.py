@@ -25,6 +25,38 @@ SMOKE_TEST_TIMEOUT = 10 * 60  # 10 minutes
 FULL_TEST_TIMEOUT = 8 * 60 * 60  # 8 hours
 
 
+def _is_job_not_found_error(exc: RuntimeError) -> bool:
+    error_message = str(exc)
+    return "status code 404" in error_message
+
+
+def _ignore_not_found(job_id: str, func, name: str):
+    try:
+        return func()
+    except RuntimeError as exc:
+        if _is_job_not_found_error(exc):
+            print(
+                f"Job {job_id} was not found when {name}; "
+                "ignoring because the platform may have already deleted it."
+            )
+            return None
+        raise
+
+
+def _get_job_info_or_none(
+    client: JobSubmissionClient, job_id: str
+) -> Optional[JobDetails]:
+    return _ignore_not_found(
+        job_id, lambda: client.get_job_info(job_id), "fetching info"
+    )
+
+
+def _get_job_logs_or_none(client: JobSubmissionClient, job_id: str) -> Optional[str]:
+    return _ignore_not_found(
+        job_id, lambda: client.get_job_logs(job_id), "fetching logs"
+    )
+
+
 def wait_until_finish(
     client: JobSubmissionClient,
     job_id: str,
@@ -33,9 +65,16 @@ def wait_until_finish(
 ) -> Optional[JobStatus]:
     start_time_s = time.time()
     while time.time() - start_time_s <= timeout_s:
-        # Test calling list_jobs
-        client.list_jobs()
-        status = client.get_job_status(job_id)
+        try:
+            status = client.get_job_status(job_id)
+        except RuntimeError as exc:
+            if _is_job_not_found_error(exc):
+                print(
+                    f"Job {job_id} was not found during periodic status checks; "
+                    "ignoring because the platform may have already deleted it."
+                )
+                return JobStatus.SUCCEEDED
+            raise
         if status in {JobStatus.SUCCEEDED, JobStatus.STOPPED, JobStatus.FAILED}:
             return status
         time.sleep(retry_interval_s)
@@ -63,10 +102,10 @@ def submit_batch_jobs(
         status = wait_until_finish(client, job_id, timeout_s, retry_interval_s)
         if status != JobStatus.SUCCEEDED:
             print(
-                f"Info for failed/timed-out job {job_id}: {client.get_job_info(job_id)}"
+                f"Info for failed/timed-out job {job_id}: {_get_job_info_or_none(client, job_id)}"
             )
             print(
-                f"Logs for failed/timed-out job {job_id}: {client.get_job_logs(job_id)}"
+                f"Logs for failed/timed-out job {job_id}: {_get_job_logs_or_none(client, job_id)}"
             )
             print(
                 f"Job {job_id} failed with status {status} (`None` indicates timeout)"
@@ -123,8 +162,9 @@ if __name__ == "__main__":
             is_submission_job = job_details.type == "SUBMISSION"
         job_id = job_details.submission_id
         print(f"Getting logs for randomly chosen job {job_id}...")
-        logs = clients[0].get_job_logs(job_id)
-        print(logs)
+        logs = _get_job_logs_or_none(clients[0], job_id)
+        if logs is not None:
+            print(logs)
 
     time_taken = time.time() - start
     result = {
