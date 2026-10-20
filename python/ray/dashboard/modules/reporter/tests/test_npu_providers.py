@@ -83,6 +83,23 @@ def test_device_field_failure_does_not_drop_other_metrics():
     assert usage[1]["temperature_c"] == 70
 
 
+def test_logic_id_failure_uses_synthetic_index_that_never_collides():
+    # Device 0 fails to report its logical ID while device 1's real logical ID
+    # is 1. Synthetic indices must stay negative so they cannot collide with
+    # the non-negative logical IDs reported by other devices.
+    dcmi = _make_dcmi()
+    dcmi.get_logic_id.side_effect = [RuntimeError("not supported"), 1]
+    dcmi.get_physical_id.side_effect = [RuntimeError("not supported"), 5]
+    provider = NpuMetricProvider(dcmi=dcmi)
+
+    usage = provider.get_npu_usage()
+
+    assert len(usage) == 2
+    assert usage[0]["index"] == -1
+    assert usage[0]["physical_id"] is None
+    assert usage[1]["index"] == 1
+
+
 def test_process_query_failure_does_not_drop_device_metrics():
     dcmi = _make_dcmi()
     dcmi.get_processes.side_effect = [RuntimeError("not supported"), {}]
