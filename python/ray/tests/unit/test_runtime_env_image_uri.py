@@ -8,7 +8,7 @@ from unittest import mock
 import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
-from ray._private.runtime_env.context import RuntimeEnvContext, split_run_option
+from ray._private.runtime_env.context import RuntimeEnvContext, expand_run_option
 from ray._private.runtime_env.image_uri import (
     _modify_context_impl,
     _write_owner_only_file,
@@ -191,66 +191,48 @@ def test_run_options_env_overrides_ray_and_job_env(auth_env):
 
     argv, _ = _launch(
         context,
-        run_options=["--env RAY_RAYLET_PID=5678", "--env JOB_VAR=from_run_options"],
+        run_options=["--env=RAY_RAYLET_PID=5678", "--env=JOB_VAR=from_run_options"],
     )
 
     # podman applies the last --env for a name, so run_options must come last.
-    assert argv.index("RAY_RAYLET_PID=5678") > argv.index("RAY_RAYLET_PID")
-    assert argv.index("JOB_VAR=from_run_options") > argv.index("JOB_VAR=from_env_vars")
+    assert argv.index("--env=RAY_RAYLET_PID=5678") > argv.index("RAY_RAYLET_PID")
+    assert argv.index("--env=JOB_VAR=from_run_options") > argv.index(
+        "JOB_VAR=from_env_vars"
+    )
 
 
-_RUN_OPTION_ENV = {
-    "DIR": "/data dir",
-    "HOME_DIR": "/home/ray",
-    "EMPTY": "",
-    "HOME": "/home/ray",
-}
+_RUN_OPTION_ENV = {"DIR": "/data dir", "EMPTY": ""}
 
 
 @pytest.mark.parametrize(
     "run_option,expected",
     [
-        ("--cap-drop SYS_ADMIN", ["--cap-drop", "SYS_ADMIN"]),
-        ("  --rm\t-it  ", ["--rm", "-it"]),
-        ("--label 'a b'", ["--label", "a b"]),
-        ("--label=x' 'y", ["--label=x y"]),
-        ("-v $DIR:/data", ["-v", "/data dir:/data"]),
-        ("-v ${DIR}x", ["-v", "/data dirx"]),
-        ("-v $DIRx", ["-v"]),
-        ('--label "home=$HOME_DIR"', ["--label", "home=/home/ray"]),
-        ("--label '$HOME_DIR'", ["--label", "$HOME_DIR"]),
-        ("--label \\$HOME_DIR", ["--label", "$HOME_DIR"]),
-        ('--label "\\$HOME_DIR \\" \\a"', ["--label", '$HOME_DIR " \\a']),
-        ("--env X=$UNSET", ["--env", "X="]),
-        ("--rm $UNSET $EMPTY", ["--rm"]),
-        ("--label \"$UNSET\" ''", ["--label", "", ""]),
-        ("$(id) `id` $5 $ $-", ["$(id)", "`id`", "$5", "$", "$-"]),
-        ("", []),
-        ("-v $DIRé", ["-v", "/data diré"]),
-        ("a\vb a\u00a0b", ["a\vb", "a\u00a0b"]),
-        ("--rm \\\n-it", ["--rm", "-it"]),
-        ('--label "a\\\nb"', ["--label", "ab"]),
-        ("-v ~/d:/d ~", ["-v", "/home/ray/d:/d", "/home/ray"]),
-        ("'~/d' a~/d ~root/d $UNSET~", ["~/d", "a~/d", "~root/d", "~"]),
-        ("~\\\n/d a\\\n~/d", ["/home/ray/d", "a~/d"]),
-        ("$DI\\\nR '\\\n'", ["/data dir", "\\\n"]),
+        ("--cap-drop=SYS_ADMIN", "--cap-drop=SYS_ADMIN"),
+        ("--volume=$DIR:/data", "--volume=/data dir:/data"),
+        ("${DIR}x $DIRx", "/data dirx "),
+        ("--env=X=$UNSET$EMPTY", "--env=X="),
+        ("price=$$5 $$DIR", "price=$5 $DIR"),
+        (
+            "$(id) `id` $5 $- $ 'a b' \\$DIR ~/d",
+            "$(id) `id` $5 $- $ 'a b' \\/data dir ~/d",
+        ),
+        ("$DIRé", "/data diré"),
+        ("", ""),
     ],
 )
-def test_split_run_option(run_option, expected):
-    assert split_run_option(run_option, _RUN_OPTION_ENV) == expected
+def test_expand_run_option(run_option, expected):
+    assert expand_run_option(run_option, _RUN_OPTION_ENV) == expected
 
 
-@pytest.mark.parametrize(
-    "run_option", ["--label 'a", '--label "a', "--rm \\", "${A:-b}", "${}", "${A"]
-)
-def test_split_run_option_rejects_malformed(run_option):
-    with pytest.raises(ValueError):
-        split_run_option(run_option, _RUN_OPTION_ENV)
+@pytest.mark.parametrize("run_option", ["${A:-b}", "${}", "${A", "${1}", "${é}"])
+def test_expand_run_option_rejects_malformed(run_option):
+    with pytest.raises(ValueError, match=r"use \$\$ for a literal \$"):
+        expand_run_option(run_option, _RUN_OPTION_ENV)
 
 
 def test_malformed_run_option_fails_setup(auth_env):
-    with pytest.raises(ValueError, match="No closing quotation"):
-        _launch(run_options=["--label 'a"])
+    with pytest.raises(ValueError, match="Unsupported expansion"):
+        _launch(run_options=["--volume=${HOME:-/tmp}:/data"])
 
 
 def test_run_options_expand_from_launcher_and_job_env(auth_env):
@@ -264,16 +246,18 @@ def test_run_options_expand_from_launcher_and_job_env(auth_env):
     argv, _ = _launch(
         context,
         run_options=[
-            "-v $HOST_DIR:/data",
-            "--label job=$JOB_VAR",
-            "--label stolen=${RAY_AUTH_TOKEN}$RAY_RUNTIME_ENV_BEARER_TOKEN",
+            "-v",
+            "$HOST_DIR:/data",
+            "--label=job=$JOB_VAR",
+            "--label=stolen=${RAY_AUTH_TOKEN}$RAY_RUNTIME_ENV_BEARER_TOKEN",
         ],
     )
 
+    # An expanded value stays inside its one argument.
     assert argv[argv.index("/host data:/data") - 1] == "-v"
-    assert "job=job value" in argv
+    assert "--label=job=job value" in argv
     # Node secrets are not in the expansion environment.
-    assert "stolen=" in argv
+    assert "--label=stolen=" in argv
     assert TOKEN not in " ".join(argv)
     assert "bearer-secret" not in " ".join(argv)
 
@@ -297,10 +281,10 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
         context,
         run_options=[
             "--cap-drop SYS_ADMIN",
-            "--label 'a b'",
+            "--label=a b",
             "$(id)",
             "--env-host",
-            "--env RAY_RUNTIME_ENV_BEARER_TOKEN",
+            "--env=RAY_RUNTIME_ENV_BEARER_TOKEN",
         ],
     )
 
@@ -321,9 +305,9 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     assert TOKEN not in " ".join(argv)
     assert "STOLEN=${RAY_RUNTIME_ENV_BEARER_TOKEN}" in argv
     assert "bearer-secret" not in " ".join(argv)
-    # Each run_options item is split like a shell would, without expansion.
-    assert argv[argv.index("--cap-drop") + 1] == "SYS_ADMIN"
-    assert argv[argv.index("--label") + 1] == "a b"
+    # Each run_options item is exactly one argument, and nothing runs.
+    assert "--cap-drop SYS_ADMIN" in argv
+    assert "--label=a b" in argv
     assert "$(id)" in argv
     assert argv[-4:] == [
         "--entrypoint",

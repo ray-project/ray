@@ -13,7 +13,7 @@ from ray._private.authentication.authentication_token_setup import (
 from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.runtime_env.context import (
     RuntimeEnvContext,
-    split_run_option,
+    expand_run_option,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
@@ -144,7 +144,7 @@ def _modify_context_impl(
     # Expanded at exec time, but checked here so a malformed item fails
     # runtime_env setup instead of every worker start.
     for run_option in run_options:
-        split_run_option(run_option, {})
+        expand_run_option(run_option, {})
     # TODO(chenk008): add resource limit
 
     # Example:
@@ -153,7 +153,7 @@ def _modify_context_impl(
     # --userns=keep-id rayproject/ray:nightly-py39
     logger.info(
         "Starting worker in container with prefix %s %s",
-        " ".join([shlex.join(container_command), *run_options]),
+        shlex.join(container_command + run_options),
         image_uri,
     )
 

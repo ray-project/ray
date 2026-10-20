@@ -19,126 +19,42 @@ logger = logging.getLogger(__name__)
 # reaches them as a read-only file mount instead.
 _NODE_SECRET_ENV_VARS = {"RAY_AUTH_TOKEN", RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR}
 
-_VAR_REFERENCE = re.compile(r"\$(?:([A-Za-z_]\w*)|\{([^}]*)\})", re.ASCII)
-_VAR_NAME = re.compile(r"[A-Za-z_]\w*", re.ASCII)
-_ARG_SEPARATORS = " \t\n"
+_RUN_OPTION_REFERENCE = re.compile(
+    r"\$(?:(\$)|([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\}|(\{))"
+)
 
 
-def split_run_option(run_option: str, env: Dict[str, str]) -> List[str]:
-    """Splits a `container.run_options` item into podman arguments, treating
-    quotes, backslashes, `$NAME`, `${NAME}` and a leading `~` like a POSIX
-    shell does, with values taken from `env`.
+def expand_run_option(run_option: str, env: Dict[str, str]) -> str:
+    """Expands `$NAME` and `${NAME}` in a `container.run_options` item.
 
-    Unlike a shell, nothing is executed: `$(...)` and backticks stay literal.
-    An expanded value is never split, so it can't add arguments. As in a
-    shell, single quotes and a backslash keep `$` literal, and an unset
-    variable expands to an empty string. Other shell expansions, such as
-    `~user`, `$1` and `$'...'`, stay literal.
+    Each item is passed to podman as exactly one argument, so it is never
+    split and an expanded value can't add arguments. Nothing is executed:
+    `$(...)` and backticks stay literal. `$$` gives a literal `$`, an unset
+    name expands to an empty string, and any other `$` stays literal.
 
     Args:
         run_option: One `container.run_options` item.
         env: The variables `$NAME` and `${NAME}` expand from.
 
     Returns:
-        The podman arguments.
+        The podman argument.
 
     Raises:
-        ValueError: On an unclosed quote, a trailing backslash, or a `${...}`
-            that isn't a plain variable name.
+        ValueError: On a `${` that isn't followed by a plain name and `}`.
     """
-    run_option = _remove_line_continuations(run_option)
-    args: List[str] = []
-    current: List[str] = []
-    in_arg = False
-    at_word_start = True
-    quote = None
-    i = 0
-    while i < len(run_option):
-        char = run_option[i]
-        starts_word, at_word_start = at_word_start, False
-        if quote == "'":
-            if char == "'":
-                quote = None
-            else:
-                current.append(char)
-        elif char == "\\":
-            i += 1
-            if i == len(run_option):
-                raise ValueError(f"Trailing backslash in run_option {run_option!r}.")
-            escaped = run_option[i]
-            # Inside double quotes, a backslash only escapes these characters.
-            if quote == '"' and escaped not in '$`"\\':
-                current.append(char)
-            current.append(escaped)
-            in_arg = True
-        elif run_option.startswith("${", i) and not _VAR_REFERENCE.match(run_option, i):
-            raise ValueError(f"Unclosed '${{' in run_option {run_option!r}.")
-        elif char == "$" and (match := _VAR_REFERENCE.match(run_option, i)):
-            name = match.group(1) or match.group(2)
-            if not _VAR_NAME.fullmatch(name):
-                raise ValueError(
-                    f"Unsupported expansion {match.group(0)!r} in run_option "
-                    f"{run_option!r}: only $NAME and ${{NAME}} are expanded."
-                )
-            value = env.get(name, "")
-            current.append(value)
-            # An unquoted variable that expands to nothing adds no argument.
-            in_arg = in_arg or bool(value) or quote is not None
-            i = match.end()
-            continue
-        elif char in "'\"" and quote is None:
-            quote = char
-            in_arg = True
-        elif char == '"' and quote == '"':
-            quote = None
-        elif (
-            char == "~"
-            and quote is None
-            and starts_word
-            and run_option[i + 1 : i + 2] in ("", "/", *_ARG_SEPARATORS)
-            and "HOME" in env
-        ):
-            current.append(env["HOME"])
-            in_arg = True
-        elif char in _ARG_SEPARATORS and quote is None:
-            at_word_start = True
-            if in_arg:
-                args.append("".join(current))
-                current = []
-                in_arg = False
-        else:
-            current.append(char)
-            in_arg = True
-        i += 1
-    if quote is not None:
-        raise ValueError(f"No closing quotation in run_option {run_option!r}.")
-    if in_arg:
-        args.append("".join(current))
-    return args
 
+    def expand(match: re.Match) -> str:
+        literal_dollar, name, braced_name, bad_brace = match.groups()
+        if bad_brace:
+            raise ValueError(
+                f"Unsupported expansion in run_option {run_option!r}: only "
+                "$NAME and ${NAME} are expanded; use $$ for a literal $."
+            )
+        if literal_dollar:
+            return "$"
+        return env.get(name or braced_name, "")
 
-def _remove_line_continuations(text: str) -> str:
-    # A shell drops backslash-newline before reading words or names, except
-    # inside single quotes or when the backslash is itself escaped.
-    kept: List[str] = []
-    quote = None
-    i = 0
-    while i < len(text):
-        char = text[i]
-        if quote == "'":
-            quote = None if char == "'" else quote
-        elif char == "\\":
-            if text[i + 1 : i + 2] == "\n":
-                i += 2
-                continue
-            kept.append(text[i : i + 2])
-            i += 2
-            continue
-        elif char in "'\"":
-            quote = None if quote == char else (quote or char)
-        kept.append(char)
-        i += 1
-    return "".join(kept)
+    return _RUN_OPTION_REFERENCE.sub(expand, run_option)
 
 
 @DeveloperAPI
@@ -269,7 +185,7 @@ class RuntimeEnvContext:
         # running podman would have seen, minus the node secrets.
         run_option_env = {**launcher_env, **self.env_vars}
         for run_option in self.container["run_options"]:
-            cmd.extend(split_run_option(run_option, run_option_env))
+            cmd.append(expand_run_option(run_option, run_option_env))
         cmd.extend(
             [
                 "--entrypoint",
