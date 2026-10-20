@@ -1,10 +1,11 @@
 import pickle
 from copy import deepcopy
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
-from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.common import DeploymentID, TargetCapacityDirection
 from ray.serve._private.controller import (
     ServeController,
     applications_match,
@@ -739,6 +740,80 @@ class TestConfigCheckpoint:
         _, config, _ = self._read(current)
         assert config.config_id == "c1"
         assert self._read(None) == (0.0, None, None)
+
+
+def test_autoscaling_snapshot_logged_again_after_autoscaling_reenabled():
+    """Turning autoscaling off drops the deployment's autoscaling state. When it
+    is turned back on, the first snapshot must be logged even if its key equals
+    the last one logged before it was turned off.
+    """
+    dep_id = DeploymentID(name="d", app_name="app")
+    autoscaling_config = MagicMock()
+    asm = MagicMock()
+    asm.list_app_names.return_value = ["app"]
+    asm.get_app_target_deployments.return_value = ["d"]
+    dsm = MagicMock()
+    autoscaling_sm = MagicMock()
+    autoscaling_sm.get_cached_snapshot_key.return_value = (1, 0, 1, 5)
+    autoscaling_sm.get_deployment_snapshot.return_value.model_dump.return_value = {}
+    controller = SimpleNamespace(
+        application_state_manager=asm,
+        deployment_state_manager=dsm,
+        autoscaling_state_manager=autoscaling_sm,
+        _autoscaling_logger=MagicMock(),
+        _autoscaling_enabled_deployment_ids=[],
+        _last_autoscaling_snapshot_keys={},
+    )
+
+    def set_autoscaling(enabled: bool):
+        dsm.get_deployment.return_value.deployment_config.autoscaling_config = (
+            autoscaling_config if enabled else None
+        )
+        ServeController._refresh_autoscaling_deployments_cache(controller)
+        ServeController._emit_deployment_autoscaling_snapshots(controller)
+
+    set_autoscaling(True)
+    assert controller._autoscaling_logger.info.call_count == 1
+
+    set_autoscaling(False)
+    assert dep_id not in controller._last_autoscaling_snapshot_keys
+    assert controller._autoscaling_logger.info.call_count == 1
+
+    set_autoscaling(True)
+    assert controller._autoscaling_logger.info.call_count == 2
+
+
+def test_autoscaling_snapshot_retried_after_failed_write():
+    """A snapshot's key is recorded only after the log write succeeds, so a
+    failed write is retried on the next loop.
+    """
+    asm = MagicMock()
+    asm.list_app_names.return_value = ["app"]
+    asm.get_app_target_deployments.return_value = ["d"]
+    autoscaling_sm = MagicMock()
+    autoscaling_sm.get_cached_snapshot_key.return_value = (1, 0, 1, 5)
+    autoscaling_sm.get_deployment_snapshot.return_value.model_dump.return_value = {}
+    logger = MagicMock()
+    logger.info.side_effect = [OSError("disk full"), None]
+    controller = SimpleNamespace(
+        application_state_manager=asm,
+        deployment_state_manager=MagicMock(),
+        autoscaling_state_manager=autoscaling_sm,
+        _autoscaling_logger=logger,
+        _autoscaling_enabled_deployment_ids=[],
+        _last_autoscaling_snapshot_keys={},
+    )
+    ServeController._refresh_autoscaling_deployments_cache(controller)
+
+    with pytest.raises(OSError):
+        ServeController._emit_deployment_autoscaling_snapshots(controller)
+    assert controller._last_autoscaling_snapshot_keys == {}
+
+    ServeController._emit_deployment_autoscaling_snapshots(controller)
+    assert logger.info.call_count == 2
+    assert controller._last_autoscaling_snapshot_keys == {
+        DeploymentID(name="d", app_name="app"): (1, 0, 1, 5)
+    }
 
 
 if __name__ == "__main__":
