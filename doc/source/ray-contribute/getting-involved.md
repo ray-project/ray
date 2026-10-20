@@ -115,18 +115,18 @@ To merge a contribution, complete the following steps:
 3. If introducing a new feature or patching a bug, be sure to add new test cases in the relevant file in `ray/python/ray/tests/`.
 4. Document the code. Document public functions, and remember to provide a usage example if applicable. See `doc/README.md` for instructions on editing and building public documentation.
 5. Address comments on your PR. During the review process you may need to address merge conflicts with other changes. To resolve merge conflicts, run `git pull . upstream/master` on your branch. Don't use rebase, because it's less friendly to the GitHub review tool. We squash all commits on merge.
-6. Reviewers approve the pull request, and a committer merges it once the full CI passes. See [PR review process](#pr-review-process).
+6. After reviewers approve the pull request and the full CI test suite passes, the PR merges. See [PR review process](#pr-review-process).
 
 ## PR review process
 
 The process is the same whether or not you're a member of the `ray-project` organization:
 
-- When you open a PR, or mark a draft PR as ready for review, GitHub automatically requests reviews from the code owners of the files you changed, as listed in [`.github/CODEOWNERS`](https://github.com/ray-project/ray/blob/master/.github/CODEOWNERS). You don't need to assign anyone.
-- Reviewers leave comments, and mark the PR as **Changes requested** if further action is required.
+- When you open a PR or mark a draft PR as ready for review, GitHub automatically requests reviews from the code owners of the files you changed. [`.github/CODEOWNERS`](https://github.com/ray-project/ray/blob/master/.github/CODEOWNERS) lists them. You don't need to assign anyone.
+- Reviewers leave comments and mark the PR as **Changes requested** if it needs more work.
 - Address their comments, push your changes, and **re-request review** so reviewers know the PR is ready for another look.
 - Repeat until the reviewers approve the PR.
-- Once the PR is approved, a committer adds the `go` label, or enables auto-merge, which adds `go` automatically. The `go` label runs the full CI test suite.
-- If the full CI fails, you're responsible for fixing the failures. The PR merges once CI passes.
+- After reviewers approve the PR, a committer adds the `go` label, which runs the full CI test suite. Enabling auto-merge also adds the `go` label.
+- If the full CI test suite fails, fix the failures. The PR merges after CI passes.
 - If nobody has reviewed your PR after a few days, ping the reviewers in a comment.
 
 If you used an AI coding agent, your PR description must also follow the policy in [AI-assisted contributions](#ai-assisted-contributions).
