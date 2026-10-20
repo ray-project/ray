@@ -394,11 +394,13 @@ class RuntimeEnvAgent:
             self._runtime_env_dir, self._gcs_client
         )
         self._container_plugin = ContainerPlugin(temp_dir)
+        self._container_plugin._runtime_env_dir = self._runtime_env_dir
         # TODO(jonathan-anyscale): change the plugin to ProfilerPlugin
         # and unify with nsight and other profilers.
         self._nsight_plugin = NsightPlugin(self._runtime_env_dir)
         self._rocprof_sys_plugin = RocProfSysPlugin(self._runtime_env_dir)
         self._image_uri_plugin = get_image_uri_plugin_cls()(temp_dir)
+        self._image_uri_plugin._runtime_env_dir = self._runtime_env_dir
 
         # TODO(architkulkarni): "base plugins" and third-party plugins should all go
         # through the same code path.  We should never need to refer to

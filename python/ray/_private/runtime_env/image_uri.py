@@ -1,14 +1,19 @@
 import asyncio
 import logging
 import os
+import shlex
 import tempfile
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
 from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.packaging import (
+    get_local_dir_from_uri,
+    get_local_dir_uri_path,
+)
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.redaction import REDACTED_PLACEHOLDER
 
@@ -75,15 +80,45 @@ def _modify_context_impl(
     context: RuntimeEnvContext,
     logger: logging.Logger,
     ray_tmp_dir: str,
+    runtime_env_dir: Optional[str] = None,
+    working_dir_uri: Optional[str] = None,
+    py_modules_uris: Sequence[str] = (),
 ):
     context.override_worker_entrypoint = worker_path
+
+    if runtime_env_dir:
+        # Mount only this session, and mask runtime_resources so a container
+        # can't read or rewrite other jobs' cached runtime_env resources. A
+        # `:ro` bind would fail the worker's chmod in Node._init_temp (EROFS).
+        # Podman's --tmpfs copies the underlying contents in unless told not to.
+        session_dir = os.path.dirname(runtime_env_dir)
+        mounts = [
+            "-v",
+            shlex.quote(f"{session_dir}:{session_dir}"),
+            "--tmpfs",
+            shlex.quote(f"{runtime_env_dir}:notmpcopyup"),
+        ]
+        # Bind a job-level working_dir or py_modules this task inherited. The
+        # paths come from the task's own URIs, never from PYTHONPATH, which the
+        # job controls through env_vars.
+        inherited = [("working_dir_files", working_dir_uri)]
+        inherited += [("py_modules_files", uri) for uri in py_modules_uris]
+        for subdir, uri in inherited:
+            if not uri or get_local_dir_uri_path(uri) is not None:
+                continue
+            path = str(
+                get_local_dir_from_uri(uri, os.path.join(runtime_env_dir, subdir))
+            )
+            if os.path.isdir(path):
+                mounts.extend(["-v", shlex.quote(f"{path}:{path}:ro")])
+    else:
+        mounts = ["-v", ray_tmp_dir + ":" + ray_tmp_dir]
 
     container_driver = "podman"
     container_command = [
         container_driver,
         "run",
-        "-v",
-        ray_tmp_dir + ":" + ray_tmp_dir,
+        *mounts,
         "--cgroup-manager=cgroupfs",
         "--network=host",
         "--pid=host",
@@ -148,7 +183,8 @@ def _modify_context_impl(
     redacted_command.extend(container_command[num_secret_args:])
 
     # Example:
-    # podman run -v /tmp/ray:/tmp/ray
+    # podman run -v /tmp/ray/session_xxx:/tmp/ray/session_xxx
+    # --tmpfs /tmp/ray/session_xxx/runtime_resources:notmpcopyup
     # --cgroup-manager=cgroupfs --network=host --pid=host --ipc=host
     # --userns=keep-id --env RAY_RAYLET_PID=23478 --env RAY_JOB_ID=$RAY_JOB_ID
     # --entrypoint python rayproject/ray:nightly-py39
@@ -167,6 +203,10 @@ class ImageURIPlugin(RuntimeEnvPlugin):
     @staticmethod
     def get_compatible_keys():
         return {"image_uri", "config", "env_vars"}
+
+    # Set by the runtime env agent after construction, so plugin classes
+    # returned by get_image_uri_plugin_cls() keep their constructor signature.
+    _runtime_env_dir: Optional[str] = None
 
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
@@ -200,6 +240,9 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self._runtime_env_dir,
+            runtime_env.working_dir_uri(),
+            runtime_env.py_modules_uris(),
         )
 
 
@@ -207,6 +250,10 @@ class ContainerPlugin(RuntimeEnvPlugin):
     """Starts worker in container."""
 
     name = "container"
+
+    # Set by the runtime env agent after construction, so plugin classes
+    # returned by get_image_uri_plugin_cls() keep their constructor signature.
+    _runtime_env_dir: Optional[str] = None
 
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
@@ -248,4 +295,7 @@ class ContainerPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self._runtime_env_dir,
+            runtime_env.working_dir_uri(),
+            runtime_env.py_modules_uris(),
         )
