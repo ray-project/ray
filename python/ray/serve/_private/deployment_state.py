@@ -1579,7 +1579,9 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if self.is_pending_allocation:
+        if self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(
+            self._allocated_obj_ref  # type: ignore[arg-type]
+        ):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         if not self._is_cross_language:
