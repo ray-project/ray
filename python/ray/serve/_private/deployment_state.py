@@ -4332,11 +4332,16 @@ class DeploymentState:
                     for replica in gang_replicas:
                         self._replicas.add(replica.actor_details.state, replica)
                 elif code_version_changes + len(gang_replicas) <= max_to_stop:
-                    # Drain every member gracefully; the STOPPING barrier waits
-                    # for the whole gang before killing its actors.
+                    # Drain serving members gracefully. STARTING members skip
+                    # the grace period but still wait at the gang's kill barrier.
                     for replica in gang_replicas:
                         code_version_changes += 1
-                        self._stop_replica(replica)
+                        self._stop_replica(
+                            replica,
+                            graceful_stop=(
+                                replica.actor_details.state != ReplicaState.STARTING
+                            ),
+                        )
                         replicas_changed = True
                 else:
                     # Not enough budget for this gang; put replicas back
@@ -4542,10 +4547,7 @@ class DeploymentState:
             return
         self._replicas.remove([replica.replica_id for replica in replicas])
         for replica in replicas:
-            graceful_stop = (
-                self._is_gang_deployment
-                or replica.actor_details.state == ReplicaState.RUNNING
-            )
+            graceful_stop = replica.actor_details.state == ReplicaState.RUNNING
             self._stop_replica(replica, graceful_stop=graceful_stop)
         logger.info(
             f"Stopping {len(replicas)} replicas of {self._id} with outdated versions."

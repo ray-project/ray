@@ -9807,6 +9807,11 @@ class TestGangRollingUpdate:
         # by the missing slots, so v1 won't be stopped until new v3 replicas
         # fill those slots first.
 
+        # Superseded STARTING replicas need no drain, even if startup is stuck.
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        dsm.update()
+        assert all(r._actor.force_stopped_counter == 1 for r in stopping)
+
         # Wave 1: Finish v2 stops -> update starts 2 v3 (v1 not stopped yet).
         self._finish_stopping(ds)
         self._mock_gang_pgs(dsm, gang_size, gang_size)
@@ -13157,6 +13162,18 @@ class TestMaxSurge:
         assert {r.replica_id for r in stopping} == {r.replica_id for r in all_starting}
         assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 5
 
+        # Cancel startup without waiting for graceful shutdown to finish.
+        dsm.update()
+        assert all(r._actor.killed for r in stopping)
+        for _ in range(4):
+            gang._finish_stopping(ds)
+            gang._mock_gang_pgs(dsm, 2, 2)
+            dsm.update()
+            gang._finish_starting(ds)
+        dsm.update()
+        check_counts(ds, total=6, by_state=[(ReplicaState.RUNNING, 6, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
     def test_gang_surge_stops_a_partly_started_gang_within_the_surplus(
         self, mock_deployment_state_manager
     ):
@@ -13188,6 +13205,16 @@ class TestMaxSurge:
             by_state=[(ReplicaState.RUNNING, 2, v1), (ReplicaState.RUNNING, 2, v2)],
         )
 
+        # The STARTING member skips its grace period but still waits for the
+        # RUNNING sibling to drain before either actor is killed.
+        dsm.update()
+        assert not any(r._actor.killed for r in stopping)
+        running, starting = gangs[1]
+        running._actor.set_done_stopping()
+        dsm.update()
+        assert running._actor.killed
+        assert starting._actor.force_stopped_counter == 1
+
         for _ in range(4):
             gang._finish_stopping(ds)
             gang._mock_gang_pgs(dsm, 2, 2)
@@ -13197,6 +13224,7 @@ class TestMaxSurge:
             if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
                 break
         check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
     def test_surge_allowance_uses_an_integer_ceiling(
         self, mock_deployment_state_manager
