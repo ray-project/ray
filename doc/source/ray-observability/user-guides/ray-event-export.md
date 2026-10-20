@@ -304,7 +304,7 @@ export RAY_enable_task_events_to_dashboard_head=1
 Each variable controls one part of the path:
 
 - `RAY_enable_ray_event=1` to use Ray event export as the event collection backend. Ray records task events for this path only when you set this variable.
-- `RAY_enable_ray_task_event_recorder=1` to record task events with the Ray task event recorder. When the recorder is active, the core worker task event buffer stops sending events to the aggregator agent, so `RAY_enable_core_worker_ray_event_to_aggregator` no longer affects task events.
+- `RAY_enable_ray_task_event_recorder=1` to record task events with the Ray task event recorder. When the recorder is active, the core worker `TaskEventBuffer` stops sending events to the aggregator agent, so `RAY_enable_core_worker_ray_event_to_aggregator` no longer affects task events.
 - `RAY_enable_core_worker_task_event_to_gcs=0` to stop the core worker from sending task events to the GCS. When you set this variable to `0` and enable the recorder, the core worker task event buffer stops recording task events.
 - `RAY_enable_task_events_to_dashboard_head=1` to complete the migration. This variable makes the aggregator agent publish task events to the Ray API server, starts the task events module there, and points `ray list tasks` and `ray.timeline()`/`ray timeline` at the Ray API server instead of the GCS.
 
