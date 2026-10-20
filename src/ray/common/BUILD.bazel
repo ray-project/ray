@@ -247,7 +247,7 @@ ray_cc_library(
     hdrs = ["bundle_location_index.h"],
     visibility = [
         ":__subpackages__",
-        "//src/ray/raylet/scheduling:__pkg__",
+        "//src/ray/gcs:__pkg__",
     ],
     deps = [
         ":id",

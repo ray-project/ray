@@ -311,9 +311,7 @@ Each invocation of a threaded actor runs in a thread pool. The `max_concurrency`
 
 Ray doesn't support `asyncio` for remote tasks. The following snippet fails:
 
-```{testcode}
-:skipif: True
-
+```python
 @ray.remote
 async def f():
     pass
