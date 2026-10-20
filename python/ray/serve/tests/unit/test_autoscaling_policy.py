@@ -1606,5 +1606,45 @@ def test_last_decision_total_num_requests_reuses_decision_value():
     assert st.get_last_decision_total_num_requests() == 42.0
 
 
+def test_snapshot_request_totals_not_aggregated_per_decision():
+    """The default policy never reads the queued total, so the snapshot must not
+    aggregate it on every decision: that merge is O(handles). It is computed only
+    when the snapshot is built, and the ongoing total reuses the decision's value.
+    """
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+
+    with patch.object(
+        st, "_get_queued_requests", return_value=7.0
+    ) as queued, patch.object(st, "get_total_num_requests", return_value=5.0) as total:
+        for _ in range(3):
+            st.get_decision_num_replicas(curr_target_num_replicas=1)
+        assert queued.call_count == 0
+        # Only the policy reads the ongoing total, once per decision.
+        assert total.call_count == 3
+
+        snapshot = st.get_deployment_snapshot()
+        assert snapshot.queued_requests == 7.0
+        assert snapshot.ongoing_requests == 5.0
+        assert queued.call_count == 1
+        assert total.call_count == 3
+
+        # A built snapshot is cached until the next decision.
+        st.get_deployment_snapshot()
+        assert queued.call_count == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

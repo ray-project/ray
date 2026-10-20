@@ -331,7 +331,6 @@ class DeploymentAutoscalingState:
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
         self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
         self._cached_snapshot_key: Optional[tuple] = None
-        self._cached_snapshot_metrics: Optional[tuple] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -714,10 +713,8 @@ class DeploymentAutoscalingState:
             autoscaling_context.capacity_adjusted_min_replicas,
             autoscaling_context.capacity_adjusted_max_replicas,
         )
-        self._cached_snapshot_metrics = (
-            float(autoscaling_context.total_queued_requests),
-            float(autoscaling_context.total_num_requests),
-        )
+        # Request totals are not read here: each read re-merges every replica and
+        # handle timeseries. The snapshot computes them only when it is built.
         self._cached_deployment_snapshot = None
 
         return decision_num_replicas
@@ -1009,7 +1006,7 @@ class DeploymentAutoscalingState:
         if self._cached_deployment_snapshot is not None:
             return self._cached_deployment_snapshot
 
-        if self._cached_snapshot_key is None or self._cached_snapshot_metrics is None:
+        if self._cached_snapshot_key is None:
             return None
 
         (
@@ -1018,7 +1015,10 @@ class DeploymentAutoscalingState:
             min_replicas,
             max_replicas,
         ) = self._cached_snapshot_key
-        queued_requests, ongoing_requests = self._cached_snapshot_metrics
+        # Reuse the decision's total; only the queued total is aggregated, and only
+        # when the snapshot key changed since the last emitted snapshot.
+        ongoing_requests = float(self._last_decision_total_num_requests)
+        queued_requests = float(self._get_queued_requests())
 
         if target_replicas > current_replicas:
             scaling_status_raw = AutoscalingStatus.UPSCALE
