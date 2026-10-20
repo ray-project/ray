@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -16,36 +17,38 @@ def run_script(tmp_path):
     executable = tmp_path / "fake_tool"
     executable.write_text(
         f"#!{sys.executable}\n"
-        """
-import json
-import os
-from pathlib import Path
-import sys
+        + textwrap.dedent(
+            """\
+            import json
+            import os
+            from pathlib import Path
+            import sys
 
-tool = Path(sys.argv[0]).name
-args = sys.argv[1:]
-with open(os.environ['CALLS'], 'a') as log:
-    log.write(json.dumps([tool, *args]) + '\\n')
-scenario = os.environ['SCENARIO']
-if tool == 'docker':
-    if args[0] == 'run' and scenario == 'start_failure':
-        sys.exit(125)
-    if args[0] == 'exec':
-        print('SQL probe output')
-        if scenario in ('crashed', 'timeout'):
-            sys.exit(1)
-        if scenario == 'retry':
-            marker = Path(os.environ['CALLS'] + '.probe')
-            if not marker.exists():
-                marker.touch()
-                sys.exit(1)
-    if args[0] == 'inspect':
-        print('false' if scenario == 'crashed' else 'true')
-    if args[0] == 'logs':
-        print('HiveServer2 diagnostic logs')
-elif tool == 'bazel' and scenario == 'test_failure':
-    sys.exit(7)
-"""
+            tool = Path(sys.argv[0]).name
+            args = sys.argv[1:]
+            with open(os.environ['CALLS'], 'a') as log:
+                log.write(json.dumps([tool, *args]) + '\\n')
+            scenario = os.environ['SCENARIO']
+            if tool == 'docker':
+                if args[0] == 'run' and scenario == 'start_failure':
+                    sys.exit(125)
+                if args[0] == 'exec':
+                    print('SQL probe output')
+                    if scenario in ('crashed', 'timeout'):
+                        sys.exit(1)
+                    if scenario == 'retry':
+                        marker = Path(os.environ['CALLS'] + '.probe')
+                        if not marker.exists():
+                            marker.touch()
+                            sys.exit(1)
+                if args[0] == 'inspect':
+                    print('false' if scenario == 'crashed' else 'true')
+                if args[0] == 'logs':
+                    print('HiveServer2 diagnostic logs')
+            elif tool == 'bazel' and scenario == 'test_failure':
+                sys.exit(7)
+            """
+        )
     )
     executable.chmod(0o755)
     for tool in ("docker", "bazel", "sleep"):
