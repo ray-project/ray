@@ -75,6 +75,7 @@ from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import VideoOptions
 from ray.data._internal.datasource_v2.formats.mcap.mcap_topic_spec import TopicSpec
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -3419,6 +3420,8 @@ def _read_mcap_samples(
     *,
     topics: Any,
     time_source: str,
+    video: Optional[VideoOptions],
+    video_topics: Optional[Union[List[str], Set[str]]],
     filesystem: Optional["pyarrow.fs.FileSystem"],
     num_cpus: Optional[float],
     num_gpus: Optional[float],
@@ -3442,6 +3445,8 @@ def _read_mcap_samples(
         samples -> map to manifest rows -> blocks of N samples -> ReadFiles
 
     N sizes a task by the bytes its samples read (``mcap_sample_tasks``).
+    Planning reads the first samples for that estimate, and with ``video`` opens
+    their files to settle which topics are decoded.
     """
     from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
         MCAPDatasourceV2,
@@ -3490,6 +3495,9 @@ def _read_mcap_samples(
         filesystem=filesystem,
         samples_schema=samples_schema,
         local_sample_files=_names_local_files(probe),
+        video=video,
+        video_topics=video_topics,
+        sample_files=_first_files(probe) if video is not None else (),
     )
     _refuse_local_files_under_ray_client(datasource)
     row_schema = datasource.infer_schema(None)
@@ -3527,7 +3535,7 @@ def _read_mcap_samples(
             ray_remote_args=ray_remote_args,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
-            memory=memory,
+            memory=_sample_read_task_memory(video, memory, ray_remote_args, ctx),
             label_selector=label_selector,
             fallback_strategy=fallback_strategy,
             max_calls=max_calls,
@@ -3543,6 +3551,31 @@ def _read_mcap_samples(
         input_dependencies=[manifest._logical_plan.dag],
     )
     return Dataset._from_parent(manifest, LogicalPlan(read_op, manifest.context))
+
+
+def _sample_read_task_memory(
+    video: Optional[VideoOptions],
+    memory: Optional[float],
+    ray_remote_args: Optional[Dict[str, Any]],
+    ctx: DataContext,
+) -> Optional[float]:
+    """The memory each read task of a sample read reserves.
+
+    The caller's ``memory`` wins. Otherwise, video decoded at its coded size
+    reserves the frames one group of samples may hold
+    (``mcap_sample_rows.FRAME_BUDGET_BLOCKS`` blocks).
+    """
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
+        FRAME_BUDGET_BLOCKS,
+    )
+
+    if memory is not None or "memory" in (ray_remote_args or {}):
+        return memory
+    if video is None or video.resize is not None:
+        return None
+    if ctx.target_max_block_size is None:
+        return None
+    return FRAME_BUDGET_BLOCKS * ctx.target_max_block_size
 
 
 def _check_checkpoint_id_in_samples(
@@ -3649,6 +3682,25 @@ def _names_local_files(probe: Optional["pyarrow.Table"]) -> bool:
     return bool(files) and _is_local_scheme(files)
 
 
+def _first_files(probe: Optional["pyarrow.Table"]) -> List[str]:
+    """The distinct files the probed samples name, in order, from which
+    planning settles the decoded topics of a sample read
+    (``VideoPlanner.decoded_topics``). A null path is left to the read, which
+    reports the sample."""
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
+        FILES_COLUMN,
+    )
+
+    files: List[str] = []
+    if probe is None:
+        return files
+    for paths in probe.column(FILES_COLUMN).to_pylist():
+        for path in paths or ():
+            if path is not None and path not in files:
+                files.append(path)
+    return files
+
+
 def _estimate_samples_per_task(
     probe: Optional["pyarrow.Table"],
     datasource: Any,
@@ -3670,7 +3722,11 @@ def _estimate_samples_per_task(
     if probe is None:
         return DEFAULT_SAMPLES_PER_TASK
     return samples_per_task(
-        probe, datasource.topic_plans, SamplePaths(filesystem), _BIN_PACKING_BYTES
+        probe,
+        datasource.topic_plans,
+        SamplePaths(filesystem),
+        _BIN_PACKING_BYTES,
+        datasource.sample_summaries,
     )
 
 
@@ -3686,6 +3742,8 @@ def read_mcap(
     include_metadata: bool = True,
     log_time_order: bool = True,
     include_row_id: bool = False,
+    video: Optional[VideoOptions] = None,
+    video_topics: Optional[Union[List[str], Set[str]]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
@@ -3824,8 +3882,9 @@ def read_mcap(
             each. A row keeps the sample's columns and adds, per topic,
             ``data:<topic>`` with each step's payload, ``times:<topic>`` with each
             step's log time and ``is_pad:<topic>``, which is ``True`` for a padded
-            step, as ``read_lerobot``'s ``{key}_is_pad`` is. A ``sample_id``
-            column names a sample in errors. A read task takes as
+            step, as ``read_lerobot``'s ``{key}_is_pad`` is. With ``video``, a
+            video topic has ``frames:<topic>`` in place of ``data:<topic>``. A
+            ``sample_id`` column names a sample in errors. A read task takes as
             many samples as read about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of
             chunks (128 MiB by default), estimated from the first samples. It
             reads each file's samples in anchor order, so a samples dataset
@@ -3884,12 +3943,31 @@ def read_mcap(
             (``DataContext.use_datasource_v2``). ``read_mcap`` refuses
             ``CheckpointConfig(generated_id_column=...)``, which only
             ``read_parquet`` supports.
+        video: For a sample read, a :class:`~ray.data.datasource.mcap.VideoOptions`
+            that decodes the video topics inside the read task. Each video
+            topic's steps become a ``frames:<topic>`` tensor of shape ``(steps,
+            height, width, 3)`` in place of ``data:<topic>``. ``resize`` scales
+            frames to exactly ``(height, width)``, stretching them when the
+            aspect ratio differs. A sample row whose frames exceed
+            ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the read. Without ``resize``,
+            each read task reserves the frames it may hold as ``memory``, twice
+            ``DataContext.target_max_block_size`` (256 MiB by default). Requires
+            ``av`` for H.264, H.265, VP9 and AV1, and ``Pillow`` for JPEG and
+            PNG.
+        video_topics: For a sample read with ``video``, topics that carry
+            compressed video or images under a schema name ``read_mcap`` does
+            not know. Topics with a known video schema need no entry: Foxglove's
+            ``CompressedVideo`` and ``CompressedImage`` in their ROS 1, ROS 2 and
+            protobuf names, and ROS's ``sensor_msgs`` ``CompressedImage``. A
+            listed topic's codec is read from its payloads.
         filesystem: The PyArrow filesystem implementation to read from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
             example, specify `num_gpus=1` to request 1 GPU for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+            A sample read with ``video`` and no ``resize`` reserves its decoded
+            frames unless this is given (see ``video``).
         partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a dataset.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
@@ -3960,6 +4038,8 @@ def read_mcap(
             samples,
             topics=topics,
             time_source=time_source,
+            video=video,
+            video_topics=video_topics,
             filesystem=filesystem,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
@@ -3987,6 +4067,10 @@ def read_mcap(
         raise ValueError(
             f"time_source={time_source!r} applies only to a sample read "
             "(samples=...)."
+        )
+    if video is not None or video_topics:
+        raise ValueError(
+            "video and video_topics apply only to a sample read (samples=...)."
         )
 
     if file_extensions is None:
