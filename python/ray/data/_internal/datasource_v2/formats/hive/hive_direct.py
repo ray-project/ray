@@ -37,6 +37,7 @@ from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     SupportsMetadata,
 )
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import iterate_with_retry, unify_schemas_with_validation
 from ray.data.context import DataContext
 
@@ -417,12 +418,12 @@ def _read_physical_schema(path: str, file_format: str, filesystem) -> pa.Schema:
     if file_format == "parquet":
         import pyarrow.parquet as pq
 
-        parquet_file = (
+        with (
             pq.ParquetFile(path)
             if filesystem is None
             else pq.ParquetFile(path, filesystem=filesystem)
-        )
-        return parquet_file.schema_arrow
+        ) as parquet_file:
+            return parquet_file.schema_arrow
 
     import pyarrow.orc as orc
 
@@ -712,6 +713,7 @@ class _HiveOrcFileReader(OrcFileReader):
         )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])
+            raise_on_pickle_object_columns(table)
             if predicate is not None:
                 table = table.filter(predicate)
             yield table

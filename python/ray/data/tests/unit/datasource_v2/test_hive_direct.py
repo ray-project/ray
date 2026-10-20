@@ -1403,6 +1403,89 @@ def test_file_schema_metadata_read_uses_configured_io_retry(
     assert calls == 2
 
 
+@pytest.mark.parametrize("use_filesystem", [False, True])
+@pytest.mark.parametrize("fail_schema", [False, True])
+def test_parquet_schema_read_closes_file(
+    tmp_path, monkeypatch, use_filesystem, fail_schema
+):
+    from pyarrow.fs import LocalFileSystem
+
+    path = tmp_path / "data.parquet"
+    expected = pa.table({"id": [42]})
+    pq.write_table(expected, path)
+    schema_getter = pq.ParquetFile.schema_arrow.fget
+    opened = []
+
+    def read_schema(parquet_file):
+        # Retain the real reader so GC cannot hide a missing explicit close.
+        opened.append(parquet_file)
+        assert not parquet_file.closed
+        if fail_schema:
+            raise OSError("schema lookup failed")
+        return schema_getter(parquet_file)
+
+    monkeypatch.setattr(pq.ParquetFile, "schema_arrow", property(read_schema))
+    filesystem = LocalFileSystem() if use_filesystem else None
+    if fail_schema:
+        with pytest.raises(OSError, match="schema lookup failed"):
+            hive_direct._read_physical_schema(str(path), "parquet", filesystem)
+    else:
+        schema = hive_direct._read_physical_schema(str(path), "parquet", filesystem)
+        assert schema == expected.schema
+    assert len(opened) == 1
+    assert opened[0].closed
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_orc_rejects_decoded_pickle_before_filter(tmp_path, monkeypatch, nested):
+    import pickle
+    from types import SimpleNamespace
+
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data.expressions import col
+
+    monkeypatch.delenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", raising=False)
+    marker = tmp_path / "unpickled"
+
+    class Payload:
+        def __reduce__(self):
+            return type(marker).touch, (marker,)
+
+    storage = pa.array([pickle.dumps(Payload())], type=pa.large_binary())
+    values = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
+    declared_type = pa.binary()
+    if nested:
+        values = pa.StructArray.from_arrays([values], names=["value"])
+        declared_type = pa.struct([("value", pa.binary())])
+    declared = pa.schema([("id", pa.int64()), ("payload", declared_type)])
+    batch = pa.record_batch([pa.array([1]), values], names=declared.names)
+    scanner = hive_direct._HiveOrcScanner(
+        schema=declared,
+        hive_schema=declared,
+        sampled_names=tuple((name, name) for name in declared.names),
+    )
+    scanner, residual = scanner.push_filters(col("id") > 100)
+    assert residual is None
+    check_pickle = MagicMock(wraps=hive_direct.raise_on_pickle_object_columns)
+    monkeypatch.setattr(hive_direct, "raise_on_pickle_object_columns", check_pickle)
+
+    # Inject a decoded Arrow batch at the reader boundary. This does not
+    # claim that a real ORC file can persist this extension type.
+    fragment = SimpleNamespace(
+        physical_schema=declared,
+        scanner=lambda **kwargs: SimpleNamespace(
+            scan_batches=lambda: iter([SimpleNamespace(record_batch=batch)])
+        ),
+    )
+    reader = scanner.create_reader()
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(reader._iter_fragment_tables(fragment, {}))
+    check_pickle.assert_called_once()
+    # An after-filter check would see zero rows and miss the intended order.
+    assert check_pickle.call_args.args[0].num_rows == 1
+    assert not marker.exists()
+
+
 def test_sampled_legacy_orc_uses_positional_layout(tmp_path):
     path = _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
     declared = pa.schema([("id", pa.int64())])
