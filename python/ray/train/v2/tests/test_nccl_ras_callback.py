@@ -1918,8 +1918,7 @@ def test_capture_diagnostics_uploads_each_tool(monkeypatch, uploads):
     callback._worker_group._storage_context.experiment_fs_path = "/exp"
     callback._ras_poller = FakePoller([])
 
-    outcome = nccl_ras.PollOutcome()
-    callback.capture_diagnostics(outcome)
+    diagnostics, ras_text_report = callback.capture_diagnostics()
 
     root = f"/exp/{HANG_DETECTOR_DIRNAME}"
     assert uploads == [
@@ -1927,14 +1926,13 @@ def test_capture_diagnostics_uploads_each_tool(monkeypatch, uploads):
         (f"{root}/nccl_ras", {"ncclras_report.txt": FakePoller.TEXT_REPORT}),
         (f"{root}/stack_traces", {"rank_0.log": "dump"}),
     ]
-    assert outcome.diagnostics == {
+    assert diagnostics == {
         nccl_ras._FLIGHT_RECORDER_TOOL: None,
         nccl_ras._NVIDIA_SMI_TOOL: f"{root}/nvidia_smi",
         nccl_ras._NCCL_RAS_TOOL: f"{root}/nccl_ras",
         nccl_ras._STACK_TRACES_TOOL: f"{root}/stack_traces",
     }
-    assert outcome.diagnostics_dir == root
-    assert outcome.ras_text_report == FakePoller.TEXT_REPORT
+    assert ras_text_report == FakePoller.TEXT_REPORT
 
 
 # ---------------------------------------------------------------------------

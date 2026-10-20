@@ -4,19 +4,12 @@ NCCL ships a Reliability/Availability/Serviceability (RAS) subsystem (NCCL
 >= 2.24) that runs a monitoring thread inside *every* NCCL process (one per
 GPU/rank). Those threads form a peer mesh tracking job health, detecting dead/
 unresponsive ranks and per-rank collective op-counts. By polling ``ncclras``
-we can check if a communicator's op counts between ranks are mismatched,
-indicating a hang if the op counts don't increase over sequential polls.
+we can check if a communicator's collective counts between ranks are mismatched,
+indicating a hang if the collective counts don't increase over sequential polls.
 
 Warning: RAS only knows about the ranks it can reach through its mesh, and the
-mesh is built from the communicators each process has created. Querying
-``ncclras`` on one rank therefore returns every rank reachable *from that
-rank*, which is the whole job only if some communicator spans all ranks (a
-"world" communicator, e.g. the default process group ``torch.distributed``
-creates). If a job only ever creates communicators over disjoint subsets of
-ranks (say ranks 0-1 and ranks 2-3 with no group over 0-3), a query on rank 0
-reports only ranks 0-1 and their communicators, and a hang in the other subset
-is invisible to this callback. In practice every parallelism strategy creates
-a world process group, so real workloads are unlikely to hit this.
+mesh is built from the communicators each process has created. Therefore, a
+world process over all ranks is critical.
 """
 import json
 import logging
@@ -99,7 +92,7 @@ _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 
 # Polls of RAS history kept on top of confirmed ones, so the saved history
 # can start before the first communicator stalled.
-_RAS_HISTORY_POLL_MARGIN: int = 10
+_RAS_HISTORY_POLL_MARGIN: int = 4
 
 # Maximum number of Ranks named per list in a log line; the rest are
 # summarised as a count so a 1000-rank job doesn't log 1000 ranks per poll.
@@ -276,22 +269,6 @@ class RASReport:
             return "RUNNING"
         else:
             return "INIT"
-
-
-# TODO REMOVE
-def format_utc_ms(epoch_ms: int) -> str:
-    """Format a time as a filename-safe UTC timestamp, e.g.
-    ``20260619T065156.123Z``.
-
-    Args:
-        epoch_ms: The time in ms since the UNIX epoch.
-
-    Returns:
-        The time in UTC, to the millisecond.
-    """
-    seconds, ms = divmod(epoch_ms, 1000)
-    utc = datetime.fromtimestamp(seconds, tz=timezone.utc)
-    return f"{utc:%Y%m%dT%H%M%S}.{ms:03d}Z"
 
 
 def compute_report_op_diff(
@@ -888,13 +865,15 @@ def collect_ras_history(
             or ``None`` if no worker could produce one.
 
     Returns:
-        Each poll's JSON, named by when it was taken (UTC), and
+        Each poll's JSON, named by when it was taken in UTC to the
+        millisecond (e.g. ``ncclras_20260619T065156.123Z.json``), and
         ``ncclras_report.txt``.
     """
-    files = {
-        f"ncclras_{format_utc_ms(report.taken_at_ms)}.json": report.raw_json
-        for report in history
-    }
+    files = {}
+    for report in history:
+        seconds, ms = divmod(report.taken_at_ms, 1000)
+        utc = datetime.fromtimestamp(seconds, tz=timezone.utc)
+        files[f"ncclras_{utc:%Y%m%dT%H%M%S}.{ms:03d}Z.json"] = report.raw_json
     if text_report:
         files["ncclras_report.txt"] = text_report
     return files
@@ -905,11 +884,8 @@ def translate_ras_ranks_to_train(
 ) -> Dict[int, int]:
     """Translate a communicator's ranks into Ray Train world ranks.
 
-    RAS identifies a rank by the host and pid of its NCCL process, which for
-    Ray Train is the worker actor's process. A pid is only unique per node, so
-    ``(node_ip, pid)`` is matched first; the pid alone is the fallback when
-    exactly one worker has it, because on multi-NIC nodes RAS can report a
-    different interface's address than Ray's node IP.
+    A pid is only unique per node, so ``(node_ip, pid)`` is matched first;
+    the pid alone is the fallback when exactly one worker has it.
 
     Args:
         workers: The train workers.
@@ -940,10 +916,8 @@ def translate_ras_ranks_to_train(
 def format_ranks(comm_ranks: Iterable[int], train_rank_of: Dict[int, int]) -> str:
     """Name a communicator's ranks compactly, e.g. ``train ranks 0-3, 5``.
 
-    Ranks are named by Ray Train world rank, falling back to the communicator
-    rank for ranks without a train worker. Consecutive ranks collapse into
-    ranges, and each list is cut after ``_MAX_RANKS_LOGGED`` runs so a
-    1000-rank job stays one line.
+    Consecutive ranks collapse into ranges, and each list is cut after
+    ``_MAX_RANKS_LOGGED`` runs so a 1000-rank job stays one line.
 
     Args:
         comm_ranks: Communicator ranks to name.
@@ -994,18 +968,13 @@ class CommStall:
 
 @dataclass
 class PollOutcome:
-    """What one poll found, read by the log, export and action outputs.
-
-    The detector fills in what happened (``confirmed``, ``suspected``,
-    ``recovered``), then the evidence gathered for it (``ras_text_report``,
-    ``diagnostics``), so every output reports the same poll the same way.
-    """
+    """The findings between the latest and previous ras report."""
 
     # Communicators the suspicion warning names, and whether they newly
     # reached the threshold or the periodic reminder.
     suspected_comms: List[str] = field(default_factory=list)
     new_suspicion: bool = False
-    periodic_remainer: bool = False
+    periodic_reminder: bool = False
     # Communicators confirmed on this poll.
     confirmed_comms: List[str] = field(default_factory=list)
     # Suspected stalls that ended on this poll, as they were when they ended.
@@ -1013,8 +982,7 @@ class PollOutcome:
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
-    """Detects NCCL hangs via the RAS subsystem (see module docstring for the
-    topology and the hard/soft model).
+    """Detects NCCL hangs via the RAS subsystem.
 
     Default-off: the trainer only registers this callback when
     ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` is set on the driver.
@@ -1024,19 +992,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     frozen-poll streak (so each communicator is confirmed on its own) and
     reset by any healthy poll. ``RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S``
     expresses how long that run should take and is converted to a poll count
-    with the poll interval.
-
-    Every poll is added to a circular buffer so users have a history of ncclras
-    queries and for improving the detection.
-
-    Each poll is evaluated into a :class:`PollOutcome`, which is then logged,
-    exported and acted on. The hung communicators are exported through the
-    Train state actor as ``EXPORT_TRAIN_NCCL_HANG`` events (see
-    ``export_train_nccl_hang.proto``): MONITORING on every poll that suspects,
-    confirms or sees a recovery, STOPPED when an attempt ends with a hung
-    communicator, and DISABLED when the detector gives up for the run.
-    Nothing is exported for an attempt that never stalls. Exporting never
-    affects detection.
+    with the poll interval. Once a communicator's hang has been confirmed,
+    then a suite of diagnostic tools are saved: flight-recorder, nvidia-smi,
+    ncclras history, and stack trace. These tools are saved to the Ray Train's
+    storage path.
     """
 
     def __init__(self):
@@ -1181,22 +1140,41 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self.prev_report = result
 
             if outcome.confirmed_comms:
-                self.capture_diagnostics()
-                self.export_event()
-                self.build_hang_report(result, outcome)
+                diagnostics, ras_text_report = self.capture_diagnostics()
+                # Exported before the action, so the event exists even if it raises.
+                if any(diagnostics.values()):
+                    diagnostic_dir = os.path.join(
+                        self._worker_group._storage_context.experiment_fs_path,
+                        HANG_DETECTOR_DIRNAME,
+                    )
+                else:
+                    diagnostic_dir = None
+
+                self.export_event(
+                    NcclHangDetectorStatus.MONITORING,
+                    result.taken_at_ms,
+                    ras_text_report=ras_text_report,
+                    diagnostics_dir=diagnostic_dir,
+                )
+                self.build_hang_report(result, outcome, diagnostics)
 
             elif (
                 outcome.new_suspicion
-                or outcome.periodic_remainer
+                or outcome.periodic_reminder
                 or outcome.recovered_comms
             ):
+                # NCCL's own view of the hang, fetched once per new suspicion
                 if outcome.new_suspicion:
                     ras_text_report = self._ras_poller.query_text()
                 else:
                     ras_text_report = None
 
                 self.log_suspected_and_recovered_comms(result, outcome, ras_text_report)
-                self.export_event()
+                self.export_event(
+                    NcclHangDetectorStatus.MONITORING,
+                    result.taken_at_ms,
+                    ras_text_report=ras_text_report,
+                )
 
         except NCCLHangError:
             raise
@@ -1241,7 +1219,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     stall.polls += 1
                     updated_stalls[comm_id] = stall
 
-        # Decide which milestones the poll reached
+        # Decide which milestones the latest poll reached.
+        max_stall_polls = max(
+            (stall.polls for stall in updated_stalls.values()), default=0
+        )
         outcome = PollOutcome(
             suspected_comms=[
                 comm_id
@@ -1252,12 +1233,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 stall.polls == self._suspicion_polls
                 for comm_id, stall in updated_stalls.items()
             ),
-            periodic_remainer=(
-                max(stall.polls for stall in updated_stalls.values())
-                - self._suspicion_polls
-            )
-            % self._periodic_warn_polls
-            == 0,
+            periodic_reminder=(
+                max_stall_polls > self._suspicion_polls
+                and (max_stall_polls - self._suspicion_polls)
+                % self._periodic_warn_polls
+                == 0
+            ),
             confirmed_comms=[
                 comm_id
                 for comm_id, stall in updated_stalls.items()
@@ -1278,32 +1259,46 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         return outcome
 
     def log_suspected_and_recovered_comms(
-        self, report: RASReport, outcome: PollOutcome
+        self,
+        report: RASReport,
+        outcome: PollOutcome,
+        ras_text_report: Optional[str],
     ) -> None:
         """Log the poll's recoveries and suspicion warning.
 
         Args:
             report: The current poll's report.
             outcome: The poll's outcome.
+            ras_text_report: The ``ncclras -f text`` report fetched for a new
+                suspicion, or ``None``.
         """
-        # TODO merge all these recovered comms into a single log
-        for comm_id, stall in outcome.recovered_comms.items():
+        if outcome.recovered_comms:
             logger.info(
-                "The Ray Train NCCL hang detector callback detects that the "
-                "NCCL communicator %s resumed making progress after being stalled "
-                "for %.0f seconds (%d polls). It is no longer suspected of hanging.",
-                comm_id,
-                stall.polls * self._poll_interval_s,
-                stall.polls,
+                "The Ray Train NCCL hang detector callback detects that %d NCCL "
+                "communicator(s) resumed making progress and are no longer "
+                "suspected of hanging: %s",
+                len(outcome.recovered_comms),
+                ", ".join(
+                    f"{comm_id} (stalled for "
+                    f"{stall.polls * self._poll_interval_s:.0f}s, {stall.polls} polls)"
+                    for comm_id, stall in sorted(outcome.recovered_comms.items())
+                ),
             )
 
-        if outcome.new_suspicion or outcome.periodic_remainer:
-            headline = (
-                f"Possible NCCL hang detected by the Ray Train NCCL hang detector callback! "
-                f"{len(outcome.suspected_comms)} communicator(s) have made no collective progress "
-                "while their ranks disagree on how many collectives they have launched. "
-                "Continuing to monitor, this might be a transient stall."
-            )
+        if outcome.new_suspicion or outcome.periodic_reminder:
+            if outcome.new_suspicion:
+                headline = (
+                    "Possible NCCL hang detected by the Ray Train NCCL hang detector callback! "
+                    f"{len(outcome.suspected_comms)} communicator(s) have made no collective "
+                    "progress while their ranks disagree on how many collectives they have "
+                    "launched. Continuing to monitor, this might be a transient stall."
+                )
+            else:
+                headline = (
+                    "NCCL hang still suspected by the Ray Train NCCL hang detector callback! "
+                    f"{len(outcome.suspected_comms)} communicator(s) have made no "
+                    "collective progress."
+                )
 
             if self._action == NCCL_RAS_ACTION_FAIL:
                 remaining_polls = self._confirm_poll_counts - max(
@@ -1321,7 +1316,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             )
 
             # NCCL's own view of the hang, fetched once per suspected hang
-            # TODO fix
             if ras_text_report:
                 logger.info(
                     "NCCL's own `ncclras` report of the suspected hang (logged "
@@ -1378,12 +1372,19 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             logger.debug("Could not describe the stalled communicators.", exc_info=True)
             return ""
 
-    def build_hang_report(self, report: RASReport, outcome: PollOutcome):
+    def build_hang_report(
+        self,
+        report: RASReport,
+        outcome: PollOutcome,
+        diagnostics: Dict[str, Optional[str]],
+    ):
         """Raise (fail mode) or log (observe mode) the confirmed hangs.
 
         Args:
             report: The current poll's report.
-            outcome: The poll's outcome, with its captured diagnostics.
+            outcome: The poll's outcome.
+            diagnostics: Where each diagnostic was uploaded, ``{tool: dir}``,
+                ``None`` for the ones that captured nothing.
         """
         message = (
             "NCCL hang detected by the Ray Train hang detector callback! "
@@ -1396,11 +1397,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             "early, ranks launching collectives in a different order or with "
             "mismatched shapes or dtypes, or a GPU or network failure.\n"
         )
-        # TODO fix
-        stack_trace_dir = outcome.diagnostics.get(_STACK_TRACES_TOOL)
-        ras_history_dir = outcome.diagnostics.get(_NCCL_RAS_TOOL)
-        nvidia_smi_dir = outcome.diagnostics.get(_NVIDIA_SMI_TOOL)
-        flight_recorder_dir = outcome.diagnostics.get(_FLIGHT_RECORDER_TOOL)
+        stack_trace_dir = diagnostics.get(_STACK_TRACES_TOOL)
+        ras_history_dir = diagnostics.get(_NCCL_RAS_TOOL)
+        nvidia_smi_dir = diagnostics.get(_NVIDIA_SMI_TOOL)
+        flight_recorder_dir = diagnostics.get(_FLIGHT_RECORDER_TOOL)
         debug_steps = []
         if stack_trace_dir:
             debug_steps.append(
@@ -1432,19 +1432,27 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
             logger.warning(message)
 
-    def capture_diagnostics(self):
+    def capture_diagnostics(self) -> Tuple[Dict[str, Optional[str]], Optional[str]]:
         """Capture and upload every diagnostic of a confirmed hang.
 
         Each tool's files are uploaded to
         ``<experiment_fs_path>/<HANG_DETECTOR_DIRNAME>/<tool>/``. A diagnostic
         that fails is logged rather than raised, so it never takes the hang
         handling with it, and one with nothing to record uploads nothing.
+
+        Returns:
+            ``{tool: uploaded dir or None}`` and the ``ncclras -f text``
+            report fetched for the history, or ``None`` if it couldn't be.
         """
         workers = list(self._worker_group.get_workers())
         storage_context = self._worker_group._storage_context
+        diagnostics: Dict[str, Optional[str]] = {}
+        ras_text_report: Optional[str] = None
 
         def ras_history() -> Dict[str, str]:
-            return collect_ras_history(self.ras_history, self._ras_poller.query_text())
+            nonlocal ras_text_report
+            ras_text_report = self._ras_poller.query_text()
+            return collect_ras_history(self.ras_history, ras_text_report)
 
         # Flight Recorder first, before ranks still running overwrite its ring
         # buffer; nvidia-smi before the slow stack traces, so the GPU reading
@@ -1456,6 +1464,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             _STACK_TRACES_TOOL: lambda: collect_stack_traces(workers),
         }
         for tool, collect in collectors.items():
+            diagnostics[tool] = None
             try:
                 files = collect()
                 if not files:
@@ -1469,15 +1478,18 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     _upload_to_fs_path(
                         temp_dir, storage_context.storage_filesystem, fs_path
                     )
+                diagnostics[tool] = fs_path
             except Exception:  # noqa: BLE001
                 logger.exception("Trying to capture the %s diagnostics failed.", tool)
+        return diagnostics, ras_text_report
 
     def export_event(
         self,
         status: NcclHangDetectorStatus,
         timestamp_ms: int,
         disabled_reason: Optional[NcclHangDisabledReason] = None,
-        outcome: Optional[PollOutcome] = None,
+        ras_text_report: Optional[str] = None,
+        diagnostics_dir: Optional[str] = None,
     ):
         """Export an event listing the communicators hung right now.
 
@@ -1489,10 +1501,24 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 or DISABLED when the detector stops watching the attempt.
             timestamp_ms: When the event happened, in ms since the UNIX epoch.
             disabled_reason: Why the detector was disabled, for DISABLED.
-            outcome: The poll's outcome, for MONITORING, carrying the text
-                report and the diagnostics.
+            ras_text_report: The ``ncclras -f text`` report fetched on this
+                poll, for MONITORING.
+            diagnostics_dir: Where the diagnostics were uploaded, on the poll
+                that confirmed a communicator.
         """
-        outcome = outcome or PollOutcome()
+        communicators = [
+            NcclCommunicator(
+                communicator_id=comm_id,
+                state=(
+                    NcclCommunicatorState.CONFIRMED
+                    if stall.confirmed
+                    else NcclCommunicatorState.SUSPECTED
+                ),
+                stalled_since_ms=stall.since_ms,
+            )
+            for comm_id, stall in sorted(self.comm_stalls.items())
+            if stall.polls >= self._suspicion_polls
+        ]
         self._event_exporter.export(
             TrainNcclHangEvent(
                 run_id=self._run_id,
@@ -1501,20 +1527,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 timestamp_ms=timestamp_ms,
                 detector_status=status,
                 disabled_reason=disabled_reason,
-                ras_text_report=outcome.ras_text_report or None,
-                diagnostics_dir=outcome.diagnostics_dir,
-                communicators=[
-                    NcclCommunicator(
-                        communicator_id=comm_id,
-                        state=(
-                            NcclCommunicatorState.CONFIRMED
-                            if stall.confirmed
-                            else NcclCommunicatorState.SUSPECTED
-                        ),
-                        stalled_since_ms=stall.since_ms,
-                    )
-                    for comm_id, stall in sorted(self.comm_stalls.items())
-                    if stall.polls >= self._suspicion_polls
-                ],
+                ras_text_report=ras_text_report or None,
+                diagnostics_dir=diagnostics_dir,
+                communicators=communicators,
             )
         )
