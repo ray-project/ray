@@ -10,7 +10,7 @@ myst:
 
 This guide covers how to set up and configure the Ray History Server with KubeRay.
 
-The Ray History Server powers the Ray dashboard's backend. For information about how to use the Ray dashboard, see [Ray dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html).
+The Ray History Server powers the Ray dashboard's backend. For information about how to use the Ray dashboard, see [Ray dashboard](../../ray-observability/getting-started.md).
 
 :::{note}
 The Ray History Server is in beta and ready for testing. We welcome feedback and contributions from the community.

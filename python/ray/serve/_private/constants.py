@@ -1051,17 +1051,19 @@ RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
+# Both ranges sit below the Linux ephemeral range (32768-60999), where Ray
+# workers bind their own listen ports.
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
 RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "31500")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "32500")
 )
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
