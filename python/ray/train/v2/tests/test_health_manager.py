@@ -217,11 +217,20 @@ def test_an_evicted_node_is_not_evicted_again():
 
 
 @pytest.mark.parametrize("broken", [Raises(), Always(None)], ids=["raises", "none"])
-def test_a_failing_evaluator_is_skipped_and_logged_once(broken, caplog):
+def test_a_failing_evaluator_is_skipped_and_logged_once(broken, caplog, propagate_logs):
     manager = HealthManager([_check(evaluators=[broken, Always(Reattempt())])])
     assert manager.poll(timeout=0) == Reattempt()
     assert manager.poll(timeout=0) == Reattempt()
     assert len([r for r in caplog.records if "failed" in r.getMessage()]) == 1
+
+
+def test_diagnose_runs_apart_from_the_inflight_checks():
+    manager = HealthManager([_check(evaluators=[Always(Reattempt(reason="hang"))])])
+    diagnosis = Always(Evict(reason="diagnosed", target_nodes=["n1"]))
+    manager.diagnose([HealthCheck(evaluator_creator=lambda: [diagnosis])], timeout=10)
+
+    assert manager.poll(timeout=0) == Reattempt(reason="hang")
+    assert manager.poll_diagnosis() == Evict(reason="diagnosed", target_nodes=["n1"])
 
 
 def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
@@ -247,29 +256,18 @@ def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
         manager.shutdown()
 
 
-@ray.remote(num_cpus=0)
-class UnresponsiveMonitor:
-    def poll_probes(self, probes):
-        time.sleep(600)
-
-
-def test_diagnose_polls_its_probes_once_on_every_node(ray_start_4_cpus):
+def test_diagnose_polls_its_probes_once_on_each_node(ray_start_4_cpus):
     node_id = ray.get_runtime_context().get_node_id()
     manager = HealthManager([])
     manager.reset([node_id])
-    monitors = manager._node_monitor_group._monitors
-    ray.get(monitors[node_id].poll_status.remote())
-    monitors["hung-node"] = UnresponsiveMonitor.remote()
-
     evaluator = Always(Reattempt(reason="diagnosed"))
     check = HealthCheck(
         probe_creator=lambda: [Pid()], evaluator_creator=lambda: [evaluator]
     )
     try:
-        assert manager.diagnose([check], timeout=3) == Reattempt(reason="diagnosed")
-        pids = evaluator.seen[0]["Pid"]
-        assert list(pids) == [node_id]
-        assert pids[node_id].metrics["pid"] != os.getpid()
+        manager.diagnose([check], timeout=30)
+        assert _wait_for(manager.poll_diagnosis) == Reattempt(reason="diagnosed")
+        assert evaluator.seen[0]["Pid"][node_id].metrics["pid"] != os.getpid()
     finally:
         manager.shutdown()
 

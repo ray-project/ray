@@ -23,4 +23,5 @@ class Evaluator(abc.ABC):
         raise NotImplementedError
 
     def on_reset(self) -> None:
-        """Called at the start of each attempt of the training run."""
+        """Clear any state kept across evaluations, such as a history of
+        results. Called at the start of each attempt of the training run."""

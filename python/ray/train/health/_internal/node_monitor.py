@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional
 
+import ray
 from ray.train.health._internal.probe_utils import ScheduledProbe
 from ray.train.health.probe import NodeProbe, ProbeResult
 
@@ -56,8 +57,10 @@ class NodeMonitor:
         with self._lock:
             return NodeMonitorStatus(probe_results=dict(self._latest))
 
+    @ray.method(concurrency_group="on_demand")
     def poll_probes(self, probes: List[NodeProbe]) -> NodeMonitorStatus:
-        """Poll probes on demand.
+        """Poll probes on demand, in a thread of their own, so that
+        ``poll_status()`` still answers meanwhile.
 
         Args:
             probes: The probes to poll.

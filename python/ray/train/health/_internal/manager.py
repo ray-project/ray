@@ -1,9 +1,7 @@
 import logging
-import time
 from dataclasses import replace
-from typing import Any, Dict, List, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set
 
-import ray
 from ray.train.health._internal.constants import DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
 from ray.train.health._internal.probe_utils import merge_probes
@@ -58,7 +56,8 @@ class HealthManager:
 
     In-flight checks run continuously, and each ``poll()`` evaluates their
     latest results. On-demand checks, such as pre-flight checks and the checks
-    of a ``Diagnose``, run once through ``diagnose()``.
+    of a ``Diagnose``, run once: ``diagnose()`` starts them, and
+    ``poll_diagnosis()`` evaluates their results.
 
     Args:
         inflight_checks: The in-flight health checks.
@@ -79,6 +78,8 @@ class HealthManager:
         )
         # {probe name: {key: the latest ProbeResult}}
         self._latest_results: Dict[str, Dict[Any, ProbeResult]] = {}
+        # The evaluators of the checks that diagnose() started.
+        self._diagnosis_evaluators: List[Evaluator] = []
         # The IDs of the evaluators whose failure was logged.
         self._failed_evaluators: Set[int] = set()
         # The nodes evicted so far. reset() keeps them.
@@ -95,6 +96,7 @@ class HealthManager:
             node_ids: The nodes the attempt's workers run on.
         """
         self._latest_results.clear()
+        self._diagnosis_evaluators = []
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start(node_ids)
         for evaluator in self._evaluators:
@@ -129,37 +131,34 @@ class HealthManager:
         )
         return self._decide(self._evaluators, state)
 
-    def diagnose(self, checks: Sequence[HealthCheck], timeout: float) -> HealthDecision:
-        """Run health checks once, and evaluate their results.
+    def diagnose(self, checks: Sequence[HealthCheck], timeout: float) -> None:
+        """Start running health checks once on the nodes of the last
+        ``reset()``. ``poll_diagnosis()`` evaluates their results.
 
         Args:
             checks: The checks, such as pre-flight checks or the checks of a
                 ``Diagnose``.
-            timeout: Timeout in seconds to wait for the results.
-
-        Returns:
-            The health decision to carry out. ``Noop()`` if there is nothing to
-            do.
+            timeout: Timeout in seconds for the nodes to answer.
         """
         probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
-        node_probes = [p for p in probes.values() if isinstance(p, NodeProbe)]
-        polls = (
-            self._node_monitor_group.poll_probes_async(node_probes)
-            if node_probes
-            else {}
+        self._node_monitor_group.poll_probes_async(
+            [p for p in probes.values() if isinstance(p, NodeProbe)], timeout_s=timeout
         )
-        deadline = time.monotonic() + timeout
-        results: Dict[str, Dict[Any, ProbeResult]] = {}
-        for node_id, poll in polls.items():
-            try:
-                status = ray.get(poll, timeout=max(deadline - time.monotonic(), 0))
-            except Exception as e:
-                logger.warning("No probe results from node %s: %s", node_id, e)
-                continue
-            for name, result in status.probe_results.items():
-                results.setdefault(name, {})[node_id] = result
+        self._diagnosis_evaluators = [
+            evaluator for check in checks for evaluator in check.evaluator_creator()
+        ]
 
-        evaluators = [e for check in checks for e in check.evaluator_creator()]
+    def poll_diagnosis(self) -> Optional[HealthDecision]:
+        """Evaluate the results of the checks that ``diagnose()`` started, once
+        they are back.
+
+        Returns:
+            The health decision to carry out, or ``None`` while the checks run.
+        """
+        results = self._node_monitor_group.poll_probe_results()
+        if results is None:
+            return None
+        evaluators, self._diagnosis_evaluators = self._diagnosis_evaluators, []
         return self._decide(evaluators, HealthState(probe_results=results))
 
     def _poll_latest_results(self, timeout: float) -> None:
@@ -198,19 +197,22 @@ class HealthManager:
         return decision
 
     def _evaluate(self, evaluator: Evaluator, state: HealthState) -> HealthDecision:
-        """Run one evaluator. One that fails decides ``Noop()``, and only its
-        first failure is logged."""
+        """Run one evaluator. One that raises, or returns something other than a
+        ``HealthDecision``, decides ``Noop()``, with a warning the first time."""
         try:
             decision = evaluator.evaluate(state)
+            error = None
             if not isinstance(decision, HealthDecision):
-                raise TypeError(
-                    f"evaluate() must return a HealthDecision, not {decision!r}."
+                error = TypeError(
+                    f"evaluate() returned {decision!r}, not a HealthDecision."
                 )
+        except Exception as e:
+            error = e
+        if error is None:
             return decision
-        except Exception:
-            if id(evaluator) not in self._failed_evaluators:
-                self._failed_evaluators.add(id(evaluator))
-                logger.warning(
-                    "Evaluator %s failed.", type(evaluator).__name__, exc_info=True
-                )
-            return Noop()
+        if id(evaluator) not in self._failed_evaluators:
+            self._failed_evaluators.add(id(evaluator))
+            logger.warning(
+                "Evaluator %s failed.", type(evaluator).__name__, exc_info=error
+            )
+        return Noop()
