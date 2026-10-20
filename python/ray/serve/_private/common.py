@@ -1,7 +1,8 @@
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any
 
 from starlette.types import Scope
 
@@ -178,7 +179,7 @@ class EndpointInfo:
 
     route: str
     app_is_cross_language: bool = False
-    route_patterns: Optional[List["RoutePattern"]] = None
+    route_patterns: list["RoutePattern"] | None = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -291,7 +292,7 @@ class DeploymentStatusInfo:
     @property
     # Implicitly returns None when neither (status,) nor
     # (status, status_trigger) is in DEPLOYMENT_STATUS_RANKING_ORDER.
-    def rank(self) -> Optional[int]:  # type: ignore[return]
+    def rank(self) -> int | None:  # type: ignore[return]
         """Get priority of state based on ranking_order().
 
         The ranked order indicates what the status should be of a
@@ -309,8 +310,8 @@ class DeploymentStatusInfo:
 
     def _updated_copy(
         self,
-        status: Optional[DeploymentStatus] = None,
-        status_trigger: Optional[DeploymentStatusTrigger] = None,
+        status: DeploymentStatus | None = None,
+        status_trigger: DeploymentStatusTrigger | None = None,
         message: str = "",
     ):
         """Returns a copy of the current object with the passed in kwargs updated."""
@@ -664,17 +665,17 @@ class DeploymentStatusInfo:
 @dataclass(frozen=True)
 class RunningReplicaInfo:
     replica_id: ReplicaID
-    node_id: Optional[str]
-    node_ip: Optional[str]
-    availability_zone: Optional[str]
+    node_id: str | None
+    node_ip: str | None
+    availability_zone: str | None
     actor_name: str
     max_ongoing_requests: int
     is_cross_language: bool = False
-    multiplexed_model_ids: List[str] = field(default_factory=list)
-    routing_stats: Dict[str, Any] = field(default_factory=dict)
-    replica_metadata: Dict[str, Any] = field(default_factory=dict)
-    port: Optional[int] = None
-    backend_http_port: Optional[int] = None
+    multiplexed_model_ids: list[str] = field(default_factory=list)
+    routing_stats: dict[str, Any] = field(default_factory=dict)
+    replica_metadata: dict[str, Any] = field(default_factory=dict)
+    port: int | None = None
+    backend_http_port: int | None = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -725,7 +726,7 @@ class RunningReplicaInfo:
 @dataclass(frozen=True)
 class DeploymentTargetInfo:
     is_available: bool
-    running_replicas: List[RunningReplicaInfo]
+    running_replicas: list[RunningReplicaInfo]
 
 
 class ServeComponentType(str, Enum):
@@ -741,8 +742,8 @@ class RequestRoutingInfo:
     """
 
     replica_id: ReplicaID
-    multiplexed_model_ids: Optional[List[str]] = None
-    routing_stats: Optional[Dict[str, Any]] = None
+    multiplexed_model_ids: list[str] | None = None
+    routing_stats: dict[str, Any] | None = None
 
 
 @dataclass
@@ -798,8 +799,18 @@ class RequestMetadata:
     # Application name.
     app_name: str = ""
 
-    # Multiplexed model ID.
+    # Multiplexed model ID (single value; kept for backwards compatibility).
     multiplexed_model_id: str = ""
+
+    # Ordered list of candidate multiplexed model IDs. The router will try to
+    # route to replicas that have any of these models loaded, respecting the
+    # order (first match wins). When both this field and `multiplexed_model_id`
+    # are set, the single value will be prepended to this list.
+    #
+    # Example use case: the caller knows several model IDs that can satisfy the
+    # request and wants the router to pick whichever replica already has one
+    # of them loaded, avoiding model-loading latency.
+    candidate_multiplexed_model_ids: list[str] | None = None
 
     # Session ID.
     session_id: str = ""
@@ -820,10 +831,10 @@ class RequestMetadata:
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     # Serve's gRPC context associated with this request for getting and setting metadata
-    grpc_context: Optional[RayServegRPCContext] = None
+    grpc_context: RayServegRPCContext | None = None
 
     # Tracing context
-    tracing_context: Optional[Dict[str, str]] = None
+    tracing_context: dict[str, str] | None = None
 
     # Whether it is a direct ingress request
     is_direct_ingress: bool = False
@@ -837,7 +848,7 @@ class RequestMetadata:
     response_serialization: str = "cloudpickle"
 
     # Token for a replica-side slot reserved by choose_replica().
-    _reserved_slot_token: Optional[str] = None
+    _reserved_slot_token: str | None = None
 
     @property
     def is_http_request(self) -> bool:
@@ -859,10 +870,9 @@ class StreamingHTTPRequest:
         self,
         asgi_scope: Scope,
         *,
-        proxy_actor_name: Optional[str] = None,
-        receive_asgi_messages: Optional[
-            Callable[[RequestMetadata], Awaitable[bytes]]
-        ] = None,
+        proxy_actor_name: str | None = None,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
+        | None = None,
     ):
         self._asgi_scope: Scope = asgi_scope
 
@@ -874,12 +884,12 @@ class StreamingHTTPRequest:
         # If receive_asgi_messages is passed, it'll be called directly.
         # If proxy_actor_name is passed, the actor will be fetched and its
         # `receive_asgi_messages` method will be called.
-        self._proxy_actor_name: Optional[str] = proxy_actor_name
+        self._proxy_actor_name: str | None = proxy_actor_name
         # Need to keep the actor handle cached to avoid "lost reference to actor" error.
-        self._cached_proxy_actor: Optional[ActorHandle] = None
-        self._receive_asgi_messages: Optional[
-            Callable[[RequestMetadata], Awaitable[bytes]]
-        ] = receive_asgi_messages
+        self._cached_proxy_actor: ActorHandle | None = None
+        self._receive_asgi_messages: (
+            Callable[[RequestMetadata], Awaitable[bytes]] | None
+        ) = receive_asgi_messages
 
     @property
     def asgi_scope(self) -> Scope:
@@ -918,13 +928,13 @@ class ReplicaQueueLengthInfo:
 
 @dataclass(frozen=True)
 class CreatePlacementGroupRequest:
-    bundles: List[Dict[str, float]]
+    bundles: list[dict[str, float]]
     strategy: str
-    target_node_id: Optional[str]
+    target_node_id: str | None
     name: str
-    runtime_env: Optional[Dict[str, Any]] = None
-    bundle_label_selector: Optional[List[Dict[str, str]]] = None
-    fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    runtime_env: dict[str, Any] | None = None
+    bundle_label_selector: list[dict[str, str]] | None = None
+    fallback_strategy: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -935,21 +945,21 @@ class GangPlacementGroupRequest:
     gang_size: int
     gang_placement_strategy: str
     num_replicas_to_add: int
-    replica_resource_dict: Dict[str, float]
+    replica_resource_dict: dict[str, float]
     """Actor-level resource requirements derived from ray_actor_options.
     Used as the bundle template for every bundle in the gang placement group
     when per-replica placement group bundle is not set.
     Example: {"CPU": 4, "GPU": 1}."""
 
-    replica_placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    replica_placement_group_bundles: list[dict[str, float]] | None = None
     """Per-replica placement group bundles.  When set, each replica occupies
     len(bundles) consecutive bundles in the gang placement group instead
     of a single flat bundle derived from replica_resource_dict."""
 
-    replica_pg_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    replica_pg_bundle_label_selector: list[dict[str, str]] | None = None
     """Label selector for per-replica placement group bundles."""
 
-    replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    replica_pg_fallback_strategy: list[dict[str, Any]] | None = None
     """Fallback strategy for per-replica placement group bundles."""
 
 
@@ -959,10 +969,10 @@ class GangReservationResult:
 
     success: bool
     """True when all gang PGs were created successfully."""
-    error_message: Optional[str] = None
-    gang_pgs: Optional[List[PlacementGroup]] = None
-    gang_ids: Optional[List[str]] = None
-    gang_pg_names: Optional[List[str]] = None
+    error_message: str | None = None
+    gang_pgs: list[PlacementGroup] | None = None
+    gang_ids: list[str] | None = None
+    gang_pg_names: list[str] | None = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -984,7 +994,7 @@ class TimeStampedValue:
 
 
 # Type alias for time series data
-TimeSeries = List[TimeStampedValue]
+TimeSeries = list[TimeStampedValue]
 
 
 @dataclass
@@ -1013,8 +1023,8 @@ class HandleMetricReport:
     actor_id: str
     handle_source: DeploymentHandleSource
     queued_requests: TimeSeries
-    metrics: Dict[
-        str, Dict[str, TimeSeries]
+    metrics: dict[
+        str, dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
 
@@ -1055,5 +1065,5 @@ class ReplicaMetricReport:
     """
 
     replica_id: ReplicaID
-    metrics: Dict[str, TimeSeries]
+    metrics: dict[str, TimeSeries]
     timestamp: float

@@ -25,7 +25,10 @@ from ray.serve.experimental.round_robin_router import (
 TIMER = MockTimer()
 
 
-def _make_request(model_id: str = "") -> PendingRequest:
+def _make_request(
+    model_id: str = "",
+    candidate_model_ids=None,
+) -> PendingRequest:
     return PendingRequest(
         args=[],
         kwargs={},
@@ -33,6 +36,7 @@ def _make_request(model_id: str = "") -> PendingRequest:
             request_id=generate_request_id(),
             internal_request_id=generate_request_id(),
             multiplexed_model_id=model_id,
+            candidate_multiplexed_model_ids=candidate_model_ids,
         ),
     )
 
@@ -355,6 +359,110 @@ async def test_choose_replicas_sets_should_backoff(router):
     assert request.routing_context.should_backoff is False
     await router.choose_replicas(replicas, request)
     assert request.routing_context.should_backoff is True
+
+
+@pytest.mark.asyncio
+async def test_candidate_model_ids_picks_first_warm(router):
+    """Router picks the first candidate model ID that already has a warm replica."""
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-beta"}),
+        FakeRunningReplica("r1", model_ids={"model-gamma"}),
+        FakeRunningReplica("r2"),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters["model-beta"] = 0
+    router._round_robin_counter = 0
+    await asyncio.sleep(0)
+
+    # Candidates ordered [alpha, beta, gamma]. Alpha has no warm replicas, so
+    # beta is the first match and gets preferred.
+    request = _make_request(
+        candidate_model_ids=["model-alpha", "model-beta", "model-gamma"]
+    )
+    ranks = await router.choose_replicas(replicas, request)
+    assert _ranked_replica_unique_ids(ranks)[0] == ["r0"]
+
+
+@pytest.mark.asyncio
+async def test_candidate_model_ids_fallback_when_no_warm(router, monkeypatch):
+    """When none of the candidate model IDs have a warm replica, routing
+    still works and falls back to the legacy timeout-driven hierarchy."""
+    current_time = 100.0
+    monkeypatch.setattr(request_router_module.time, "time", lambda: current_time)
+    monkeypatch.setattr(
+        request_router_module,
+        "RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S",
+        1.0,
+    )
+
+    replicas = [
+        FakeRunningReplica("r0", model_ids={}),
+        FakeRunningReplica("r1", model_ids={}),
+        FakeRunningReplica("r2", model_ids={"other-model"}),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._round_robin_counter = 0
+    await asyncio.sleep(0)
+
+    request = _make_request(candidate_model_ids=["model-alpha", "model-beta"])
+    # First call: no warm replica, falls back to fewest-model replicas.
+    ranks = await router.choose_replicas(replicas, request)
+    # r0 and r1 have 0 models, tied.
+    ranked = _ranked_replica_unique_ids(ranks)
+    assert ranked[0] in (["r0"], ["r1"])
+    # Advance time past the timeout.
+    current_time = 102.5
+    # Reuse the same request so its start time (100.0) remains anchored and
+    # the timeout really has elapsed.  First call after timeout: fewest-model
+    # fallback (exactly one retry).  Second call after timeout: all replicas.
+    await router.choose_replicas(replicas, request)
+    ranks = await router.choose_replicas(replicas, request)
+    assert len(_ranked_replica_unique_ids(ranks)) == 3
+
+
+@pytest.mark.asyncio
+async def test_legacy_single_model_id_still_works(router):
+    """Backward-compat: multiplexed_model_id alone works exactly as before."""
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-a"}),
+        FakeRunningReplica("r1", model_ids={"model-b"}),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters["model-a"] = 0
+    await asyncio.sleep(0)
+
+    request = _make_request(model_id="model-a")
+    ranks = await router.choose_replicas(replicas, request)
+    assert _ranked_replica_unique_ids(ranks)[0] == ["r0"]
+
+
+@pytest.mark.asyncio
+async def test_single_id_prepended_to_candidate_list(router):
+    """When both multiplexed_model_id and candidate_multiplexed_model_ids are
+    set, the single value is treated as highest priority."""
+    replicas = [
+        FakeRunningReplica("r0", model_ids={"model-beta"}),
+        FakeRunningReplica("r1", model_ids={"model-alpha"}),
+    ]
+    for replica in replicas:
+        replica.set_queue_len_response(0)
+    router.update_replicas(replicas)
+    router._multiplexed_round_robin_counters["model-alpha"] = 0
+    await asyncio.sleep(0)
+
+    # Single value = "model-alpha" should beat candidate list ordering.
+    request = _make_request(
+        model_id="model-alpha",
+        candidate_model_ids=["model-beta"],
+    )
+    ranks = await router.choose_replicas(replicas, request)
+    assert _ranked_replica_unique_ids(ranks)[0] == ["r1"]
 
 
 if __name__ == "__main__":

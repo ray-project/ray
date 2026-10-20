@@ -8,7 +8,6 @@ next replica in order, wrapping around the candidate list.
 
 import random
 from collections.abc import Sequence
-from typing import Dict, List, Optional
 
 from ray.serve._private.request_router.common import (
     PendingRequest,
@@ -25,12 +24,12 @@ from ray.serve._private.request_router.request_router import (
 _MAX_ROUND_ROBIN_COUNTER = 2**31
 
 
-class _RoundRobinReplicaRanks(Sequence[List[RunningReplica]]):
+class _RoundRobinReplicaRanks(Sequence[list[RunningReplica]]):
     """Lazy ordered singleton ranks for a strict round-robin attempt."""
 
     def __init__(
         self,
-        replicas: List[RunningReplica],
+        replicas: list[RunningReplica],
         start_index: int,
     ):
         self._replicas = replicas
@@ -71,13 +70,13 @@ class RoundRobinRouter(FIFOMixin, MultiplexMixin, RequestRouter):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._round_robin_counter = random.randrange(_MAX_ROUND_ROBIN_COUNTER)
-        self._multiplexed_round_robin_counters: Dict[str, int] = {}
+        self._multiplexed_round_robin_counters: dict[str, int] = {}
 
     def initialize_state(self, **kwargs) -> None:
         pass
 
     def _update_multiplexed_model_ids_with_replicas(
-        self, replicas: List[RunningReplica]
+        self, replicas: list[RunningReplica]
     ) -> None:
         super()._update_multiplexed_model_ids_with_replicas(replicas)
         self._multiplexed_round_robin_counters = {
@@ -88,10 +87,10 @@ class RoundRobinRouter(FIFOMixin, MultiplexMixin, RequestRouter):
 
     async def choose_replicas(
         self,
-        candidate_replicas: List[RunningReplica],
-        pending_request: Optional[PendingRequest] = None,
-    ) -> Sequence[List[RunningReplica]]:
-        multiplexed_model_id: Optional[str] = None
+        candidate_replicas: list[RunningReplica],
+        pending_request: PendingRequest | None = None,
+    ) -> Sequence[list[RunningReplica]]:
+        multiplexed_model_id: str | None = None
         routing_to_matching_model_replicas = False
         if pending_request is not None:
             # Enable exponential-backoff sleep between outer retry iterations.
@@ -99,8 +98,17 @@ class RoundRobinRouter(FIFOMixin, MultiplexMixin, RequestRouter):
             # when every replica is at capacity.
             pending_request.routing_context.should_backoff = True
 
-            if pending_request.metadata.multiplexed_model_id:
-                multiplexed_model_id = pending_request.metadata.multiplexed_model_id
+            has_multiplexed = (
+                pending_request.metadata.multiplexed_model_id
+                or pending_request.metadata.candidate_multiplexed_model_ids
+            )
+            if has_multiplexed:
+                # Resolve the effective model ID (respects ordered
+                # candidate list) so that per-model round-robin counters are
+                # keyed by whichever model ID actually ended up routing.
+                multiplexed_model_id = self._get_first_available_multiplexed_model_id(
+                    pending_request.metadata
+                )
                 is_first_multiplexed_attempt = (
                     not pending_request.routing_context.tried_first_multiplexed_models
                 )
