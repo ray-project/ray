@@ -719,45 +719,49 @@ class Reconciler:
         reconcile_config: InstanceReconcileConfig,
         ray_nodes: List[NodeState],
     ) -> None:
-        """Delete TERMINATED instance records retained past the GC window.
+        """Delete terminal instance records retained past the GC window.
 
-        TERMINATED is a terminal status (no outgoing transitions) and no other
-        reconcile step removes these records, so the instance storage—read in
-        full every cycle and serialized into AutoscalingState—otherwise grows
-        without bound on instance-churning clusters until the autoscaler OOMs.
-        Records are kept for ``terminated_instance_gc_retention_s`` after they
-        enter TERMINATED so a just-terminated instance stays reportable for at
-        least one more cycle before being reclaimed.
+        TERMINATED and ALLOCATION_FAILED are both terminal statuses (no outgoing
+        transitions) and no other reconcile step removes these records, so the
+        instance storage—read in full every cycle and serialized into
+        AutoscalingState—otherwise grows without bound on instance-churning
+        clusters until the autoscaler OOMs. Records are kept for
+        ``terminated_instance_gc_retention_s`` after they enter their terminal
+        status so a just-terminated instance stays reportable for at least one
+        more cycle before being reclaimed.
 
-        A TERMINATED record whose ``node_id`` is still present in the GCS node
-        snapshot is kept regardless of age: its ``node_id`` is what makes
+        A record whose ``node_id`` is still present in the GCS node snapshot is
+        kept regardless of age: its ``node_id`` is what makes
         ``_handle_extra_cloud_instances_from_ray_nodes`` treat the ray node as
         managed, so deleting it while GCS still references the node would
-        resurrect it as a spurious ALLOCATED instance.
+        resurrect it as a spurious ALLOCATED instance. (Only TERMINATED records
+        that once reached ALLOCATED carry a node_id; ALLOCATION_FAILED is
+        reached from REQUESTED and never has one.)
         """
         retention_s = reconcile_config.terminated_instance_gc_retention_s
         if retention_s < 0:
             # Negative retention disables GC (escape hatch for debugging).
             return
 
+        terminal_statuses = (IMInstance.TERMINATED, IMInstance.ALLOCATION_FAILED)
         instances, version = Reconciler._get_im_instances(instance_manager)
         live_ray_node_ids = {binary_to_hex(n.node_id) for n in ray_nodes}
         now_ns = time.time_ns()
         retention_ns = retention_s * 1_000_000_000
         to_delete: List[str] = []
         for instance in instances:
-            if instance.status != IMInstance.TERMINATED:
+            if instance.status not in terminal_statuses:
                 continue
             # Keep records GCS still references, else they get resurrected as
             # ALLOCATED by _handle_extra_cloud_instances_from_ray_nodes.
             if instance.node_id and instance.node_id in live_ray_node_ids:
                 continue
-            terminated_times = InstanceUtil.get_status_transition_times_ns(
-                instance, IMInstance.TERMINATED
+            terminal_times = InstanceUtil.get_status_transition_times_ns(
+                instance, instance.status
             )
-            if not terminated_times:
+            if not terminal_times:
                 continue
-            if now_ns - max(terminated_times) >= retention_ns:
+            if now_ns - max(terminal_times) >= retention_ns:
                 to_delete.append(instance.instance_id)
 
         if not to_delete:
@@ -768,10 +772,10 @@ class Reconciler:
             expected_storage_version=version,
         )
         # A version mismatch means another write landed first; the records are
-        # still TERMINATED and will be retried next cycle, so this is not fatal.
+        # still terminal and will be retried next cycle, so this is not fatal.
         if not success:
             logger.debug(
-                "Deferred GC of %d TERMINATED instances due to storage version "
+                "Deferred GC of %d terminal instances due to storage version "
                 "mismatch; will retry next reconcile.",
                 len(to_delete),
             )

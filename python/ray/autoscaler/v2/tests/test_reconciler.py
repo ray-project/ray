@@ -673,6 +673,47 @@ class TestReconciler:
         assert "i-gone" not in stored
 
     @staticmethod
+    def test_gc_reclaims_allocation_failed(setup):
+        # ALLOCATION_FAILED is also a terminal state nothing else reclaims, so a
+        # record past retention is GC'd like TERMINATED. It is reached from
+        # REQUESTED and never has a node_id, so the GCS check does not apply.
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+
+        retention_s = InstanceReconcileConfig().terminated_instance_gc_retention_s
+        now = time.time_ns()
+        instances = [
+            create_instance(
+                "i-stale-failed",
+                status=Instance.ALLOCATION_FAILED,
+                status_times=[
+                    (Instance.ALLOCATION_FAILED, now - (retention_s + 60) * s_to_ns)
+                ],
+            ),
+            create_instance(
+                "i-fresh-failed",
+                status=Instance.ALLOCATION_FAILED,
+                status_times=[(Instance.ALLOCATION_FAILED, now)],
+            ),
+        ]
+        TestReconciler._add_instances(instance_storage, instances)
+
+        Reconciler.reconcile(
+            instance_manager,
+            scheduler=MockScheduler(),
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(),
+            non_terminated_cloud_instances={},
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+
+        stored, _ = instance_storage.get_instances()
+        assert "i-stale-failed" not in stored
+        assert "i-fresh-failed" in stored
+
+    @staticmethod
     def test_gc_terminated_instances_disabled_with_negative_retention(setup):
         # A negative retention disables GC so even old TERMINATED records remain.
         instance_manager, instance_storage, _, cloud_resource_monitor = setup
