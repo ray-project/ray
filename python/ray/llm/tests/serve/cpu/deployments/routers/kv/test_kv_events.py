@@ -16,6 +16,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     get_kv_event_routing_stats,
     get_prompt_token_routing_stats,
     get_token_channel_endpoints,
+    resolve_kv_event_block_size,
     resolve_kv_event_source_endpoint,
 )
 from ray.serve.llm.request_router import KVAwareRouter
@@ -168,6 +169,67 @@ class TestConfigureKvEvents:
                 "replay_endpoint": f"tcp://{node_ip}:6557",
             }
         }
+
+    @pytest.mark.parametrize(
+        "block_size,parallel_config,expected",
+        [
+            (16, SimpleNamespace(decode_context_parallel_size=1), 16),
+            (64, SimpleNamespace(decode_context_parallel_size=8), 512),
+            (16, SimpleNamespace(decode_context_parallel_size=2), 32),
+            # PCP shards KV only through DCP (DCP spans the PCP ranks), so
+            # prefill context parallelism alone doesn't scale the block span.
+            (
+                64,
+                SimpleNamespace(
+                    decode_context_parallel_size=2, prefill_context_parallel_size=2
+                ),
+                128,
+            ),
+            (
+                64,
+                SimpleNamespace(
+                    decode_context_parallel_size=1, prefill_context_parallel_size=2
+                ),
+                64,
+            ),
+            # Older vLLM configs without the DCP field keep the per-rank size.
+            (16, SimpleNamespace(), 16),
+        ],
+    )
+    def test_kv_event_block_size_scales_with_dcp(
+        self, block_size, parallel_config, expected
+    ):
+        """Under DCP the engine hashes and publishes blocks spanning
+        block_size * dcp tokens, so the router must be pinned at that size or
+        the selection service drops every KV event."""
+        vllm_config = SimpleNamespace(
+            cache_config=SimpleNamespace(block_size=block_size),
+            parallel_config=parallel_config,
+        )
+        assert resolve_kv_event_block_size(vllm_config) == expected
+
+    @pytest.mark.parametrize(
+        "effective_block_size,expected",
+        [
+            # The engine's resolved size wins over the derived one.
+            (512, 512),
+            (128, 128),
+            # Unreported (None) falls back to block_size * dcp.
+            (None, 512),
+        ],
+    )
+    def test_kv_event_block_size_prefers_engine_resolved_size(
+        self, effective_block_size, expected
+    ):
+        """vLLM syncs its resolved full-attention block size (DCP included)
+        back to the frontend config; use it when the engine reports one."""
+        vllm_config = SimpleNamespace(
+            cache_config=SimpleNamespace(
+                block_size=64, effective_attention_block_size=effective_block_size
+            ),
+            parallel_config=SimpleNamespace(decode_context_parallel_size=8),
+        )
+        assert resolve_kv_event_block_size(vllm_config) == expected
 
     def test_routing_stats_empty_without_kv_events(self):
         """Nothing to advertise when KV-cache events are not enabled."""
