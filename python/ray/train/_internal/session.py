@@ -20,7 +20,7 @@ from ray.air.constants import (
     TIME_THIS_ITER_S,
     TIMESTAMP,
 )
-from ray.train import Checkpoint
+from ray.train._checkpoint import Checkpoint
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import (
@@ -208,6 +208,9 @@ class _TrainSession:
         # Queue for sending results from training actor to main thread.
         self._inter_actor_queue: Optional[ray_queue.Queue[Dict]] = None
 
+        # Open `_QueueActor.get` call on the inter-actor queue, kept across polls.
+        self._pending_inter_actor_get: Optional[ray.ObjectRef] = None
+
         # Queue for raising exceptions from runner thread to main thread.
         # The error queue has a max size of one to prevent stacking error and force
         # error reporting to block until finished.
@@ -247,6 +250,9 @@ class _TrainSession:
 
         Raises any Exception from training.
         """
+        # Resolve the open `_QueueActor.get` call so the queue actor can exit.
+        self._wake_pending_inter_actor_get()
+
         # Set the stop event for the training thread to gracefully exit.
         self.stop_event.set()
 
@@ -328,21 +334,44 @@ class _TrainSession:
         """Get result from result queue. Pass result from training actor result queue if needed."""
         result = None
         if self._inter_actor_queue is not None:
-            try:
-                inter_actor_item = self._inter_actor_queue.get(
-                    block=block, timeout=_RESULT_FETCH_TIMEOUT
-                )
-                if inter_actor_item:
-                    # Must release continue_lock to allow report to work.
-                    self.continue_lock.release()
-                    self.report(inter_actor_item)
-            except ray_queue.Empty:
-                pass
+            inter_actor_item = self._poll_inter_actor_queue()
+            if inter_actor_item is not None:
+                # Must release continue_lock to allow report to work.
+                self.continue_lock.release()
+                self.report(inter_actor_item)
         try:
             result = self.result_queue.get(block=block, timeout=_RESULT_FETCH_TIMEOUT)
         except queue.Empty:
             pass
         return result
+
+    def _poll_inter_actor_queue(self) -> Optional[Dict]:
+        """Wait up to ``_RESULT_FETCH_TIMEOUT`` for the next inter-actor item.
+
+        Keeps one ``_QueueActor.get`` call open across polls and checks it with
+        ``ray.wait``. The call has no timeout, so it only returns once an item
+        arrives. Waits even when the caller does not block, because a new call
+        needs a round trip to return an item that is already queued.
+        """
+        if self._pending_inter_actor_get is None:
+            self._pending_inter_actor_get = self._inter_actor_queue.actor.get.remote()
+        ready, _ = ray.wait(
+            [self._pending_inter_actor_get], timeout=_RESULT_FETCH_TIMEOUT
+        )
+        if not ready:
+            return None
+        pending_get = self._pending_inter_actor_get
+        self._pending_inter_actor_get = None
+        return ray.get(pending_get)
+
+    def _wake_pending_inter_actor_get(self):
+        """Wake the open ``_QueueActor.get`` call with ``None``, which polling skips."""
+        pending_get = self._pending_inter_actor_get
+        self._pending_inter_actor_get = None
+        if pending_get is None or ray.wait([pending_get], timeout=0)[0]:
+            return
+        wake_put = self._inter_actor_queue.actor.put.remote(None)
+        ray.wait([pending_get, wake_put], num_returns=2, timeout=_RESULT_FETCH_TIMEOUT)
 
     def _auto_fill_metrics(self, result: dict) -> dict:
         """Add autofilled metrics and update attributes."""
@@ -633,6 +662,13 @@ def get_accelerator(default_accelerator_cls: Type[Accelerator]) -> Accelerator:
     If an accelerator has not been set, then this method will construct an
     accelerator using the provided accelerator class.
 
+    Args:
+        default_accelerator_cls: The accelerator class to instantiate if no
+            accelerator has been set yet for this session.
+
+    Returns:
+        The accelerator associated with this training session.
+
     Raises:
         SessionMisuseError: if the session is uninitialized.
     """
@@ -773,6 +809,9 @@ def report(
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
+        checkpoint_dir_name: Optional custom name for the checkpoint directory.
+            Only supported in the new Ray Train implementation (Train V2);
+            ignored otherwise.
     """
     if checkpoint_dir_name is not None:
         logger.warning(
@@ -1078,6 +1117,9 @@ def get_local_world_size() -> int:
             :hide:
 
             ...
+
+    Returns:
+        The number of workers running on this node.
     """
     session = get_session()
     if not hasattr(session, "local_world_size"):
@@ -1117,6 +1159,9 @@ def get_node_rank() -> int:
             :hide:
 
             ...
+
+    Returns:
+        The rank of this node within the cluster.
     """
     session = get_session()
     if not hasattr(session, "node_rank"):

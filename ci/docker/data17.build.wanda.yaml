@@ -1,0 +1,11 @@
+name: "data17build-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
+dockerfile: ci/docker/data.build.Dockerfile
+srcs:
+  - python/deplocks/ci/data-pyarrow-v17-ci_depset_py$PYTHON.lock
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON
+  - IMAGE_TYPE=pyarrow-v17
+  - PYTHON=$PYTHON
+tags:
+  - cr.ray.io/rayproject/data17build-py$PYTHON

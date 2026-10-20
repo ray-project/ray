@@ -1,13 +1,17 @@
 import asyncio
+import os
 import pathlib
 import re
+import shutil
 import sys
+import tempfile
 from typing import List
 
 import pytest
 
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.subprocesses.handle as handle_module
 from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
@@ -19,6 +23,8 @@ from ray.dashboard.subprocesses.module import SubprocessModule, SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable
 from ray.dashboard.subprocesses.tests.utils import TestModule, TestModule1
 
+import psutil
+
 # This test requires non-minimal Ray.
 
 
@@ -27,20 +33,30 @@ def default_module_config(tmp_path) -> SubprocessModuleConfig:
     """
     Creates a tmpdir to hold the logs.
     """
-    yield SubprocessModuleConfig(
-        cluster_id_hex="test_cluster_id",
-        gcs_address="",
-        session_name="test_session",
-        temp_dir=str(tmp_path),
-        session_dir=str(tmp_path),
-        logging_level=ray_constants.LOGGER_LEVEL,
-        logging_format=ray_constants.LOGGER_FORMAT,
-        log_dir=str(tmp_path),
-        logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
-        logging_rotate_bytes=LOGGING_ROTATE_BYTES,
-        logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
-        socket_dir=str(tmp_path),
+    # macOS caps AF_UNIX sun_path at 104 bytes. pytest's tmp_path on macOS is
+    # rooted at /private/var/folders/... which is already long enough that
+    # appending the socket filename exceeds the limit, so use a short directory
+    # under /tmp for the socket files specifically.
+    socket_dir = tempfile.mkdtemp(
+        prefix="ray_e2e_", dir="/tmp" if sys.platform != "win32" else None
     )
+    try:
+        yield SubprocessModuleConfig(
+            cluster_id_hex="test_cluster_id",
+            gcs_address="",
+            session_name="test_session",
+            temp_dir=str(tmp_path),
+            session_dir=str(tmp_path),
+            logging_level=ray_constants.LOGGER_LEVEL,
+            logging_format=ray_constants.LOGGER_FORMAT,
+            log_dir=str(tmp_path),
+            logging_filename=dashboard_consts.DASHBOARD_LOG_FILENAME,
+            logging_rotate_bytes=LOGGING_ROTATE_BYTES,
+            logging_rotate_backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+            socket_dir=socket_dir,
+        )
+    finally:
+        shutil.rmtree(socket_dir, ignore_errors=True)
 
 
 class _DummyConn:
@@ -83,6 +99,47 @@ class _DummySession:
 
     async def close(self):
         self.closed = True
+
+
+@pytest.mark.parametrize(
+    ("available", "expected"),
+    [
+        # `fork` is offered by the platform but must never be picked.
+        (["fork", "spawn", "forkserver"], "forkserver"),
+        # Windows, and POSIX builds without SCM_RIGHTS, fall back rather than raising.
+        (["spawn"], "spawn"),
+    ],
+)
+def test_select_start_method(monkeypatch, available, expected):
+    monkeypatch.setattr(
+        handle_module.multiprocessing, "get_all_start_methods", lambda: available
+    )
+    assert handle_module.select_start_method() == expected
+
+
+@pytest.mark.asyncio
+async def test_module_process_is_forked_from_the_forkserver(default_module_config):
+    """Under forkserver a module is a grandchild of this process, not a child.
+
+    Node._get_system_processes_for_resource_isolation relies on that when it collects
+    pids for the system cgroup.
+    """
+    if SubprocessModuleHandle.mp_context.get_start_method() != "forkserver":
+        pytest.skip("only meaningful under the forkserver start method")
+
+    loop = asyncio.get_event_loop()
+    subprocess_handle = SubprocessModuleHandle(loop, TestModule, default_module_config)
+    subprocess_handle.start_module()
+    subprocess_handle.wait_for_module_ready()
+
+    try:
+        module_process = psutil.Process(subprocess_handle.process.pid)
+        assert module_process.ppid() != os.getpid()
+        assert module_process.pid in {
+            p.pid for p in psutil.Process(os.getpid()).children(recursive=True)
+        }
+    finally:
+        await subprocess_handle.destroy_module()
 
 
 @pytest.mark.asyncio

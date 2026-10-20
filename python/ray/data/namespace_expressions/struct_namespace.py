@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import pyarrow
 import pyarrow.compute as pc
 
 from ray.data.datatype import DataType
-from ray.data.expressions import pyarrow_udf
+from ray.data.expressions import _create_pyarrow_compute_udf
 
 if TYPE_CHECKING:
-    from ray.data.expressions import Expr, UDFExpr
+    from ray.data.expressions import Expr, PyArrowComputeUDFExpr
 
 
 @dataclass
@@ -34,22 +34,30 @@ class _StructNamespace:
 
     _expr: Expr
 
-    def __getitem__(self, field_name: str) -> "UDFExpr":
+    def __getitem__(self, key: Union[str, int]) -> "PyArrowComputeUDFExpr":
         """Extract a field using bracket notation.
 
         Args:
-            field_name: The name of the field to extract.
+            key: The field name or index to extract.
 
         Returns:
-            UDFExpr that extracts the specified field from each struct.
+            PyArrowComputeUDFExpr that extracts the specified field from each struct.
 
         Example:
-            >>> col("user").struct["age"]  # Get age field  # doctest: +SKIP
-            >>> col("user").struct["address"].struct["city"]  # Get nested city field  # doctest: +SKIP
+            >>> from ray.data.expressions import col
+            >>> expr = col("user").struct["age"]  # Get age field by name
+            >>> expr = col("user").struct[1]  # Get second field by index
+            >>> expr = col("user").struct["address"].struct["city"]  # Get nested city field
         """
-        return self.field(field_name)
+        if isinstance(key, str):
+            return self.field(key)
+        if isinstance(key, int) and not isinstance(key, bool):
+            return self.field_by_index(key)
+        raise TypeError(
+            f"Struct indices must be strings or integers, not {type(key).__name__}"
+        )
 
-    def field(self, field_name: str) -> "UDFExpr":
+    def field(self, field_name: str) -> "PyArrowComputeUDFExpr":
         """Extract a field from a struct.
 
         Args:
@@ -58,8 +66,7 @@ class _StructNamespace:
         Returns:
             UDFExpr that extracts the specified field from each struct.
         """
-        # Infer return type from the struct field type
-        return_dtype = DataType(object)  # fallback
+        return_dtype = DataType(object)
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
             if pyarrow.types.is_struct(arrow_type):
@@ -67,11 +74,37 @@ class _StructNamespace:
                     field_type = arrow_type.field(field_name).type
                     return_dtype = DataType.from_arrow(field_type)
                 except KeyError:
-                    # Field not found in schema, fallback to object
                     pass
 
-        @pyarrow_udf(return_dtype=return_dtype)
-        def _struct_field(arr: pyarrow.Array) -> pyarrow.Array:
-            return pc.struct_field(arr, field_name)
+        return _create_pyarrow_compute_udf(pc.struct_field, return_dtype)(
+            self._expr, field_name
+        )
 
-        return _struct_field(self._expr)
+    def field_by_index(self, index: int) -> "PyArrowComputeUDFExpr":
+        """Extract a field from a struct by index.
+
+        Args:
+            index: The index of the field to extract.
+
+        Returns:
+            UDFExpr that extracts the specified field from each struct.
+        """
+        if not isinstance(index, int) or isinstance(index, bool):
+            raise TypeError(
+                f"Struct field index must be an integer, not {type(index).__name__}"
+            )
+        if index < 0:
+            raise ValueError(f"Struct field index must be non-negative, got {index}")
+        return_dtype = DataType(object)
+        if self._expr.data_type.is_arrow_type():
+            arrow_type = self._expr.data_type.to_arrow_dtype()
+            if pyarrow.types.is_struct(arrow_type):
+                try:
+                    field_type = arrow_type[index].type
+                    return_dtype = DataType.from_arrow(field_type)
+                except IndexError:
+                    pass
+
+        return _create_pyarrow_compute_udf(pc.struct_field, return_dtype)(
+            self._expr, index
+        )

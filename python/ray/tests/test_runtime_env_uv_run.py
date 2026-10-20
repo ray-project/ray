@@ -13,6 +13,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_until_server_available,
 )
+from ray.exceptions import RaySystemError
 
 PYPROJECT_TOML = """
 [project]
@@ -125,7 +126,6 @@ def test_uv_run_editable(shutdown_only, tmp_working_dir):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook():
-
     import ray._private.runtime_env.uv_runtime_env_hook
 
     def check_uv_run(
@@ -152,7 +152,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
     )
@@ -160,7 +160,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", "--directory", "/tmp", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.path.realpath("/tmp"),
         },
     )
@@ -168,7 +168,7 @@ def test_uv_run_runtime_env_hook():
         [find_uv_bin(), "run", "--no-project", script],
         {"working_dir": "/some/path"},
         {
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": "/some/path",
         },
     )
@@ -184,7 +184,7 @@ def test_uv_run_runtime_env_hook():
             cmd=[find_uv_bin(), "run", script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{find_uv_bin()} run --python {sys.executable}",
+                "py_executable": f"{find_uv_bin()} run --python {sys.executable} python",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -200,7 +200,7 @@ def test_uv_run_runtime_env_hook():
             cmd=[find_uv_bin(), "run", "--with-requirements", requirements, script],
             runtime_env={},
             expected_output={
-                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements} --python {sys.executable}",
+                "py_executable": f"{find_uv_bin()} run --with-requirements {requirements} --python {sys.executable} python",
                 "working_dir": f"{tmp_dir}",
             },
             subprocess_kwargs={"cwd": tmp_dir},
@@ -262,7 +262,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -275,7 +275,7 @@ def test_uv_run_runtime_env_hook():
         cmd=[find_uv_bin(), "run", "--no-project", script],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
         subprocess_kwargs={
@@ -294,7 +294,7 @@ def test_uv_run_runtime_env_hook():
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
     )
@@ -312,7 +312,7 @@ def test_uv_run_runtime_env_hook():
         ],
         runtime_env={},
         expected_output={
-            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable}",
+            "py_executable": f"{find_uv_bin()} run --no-project --python {sys.executable} python",
             "working_dir": os.getcwd(),
         },
     )
@@ -370,7 +370,6 @@ def test_uv_run_parser():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
-
     tmp_dir = Path(temp_dir)
 
     script = f"""
@@ -497,6 +496,112 @@ with open("{tmp_dir / "output.txt"}", "w") as out:
     )
     with open(tmp_dir / "output.txt") as f:
         assert json.load(f) == {"working_dir_files": os.listdir(working_dir)}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [{"cmd": "ray start --head --num-cpus=1 --ray-client-server-port=50052"}],
+    indirect=True,
+)
+def test_uv_run_ray_client_mode(call_ray_start, tmp_working_dir):
+    """Test that UV environment works with Ray Client mode.
+
+    This verifies the fix for: https://github.com/ray-project/ray/issues/57991
+
+    The test verifies that when connecting via Ray Client, the client-side UV
+    hook correctly detects the UV environment and propagates the configuration
+    (py_executable, working_dir) to the cluster workers.
+
+    Architecture:
+    - Ray cluster runs in separate subprocess (started by call_ray_start fixture)
+    - Ray Client server is built-in (via --ray-client-server-port flag)
+    - This test process runs under 'uv run' and connects as a client
+    - UV hook detects UV environment in client process and propagates config
+
+    This is a cleaner approach than running cluster and client in the same process.
+    """
+    from ray._private.runtime_env.uv_runtime_env_hook import _get_uv_run_cmdline
+    from ray.job_config import JobConfig
+
+    # Verify test is running under UV (prerequisite for this test)
+    uv_cmdline = _get_uv_run_cmdline()
+    if uv_cmdline is None:
+        pytest.skip("Test must run under 'uv run'")
+
+    tmp_dir = tmp_working_dir
+
+    # Connect as Ray Client from UV environment
+    # The UV hook will detect the 'uv run' process and set py_executable
+    ray.init(
+        "ray://localhost:50052",  # Connect to the client server started by fixture
+        job_config=JobConfig(
+            runtime_env={
+                "working_dir": tmp_dir,
+                # Use system environment to find Ray installation
+                "env_vars": {"PYTHONPATH": ":".join(sys.path)},
+            }
+        ),
+    )
+
+    try:
+        # Verify UV config was applied to runtime_env
+        context = ray.get_context()
+        conn_info = context.client_worker.connection_info()
+        runtime_env = conn_info.get("job_config", {}).get("runtime_env", {})
+        assert "py_executable" in runtime_env, "UV hook should set py_executable"
+        assert (
+            "uv run" in runtime_env["py_executable"]
+        ), "py_executable should contain 'uv run'"
+
+        @ray.remote
+        def emojize():
+            import emoji
+
+            return emoji.emojize("Ray rocks :thumbs_up:")
+
+        # This should work because UV hook detected and propagated UV config
+        result = ray.get(emojize.remote())
+        assert (
+            result == "Ray rocks 👍"
+        ), "UV should have installed emoji package on workers"
+
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
+def test_uv_run_worker_startup_failed(shutdown_only, monkeypatch):
+    """Test that exception is raised when pop worker always fails
+
+    This test uses an invalid py_executable command that will fail during worker startup,
+    causing the worker registration to time out multiple times and eventually raise
+    RaySystemError.
+    """
+    with monkeypatch.context() as m:
+        # Set environment variables to speed up the test (only for this test context)
+        # Reduce timeout to 3 seconds and max retries to 3
+        m.setenv("RAY_worker_register_timeout_seconds", "3")
+        m.setenv("RAY_pop_worker_max_retries", "3")
+
+        # Use an invalid command that will fail
+        runtime_env = {
+            "py_executable": f"{find_uv_bin()} run --with nonexistent-package-xyz123 --no-project",
+        }
+
+        ray.init(runtime_env=runtime_env)
+
+        @ray.remote
+        def failing_task():
+            return "should not succeed"
+
+        # The task should raise RaySystemError
+        with pytest.raises(RaySystemError) as exc_info:
+            ray.get(failing_task.remote(), timeout=30)
+
+        # Assert that the exception was actually raised and contains expected message
+        assert exc_info.type is RaySystemError
+        assert "Failed to startup worker" in str(exc_info.value)
 
 
 if __name__ == "__main__":

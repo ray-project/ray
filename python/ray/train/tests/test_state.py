@@ -290,11 +290,12 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
         assert flat_gpu_ids == set(range(8))
 
     # Check Datasets
+    assert {dataset_info.name for dataset_info in run.datasets} == set(datasets)
     for dataset_info in run.datasets:
-        dataset = datasets[dataset_info.name]
         # DataConfig will automatically set the dataset_name to the key of the dataset dict.
         assert dataset_info.dataset_name == dataset_info.name
-        assert dataset_info.dataset_uuid == dataset._plan._dataset_uuid
+        # The uuid is regenerated on deserialized so will not be equal the driver-side uuid
+        assert dataset_info.dataset_uuid
 
 
 @pytest.mark.parametrize("raise_error", [True, False])

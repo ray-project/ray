@@ -2,20 +2,28 @@
 
 # __start_translation_model__
 # File name: model.py
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 class Translator:
     def __init__(self):
         # Load model
-        self.model = pipeline("translation_en_to_fr", model="t5-small")
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def translate(self, text: str) -> str:
         # Run inference
-        model_output = self.model(text)
+        input_ids = self.tokenizer(
+            f"translate English to French: {text}", return_tensors="pt"
+        ).input_ids
+        output_ids = self.model.generate(
+            input_ids, num_beams=4, early_stopping=True, max_length=300
+        )
 
         # Post-process output to return only the translation text
-        translation = model_output[0]["translation_text"]
+        translation = self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
         return translation
 
@@ -32,20 +40,32 @@ assert translation == "Bonjour monde!"
 
 # __start_summarization_model__
 # File name: summary_model.py
-from transformers import pipeline
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
 
 class Summarizer:
     def __init__(self):
         # Load model
-        self.model = pipeline("summarization", model="t5-small")
+        self.tokenizer = AutoTokenizer.from_pretrained("t5-small")
+        self.model = AutoModelForSeq2SeqLM.from_pretrained("t5-small")
 
     def summarize(self, text: str) -> str:
         # Run inference
-        model_output = self.model(text, min_length=5, max_length=15)
+        input_ids = self.tokenizer(f"summarize: {text}", return_tensors="pt").input_ids
+        output_ids = self.model.generate(
+            input_ids,
+            num_beams=4,
+            early_stopping=True,
+            length_penalty=2.0,
+            no_repeat_ngram_size=3,
+            min_length=5,
+            max_length=15,
+        )
 
         # Post-process output to return only the summary text
-        summary = model_output[0]["summary_text"]
+        summary = self.tokenizer.decode(
+            output_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False
+        )
 
         return summary
 

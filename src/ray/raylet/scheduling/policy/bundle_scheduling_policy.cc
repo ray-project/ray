@@ -30,26 +30,14 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
   }
 }
 
-absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleSchedulingPolicy::SelectCandidateNodes(const SchedulingContext *context) const {
-  RAY_UNUSED(context);
-  absl::flat_hash_map<scheduling::NodeID, const Node *> result;
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    if (is_node_available_ == nullptr || is_node_available_(entry.first)) {
-      result.emplace(entry.first, &entry.second);
-    }
-  }
-  return result;
-}
-
 bool BundleSchedulingPolicy::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const {
   for (const auto &request : resource_request_list) {
     bool bundle_feasible = std::any_of(
-        candidate_nodes.begin(), candidate_nodes.end(), [&](const auto &entry) {
+        candidate_nodes.begin(), candidate_nodes.end(), [&](const auto &node_id) {
           // Validates both resource and label constraints are feasible.
-          return entry.second->GetLocalView().IsFeasible(*request);
+          return cluster_resource_manager_.HasFeasibleResources(node_id, *request);
         });
     if (!bundle_feasible) {
       return false;
@@ -128,37 +116,34 @@ BundleSchedulingPolicy::SortRequiredResources(
   return {std::move(sorted_index), std::move(sorted_resource_request_list)};
 }
 
-std::pair<scheduling::NodeID, const Node *> BundleSchedulingPolicy::GetBestNode(
+scheduling::NodeID BundleSchedulingPolicy::GetBestNode(
     const ResourceRequest &required_resources,
-    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes,
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
     const SchedulingOptions &options) const {
   double best_node_score = -1;
   auto best_node_id = scheduling::NodeID::Nil();
-  const Node *best_node = nullptr;
 
   // Score the nodes.
-  for (const auto &[node_id, node] : candidate_nodes) {
-    const auto &node_resources = node->GetLocalView();
+  for (const auto &node_id : candidate_nodes) {
+    const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
     double node_score = node_scorer_->Score(required_resources, node_resources);
     if (best_node_id.IsNil() || best_node_score < node_score) {
       best_node_id = node_id;
       best_node_score = node_score;
-      best_node = node;
     }
   }
   if (!best_node_id.IsNil() && best_node_score >= 0) {
-    return {best_node_id, best_node};
+    return best_node_id;
   }
-  return {scheduling::NodeID::Nil(), nullptr};
+  return scheduling::NodeID::Nil();
 }
 
 ////////////////////  BundlePackSchedulingPolicy  ///////////////////////////////
 SchedulingResult BundlePackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
-
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -186,34 +171,33 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   while (!required_resources_list_copy.empty()) {
     const auto &required_resources_index = required_resources_list_copy.front().first;
     const auto &required_resources = required_resources_list_copy.front().second;
-    auto best_node = GetBestNode(*required_resources, candidate_nodes, options);
-    if (best_node.first.IsNil()) {
+    auto best_node_id = GetBestNode(*required_resources, candidate_nodes, options);
+    if (best_node_id.IsNil()) {
       // There is no node to meet the scheduling requirements.
       break;
     }
 
-    const auto &node_resources = best_node.second->GetLocalView();
-
     RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-        best_node.first, *required_resources));
-    result_nodes[required_resources_index] = best_node.first;
+        best_node_id, *required_resources));
+    result_nodes[required_resources_index] = best_node_id;
     required_resources_list_copy.pop_front();
 
     // We try to schedule more resources on one node.
     for (auto iter = required_resources_list_copy.begin();
          iter != required_resources_list_copy.end();) {
       // If the node has sufficient resources, allocate it.
-      if (node_resources.IsAvailable(*iter->second)) {
+      if (cluster_resource_manager_.HasAvailableResources(
+              best_node_id, *iter->second, false)) {
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-            best_node.first, *iter->second));
-        result_nodes[iter->first] = best_node.first;
+            best_node_id, *iter->second));
+        result_nodes[iter->first] = best_node_id;
         required_resources_list_copy.erase(iter++);
       } else {
         // Otherwise try other node.
         ++iter;
       }
     }
-    candidate_nodes.erase(best_node.first);
+    candidate_nodes.erase(best_node_id);
   }
 
   // Releasing the resources temporarily deducted from `cluster_resource_manager_`.
@@ -237,10 +221,9 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
 //////////////////////  BundleSpreadSchedulingPolicy  ///////////////////////////
 SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
-
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -258,25 +241,25 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   }
 
   std::vector<scheduling::NodeID> result_nodes;
-  absl::flat_hash_map<scheduling::NodeID, const Node *> selected_nodes;
+  absl::flat_hash_set<scheduling::NodeID> selected_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
-    auto best_node = GetBestNode(*resource_request, candidate_nodes, options);
+    auto best_node_id = GetBestNode(*resource_request, candidate_nodes, options);
 
     // There are nodes to meet the scheduling requirements.
-    if (!best_node.first.IsNil()) {
-      result_nodes.emplace_back(best_node.first);
+    if (!best_node_id.IsNil()) {
+      result_nodes.emplace_back(best_node_id);
       RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-          best_node.first, *resource_request));
-      candidate_nodes.erase(result_nodes.back());
-      selected_nodes.emplace(best_node);
+          best_node_id, *resource_request));
+      candidate_nodes.erase(best_node_id);
+      selected_nodes.insert(best_node_id);
     } else {
       // Scheduling from selected nodes.
-      best_node = GetBestNode(*resource_request, selected_nodes, options);
-      if (!best_node.first.IsNil()) {
-        result_nodes.emplace_back(best_node.first);
+      best_node_id = GetBestNode(*resource_request, selected_nodes, options);
+      if (!best_node_id.IsNil()) {
+        result_nodes.emplace_back(best_node_id);
         RAY_CHECK(cluster_resource_manager_.SubtractNodeAvailableResources(
-            best_node.first, *resource_request));
+            best_node_id, *resource_request));
       } else {
         break;
       }
@@ -303,10 +286,9 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
 /////////////////////  BundleStrictPackSchedulingPolicy  //////////////////////////
 SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
-
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -332,8 +314,8 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 
   // Remove any node that does not satisfy the aggregated request.
   for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
-    const auto &node_resources = it->second->GetLocalView();
-    if (!node_resources.IsFeasible(aggregated_resource_request)) {
+    if (!cluster_resource_manager_.HasFeasibleResources(*it,
+                                                        aggregated_resource_request)) {
       candidate_nodes.erase(it++);
     } else {
       ++it;
@@ -347,29 +329,26 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
-                                                        nullptr);
+  auto best_node_id = scheduling::NodeID::Nil();
   if (!options.bundle_strict_pack_soft_target_node_id_.IsNil()) {
     if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id_)) {
-      best_node = GetBestNode(
-          aggregated_resource_request,
-          absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
-              {options.bundle_strict_pack_soft_target_node_id_,
-               candidate_nodes[options.bundle_strict_pack_soft_target_node_id_]}},
-          options);
+      best_node_id = GetBestNode(aggregated_resource_request,
+                                 absl::flat_hash_set<scheduling::NodeID>{
+                                     options.bundle_strict_pack_soft_target_node_id_},
+                                 options);
     }
   }
 
-  if (best_node.first.IsNil()) {
-    best_node = GetBestNode(aggregated_resource_request, candidate_nodes, options);
+  if (best_node_id.IsNil()) {
+    best_node_id = GetBestNode(aggregated_resource_request, candidate_nodes, options);
   }
 
   // Select the node with the highest score.
   // `StrictPackSchedule` does not need to consider the scheduling context, because it
   // only schedules to a node and triggers rescheduling when node dead.
   std::vector<scheduling::NodeID> result_nodes;
-  if (!best_node.first.IsNil()) {
-    result_nodes.resize(resource_request_list.size(), best_node.first);
+  if (!best_node_id.IsNil()) {
+    result_nodes.resize(resource_request_list.size(), best_node_id);
   }
   if (result_nodes.empty()) {
     // Can't meet the scheduling requirements temporarily.
@@ -380,13 +359,32 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
 }
 
 /////////////////////  BundleStrictSpreadSchedulingPolicy  //////////////////////////
+void BundleStrictSpreadSchedulingPolicy::ExcludeNodesAlreadyContainingBundles(
+    absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
+    const SchedulingContext *context) {
+  const BundleSchedulingContext *bundle_scheduling_context =
+      dynamic_cast<const BundleSchedulingContext *>(context);
+  if (bundle_scheduling_context &&
+      bundle_scheduling_context->bundle_locations_.has_value()) {
+    const std::shared_ptr<BundleLocations> &bundle_locations =
+        bundle_scheduling_context->bundle_locations_.value();
+    if (bundle_locations != nullptr) {
+      for (auto &bundle : *bundle_locations) {
+        candidate_nodes.erase(scheduling::NodeID(bundle.second.first.Binary()));
+      }
+    }
+  }
+}
+
 SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    SchedulingOptions options) {
+    SchedulingOptions options,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes) {
   RAY_CHECK(!resource_request_list.empty());
 
-  // Filter candidate nodes.
-  auto candidate_nodes = SelectCandidateNodes(options.scheduling_context_.get());
+  ExcludeNodesAlreadyContainingBundles(candidate_nodes,
+                                       options.scheduling_context_.get());
+
   if (candidate_nodes.empty()) {
     RAY_LOG(DEBUG) << "The candidate nodes is empty, return directly.";
     return SchedulingResult::Infeasible();
@@ -413,12 +411,12 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   std::vector<scheduling::NodeID> result_nodes;
   for (const auto &resource_request : sorted_resource_request_list) {
     // Score and sort nodes.
-    auto best_node = GetBestNode(*resource_request, candidate_nodes, options);
+    auto best_node_id = GetBestNode(*resource_request, candidate_nodes, options);
 
     // There are nodes to meet the scheduling requirements.
-    if (!best_node.first.IsNil()) {
-      candidate_nodes.erase(best_node.first);
-      result_nodes.emplace_back(best_node.first);
+    if (!best_node_id.IsNil()) {
+      candidate_nodes.erase(best_node_id);
+      result_nodes.emplace_back(best_node_id);
     } else {
       // There is no node to meet the scheduling requirements.
       break;
@@ -431,37 +429,6 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   }
   return SortSchedulingResult(SchedulingResult::Success(std::move(result_nodes)),
                               sorted_index);
-}
-
-absl::flat_hash_map<scheduling::NodeID, const Node *>
-BundleStrictSpreadSchedulingPolicy::SelectCandidateNodes(
-    const SchedulingContext *context) const {
-  auto bundle_scheduling_context = dynamic_cast<const BundleSchedulingContext *>(context);
-
-  absl::flat_hash_set<scheduling::NodeID> nodes_in_use;
-  if (bundle_scheduling_context &&
-      bundle_scheduling_context->bundle_locations_.has_value()) {
-    const auto &bundle_locations = bundle_scheduling_context->bundle_locations_.value();
-    if (bundle_locations != nullptr) {
-      for (auto &bundle : *bundle_locations) {
-        nodes_in_use.insert(scheduling::NodeID(bundle.second.first.Binary()));
-      }
-    }
-  }
-
-  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
-  for (const auto &entry : cluster_resource_manager_.GetResourceView()) {
-    if (is_node_available_ && !is_node_available_(entry.first)) {
-      continue;
-    }
-
-    if (nodes_in_use.contains(entry.first)) {
-      continue;
-    }
-
-    candidate_nodes.emplace(entry.first, &entry.second);
-  }
-  return candidate_nodes;
 }
 
 }  // namespace raylet_scheduling_policy

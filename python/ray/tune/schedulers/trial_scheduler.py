@@ -54,6 +54,9 @@ class TrialScheduler:
             mode: One of ["min", "max"]. Direction to optimize.
             **spec: Any kwargs for forward compatibility.
                 Info like Experiment.PUBLIC_KEYS is provided through here.
+
+        Returns:
+            True if the search properties were set successfully, False otherwise.
         """
         if self._metric and metric:
             return False

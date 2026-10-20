@@ -15,18 +15,28 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import (
+    SharedCounter,
+    alive_actor_counts,
+    expected_proxy_actors,
+)
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
 
+# Multi-node convergence here (autoscaler node churn, cluster-wide actor teardown)
+# routinely outlasts wait_for_condition's 10s default on the slowest CI platforms.
+WAIT_TIMEOUT_S = 60
+# Deliberately-held requests must outlive the waits above, so httpx's 5s default
+# read timeout cannot be left in place.
+HTTP_TIMEOUT_S = 2 * WAIT_TIMEOUT_S
 
-# Some tests are not possible to run if proxy is not available on every node.
-# We skip them if proxy is not available.
-def is_proxy_on_every_node() -> bool:
-    client = _get_global_client()
-    return client._http_config.location == "EveryNode"
+
+def num_alive_nodes() -> int:
+    # A node the autoscaler replaced stays in ray.nodes() as a dead entry.
+    return len([n for n in ray.nodes() if n["Alive"]])
 
 
 @pytest.fixture
@@ -75,19 +85,8 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
     Issue: https://github.com/ray-project/ray/issues/32652
     """
 
-    @ray.remote(num_cpus=0)
-    class CounterActor:
-        def __init__(self):
-            self._count = 0
-
-        def inc(self):
-            self._count += 1
-
-        def get(self):
-            return self._count
-
     signal_actor = SignalActor.remote()
-    counter_actor = CounterActor.remote()
+    counter_actor = SharedCounter.remote()
 
     @serve.deployment(max_ongoing_requests=1)
     async def f():
@@ -99,20 +98,32 @@ def test_long_poll_timeout_with_max_ongoing_requests(ray_instance):
     # `max_ongoing_requests=1`.
     serve.run(f.bind())
 
+    def check_route_served() -> bool:
+        resp = httpx.get("http://localhost:8000/-/routes")
+        assert resp.status_code == 200, resp.status_code
+        assert "/" in resp.json(), resp.text
+        return True
+
+    # serve.run returns on RUNNING, but proxies learn routes over long poll: a request
+    # sent before the route lands 404s instead of reaching a replica.
+    wait_for_condition(check_route_served, timeout=WAIT_TIMEOUT_S)
+
     @ray.remote
     def do_req():
-        return httpx.get("http://localhost:8000").text
+        return httpx.get("http://localhost:8000", timeout=HTTP_TIMEOUT_S).text
 
     # The request should be hanging waiting on the `SignalActor`.
     first_ref = do_req.remote()
 
     def check_request_started(num_expected_requests: int) -> bool:
-        with pytest.raises(TimeoutError):
-            ray.get(first_ref, timeout=0.1)
+        ready, _ = ray.wait([first_ref], timeout=0.1)
+        assert not ready, f"Request returned instead of hanging: {ray.get(first_ref)!r}"
         assert ray.get(counter_actor.get.remote()) == num_expected_requests
         return True
 
-    wait_for_condition(check_request_started, timeout=5, num_expected_requests=1)
+    wait_for_condition(
+        check_request_started, timeout=WAIT_TIMEOUT_S, num_expected_requests=1
+    )
 
     # Now issue 10 more requests and wait for significantly longer than the long poll
     # timeout. They should all be queued in the handle due to `max_ongoing_requests`
@@ -207,13 +218,25 @@ def test_shutdown_remote(start_and_shutdown_ray_cli_function, tmp_path):
 
     shutdown_file.write_text(shutdown_serve_script)
 
+    def check_f_serving() -> bool:
+        assert httpx.get("http://localhost:8000/f").text == "got f"
+        return True
+
+    def check_proxy_gone() -> bool:
+        # Deliberately not httpx.RequestError: that also covers timeouts, and a request
+        # that timed out means something is still listening.
+        try:
+            resp = httpx.get("http://localhost:8000/f")
+        except (httpx.NetworkError, httpx.RemoteProtocolError):
+            return True
+        raise AssertionError(f"Proxy still serving: {resp.status_code}")
+
     # Ensure Serve can be restarted and shutdown with for loop
     for _ in range(2):
         subprocess.check_output([sys.executable, str(deploy_file)])
-        assert httpx.get("http://localhost:8000/f").text == "got f"
+        wait_for_condition(check_f_serving, timeout=WAIT_TIMEOUT_S)
         subprocess.check_output([sys.executable, str(shutdown_file)])
-        with pytest.raises(httpx.ConnectError):
-            httpx.get("http://localhost:8000/f")
+        wait_for_condition(check_proxy_gone, timeout=WAIT_TIMEOUT_S)
 
 
 def test_handle_early_detect_failure(shutdown_ray):
@@ -231,8 +254,13 @@ def test_handle_early_detect_failure(shutdown_ray):
             return os.getpid()
 
         handle = serve.run(f.bind())
-        responses = [handle.remote() for _ in range(10)]
-        assert len({r.result() for r in responses}) == 2
+
+        def check_both_replicas_serving() -> bool:
+            responses = [handle.remote() for _ in range(10)]
+            assert len({r.result() for r in responses}) == 2
+            return True
+
+        wait_for_condition(check_both_replicas_serving, timeout=WAIT_TIMEOUT_S)
 
         client = _get_global_client()
         # Kill the controller so that the replicas membership won't be updated
@@ -258,10 +286,11 @@ def test_autoscaler_shutdown_node_http_everynode(
     autoscaler_v2, monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
-    # Faster health check interval to speed up the test.
-    monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
+    # Detect the autoscaler-removed node within a few seconds, but never on a single
+    # missed check: one 2s stall of a raylet on a loaded CI runner is not a dead node.
+    monkeypatch.setenv("RAY_health_check_failure_threshold", "3")
     monkeypatch.setenv("RAY_health_check_timeout_ms", "2000")
-    monkeypatch.setenv("RAY_health_check_period_ms", "3000")
+    monkeypatch.setenv("RAY_health_check_period_ms", "1000")
 
     cluster = AutoscalingCluster(
         head_resources={"CPU": 4},
@@ -293,18 +322,25 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     serve.run(A.bind(), name="app_f")
 
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, 2 replicas.
-    # Otherwise, total actors are 1 proxy, 1 controller, 2 replicas.
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
-    assert len(ray.nodes()) == 2
+    # The second replica needs more CPU than the head node has free, so the autoscaler
+    # brings up the worker node. Requiring two proxies waits for that node to join.
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=2),
+        "ServeReplica:app_f:A": 2,
+    }
+    wait_for_condition(
+        lambda: alive_actor_counts() == expected_actors, timeout=WAIT_TIMEOUT_S
+    )
+    assert num_alive_nodes() == 2
 
     # Stop all deployment replicas.
     serve.delete("app_f")
 
-    # The http proxy on worker node should exit as well.
+    # The worker node and its proxy exit, leaving only the head-node proxy.
+    expected_actors = {"ServeController": 1, **expected_proxy_actors(num_proxy_nodes=1)}
     wait_for_condition(
-        lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 2,
+        lambda: alive_actor_counts() == expected_actors, timeout=WAIT_TIMEOUT_S
     )
 
     client = _get_global_client()
@@ -315,7 +351,7 @@ def test_autoscaler_shutdown_node_http_everynode(
         )
         return len(serve_details.proxies)
 
-    wait_for_condition(lambda: serve_details_proxy_count() == 1)
+    wait_for_condition(lambda: serve_details_proxy_count() == 1, timeout=WAIT_TIMEOUT_S)
 
     serve_details = ServeInstanceDetails(
         **ray.get(client._controller.get_serve_instance_details.remote())
@@ -323,9 +359,7 @@ def test_autoscaler_shutdown_node_http_everynode(
     assert serve_details.proxies[get_head_node_id()].status == ProxyStatus.HEALTHY
 
     # Only head node should exist now.
-    wait_for_condition(
-        lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
-    )
+    wait_for_condition(lambda: num_alive_nodes() == 1, timeout=WAIT_TIMEOUT_S)
 
     # Clean up serve.
     serve.shutdown()
@@ -370,10 +404,14 @@ def test_controller_shutdown_gracefully(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
-    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=2),
+        f"ServeReplica:{SERVE_DEFAULT_APP_NAME}:HelloModel": 2,
+    }
+    wait_for_condition(
+        lambda: alive_actor_counts() == expected_actors, timeout=WAIT_TIMEOUT_S
+    )
     assert len(ray.nodes()) == 2
 
     # Call `graceful_shutdown()` on the controller, so it will start shutdown.
@@ -389,6 +427,7 @@ def test_controller_shutdown_gracefully(
     # Ensure the all resources are shutdown.
     wait_for_condition(
         lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Clean up serve.
@@ -431,11 +470,14 @@ def test_client_shutdown_gracefully_when_timeout(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Check expected actors based on mode
-    # If proxy is on every node, total actors are 2 proxies, 1 controller, and 2 replicas
-    # Otherwise, total actors are 1 proxy, 1 controller, and 2 replicas
-    expected_actors = 5 if is_proxy_on_every_node() else 4
-    wait_for_condition(lambda: len(list_actors()) == expected_actors)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=2),
+        f"ServeReplica:{SERVE_DEFAULT_APP_NAME}:HelloModel": 2,
+    }
+    wait_for_condition(
+        lambda: alive_actor_counts() == expected_actors, timeout=WAIT_TIMEOUT_S
+    )
     assert len(ray.nodes()) == 2
 
     # Ensure client times out if the controller does not shutdown within timeout.
@@ -450,6 +492,7 @@ def test_client_shutdown_gracefully_when_timeout(
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
         lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     # Clean up serve.
@@ -481,6 +524,7 @@ def test_serve_shut_down_without_duplicated_logs(
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
         lambda: len(list_actors(filters=[("STATE", "=", "ALIVE")])) == 0,
+        timeout=WAIT_TIMEOUT_S,
     )
 
     all_serve_logs = ""

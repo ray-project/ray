@@ -45,8 +45,18 @@ def load_torch_model(
         )
 
 
-def contains_tensor(obj):
+def contains_tensor(obj: Any) -> bool:
+    """Check if the obj contains a torch tensor.
+
+    Args:
+        obj: The object to check
+
+    Returns:
+        If the object contains a torch tensor
+    """
     if isinstance(obj, torch.Tensor):
+        return True
+    elif isinstance(obj, torch.nn.Module):
         return True
     elif isinstance(obj, dict):
         for k, v in obj.items():
@@ -77,6 +87,8 @@ c18da597e0bb1c1aecc97c77a73fed1849057fa4/torch/nn/modules/utils.py
         state_dict: a state-dict to be loaded to the model.
         prefix: prefix.
 
+    Returns:
+        A new state-dict with the prefix stripped from the keys.
     """
     copied = False
 

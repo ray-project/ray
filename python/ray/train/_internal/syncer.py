@@ -236,6 +236,9 @@ class Syncer(abc.ABC):
                 (``protocol://remote/path``).
             exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
+
+        Returns:
+            The result of ``sync_up`` if a sync was triggered, otherwise ``None``.
         """
         now = time.time()
         if now - self.last_sync_up_time >= self.sync_period:
@@ -256,6 +259,9 @@ class Syncer(abc.ABC):
             local_dir: Local directory to sync to.
             exclude: Pattern of files to exclude, e.g.
                 ``["*/checkpoint_*]`` to exclude trial checkpoints.
+
+        Returns:
+            The result of ``sync_down`` if a sync was triggered, otherwise ``None``.
         """
         now = time.time()
         if now - self.last_sync_down_time >= self.sync_period:

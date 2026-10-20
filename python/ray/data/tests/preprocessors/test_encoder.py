@@ -1,3 +1,4 @@
+import sys
 from typing import Any, Dict
 
 import numpy as np
@@ -6,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.exceptions import UserCodeException
 from ray.data.preprocessor import (
     PreprocessorNotFittedException,
@@ -78,8 +80,8 @@ def test_ordinal_encoder_strings():
     assert (
         "sex" in encoded_ds_pd.columns
     ), "The 'sex' column is missing in the encoded DataFrame"
-    assert (
-        encoded_ds_pd["sex"].dtype == "int64"
+    assert pd.api.types.is_integer_dtype(
+        encoded_ds_pd["sex"].dtype
     ), "The 'sex' column is not encoded as integers"
 
     # Verify that the encoding worked as expected.
@@ -503,14 +505,16 @@ def test_ordinal_encoder():
     processed_col_b = [2, 0, 1, 0]
     processed_col_c = [0, 2, 1, 2]
     processed_col_d = [[2], [], [1, 2, 0], [0, 0]]
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "A": processed_col_a,
-            "B": processed_col_b,
-            "C": processed_col_c,
-            "D": processed_col_d,
-        }
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {
+                "A": processed_col_a,
+                "B": processed_col_b,
+                "C": processed_col_c,
+                "D": processed_col_d,
+            }
+        )
+    ).to_pandas()
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -627,9 +631,14 @@ def test_ordinal_encoder_no_encode_list():
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A"].equals(pd.Series(in_df["A"]))
-    assert out_df["B"].equals(pd.Series([2, 0, 1, 0]))
-    assert out_df["C"].equals(pd.Series([0, 2, 1, 2]))
+    arrow_in_df = ArrowBlockAccessor(pa.Table.from_pandas(in_df)).to_pandas()
+    assert out_df["A"].equals(arrow_in_df["A"])
+    assert out_df["B"].equals(
+        ArrowBlockAccessor(pa.table({"B": [2, 0, 1, 0]})).to_pandas()["B"]
+    )
+    assert out_df["C"].equals(
+        ArrowBlockAccessor(pa.table({"C": [0, 2, 1, 2]})).to_pandas()["C"]
+    )
     assert set(out_df["D"].to_list()) == {3, 0, 2, 1}
 
     # Transform batch.
@@ -888,7 +897,8 @@ def test_one_hot_encoder():
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df["A"].equals(in_df["A"])
+    arrow_in_df = ArrowBlockAccessor(pa.Table.from_pandas(in_df)).to_pandas()
+    assert out_df["A"].equals(arrow_in_df["A"])
     _assert_one_hot_equal(out_df["B"], [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]])
     _assert_one_hot_equal(out_df["C"], [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]])
     assert {tuple(row) for row in out_df["D"]} == {
@@ -988,13 +998,21 @@ def test_one_hot_encoder_with_max_categories():
     df_out = ds_out.to_pandas()
     assert len(ds_out.to_pandas().columns) == 3
 
-    expected_df = pd.DataFrame(
-        {
-            "A": col_a,
-            "B": [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]],
-            "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
-        }
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.table(
+            {
+                "A": pa.array(col_a),
+                "B": pa.array(
+                    [[0, 0], [1, 0], [0, 1], [1, 0], [0, 1]],
+                    type=pa.list_(pa.uint8(), 2),
+                ),
+                "C": pa.array(
+                    [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1], [0, 0, 1]],
+                    type=pa.list_(pa.uint8(), 3),
+                ),
+            }
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(df_out, expected_df, check_like=True)
 
 
@@ -1070,14 +1088,16 @@ def test_multi_hot_encoder():
     processed_col_b = [[0, 0, 1], [1, 0, 0], [0, 1, 0], [1, 0, 0]]
     processed_col_c = [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]]
     processed_col_d = [[0, 0, 1], [0, 0, 0], [1, 1, 1], [2, 0, 0]]
-    expected_df = pd.DataFrame.from_dict(
-        {
-            "A": processed_col_a,
-            "B": processed_col_b,
-            "C": processed_col_c,
-            "D": processed_col_d,
-        }
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {
+                "A": processed_col_a,
+                "B": processed_col_b,
+                "C": processed_col_c,
+                "D": processed_col_d,
+            }
+        )
+    ).to_pandas()
 
     pd.testing.assert_frame_equal(out_df, expected_df)
 
@@ -1208,9 +1228,11 @@ def test_label_encoder():
     processed_col_a = [2, 1, 0, 2]
     processed_col_b = col_b
     processed_col_c = col_c
-    expected_df = pd.DataFrame.from_dict(
-        {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # append mode
@@ -1219,22 +1241,27 @@ def test_label_encoder():
     append_transformed = append_encoder.transform(ds)
     out_df = append_transformed.to_pandas()
 
-    expected_df = pd.DataFrame.from_dict(
-        {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Inverse transform data.
     inverse_transformed = encoder.inverse_transform(transformed)
     inverse_df = inverse_transformed.to_pandas()
 
-    pd.testing.assert_frame_equal(inverse_df, in_df, check_like=True)
+    arrow_in_df = ArrowBlockAccessor(pa.Table.from_pandas(in_df)).to_pandas()
+    pd.testing.assert_frame_equal(inverse_df, arrow_in_df, check_like=True)
 
     inverse_append_transformed = append_encoder.inverse_transform(append_transformed)
     inverse_append_df = inverse_append_transformed.to_pandas()
-    expected_df = pd.DataFrame.from_dict(
-        {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
-    )
+    expected_df = ArrowBlockAccessor(
+        pa.Table.from_pydict(
+            {"A": col_a, "B": col_b, "C": col_c, "A_encoded": processed_col_a}
+        )
+    ).to_pandas()
     pd.testing.assert_frame_equal(inverse_append_df, expected_df, check_like=True)
 
     # Inverse transform without fitting.
@@ -1248,7 +1275,7 @@ def test_label_encoder():
     inv_non_fitted = new_encoder.inverse_transform(transformed)
     inv_non_fitted_df = inv_non_fitted.to_pandas()
 
-    assert inv_non_fitted_df.equals(in_df)
+    assert inv_non_fitted_df.equals(arrow_in_df)
 
     # Transform batch.
     pred_col_a = ["blue", "red", "yellow"]
@@ -1335,7 +1362,10 @@ def test_categorizer(predefined_dtypes):
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df.dtypes["A"] == np.object_
+    arrow_passthrough_dtype = (
+        ArrowBlockAccessor(pa.Table.from_pandas(in_df[["A"]])).to_pandas().dtypes["A"]
+    )
+    assert out_df.dtypes["A"] == arrow_passthrough_dtype
     assert out_df.dtypes["B"] == expected_dtypes["B"]
     assert out_df.dtypes["C"] == expected_dtypes["C"]
 
@@ -1640,6 +1670,150 @@ class TestEncoderSerialization:
             SerializablePreprocessor.deserialize(fake_serialized)
 
         assert exc_info.value.preprocessor_type == "NonExistentEncoder"
+
+
+def test_encoders_fit_via_aggregation():
+    """Encoder fits register plan aggregators, not driver-side callable stats.
+
+    This is what allows a `Dataset.aggregate()`-based fit (one distributed
+    query per preprocessor, batchable with others) instead of the previous
+    map_batches + driver-side counter merge.
+    """
+    df = pd.DataFrame({"A": ["a", "b", "a"], "B": [["x"], ["y"], ["x", "y"]]})
+    ds = ray.data.from_pandas(df)
+
+    encoders = [
+        OrdinalEncoder(["A"]),
+        OneHotEncoder(["A"], max_categories={"A": 1}),
+        MultiHotEncoder(["B"]),
+        LabelEncoder("A"),
+        Categorizer(["A"]),
+    ]
+    for encoder in encoders:
+        encoder.fit(ds)
+        assert not encoder._stat_computation_plan.has_custom_stat_fn(), (
+            f"{type(encoder).__name__} should fit via aggregators, "
+            "not callable stats"
+        )
+        assert encoder.has_stats(), f"{type(encoder).__name__} should have stats"
+
+
+@pytest.mark.parametrize(
+    "make_encoder",
+    [
+        pytest.param(
+            lambda: OrdinalEncoder(["t"], encode_lists=False),
+            id="OrdinalEncoder_whole_lists",
+        ),
+        pytest.param(lambda: OneHotEncoder(["t"]), id="OneHotEncoder"),
+    ],
+)
+def test_whole_list_categories_across_multiple_partial_aggregates(
+    make_encoder, restore_data_context
+):
+    """With whole-list categories, partial aggregates from different blocks must
+    merge into whole lists, not into their inner elements."""
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    restore_data_context.shuffle_input_batch_bytes = 0
+    lists = [["a", "b"], ["a", "b"], ["c"], ["a", "b"], ["d", "e"], ["c"]] * 3
+    ds = ray.data.from_items([{"t": v} for v in lists], override_num_blocks=6)
+
+    encoder = make_encoder().fit(ds)
+
+    stats = encoder.stats_["unique_values(t)"]
+    categories = {tuple(cat): idx for cat, idx in stats.items()}
+    assert categories == {("a", "b"): 0, ("c",): 1, ("d", "e"): 2}
+
+
+@pytest.mark.parametrize(
+    "make_encoder, expected",
+    [
+        pytest.param(
+            lambda: OneHotEncoder(["t"]), {(1, 2): 0, (3, 4): 1}, id="OneHotEncoder"
+        ),
+        pytest.param(
+            lambda: OrdinalEncoder(["t"], encode_lists=False),
+            {(1, 2): 0, (3, 4): 1},
+            id="OrdinalEncoder_whole_arrays",
+        ),
+        pytest.param(
+            lambda: OneHotEncoder(["t"], max_categories={"t": 1}),
+            {(1, 2): 0},
+            id="OneHotEncoder_max_categories",
+        ),
+        # With list encoding on (the OrdinalEncoder default), arrays are split
+        # into their elements, as the previous fit path did.
+        pytest.param(
+            lambda: OrdinalEncoder(["t"]),
+            {1: 0, 2: 1, 3: 2, 4: 3},
+            id="OrdinalEncoder_flattens_arrays",
+        ),
+    ],
+)
+def test_encoders_fit_tensor_columns(make_encoder, expected, restore_data_context):
+    """Arrow has no `unique`/`value_counts` kernel for extension types such as
+    tensors, but the encoders have always accepted a column of arrays, treating
+    each array as one category."""
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    restore_data_context.shuffle_input_batch_bytes = 0
+    arrays = [np.array([1, 2]), np.array([3, 4]), np.array([1, 2])]
+    ds = ray.data.from_items([{"t": a} for a in arrays], override_num_blocks=3)
+
+    encoder = make_encoder().fit(ds)
+
+    stats = encoder.stats_["unique_values(t)"]
+    assert {_as_python_ints(cat): idx for cat, idx in stats.items()} == expected
+
+
+def _as_python_ints(category):
+    if isinstance(category, (tuple, list, np.ndarray)):
+        return tuple(int(x) for x in category)
+    return int(category)
+
+
+@pytest.mark.parametrize(
+    "make_encoder",
+    [
+        pytest.param(lambda: MultiHotEncoder(["c"]), id="MultiHotEncoder"),
+        pytest.param(lambda: OrdinalEncoder(["c"]), id="OrdinalEncoder"),
+    ],
+)
+def test_list_encoders_skip_null_rows(make_encoder):
+    """A missing row in a list column contributes no categories."""
+    rows = [["a"], None, ["a", "b"]]
+    ds = ray.data.from_items([{"c": r} for r in rows], override_num_blocks=1)
+
+    encoder = make_encoder().fit(ds)
+
+    assert encoder.stats_["unique_values(c)"] == {"a": 0, "b": 1}
+
+
+@pytest.mark.parametrize("polars_available", [True, False])
+def test_whole_list_encoders_fit_with_and_without_polars(monkeypatch, polars_available):
+    """Whole-list categories stay whole, both when the vectorized path (which
+    needs the optional `polars` package) collects and merges them and when the
+    Python fallback does (used without `polars`)."""
+    if polars_available:
+        pytest.importorskip("polars")
+    else:
+        monkeypatch.setitem(sys.modules, "polars", None)  # `import polars` now fails
+    encoder = OneHotEncoder(["t"])
+    encoder._fit(None)
+    (spec,) = list(encoder._stat_computation_plan)
+    aggregator = spec.stat_fn
+    table = pa.table({"t": [["a", "b"], ["c"], ["a", "b"]]})
+
+    partials = [_to_pylist(aggregator.aggregate_block(table)) for _ in range(2)]
+    # A null row stands for an empty group.
+    merged = aggregator._combine_column(pa.chunked_array([pa.array(partials + [None])]))
+
+    assert {tuple(category) for category in _to_pylist(merged)} == {("a", "b"), ("c",)}
+
+
+def _to_pylist(values):
+    if isinstance(values, (pa.Array, pa.ChunkedArray)):
+        return values.to_pylist()
+    return values
 
 
 if __name__ == "__main__":

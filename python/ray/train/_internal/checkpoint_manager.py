@@ -91,7 +91,8 @@ class _CheckpointManager:
         checkpoints should be deleted.
 
         Args:
-            checkpoint: Tracked checkpoint object to add to bookkeeping.
+            checkpoint_result: Tracked training result containing the checkpoint
+                and associated metrics to add to bookkeeping.
         """
         self._latest_checkpoint_result = checkpoint_result
 
@@ -136,7 +137,7 @@ class _CheckpointManager:
 
             for checkpoint_result in results_to_delete:
                 checkpoint = checkpoint_result.checkpoint
-                logger.debug("Deleting checkpoint: ", checkpoint)
+                logger.debug("Deleting checkpoint: %s", checkpoint)
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     def _get_checkpoint_score(
@@ -146,6 +147,9 @@ class _CheckpointManager:
 
         If `mode="min"`, the metric is negated so that the lowest score is
         treated as the best.
+
+        Args:
+            checkpoint: The training result whose metrics should be scored.
 
         Returns:
             Tuple: A tuple of (not_is_nan: bool, score: numbers.Number).

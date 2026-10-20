@@ -3,13 +3,13 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
-from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
-from ray._private.ray_constants import LOGGER_FORMAT
-from ray._private.ray_logging.constants import (
+from ray._common.logging_constants import (
     LOGGER_FLATTEN_KEYS,
     LOGRECORD_STANDARD_ATTRS,
     LogKey,
 )
+from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
+from ray._private.ray_constants import LOGGER_FORMAT
 
 
 def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value: Any):

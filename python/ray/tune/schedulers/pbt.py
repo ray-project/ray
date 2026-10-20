@@ -141,10 +141,14 @@ def _explore(
                 perturbation_factor = random.choice(perturbation_factors)
                 new_config[key] = config[key] * perturbation_factor
                 operations[key] = f"* {perturbation_factor}"
-            if isinstance(config[key], int):
-                # If this hyperparameter started out as an integer (ex: `batch_size`),
-                # convert the new value back
-                new_config[key] = int(new_config[key])
+            if isinstance(config[key], bool):
+                # Keep as bool, let `resample_probability` flip it and ignore
+                # `perturbation_factor`
+                new_config[key] = bool(new_config[key])
+            elif isinstance(config[key], int):
+                # If this parameter started out as an integer (e.g. `batch_size`),
+                # round before converting the new value back.
+                new_config[key] = int(round(new_config[key]))
         else:
             raise ValueError(
                 f"Unsupported hyperparameter distribution type: {type(distribution)}"
@@ -260,6 +264,14 @@ class PopulationBasedTraining(FIFOScheduler):
             Note that you can pass in something non-temporal such as
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
+            Valid values are any key reported in the result dict by your
+            trainable. The auto-filled keys ``"training_iteration"`` (the
+            iteration count) and ``"time_total_s"`` (wall-clock seconds since
+            the trial started) always work; any additional numeric, monotonic
+            key your trainable reports via ``tune.report({...})`` is also valid
+            (for example ``"timesteps_total"`` or a custom progress counter).
+            Passing a key that is not present in the reported result causes
+            the scheduler to skip its decision for that step.
         metric: The training result objective value attribute. Stopping
             procedures will use this attribute. If None but a mode was passed,
             the `ray.tune.result.DEFAULT_METRIC` will be used per default.
@@ -647,11 +659,16 @@ class PopulationBasedTraining(FIFOScheduler):
         self, state: _PBTTrialState, time: int, result: Dict, trial: Trial
     ):
         """Saves necessary trial information when result is received.
+
         Args:
             state: The state object for the trial.
             time: The current timestep of the trial.
             result: The trial's result dictionary.
             trial: The trial object.
+
+        Returns:
+            The mode-adjusted score (``self._metric_op * result[self._metric]``)
+            recorded onto ``state.last_score``.
         """
 
         # This trial has reached its perturbation interval.
@@ -981,7 +998,12 @@ class PopulationBasedTraining(FIFOScheduler):
             )
             if num_trials_in_quantile > len(trials) / 2:
                 num_trials_in_quantile = int(math.floor(len(trials) / 2))
-            return (trials[:num_trials_in_quantile], trials[-num_trials_in_quantile:])
+            # Indexed from the front as `trials[-num_trials_in_quantile:]` is the
+            # whole population
+            return (
+                trials[:num_trials_in_quantile],
+                trials[len(trials) - num_trials_in_quantile :],
+            )
 
     def choose_trial_to_run(self, tune_controller: "TuneController") -> Optional[Trial]:
         """Ensures all trials get fair share of time (as defined by time_attr).

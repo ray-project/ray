@@ -29,6 +29,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import env_integer, get_or_create_event_loop
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -52,7 +53,6 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -60,6 +60,7 @@ from ray.data.block import (
     CallableClass,
     DataBatch,
     UserDefinedFunction,
+    _is_cudf_dataframe,
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
@@ -134,10 +135,11 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    # Extract op.exprs before defining the closure to prevent cloudpickle from
+    # Extract expressions before defining the closure to prevent cloudpickle from
     # serializing the entire op object (which may contain references to non-serializable
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
+    common_sub_exprs = op.get_common_sub_exprs()
 
     compute = get_compute(op.compute)
 
@@ -146,7 +148,7 @@ def plan_project_op(
         _create_callable_class_udf_init_fn,
     )
 
-    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(op.get_all_exprs())
 
     def _project_block(block: Block) -> Block:
         try:
@@ -154,7 +156,11 @@ def plan_project_op(
                 eval_projection,
             )
 
-            return eval_projection(projection_exprs, block)
+            return eval_projection(
+                projection_exprs,
+                block,
+                common_sub_exprs=common_sub_exprs,
+            )
         except Exception as e:
             _try_wrap_udf_exception(e)
 
@@ -194,8 +200,8 @@ def plan_streaming_repartition_op(
     )
     map_transformer = MapTransformer([transform_fn])
 
-    if op._strict:
-        ref_bundler = StreamingRepartitionRefBundler(op.target_num_rows_per_block)
+    if op.strict:
+        ref_bundler = RebundleQueue(ExactMultipleSize(op.target_num_rows_per_block))
     else:
         ref_bundler = None
 
@@ -240,7 +246,6 @@ def plan_filter_op(
         init_fn = None
         transform_fn = BlockMapTransformFn(
             filter_block_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
     else:
@@ -254,9 +259,28 @@ def plan_filter_op(
             compute=compute,
         )
 
-        transform_fn = RowMapTransformFn(
-            _generate_transform_fn_for_filter(filter_fn),
-            is_udf=True,
+        def filter_udf_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                rows = block_accessor.iter_rows(public_row_format=True)
+                matching_indices = [i for i, row in enumerate(rows) if filter_fn(row)]
+                # Select the matching rows directly from the original block so
+                # column types (e.g. Arrow dictionary encoding) are preserved,
+                # rather than rebuilding a block from row values, which loses them.
+                if len(matching_indices) == block_accessor.num_rows():
+                    yield block
+                elif matching_indices:
+                    yield block_accessor.take(matching_indices)
+                else:
+                    # `take([])` breaks because indices with no elements are
+                    # inferred as an untyped Arrow array; slicing keeps the
+                    # schema without hitting that path.
+                    yield block_accessor.slice(0, 0)
+
+        transform_fn = BlockMapTransformFn(
+            filter_udf_block_fn,
             output_block_size_option=output_block_size_option,
         )
 
@@ -307,7 +331,6 @@ def plan_udf_map_op(
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -321,7 +344,6 @@ def plan_udf_map_op(
 
         transform_fn = RowMapTransformFn(
             udf_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -484,7 +506,7 @@ def _try_wrap_udf_exception(e: Exception, item: Any = None):
 
 
 def _validate_batch_output(batch: Block) -> None:
-    if not isinstance(
+    allowed = isinstance(
         batch,
         (
             list,
@@ -494,12 +516,14 @@ def _validate_batch_output(batch: Block) -> None:
             pd.core.frame.DataFrame,
             dict,
         ),
-    ):
+    ) or _is_cudf_dataframe(batch)
+    if not allowed:
         raise ValueError(
             "The `fn` you passed to `map_batches` returned a value of type "
             f"{type(batch)}. This isn't allowed -- `map_batches` expects "
             "`fn` to return a `pandas.DataFrame`, `pyarrow.Table`, "
-            "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
+            "`cudf.DataFrame`, `numpy.ndarray`, `list`, or "
+            "`dict[str, numpy.ndarray]`."
         )
 
     if isinstance(batch, list):
@@ -510,6 +534,11 @@ def _validate_batch_output(batch: Block) -> None:
             "wrap them in a named dict field, e.g., "
             "return `{'results': objects}` instead of just `objects`."
         )
+
+    # Handle cudf.DataFrame before the Mapping check, since cudf.DataFrame
+    # implements the Mapping protocol. Mirrors the order in batch_to_block.
+    if _is_cudf_dataframe(batch):
+        return
 
     if isinstance(batch, collections.abc.Mapping):
         for key, value in list(batch.items()):
@@ -561,6 +590,7 @@ class _TransformingBatchIterator(Iterator[DataBatch]):
 
             if (
                 not isinstance(input_batch, collections.abc.Mapping)
+                and not _is_cudf_dataframe(input_batch)
                 and BlockAccessor.for_block(input_batch).num_rows() == 0
             ):
                 # For empty input blocks, we directly output them without
@@ -730,17 +760,6 @@ def _generate_transform_fn_for_flat_map(
     return transform_fn
 
 
-def _generate_transform_fn_for_filter(
-    fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            if fn(row):
-                yield row
-
-    return transform_fn
-
-
 def _generate_transform_fn_for_map_block(
     fn: UserDefinedFunction,
 ) -> MapTransformCallable[Block, Block]:
@@ -867,8 +886,12 @@ def _generate_transform_fn_for_async_map(
             finally:
                 output_queue.put(sentinel)
 
-        # NOTE: Reordering is an async process
-        asyncio.create_task(_reorder())
+        # NOTE: Reordering is an async process. Keep a strong reference to
+        # the created task: ``loop.create_task`` only registers a weak
+        # reference with the event loop, so without a strong reference the
+        # task could be garbage collected mid-execution and the reordering
+        # would silently stop.
+        reorder_task = loop.create_task(_reorder())
 
         cur_task_map: Dict[asyncio.Task, int] = dict()
         consumed = False
@@ -917,6 +940,11 @@ def _generate_transform_fn_for_async_map(
         finally:
             assert len(cur_task_map) == 0, f"{cur_task_map}"
             await completed_tasks_queue.put((sentinel, None))
+            # Wait for the reorder task to finish draining ``completed_tasks_queue``
+            # and pushing remaining results to the output queue. This both keeps a
+            # strong reference to the task alive until completion (preventing GC)
+            # and surfaces any unexpected exception raised inside ``_reorder``.
+            await reorder_task
 
     def _transform(batch_iter: Iterable[T], task_context: TaskContext) -> Iterable[U]:
         output_queue = queue.Queue(maxsize=max_concurrency)

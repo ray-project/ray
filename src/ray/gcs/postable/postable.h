@@ -21,7 +21,7 @@
 #include <type_traits>
 #include <utility>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/gcs/postable/function_traits.h"
 
 namespace ray {

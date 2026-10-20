@@ -1,5 +1,6 @@
 import pytest
 
+from ray.train.v2._internal.execution.preemption import PreemptionInfo
 from ray.train.v2._internal.execution.worker_group.poll import (
     ERR_CHAR_LIMIT,
     WorkerGroupPollStatus,
@@ -84,6 +85,51 @@ File "/tmp/ray/session_2025-08-07_23-49-55_617067_2585/runtime_resources/working
 File "/home/ray/default/train_benchmark.py", line <NUM>, in train_fn_per_worker
 File "/tmp/ray/session_<NUM>-<NUM>-<NUM>_<NUM>-<NUM>-<NUM>_<NUM>_<NUM>/runtime_resources/working_dir_files/_ray_pkg_<NUM>abd<NUM>ca<NUM>ba<NUM>ed<NUM>/runner.py", line <NUM>, in run"""
     )
+
+
+def test_failing_replica_group_indices():
+    """Test that failing_replica_group_indices maps worker failures to replica groups."""
+    statuses = {
+        0: WorkerStatus(running=True),
+        1: WorkerStatus(running=True),
+        2: WorkerStatus(running=True),
+        3: WorkerStatus(running=False, error=RuntimeError("Worker 3 failed")),
+    }
+    poll_status = WorkerGroupPollStatus(
+        worker_statuses=statuses,
+        worker_rank_to_replica_group_rank={0: 0, 1: 0, 2: 1, 3: 1},
+    )
+    assert poll_status.failing_replica_group_indices == {1}
+
+
+def test_failing_replica_group_indices_no_mapping():
+    """Test that failing_replica_group_indices returns empty set when no mapping."""
+    statuses = {
+        0: WorkerStatus(running=False, error=RuntimeError("fail")),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.failing_replica_group_indices == set()
+
+
+def test_get_preemption_info_none():
+    """No worker echoes a preemption signal."""
+    statuses = {
+        0: WorkerStatus(running=True),
+        1: WorkerStatus(running=True),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.get_preemption_info() is None
+
+
+def test_get_preemption_info_returns_echoed_signal():
+    """The first non-None echoed PreemptionInfo is returned."""
+    info = PreemptionInfo(deadline_ms=123, preempted_node_to_ranks={"node-a": [0]})
+    statuses = {
+        0: WorkerStatus(running=True, preemption_info=info),
+        1: WorkerStatus(running=True),
+    }
+    poll_status = WorkerGroupPollStatus(worker_statuses=statuses)
+    assert poll_status.get_preemption_info() is info
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ export type NodeDetail = {
   cpus?: number[]; // Logic CPU Count, Physical CPU Count
   mem?: number[]; // total memory, free memory, memory used ratio
   gpus?: GPUStats[]; // GPU stats fetched from node, 1 entry per GPU
+  tpus?: TPUStats[]; // TPU stats fetched from node, 1 entry per TPU
   bootTime: number; // start time
   loadAvg: number[][]; // recent 1，5，15 minitues system load，load per cpu http://man7.org/linux/man-pages/man3/getloadavg.3.html
   disk: {
@@ -72,6 +73,25 @@ export type GPUStats = {
   powerMw?: number;
   /** Temperature in Celsius (e.g. NVIDIA) */
   temperatureC?: number;
+};
+
+export type ProcessTPUUsage = {
+  // This tpu usage stats from a process
+  pid: number;
+  tpuMemoryUsage: number; // in bytes (differs from ProcessGPUUsage which is in MiB)
+};
+
+export type TPUStats = {
+  // This represents stats fetched from a node about a single TPU
+  name: string;
+  index: number;
+  tpuType: string;
+  tpuTopology: string;
+  memoryUsed: number;
+  memoryTotal: number;
+  tensorcoreUtilization?: number;
+  hbmUtilization?: number;
+  processesPids?: ProcessTPUUsage[];
 };
 
 export type NodeDetailExtend = {

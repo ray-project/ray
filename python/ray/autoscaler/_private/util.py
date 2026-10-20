@@ -415,11 +415,11 @@ def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
     Returns a list of commands with the given environment variables set.
 
     Args:
-        cmds (List[str]): List of commands to set environment variables for.
-        kv (Dict[str, str]): Dictionary of environment variables to set.
+        cmds: List of commands to set environment variables for.
+        kv: Dictionary of environment variables to set.
 
     Returns:
-        List[str]: List of commands with the given environment variables set.
+        List of commands with the given environment variables set.
 
     Example:
         with_envs(["echo $FOO"], {"FOO": "BAR"})
@@ -570,6 +570,9 @@ def parse_placement_group_resource_str(
     -> This case is ignored as it is duplicated to the case below.
     {resource_name}_group_{group_name};
     {resource_name}
+
+    Args:
+        placement_group_resource_str: The raw placement group resource string.
 
     Returns:
         Tuple of (resource_name, placement_group_name, is_countable_resource).

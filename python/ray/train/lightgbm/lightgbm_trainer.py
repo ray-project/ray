@@ -7,7 +7,10 @@ import lightgbm
 import ray
 from ray.train import Checkpoint
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightgbm._lightgbm_utils import RayTrainReportCallback
+from ray.train.lightgbm._lightgbm_utils import (
+    RayTrainReportCallback,
+    normalize_pandas_for_lightgbm,
+)
 from ray.train.lightgbm.config import LightGBMConfig
 from ray.train.lightgbm.v2 import LightGBMTrainer as SimpleLightGBMTrainer
 from ray.train.trainer import GenDataset
@@ -49,14 +52,17 @@ def _lightgbm_train_fn_per_worker(
         )
 
     train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-    train_df = train_ds_iter.materialize().to_pandas()
+    train_df = normalize_pandas_for_lightgbm(train_ds_iter.materialize().to_pandas())
 
     eval_ds_iters = {
         k: ray.train.get_dataset_shard(k)
         for k in dataset_keys
         if k != TRAIN_DATASET_KEY
     }
-    eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+    eval_dfs = {
+        k: normalize_pandas_for_lightgbm(d.materialize().to_pandas())
+        for k, d in eval_ds_iters.items()
+    }
 
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
     train_set = lightgbm.Dataset(train_X, label=train_y)
@@ -91,66 +97,70 @@ def _lightgbm_train_fn_per_worker(
 class LightGBMTrainer(SimpleLightGBMTrainer):
     """A Trainer for distributed data-parallel LightGBM training.
 
-    Example
-    -------
+    Example:
 
-    .. testcode::
-        :skipif: True
+        .. testcode::
+            :skipif: True
 
-        import lightgbm
+            import lightgbm
 
-        import ray.data
-        import ray.train
-        from ray.train.lightgbm import RayTrainReportCallback, LightGBMTrainer
-
-        def train_fn_per_worker(config: dict):
-            # (Optional) Add logic to resume training state from a checkpoint.
-            # ray.train.get_checkpoint()
-
-            # 1. Get the dataset shard for the worker and convert to a `lightgbm.Dataset`
-            train_ds_iter, eval_ds_iter = (
-                ray.train.get_dataset_shard("train"),
-                ray.train.get_dataset_shard("validation"),
-            )
-            train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
-            train_df, eval_df = train_ds.to_pandas(), eval_ds.to_pandas()
-            train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
-            eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
-            dtrain = lightgbm.Dataset(train_X, label=train_y)
-            deval = lightgbm.Dataset(eval_X, label=eval_y)
-
-            params = {
-                "objective": "regression",
-                "metric": "l2",
-                "learning_rate": 1e-4,
-                "subsample": 0.5,
-                "max_depth": 2,
-                # Adding the line below is the only change needed
-                # for your `lgb.train` call!
-                **ray.train.lightgbm.get_network_params(),
-            }
-
-            # 2. Do distributed data-parallel training.
-            # Ray Train sets up the necessary coordinator processes and
-            # environment variables for your workers to communicate with each other.
-            bst = lightgbm.train(
-                params,
-                train_set=dtrain,
-                valid_sets=[deval],
-                valid_names=["validation"],
-                num_boost_round=10,
-                callbacks=[RayTrainReportCallback()],
+            import ray.data
+            import ray.train
+            from ray.train.lightgbm import (
+                LightGBMTrainer,
+                RayTrainReportCallback,
+                normalize_pandas_for_lightgbm,
             )
 
-        train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
-        eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
-        trainer = LightGBMTrainer(
-            train_fn_per_worker,
-            datasets={"train": train_ds, "validation": eval_ds},
-            scaling_config=ray.train.ScalingConfig(num_workers=4),
-        )
-        result = trainer.fit()
-        booster = RayTrainReportCallback.get_model(result.checkpoint)
+            def train_fn_per_worker(config: dict):
+                # (Optional) Add logic to resume training state from a checkpoint.
+                # ray.train.get_checkpoint()
+
+                # 1. Get the dataset shard for the worker and convert to a `lightgbm.Dataset`
+                train_ds_iter, eval_ds_iter = (
+                    ray.train.get_dataset_shard("train"),
+                    ray.train.get_dataset_shard("validation"),
+                )
+                train_ds, eval_ds = train_ds_iter.materialize(), eval_ds_iter.materialize()
+                train_df = normalize_pandas_for_lightgbm(train_ds.to_pandas())
+                eval_df = normalize_pandas_for_lightgbm(eval_ds.to_pandas())
+                train_X, train_y = train_df.drop("y", axis=1), train_df["y"]
+                eval_X, eval_y = eval_df.drop("y", axis=1), eval_df["y"]
+                dtrain = lightgbm.Dataset(train_X, label=train_y)
+                deval = lightgbm.Dataset(eval_X, label=eval_y)
+
+                params = {
+                    "objective": "regression",
+                    "metric": "l2",
+                    "learning_rate": 1e-4,
+                    "subsample": 0.5,
+                    "max_depth": 2,
+                    # Adding the line below is the only change needed
+                    # for your `lgb.train` call!
+                    **ray.train.lightgbm.get_network_params(),
+                }
+
+                # 2. Do distributed data-parallel training.
+                # Ray Train sets up the necessary coordinator processes and
+                # environment variables for your workers to communicate with each other.
+                bst = lightgbm.train(
+                    params,
+                    train_set=dtrain,
+                    valid_sets=[deval],
+                    valid_names=["validation"],
+                    num_boost_round=10,
+                    callbacks=[RayTrainReportCallback()],
+                )
+
+            train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
+            eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])
+            trainer = LightGBMTrainer(
+                train_fn_per_worker,
+                datasets={"train": train_ds, "validation": eval_ds},
+                scaling_config=ray.train.ScalingConfig(num_workers=4),
+            )
+            result = trainer.fit()
+            booster = RayTrainReportCallback.get_model(result.checkpoint)
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
@@ -164,16 +174,16 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         lightgbm_config: The configuration for setting up the distributed lightgbm
             backend. Defaults to using the "rabit" backend.
             See :class:`~ray.train.lightgbm.LightGBMConfig` for more info.
-        datasets: The Ray Datasets to use for training and validation.
-        dataset_config: The configuration for ingesting the input ``datasets``.
-            By default, all the Ray Datasets are split equally across workers.
-            See :class:`~ray.train.DataConfig` for more details.
         scaling_config: The configuration for how to scale data parallel training.
             ``num_workers`` determines how many Python processes are used for training,
             and ``use_gpu`` determines whether or not each process should use GPUs.
             See :class:`~ray.train.ScalingConfig` for more info.
         run_config: The configuration for the execution of the training run.
             See :class:`~ray.train.RunConfig` for more info.
+        datasets: The Ray Datasets to use for training and validation.
+        dataset_config: The configuration for ingesting the input ``datasets``.
+            By default, all the Ray Datasets are split equally across workers.
+            See :class:`~ray.train.DataConfig` for more details.
         resume_from_checkpoint: A checkpoint to resume training from.
             This checkpoint can be accessed from within ``train_loop_per_worker``
             by calling ``ray.train.get_checkpoint()``.

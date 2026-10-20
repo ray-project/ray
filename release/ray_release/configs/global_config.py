@@ -5,22 +5,25 @@ import yaml
 
 
 class GlobalConfig(TypedDict):
-    byod_ray_ecr: str
     byod_ecr: str
     byod_ecr_region: str
-    byod_aws_cr: str
     byod_gcp_cr: str
     byod_azure_cr: str
     state_machine_pr_aws_bucket: str
     state_machine_branch_aws_bucket: str
     state_machine_disabled: bool
+    state_machine_github_repo: str
+    state_machine_bisect_disabled: bool
+    buildkite_org: str
     aws2gce_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
     ci_pipeline_buildkite_secret: str
-    release_image_step_ray: str
+    release_image_step_ray_cpu: str
+    release_image_step_ray_cuda: str
     release_image_step_ray_ml: str
     release_image_step_ray_llm: str
+    release_image_step_ray_torch_cuda: str
 
 
 config = None
@@ -48,10 +51,6 @@ def _init_global_config(config_file: str):
     global config
     config_content = yaml.safe_load(open(config_file, "rt"))
     config = GlobalConfig(
-        byod_ray_ecr=(
-            config_content.get("byod", {}).get("ray_ecr")
-            or config_content.get("release_byod", {}).get("ray_ecr")
-        ),
         byod_ecr=(
             config_content.get("byod", {}).get("byod_ecr")
             or config_content.get("release_byod", {}).get("byod_ecr")
@@ -59,10 +58,6 @@ def _init_global_config(config_file: str):
         byod_ecr_region=(
             config_content.get("byod", {}).get("byod_ecr_region")
             or config_content.get("release_byod", {}).get("byod_ecr_region")
-        ),
-        byod_aws_cr=(
-            config_content.get("byod", {}).get("aws_cr")
-            or config_content.get("release_byod", {}).get("aws_cr")
         ),
         byod_gcp_cr=(
             config_content.get("byod", {}).get("gcp_cr")
@@ -90,6 +85,16 @@ def _init_global_config(config_file: str):
             "disabled", 0
         )
         == 1,
+        # No defaults for the targeting keys below: a config that omits them must
+        # fail loudly rather than silently fall back to ray's public repo/org.
+        state_machine_github_repo=config_content.get("state_machine", {}).get(
+            "github_repo"
+        ),
+        state_machine_bisect_disabled=config_content.get("state_machine", {})
+        .get("bisect", {})
+        .get("disabled", 0)
+        == 1,
+        buildkite_org=config_content.get("ci_pipeline", {}).get("buildkite_org"),
         ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
         ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
             "postmerge", []
@@ -98,13 +103,21 @@ def _init_global_config(config_file: str):
             "buildkite_secret"
         ),
         kuberay_disabled=config_content.get("kuberay", {}).get("disabled", 0) == 1,
-        release_image_step_ray=config_content.get("release_image_step", {}).get("ray"),
+        release_image_step_ray_cpu=config_content.get("release_image_step", {}).get(
+            "ray_cpu"
+        ),
+        release_image_step_ray_cuda=config_content.get("release_image_step", {}).get(
+            "ray_cuda"
+        ),
         release_image_step_ray_ml=config_content.get("release_image_step", {}).get(
             "ray_ml"
         ),
         release_image_step_ray_llm=config_content.get("release_image_step", {}).get(
             "ray_llm"
         ),
+        release_image_step_ray_torch_cuda=config_content.get(
+            "release_image_step", {}
+        ).get("ray_torch_cuda"),
     )
     # setup GCP workload identity federation
     os.environ[

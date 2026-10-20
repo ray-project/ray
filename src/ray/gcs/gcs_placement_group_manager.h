@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/gcs/gcs_init_data.h"
 #include "ray/gcs/gcs_placement_group.h"
@@ -33,6 +33,7 @@
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -67,7 +68,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
           &placement_group_creation_latency_in_ms_histogram,
       ray::observability::MetricInterface
           &placement_group_scheduling_latency_in_ms_histogram,
-      ray::observability::MetricInterface &placement_group_count_gauge);
+      ray::observability::MetricInterface &placement_group_count_gauge,
+      ClockInterface &clock);
 
   ~GcsPlacementGroupManager() override = default;
 
@@ -230,9 +232,20 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
           &placement_group_creation_latency_in_ms_histogram,
       ray::observability::MetricInterface
           &placement_group_scheduling_latency_in_ms_histogram,
-      ray::observability::MetricInterface &placement_group_count_gauge);
+      ray::observability::MetricInterface &placement_group_count_gauge,
+      ClockInterface &clock);
 
  private:
+  /// Records the placement-group-state gauge for a single state. Shared by the
+  /// on-change callback and the per-tick re-emit in RecordMetrics so both go
+  /// through one implementation.
+  ///
+  /// \param state The placement group state to record.
+  /// \param value The current count for `state`, passed in by the caller (which
+  /// already has it) to avoid a redundant counter lookup.
+  void RecordPlacementGroupState(rpc::PlacementGroupTableData::PlacementGroupState state,
+                                 int64_t value) const;
+
   /// Push a placement group to pending queue.
   ///
   /// \param pg The placementgroup we are adding
@@ -363,6 +376,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   ray::observability::MetricInterface
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
+  ClockInterface &clock_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);

@@ -6,8 +6,8 @@ import grpc
 from grpc import aio as aiogrpc
 
 import ray
+from ray._common.tls_utils import load_certs_from_env
 from ray._private.authentication import authentication_utils
-from ray._private.tls_utils import load_certs_from_env
 
 
 def init_grpc_channel(

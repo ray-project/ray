@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <functional>
+#include <optional>
 #include <vector>
 
 #include "ray/common/scheduling/cluster_resource_data.h"
@@ -79,7 +81,20 @@ struct SchedulingResult {
   SchedulingResultStatus status;
   // The nodes successfully scheduled.
   std::vector<scheduling::NodeID> selected_nodes;
+  // The topology assignment selected during placement group scheduling.
+  // The key is the topology label key (e.g. "ray.io/gpu-domain"),
+  // the value is the topology label value (e.g. "rack-1").
+  // We have one pair per placement group for now because we only support
+  // STRICT_PACK scheduling strategy. To support other strategies, this data
+  // structure will need to be extended.
+  // TODO(#61777): Extend to support multiple tiers of topology strategy scheduling.
+  std::optional<std::pair<std::string, std::string>> selected_topology_assignment;
 };
+
+using NodeScheduleFn =
+    std::function<SchedulingResult(const std::vector<const ResourceRequest *> &,
+                                   SchedulingOptions,
+                                   absl::flat_hash_set<scheduling::NodeID>)>;
 
 /// IBundleSchedulingPolicy picks a set of nodes from the cluster, according to the
 /// resource requirement list as well as the scheduling options.
@@ -91,14 +106,48 @@ class IBundleSchedulingPolicy {
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
   /// \param options: scheduling options.
-  /// \param context: The context of current scheduling. Each policy can
-  /// correspond to a different type of context.
+  /// \param candidate_nodes: The set of candidate nodes available for scheduling.
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
   virtual SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options) = 0;
+      SchedulingOptions options,
+      absl::flat_hash_set<scheduling::NodeID> candidate_nodes) = 0;
+};
+
+/**
+ * @brief Outcome of picking one node for a resource request.
+ */
+struct NodeSchedulingResult {
+  enum class Status {
+    // Had chosen the best available node, or the policy allowed making a decision
+    // among unavailable but feasible nodes.
+    SCHEDULED,
+    // Had nodes with enough total capacity, but all were full.
+    NO_NODE_AVAILABLE,
+    // Had no node with enough total capacity for the request among the nodes this
+    // call was allowed to consider.
+    INFEASIBLE,
+  };
+
+  static NodeSchedulingResult Scheduled(scheduling::NodeID node_id) {
+    return NodeSchedulingResult{Status::SCHEDULED, node_id};
+  }
+  static NodeSchedulingResult NoNodeAvailable() {
+    return NodeSchedulingResult{Status::NO_NODE_AVAILABLE, scheduling::NodeID::Nil()};
+  }
+  static NodeSchedulingResult Infeasible() {
+    return NodeSchedulingResult{Status::INFEASIBLE, scheduling::NodeID::Nil()};
+  }
+
+  bool IsScheduled() const { return status == Status::SCHEDULED; }
+  bool IsNoNodeAvailable() const { return status == Status::NO_NODE_AVAILABLE; }
+  bool IsInfeasible() const { return status == Status::INFEASIBLE; }
+
+  Status status = Status::INFEASIBLE;
+  // The picked node; Nil unless `status` is SCHEDULED.
+  scheduling::NodeID node_id = scheduling::NodeID::Nil();
 };
 
 /// ISchedulingPolicy picks a node to from the cluster, according to the resource
@@ -110,10 +159,9 @@ class ISchedulingPolicy {
   /// \param resource_request: The resource request we're attempting to schedule.
   /// \param options: scheduling options.
   ///
-  /// \return NodeID::Nil() if the task is unfeasible, otherwise the node id
-  /// to schedule on.
-  virtual scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                                      SchedulingOptions options) = 0;
+  /// \return See `NodeSchedulingResult`.
+  virtual NodeSchedulingResult Schedule(const ResourceRequest &resource_request,
+                                        SchedulingOptions options) = 0;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

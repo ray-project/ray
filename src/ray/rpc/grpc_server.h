@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 
-#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/asio/instrumented_io_context.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/rpc/server_call.h"
@@ -33,13 +33,14 @@ namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
 #define _RPC_SERVICE_HANDLER(                                                      \
-    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS)                  \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS, PASS_GRPC_PEER)  \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                       \
       new ServerCallFactoryImpl<SERVICE,                                           \
                                 SERVICE##Handler,                                  \
                                 HANDLER##Request,                                  \
                                 HANDLER##Reply,                                    \
-                                AUTH_TYPE>(                                        \
+                                AUTH_TYPE,                                         \
+                                PASS_GRPC_PEER>(                                   \
           service_,                                                                \
           &SERVICE::AsyncService::Request##HANDLER,                                \
           service_handler_,                                                        \
@@ -50,27 +51,34 @@ namespace rpc {
           AUTH_TYPE == ClusterIdAuthType::NO_AUTH ? ClusterID::Nil() : cluster_id, \
           auth_token,                                                              \
           MAX_ACTIVE_RPCS,                                                         \
-          RECORD_METRICS));                                                        \
+          RECORD_METRICS,                                                          \
+          server_metrics));                                                        \
   server_call_factories->emplace_back(std::move(HANDLER##_call_factory));
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
   _RPC_SERVICE_HANDLER(                                        \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true)
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, false)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
   _RPC_SERVICE_HANDLER(                                                                \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, false)
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, false, false)
+
+/// Like RPC_SERVICE_HANDLER, but passes `grpc::ServerContext::peer()` as the last
+/// argument to Handle##HANDLER (see HandleRequestFunctionWithGrpcPeer in server_call.h).
+#define RPC_SERVICE_HANDLER_WITH_GRPC_PEER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
+  _RPC_SERVICE_HANDLER(                                                       \
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, true)
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true, false)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false, false)
 
 class GrpcService;
 
@@ -90,7 +98,11 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  ///
+  /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
+  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// \param[in] keepalive_time_ms Connection keepalive time (ms).
+  /// \param[in] auth_token Authentication token that clients must present when making
+  /// RPCs to the server. If nullptr, no authentication token is required.
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
@@ -189,6 +201,8 @@ class GrpcServer {
   /// The `ServerCallFactory` objects.
   std::vector<std::unique_ptr<ServerCallFactory>> server_call_factories_;
 
+  GrpcServerMetrics server_metrics_;
+
   /// The number of threads and completion queues the server is polling from for incoming
   /// requests. These threads are also responsible for creating the proto request objects.
   int num_threads_;
@@ -239,11 +253,13 @@ class GrpcService {
   /// and the maximum number of concurrent requests that this gRPC server can handle.
   /// \param[in] cluster_id The cluster ID for authentication.
   /// \param[in] auth_token The authentication token for token-based authentication.
+  /// \param[in] server_metrics The server's metric objects.
   virtual void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      std::shared_ptr<const AuthenticationToken> auth_token) = 0;
+      std::shared_ptr<const AuthenticationToken> auth_token,
+      GrpcServerMetrics &server_metrics) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

@@ -2,6 +2,7 @@ import base64
 import os
 import sys
 import types
+from decimal import Decimal
 from tempfile import TemporaryDirectory
 
 import numpy as np
@@ -15,12 +16,12 @@ from ray._common.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
+    ArrowRow,
 )
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
-from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
 def test_combine_chunked_fixed_width_array_large():
@@ -215,9 +216,6 @@ assert str(schema) == \"\"\"{1}\"\"\"
     run_string_as_driver(driver_script)
 
 
-@pytest.mark.skipif(
-    not _object_extension_type_allowed(), reason="Object extension type not supported."
-)
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
     # fall back to pandas, because we couldn't convert it to
@@ -232,7 +230,7 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds = ray.data.range(10).map_batches(fn)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
+    block = ray.get(next(ds.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_dict"].iloc[0] == {"data": 0}
@@ -244,14 +242,17 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
     ds2 = ray.data.range(10).map_batches(fn2)
     ds2 = ds2.materialize()
-    block = ray.get(ds2.get_internal_block_refs()[0])
+    block = ray.get(next(ds2.iter_internal_ref_bundles()).block_refs[0])
     assert isinstance(block, pa.Table), type(block)
     df_from_block = block.to_pandas()
     assert df_from_block["data_none"].iloc[0] is None
 
 
 # Test for https://github.com/ray-project/ray/issues/49338.
-def test_build_block_with_null_column(ray_start_regular_shared):
+def test_build_block_with_null_column(ray_start_regular_shared, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
     # The blocks need to contain a tensor column to trigger the bug.
     block1 = BlockAccessor.batch_to_block(
         {"string": [None], "array": np.zeros((1, 2, 2))}
@@ -267,6 +268,7 @@ def test_build_block_with_null_column(ray_start_regular_shared):
 
     rows = list(BlockAccessor.for_block(block).iter_rows(True))
     assert len(rows) == 2
+
     assert rows[0]["string"] is None
     assert rows[1]["string"] == "spam"
     assert np.array_equal(rows[0]["array"], np.zeros((2, 2)))
@@ -297,6 +299,268 @@ def test_arrow_block_timestamp_ns(ray_start_regular_shared):
         assert pd.Timestamp(row["col2"]) == pd.Timestamp(
             result_timestamp
         ), f"Timestamp mismatch at row {i} in ArrowBlockBuilder output"
+
+
+@pytest.mark.parametrize(
+    "input_array,transform,expected_type,expected_values",
+    [
+        (
+            pa.array([None, None], type=pa.string()),
+            None,
+            pa.string(),
+            [None, None],
+        ),
+        (
+            pa.array([None, None], type=pa.list_(pa.string())),
+            None,
+            pa.list_(pa.string()),
+            [None, None],
+        ),
+        (
+            pa.array([None, None], type=pa.decimal128(10, 2)),
+            lambda df: df.fillna({"x": 0}),
+            pa.decimal128(10, 2),
+            [Decimal("0.00"), Decimal("0.00")],
+        ),
+        (
+            pa.array([["a", "b"], None], type=pa.list_(pa.string())),
+            None,
+            pa.list_(pa.string()),
+            [["a", "b"], None],
+        ),
+    ],
+)
+def test_arrow_block_to_pandas_preserves_arrow_types_through_roundtrip(
+    input_array, transform, expected_type, expected_values
+):
+    table = pa.table({"x": input_array})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df.dtypes["x"].pyarrow_dtype == expected_type
+
+    if transform is not None:
+        df = transform(df)
+
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+
+    assert roundtripped.schema.field("x").type == expected_type
+    assert roundtripped.to_pydict() == {"x": expected_values}
+
+
+def test_arrow_block_to_pandas_null_type_is_not_arrow_backed():
+    # A block whose column is entirely null is typed pa.null(). Keeping that as
+    # null[pyarrow] makes the column unusable in pandas: fillna and masked
+    # assignment cannot box a non-null value into Arrow's null type. Fall back to
+    # pandas' default conversion instead, which still round-trips to pa.null().
+    table = pa.table({"x": pa.array([None, None], type=pa.null())})
+
+    df = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(df.dtypes["x"], pd.ArrowDtype)
+    assert df["x"].tolist() == [None, None]
+
+    # Untouched, the column round-trips back to Arrow's null type.
+    roundtripped = BlockAccessor.for_block(df).to_arrow()
+    assert roundtripped.schema.field("x").type == pa.null()
+    assert roundtripped.to_pydict() == {"x": [None, None]}
+
+    # Filling the nulls now works and yields the fill value's type.
+    filled = BlockAccessor.for_block(df.fillna({"x": 3.0})).to_arrow()
+    assert filled.to_pydict() == {"x": [3.0, 3.0]}
+
+
+def test_pandas_udf_can_fill_per_block_null_columns(ray_start_regular_shared):
+    # One-row blocks type a column with no values as pa.null(), so a pandas UDF
+    # calling fillna used to fail with ArrowInvalid on whichever block happened
+    # to hold only nulls for that column.
+    ds = ray.data.from_items(
+        [
+            {"a": 1.0, "b": 2.0},
+            {"a": 3.0, "b": None},
+            {"a": None, "b": 4.0},
+        ],
+        override_num_blocks=3,
+    )
+
+    filled = ds.map_batches(
+        lambda df: df.fillna({"a": 0.0, "b": 0.0}), batch_format="pandas"
+    )
+
+    assert sorted(filled.take_all(), key=lambda row: row["a"]) == [
+        {"a": 0.0, "b": 4.0},
+        {"a": 1.0, "b": 2.0},
+        {"a": 3.0, "b": 0.0},
+    ]
+
+
+def test_arrow_block_to_pandas_opt_out_numpy_dtypes(restore_data_context):
+    # https://github.com/ray-project/ray/issues/64765: opting out restores the
+    # pre-2.56 numpy conversion, so standard Arrow types no longer become
+    # pd.ArrowDtype. This unblocks pandas UDFs that assign multi-dimensional
+    # arrays into columns or rely on numpy-only ops these columns do not support.
+    ctx = DataContext.get_current()
+    table = pa.table({"x": pa.array([1, 2, 3], pa.int64())})
+
+    ctx.enable_arrow_backed_pandas_conversion = True
+    on = ArrowBlockAccessor(table).to_pandas()
+    assert isinstance(on.dtypes["x"], pd.ArrowDtype)
+    assert on.dtypes["x"] == pd.ArrowDtype(pa.int64())
+
+    ctx.enable_arrow_backed_pandas_conversion = False
+    off = ArrowBlockAccessor(table).to_pandas()
+    assert not isinstance(off.dtypes["x"], pd.ArrowDtype)
+    assert off.dtypes["x"] == np.dtype("int64")
+
+
+def test_to_pandas_reconciles_int_and_float_blocks(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/64765 (symptom B): to_pandas must
+    # not overflow when the same column is int64 in some blocks and double in
+    # others (e.g. a block whose values are all null infers double). The int64
+    # values are preserved exactly, without lossy float widening.
+    big = 1782750729409928627  # > 2**53, not exactly representable as float64
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"ts": pa.array([big], pa.int64())}),
+            pa.table({"ts": pa.array([None], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert df["ts"].dropna().tolist() == [big]
+
+
+def test_to_pandas_does_not_downcast_large_floats(ray_start_regular_shared):
+    # https://github.com/ray-project/ray/issues/64765: a float column above 2**53
+    # must not be silently downcast to int during int/float block reconciliation.
+    # float64 cannot represent every integer past 2**53, so an "integral" float may
+    # not equal the intended value; such blocks are left float-backed rather than
+    # coerced to an int with false exactness.
+    big_float = float(2**53 + 2)  # integral and exactly representable, but > 2**53
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"v": pa.array([3], pa.int64())}),
+            pa.table({"v": pa.array([big_float], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
+
+
+@pytest.mark.parametrize(
+    "int_type, float_value",
+    [
+        (pa.int32(), 3.0e9),  # integral and < 2**53, but exceeds int32 max
+        (pa.uint32(), -5.0),  # integral, but negative does not fit unsigned
+        (pa.uint8(), 300.0),  # integral, but exceeds uint8 max
+    ],
+)
+def test_to_pandas_does_not_downcast_out_of_range_floats(
+    ray_start_regular_shared, int_type, float_value
+):
+    # https://github.com/ray-project/ray/issues/64765: float blocks are downcast
+    # to the int blocks' type only when values fit that type's range (bit width
+    # and signedness). Out-of-range or wrong-sign integral floats must stay
+    # float-backed rather than overflow, wrap, or become invalid.
+    ds = ray.data.from_arrow(
+        [
+            pa.table({"v": pa.array([3], int_type)}),
+            pa.table({"v": pa.array([float_value], pa.float64())}),
+        ]
+    )
+    df = ds.to_pandas()
+    assert len(df) == 2
+    assert pa.types.is_floating(df["v"].dtype.pyarrow_dtype)
+    assert float_value in df["v"].dropna().tolist()
+
+
+def test_to_pandas_empty_dataset_preserves_columns(ray_start_regular_shared):
+    """`to_pandas()` on an empty dataset must keep the schema's columns.
+
+    Regression test for #59946: an empty Arrow table with columns was converted
+    to a column-less pandas DataFrame because `to_pandas()` builds only from the
+    (zero) batches of an empty dataset and ignored the known schema.
+    """
+    ds = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([], pa.int32())], ["apples"]))]
+    )
+    df = ds.to_pandas()
+    assert list(df.columns) == ["apples"]
+    assert len(df) == 0
+    # The empty-dataset dtype must match what a non-empty dataset of the same
+    # schema produces (routed through the same BlockAccessor conversion).
+    nonempty = ray.data.from_arrow_refs(
+        [ray.put(pa.table([pa.array([1], pa.int32())], ["apples"]))]
+    ).to_pandas()
+    assert df["apples"].dtype == nonempty["apples"].dtype
+
+    # Multiple columns are preserved too.
+    ds2 = ray.data.from_arrow_refs(
+        [
+            ray.put(
+                pa.table(
+                    [pa.array([], pa.int32()), pa.array([], pa.string())], ["a", "b"]
+                )
+            )
+        ]
+    )
+    assert list(ds2.to_pandas().columns) == ["a", "b"]
+
+    # Pandas-backed empty datasets preserve columns and dtypes too.
+    pandas_df = pd.DataFrame(
+        {"a": pd.Series([], dtype="int64"), "b": pd.Series([], dtype="float64")}
+    )
+    ds3 = ray.data.from_pandas(pandas_df)
+    df3 = ds3.to_pandas()
+    assert list(df3.columns) == ["a", "b"]
+    assert df3["a"].dtype == np.int64
+    assert df3["b"].dtype == np.float64
+
+    # A dataset with no blocks at all (and hence no schema) still converts
+    # cleanly to an empty, column-less DataFrame.
+    df4 = ray.data.range(0).to_pandas()
+    assert len(df4) == 0
+
+
+@pytest.fixture
+def arrow_row():
+    table = pa.table({"a": [1, 2, 3], "b": [10.5, 20.5, 30.5]})
+    return ArrowRow(table, 1)
+
+
+@pytest.mark.parametrize(
+    "key", ["missing", ["missing"], ["a", "missing"], ["missing", "a"]]
+)
+def test_arrow_row_missing_column_raises_key_error(arrow_row, key):
+    """A missing column must raise regardless of where it appears in the key."""
+    with pytest.raises(KeyError):
+        arrow_row[key]
+
+
+def test_arrow_row_get_returns_default_for_missing_column(arrow_row):
+    """``Mapping.get`` can only return the default if ``__getitem__`` raises."""
+    assert arrow_row.get("missing") is None
+    assert arrow_row.get("missing", 0) == 0
+    assert arrow_row.get("a") == 2
+
+
+def test_arrow_row_empty_key_list(arrow_row):
+    """Selecting no columns yields no values, rather than raising."""
+    assert arrow_row[[]] == ()
+
+
+def test_arrow_row_unwraps_scalars_but_not_tensors():
+    """Scalars come back as Python natives; tensor values stay arrays."""
+    from ray.data.extensions import ArrowTensorArray
+
+    tensors = np.arange(3).reshape(3, 1)
+    table = pa.table(
+        {"a": [1, 2, 3], "emb": ArrowTensorArray.from_numpy(tensors)},
+    )
+    row = ArrowRow(table, 1)
+
+    assert type(row["a"]) is int
+    np.testing.assert_array_equal(row["emb"], np.array([1]))
 
 
 if __name__ == "__main__":

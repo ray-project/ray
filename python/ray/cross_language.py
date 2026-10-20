@@ -1,5 +1,7 @@
 from __future__ import absolute_import, division, print_function
 
+from typing import Any
+
 from ray import Language
 from ray._raylet import CppFunctionDescriptor, JavaFunctionDescriptor
 from ray.util.annotations import PublicAPI
@@ -18,6 +20,10 @@ def java_function(class_name: str, function_name: str):
     Args:
         class_name: Java class name.
         function_name: Java function name.
+
+    Returns:
+        A ``RemoteFunction`` wrapping the referenced Java function so it can
+        be invoked from Python.
     """
     from ray.remote_function import RemoteFunction
 
@@ -35,6 +41,10 @@ def cpp_function(function_name: str):
 
     Args:
         function_name: Cpp function name.
+
+    Returns:
+        A ``RemoteFunction`` wrapping the referenced C++ function so it can be
+        invoked from Python.
     """
     from ray.remote_function import RemoteFunction
 
@@ -52,6 +62,10 @@ def java_actor_class(class_name: str):
 
     Args:
         class_name: Java class name.
+
+    Returns:
+        An ``ActorClass`` wrapping the referenced Java class so it can be
+        instantiated from Python.
     """
     from ray.actor import ActorClass
 
@@ -69,6 +83,10 @@ def cpp_actor_class(create_function_name: str, class_name: str):
     Args:
         create_function_name: Create cpp class function name.
         class_name: Cpp class name.
+
+    Returns:
+        An ``ActorClass`` wrapping the referenced C++ class so it can be
+        instantiated from Python.
     """
     from ray.actor import ActorClass
 
@@ -80,7 +98,7 @@ def cpp_actor_class(create_function_name: str, class_name: str):
     )
 
 
-def _format_args(worker, args, kwargs):
+def _format_args(worker: Any, args: tuple, kwargs: dict):
     """Format args for various languages.
 
     Args:
@@ -104,7 +122,10 @@ def _format_args(worker, args, kwargs):
 
 
 def _get_function_descriptor_for_actor_method(
-    language: str, actor_creation_function_descriptor, method_name: str, signature: str
+    language: str,
+    actor_creation_function_descriptor: Any,
+    method_name: str,
+    signature: str,
 ):
     """Get function descriptor for cross language actor method call.
 

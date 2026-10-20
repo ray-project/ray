@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="520px" height="620px" viewBox="-0.5 -0.5 520 620">
+  <defs>
+    <style>
+      text { font-family: Helvetica, Arial, sans-serif; }
+    </style>
+  </defs>
+  <g>
+    <!-- OpenAIIngress box -->
+    <rect x="150" y="15" width="220" height="50" rx="6" ry="6" fill="#f5f5f5" stroke="#666666" stroke-width="2"/>
+    <text x="260" y="45" fill="#333333" font-size="18px" text-anchor="middle" dominant-baseline="central" font-weight="bold">OpenAIIngress</text>
+
+    <!-- Arrow: Ingress → PDDecodeServer group -->
+    <path d="M 260 65 L 260 95" fill="none" stroke="#333333" stroke-width="2"/>
+    <path d="M 260 100 L 256 92 L 260 95 L 264 92 Z" fill="#333333" stroke="#333333" stroke-width="2"/>
+
+    <!-- PDDecodeServer DP group container -->
+    <rect x="30" y="100" width="460" height="270" rx="10" ry="10" fill="#dae8fc" stroke="#6c8ebf" stroke-width="2" fill-opacity="0.3"/>
+    <text x="260" y="125" fill="#1a4d80" font-size="16px" text-anchor="middle" font-weight="bold">PDDecodeServer  (DP=4)</text>
+
+    <!-- Decode Replica 0 -->
+    <rect x="55" y="145" width="190" height="42" rx="5" ry="5" fill="white" stroke="#6c8ebf" stroke-width="1.5"/>
+    <text x="150" y="170" fill="#333333" font-size="14px" text-anchor="middle" dominant-baseline="central">DP Replica 0</text>
+
+    <!-- Decode Replica 1 -->
+    <rect x="275" y="145" width="190" height="42" rx="5" ry="5" fill="white" stroke="#6c8ebf" stroke-width="1.5"/>
+    <text x="370" y="170" fill="#333333" font-size="14px" text-anchor="middle" dominant-baseline="central">DP Replica 1</text>
+
+    <!-- Decode Replica 2 -->
+    <rect x="55" y="200" width="190" height="42" rx="5" ry="5" fill="white" stroke="#6c8ebf" stroke-width="1.5"/>
+    <text x="150" y="225" fill="#333333" font-size="14px" text-anchor="middle" dominant-baseline="central">DP Replica 2</text>
+
+    <!-- Decode Replica 3 -->
+    <rect x="275" y="200" width="190" height="42" rx="5" ry="5" fill="white" stroke="#6c8ebf" stroke-width="1.5"/>
+    <text x="370" y="225" fill="#333333" font-size="14px" text-anchor="middle" dominant-baseline="central">DP Replica 3</text>
+
+    <!-- Gang scheduling label -->
+    <text x="260" y="265" fill="#666666" font-size="11px" text-anchor="middle" font-style="italic">Gang-scheduled placement group</text>
+
+    <!-- Engine labels inside decode replicas -->
+    <text x="150" y="305" fill="#999999" font-size="10px" text-anchor="middle">Each replica runs a decode engine</text>
+    <text x="150" y="320" fill="#999999" font-size="10px" text-anchor="middle">and orchestrates remote prefill</text>
+
+    <!-- Arrow: Decode group → Prefill group -->
+    <path d="M 260 370 L 260 400" fill="none" stroke="#333333" stroke-width="2"/>
+    <path d="M 260 405 L 256 397 L 260 400 L 264 397 Z" fill="#333333" stroke="#333333" stroke-width="2"/>
+    <!-- Arrow label -->
+    <text x="310" y="390" fill="#666666" font-size="11px" text-anchor="start" font-style="italic">remote prefill</text>
+
+    <!-- PDPrefillServer DP group container -->
+    <rect x="80" y="405" width="360" height="190" rx="10" ry="10" fill="#d5e8d4" stroke="#82b366" stroke-width="2" fill-opacity="0.3"/>
+    <text x="260" y="430" fill="#2d5016" font-size="16px" text-anchor="middle" font-weight="bold">PDPrefillServer  (DP=2)</text>
+
+    <!-- Prefill Replica 0 -->
+    <rect x="105" y="450" width="190" height="42" rx="5" ry="5" fill="white" stroke="#82b366" stroke-width="1.5"/>
+    <text x="200" y="475" fill="#333333" font-size="14px" text-anchor="middle" dominant-baseline="central">DP Replica 0</text>
+
+    <!-- Prefill Replica 1 -->
+    <rect x="105" y="505" width="190" height="42" rx="5" ry="5" fill="white" stroke="#82b366" stroke-width="1.5"/>
+    <text x="200" y="530" fill="#333333" font-size="14px" text-anchor="middle" dominant-baseline="central">DP Replica 1</text>
+
+    <!-- Gang scheduling label -->
+    <text x="260" y="570" fill="#666666" font-size="11px" text-anchor="middle" font-style="italic">Gang-scheduled placement group</text>
+
+    <!-- Note at bottom -->
+    <text x="260" y="605" fill="#999999" font-size="11px" text-anchor="middle">Each phase can have an independent data_parallel_size</text>
+  </g>
+</svg>

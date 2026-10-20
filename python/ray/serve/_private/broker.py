@@ -7,6 +7,7 @@ import json
 import logging
 import numbers
 import socket
+from typing import Any, cast
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 from tornado import httpclient, ioloop
@@ -14,9 +15,9 @@ from tornado import httpclient, ioloop
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 try:
-    import redis
+    import redis  # type: ignore[import-untyped]
 except ImportError:
-    redis = None
+    redis = cast(Any, None)
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -104,7 +105,7 @@ class RedisBase(BrokerBase):
 
     def __init__(self, broker_url, *_, **kwargs):
         super().__init__(broker_url)
-        self.redis = None
+        self.redis: Any = None
 
         if not redis:
             raise ImportError("redis library is required")

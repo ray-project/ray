@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data.block import BlockAccessor
 
 
@@ -17,7 +17,9 @@ def _create_bundle(data: Any) -> RefBundle:
     block_ref = ray.ObjectRef(uuid4().hex[:28].encode())
     metadata = BlockAccessor.for_block(block).get_metadata()
     schema = BlockAccessor.for_block(block).schema()
-    return RefBundle([(block_ref, metadata)], owns_blocks=False, schema=schema)
+    return RefBundle(
+        [BlockEntry(block_ref, metadata)], owns_blocks=False, schema=schema
+    )
 
 
 def test_ordered_queue_add_and_get_in_order():

@@ -24,11 +24,11 @@ extern "C" {
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
  * Method:    nativePut
- * Signature: (Lio/ray/runtime/object/NativeRayObject;[B)[B
+ * Signature: (Lio/ray/runtime/object/NativeRayObject;)[B
  */
 JNIEXPORT jbyteArray JNICALL
-Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2_3B(
-    JNIEnv *, jclass, jobject, jbyteArray);
+Java_io_ray_runtime_object_NativeObjectStore_nativePut__Lio_ray_runtime_object_NativeRayObject_2(
+    JNIEnv *, jclass, jobject);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore
@@ -56,14 +56,6 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeGet
  */
 JNIEXPORT jobject JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeWait(
     JNIEnv *, jclass, jobject, jint, jlong, jboolean);
-
-/*
- * Class:     io_ray_runtime_object_NativeObjectStore
- * Method:    nativeDelete
- * Signature: (Ljava/util/List;Z)V
- */
-JNIEXPORT void JNICALL Java_io_ray_runtime_object_NativeObjectStore_nativeDelete(
-    JNIEnv *, jclass, jobject, jboolean);
 
 /*
  * Class:     io_ray_runtime_object_NativeObjectStore

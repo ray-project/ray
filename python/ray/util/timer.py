@@ -12,7 +12,14 @@ class _Timer:
     Note that this class is *not* thread-safe.
     """
 
-    def __init__(self, window_size=10):
+    def __init__(self, window_size: int = 10):
+        """Initialize a ``_Timer``.
+
+        Args:
+            window_size: Number of most recent samples (and per-call units
+                processed) to retain when computing the rolling ``mean`` and
+                ``mean_throughput`` statistics.
+        """
         self._window_size = window_size
         self._samples = []
         self._units_processed = []

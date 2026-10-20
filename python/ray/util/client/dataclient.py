@@ -68,7 +68,6 @@ def chunk_put(req: ray_client_pb2.DataRequest):
             chunk_id=chunk_id,
             total_chunks=total_chunks,
             total_size=total_size,
-            owner_id=req.put.owner_id,
         )
         yield ray_client_pb2.DataRequest(req_id=req.req_id, put=chunk)
 

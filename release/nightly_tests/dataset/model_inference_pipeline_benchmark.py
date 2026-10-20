@@ -16,7 +16,7 @@ Key features mirrored from production:
 import argparse
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,7 @@ DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 class WorkerConfig:
     """Configuration for a worker pool (preprocessing or inference)."""
 
-    batch_size: int
+    batch_size: Union[int, Literal["auto"]]
     num_cpus: float
     num_gpus: float
     # Actor pool sizing (only for inference actors)
@@ -67,8 +67,8 @@ def parse_args():
     )
     parser.add_argument(
         "--preprocessing-batch-size",
-        type=int,
-        default=4096,
+        type=lambda v: v if v == "auto" else int(v),
+        default="auto",
         help="Batch size for preprocessing step.",
     )
     parser.add_argument(
@@ -368,7 +368,7 @@ def main(args):
     print(f"  Tokenizer max length: {args.tokenizer_max_length}")
     print(f"  Model: {args.model_name}")
 
-    # Build pipeline configuration
+    # Build pipeline configuration outside the timed section.
     # Use TPC-H lineitem columns:
     # - column00, column01: metadata (l_orderkey, l_partkey)
     # - column04-07: numeric features (l_quantity, l_extendedprice, l_discount, l_tax)
@@ -398,51 +398,53 @@ def main(args):
         model_name=args.model_name,
     )
 
-    start_time = time.time()
-
-    # Load input data
     columns_to_load = list(
         set(config.metadata_columns + config.feature_columns + config.text_columns)
     )
 
-    ds = ray.data.read_parquet(
-        config.input_path,
-        columns=columns_to_load,
-    ).limit(15_000_000)
-    ds._set_name("input_data")
+    holder = {}
 
-    # Execute end-to-end pipeline
-    output_ds = execute_pipeline(ds, config)
+    def benchmark_fn():
+        ds = ray.data.read_parquet(
+            config.input_path,
+            columns=columns_to_load,
+        ).limit(15_000_000)
+        ds._set_name("input_data")
 
-    # Consume output
-    total_rows = 0
-    for batch in output_ds.iter_batches(batch_size=None, batch_format="pandas"):
-        total_rows += len(batch)
+        output_ds = execute_pipeline(ds, config)
 
-    end_time = time.time()
+        total_rows = 0
+        for batch in output_ds.iter_batches(batch_size=None, batch_format="pandas"):
+            total_rows += len(batch)
+        holder["total_rows"] = total_rows
 
-    total_time = end_time - start_time
+    benchmark = Benchmark()
+    benchmark.run_fn("model-inference-pipeline", benchmark_fn)
+
+    total_time = benchmark.result["model-inference-pipeline"][
+        BenchmarkMetric.RUNTIME.value
+    ]
+    total_rows = holder["total_rows"]
     throughput = total_rows / total_time if total_time > 0 else 0
 
     print(f"Total rows processed: {total_rows}")
     print(f"Total time (sec): {total_time:.2f}")
     print(f"Throughput (rows/sec): {throughput:.2f}")
 
-    return {
-        BenchmarkMetric.RUNTIME: total_time,
-        BenchmarkMetric.THROUGHPUT: throughput,
-        BenchmarkMetric.NUM_ROWS: total_rows,
-        "preprocessing_batch_size": args.preprocessing_batch_size,
-        "inference_batch_size": args.inference_batch_size,
-        "inference_min_actors": args.inference_min_actors,
-        "inference_max_actors": args.inference_max_actors,
-        "tokenizer_max_length": args.tokenizer_max_length,
-    }
+    benchmark.result["model-inference-pipeline"].update(
+        {
+            BenchmarkMetric.THROUGHPUT.value: throughput,
+            BenchmarkMetric.NUM_ROWS.value: total_rows,
+            "preprocessing_batch_size": args.preprocessing_batch_size,
+            "inference_batch_size": args.inference_batch_size,
+            "inference_min_actors": args.inference_min_actors,
+            "inference_max_actors": args.inference_max_actors,
+            "tokenizer_max_length": args.tokenizer_max_length,
+        }
+    )
+    benchmark.write_result()
 
 
 if __name__ == "__main__":
     args = parse_args()
-
-    benchmark = Benchmark()
-    benchmark.run_fn("model-inference-pipeline", main, args)
-    benchmark.write_result()
+    main(args)

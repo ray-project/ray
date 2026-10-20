@@ -21,22 +21,50 @@
 
 #include "ray/gcs/store_client/store_client.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
 namespace gcs {
 
+/// Wraps `delegate` in an ObservableStoreClient when `enabled`, and returns it
+/// unchanged otherwise.
+///
+/// \param delegate The store client to wrap.
+/// \param enabled Whether to wrap `delegate`.
+/// \param storage_operation_latency_in_ms_histogram Sink for per-operation
+/// latency, recorded when each operation completes.
+/// \param storage_operation_count_counter Sink for per-operation counts,
+/// recorded when each operation is issued.
+/// \param clock Clock used to measure operation latency.
+/// \return Either an ObservableStoreClient owning `delegate`, or `delegate`.
+std::shared_ptr<StoreClient> MaybeObserve(
+    std::shared_ptr<StoreClient> delegate,
+    bool enabled,
+    ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
+    ray::observability::MetricInterface &storage_operation_count_counter,
+    ClockInterface &clock);
+
 /// Wraps around a StoreClient instance and observe the metrics.
 class ObservableStoreClient : public StoreClient {
  public:
+  /// \param delegate The store client to observe. A shared_ptr so that GcsServer
+  /// can keep its own RedisStoreClient pointer for the health check.
+  /// \param storage_operation_latency_in_ms_histogram Sink for per-operation
+  /// latency, recorded when each operation completes.
+  /// \param storage_operation_count_counter Sink for per-operation counts,
+  /// recorded when each operation is issued.
+  /// \param clock Clock used to measure operation latency.
   explicit ObservableStoreClient(
-      std::unique_ptr<StoreClient> delegate,
+      std::shared_ptr<StoreClient> delegate,
       ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram,
-      ray::observability::MetricInterface &storage_operation_count_counter)
+      ray::observability::MetricInterface &storage_operation_count_counter,
+      ClockInterface &clock)
       : delegate_(std::move(delegate)),
         storage_operation_latency_in_ms_histogram_(
             storage_operation_latency_in_ms_histogram),
-        storage_operation_count_counter_(storage_operation_count_counter) {}
+        storage_operation_count_counter_(storage_operation_count_counter),
+        clock_(clock) {}
 
   void AsyncPut(const std::string &table_name,
                 const std::string &key,
@@ -76,9 +104,10 @@ class ObservableStoreClient : public StoreClient {
                    Postable<void(bool)> callback) override;
 
  private:
-  std::unique_ptr<StoreClient> delegate_;
+  std::shared_ptr<StoreClient> delegate_;
   ray::observability::MetricInterface &storage_operation_latency_in_ms_histogram_;
   ray::observability::MetricInterface &storage_operation_count_counter_;
+  ClockInterface &clock_;
 };
 
 }  // namespace gcs

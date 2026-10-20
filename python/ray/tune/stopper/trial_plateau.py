@@ -23,9 +23,8 @@ class TrialPlateauStopper(Stopper):
             calculation.
         grace_period: Minimum number of timesteps before a trial
             can be early stopped
-        metric_threshold (Optional[float]):
-            Minimum or maximum value the result has to exceed before it can
-            be stopped early.
+        metric_threshold: Minimum or maximum value the result has to exceed
+            before it can be stopped early.
         mode: If a `metric_threshold` argument has been
             passed, this must be one of [min, max]. Specifies if we optimize
             for a large metric (max) or a small metric (min). If max, the

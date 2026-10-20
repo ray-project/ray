@@ -1,101 +1,106 @@
 import sys
 
 import numpy as np
-import pandas as pd
+import pyarrow as pa
 import pytest
 import torch
 
 from ray.data.util.torch_utils import (
     concat_tensors_to_device,
-    convert_pandas_to_torch_tensor,
+    convert_table_to_torch_tensor,
     move_tensors_to_device,
 )
 from ray.util.debug import _test_some_code_for_memory_leaks
 
-data_batch = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+data_batch = pa.table({"A": [1, 2, 3], "B": [4, 5, 6]})
 
 
-class TestConvertPandasToTorch:
+class TestConvertTableToTorch:
     def test_invalid_args(self):
         with pytest.raises(TypeError):
-            convert_pandas_to_torch_tensor(
+            convert_table_to_torch_tensor(
                 data_batch, columns=["A", "B"], column_dtypes=[torch.float, torch.float]
             )
 
     def test_single_tensor(self):
-        tensor = convert_pandas_to_torch_tensor(data_batch)
-        assert tensor.size() == (len(data_batch), len(data_batch.columns))
-        assert np.array_equal(tensor.numpy(), data_batch.to_numpy())
+        tensor = convert_table_to_torch_tensor(data_batch)
+        assert tensor.size() == (data_batch.num_rows, data_batch.num_columns)
+        expected = np.array([[1, 4], [2, 5], [3, 6]])
+        assert np.array_equal(tensor.numpy(), expected)
 
     def test_single_tensor_dtype(self):
-        tensor = convert_pandas_to_torch_tensor(data_batch, column_dtypes=torch.float)
-        assert tensor.size() == (len(data_batch), len(data_batch.columns))
+        tensor = convert_table_to_torch_tensor(data_batch, column_dtypes=torch.float)
+        assert tensor.size() == (data_batch.num_rows, data_batch.num_columns)
         assert tensor.dtype == torch.float
-        assert np.array_equal(tensor.numpy(), data_batch.to_numpy())
+        expected = np.array([[1, 4], [2, 5], [3, 6]])
+        assert np.array_equal(tensor.numpy(), expected)
 
     def test_single_tensor_columns(self):
-        tensor = convert_pandas_to_torch_tensor(data_batch, columns=["A"])
-        assert tensor.size() == (len(data_batch), len(data_batch.columns) - 1)
-        assert np.array_equal(tensor.numpy(), data_batch[["A"]].to_numpy())
+        tensor = convert_table_to_torch_tensor(data_batch, columns=["A"])
+        assert tensor.size() == (data_batch.num_rows, 1)
+        expected = data_batch.column("A").to_numpy().reshape(-1, 1)
+        assert np.array_equal(tensor.numpy(), expected)
 
     def test_multi_input(self):
-        tensors = convert_pandas_to_torch_tensor(data_batch, columns=[["A"], ["B"]])
+        tensors = convert_table_to_torch_tensor(data_batch, columns=[["A"], ["B"]])
         assert len(tensors) == 2
 
-        for i in range(len(tensors)):
+        for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
-            assert tensor.size() == (len(data_batch), 1)
-            assert np.array_equal(
-                tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
-            )
+            assert tensor.size() == (data_batch.num_rows, 1)
+            expected = data_batch.column(col_name).to_numpy().reshape(-1, 1)
+            assert np.array_equal(tensor.numpy(), expected)
 
     def test_multi_input_single_dtype(self):
-        tensors = convert_pandas_to_torch_tensor(
+        tensors = convert_table_to_torch_tensor(
             data_batch, columns=[["A"], ["B"]], column_dtypes=torch.float
         )
         assert len(tensors) == 2
 
-        for i in range(len(tensors)):
+        for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
             assert tensor.dtype == torch.float
-            assert tensor.size() == (len(data_batch), 1)
-            assert np.array_equal(
-                tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
-            )
+            assert tensor.size() == (data_batch.num_rows, 1)
+            expected = data_batch.column(col_name).to_numpy().reshape(-1, 1)
+            assert np.array_equal(tensor.numpy(), expected)
 
     def test_multi_input_multi_dtype(self):
         column_dtypes = [torch.long, torch.float]
-        tensors = convert_pandas_to_torch_tensor(
+        tensors = convert_table_to_torch_tensor(
             data_batch, columns=[["A"], ["B"]], column_dtypes=column_dtypes
         )
         assert len(tensors) == 2
 
-        for i in range(len(tensors)):
+        for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
             assert tensor.dtype == column_dtypes[i]
-            assert tensor.size() == (len(data_batch), 1)
-            assert np.array_equal(
-                tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
-            )
+            assert tensor.size() == (data_batch.num_rows, 1)
+            expected = data_batch.column(col_name).to_numpy().reshape(-1, 1)
+            assert np.array_equal(tensor.numpy(), expected)
 
     def test_tensor_column_no_memory_leak(self):
-        # Test that converting a Pandas DataFrame containing an object-dtyped tensor
-        # column (e.g. post-casting from extension type) doesn't leak memory. Casting
-        # these tensors directly with torch.as_tensor() currently leaks memory; see
+        # Test that converting a table containing an extension-typed tensor
+        # column doesn't leak memory. Casting these tensors directly with
+        # torch.as_tensor() currently leaks memory; see
         # https://github.com/ray-project/ray/issues/30629#issuecomment-1330954556
+        from ray.data.extensions.tensor_extension import ArrowTensorArray
+
         def code():
-            col = np.empty(1000, dtype=object)
-            col[:] = [np.ones((100, 100)) for _ in range(1000)]
-            df = pd.DataFrame({"a": col})
-            convert_pandas_to_torch_tensor(
-                df, columns=[["a"]], column_dtypes=[torch.int]
+            arr = np.ones((1000, 100, 100))
+            table = pa.table({"a": ArrowTensorArray.from_numpy(arr)})
+            convert_table_to_torch_tensor(
+                table, columns=[["a"]], column_dtypes=[torch.int]
             )
 
         suspicious_stats = _test_some_code_for_memory_leaks(
-            desc="Testing convert_pandas_to_torch_tensor for memory leaks.",
+            desc="Testing convert_table_to_torch_tensor for memory leaks.",
             init=None,
             code=code,
             repeats=10,
+            # Ignore small increases (<100KB) from internal caches and
+            # allocator artifacts. The real leak this guards against
+            # (torch.as_tensor on extension arrays) leaks tens of MB.
+            min_memory_increase=100_000,
         )
         assert not suspicious_stats
 
@@ -138,6 +143,30 @@ def test_move_tensors_to_device():
     out = move_tensors_to_device(batch, device)
     assert torch.equal(out["a"], torch.ones(1))
     assert torch.equal(out["b"], torch.ones(2))
+
+
+def test_move_tensors_to_device_no_concat():
+    """With concat=False, nested sequences are moved tensor-by-tensor and the
+    structure is preserved — independently shaped tensors are allowed."""
+    device = torch.device("cpu")
+
+    # Dict[str, List[torch.Tensor]] with ragged shapes (would raise with
+    # concat=True). NOTE: mapping values must be homogeneous (all sequences);
+    # wrap flat tensors in single-element lists.
+    batch = {"masks": [torch.ones(2, 3), torch.ones(4, 5)], "flat": [torch.ones(1)]}
+    out = move_tensors_to_device(batch, device, concat=False)
+    assert isinstance(out["masks"], list)
+    assert torch.equal(out["masks"][0], torch.ones(2, 3))
+    assert torch.equal(out["masks"][1], torch.ones(4, 5))
+    assert isinstance(out["flat"], list)
+    assert torch.equal(out["flat"][0], torch.ones(1))
+
+    # Nested sequences keep their container types.
+    batch = [(torch.ones(1), torch.ones(2)), [torch.ones(3)]]
+    out = move_tensors_to_device(batch, device, concat=False)
+    assert isinstance(out[0], tuple) and isinstance(out[1], list)
+    assert torch.equal(out[0][1], torch.ones(2))
+    assert torch.equal(out[1][0], torch.ones(3))
 
 
 def test_move_invalid_batch_type():

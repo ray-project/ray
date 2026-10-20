@@ -26,7 +26,7 @@ from ray_release.exception import (
 )
 from ray_release.file_manager.job_file_manager import JobFileManager
 from ray_release.job_manager.anyscale_job_manager import (
-    JOB_FAILED,
+    JOB_SOFT_INFRA_ERROR,
     JOB_STATE_UNKNOWN,
     AnyscaleJobManager,
 )
@@ -163,10 +163,10 @@ class AnyscaleJobRunner(CommandRunner):
     def _handle_command_output(
         self, job_return_code: int, raise_on_timeout: bool = True
     ):
-        if job_return_code == JOB_FAILED:
+        if job_return_code == JOB_SOFT_INFRA_ERROR:
             raise JobOutOfRetriesError(
                 "Job returned non-success state: 'FAILED' "
-                "(command has not been ran or no logs could have been obtained)."
+                "(command has not been run or no logs could be obtained)."
             )
 
         if job_return_code == JOB_STATE_UNKNOWN:
@@ -221,7 +221,7 @@ class AnyscaleJobRunner(CommandRunner):
                 f"Command timed out after {workload_time_taken} seconds."
             )
 
-        if workload_status_code is not None and workload_status_code != 0:
+        if workload_status_code is None or workload_status_code != 0:
             raise TestCommandError(
                 f"Command returned non-success status: {workload_status_code}."
             )

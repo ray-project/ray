@@ -17,6 +17,8 @@ def train_fn(config):
                 checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
 
+    return {"total loss": 3}
+
 
 trainer = DataParallelTrainer(
     train_fn, scaling_config=ray.train.ScalingConfig(num_workers=2)
@@ -71,6 +73,11 @@ print("Minimum loss", min(df["loss"]))
 # __result_dataframe_end__
 
 
+# __result_return_value_start__
+print("Returned data", result.return_value)
+# __result_return_value_end__
+
+
 # __result_checkpoint_start__
 print("Last checkpoint:", result.checkpoint)
 
@@ -79,19 +86,19 @@ with result.checkpoint.as_directory() as tmpdir:
     ...
 # __result_checkpoint_end__
 
-# __result_best_checkpoint_start__
-# Print available checkpoints
-for checkpoint, metrics in result.best_checkpoints:
-    print("Loss", metrics["loss"], "checkpoint", checkpoint)
-
-# Get checkpoint with minimal loss
-best_checkpoint = min(
-    result.best_checkpoints, key=lambda checkpoint: checkpoint[1]["loss"]
-)[0]
+# __result_get_best_checkpoint_start__
+# Get the checkpoint with the lowest loss
+best_checkpoint = result.get_best_checkpoint(metric="loss", mode="min")
 
 with best_checkpoint.as_directory() as tmpdir:
     # Load model from directory
     ...
+# __result_get_best_checkpoint_end__
+
+# __result_best_checkpoint_start__
+# Print all saved checkpoints and their metrics
+for checkpoint, metrics in result.best_checkpoints:
+    print("Loss", metrics["loss"], "checkpoint", checkpoint)
 # __result_best_checkpoint_end__
 
 import pyarrow
@@ -104,12 +111,11 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 # __result_path_end__
 
 
-# TODO(justinvyu): Result.from_path is not supported in Train V2 yet.
 # __result_restore_start__
-# from ray.train import Result
+from ray.train import Result
 
-# restored_result = Result.from_path(result_path)
-# print("Restored loss", result.metrics["loss"])
+restored_result = Result.from_path(result_path)
+print("Restored loss", restored_result.metrics["loss"])
 # __result_restore_end__
 
 

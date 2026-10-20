@@ -205,10 +205,6 @@ def test_get_target_groups_app_with_no_running_replicas(
         running_replica_infos=running_replica_infos,
     )
 
-    haproxy_controller.proxy_state_manager.add_proxy_details(
-        "proxy_node1", "10.0.0.1", "proxy1"
-    )
-
     target_groups = haproxy_controller.get_target_groups(
         from_proxy_manager=True,
     )

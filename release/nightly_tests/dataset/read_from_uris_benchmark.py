@@ -1,3 +1,4 @@
+import argparse
 import io
 
 import numpy as np
@@ -14,14 +15,25 @@ BUCKET = "anyscale-imagenet"
 METADATA_PATH = "s3://anyscale-imagenet/metadata.parquet"
 
 
-def main():
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--sf",
+        type=int,
+        default=1,
+        help="Scale factor. Reads the image URIs this many times.",
+    )
+    return parser.parse_args()
+
+
+def main(args: argparse.Namespace):
     benchmark = Benchmark()
-    benchmark.run_fn("main", benchmark_fn)
+    benchmark.run_fn("main", lambda: benchmark_fn(args.sf))
     benchmark.write_result()
 
 
-def benchmark_fn():
-    metadata = ray.data.read_parquet(METADATA_PATH)
+def benchmark_fn(sf: int):
+    metadata = ray.data.read_parquet([METADATA_PATH] * sf)
 
     def decode_images(batch):
         images = []
@@ -48,4 +60,4 @@ def benchmark_fn():
 
 
 if __name__ == "__main__":
-    main()
+    main(parse_args())

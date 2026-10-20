@@ -114,6 +114,13 @@ def _get_local_inspect_dir(
 ) -> Tuple[Path, str]:
     """Downloads the storage path -> local dir for inspecting contents.
 
+    Args:
+        root_local_path: Local directory to use as the inspect root.
+        storage_path: The storage path or URI to download from.
+        storage_filesystem: Optional custom filesystem to use.
+        storage_local_path: Local path that ``storage_path`` mirrors on disk
+            when no remote storage is configured.
+
     Returns:
         Tuple: (local_inspect_dir, storage_fs_path), where storage_fs_path
             is the path to the storage path on the filesystem (e.g., prefix stripped).

@@ -276,6 +276,19 @@ class SysFsCgroupDriver : public CgroupDriverInterface {
    */
   Status AddProcessToCgroup(const std::string &cgroup, const std::string &pid) override;
 
+  /**
+    Gets the constraint value within a specific cgroup for a given constraint name.
+
+    @param cgroup_path the path to the cgroup to get the constraint value from.
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint file cannot be read.
+    @return Status::InvalidArgument if the cgroup or constraint does not exist.
+  */
+  StatusOr<std::string> GetConstraintValue(const std::string &cgroup_path,
+                                           const std::string &constraint_name) override;
+
  private:
   /**
     @param controller_file_path the absolute path of the controller file to read which is

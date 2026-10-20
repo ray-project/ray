@@ -44,6 +44,16 @@ class FakePlasmaClient : public PlasmaClientInterface {
                                 std::shared_ptr<Buffer> *data,
                                 plasma::flatbuf::ObjectSource source,
                                 int device_num = 0) override {
+    auto [it, inserted] =
+        objects_in_plasma_.emplace(object_id,
+                                   std::make_pair(std::vector<uint8_t>(data_size),
+                                                  std::vector<uint8_t>(metadata_size)));
+    if (!inserted) {
+      return Status::ObjectExists("Object already exists in plasma");
+    }
+    if (data != nullptr) {
+      *data = std::make_shared<SharedMemoryBuffer>(it->second.first.data(), data_size);
+    }
     return Status::OK();
   }
 
@@ -63,8 +73,11 @@ class FakePlasmaClient : public PlasmaClientInterface {
     if (metadata != nullptr && metadata_size > 0) {
       metadata_vec.assign(metadata, metadata + metadata_size);
     }
-    objects_in_plasma_.emplace(
+    auto [it, inserted] = objects_in_plasma_.emplace(
         object_id, std::make_pair(std::move(data_vec), std::move(metadata_vec)));
+    if (!inserted) {
+      return Status::ObjectExists("Object already exists in plasma");
+    }
     return Status::OK();
   }
 
@@ -88,6 +101,13 @@ class FakePlasmaClient : public PlasmaClientInterface {
     return Status::OK();
   }
 
+  void MarkLocal(const std::vector<ObjectID> &object_ids) {
+    for (const auto &id : object_ids) {
+      objects_in_plasma_.try_emplace(
+          id, std::vector<uint8_t>{0}, std::vector<uint8_t>{0});
+    }
+  }
+
   Status GetExperimentalMutableObject(
       const ObjectID &object_id,
       std::unique_ptr<plasma::MutableObject> *mutable_object) override {
@@ -95,6 +115,7 @@ class FakePlasmaClient : public PlasmaClientInterface {
   }
 
   Status Release(const ObjectID &object_id) override {
+    released_objects.push_back(object_id);
     objects_in_plasma_.erase(object_id);
     return Status::OK();
   }
@@ -104,9 +125,15 @@ class FakePlasmaClient : public PlasmaClientInterface {
     return Status::OK();
   }
 
-  Status Abort(const ObjectID &object_id) override { return Status::OK(); }
+  Status Abort(const ObjectID &object_id) override {
+    aborted_objects.push_back(object_id);
+    return Status::OK();
+  }
 
-  Status Seal(const ObjectID &object_id) override { return Status::OK(); }
+  Status Seal(const ObjectID &object_id) override {
+    sealed_objects.push_back(object_id);
+    return Status::OK();
+  }
 
   Status Delete(const std::vector<ObjectID> &object_ids) override {
     num_free_objects_requests++;
@@ -125,6 +152,16 @@ class FakePlasmaClient : public PlasmaClientInterface {
   absl::flat_hash_map<ObjectID, std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>
       objects_in_plasma_;
   uint32_t num_free_objects_requests = 0;
+  // Records of calls, for tests to assert interactions on recorded state.
+  std::vector<ObjectID> sealed_objects;
+  std::vector<ObjectID> released_objects;
+  std::vector<ObjectID> aborted_objects;
+
+  void ClearCallRecords() {
+    sealed_objects.clear();
+    released_objects.clear();
+    aborted_objects.clear();
+  }
 };
 
 }  // namespace plasma

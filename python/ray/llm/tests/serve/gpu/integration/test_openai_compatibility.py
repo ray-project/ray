@@ -1,3 +1,4 @@
+import os
 import sys
 
 import openai
@@ -143,6 +144,10 @@ class TestOpenAICompatibility:
         assert data["model"] == expected_model
         assert data["choices"][0]["message"]["content"]
 
+    @pytest.mark.skipif(
+        os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING") == "1",
+        reason="Direct streaming currently supports one LLM config.",
+    )
     def test_chat_without_model_parameter_multiple_models(
         self, testing_multiple_models
     ):  # noqa: F811

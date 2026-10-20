@@ -1,8 +1,7 @@
 import json
 import os
 import time
-import timeit
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 import click
 import numpy as np
@@ -69,9 +68,12 @@ def get_trainer(
     return trainer
 
 
-def train_torch(num_workers: int, use_gpu: bool = False, config: Optional[Dict] = None):
+def train_torch(
+    num_workers: int, use_gpu: bool = False, config: Optional[Dict] = None
+) -> float:
     trainer = get_trainer(num_workers=num_workers, use_gpu=use_gpu, config=config)
-    trainer.fit()
+    result = trainer.fit()
+    return result.metrics["local_time_taken"]
 
 
 def train_driver_fn(config: Dict):
@@ -100,7 +102,7 @@ def tune_torch(
     num_trials: int = 8,
     use_gpu: bool = False,
     config: Optional[Dict] = None,
-):
+) -> List[float]:
     """Making sure that tuning multiple trials in parallel is not
     taking significantly longer than training each one individually.
 
@@ -126,7 +128,8 @@ def tune_torch(
         param_space=param_space,
         tune_config=TuneConfig(mode="min", metric="loss", num_samples=num_trials),
     )
-    tuner.fit()
+    results = tuner.fit()
+    return [result.metrics["local_time_taken"] for result in results]
 
 
 @click.command(help="Run Benchmark comparing Train to Tune.")
@@ -157,33 +160,42 @@ def main(
     train_times = []
     tune_times = []
 
+    train_computes = []
+    tune_trial_computes = []
+
     for i in range(num_runs):
         print(f"Run {i+1} / {num_runs}")
 
         time.sleep(2)
 
-        train_time = timeit.timeit(
-            lambda: train_torch(
-                num_workers=num_workers, use_gpu=use_gpu, config=config
-            ),
-            number=1,
+        train_start = time.monotonic()
+        train_compute = train_torch(
+            num_workers=num_workers, use_gpu=use_gpu, config=config
         )
+        train_time = time.monotonic() - train_start
         train_times.append(train_time)
+        train_computes.append(train_compute)
 
         time.sleep(2)
 
-        tune_time = timeit.timeit(
-            lambda: tune_torch(
-                num_workers=num_workers,
-                num_trials=num_trials,
-                use_gpu=use_gpu,
-                config=config,
-            ),
-            number=1,
+        tune_start = time.monotonic()
+        trial_computes = tune_torch(
+            num_workers=num_workers,
+            num_trials=num_trials,
+            use_gpu=use_gpu,
+            config=config,
         )
+        tune_time = time.monotonic() - tune_start
         tune_times.append(tune_time)
+        tune_trial_computes.append(trial_computes)
 
-        result = {"train_time": train_time, "tune_time": tune_time}
+        result = {
+            "train_time": train_time,
+            "train_compute": train_compute,
+            "train_overhead": train_time - train_compute,
+            "tune_time": tune_time,
+            "tune_overhead": tune_time - max(trial_computes),
+        }
         print(f"Results run {i+1}: {result}")
 
     mean_train_time = np.mean(train_times)
@@ -196,6 +208,8 @@ def main(
         "tune_times": tune_times,
         "tune_mean": mean_tune_time,
         "tune_sd": np.std(tune_times),
+        "train_computes": train_computes,
+        "tune_trial_computes": tune_trial_computes,
     }
 
     print("Full results:", full_results)

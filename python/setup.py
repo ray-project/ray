@@ -1,4 +1,3 @@
-import errno
 import logging
 import os
 import pathlib
@@ -39,11 +38,14 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
     "ray", "_private", "runtime_env", "agent", "thirdparty_files"
 )
+RUNTIME_ENV_AGENT_PIP_PACKAGES = [
+    "aiohttp==3.14.3",
+    "idna==3.15",
+]
 DEPS_ONLY_VERSION = "100.0.0.dev0"
 # In automated builds, we do a few adjustments before building. For instance,
-# the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set in our conda-forge
-# feedstock.
+# the bazel environment is set up slightly differently. This variable is set in
+# our conda-forge feedstock.
 is_conda_forge_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
@@ -218,12 +220,23 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
+    pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 9.0.0",
+        "pyarrow >= 17.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
+    pydantic_deps = [
+        "pydantic>=2.5.0,<3; python_version < '3.14'",
+        "pydantic>=2.13.0,<3; python_version >= '3.14'",
+    ]
+    tune_base_deps = [
+        "pandas",
+        "tensorboardX>=1.9",
+        "requests",
+        *pyarrow_deps,
+        "fsspec",
+    ]
+
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -243,7 +256,7 @@ if setup_spec.type == SetupType.RAY:
         "default": [
             # If adding dependencies necessary to launch the dashboard api server,
             # please add it to python/ray/dashboard/optional_deps.py as well.
-            "aiohttp >= 3.13.3",
+            "aiohttp >= 3.14.1",
             "aiohttp_cors",
             "colorful",
             "py-spy >= 0.2.0; python_version < '3.12'",
@@ -254,7 +267,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
-            pydantic_dep,
+            *pydantic_deps,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -263,20 +276,23 @@ if setup_spec.type == SetupType.RAY:
             "memray; sys_platform != 'win32'",
         ],
         "serve": [
-            "uvicorn[standard]",
+            "uvicorn[standard] >= 0.26.0",  # >= 0.26.0 includes root_path in the ASGI path.
             "requests",
-            "starlette",
-            "fastapi",
+            "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
+            "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
+            "mmh3",
+            # Autoscaling metric reports are encoded and merged as flat arrays.
+            numpy_dep,
+            # Used by the HAProxy ingress controller to render its config.
+            "jinja2",
+            "grpcio-reflection",
+            "ray-haproxy>=2.8.25,<2.9.0; sys_platform == 'linux'",
         ],
         "tune": [
-            "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
-            pydantic_dep,
-            "tensorboardX>=1.9",
-            "requests",
-            *pyarrow_deps,
-            "fsspec",
+            *tune_base_deps,
+            *pydantic_deps,
         ],
     }
 
@@ -323,7 +339,10 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
+    # Train currently depends on Tune, so keep it as a superset of the Tune
+    # extra. If Tune drops its temporary pydantic dependency in the future,
+    # add `pydantic_deps` explicitly here as part of that refactor.
+    setup_spec.extras["train"] = list(setup_spec.extras["tune"])
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
@@ -366,8 +385,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.16.0",
-                "nixl>=0.6.1",
+                "vllm[audio]==0.31.0",
+                "nixl==1.4.1",
+                "nixl-cu13==1.4.1",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -444,89 +464,6 @@ def _find_bazel_bin():
     raise RuntimeError("Cannot find bazel in PATH")
 
 
-def patch_isdir():
-    """
-    Python on Windows is having hard times at telling if a symlink is
-    a directory - it can "guess" wrong at times, which bites when
-    finding packages. Replace with a fixed version which unwraps links first.
-    """
-    orig_isdir = os.path.isdir
-
-    def fixed_isdir(path):
-        while os.path.islink(path):
-            try:
-                link = os.readlink(path)
-            except OSError:
-                break
-            path = os.path.abspath(os.path.join(os.path.dirname(path), link))
-        return orig_isdir(path)
-
-    os.path.isdir = fixed_isdir
-
-
-def replace_symlinks_with_junctions():
-    """
-    Per default Windows requires admin access to create symlinks, while
-    junctions (which behave similarly) can be created by users.
-
-    This function replaces symlinks (which might be broken when checked
-    out without admin rights) with junctions so Ray can be built both
-    with and without admin access.
-    """
-    assert is_native_windows_or_msys()
-
-    # Update this list if new symlinks are introduced to the source tree
-    _LINKS = {
-        r"ray\rllib": "../../rllib",
-    }
-    root_dir = os.path.dirname(__file__)
-    for link, default in _LINKS.items():
-        path = os.path.join(root_dir, link)
-        try:
-            out = subprocess.check_output(
-                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path)
-            )
-        except subprocess.CalledProcessError:
-            out = b""
-        if os.path.basename(path) in out.decode("utf8").splitlines():
-            logger.info(f"'{link}' is already converted to junction point")
-        else:
-            logger.info(f"Converting '{link}' to junction point...")
-            if os.path.isfile(path):
-                with open(path) as inp:
-                    target = inp.read()
-                os.unlink(path)
-            elif os.path.isdir(path):
-                target = default
-                try:
-                    # unlink() works on links as well as on regular files,
-                    # and links to directories are considered directories now
-                    os.unlink(path)
-                except OSError as err:
-                    # On Windows attempt to unlink a regular directory results
-                    # in a PermissionError with errno set to errno.EACCES.
-                    if err.errno != errno.EACCES:
-                        raise
-                    # For regular directories deletion is done with rmdir call.
-                    os.rmdir(path)
-            else:
-                raise ValueError(f"Unexpected type of entry: '{path}'")
-            target = os.path.abspath(os.path.join(os.path.dirname(path), target))
-            logger.info("Setting {} -> {}".format(link, target))
-            subprocess.check_call(
-                f'MKLINK /J "{os.path.basename(link)}" "{target}"',
-                shell=True,
-                cwd=os.path.dirname(path),
-            )
-
-
-if is_conda_forge_build and is_native_windows_or_msys():
-    # Automated replacements should only happen in automatic build
-    # contexts for now
-    patch_isdir()
-    replace_symlinks_with_junctions()
-
-
 def build(build_python, build_java, build_cpp, build_redis):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
@@ -566,7 +503,6 @@ def build(build_python, build_java, build_cpp, build_redis):
         )
 
         # runtime env agent dependenceis
-        runtime_env_agent_pip_packages = ["aiohttp"]
         subprocess.check_call(
             [
                 sys.executable,
@@ -577,7 +513,7 @@ def build(build_python, build_java, build_cpp, build_redis):
                 "--target="
                 + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
             ]
-            + runtime_env_agent_pip_packages
+            + RUNTIME_ENV_AGENT_PIP_PACKAGES
         )
 
     bazel_targets = []
@@ -619,7 +555,7 @@ def build(build_python, build_java, build_cpp, build_redis):
 
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
-        bazel_flags.append(f"--local_cpu_resources={n}")
+        bazel_flags.append(f"--local_resources=cpu={n}")
         warnings.warn(
             "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
             " version. Please use BAZEL_ARGS instead.",
@@ -842,7 +778,7 @@ if __name__ == "__main__":
             "ray": [
                 "includes/*.pxd",
                 "*.pxd",
-                "llm/_internal/serve/config_generator/base_configs/templates/*.yaml",
+                "serve/_private/ingress_request_router.lua.tmpl",
             ],
         },
         include_package_data=True,

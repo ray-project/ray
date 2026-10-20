@@ -1,0 +1,18 @@
+.. _multi-agent-env-runner-reference-docs:
+
+MultiAgentEnvRunner API
+=======================
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
+----------------------------------------------------
+
+.. autoclass:: ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner
+
+    .. automethod:: __init__
+    .. automethod:: sample
+    .. automethod:: get_metrics
+    .. automethod:: get_spaces
+    .. automethod:: make_env
+    .. automethod:: make_module

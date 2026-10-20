@@ -28,6 +28,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/core_worker.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/time.h"
 
 thread_local JNIEnv *local_env = nullptr;
@@ -143,6 +144,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          bool is_streaming_generator,
          bool should_retry_exceptions,
          int64_t generator_backpressure_num_objects,
+         int64_t num_objects_per_yield,
          const std::optional<std::string> &tensor_transport) {
         // These 3 parameters are used for Python only, and Java worker
         // will not use them.
@@ -370,6 +372,12 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeRunTaskExecuto
   // TO fix this, we explicitly quit the process here. This only affects worker processes,
   // not driver processes because only worker processes call `RunTaskExecutionLoop`.
   _Exit(0);
+}
+
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeMaybeEnableTokenAuthIfTokenAvailable(
+    JNIEnv *env, jclass) {
+  ray::rpc::MaybeEnableTokenAuthIfTokenAvailable();
 }
 
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,

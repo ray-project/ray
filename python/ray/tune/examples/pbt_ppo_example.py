@@ -55,7 +55,7 @@ if __name__ == "__main__":
             reuse_actors=True,
         ),
         param_space={
-            "env": "Humanoid-v1",
+            "env": "Humanoid-v5",
             "kl_coeff": 1.0,
             "num_workers": 8,
             "num_gpus": 1,

@@ -100,3 +100,21 @@ export const getTimeZoneInfo = async () => {
   } catch (e) {}
   return null;
 };
+
+/**
+ * Query fragment for Grafana's `Cluster` template variable (multi-cluster / Thanos setups).
+ */
+export const grafanaClusterQueryParam = (
+  grafanaClusterFilter: string | undefined,
+): string =>
+  grafanaClusterFilter
+    ? `&var-Cluster=${encodeURIComponent(grafanaClusterFilter)}`
+    : "";
+
+/**
+ * Query fragment for Grafana's `datasource` template variable. Names may include spaces
+ * or parentheses (e.g. `Prometheus (Prod)`), so the value must be URL-encoded.
+ */
+export const grafanaDatasourceQueryParam = (
+  dashboardDatasource: string | undefined,
+): string => `&var-datasource=${encodeURIComponent(dashboardDatasource ?? "")}`;

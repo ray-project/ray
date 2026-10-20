@@ -85,7 +85,7 @@ def check_arguments():
     )
 
 
-def get_docker_image(docker_override):
+def get_docker_image(docker_override: str):
     """
     Get the docker image to use for the head node and worker nodes.
 
@@ -112,7 +112,7 @@ def get_docker_image(docker_override):
     return None
 
 
-def check_file(file_path):
+def check_file(file_path: Path):
     """
     Check if the provided file path is valid and readable.
 
@@ -236,11 +236,12 @@ def download_ssh_key_gcp():
     os.chmod(local_key_path, 0o400)
 
 
-def cleanup_cluster(config_yaml, cluster_config):
+def cleanup_cluster(config_yaml: dict, cluster_config: Path) -> None:
     """
     Clean up the cluster using the given cluster configuration file.
 
     Args:
+        config_yaml: The parsed cluster configuration.
         cluster_config: The path of the cluster configuration file.
     """
     print("======================================")
@@ -370,21 +371,24 @@ def cleanup_security_groups(config):
 
 
 def run_ray_commands(
-    config_yaml,
-    cluster_config,
-    retries,
-    no_config_cache,
-    num_expected_nodes=1,
+    config_yaml: dict,
+    cluster_config: Path,
+    retries: int,
+    no_config_cache: bool,
+    num_expected_nodes: int = 1,
 ):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
 
     Args:
+        config_yaml: The parsed cluster configuration.
         cluster_config: The path of the cluster configuration file.
         retries: The number of retries for the verification step.
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
+        num_expected_nodes: The number of nodes that should be running before
+            verification is considered successful.
     """
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "azure":

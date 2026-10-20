@@ -1,10 +1,14 @@
+---
+myst:
+  html_meta:
+    description: "Deploy a Ray Serve application to a VM-based cluster with serve deploy, including targeting a remote cluster."
+---
+
 (serve-in-production-deploying)=
 
 # Deploy on VM
 
-You can deploy your Serve application to production on a Ray cluster using the Ray Serve CLI.
-`serve deploy` takes in a config file path and it deploys that file to a Ray cluster over HTTP.
-This could either be a local, single-node cluster as in this example or a remote, multi-node cluster started with the [Ray Cluster Launcher](cloud-vm-index).
+You can deploy your Serve application to production on a Ray cluster using the Ray Serve CLI. `serve deploy` takes in a config file path and it deploys that file to a Ray cluster over HTTP. This could either be a local, single-node cluster as in this example or a remote, multi-node cluster started with the [Ray Cluster Launcher](cloud-vm-index).
 
 This section should help you:
 
@@ -54,14 +58,14 @@ As an example, the address for the local cluster started by `ray start --head` i
 $ serve deploy config_file.yaml -a http://127.0.0.1:8265
 ```
 
-The Ray Dashboard's default port is 8265. To set it to a different value, use the `--dashboard-port` argument when running `ray start`.
+The Ray dashboard's default port is 8265. To set it to a different value, use the `--dashboard-port` argument when running `ray start`.
 
 :::{note}
 When running on a remote cluster, you need to ensure that the import path is accessible. See [Handle Dependencies](serve-handling-dependencies) for how to add a runtime environment.
 :::
 
 :::{tip}
-By default, all the Serve CLI commands assume that you're working with a local cluster. All Serve CLI commands, except `serve start` and `serve run` use the Ray Dashboard address associated with a local cluster started by `ray start --head`. However, if the `RAY_DASHBOARD_ADDRESS` environment variable is set, these Serve CLI commands will default to that value instead.
+By default, all the Serve CLI commands assume that you're working with a local cluster. All Serve CLI commands, except `serve start` and `serve run` use the Ray dashboard address associated with a local cluster started by `ray start --head`. However, if the `RAY_DASHBOARD_ADDRESS` environment variable is set, these Serve CLI commands will default to that value instead.
 
 Similarly, `serve start` and `serve run`, use the Ray head node address associated with a local cluster by default. If the `RAY_ADDRESS` environment variable is set, they will use that value instead.
 
@@ -83,7 +87,7 @@ You can unset this variable by running the CLI command:
 $ unset RAY_DASHBOARD_ADDRESS
 ```
 
-Check for this variable in your environment to make sure you're using your desired Ray Dashboard address.
+Check for this variable in your environment to make sure you're using your desired Ray dashboard address.
 :::
 
 To inspect the status of the Serve application in production, see [Inspect an application](serve-in-production-inspecting).

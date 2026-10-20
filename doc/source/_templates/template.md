@@ -14,15 +14,9 @@ kernelspec:
 
 # Creating an Example
 
-This is an example template file for writing Jupyter Notebooks in markdown, using MyST.
-For more information on MyST notebooks, see the 
-[MyST-NB documentation](https://myst-nb.readthedocs.io/en/latest/index.html).
-If you want to learn more about the MyST parser, see the
-[MyST documentation](https://myst-parser.readthedocs.io/en/latest/).
+This is an example template file for writing Jupyter Notebooks in markdown, using MyST. For more information on MyST notebooks, see the [MyST-NB documentation](https://myst-nb.readthedocs.io/en/latest/index.html). If you want to learn more about the MyST parser, see the [MyST documentation](https://myst-parser.readthedocs.io/en/latest/).
 
-MyST is CommonMark compliant, so you can use plain markdown here.
-In case you need to execute restructured text (rST) directives, you can use `{eval-rst}` to execute the code.
-For instance, here's a note written in rST:
+MyST is CommonMark compliant, so you can use plain markdown here. In case you need to execute restructured text (rST) directives, you can use `{eval-rst}` to execute the code. For instance, here's a note written in rST:
 
 ```{eval-rst}
 .. note::
@@ -65,10 +59,7 @@ checkpoint_path = train_ppo_model()
 
 ## Hiding and removing cells
 
-You can hide cells, so that they toggle when you click the cell header.
-You can use different `:tags:` like `hide-cell`, `hide-input`, or `hide-output` to hide cell content,
-and you can use `remove-cell`, `remove-input`, or `remove-output` to completely remove the cell when rendered.
-Those cells still show up in the notebook itself.
+You can hide cells, so that they toggle when you click the cell header. You can use different `:tags:` like `hide-cell`, `hide-input`, or `hide-output` to hide cell content, and you can use `remove-cell`, `remove-input`, or `remove-output` to completely remove the cell when rendered. Those cells still show up in the notebook itself.
 
 ```{code-cell} python3
 :tags: [hide-cell]

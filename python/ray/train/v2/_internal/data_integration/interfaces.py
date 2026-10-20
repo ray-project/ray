@@ -14,6 +14,7 @@ class DatasetShardMetadata:
     """Metadata about a dataset shard used for lookup and configuration."""
 
     dataset_name: str
+    world_rank: int
 
 
 class DatasetShardProvider(Protocol):

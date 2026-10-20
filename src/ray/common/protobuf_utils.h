@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -54,7 +55,20 @@ rpc::ErrorTableData CreateErrorTableData(const std::string &error_type,
                                          absl::Time timestamp,
                                          const JobID &job_id = JobID::Nil());
 
-/// Helper function to produce worker failure data.
+/**
+ * @brief Helper function to produce worker failure data
+ *
+ * @param worker_id ID of the worker that failed.
+ * @param node_id ID of the node the worker was running on.
+ * @param ip_address IP address of the node the worker was running on.
+ * @param timestamp Time of the worker failure in milliseconds since epoch.
+ * @param disconnect_type Type of the worker exit.
+ * @param disconnect_detail Human-readable detail about the disconnect.
+ * @param pid Process ID of the failed worker.
+ * @param creation_task_exception Exception from the creation task, if any.
+ * @param memory_used_bytes_at_death Worker USS (bytes) sampled just before an OOM kill.
+ * @return Shared pointer to the populated WorkerTableData.
+ */
 std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
     const NodeID &node_id,
@@ -63,7 +77,8 @@ std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
     int pid,
-    const rpc::RayException *creation_task_exception = nullptr);
+    const rpc::RayException *creation_task_exception = nullptr,
+    std::optional<int64_t> memory_used_bytes_at_death = std::nullopt);
 
 /// Get actor creation task exception from ActorDeathCause.
 /// Returns nullptr if actor isn't dead due to creation task failure.

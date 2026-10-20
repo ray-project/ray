@@ -1,3 +1,5 @@
+let warnedUTCOffsetError = false;
+
 const getCurrentUTCOffset = (timeZone: string) => {
   try {
     const date = new Date();
@@ -10,7 +12,10 @@ const getCurrentUTCOffset = (timeZone: string) => {
     const match = formatted.match(/GMT([+-]\d{1,2}(?::\d{2})?)?/);
     return match ? match[0] : "";
   } catch (e) {
-    console.warn(`Error getting UTC offset for ${timeZone}:`, e);
+    if (!warnedUTCOffsetError) {
+      warnedUTCOffsetError = true;
+      console.warn(`Error getting UTC offset for ${timeZone}:`, e);
+    }
     return "";
   }
 };

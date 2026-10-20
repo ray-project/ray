@@ -1,4 +1,4 @@
-import logging
+import copy
 from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
@@ -12,8 +12,6 @@ from ray.dashboard.utils import (
     async_loop_forever,
     compose_state_message,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class DataSource:
@@ -148,6 +146,7 @@ class DataOrganizer:
         }
 
         node_info = node_physical_stats
+
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
@@ -158,6 +157,11 @@ class DataOrganizer:
         node_info["raylet"]["stateMessage"] = compose_state_message(
             death_info.get("reason", None), death_info.get("reasonMessage", None)
         )
+
+        # TODO(spencer-p): TPU process linking is currently prone to over-counting
+        # as it attaches all TPU workers to every chip. This will be addressed
+        # with a more robust mapping in a future update.
+        node_info["tpus"] = copy.deepcopy(node_info.get("tpus", []))
 
         if not get_summary:
             actor_table_entries = DataSource.node_actors.get(node_id, {})
@@ -236,5 +240,9 @@ class DataOrganizer:
             actor["requiredResources"]
         )
         actor["requiredResources"] = required_resources
+
+        # TODO(spencer-p): TPU process linking is currently prone to over-counting.
+        # This will be addressed with a more robust mapping in a future update.
+        actor["tpus"] = []
 
         return actor

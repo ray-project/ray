@@ -1,11 +1,9 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west1
-allowed_azs:
-    - us-west1-c
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+zones: [us-west1-c]
 
-head_node_type:
-    name: head_node
-    instance_type:  n2-standard-64
-    resources: {"cpu": 85}
+head_node:
+  instance_type: n2-standard-64
+  resources:
+    CPU: 85
 
-worker_node_types: []
+worker_nodes: []

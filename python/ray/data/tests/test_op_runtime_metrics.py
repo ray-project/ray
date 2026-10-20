@@ -5,7 +5,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.execution.interfaces.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
@@ -14,48 +14,49 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 )
 from ray.data._internal.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR, DataContext
+from ray.data.context import DataContext
 
 
-def test_average_max_uss_per_task():
-    # No tasks submitted yet.
-    metrics = OpRuntimeMetrics(MagicMock())
-    assert metrics.average_max_uss_per_task is None
+def test_max_uss_bytes_distribution():
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+    assert metrics.max_uss_bytes.num_samples == 0
+    assert metrics.max_uss_bytes.mean == 0
+    assert metrics.max_uss_bytes.max is None
 
-    def create_bundle(uss_bytes: int):
-        block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = uss_bytes
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
-        metadata = BlockMetadata(
-            num_rows=0,
-            size_bytes=0,
-            input_files=None,
-            exec_stats=stats,
-        )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+    input_bundle = RefBundle([], owns_blocks=False, schema=None)
 
-    # Submit two tasks.
-    bundle = create_bundle(uss_bytes=0)
-    metrics.on_task_submitted(0, bundle)
-    metrics.on_task_submitted(1, bundle)
-    assert metrics.average_max_uss_per_task is None
+    # Submit and finish first task with USS of 100 bytes.
+    metrics.on_task_submitted(0, input_bundle)
+    metrics.on_task_finished(
+        0,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=100),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.max_uss_bytes.num_samples == 1
+    assert metrics.max_uss_bytes.mean == 100
+    assert metrics.max_uss_bytes.max == 100
 
-    # Generate one output for the first task.
-    bundle = create_bundle(uss_bytes=1)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 1
-
-    # Generate one output for the second task.
-    bundle = create_bundle(uss_bytes=3)
-    metrics.on_task_output_generated(0, bundle)
-    assert metrics.average_max_uss_per_task == 2  # (1 + 3) / 2 = 2
+    # Submit and finish second task with USS of 300 bytes.
+    metrics.on_task_submitted(1, input_bundle)
+    metrics.on_task_finished(
+        1,
+        None,
+        TaskExecWorkerStats(task_wall_time_s=1.0, max_uss_bytes=300),
+        TaskExecDriverStats(task_output_backpressure_s=0),
+    )
+    assert metrics.max_uss_bytes.num_samples == 2
+    assert metrics.max_uss_bytes.mean == 200  # (100 + 300) / 2
+    assert metrics.max_uss_bytes.max == 300
 
 
 def test_task_completion_time_histogram():
     """Test task completion time histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different completion times
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -97,7 +98,9 @@ def test_block_completion_time_histogram():
 
     Block completion time = (cum_block_gen_time_s + cum_block_ser_time_s) / num_outputs
     """
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     # Test different block generation scenarios
     # Buckets: [0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 7.5, 10.0, 15.0, 20.0, 25.0, 50.0, 75.0, 100.0, 150.0, 500.0, 1000.0, 2500.0, 5000.0]
@@ -166,19 +169,20 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
     def create_output_bundle(gen_time_s, ser_time_s):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.wall_time_s = gen_time_s
-        stats.block_ser_time_s = ser_time_s
-        stats.max_uss_bytes = 0
+        stats = BlockExecStats(
+            wall_time_s=gen_time_s,
+            block_ser_time_s=ser_time_s,
+        )
         metadata = BlockMetadata(
             num_rows=1,
             size_bytes=0,
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     total_gen_ser = 0
+    cumulative_scheduling_time_s = 0.0
     clock = 0.0
     for i, tc in enumerate(test_cases):
         (
@@ -203,6 +207,16 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         mock_perf_counter.return_value = clock
         metrics.on_task_output_generated(
             i, create_output_bundle(gen_time_s, ser_time_s)
+        )
+
+        # Verify that average_task_scheduling_time_s is correct *before* the
+        # task finishes.  The numerator (task_scheduling_time_s) is incremented
+        # on first output, so the denominator must be num_tasks_have_outputs
+        # (not num_tasks_finished) for the average to be accurate mid-flight.
+        cumulative_scheduling_time_s += scheduling_time_s
+        num_tasks_with_output = i + 1
+        assert metrics.average_task_scheduling_time_s == pytest.approx(
+            cumulative_scheduling_time_s / num_tasks_with_output
         )
 
         # Generate remaining outputs (won't affect scheduling time)
@@ -254,7 +268,7 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
         total_driver_wall_time_s / num_tasks
     )
     assert metrics.average_task_scheduling_time_s == pytest.approx(
-        total_scheduling_time_s / num_tasks
+        total_scheduling_time_s / num_tasks  # all tasks produced output
     )
     assert metrics.average_task_output_backpressure_time_s == pytest.approx(
         total_output_bp_time_s / num_tasks
@@ -266,21 +280,23 @@ def test_task_completion_time_excl_backpressure(mock_perf_counter):
 
 def test_block_size_bytes_histogram():
     """Test block size bytes histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_size(size_bytes):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = 0
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=0,
             size_bytes=size_bytes,
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     # Test different block sizes
     # Buckets: [1KB, 8KB, 64KB, 128KB, 256KB, 512KB, 1MB, 8MB, 64MB, 128MB, 256MB, 512MB, 1GB, 4GB, 16GB, 64GB, 128GB, 256GB, 512GB, 1024GB, 4096GB]
@@ -314,21 +330,23 @@ def test_block_size_bytes_histogram():
 
 def test_block_size_rows_histogram():
     """Test block size rows histogram bucket assignment and counting."""
-    metrics = OpRuntimeMetrics(MagicMock())
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
 
     def create_bundle_with_rows(num_rows):
         block = ray.put(pa.Table.from_pydict({}))
-        stats = BlockExecStats()
-        stats.max_uss_bytes = 0
-        stats.wall_time_s = 0
-        stats.block_ser_time_s = 0
+        stats = BlockExecStats(
+            wall_time_s=0,
+            block_ser_time_s=0,
+        )
         metadata = BlockMetadata(
             num_rows=num_rows,
             size_bytes=0,
             input_files=None,
             exec_stats=stats,
         )
-        return RefBundle([(block, metadata)], owns_blocks=False, schema=None)
+        return RefBundle([BlockEntry(block, metadata)], owns_blocks=False, schema=None)
 
     # Test different row counts
     # Buckets: [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000]
@@ -440,15 +458,11 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
 @pytest.mark.parametrize(
     "metrics_fixture,test_property,expected_calculator",
     [
-        # When no sample is available but target_max_block_size is set, uses fallback
+        # When no sample is available, returns None
         (
             "metrics_config_no_sample_with_target",
             "obj_store_mem_max_pending_output_per_task",
-            lambda m: (
-                m._op.data_context.target_max_block_size
-                * MAX_SAFE_BLOCK_SIZE_FACTOR
-                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
-            ),
+            lambda m: None,
         ),
         # When sample is available, uses average_bytes_per_output
         (
@@ -459,16 +473,11 @@ def metrics_config_pending_outputs_none(restore_data_context):  # noqa: F811
                 * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
             ),
         ),
-        # When no sample is available but target_max_block_size is set, uses fallback
+        # When no sample is available, returns None
         (
             "metrics_config_pending_outputs_no_sample",
             "obj_store_mem_pending_task_outputs",
-            lambda m: (
-                m.num_tasks_running
-                * m._op.data_context.target_max_block_size
-                * MAX_SAFE_BLOCK_SIZE_FACTOR
-                * m._op.data_context._max_num_blocks_in_streaming_gen_buffer
-            ),
+            lambda m: None,
         ),
     ],
 )
@@ -483,6 +492,61 @@ def test_obj_store_mem_estimation(
     assert (
         actual == expected
     ), f"Expected {test_property} to be {expected}, got {actual}"
+
+
+def _metrics_for_one_output(**phases):
+    """An `OpRuntimeMetrics` fed one output block with the given phase times."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+
+    stats = BlockExecStats(
+        wall_time_s=1.0,
+        block_ser_time_s=0.0,
+        block_transform_time_s=0.5,
+        **phases,
+    )
+    metadata = BlockMetadata(
+        num_rows=1, size_bytes=0, input_files=None, exec_stats=stats
+    )
+    output = RefBundle(
+        [BlockEntry(ray.put(pa.Table.from_pydict({})), metadata)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, RefBundle([], owns_blocks=False, schema=None))
+    metrics.on_task_output_generated(0, output)
+    return metrics
+
+
+def test_phase_metrics_stay_none_when_unmeasured():
+    """A chain timed only as a whole must not export three zeros.
+
+    A row transform reports no phase breakdown unless
+    `DataContext.accurate_map_phase_timing` is set. Summing those `None`s as
+    zero would put three zeros beside a non-zero `block_transform_time_s`,
+    which a dashboard can't tell from "these phases took no time".
+    """
+    metrics = _metrics_for_one_output()
+
+    assert metrics.block_transform_time_s == pytest.approx(0.5)
+    assert metrics.input_prep_time_s is None
+    assert metrics.function_body_time_s is None
+    assert metrics.output_build_time_s is None
+
+
+def test_phase_metrics_accumulate_when_measured():
+    """The `None` default must not swallow a measured phase."""
+    metrics = _metrics_for_one_output(
+        input_prep_time_s=0.1,
+        function_body_time_s=0.3,
+        output_build_time_s=0.1,
+    )
+
+    assert metrics.input_prep_time_s == pytest.approx(0.1)
+    assert metrics.function_body_time_s == pytest.approx(0.3)
+    assert metrics.output_build_time_s == pytest.approx(0.1)
 
 
 if __name__ == "__main__":

@@ -17,13 +17,13 @@
 #include <vector>
 
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
-#include "ray/raylet/scheduling/policy/affinity_with_bundle_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/bundle_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/hybrid_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/node_affinity_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/node_label_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/random_scheduling_policy.h"
 #include "ray/raylet/scheduling/policy/spread_scheduling_policy.h"
+#include "ray/raylet/scheduling/policy/topology_bundle_scheduling_policy.h"
 
 namespace ray {
 namespace raylet_scheduling_policy {
@@ -43,23 +43,18 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
             local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
         node_affinity_policy_(
             local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
-        affinity_with_bundle_policy_(local_node_id,
-                                     cluster_resource_manager.GetResourceView(),
-                                     is_node_available,
-                                     cluster_resource_manager.GetBundleLocationIndex()),
         node_label_scheduling_policy_(local_node_id,
                                       cluster_resource_manager.GetResourceView(),
                                       is_node_available) {}
 
-  scheduling::NodeID Schedule(const ResourceRequest &resource_request,
-                              SchedulingOptions options) override;
+  NodeSchedulingResult Schedule(const ResourceRequest &resource_request,
+                                SchedulingOptions options) override;
 
  private:
   HybridSchedulingPolicy hybrid_policy_;
   RandomSchedulingPolicy random_policy_;
   SpreadSchedulingPolicy spread_policy_;
   NodeAffinitySchedulingPolicy node_affinity_policy_;
-  AffinityWithBundleSchedulingPolicy affinity_with_bundle_policy_;
   NodeLabelSchedulingPolicy node_label_scheduling_policy_;
 };
 
@@ -68,22 +63,24 @@ class CompositeSchedulingPolicy : public ISchedulingPolicy {
 class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
   explicit CompositeBundleSchedulingPolicy(
-      ClusterResourceManager &cluster_resource_manager,
-      std::function<bool(scheduling::NodeID)> is_node_available)
-      : bundle_pack_policy_(cluster_resource_manager, is_node_available),
-        bundle_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_pack_policy_(cluster_resource_manager, is_node_available) {}
+      ClusterResourceManager &cluster_resource_manager)
+      : bundle_pack_policy_(cluster_resource_manager),
+        bundle_spread_policy_(cluster_resource_manager),
+        bundle_strict_spread_policy_(cluster_resource_manager),
+        bundle_strict_pack_policy_(cluster_resource_manager),
+        topology_strict_pack_policy_(cluster_resource_manager) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,
-      SchedulingOptions options) override;
+      SchedulingOptions options,
+      absl::flat_hash_set<scheduling::NodeID> candidate_nodes) override;
 
  private:
   BundlePackSchedulingPolicy bundle_pack_policy_;
   BundleSpreadSchedulingPolicy bundle_spread_policy_;
   BundleStrictSpreadSchedulingPolicy bundle_strict_spread_policy_;
   BundleStrictPackSchedulingPolicy bundle_strict_pack_policy_;
+  TopologyStrictPackSchedulingPolicy topology_strict_pack_policy_;
 };
 
 }  // namespace raylet_scheduling_policy

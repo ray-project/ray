@@ -9,6 +9,7 @@ import yaml
 
 from ray import job_config
 from ray._private.runtime_env import validation
+from ray._private.runtime_env.pip import _get_pip_hash
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import (
     parse_and_validate_conda,
@@ -84,26 +85,84 @@ class TestValidateWorkingDir:
             "https://some_domain.com/path/file",
             "s3://bucket/file",
             "gs://bucket/file",
+            "gcs://file.txt",
+            "gcs://file.whl",
         ]:
             with pytest.raises(
-                ValueError, match="Only .zip or .whl files supported for remote URIs."
+                ValueError,
+                match=(
+                    r"Only \.zip, \.tar\.gz, \.tgz, \.tar\.xz files are "
+                    r"supported for working_dir URIs"
+                ),
             ):
                 parse_and_validate_working_dir(uri)
+
+    def test_invalid_extension_error_uses_uri_without_query(self):
+        uri = "https://some_domain.com/path/file.txt?X-Amz-Signature=secret"
+
+        with pytest.raises(ValueError) as exc_info:
+            parse_and_validate_working_dir(uri)
+
+        assert "https://some_domain.com/path/file.txt" in str(exc_info.value)
+        assert "X-Amz-Signature" not in str(exc_info.value)
 
     def test_validate_remote_valid_input(self):
         for uri in [
             "https://some_domain.com/path/file.zip",
             "s3://bucket/file.zip",
             "gs://bucket/file.zip",
+            "https://some_domain.com/path/file.tar.gz",
+            "s3://bucket/file.tar.gz",
+            "gs://bucket/file.tgz",
+            "http://some_domain.com/path/file.tar.xz",
+            "https://some_domain.com/path/file.tar.xz",
+            "s3://bucket/file.tar.xz",
+            "gs://bucket/file.tar.xz",
+            "azure://container/file.tar.xz",
+            "abfss://container@account.dfs.core.windows.net/file.tar.xz",
+            "file:///tmp/file.tar.xz",
+            "gcs://file.tar.xz",
         ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
+
+    def test_working_dir_whl_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for working_dir URIs"):
+            RuntimeEnv(working_dir="gcs://package.whl")
+
+    def test_unsupported_gcs_format_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for working_dir URIs"):
+            RuntimeEnv(working_dir="gcs://package.txt")
 
     def test_validate_path_valid_input(self, test_directory):
         test_dir, _, _, _ = test_directory
         valid_working_dir_path = str(test_dir)
         working_dir = parse_and_validate_working_dir(str(valid_working_dir_path))
         assert working_dir == valid_working_dir_path
+
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "local:///app",
+            "local:///path/in/image",
+            "local:///app/subdir",
+            "LOCAL:///app",
+        ],
+    )
+    def test_validate_local_uri_valid_input(self, uri):
+        assert parse_and_validate_working_dir(uri) == uri
+
+    @pytest.mark.parametrize(
+        "uri", ["local://relative/path", "local://", "local://app"]
+    )
+    def test_validate_local_uri_requires_absolute_path(self, uri):
+        with pytest.raises(ValueError, match="the path must be absolute"):
+            parse_and_validate_working_dir(uri)
+
+    @pytest.mark.parametrize("uri", ["local:C:/app", "local:/app", "local:app"])
+    def test_validate_local_uri_requires_scheme_separator(self, uri):
+        with pytest.raises(ValueError, match="must start with local://"):
+            parse_and_validate_working_dir(uri)
 
 
 class TestValidatePyModules:
@@ -128,9 +187,14 @@ class TestValidatePyModules:
             "https://some_domain.com/path/file",
             "s3://bucket/file",
             "gs://bucket/file",
+            "gcs://file.txt",
         ]
         with pytest.raises(
-            ValueError, match="Only .zip or .whl files supported for remote URIs."
+            ValueError,
+            match=(
+                r"Only \.zip, \.whl, \.tar\.gz, \.tgz, \.tar\.xz files are "
+                r"supported for py_modules URIs"
+            ),
         ):
             parse_and_validate_py_modules(uris)
 
@@ -142,9 +206,25 @@ class TestValidatePyModules:
             "https://some_domain.com/path/file.whl",
             "s3://bucket/file.whl",
             "gs://bucket/file.whl",
+            "https://some_domain.com/path/file.tar.gz",
+            "s3://bucket/file.tar.gz",
+            "gs://bucket/file.tgz",
+            "http://some_domain.com/path/file.tar.xz",
+            "https://some_domain.com/path/file.tar.xz",
+            "s3://bucket/file.tar.xz",
+            "gs://bucket/file.tar.xz",
+            "azure://container/file.tar.xz",
+            "abfss://container@account.dfs.core.windows.net/file.tar.xz",
+            "file:///tmp/file.tar.xz",
+            "gcs://file.tar.xz",
+            "gcs://file.whl",
         ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
+
+    def test_unsupported_gcs_format_fails_runtime_env_validation(self):
+        with pytest.raises(ValueError, match="supported for py_modules URIs"):
+            RuntimeEnv(py_modules=["gcs://package.txt"])
 
     def test_validate_path_valid_input(self, test_directory):
         test_dir, _, _, _ = test_directory
@@ -448,6 +528,10 @@ class TestValidateUV:
                 }
             )
 
+        # Invalid uv package type.
+        with pytest.raises(TypeError, match=r"packages.*list\[str\].*0-th item"):
+            validation.parse_and_validate_uv({"packages": [1]})
+
         # Valid uv install options.
         result = validation.parse_and_validate_uv(
             {
@@ -543,6 +627,210 @@ class TestValidatePip:
         assert "pip_install_options" in str(e) and "must be of type list[str]" in str(e)
 
 
+class TestGetPipHash:
+    def test_pip_hash_with_requirements_file(self, test_directory):
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict1 = {"packages": [f"-r {req_path}"]}
+        hash1 = _get_pip_hash(pip_dict1)
+
+        pip_dict2 = {"packages": ["requests==1.0.0", "pip-install-test"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_changes_with_file_content(self, test_directory):
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict = {"packages": [f"-r {req_path}"]}
+
+        with open(req_path, "w") as f:
+            f.write("numpy==1.21.0\n")
+        hash1 = _get_pip_hash(pip_dict)
+
+        with open(req_path, "w") as f:
+            f.write("numpy==1.22.0\n")
+        hash2 = _get_pip_hash(pip_dict)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_comments_and_empty_lines(self, test_directory):
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        with open(req_path, "w") as f:
+            f.write(
+                "# This is a comment\nnumpy==1.21.0\n\n# Another comment\npandas==1.3.0\n"
+            )
+
+        pip_dict = {"packages": [f"-r {req_path}"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_without_r(self):
+        pip_dict = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["numpy==1.21.0", "pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 == hash2
+
+    def test_pip_hash_different_packages(self):
+        pip_dict = {"packages": ["numpy==1.21.0"]}
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {"packages": ["pandas==1.3.0"]}
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_pip_install_options(self, test_directory):
+        _, requirements_file, _, _ = test_directory
+        req_path = str(requirements_file)
+
+        pip_dict = {
+            "packages": [f"-r {req_path}"],
+            "pip_install_options": ["--no-cache-dir"],
+        }
+        hash1 = _get_pip_hash(pip_dict)
+
+        pip_dict2 = {
+            "packages": [f"-r {req_path}"],
+            "pip_install_options": ["--disable-pip-version-check"],
+        }
+        hash2 = _get_pip_hash(pip_dict2)
+
+        assert hash1 != hash2
+
+    def test_pip_hash_with_circular_reference(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create file A
+            file_a = os.path.join(tmpdir, "a.txt")
+            with open(file_a, "w") as f:
+                f.write("-r b.txt\nnumpy==1.21.0\n")
+
+            # Create file B
+            file_b = os.path.join(tmpdir, "b.txt")
+            with open(file_b, "w") as f:
+                f.write("-r a.txt\npandas==1.3.0\n")
+
+            pip_dict = {"packages": [f"-r {file_a}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_self_reference(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create self-referencing file
+            self_file = os.path.join(tmpdir, "self.txt")
+            with open(self_file, "w") as f:
+                f.write("-r self.txt\nnumpy==1.21.0\n")
+
+            pip_dict = {"packages": [f"-r {self_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_nested_relative_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create directory structure
+            reqs_dir = os.path.join(tmpdir, "reqs")
+            os.makedirs(reqs_dir)
+
+            # Create base.txt in reqs directory
+            base_file = os.path.join(reqs_dir, "base.txt")
+            with open(base_file, "w") as f:
+                f.write("-r extras.txt\nnumpy==1.21.0\n")
+
+            # Create extras.txt in the same directory (relative path)
+            extras_file = os.path.join(reqs_dir, "extras.txt")
+            with open(extras_file, "w") as f:
+                f.write("pandas==1.3.0\n")
+
+            # Test with absolute path to base.txt
+            pip_dict = {"packages": [f"-r {base_file}"]}
+            hash1 = _get_pip_hash(pip_dict)
+
+            # Test with relative path from tmpdir
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                relative_base = os.path.relpath(base_file, tmpdir)
+                pip_dict2 = {"packages": [f"-r {relative_base}"]}
+                hash2 = _get_pip_hash(pip_dict2)
+                # Hashes should be the same regardless of how we reference the file
+                assert hash1 == hash2
+            finally:
+                os.chdir(original_cwd)
+
+            assert isinstance(hash1, str)
+            assert len(hash1) == 40
+
+    def test_pip_hash_with_nested_circular_relative_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create directory structure
+            reqs_dir = os.path.join(tmpdir, "reqs")
+            os.makedirs(reqs_dir)
+
+            # Create circular references with relative paths
+            a_file = os.path.join(reqs_dir, "a.txt")
+            with open(a_file, "w") as f:
+                f.write("-r b.txt\nnumpy==1.21.0\n")
+
+            b_file = os.path.join(reqs_dir, "b.txt")
+            with open(b_file, "w") as f:
+                f.write("-r a.txt\npandas==1.3.0\n")
+
+            # This should not cause an infinite loop
+            pip_dict = {"packages": [f"-r {a_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+
+    def test_pip_hash_with_long_form_requirement(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("numpy==1.21.0\n")
+            temp_file = f.name
+
+        try:
+            # Test with long-form --requirement flag
+            pip_dict = {"packages": [f"--requirement {temp_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+        finally:
+            os.unlink(temp_file)
+
+    def test_pip_hash_with_long_form_requirement_equals(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("numpy==1.21.0\n")
+            temp_file = f.name
+
+        try:
+            # Test with long-form --requirement=file.txt format
+            pip_dict = {"packages": [f"--requirement={temp_file}"]}
+            hash_val = _get_pip_hash(pip_dict)
+            assert isinstance(hash_val, str)
+            assert len(hash_val) == 40
+        finally:
+            os.unlink(temp_file)
+
+    def test_pip_hash_with_invalid_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Test with non-existent file - should raise FileNotFoundError
+            non_existent_file = os.path.join(tmpdir, "non_existent.txt")
+            pip_dict = {"packages": [f"-r {non_existent_file}"]}
+            with pytest.raises(FileNotFoundError):
+                _get_pip_hash(pip_dict)
+
+
 class TestValidateEnvVars:
     def test_type_validation(self):
         # Only strings allowed.
@@ -580,9 +868,17 @@ def test_validate_no_local_paths_fails_if_local_working_dir():
             _validate_no_local_paths(runtime_env)
 
 
+def test_validate_no_local_paths_allows_local_uris():
+    """Task/actor runtime_envs may use `local://`"""
+    _validate_no_local_paths(RuntimeEnv(working_dir="local:///app"))
+    _validate_no_local_paths(RuntimeEnv(py_modules=["local:///app/lib"]))
+
+
 def test_validate_no_local_paths_fails_if_local_py_module():
     with tempfile.NamedTemporaryFile(suffix=".whl") as tmp_file:
-        runtime_env = RuntimeEnv(py_modules=[tmp_file.name, "gcs://some_other_file"])
+        runtime_env = RuntimeEnv(
+            py_modules=[tmp_file.name, "gcs://some_other_file.zip"]
+        )
         with pytest.raises(ValueError, match="not a valid URI"):
             _validate_no_local_paths(runtime_env)
 

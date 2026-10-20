@@ -211,6 +211,7 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
         ),
         _DummyNodeState("worker.custom", b"\x02", {"CPU": 2}),
         _DummyNodeState("worker.custom", b"\x03", {"CPU": 2}),
+        _DummyNodeState("worker.custom", b"\x04", {"CPU": 2}),
         _DummyNodeState("", unnamed_worker_id, {"CPU": 3}),
     ]
     monkeypatch.setattr(
@@ -230,10 +231,17 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
     assert cfg.get_head_node_type() == "ray.head.default"
     # Preferred name aggregation
     assert "worker.custom" in node_types
-    assert node_types["worker.custom"]["max_workers"] == 2
+    assert node_types["worker.custom"]["max_workers"] == 3
     # Fallback for unnamed worker
     assert fallback_name in node_types
     assert node_types[fallback_name]["max_workers"] == 1
+
+    # Global max_workers should be the sum of all worker-type max_workers,
+    # NOT the count of node type names.
+    # Here: 3 distinct types (head, worker.custom, fallback), but
+    # 4 actual workers (3 x worker.custom + 1 x fallback).
+    # The old buggy `len(available_node_types)` returned 3 instead of 4.
+    assert cfg.get_config("max_workers") == 4
 
 
 if __name__ == "__main__":

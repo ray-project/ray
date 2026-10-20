@@ -28,15 +28,17 @@ class JobLogStorageClient:
         return file_tail_iterator(self.get_log_file_path(job_id))
 
     async def get_last_n_log_lines(
-        self, job_id: str, num_log_lines=NUM_LOG_LINES_ON_ERROR
+        self, job_id: str, num_log_lines: int = NUM_LOG_LINES_ON_ERROR
     ) -> str:
-        """
-        Returns the last MAX_LOG_SIZE (20000) characters in the last
-        `num_log_lines` lines.
+        """Returns the last MAX_LOG_SIZE (20000) characters in the last ``num_log_lines`` lines.
 
         Args:
             job_id: The id of the job whose logs we want to return
             num_log_lines: The number of lines to return.
+
+        Returns:
+            Up to ``MAX_LOG_SIZE`` characters drawn from the last
+            ``num_log_lines`` lines of the job's log file.
         """
         return fast_tail_last_n_lines(
             path=self.get_log_file_path(job_id),

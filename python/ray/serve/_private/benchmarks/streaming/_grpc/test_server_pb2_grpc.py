@@ -10,7 +10,7 @@ from ray.serve._private.benchmarks.streaming._grpc import (
 class GRPCTestServerStub(object):
     """Missing associated documentation comment in .proto file."""
 
-    def __init__(self, channel):
+    def __init__(self, channel: grpc.Channel):
         """Constructor.
 
         Args:

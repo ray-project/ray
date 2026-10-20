@@ -414,11 +414,12 @@ def test_no_process_leak_after_job_finishes(ray_start_cluster):
     @ray.remote(num_cpus=0)
     class PidActor:
         def __init__(self):
-            self.pids = set()
-            self.pids.add(os.getpid())
+            # List (not set): parent and child may run on the same worker PID, but we
+            # still get one entry per registration (actor + parent + child == len 3).
+            self.pids = [os.getpid()]
 
         def add_pid(self, pid):
-            self.pids.add(pid)
+            self.pids.append(pid)
 
         def get_pids(self):
             return self.pids
@@ -445,7 +446,7 @@ def test_no_process_leak_after_job_finishes(ray_start_cluster):
     ray.shutdown()
     # Job finishes at this point
 
-    for pid in pids:
+    for pid in set(pids):
         wait_for_pid_to_exit(pid)
 
 

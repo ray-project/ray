@@ -88,9 +88,12 @@ def _with_environment_variables(cmd: str, environment_variables: Dict[str, objec
 
     Args:
         cmd: The base command.
-        environment_variables (Dict[str, object]): The set of environment
-            variables. If an environment variable value is a dict, it will
-            automatically be converted to a one line yaml string.
+        environment_variables: The set of environment variables. If an
+            environment variable value is a dict, it will automatically be
+            converted to a one line yaml string.
+
+    Returns:
+        The base command prefixed with `export` statements for each variable.
     """
 
     as_strings = []
@@ -194,6 +197,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         self.ssh_control_path = ssh_control_path
         self.ssh_ip = None
         self.ssh_proxy_command = auth_config.get("ssh_proxy_command", None)
+        self.ssh_proxy_use_node_id = auth_config.get("ssh_proxy_use_node_id", False)
         self.ssh_options = SSHOptions(
             self.ssh_private_key,
             self.ssh_control_path,
@@ -205,6 +209,23 @@ class SSHCommandRunner(CommandRunnerInterface):
             return self.provider.internal_ip(self.node_id)
         else:
             return self.provider.external_ip(self.node_id)
+
+    def _ensure_ssh_control_path(self):
+        if self.ssh_control_path is not None:
+            try:
+                os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
+            except OSError as e:
+                cli_logger.warning("{}", str(e))  # todo: msg
+
+    def _get_ssh_target(self):
+        self._ensure_ssh_control_path()
+
+        if self.ssh_proxy_use_node_id:
+            return self.node_id
+
+        self._set_ssh_ip_if_required()
+        assert self.ssh_ip is not None
+        return self.ssh_ip
 
     def _wait_for_ip(self, deadline):
         # if we have IP do not print waiting info
@@ -244,15 +265,6 @@ class SSHCommandRunner(CommandRunnerInterface):
 
         self.ssh_ip = ip
 
-        # This should run before any SSH commands and therefore ensure that
-        #   the ControlPath directory exists, allowing SSH to maintain
-        #   persistent sessions later on.
-        if self.ssh_control_path is not None:
-            try:
-                os.makedirs(self.ssh_control_path, mode=0o700, exist_ok=True)
-            except OSError as e:
-                cli_logger.warning("{}", str(e))  # todo: msg
-
     def _run_helper(
         self,
         final_cmd: List[str],
@@ -263,16 +275,17 @@ class SSHCommandRunner(CommandRunnerInterface):
         """Run a command that was already setup with SSH and `bash` settings.
 
         Args:
-            final_cmd (List[str]):
-                Full command to run. Should include SSH options and other
-                processing that we do.
-            with_output (bool):
-                If `with_output` is `True`, command stdout will be captured and
-                returned.
-            exit_on_fail (bool):
-                If `exit_on_fail` is `True`, the process will exit
+            final_cmd: Full command to run. Should include SSH options and
+                other processing that we do.
+            with_output: If `with_output` is `True`, command stdout will be
+                captured and returned.
+            exit_on_fail: If `exit_on_fail` is `True`, the process will exit
                 if the command fails (exits with a code other than 0).
             silent: If true, the command output will be silenced.
+
+        Returns:
+            Captured stdout bytes when `with_output` is True, otherwise the
+            return value of ``run_cmd_redirected`` (typically the return code).
 
         Raises:
             ProcessRunnerError: If using new log style and disabled
@@ -347,7 +360,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             ssh_options, SSHOptions
         ), "ssh_options must be of type SSHOptions, got {}".format(type(ssh_options))
 
-        self._set_ssh_ip_if_required()
+        ssh_target = self._get_ssh_target()
 
         if is_using_login_shells():
             ssh = ["ssh", "-tt"]
@@ -369,7 +382,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         final_cmd = (
             ssh
             + ssh_options.to_ssh_options_list(timeout=timeout)
-            + ["{}@{}".format(self.ssh_user, self.ssh_ip)]
+            + ["{}@{}".format(self.ssh_user, ssh_target)]
         )
         if cmd:
             if environment_variables:
@@ -413,7 +426,7 @@ class SSHCommandRunner(CommandRunnerInterface):
         return [arg for args_list in exclude_args + filter_args for arg in args_list]
 
     def run_rsync_up(self, source, target, options=None):
-        self._set_ssh_ip_if_required()
+        ssh_target = self._get_ssh_target()
         options = options or {}
 
         # on windows use scp -r instead of rsync
@@ -421,7 +434,7 @@ class SSHCommandRunner(CommandRunnerInterface):
             # Use scp as fallback for Windows
             command = ["scp", "-r"]
             command += self.ssh_options.to_ssh_options_list(timeout=120)
-            command += [source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)]
+            command += [source, "{}@{}:{}".format(self.ssh_user, ssh_target, target)]
         else:
             command = ["rsync"]
             command += [
@@ -432,20 +445,21 @@ class SSHCommandRunner(CommandRunnerInterface):
             ]
             command += ["-avz"]
             command += self._create_rsync_filter_args(options=options)
-            command += [source, "{}@{}:{}".format(self.ssh_user, self.ssh_ip, target)]
+            command += [source, "{}@{}:{}".format(self.ssh_user, ssh_target, target)]
 
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
     def run_rsync_down(self, source, target, options=None):
-        self._set_ssh_ip_if_required()
+        ssh_target = self._get_ssh_target()
+        options = options or {}
 
         # on Windows use scp -r instead of rsync
         if sys.platform == "win32":
             # Use scp as fallback for Windows
             command = ["scp", "-r"]
             command += self.ssh_options.to_ssh_options_list(timeout=120)
-            command += ["{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target]
+            command += ["{}@{}:{}".format(self.ssh_user, ssh_target, source), target]
         else:
             command = ["rsync"]
             command += [
@@ -456,20 +470,20 @@ class SSHCommandRunner(CommandRunnerInterface):
             ]
             command += ["-avz"]
             command += self._create_rsync_filter_args(options=options)
-            command += ["{}@{}:{}".format(self.ssh_user, self.ssh_ip, source), target]
+            command += ["{}@{}:{}".format(self.ssh_user, ssh_target, source), target]
 
         cli_logger.verbose("Running `{}`", cf.bold(" ".join(command)))
         self._run_helper(command, silent=is_rsync_silent())
 
     def remote_shell_command_str(self):
+        ssh_target = self._get_ssh_target()
+
         if self.ssh_private_key:
             return "ssh -o IdentitiesOnly=yes -i {} {}@{}\n".format(
-                self.ssh_private_key, self.ssh_user, self.ssh_ip
+                self.ssh_private_key, self.ssh_user, ssh_target
             )
         else:
-            return "ssh -o IdentitiesOnly=yes {}@{}\n".format(
-                self.ssh_user, self.ssh_ip
-            )
+            return "ssh -o IdentitiesOnly=yes {}@{}\n".format(self.ssh_user, ssh_target)
 
 
 class DockerCommandRunner(CommandRunnerInterface):

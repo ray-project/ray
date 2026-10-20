@@ -9,11 +9,11 @@ from ray.serve._private.controller import (
 )
 from ray.serve._private.controller_health_metrics_tracker import (
     _HEALTH_METRICS_HISTORY_SIZE,
-    ControllerHealthMetrics,
     ControllerHealthMetricsTracker,
-    DurationStats,
 )
 from ray.serve.schema import (
+    ControllerHealthMetrics,
+    DurationStats,
     HTTPOptionsSchema,
     ServeApplicationSchema,
     ServeDeploySchema,
@@ -376,7 +376,7 @@ class TestDurationStats:
     def test_dict_serialization(self):
         """Test that DurationStats serializes to dict."""
         stats = DurationStats(mean=1.0, std=0.5, min=0.5, max=1.5)
-        result = stats.dict()
+        result = stats.model_dump()
         assert result == {"mean": 1.0, "std": 0.5, "min": 0.5, "max": 1.5}
 
 
@@ -390,12 +390,13 @@ class TestControllerHealthMetrics:
         assert metrics.controller_start_time == 0.0
         assert metrics.uptime_s == 0.0
         assert metrics.num_control_loops == 0
+        assert metrics.last_control_loop_time == 0.0
         assert metrics.loop_duration_s is None
         assert metrics.event_loop_delay_s == 0.0
         assert metrics.num_asyncio_tasks == 0
         assert metrics.process_memory_mb == 0.0
 
-    def test_dict(self):
+    def test_model_dump(self):
         """Test serialization to dictionary."""
         loop_stats = DurationStats(mean=0.3, std=0.1, min=0.1, max=0.5)
         metrics = ControllerHealthMetrics(
@@ -405,7 +406,7 @@ class TestControllerHealthMetrics:
             num_control_loops=50,
             loop_duration_s=loop_stats,
         )
-        result = metrics.dict()
+        result = metrics.model_dump()
 
         assert isinstance(result, dict)
         assert result["timestamp"] == 1000.0
@@ -414,16 +415,17 @@ class TestControllerHealthMetrics:
         assert result["num_control_loops"] == 50
         assert result["loop_duration_s"]["mean"] == 0.3
 
-    def test_all_fields_in_dict(self):
-        """Ensure dict() includes all fields."""
+    def test_all_fields_in_model_dump(self):
+        """Ensure model_dump() includes all fields."""
         metrics = ControllerHealthMetrics()
-        result = metrics.dict()
+        result = metrics.model_dump()
 
         expected_keys = [
             "timestamp",
             "controller_start_time",
             "uptime_s",
             "num_control_loops",
+            "last_control_loop_time",
             "loop_duration_s",
             "loops_per_second",
             "last_sleep_duration_s",
@@ -544,6 +546,25 @@ class TestCollectHealthMetrics:
 
         # Should be approximately 0.5 loops per second
         assert 0.4 < loops_per_second < 0.6
+
+    def test_last_control_loop_time_propagated(self):
+        """Test that last_control_loop_time on the tracker is propagated through
+        collect_metrics."""
+        tracker = ControllerHealthMetricsTracker()
+
+        # Default: tracker has not recorded a control loop yet.
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 0.0
+
+        # Set a specific timestamp and verify it is reflected in collected metrics.
+        tracker.last_control_loop_time = 12345.6789
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 12345.6789
+
+        # Update it again and verify the latest value is returned.
+        tracker.last_control_loop_time = 99999.0
+        metrics = tracker.collect_metrics()
+        assert metrics.last_control_loop_time == 99999.0
 
     def test_component_update_durations_tracked(self):
         """Test that component update durations are tracked with DurationStats."""

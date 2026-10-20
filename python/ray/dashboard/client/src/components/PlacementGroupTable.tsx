@@ -89,6 +89,7 @@ const PlacementGroupTable = ({
     { label: "State" },
     { label: "Reserved Resources" },
     { label: "Label Selector" },
+    { label: "Topology" },
     { label: "Scheduling Detail" },
   ];
 
@@ -193,6 +194,8 @@ const PlacementGroupTable = ({
                 state,
                 stats,
                 bundles,
+                topology_strategy,
+                topology_assignments,
               }) => (
                 <TableRow key={placement_group_id}>
                   <TableCell align="center">
@@ -210,6 +213,23 @@ const PlacementGroupTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <LabelSelector bundles={bundles} />
+                  </TableCell>
+                  <TableCell align="center">
+                    {topology_strategy ? (
+                      <Box sx={{ textAlign: "left" }}>
+                        <div>
+                          <b>strategy:</b> {JSON.stringify(topology_strategy)}
+                        </div>
+                        <div>
+                          <b>assignment:</b>{" "}
+                          {topology_assignments
+                            ? JSON.stringify(topology_assignments)
+                            : "-"}
+                        </div>
+                      </Box>
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}

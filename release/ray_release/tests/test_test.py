@@ -10,15 +10,19 @@ from unittest.mock import AsyncMock, patch
 import aioboto3
 import boto3
 import pytest
+import requests
+import responses
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
     get_global_config,
     init_global_config,
 )
+from ray_release.github_client import GitHubClient
 from ray_release.test import (
     DATAPLANE_ECR_ML_REPO,
     DATAPLANE_ECR_REPO,
+    DATAPLANE_ECR_TORCH_REPO,
     LINUX_TEST_PREFIX,
     MACOS_BISECT_DAILY_RATE_LIMIT,
     MACOS_TEST_PREFIX,
@@ -28,7 +32,6 @@ from ray_release.test import (
     TestResult,
     TestState,
     TestType,
-    _convert_env_list_to_dict,
 )
 from ray_release.util import ANYSCALE_RAY_IMAGE_PREFIX, dict_hash
 
@@ -75,15 +78,6 @@ def _stub_test_result(
     )
 
 
-def test_convert_env_list_to_dict():
-    with mock.patch.dict(os.environ, {"ENV": "env"}):
-        assert _convert_env_list_to_dict(["a=b", "c=d=e", "ENV"]) == {
-            "a": "b",
-            "c": "d=e",
-            "ENV": "env",
-        }
-
-
 def test_get_python_version():
     assert _stub_test({}).get_python_version() == "3.10"
     assert _stub_test({"python": "3.11"}).get_python_version() == "3.11"
@@ -95,13 +89,19 @@ def test_get_byod_runtime_env():
             "python": "3.11",
             "cluster": {
                 "byod": {
-                    "runtime_env": ["a=b"],
+                    "runtime_env": {"a": "b"},
                 },
             },
         }
     )
     runtime_env = test.get_byod_runtime_env()
     assert runtime_env.get("a") == "b"
+
+
+def test_get_byod_runtime_env_stringifies_values():
+    """Values are stringified so YAML scalars reach the image as env vars."""
+    test = _stub_test({"cluster": {"byod": {"runtime_env": {"a": 1}}}})
+    assert test.get_byod_runtime_env() == {"a": "1"}
 
 
 def test_get_anyscale_byod_image():
@@ -137,6 +137,22 @@ def test_get_anyscale_byod_image():
         f"{get_global_config()['byod_ecr']}"
         f"/{DATAPLANE_ECR_ML_REPO}:a1b2c3d4-py38-gpu-"
         "5f311914c59730d72cee8e2a015c5d6eedf6523bfbf5abe2494e0cb85a5a7b70"
+    )
+    assert _stub_test(
+        {
+            "python": "3.14",
+            "cluster": {"byod": {"type": "torch-cu128"}},
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py314-cu128"
+    )
+    assert _stub_test(
+        {
+            "python": "3.11",
+            "cluster": {"byod": {"type": "torch-cu128"}},
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py311-cu128"
     )
 
 
@@ -176,28 +192,95 @@ def test_get_anyscale_byod_image_ray_version():
     )
 
 
-@patch("github.Repository")
-@patch("github.Issue")
-def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
-    assert not Test(state="passing").is_jailed_with_open_issue(mock_repo)
-    mock_repo.get_issue.return_value = mock_issue
-    mock_issue.state = "open"
-    assert Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
-        mock_repo
-    )
-    mock_issue.state = "closed"
-    assert not Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
-        mock_repo
-    )
+_ISSUE_URL = "https://api.github.com/repos/owner/repo/issues/1"
+_ISSUE_JSON = {"number": 1, "state": "open", "title": "", "html_url": "", "labels": []}
 
 
-@patch("github.Repository")
-def test_is_jailed_with_open_issue_github_exception(mock_repo) -> None:
-    from github import GithubException
+def _repo():
+    return GitHubClient("token").get_repo("owner/repo")
 
-    mock_repo.get_issue.side_effect = GithubException(404, {"message": "Not Found"}, {})
-    test = Test(name="test", state="jailed", github_issue_number="1")
-    assert not test.is_jailed_with_open_issue(mock_repo)
+
+@pytest.mark.parametrize(
+    ("issue", "expected_open"),
+    [
+        ({"json": {**_ISSUE_JSON, "state": "open"}}, True),
+        # _close_github_issue leaves the number behind, so a recovered test
+        # keeps pointing at a closed issue; the state has to be checked.
+        ({"json": {**_ISSUE_JSON, "state": "closed"}}, False),
+        # Unreachable github answers "no open issue known here", never "no
+        # issue".
+        ({"json": {"message": "Not Found"}, "status": 404}, False),
+    ],
+    ids=["open", "closed", "unreachable"],
+)
+@responses.activate
+def test_get_open_github_issue(issue, expected_open) -> None:
+    responses.add(responses.GET, _ISSUE_URL, **issue)
+
+    got = Test(name="test", github_issue_number="1").get_open_github_issue(_repo())
+
+    if expected_open:
+        # The issue itself, so a caller acting on it need not fetch it again.
+        assert got is not None and got.number == _ISSUE_JSON["number"]
+        assert len(responses.calls) == 1
+    else:
+        assert got is None
+
+
+def test_get_open_github_issue_timeout() -> None:
+    """GitHubClient's timeout raises requests.Timeout, not GitHubException, and
+    is_jailed_with_open_issue is called from filter.py with no guard."""
+    repo = _repo()
+    with patch.object(repo._client, "_get", side_effect=requests.Timeout("too slow")):
+        assert (
+            Test(name="t", github_issue_number="1").get_open_github_issue(repo) is None
+        )
+        assert not Test(
+            name="t", state="jailed", github_issue_number="1"
+        ).is_jailed_with_open_issue(repo)
+
+
+def test_get_open_github_issue_no_issue_number() -> None:
+    assert Test().get_open_github_issue(_repo()) is None
+
+
+@responses.activate
+def test_has_open_github_issue_is_get_open_github_issue() -> None:
+    """It is a one-line delegation; cover that rather than repeat the states."""
+    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "open"})
+    test = Test(github_issue_number="1")
+
+    assert test.has_open_github_issue(_repo()) is True
+
+    with patch.object(Test, "get_open_github_issue", return_value=None) as delegate:
+        assert test.has_open_github_issue(_repo()) is False
+    delegate.assert_called_once()
+
+
+def test_is_jailed_with_open_issue_not_jailed() -> None:
+    """The state is checked first, so github is never asked about a non-jailed
+    test."""
+    with patch.object(Test, "get_open_github_issue") as never:
+        assert not Test(state="passing").is_jailed_with_open_issue(_repo())
+    never.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("has_open_issue", "expected"), [(True, True), (False, False)], ids=["open", "no"]
+)
+def test_is_jailed_with_open_issue_delegates_for_the_issue(
+    has_open_issue, expected
+) -> None:
+    with patch.object(
+        Test, "has_open_github_issue", return_value=has_open_issue
+    ) as delegate:
+        assert (
+            Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
+                _repo()
+            )
+            is expected
+        )
+    delegate.assert_called_once()
 
 
 def test_is_stable() -> None:
@@ -544,11 +627,11 @@ def test_require_custom_byod_image():
     ).require_custom_byod_image()
     # runtime_env triggers custom build
     assert _stub_test(
-        {"cluster": {"byod": {"runtime_env": ["FOO=bar"]}}}
+        {"cluster": {"byod": {"runtime_env": {"FOO": "bar"}}}}
     ).require_custom_byod_image()
     # empty runtime_env does not trigger custom build
     assert not _stub_test(
-        {"cluster": {"byod": {"runtime_env": []}}}
+        {"cluster": {"byod": {"runtime_env": {}}}}
     ).require_custom_byod_image()
 
 
@@ -560,7 +643,7 @@ def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
             "name": "linux://test",
             "cluster": {
                 "byod": {
-                    "runtime_env": ["MY_VAR=123"],
+                    "runtime_env": {"MY_VAR": "123"},
                 },
             },
         }
@@ -581,7 +664,7 @@ def test_get_byod_image_tag_runtime_env_only(mock_get_byod_base_image_tag):
             "name": "linux://other_test",
             "cluster": {
                 "byod": {
-                    "runtime_env": ["MY_VAR=123"],
+                    "runtime_env": {"MY_VAR": "123"},
                 },
             },
             "run": {
@@ -601,7 +684,7 @@ def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image
             "cluster": {
                 "byod": {
                     "post_build_script": "test_script.sh",
-                    "runtime_env": ["KEY=val"],
+                    "runtime_env": {"KEY": "val"},
                 },
             },
         }
@@ -621,6 +704,17 @@ def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image
         "python_depset": None,
     }
     assert dict_hash(custom_info) != dict_hash(custom_info_no_env)
+
+
+def test_uses_anyscale_sdk_2026():
+    assert not Test({"name": "t", "cluster": {}}).uses_anyscale_sdk_2026()
+    assert not Test({"name": "t"}).uses_anyscale_sdk_2026()
+    assert Test(
+        {"name": "t", "cluster": {"anyscale_sdk_2026": True}}
+    ).uses_anyscale_sdk_2026()
+    assert not Test(
+        {"name": "t", "cluster": {"anyscale_sdk_2026": False}}
+    ).uses_anyscale_sdk_2026()
 
 
 if __name__ == "__main__":

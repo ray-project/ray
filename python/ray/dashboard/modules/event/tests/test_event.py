@@ -11,27 +11,30 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pprint import pprint
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-import requests
 
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._common.utils import binary_to_hex
 from ray._private.event.event_logger import (
+    EventLoggerAdapter,
     filter_event_by_level,
     get_event_id,
     get_event_logger,
 )
 from ray._private.event.export_event_logger import (
     EventLogType,
+    ExportEventLoggerAdapter,
     get_export_event_logger,
 )
 from ray._private.protobuf_compat import message_to_dict
 from ray._private.state_api_test_utils import create_api_options, verify_schema
 from ray._private.test_utils import (
     format_web_url,
+    request_with_auth_token,
     wait_until_server_available,
 )
 from ray.cluster_utils import AutoscalingCluster
@@ -145,7 +148,7 @@ def test_event_basic(disable_aiohttp_cache, ray_start_with_dashboard):
 
     def _check_events():
         try:
-            resp = requests.get(f"{webui_url}/events")
+            resp = request_with_auth_token("GET", f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
@@ -211,7 +214,7 @@ def test_event_message_limit(
 
     def _check_events():
         try:
-            resp = requests.get(f"{webui_url}/events")
+            resp = request_with_auth_token("GET", f"{webui_url}/events")
             resp.raise_for_status()
             result = resp.json()
             all_events = result["data"]["events"]
@@ -236,17 +239,17 @@ def test_report_events(ray_start_with_dashboard):
     webui_url = format_web_url(ray_start_with_dashboard["webui_url"])
     url = f"{webui_url}/report_events"
 
-    resp = requests.post(url)
+    resp = request_with_auth_token("POST", url)
     assert resp.status_code == 400
-    resp = requests.post(url, json={"Hello": "World"})
+    resp = request_with_auth_token("POST", url, json={"Hello": "World"})
     assert resp.status_code == 400
 
     job_id = ray.JobID.from_int(100).hex()
     sample_event = _get_event("Hello", job_id=job_id)
-    resp = requests.post(url, json=[json.dumps(sample_event)])
+    resp = request_with_auth_token("POST", url, json=[json.dumps(sample_event)])
     assert resp.status_code == 200
 
-    resp = requests.get(f"{webui_url}/events")
+    resp = request_with_auth_token("GET", f"{webui_url}/events")
     assert resp.status_code == 200
     result = resp.json()
     all_events = result["data"]["events"]
@@ -339,7 +342,7 @@ async def test_monitor_events():
 @pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
 def test_autoscaler_cluster_events(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
-        head_resources={"CPU": 2},
+        head_resources={"CPU": 2, "GPU": 0},
         worker_node_types={
             "cpu_node": {
                 "resources": {
@@ -694,6 +697,83 @@ def test_export_event_logger(tmp_path):
             preserving_proto_field_name=True,
             use_integers_for_enums=False,
         )
+
+
+def test_event_logger_flushes_all_handlers():
+    mock_logger = MagicMock()
+    handlers = [MagicMock() for _ in range(3)]
+    mock_logger.handlers = handlers
+
+    adapter = EventLoggerAdapter(event_pb2.Event.GCS, mock_logger)
+    adapter.info("message")
+
+    for handler in handlers:
+        handler.flush.assert_called_once()
+
+
+def test_event_logger_allows_empty_handlers():
+    mock_logger = MagicMock()
+    mock_logger.handlers = []
+
+    adapter = EventLoggerAdapter(event_pb2.Event.GCS, mock_logger)
+    adapter.info("message")
+
+
+def test_export_event_logger_flushes_all_handlers():
+    mock_logger = MagicMock()
+    handlers = [MagicMock() for _ in range(3)]
+    mock_logger.handlers = handlers
+
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=(
+            export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING
+        ),
+        entrypoint="ls",
+        metadata={},
+    )
+    adapter.send_event(event_data)
+
+    for handler in handlers:
+        handler.flush.assert_called_once()
+
+
+def test_export_event_logger_allows_empty_handlers():
+    mock_logger = MagicMock()
+    mock_logger.handlers = []
+
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=(
+            export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING
+        ),
+        entrypoint="ls",
+        metadata={},
+    )
+    adapter.send_event(event_data)
+
+
+def test_export_event_logger_continues_flushing_after_handler_error():
+    mock_logger = MagicMock()
+    handler1 = MagicMock()
+    handler1.flush.side_effect = RuntimeError("flush failed")
+    handler2 = MagicMock()
+    mock_logger.handlers = [handler1, handler2]
+
+    adapter = ExportEventLoggerAdapter(EventLogType.SUBMISSION_JOB, mock_logger)
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=(
+            export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING
+        ),
+        entrypoint="ls",
+        metadata={},
+    )
+    adapter.send_event(event_data)
+
+    handler2.flush.assert_called_once()
 
 
 if __name__ == "__main__":

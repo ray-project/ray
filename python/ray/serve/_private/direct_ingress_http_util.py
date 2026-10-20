@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional
 
 from starlette.types import Message, Receive, Scope
 
@@ -25,10 +26,10 @@ class ASGIDIReceiveProxy:
     ):
         self._type = scope["type"]  # Either 'http' or 'websocket'.
         # Lazy init the queue to ensure it is created in the user code event loop.
-        self._queue = None
+        self._queue: Optional[asyncio.Queue] = None
         self._receive = receive
         self._user_event_loop = user_event_loop
-        self._disconnect_message = None
+        self._disconnect_message: Optional[Message] = None
 
     def _get_default_disconnect_message(self) -> Message:
         """Return the appropriate disconnect message based on the connection type.
@@ -57,9 +58,6 @@ class ASGIDIReceiveProxy:
 
     def put_message(self, msg: Message):
         self.queue.put_nowait(msg)
-
-    def close_queue(self):
-        self.queue.close()
 
     def fetch_until_disconnect_task(self) -> asyncio.Task:
         return asyncio.create_task(self._fetch_until_disconnect())

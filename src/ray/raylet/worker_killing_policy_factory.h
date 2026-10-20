@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/raylet/worker_killing_policy_interface.h"
 
 namespace ray {
@@ -27,9 +28,14 @@ class WorkerKillingPolicyFactory {
   /**
    * Create a worker killing policy instance.
    *
+   * @param resource_isolation_enabled Whether resource isolation is enabled.
+   *        Used to determine if the threshold the killing policy will kill to will
+   *        be based on the cgroup memory constraints.
+   * @param cgroup_manager The cgroup manager to use to get the memory constraints.
    * @return a unique pointer to the worker killing policy instance.
    */
-  static std::unique_ptr<WorkerKillingPolicyInterface> Create();
+  static std::unique_ptr<WorkerKillingPolicyInterface> Create(
+      bool resource_isolation_enabled, const CgroupManagerInterface &cgroup_manager);
 };
 
 }  // namespace raylet

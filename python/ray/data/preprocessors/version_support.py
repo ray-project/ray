@@ -29,7 +29,7 @@ def SerializablePreprocessor(version: int, identifier: str):
         TypeError: If the decorated class does not inherit from SerializablePreprocessor
 
     Note:
-        If a class with the same identifier is already registered, logs an info message
+        If a class with the same identifier is already registered, logs a debug message
         and overwrites the previous registration.
 
     Examples:
@@ -53,11 +53,11 @@ def SerializablePreprocessor(version: int, identifier: str):
         cls.set_version(version)
         cls.set_preprocessor_class_id(identifier)
 
-        # Check for collisions and log info message
+        # Check for collisions and log debug message
         if identifier in _PREPROCESSOR_REGISTRY:
             existing = _PREPROCESSOR_REGISTRY[identifier]
             if existing != cls:
-                logging.info(
+                logging.debug(
                     f"Preprocessor id collision: '{identifier}' was already registered "
                     f"by {existing.__module__}.{existing.__qualname__}. "
                     f"Overwriting with {cls.__module__}.{cls.__qualname__}."

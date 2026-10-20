@@ -14,9 +14,9 @@
 
 #include "ray/util/process.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <boost/process/child.hpp>
 #include <chrono>
 #include <cstdio>
@@ -65,7 +65,7 @@ TEST(UtilTest, GetAllProcsWithPpid) {
   auto child_procs = *maybe_child_procs;
   for (auto &child_proc : actual_child_procs) {
     pid_t pid = child_proc.id();
-    EXPECT_THAT(child_procs, ::testing::Contains(pid));
+    EXPECT_NE(std::find(child_procs.begin(), child_procs.end(), pid), child_procs.end());
   }
 
   // Clean up each child proc.
@@ -104,17 +104,3 @@ TEST(UtilTest, CompareProcessObjects) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  int result = 0;
-  if (argc > 1 && strcmp(argv[1], "--println") == 0) {
-    // If we're given this special command, emit each argument on a new line
-    for (int i = 2; i < argc; ++i) {
-      fprintf(stdout, "%s\n", argv[i]);
-    }
-  } else {
-    ::testing::InitGoogleTest(&argc, argv);
-    result = RUN_ALL_TESTS();
-  }
-  return result;
-}

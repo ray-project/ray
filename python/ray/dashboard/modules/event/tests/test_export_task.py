@@ -11,6 +11,9 @@ from ray.dashboard.tests.conftest import *  # noqa
 
 os.environ["RAY_enable_export_api_write"] = "1"
 os.environ["RAY_enable_core_worker_ray_event_to_aggregator"] = "0"
+# Keep the task recorder off so task events take the export-file path this test reads
+# instead of the recorder->aggregator path (which suppresses export_event_write_enabled_).
+os.environ["RAY_enable_ray_task_event_recorder"] = "0"
 
 
 @pytest.mark.asyncio

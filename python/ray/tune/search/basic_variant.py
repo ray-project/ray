@@ -11,7 +11,7 @@ import numpy as np
 from ray.air._internal.usage import tag_searcher
 from ray.tune.error import TuneError
 from ray.tune.experiment.config_parser import _create_trial_from_spec, _make_parser
-from ray.tune.search.sample import _BackwardsCompatibleNumpyRng, np_random_generator
+from ray.tune.search.sample import _BackwardsCompatibleNumpyRng
 from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.variant_generator import (
     _count_spec_samples,
@@ -83,8 +83,7 @@ class _TrialIterator:
             lazily or eagerly. This is toggled depending
             on the size of the grid search.
         start: index at which to start counting trials.
-        random_state (int | np.random.Generator | np.random.RandomState):
-            Seed or numpy random generator to use for reproducible results.
+        random_state: Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
             (``np.random``). Please note that full reproducibility cannot
             be guaranteed in a distributed environment.
@@ -100,7 +99,7 @@ class _TrialIterator:
         lazy_eval: bool = False,
         start: int = 0,
         random_state: Optional[
-            Union[int, "np_random_generator", np.random.RandomState]
+            Union[int, np.random.Generator, np.random.RandomState]
         ] = None,
     ):
         self.parser = _make_parser()
@@ -289,7 +288,7 @@ class BasicVariantGenerator(SearchAlgorithm):
         max_concurrent: int = 0,
         constant_grid_search: bool = False,
         random_state: Optional[
-            Union[int, "np_random_generator", np.random.RandomState]
+            Union[int, np.random.Generator, np.random.RandomState]
         ] = None,
     ):
         tag_searcher(self)
@@ -391,10 +390,13 @@ class BasicVariantGenerator(SearchAlgorithm):
             return False
         state = self.__dict__.copy()
         del state["_trial_generator"]
+        del state["_trial_iter"]
         return state
 
     def set_state(self, state):
         self.__dict__.update(state)
+        self._trial_iter = None
+        self._trial_generator = []
         for iterator in self._iterators:
             self._trial_generator = itertools.chain(self._trial_generator, iterator)
 

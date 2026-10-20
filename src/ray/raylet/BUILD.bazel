@@ -4,7 +4,6 @@ ray_cc_library(
     name = "agent_manager",
     srcs = ["agent_manager.cc"],
     hdrs = ["agent_manager.h"],
-    visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
@@ -23,10 +22,13 @@ ray_cc_library(
     name = "lease_dependency_manager",
     srcs = ["lease_dependency_manager.cc"],
     hdrs = ["lease_dependency_manager.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/object_manager",
+        "//src/ray/object_manager:object_manager_interface",
         "//src/ray/util:counter_map",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -61,7 +63,10 @@ ray_cc_library(
 ray_cc_library(
     name = "worker_interface",
     hdrs = ["worker_interface.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         "//src/ray/common:id",
         "//src/ray/util:process_interface",
@@ -84,6 +89,7 @@ ray_cc_library(
         "//src/ray/protobuf:core_worker_cc_proto",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet_ipc_client:client_connection",
+        "//src/ray/util:clock",
         "//src/ray/util:process",
         "//src/ray/util:process_interface",
         "@com_google_absl//absl/time",
@@ -102,14 +108,35 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "worker_pool_interface",
+    hdrs = ["worker_pool_interface.h"],
+    deps = [
+        ":runtime_env_agent_client",
+        ":worker_interface",
+        "//src/ray/common:id",
+        "//src/ray/common:lease",
+        "//src/ray/common:status",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/raylet_ipc_client:client_connection",
+        "@boost//:optional",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
     name = "worker_pool",
     srcs = ["worker_pool.cc"],
     hdrs = ["worker_pool.h"],
-    visibility = [":__subpackages__"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         ":metrics",
         ":runtime_env_agent_client",
         ":worker_interface",
+        ":worker_pool_interface",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common:constants",
         "//src/ray/common:lease",
         "//src/ray/common:protobuf_utils",
@@ -124,10 +151,22 @@ ray_cc_library(
         "//src/ray/util:network_util",
         "//src/ray/util:process",
         "//src/ray/util:process_utils",
-        "//src/ray/util:time",
         "@boost//:system",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/random",
+        "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_worker_pool",
+    testonly = True,
+    hdrs = ["fake_worker_pool.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_pool_interface",
     ],
 )
 
@@ -137,16 +176,16 @@ ray_cc_library(
     hdrs = ["runtime_env_agent_client.h"],
     visibility = [":__subpackages__"],
     deps = [
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
         "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/rpc/authentication:authentication_token_loader",
+        "//src/ray/util:clock",
         "//src/ray/util:logging",
         "//src/ray/util:process_utils",
-        "//src/ray/util:time",
         "@boost//:beast",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:str_format",
@@ -172,7 +211,8 @@ ray_cc_library(
     deps = [
         ":local_object_manager_interface",
         ":worker_pool",
-        "//src/ray/common:asio",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:filter_local_objects_util",
         "//src/ray/common:id",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -180,7 +220,7 @@ ray_cc_library(
         "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/pubsub:subscriber_interface",
-        "//src/ray/util:time",
+        "//src/ray/util:clock",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -189,7 +229,7 @@ ray_cc_library(
     name = "worker_killing_policy_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "worker_killing_policy_group_by_owner_factory.cc",
+            "worker_killing_policy_factory.cc",
         ],
         "//conditions:default": [
             "noop_worker_killing_policy_factory.cc",
@@ -198,12 +238,15 @@ ray_cc_library(
     hdrs = [
         "worker_killing_policy_factory.h",
     ],
-    visibility = [":__subpackages__"],
     deps = [
         ":worker_killing_policy_interface",
+        "//src/ray/common:ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
+            ":worker_killing_policy_by_time",
             ":worker_killing_policy_group_by_owner",
+            "//src/ray/common/monitors:memory_monitor_utils",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",
@@ -216,10 +259,9 @@ ray_cc_library(
     hdrs = [
         "worker_killing_policy_interface.h",
     ],
-    visibility = [":__subpackages__"],
     deps = [
         ":worker_interface",
-        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common/monitors:memory_monitor_interface",
     ],
 )
 
@@ -235,6 +277,27 @@ ray_cc_library(
     deps = [
         ":worker_killing_policy_interface",
         "//src/ray/common:lease",
+        "//src/ray/common/monitors:memory_monitor_utils",
+        "@com_google_absl//absl/time",
+    ],
+)
+
+ray_cc_library(
+    name = "worker_killing_policy_by_time",
+    srcs = [
+        "worker_killing_policy_by_time.cc",
+    ],
+    hdrs = [
+        "worker_killing_policy_by_time.h",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":worker_killing_policy_interface",
+        "//src/ray/common:lease",
+        "//src/ray/common/monitors:memory_monitor_utils",
+        "//src/ray/util:compat",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
     ],
 )
@@ -244,7 +307,6 @@ ray_cc_library(
     hdrs = [
         "noop_worker_killing_policy.h",
     ],
-    visibility = [":__subpackages__"],
     deps = [
         ":worker_killing_policy_interface",
     ],
@@ -255,7 +317,7 @@ ray_cc_library(
     hdrs = ["throttler.h"],
     visibility = [":__subpackages__"],
     deps = [
-        "@com_google_absl//absl/time",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -287,13 +349,14 @@ ray_cc_library(
         ":worker_killing_policy_factory",
         ":worker_killing_policy_interface",
         ":worker_pool",
+        "//src/ray/asio:periodical_runner_interface",
         "//src/ray/common:buffer",
         "//src/ray/common:flatbuf_utils",
         "//src/ray/common:lease",
-        "//src/ray/common:memory_monitor_factory",
-        "//src/ray/common:memory_monitor_interface",
-        "//src/ray/common:memory_monitor_utils",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
+        "//src/ray/common/monitors:memory_monitor_factory",
+        "//src/ray/common/monitors:memory_monitor_interface",
+        "//src/ray/common/monitors:memory_monitor_utils",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/flatbuffers:node_manager_generated",
@@ -308,13 +371,13 @@ ray_cc_library(
         "//src/ray/rpc:rpc_callback_types",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:clock",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:container_util",
         "//src/ray/util:network_util",
         "//src/ray/util:port_persistence",
         "//src/ray/util:process",
         "//src/ray/util:process_utils",
-        "//src/ray/util:time",
         "@boost//:system",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -339,7 +402,9 @@ ray_cc_binary(
         ":local_object_manager_interface",
         ":metrics",
         ":raylet_lib",
-        "//src/ray/common:asio",
+        ":worker_pool",
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/asio:periodical_runner",
         "//src/ray/common:lease",
         "//src/ray/common:metrics",
         "//src/ray/common:ray_config",
@@ -357,13 +422,13 @@ ray_cc_binary(
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/rpc:metrics_agent_client",
         "//src/ray/stats:stats_lib",
+        "//src/ray/util:clock",
         "//src/ray/util:cmd_line_utils",
         "//src/ray/util:event",
         "//src/ray/util:process",
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-        "//src/ray/util:time",
         "@com_github_gflags_gflags//:gflags",
         "@com_google_absl//absl/strings",
         "@nlohmann_json",
@@ -373,8 +438,25 @@ ray_cc_binary(
 ray_cc_library(
     name = "metrics",
     hdrs = ["metrics.h"],
+    visibility = [
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet/scheduling:__pkg__",
+    ],
     deps = [
         "//src/ray/observability:metrics",
         "//src/ray/stats:stats_lib",
+    ],
+)
+
+ray_cc_library(
+    name = "fake_local_lease_manager",
+    testonly = True,
+    hdrs = ["fake_local_lease_manager.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":metrics",
+        "//src/ray/observability:fake_metric",
+        "//src/ray/raylet/scheduling:local_lease_manager_interface",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

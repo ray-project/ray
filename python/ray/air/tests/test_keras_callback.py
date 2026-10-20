@@ -18,11 +18,7 @@ else:
     import tensorflow as tf
 
     from ray.air.integrations.keras import ReportCheckpointCallback
-    from ray.train.tensorflow import (
-        TensorflowCheckpoint,
-        TensorflowPredictor,
-        TensorflowTrainer,
-    )
+    from ray.train.tensorflow import TensorflowTrainer
 
 
 class TestReportCheckpointCallback:
@@ -216,13 +212,7 @@ def test_keras_callback_e2e():
         scaling_config=ScalingConfig(num_workers=2),
         datasets={TRAIN_DATASET_KEY: get_dataset()},
     )
-    checkpoint = trainer.fit().checkpoint
-    tf_checkpoint = TensorflowCheckpoint(
-        path=checkpoint.path, filesystem=checkpoint.filesystem
-    )
-    predictor = TensorflowPredictor.from_checkpoint(tf_checkpoint)
-    items = np.random.uniform(0, 1, size=(10, 1))
-    predictor.predict(data=items)
+    trainer.fit()
 
 
 if __name__ == "__main__":

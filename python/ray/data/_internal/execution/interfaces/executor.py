@@ -25,6 +25,9 @@ class OutputIterator(Iterator[RefBundle], ABC):
             output_split_idx: The output split index to get results for. This arg is
                 only allowed for iterators created by `Dataset.streaming_split()`.
 
+        Returns:
+            The next ``RefBundle`` of outputs for the given split index.
+
         Raises:
             StopIteration: If there are no more outputs to return.
         """
@@ -60,12 +63,12 @@ class Executor(ContextManager, ABC):
             initial_stats: The DatasetStats to prepend to the stats returned by the
                 executor. These stats represent actions done to compute inputs.
             callbacks: A list of ExecutionCallbacks to run during execution.
-                Create this list right before calling this method (for example,
-                using ``get_execution_callbacks``) so that any callbacks added
-                after the executor was created (such as checkpointing) are included.
                 This method keeps and uses the exact list you pass in, so do not
                 pass an empty list like ``[]`` directly. Create the list first,
                 then pass it.
+
+        Returns:
+            An ``OutputIterator`` over the execution's output ref bundles.
         """
         ...
 

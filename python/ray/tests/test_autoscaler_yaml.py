@@ -308,6 +308,10 @@ class AutoscalingConfigTest(unittest.TestCase):
         ] = 0
         assert prepared_config == expected_prepared
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win"),
+        reason="SSL cert verification fails on Windows CI due to outdated Miniconda CA bundle. Working to update the bundle in https://github.com/ray-project/ray/pull/61545.",
+    )
     def testValidateNetworkConfigForBackwardsCompatibility(self):
         web_yaml = (
             "https://raw.githubusercontent.com/ray-project/ray/"

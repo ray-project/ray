@@ -27,6 +27,7 @@ from ray_release.util import (
 JOB_SUCCEEDED = 0
 JOB_FAILED = -1
 JOB_STATE_UNKNOWN = -2
+JOB_SOFT_INFRA_ERROR = -4
 
 job_status_to_return_code = {
     JobState.SUCCEEDED: JOB_SUCCEEDED,
@@ -59,6 +60,10 @@ class AnyscaleJobManager:
         env_vars_for_job[
             "ANYSCALE_JOB_CLUSTER_ENV_NAME"
         ] = self.cluster_manager.cluster_env_name
+        if self.cluster_manager.cluster_compute_name:
+            env_vars_for_job[
+                "ANYSCALE_JOB_CLUSTER_COMPUTE_NAME"
+            ] = self.cluster_manager.cluster_compute_name
 
         logger.info(
             f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
@@ -229,8 +234,7 @@ class AnyscaleJobManager:
         status = self._last_job_status()
         assert status in terminal_state
         if status == JobState.FAILED and not job_running:
-            # Soft infra error
-            retcode = -4
+            retcode = JOB_SOFT_INFRA_ERROR
         else:
             retcode = job_status_to_return_code[status]
         self._duration = time.time() - self.start_time

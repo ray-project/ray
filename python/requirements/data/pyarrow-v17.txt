@@ -1,0 +1,8 @@
+pyarrow==17.0.0
+numpy
+datasets
+hudi>=0.5.0
+pylance
+modin==0.31.0
+pandas==2.2.3
+delta-sharing

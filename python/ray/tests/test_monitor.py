@@ -132,5 +132,63 @@ def test_update_load_metrics_uses_cluster_state(monkeypatch):
     assert last_used == pytest.approx(fixed_time - 1.5)
 
 
+def test_update_load_metrics_skips_dead_nodes(monkeypatch):
+    """Dead GCS nodes must not be written into LoadMetrics by IP."""
+
+    class FakeReadonlyProvider:
+        def __init__(self):
+            self.nodes = None
+
+        def _set_nodes(self, nodes):
+            self.nodes = nodes
+
+    provider = FakeReadonlyProvider()
+    monitor = monitor_module.Monitor.__new__(monitor_module.Monitor)
+    monitor.gcs_client = types.SimpleNamespace()
+    monitor.load_metrics = LoadMetrics()
+    monitor.autoscaler = types.SimpleNamespace(
+        config={"provider": {}}, provider=provider
+    )
+    monitor.autoscaling_config = None
+    monitor.readonly_config = {"available_node_types": {}}
+    monitor.prom_metrics = None
+    monitor.event_summarizer = None
+    usage_reply = gcs_service_pb2.GetAllResourceUsageReply()
+    monitor.gcs_client.get_all_resource_usage = lambda timeout: usage_reply
+
+    reused_ip = "10.0.0.5"
+    live_node_id = bytes.fromhex("cc" * 20)
+    cluster_state = autoscaler_pb2.ClusterResourceState()
+
+    # Live node first, DEAD second: without the skip, last-write-wins would
+    # replace the live mapping with the dead raylet's empty metrics.
+    live_node = cluster_state.node_states.add()
+    live_node.node_id = live_node_id
+    live_node.node_ip_address = reused_ip
+    live_node.status = autoscaler_pb2.NodeStatus.RUNNING
+    live_node.total_resources["CPU"] = 2.0
+    live_node.available_resources["CPU"] = 1.0
+
+    dead_node = cluster_state.node_states.add()
+    dead_node.node_id = bytes.fromhex("aa" * 20)
+    dead_node.node_ip_address = reused_ip
+    dead_node.status = autoscaler_pb2.NodeStatus.DEAD
+
+    monkeypatch.setattr(
+        monitor_module, "get_cluster_resource_state", lambda gcs_client: cluster_state
+    )
+
+    monitor.update_load_metrics()
+
+    assert monitor.load_metrics.node_id_by_ip[reused_ip] == live_node_id
+    assert monitor.load_metrics.static_resources_by_ip[reused_ip][
+        "CPU"
+    ] == pytest.approx(2.0)
+
+    readonly_ids = {node_id for node_id, _ in provider.nodes}
+    assert live_node_id.hex() in readonly_ids
+    assert dead_node.node_id.hex() not in readonly_ids
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
