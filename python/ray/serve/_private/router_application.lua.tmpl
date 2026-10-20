@@ -148,7 +148,11 @@ local function route(txn, router)
     if truncated then
         headers = headers .. "X-Body-Truncated: " .. #body .. "/" .. truncated .. "\r\n"
     end
-    local request = {headers = headers, body = body}
+    local request = {
+        headers = headers,
+        body = body,
+        path = moved_path("/internal/route", "/", router.p),
+    }
 
     local pool = router.pool
     local n = #pool
