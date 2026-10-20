@@ -3167,9 +3167,8 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           if (workers.empty()) {
             RAY_LOG_EVERY_MS(WARNING, 5000)
                 << "Memory usage above threshold but no workers are available for "
-                   "killing."
-                << "This could be due to worker memory leak and"
-                << "idle worker are occupying most of the memory.";
+                   "killing. This could be due to a worker memory leak, or idle "
+                   "workers occupying most of the memory.";
             ReleaseKillWorkerInProgress();
             return;
           }
