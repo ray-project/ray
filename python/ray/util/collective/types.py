@@ -36,6 +36,7 @@ class Backend(object):
 
     NCCL = "NCCL"
     GLOO = "GLOO"
+    XCCL = "XCCL"
     UNRECOGNIZED = "unrecognized"
 
     def __new__(cls, name: str):
@@ -45,7 +46,7 @@ class Backend(object):
             if upper_name == "TORCH_GLOO":
                 return Backend.GLOO
             raise ValueError(
-                "Unrecognized backend: '{}'. Only NCCL and GLOO are supported".format(
+                "Unrecognized backend: '{}'. Only NCCL, GLOO and XCCL are supported".format(
                     name
                 )
             )
