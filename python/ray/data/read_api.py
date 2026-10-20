@@ -3066,9 +3066,14 @@ def read_orc(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads their schemas
-        during planning, which can be expensive for large or remote datasets.
+        on the driver during planning, which can be expensive for large or remote
+        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
+        ORC metadata from schema inference for reuse during execution.
         With more than 10,000 candidate files, Ray warns before schema merging.
         Retained path and size metadata adds O(files) data to serialized lineage.
+
+        Follow-up work for distributed planning-time schema reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
