@@ -11,9 +11,9 @@ decodes JPEG and PNG. The codec comes from the message's ``format`` field or its
 bytes (see ``mcap_video``).
 Each packet is stamped with its message's ``log_time``, and the decoded frame
 carries that stamp back. This attributes each frame to the message that held
-it, even when the decoder reorders or delays its output. An H.264 or H.265 decoder whose first keyframe comes without the stream's
-parameter sets gets them from where the stream starts (see
-``mcap_video_source``).
+it, even when the decoder reorders or delays its output. An H.264 or H.265
+decoder whose first keyframe comes without the stream's parameter sets gets
+them from where the stream starts (see ``mcap_video_source``).
 """
 
 import importlib
@@ -171,6 +171,10 @@ class FrameDecoder:
         # ``(height, width)`` of the last frame out of the decoder, after
         # ``resize``. A video frame counts whether or not the caller keeps it.
         self.frame_size: Optional[Tuple[int, int]] = None
+        # Whether the codec rejected the last packet fed, which then has no
+        # frame to come out. Decoded message rows read it to give that
+        # message a null frame at once (``mcap_decoded_messages``).
+        self.rejected_last = False
 
     def decode(
         self, message: "Message", wanted: Optional[Callable[[int], bool]] = None
@@ -252,9 +256,11 @@ class FrameDecoder:
         frame = _frame_bytes(message.data, self._codec)
         packet = self._av.Packet(self._with_parameter_sets(frame))
         packet.pts = message.log_time
+        self.rejected_last = False
         try:
             return self._context.decode(packet)
         except self._av.FFmpegError as e:
+            self.rejected_last = True
             # A truncated or mid-GOP access unit, or one the codec rejects.
             # Skipping it keeps the rest of the topic readable. A message
             # holding only parameter sets has no picture to output, so it does
