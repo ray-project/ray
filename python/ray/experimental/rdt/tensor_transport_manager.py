@@ -60,6 +60,24 @@ class TensorTransportManager(ABC):
     Interface with which to implement custom tensor transports.
     """
 
+    def shutdown(self, timeout: Optional[float] = None) -> None:
+        """Release process-local resources when Ray shuts down this worker.
+
+        Ray calls this during ``ray.shutdown()`` and normal Python process exit.
+        Forced termination, including ``ray.kill()``, can bypass this hook.
+        The default implementation does nothing, so existing transports don't
+        need to implement it. Overrides must tolerate repeated calls and avoid
+        starting new transfers or making Ray calls during cleanup.
+
+        Ray removes successfully closed managers from its cache. If cleanup
+        raises an exception, Ray logs it and retains the manager for a later
+        shutdown attempt while continuing to shut down other transports.
+
+        Args:
+            timeout: Maximum time in seconds to wait for cleanup. ``None`` uses
+                the transport's default timeout.
+        """
+
     @abstractmethod
     def tensor_transport_backend(self) -> str:
         """

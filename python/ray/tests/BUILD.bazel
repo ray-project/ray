@@ -635,13 +635,38 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     files = [
+        "rdt/test_axon_lifecycle.py",
+        "rdt/test_axon_tensor_transport.py",
         "rdt/test_nixl_backend_selection.py",
         "rdt/test_nixl_memory_pool.py",
+        "rdt/test_rdt_axon.py",
         "rdt/test_rdt_custom.py",
         "rdt/test_rdt_gloo.py",
+        "rdt/test_rdt_manager.py",
     ],
     tags = [
         "exclusive",
+        "no_windows",
+        "rdt",
+        "team:core",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_rdt_axon_gpu",
+    size = "large",
+    srcs = ["rdt/test_rdt_axon.py"],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "rdt/test_rdt_axon.py",
+    tags = [
+        "custom_setup",
+        "exclusive",
+        "manual",
+        "multi_gpu",
         "no_windows",
         "rdt",
         "team:core",
