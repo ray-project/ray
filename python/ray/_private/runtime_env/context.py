@@ -7,17 +7,12 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-from ray._private.runtime_env.protocol import RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR
 from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
 from ray.core.generated.common_pb2 import Language
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-# Node credentials that containerized workers must not inherit. The auth token
-# reaches them as a read-only file mount instead.
-_NODE_SECRET_ENV_VARS = {"RAY_AUTH_TOKEN", RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR}
 
 _RUN_OPTION_REFERENCE = re.compile(
     r"\$(?:(\$)|([A-Za-z_][A-Za-z0-9_]*)|\{([A-Za-z_][A-Za-z0-9_]*)\}|(\{))"
@@ -162,18 +157,11 @@ class RuntimeEnvContext:
         # The job's env_vars go to the container only: podman runs with the
         # raylet's environment, so job values such as LD_PRELOAD can't affect
         # the host launcher. RAY_* vars are passed by name, so podman reads
-        # their values from that environment. Node secrets are dropped from it,
-        # so run_options such as `--env-host` can't forward them either.
-        launcher_env = {
-            name: value
-            for name, value in launcher_env.items()
-            if name not in _NODE_SECRET_ENV_VARS
-        }
+        # their values from that environment and they stay off podman's argv.
         container_env: Dict[str, Optional[str]] = {
             name: None for name in launcher_env if name.startswith("RAY_")
         }
-        # Raw values, as master passed them single-quoted: expanding ${VAR}
-        # against os.environ would let a job copy node secrets.
+        # Raw values, as master passed them single-quoted.
         container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 
@@ -182,7 +170,7 @@ class RuntimeEnvContext:
             cmd.extend(["--env", name if value is None else f"{name}={value}"])
         # After the --env flags, so a user's `--env NAME=VALUE` wins, as podman
         # applies the last value given for a name. Expanded from what a shell
-        # running podman would have seen, minus the node secrets.
+        # running podman would have seen.
         run_option_env = {**launcher_env, **self.env_vars}
         for run_option in self.container["run_options"]:
             cmd.append(expand_run_option(run_option, run_option_env))

@@ -1,6 +1,4 @@
 import asyncio
-import contextlib
-import hashlib
 import logging
 import os
 import shlex
@@ -111,31 +109,18 @@ def _modify_context_impl(
     container_env = dict()
 
     # Mount the token file rather than passing the token via --env, which is
-    # logged and visible in `ps`.
-    if is_token_auth_enabled() and "RAY_AUTH_TOKEN" not in context.env_vars:
-        if os.environ.get("RAY_AUTH_TOKEN"):
-            token = os.environ["RAY_AUTH_TOKEN"]
-            # Not under ray_tmp_dir: containers mount it read-write and could
-            # swap the file for a symlink before the next worker mounts it.
-            # The digest keeps clusters with different tokens apart.
-            token_dir = _get_default_token_path().parent
-            token_digest = hashlib.sha256(token.encode()).hexdigest()[:16]
-            token_path = str(token_dir / f"image_uri_auth_token_{token_digest}")
-            try:
-                token_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-                _write_owner_only_file(token_path, token)
-            except OSError as e:
-                raise RuntimeError(
-                    f"Failed to write the auth token to {token_path} for a "
-                    f"containerized worker: {e}. Store the token in a file and "
-                    "set RAY_AUTH_TOKEN_PATH instead of RAY_AUTH_TOKEN."
-                ) from e
-        else:
-            # Ignore the job's env_vars: a job-chosen path would mount any
-            # host file the Ray user can read into the container.
-            token_path = os.path.abspath(
-                os.environ.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
-            )
+    # logged and visible in `ps`. A token set only in RAY_AUTH_TOKEN reaches the
+    # container by name with the other RAY_* vars.
+    if (
+        is_token_auth_enabled()
+        and "RAY_AUTH_TOKEN" not in context.env_vars
+        and "RAY_AUTH_TOKEN" not in os.environ
+    ):
+        # Ignore the job's env_vars: a job-chosen path would mount any
+        # host file the Ray user can read into the container.
+        token_path = os.path.abspath(
+            os.environ.get("RAY_AUTH_TOKEN_PATH") or _get_default_token_path()
+        )
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
             container_env["RAY_AUTH_TOKEN_PATH"] = token_path
@@ -164,21 +149,6 @@ def _modify_context_impl(
         "entrypoint": "python",
         "env_vars": container_env,
     }
-
-
-def _write_owner_only_file(path: str, content: str) -> None:
-    # Write then rename, so a worker starting concurrently never reads a
-    # partially written token. mkstemp creates a fresh 0600 file with
-    # O_EXCL, so a symlink planted in the directory can't redirect the write.
-    fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(path))
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(content)
-        os.replace(tmp_path, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_path)
-        raise
 
 
 class ImageURIPlugin(RuntimeEnvPlugin):
