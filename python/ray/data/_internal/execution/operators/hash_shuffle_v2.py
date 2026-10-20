@@ -8,11 +8,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
 )
 
-# Isolate shuffle map workers into a dedicated worker pool so that
-# ReadParquet/Project tasks don't run on the same workers.  Without this,
-# shared memory pages from object store accesses (mmap'd during
-# combine_chunks) accumulate across task types and inflate worker RSS.
-_SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_MAP_WORKER": "1"}}
+_SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
 
 
 def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> PartitionFn:
