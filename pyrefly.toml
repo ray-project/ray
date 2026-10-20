@@ -9,6 +9,7 @@ project-includes = [
 ignore-missing-imports = [
     "IPython.*",
     "PIL.*",
+    "av.*",
     "bson.*",
     "clickhouse_connect.*",
     "cloudpickle.*",
