@@ -7252,16 +7252,11 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-            >>> tf_dataset = ds.to_tf(
-            ...     feature_columns="sepal length (cm)",
-            ...     label_columns="target",
-            ...     batch_size=2
-            ... )
-            >>> for features, labels in tf_dataset:
-            ...     print(features, labels)
+            >>> tf_dataset = ds.iter_tf_batches(batch_size=2)
+            >>> for batch in tf_dataset:
+            ...     print(batch["sepal length (cm)"], batch["target"])
+            ...     break
             tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
-            ...
-            tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
 
         Time complexity: O(1)
 
