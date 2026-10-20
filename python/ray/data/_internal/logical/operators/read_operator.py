@@ -273,6 +273,10 @@ class ReadFiles(
     # that the transform's effects are unknown, so predicate pushdown must
     # stay disabled. Currently populated only for tensor-column decoding.
     block_udf_modified_columns: Optional[Set[str]] = field(default=None, kw_only=True)
+    # Whether each output row comes from one input row and keeps its columns,
+    # as in ``read_mcap(samples=...)``. A checkpoint then drops finished input
+    # rows before the read rather than finished rows after it.
+    checkpoint_on_input: bool = False
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)

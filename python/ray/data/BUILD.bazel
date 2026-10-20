@@ -2455,6 +2455,20 @@ py_test(
 )
 
 py_test(
+    name = "test_mcap_resume",
+    size = "medium",
+    srcs = ["tests/datasource/test_mcap_resume.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_default_cluster_autoscaler_v2",
     size = "small",
     srcs = ["tests/test_default_cluster_autoscaler_v2.py"],

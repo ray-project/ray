@@ -143,6 +143,7 @@ class SelectedMessageReader:
             for c in self.candidate_chunks(summary, selected)
             if offsets is None or c.chunk_start_offset in offsets
         ]
+        time_bounds = (self._selection.start_time, self._selection.end_time)
         declared = _Declared(
             dict(summary.channels),
             dict(summary.schemas),
@@ -153,17 +154,64 @@ class SelectedMessageReader:
             chunks = read_chunks(f, chunk_indexes, self._chunk_reads, on_corrupt)
             for chunk_index, chunk in chunks:
                 yield from self._decoded_messages(
-                    f, path, summary, chunk_index, chunk, selected, declared, on_corrupt
+                    f,
+                    path,
+                    summary,
+                    chunk_index,
+                    chunk,
+                    selected,
+                    declared,
+                    time_bounds,
+                    on_corrupt,
                 )
             return
         yield from self._merge_chunks_by_log_time(
-            f, path, summary, chunk_indexes, selected, declared, on_corrupt
+            f, path, summary, chunk_indexes, selected, declared, time_bounds, on_corrupt
         )
+
+    def iter_chunk_messages(
+        self,
+        f: Any,
+        path: str,
+        summary: "Summary",
+        chunk_indexes: List["ChunkIndex"],
+        file_summary: Optional[Callable[[], "Summary"]] = None,
+        *,
+        selected: Optional[Set[int]] = None,
+    ) -> Iterator[Tuple["ChunkIndex", List[_Selected]]]:
+        """Yield each chunk with its selected messages, in file order.
+
+        Unlike ``iter_chunks``, a chunk's messages come together and are not
+        cut to the time range, so a caller can keep or drop whole chunks.
+        Chunks close together in the file still share a ranged read. A chunk
+        that cannot be decoded raises.
+        """
+        if selected is None:
+            selected = self._selection.selected_channel_ids(
+                summary.channels, summary.schemas
+            )
+        declared = _Declared(
+            dict(summary.channels),
+            dict(summary.schemas),
+            set(),
+            file_summary or (lambda: summary),
+        )
+        ordered = sorted(chunk_indexes, key=lambda c: c.chunk_start_offset)
+        for chunk_index, chunk in read_chunks(f, ordered, self._chunk_reads):
+            assert chunk is not None, "without on_corrupt, a bad chunk raises"
+            messages = self._chunk_messages(
+                f, path, summary, chunk_index, chunk, selected, declared, (None, None)
+            )
+            yield chunk_index, list(messages)
 
     def candidate_chunks(
         self, summary: "Summary", selected: Set[int]
     ) -> List["ChunkIndex"]:
-        """The file's chunks that may hold a selected message, in file order."""
+        """The file's chunks that may hold a selected message, in file order.
+
+        The indexer lists exactly these, so the indexer and the reader agree
+        on which chunks a selection reads.
+        """
         # A summary that repeats no channel record says nothing about which
         # chunk holds a selected message. Every chunk in the time range is read,
         # and the channels declared inside them are filtered as they appear.
@@ -191,6 +239,7 @@ class SelectedMessageReader:
         chunk_indexes: List["ChunkIndex"],
         selected: Set[int],
         declared: _Declared,
+        time_bounds: Tuple[Optional[int], Optional[int]],
         on_corrupt: Optional[OnCorrupt],
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the chunks in log-time order.
@@ -225,6 +274,7 @@ class SelectedMessageReader:
                     chunk,
                     selected,
                     declared,
+                    time_bounds,
                     on_corrupt,
                     with_index=True,
                 ):
@@ -250,6 +300,7 @@ class SelectedMessageReader:
         chunk: Optional["Chunk"],
         selected: Set[int],
         declared: "_Declared",
+        time_bounds: Tuple[Optional[int], Optional[int]],
         on_corrupt: Optional[OnCorrupt],
         with_index: bool = False,
     ) -> Iterator[Any]:
@@ -265,7 +316,15 @@ class SelectedMessageReader:
             return
         try:
             yield from self._chunk_messages(
-                f, path, summary, chunk_index, chunk, selected, declared, with_index
+                f,
+                path,
+                summary,
+                chunk_index,
+                chunk,
+                selected,
+                declared,
+                time_bounds,
+                with_index,
             )
         except OSError:
             raise
@@ -283,6 +342,7 @@ class SelectedMessageReader:
         chunk: "Chunk",
         selected: Set[int],
         declared: "_Declared",
+        time_bounds: Tuple[Optional[int], Optional[int]],
         with_index: bool = False,
     ) -> Iterator[Any]:
         """Decompress one chunk and yield its selected messages in file order.
@@ -295,6 +355,7 @@ class SelectedMessageReader:
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import breakup_chunk
 
+        start_time, end_time = time_bounds
         index = -1
         for record in breakup_chunk(chunk):
             if isinstance(record, Message):
@@ -304,7 +365,9 @@ class SelectedMessageReader:
                 )
                 if not self._channel_is_selected(channel, schema, summary, selected):
                     continue
-                if not self._selection.in_time_range(record.log_time):
+                if start_time is not None and record.log_time < start_time:
+                    continue
+                if end_time is not None and record.log_time >= end_time:
                     continue
                 row_id = message_row_id(path, chunk_index.chunk_start_offset, index)
                 item = (schema, channel, record, row_id)
@@ -405,7 +468,13 @@ class SelectedMessageReader:
                 break
 
     def iter_unindexed(
-        self, f: Any, path: str, limit: Optional[int] = None
+        self,
+        f: Any,
+        path: str,
+        limit: Optional[int] = None,
+        *,
+        time_bounds: Optional[Tuple[Optional[int], Optional[int]]] = None,
+        log_time_order: Optional[bool] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of a file without a chunk index.
 
@@ -413,16 +482,27 @@ class SelectedMessageReader:
         can only be ordered whole, so its selected messages are held in memory
         and sorted by log time. The sort is stable: equal log times keep file
         order. With ``limit``, only the ``limit`` earliest are held.
+
+        ``log_time_order`` overrides the reader's setting, and ``time_bounds``
+        the selection's time range. Sample rows stream the whole file once and
+        index what they collect themselves.
         """
-        scanned: Iterable[_Scanned] = self._scan_unindexed(f, path)
-        if self._log_time_order and limit is not None:
+        if log_time_order is None:
+            log_time_order = self._log_time_order
+        scanned: Iterable[_Scanned] = self._scan_unindexed(f, path, time_bounds)
+        if log_time_order and limit is not None:
             scanned = heapq.nsmallest(limit, scanned, key=_log_time)
-        elif self._log_time_order:
+        elif log_time_order:
             scanned = sorted(scanned, key=_log_time)
         for schema, channel, message, ordinal in scanned:
             yield schema, channel, message, unindexed_message_row_id(path, ordinal)
 
-    def _scan_unindexed(self, f: Any, path: str) -> Iterator[_Scanned]:
+    def _scan_unindexed(
+        self,
+        f: Any,
+        path: str,
+        time_bounds: Optional[Tuple[Optional[int], Optional[int]]],
+    ) -> Iterator[_Scanned]:
         """Scan a file without a chunk index from the start, in file order.
 
         Each message comes with its position among all messages of the file, so
@@ -431,6 +511,9 @@ class SelectedMessageReader:
         from mcap.records import Channel, Message, Schema
         from mcap.stream_reader import StreamReader
 
+        if time_bounds is None:
+            time_bounds = (self._selection.start_time, self._selection.end_time)
+        start_time, end_time = time_bounds
         f.seek(0)
         schemas: Dict[int, "Schema"] = {}
         channels: Dict[int, "Channel"] = {}
@@ -451,6 +534,8 @@ class SelectedMessageReader:
                 schema = schemas.get(channel.schema_id) if channel.schema_id else None
                 if not self._selection.accepts_channel(channel, schema):
                     continue
-                if not self._selection.in_time_range(record.log_time):
+                if start_time is not None and record.log_time < start_time:
+                    continue
+                if end_time is not None and record.log_time >= end_time:
                     continue
                 yield schema, channel, record, ordinal

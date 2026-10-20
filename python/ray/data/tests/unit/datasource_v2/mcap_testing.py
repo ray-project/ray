@@ -21,10 +21,14 @@ from ray.data._internal.datasource_v2.common.listing_utils import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+    MCAPDatasourceV2,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
+SECOND = 1_000_000_000  # one second in nanoseconds
 BASE_TIME = 1_000_000_000  # log time of the first message, in nanoseconds
 STEP = 1_000_000  # 1 ms between consecutive messages
 CHUNKED_FILE_MESSAGES = 9  # messages, one per chunk, in the ``chunked_file`` fixture
@@ -398,3 +402,105 @@ def record_parsed_chunks(monkeypatch) -> List[int]:
 
     monkeypatch.setattr(mcap_chunks, "read_chunks", read_chunks)
     return offsets
+
+
+def read_samples(
+    samples: List[Dict[str, Any]],
+    topics: Dict[str, Any],
+    *,
+    columns: Optional[List[str]] = None,
+    limit: Optional[int] = None,
+    filesystem=None,
+    **options,
+) -> List[Dict[str, Any]]:
+    """Read ``samples`` as one read task of ``read_mcap(samples=...)`` does.
+
+    Each sample is a dict with ``files``, ``clip_start``, ``clip_end`` and
+    ``anchor``, and any other columns. ``topics`` maps each topic to its
+    ``TopicSpec``. ``columns`` prunes the read and ``limit`` caps its rows, as
+    the optimizer's pushdowns do. ``options`` go to the datasource.
+    """
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
+        sample_manifest,
+    )
+
+    table = pa.Table.from_pylist(samples)
+    datasource = MCAPDatasourceV2(
+        [], topics=topics, samples_schema=table.schema, filesystem=filesystem, **options
+    )
+    scanner = datasource.create_scanner(datasource.infer_schema(None), filesystem)
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    if limit is not None:
+        scanner = scanner.push_limit(limit)
+    rows: List[Dict[str, Any]] = []
+    for result in scanner.create_reader().read(FileManifest(sample_manifest(table))):
+        if columns != []:
+            assert result.schema.equals(scanner.read_schema()), result.schema
+        rows.extend(result.to_pylist())
+    return rows
+
+
+# -- the camera and IMU recording (the ``recording`` fixture) -----------------
+
+CAM_FPS = 10
+IMU_HZ = 50
+DURATION_S = 5
+
+
+def frame_time(k: int) -> int:
+    """The log time of camera frame ``k``."""
+    return k * SECOND // CAM_FPS
+
+
+def write_recording(path, *, chunk_size=600, index=True):
+    """Five seconds of a 10 fps camera and a 50 Hz IMU, in small chunks.
+
+    Camera frame ``k`` is logged at ``frame_time(k)`` and its payload ends with
+    ``k`` as four big-endian bytes. IMU sample ``i`` is ``i`` as eight bytes.
+    The ``recording`` fixture's docstring draws the timeline.
+    """
+    from mcap.writer import CompressionType, IndexType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream,
+            chunk_size=chunk_size,
+            compression=CompressionType.ZSTD,
+            index_types=IndexType.ALL if index else IndexType.NONE,
+            use_chunking=index,
+            use_statistics=index,
+            use_summary_offsets=index,
+        )
+        writer.start(profile="ros2", library="ray-test")
+        cam_schema = writer.register_schema(
+            name="test_msgs/msg/Frame",
+            encoding="ros2msg",
+            data=b"string format\nuint8[] data",
+        )
+        imu_schema = writer.register_schema(
+            name="sensor_msgs/msg/Imu", encoding="ros2msg", data=b"float64 x"
+        )
+        cam = writer.register_channel(
+            schema_id=cam_schema, topic="/cam", message_encoding="cdr"
+        )
+        imu = writer.register_channel(
+            schema_id=imu_schema, topic="/imu", message_encoding="cdr"
+        )
+        messages = []
+        for frame in range(CAM_FPS * DURATION_S):
+            messages.append(
+                (frame_time(frame), cam, b"frame" + frame.to_bytes(4, "big"))
+            )
+        for i in range(IMU_HZ * DURATION_S):
+            messages.append((i * SECOND // IMU_HZ, imu, i.to_bytes(8, "big")))
+        messages.sort()
+        for log_time, channel_id, payload in messages:
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+                sequence=0,
+            )
+        writer.finish()
