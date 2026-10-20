@@ -156,6 +156,16 @@ def _body(response) -> Dict:
     return json.loads(response.body)
 
 
+def test_null_runtime_env_vars(monkeypatch):
+    monkeypatch.delenv("VLLM_API_KEY", raising=False)
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="model-a"),
+        runtime_env={"env_vars": None},
+    )
+
+    assert router_application_module._api_key_hashes(config) == ()
+
+
 def _assert_direct(response):
     assert response.headers[SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER] == "1"
 
