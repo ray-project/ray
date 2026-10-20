@@ -39,8 +39,16 @@ def plan_read_files_op_with_checkpoint_filter(
     Defers all wrapping behavior to V1's :func:`create_checkpoint_filter_op`
     so the not-found short-circuit, ``IdColumnCheckpointManager.load_checkpoint``
     invocation, actor-pool sizing, and ``supports_fusion=False`` placement stay
-    in one place across the V1 and V2 read paths.
+    in one place across the V1 and V2 read paths. With
+    ``op.checkpoint_on_input``, the filter goes on the read's input instead, so
+    finished rows are dropped before anything is read for them.
     """
+    if op.checkpoint_on_input:
+        (child,) = physical_children
+        filtered = create_checkpoint_filter_op(
+            child, data_context, data_file_dir, data_file_filesystem
+        )
+        return plan_read_files_op(op, [filtered], data_context)
     physical_read_op = plan_read_files_op(op, physical_children, data_context)
     return create_checkpoint_filter_op(
         physical_read_op, data_context, data_file_dir, data_file_filesystem

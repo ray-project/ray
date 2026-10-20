@@ -3368,6 +3368,9 @@ def _read_mcap_samples(
             ctx=ctx,
         ),
         compute=get_compute_strategy_for_read_api(None, concurrency),
+        # Each row comes from one sample and keeps its columns, so a checkpoint
+        # skips finished samples before their files are read.
+        checkpoint_on_input=True,
         input_dependencies=[manifest._logical_plan.dag],
     )
     return Dataset._from_parent(manifest, LogicalPlan(read_op, manifest.context))
