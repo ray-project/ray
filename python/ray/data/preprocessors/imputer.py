@@ -1,13 +1,12 @@
 import logging
-from collections import Counter
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 
-from ray.data.aggregate import Mean
+from ray.data.aggregate import Mean, TopKUnique
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import (
@@ -165,13 +164,16 @@ class SimpleImputer(SerializablePreprocessorBase):
                 aggregator_fn=Mean, columns=self._columns
             )
         elif self._strategy == "most_frequent":
-            self._stat_computation_plan.add_callable_stat(
-                stat_fn=lambda key_gen: _get_most_frequent_values(
-                    dataset=dataset,
-                    columns=self._columns,
-                    key_gen=key_gen,
+            # NOTE: Ties are broken by picking the smallest value, and a column
+            #       with no non-null values yields no most frequent value.
+            self._stat_computation_plan.add_aggregator(
+                aggregator_fn=lambda col: TopKUnique(
+                    on=col,
+                    k=1,
+                    ignore_nulls=True,
+                    alias_name=f"most_frequent({col})",
                 ),
-                stat_key_fn=lambda col: f"most_frequent({col})",
+                post_process_fn=lambda top: top[0] if top else None,
                 columns=self._columns,
             )
 
@@ -270,34 +272,3 @@ class SimpleImputer(SerializablePreprocessorBase):
                 ),  # _fill_value is optional
             },
         )
-
-
-def _get_most_frequent_values(
-    dataset: "Dataset",
-    columns: List[str],
-    key_gen: Callable[[str], str],
-) -> Dict[str, Union[str, Number]]:
-    def get_pd_value_counts(df: pd.DataFrame) -> Dict[str, List[Counter]]:
-        return {col: [Counter(df[col].value_counts().to_dict())] for col in columns}
-
-    value_counts = dataset.map_batches(get_pd_value_counts, batch_format="pandas")
-    final_counters = {col: Counter() for col in columns}
-    for batch in value_counts.iter_batches(batch_size=None):
-        for col, counters in batch.items():
-            for counter in counters:
-                final_counters[col] += counter
-
-    def most_frequent_value(counter: Counter):
-        # A column with no observed values has no most frequent value, so report
-        # None. `_transform_pandas` turns that into the same "Column x has no
-        # fill value" error the `"mean"` strategy already raises; indexing
-        # `most_common(1)[0][0]` here instead would raise `IndexError: list
-        # index out of range` during `fit`, which says nothing about the column
-        # or the data.
-        ranked = counter.most_common(1)
-        return ranked[0][0] if ranked else None
-
-    return {
-        key_gen(column): most_frequent_value(final_counters[column])  # noqa
-        for column in columns
-    }

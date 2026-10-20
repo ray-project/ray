@@ -71,6 +71,25 @@ ENV PYTHONPATH "${PYTHONPATH}:/home/ray"
 :::
 ::::
 
+Each Dockerfile downloads the source code for its application. The Whisper application transcribes an audio file at a given URL, and the ResNet application classifies an image at a given URL:
+
+::::{tab-set}
+:::{tab-item} whisper_example.py
+```{literalinclude} ../doc_code/whisper_example.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+:::
+:::{tab-item} resnet50_example.py
+```{literalinclude} ../doc_code/resnet50_example.py
+:language: python
+:start-after: __serve_example_begin__
+:end-before: __serve_example_end__
+```
+:::
+::::
+
 Then, build the corresponding images and push it to your choice of container registry. This tutorial uses `alice/whisper_image:latest` and `alice/resnet_image:latest` as placeholder names for the images, but make sure to swap out `alice` for a repo name of your choice.
 
 ::::{tab-set}

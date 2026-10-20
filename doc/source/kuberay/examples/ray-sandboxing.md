@@ -51,7 +51,7 @@ Follow {ref}`KubeRay operator installation <kuberay-operator-deploy>` to install
 Create a RayJob that creates a RayCluster configured with `runsc` and submits a Ray job that manages Ray sandboxes:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.sandbox.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-job.sandbox.yaml
 ```
 
 The RayJob is configured to do the following:

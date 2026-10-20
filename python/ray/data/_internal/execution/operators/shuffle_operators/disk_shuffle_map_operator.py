@@ -36,6 +36,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
 )
+from ray.data._internal.execution.util import merge_label_selector
 from ray.data.block import BlockExecStats, BlockMetadata, BlockStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -222,6 +223,10 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             )
         if self._map_runtime_env is not None:
             ray_options["runtime_env"] = self._map_runtime_env
+
+        ray_options = merge_label_selector(
+            ray_options, self.data_context.execution_options.label_selector
+        )
 
         # Pass the raw shuffle_compression through (same as the object-store
         # ShuffleMapOp). Normalization — casing and the "none" sentinel — lives
