@@ -92,7 +92,7 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
   - The high-bandwidth memory (HBM) bandwidth utilization percentage per TPU device (0.\.100).
 * - `ray_tpu_duty_cycle`
   - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
-  - The percentage of time over the sample period during which the TPU is actively processing (0.\.100).
+  - The percentage of the sample period that the TPU spends actively processing (0.\.100).
 * - `ray_tpu_memory_used`
   - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
   - The amount of HBM allocated per TPU device, in bytes.

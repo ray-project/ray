@@ -7,7 +7,7 @@ myst:
 (serve-llm-tpu)=
 # TPU serving
 
-Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices, where a TPU slice is a group of interconnected TPU chips. Use this when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes either [vLLM-TPU](https://github.com/vllm-project/tpu-inference) or [vLLM-TorchTPU](https://github.com/vllm-project/vllm-torchtpu). For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
+Ray Serve LLM can run a vLLM TPU engine on single-host and multi-host TPU slices. A TPU slice is a group of interconnected TPU chips. Use TPU serving when your Ray cluster already exposes TPU resources and TPU node labels, and your container image includes either [vLLM-TPU](https://github.com/vllm-project/tpu-inference) or [vLLM-TorchTPU](https://github.com/vllm-project/vllm-torchtpu). For Kubernetes setup, see {doc}`Use TPUs with KubeRay </kuberay/user-guides/tpu>`.
 
 ## Topology and placement
 
@@ -57,7 +57,7 @@ This makes the TPU slice an atomic scheduling unit. A replica reserves the compl
 
 ## How the TPU vLLM executor uses the bundles
 
-The [vLLM-TPU Ray executor](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/executors/ray_distributed_executor_v2.py) checks `parallel_config.placement_group`. When Ray Serve LLM already provided one, the executor reuses it instead of creating its own.
+The [vLLM-TPU Ray executor](https://github.com/vllm-project/tpu-inference/blob/main/tpu_inference/executors/ray_distributed_executor_v2.py) checks `parallel_config.placement_group`. If Ray Serve LLM already provides one, the executor reuses it instead of creating its own.
 
 The executor then does the following:
 
@@ -67,7 +67,7 @@ The executor then does the following:
 
 With the default topology-aware bundles, one vLLM worker actor maps to one TPU host and consumes all local TPU chips on that host. The worker process uses the chips across the multi-host slice. Otherwise, manually setting `{"TPU": 1}` results in the creation of one worker per chip.
 
-When you serve with vLLM-TorchTPU, vLLM runs one worker actor per logical TPU device. Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` and `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env` on `LLMConfig`. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
+When you serve with vLLM-TorchTPU, vLLM runs one worker actor per logical TPU device. On `LLMConfig`, set `placement_group_config={"bundle_per_worker": {"TPU": 1}}`, and set `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env`. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 
 ## Example
 
@@ -130,7 +130,7 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 
 ::::
 
-This example serves `google/gemma-4-31B-it` on one v6e `4x4` slice with `tensor_parallel_size=16`. Set `model_source` to a local or mounted model path, or another path that all TPU hosts can read. The vLLM-TorchTPU example serves `Qwen/Qwen3-8B` across one v6e `4x4` slice with one worker per logical TPU device.
+The vLLM-TPU example serves `google/gemma-4-31B-it` on one v6e `4x4` slice with `tensor_parallel_size=16`. Set `model_source` to a local or mounted model path, or another path that all TPU hosts can read. The vLLM-TorchTPU example serves `Qwen/Qwen3-8B` across one v6e `4x4` slice with one worker per logical TPU device.
 
 ## See also
 
