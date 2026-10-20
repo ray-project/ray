@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Reference for every field in the Ray cluster launcher YAML: docker, auth, provider, security groups, OCI and vSphere config."
+    description: "Reference for every field in the Ray cluster launcher YAML: docker, auth, provider, security groups, OCI, and vSphere config."
 ---
 
 (cluster-config)=
@@ -1460,7 +1460,7 @@ The availability domain in which the nodes are launched. Defaults to the first a
 
 ### `provider.subnet_id`
 
-The OCID of the subnet to attach the nodes to. If not provided, `ray up` creates a VCN named `ray-autoscaler-vcn` with a public subnet, an internet gateway and a security list allowing SSH from anywhere and all traffic inside the VCN, and reuses it on later runs. Override the address ranges with `vcn_cidr` (default `10.77.0.0/16`) and `subnet_cidr` (default `10.77.0.0/24`).
+The OCID of the subnet to attach the nodes to. If not provided, `ray up` creates a VCN named `ray-autoscaler-vcn` with a public subnet, an internet gateway, and a security list allowing SSH from anywhere and all traffic inside the VCN, and reuses it on later runs. Override the address ranges with `vcn_cidr` (default `10.77.0.0/16`) and `subnet_cidr` (default `10.77.0.0/24`).
 
 * **Required:** No
 * **Importance:** Medium
@@ -1481,7 +1481,7 @@ The OCI config file and profile used for authentication on the machine running `
 
 ### `provider.use_instance_principal` and `provider.create_iam_resources`
 
-When `use_instance_principal` is `true` (the default), the autoscaler on the head node authenticates with instance principals, and `ray up` creates a dynamic group matching the instances in the compartment plus a policy granting it `manage instance-family`, `use virtual-network-family`, `manage volume-family` and `read app-catalog-listing` in the compartment. Set `create_iam_resources: false` if an administrator has already created these resources, or `use_instance_principal: false` to provide credentials to the head node through `file_mounts` instead.
+When `use_instance_principal` is `true` (the default), the autoscaler on the head node authenticates with instance principals, and `ray up` creates a dynamic group matching the instances in the compartment plus a policy granting it `manage instance-family`, `use virtual-network-family`, `manage volume-family`, and `read app-catalog-listing` in the compartment. Set `create_iam_resources: false` if an administrator has already created these resources, or `use_instance_principal: false` to provide credentials to the head node through `file_mounts` instead.
 
 * **Required:** No
 * **Importance:** Medium

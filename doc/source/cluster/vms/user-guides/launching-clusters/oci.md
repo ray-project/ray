@@ -8,10 +8,10 @@ myst:
 
 This guide details the steps needed to start a Ray cluster on Oracle Cloud Infrastructure (OCI).
 
-To start an OCI Ray cluster, you should use the Ray cluster launcher with the OCI Python SDK.
+To start an OCI Ray cluster, use the Ray cluster launcher with the OCI Python SDK.
 
 ```{note}
-The OCI cluster launcher is community-maintained. Please open a GitHub issue with the `oci` keyword in the title if you run into problems.
+The OCI cluster launcher is community-maintained. Open a GitHub issue with the `oci` keyword in the title if you run into problems.
 ```
 
 ## Install Ray cluster launcher
@@ -42,14 +42,14 @@ The profile needs permission to manage instances, use the virtual network and re
 
 ## Start Ray with the Ray cluster launcher
 
-Once the OCI SDK is configured to manage resources in your tenancy, you should be ready to launch your cluster using the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/oci/example-full.yaml) will create a small cluster with a `VM.Standard.E4.Flex` head node configured to autoscale to up to two `VM.Standard.E4.Flex` workers and one `VM.GPU.A10.1` GPU worker.
+Once the OCI SDK is configured to manage resources in your tenancy, launch your cluster with the cluster launcher. The provided [cluster config file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/oci/example-full.yaml) creates a small cluster with a `VM.Standard.E4.Flex` head node configured to autoscale to up to two `VM.Standard.E4.Flex` workers and one `VM.GPU.A10.1` GPU worker.
 
 Set `provider.region` and `provider.compartment_id` in the config file to your region and the OCID of the compartment in which the nodes should run. Everything else is optional:
 
-* **Networking.** If `provider.subnet_id` is not set, `ray up` creates a VCN named `ray-autoscaler-vcn` (10.77.0.0/16) with a public subnet, an internet gateway, and a security list that allows SSH from anywhere and all traffic inside the VCN. The resources are reused on later runs and are never deleted by `ray down`. Use `vcn_cidr` and `subnet_cidr` to change the address ranges.
-* **Head node credentials.** The autoscaler runs on the head node and needs to call OCI APIs. By default (`use_instance_principal: true`) `ray up` creates a dynamic group matching the instances in the compartment and a policy that lets it manage instances, volumes and use the network in that compartment, so the head node authenticates with [instance principals](https://docs.oracle.com/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm). If you are not allowed to create IAM resources, ask an administrator to create them and set `create_iam_resources: false`, or set `use_instance_principal: false` and copy an OCI config file and key to the head node with `file_mounts`.
-* **SSH.** If `auth.ssh_private_key` is not set, `ray up` generates `~/.ssh/ray-autoscaler_oci_<region>.pem`. The public key is injected into each instance through the `ssh_authorized_keys` metadata field.
-* **Images.** If `node_config.image_id` is not set, the newest Canonical Ubuntu 22.04 platform image compatible with the node's shape is used.
+* **Networking.** If `provider.subnet_id` isn't set, `ray up` creates a VCN named `ray-autoscaler-vcn` (10.77.0.0/16) with a public subnet, an internet gateway, and a security list that allows SSH from anywhere and all traffic inside the VCN. The resources are reused on later runs and are never deleted by `ray down`. Use `vcn_cidr` and `subnet_cidr` to change the address ranges.
+* **Head node credentials.** The autoscaler runs on the head node and needs to call OCI APIs. By default (`use_instance_principal: true`) `ray up` creates a dynamic group matching the instances in the compartment and a policy that lets it manage instances and volumes, and use the network in that compartment, so the head node authenticates with [instance principals](https://docs.oracle.com/iaas/Content/Identity/Tasks/callingservicesfrominstances.htm). If you aren't allowed to create IAM resources, ask an administrator to create them and set `create_iam_resources: false`, or set `use_instance_principal: false` and copy an OCI config file and key to the head node with `file_mounts`.
+* **SSH.** If `auth.ssh_private_key` isn't set, `ray up` generates `~/.ssh/ray-autoscaler_oci_<region>.pem`. The public key is injected into each instance through the `ssh_authorized_keys` metadata field.
+* **Images.** If `node_config.image_id` isn't set, the newest Canonical Ubuntu 22.04 platform image compatible with the node's shape is used.
 
 Node types are configured with the snake_case fields of the OCI [`LaunchInstanceDetails`](https://docs.oracle.com/iaas/api/#/en/iaas/latest/datatypes/LaunchInstanceDetails) API model, for example:
 
@@ -93,7 +93,7 @@ Congrats, you have started a Ray cluster on OCI!
 
 ## GPU nodes
 
-OCI's Ubuntu platform images do not include the NVIDIA driver. The `ray.worker.gpu` node type in the example config installs the NVIDIA server driver with DKMS (`nvidia-headless-<series>-server`, so the kernel module always matches the user-space libraries; kernel headers are preinstalled on OCI images) and loads it in its `worker_setup_commands`, without a reboot, so the worker joins the cluster advertising its GPU. Use an image with the driver preinstalled (for example a custom image) and drop those commands if you prefer.
+OCI's Ubuntu platform images don't include the NVIDIA driver. The `ray.worker.gpu` node type in the example config installs the NVIDIA server driver with DKMS and loads it in its `worker_setup_commands`, so the worker joins the cluster advertising its GPU without a reboot. The package is `nvidia-headless-<series>-server`, which keeps the kernel module matched to the user-space libraries, and OCI images preinstall the kernel headers. If you prefer, use an image with the driver preinstalled, such as a custom image, and drop those commands.
 
 ## Notes
 
