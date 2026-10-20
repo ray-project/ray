@@ -85,6 +85,7 @@ class SandboxSpec(_SandboxSpecBase, total=False):
     capabilities: Optional[List[str]]
     cpu_limit: Optional[float]
     memory_limit_mb: Optional[int]
+    disk_limit_mb: Optional[int]
     image_pull_timeout_seconds: float
     start_timeout_seconds: float
     labels: Dict[str, str]
@@ -244,6 +245,7 @@ class SandboxHost:
                 capabilities = list(DOCKER_DEFAULT_CAPABILITIES)
 
             memory_limit_mb = self._spec.get("memory_limit_mb")
+            disk_limit_mb = self._spec.get("disk_limit_mb")
             cpu_limit = self._spec.get("cpu_limit")
             create_kwargs: Dict[str, Any] = {}
             if self._spec.get("shell") is not None:
@@ -265,6 +267,7 @@ class SandboxHost:
                     # hosting actor's reservation).
                     cpu=float(cpu_limit) if cpu_limit is not None else 0.0,
                     memory=f"{memory_limit_mb}Mi" if memory_limit_mb is not None else 0,
+                    disk=f"{disk_limit_mb}Mi" if disk_limit_mb is not None else 0,
                     env=dict(self._spec.get("env") or {}),
                     workdir=self._spec.get("workdir"),
                     # Writability is the runtime's explicit contract: a scratch

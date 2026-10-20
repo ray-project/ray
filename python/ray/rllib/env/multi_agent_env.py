@@ -76,6 +76,8 @@ class MultiAgentEnv(gym.Env):
 
         Args:
             seed: An optional seed to use for the new episode.
+            options: An optional options dict passed to the underlying env's
+                `reset()` method.
 
         Returns:
             New observations for each ready agent.
@@ -110,6 +112,11 @@ class MultiAgentEnv(gym.Env):
 
         The returns are dicts mapping from agent_id strings to values. The
         number of agents in the env can vary over time.
+
+        Args:
+            action_dict: A dict mapping agent IDs to the respective agents' actions.
+                Only agents that are supposed to act in this timestep should be
+                present in this dict.
 
         Returns:
             Tuple containing 1) new observations for
@@ -234,6 +241,10 @@ class MultiAgentEnv(gym.Env):
             act_space: Optional action space for the grouped env.
                 Must be a tuple space. If not provided, will infer this to be a Tuple
                 of n individual agents spaces (n=num agents in a group).
+
+        Returns:
+            A new MultiAgentEnv (a `GroupAgentsWrapper` around `self`), in which the
+            agents of each group are combined into one single (grouped) agent.
 
         .. testcode::
             :skipif: True

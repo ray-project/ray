@@ -17,7 +17,7 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import LR_KEY, Learner
+from ray.rllib.core.learner.learner import LR_KEY, Learner, UpdatePlan
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -530,6 +530,35 @@ class TorchLearner(Learner):
             return self._uncompiled_update(batch)
         else:
             return self._possibly_compiled_update(batch)
+
+    @override(Learner)
+    def _sync_update_plan(self, plan: UpdatePlan) -> UpdatePlan:
+        if (
+            self.config.num_learners <= 1
+            or not torch.distributed.is_available()
+            or not torch.distributed.is_initialized()
+        ):
+            return plan
+        # MAX: skip or abort if ANY Learner says so, the largest minibatch count (see
+        # `test_minibatch_coverage_across_unequal_shards`), and per module whether ANY
+        # Learner has or lacks data for it.
+        num_modules = len(plan.modules_with_data)
+        plan_tensor = torch.tensor(
+            [int(plan.skip), plan.num_minibatches, int(plan.abort)]
+            + [int(flag) for flag in plan.modules_with_data]
+            + [int(flag) for flag in plan.modules_without_data],
+            dtype=torch.int64,
+            device=self._device,
+        )
+        torch.distributed.all_reduce(plan_tensor, op=torch.distributed.ReduceOp.MAX)
+        skip, num_minibatches, abort, *module_flags = plan_tensor.tolist()
+        return UpdatePlan(
+            skip=bool(skip),
+            num_minibatches=num_minibatches,
+            abort=bool(abort),
+            modules_with_data=tuple(bool(f) for f in module_flags[:num_modules]),
+            modules_without_data=tuple(bool(f) for f in module_flags[num_modules:]),
+        )
 
     @OverrideToImplementCustomLogic
     def _make_modules_ddp_if_necessary(self) -> None:

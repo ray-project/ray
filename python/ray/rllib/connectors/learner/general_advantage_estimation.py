@@ -1,5 +1,6 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
@@ -42,15 +43,22 @@ class GeneralAdvantageEstimation(ConnectorV2):
 
     def __init__(
         self,
-        input_observation_space=None,
-        input_action_space=None,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
         *,
-        gamma,
-        lambda_,
+        gamma: float,
+        lambda_: float,
     ):
         """Initializes a GeneralAdvantageEstimation instance.
 
         Args:
+            input_observation_space: The (optional) input observation space for this
+                connector piece. This is the space coming from a previous connector
+                piece in the (env-to-module or learner) pipeline or is directly
+                defined within the gym.Env.
+            input_action_space: The (optional) input action space for this connector
+                piece. This is the space coming from a previous connector piece in the
+                (module-to-env) pipeline or is directly defined within the gym.Env.
             gamma: The discount factor gamma.
             lambda_: The lambda parameter for General Advantage Estimation (GAE).
                 Defines the exponential weight used between actually measured rewards

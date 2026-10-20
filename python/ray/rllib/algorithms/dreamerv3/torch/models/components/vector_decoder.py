@@ -47,13 +47,18 @@ class VectorDecoder(nn.Module):
             output_layer_size=observation_space.shape[0],
         )
 
-    def forward(self, h, z):
+    def forward(self, h: "torch.Tensor", z: "torch.Tensor") -> "torch.Tensor":
         """Performs a forward pass through the vector encoder.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
+
+        Returns:
+            The means of the diag Gaussian (with unit variance) over the
+            reconstructed 1D observations, of shape (B, d), where d is the
+            dimension of the decoded observation space.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
