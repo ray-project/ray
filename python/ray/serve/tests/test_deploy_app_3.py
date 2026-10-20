@@ -344,7 +344,11 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
     """Surge drains requests and replaces gangs; a failed update preserves rollback."""
     client, signal = serve_instance_with_signal
     failures = Accumulator.options(name="failed-gangs").remote()
-    request_env = {"BLOCK_ON_SIGNAL": "1"}
+    request_env = {
+        "BLOCK_ON_SIGNAL": "1",
+        # Keep draining replicas reachable while HAProxy reloads its backends.
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "5",
+    }
     healthy = {
         "name": "FailOnFlag",
         "num_replicas": 4,

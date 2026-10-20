@@ -4158,6 +4158,7 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager, gang_
     new_dsm.update()
     check_counts(
         new_ds,
+        total=2,
         by_state=[(ReplicaState.STOPPING, num_replicas, v1)],
     )
     # The drop must not bump the deploy-failure counter -- the underlying
@@ -10119,9 +10120,13 @@ class TestGangDraining:
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    @pytest.mark.parametrize("num_ready", [0, 1])
-    def test_starting_replicas_stopped(self, mock_deployment_state_manager, num_ready):
-        """Partly started gangs drain and stop together when any member's node drains."""
+    @pytest.mark.parametrize(
+        "num_ready,reconfigure", [(0, False), (1, False), (1, True)]
+    )
+    def test_starting_or_updating_replicas_stopped(
+        self, mock_deployment_state_manager, num_ready, reconfigure
+    ):
+        """Gangs with STARTING or UPDATING members drain and stop together."""
         gang_size, num_replicas = 2, 2
         node_1 = "node-1"
         node_2 = "node-2"
@@ -10152,15 +10157,40 @@ class TestGangDraining:
         )
         dsm.update()
 
-        # Assign nodes, then optionally let one member reach RUNNING.
+        # Assign nodes, then optionally reconfigure the running gang.
         replicas = ds._replicas.get([ReplicaState.STARTING])
         replicas[0]._actor.set_node_id(node_1)
         replicas[1]._actor.set_node_id(node_2)
+        if reconfigure:
+            for replica in replicas:
+                replica._actor.set_ready()
+            dsm.update()
+            info, v1 = deployment_info(
+                num_replicas=num_replicas,
+                version="v1",
+                user_config={"updated": True},
+                gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+            )
+            dsm.deploy(TEST_DEPLOYMENT_ID, info)
+            dsm.update()
+
         for replica in replicas[:num_ready]:
             replica._actor.set_ready()
         dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, num_ready, v1),
+                (
+                    ReplicaState.UPDATING if reconfigure else ReplicaState.STARTING,
+                    num_replicas - num_ready,
+                    v1,
+                ),
+            ],
+        )
 
-        # Drain node_2 while replicas are STARTING
+        # Drain the node with a STARTING or UPDATING member.
         cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
 
