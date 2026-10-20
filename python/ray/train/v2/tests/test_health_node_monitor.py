@@ -207,6 +207,19 @@ def test_poll_status_answers_while_probes_are_polled_on_demand(ray_start_4_cpus)
     group.shutdown()
 
 
+def test_a_monitor_stopped_during_on_demand_probes_answers_with_its_error(
+    ray_start_4_cpus,
+):
+    node_id = _local_node_id()
+    group = NodeMonitorGroup([])
+    group.start([node_id])
+
+    group.poll_probes_async([Slow()], timeout_s=30)
+    group.shutdown([node_id])
+    results = _wait_for(group.poll_probe_results)
+    assert isinstance(results["Slow"][node_id].error, ray.exceptions.RayActorError)
+
+
 def test_a_node_that_does_not_answer_its_probes_in_time_gets_a_timeout_error(
     ray_start_4_cpus,
 ):

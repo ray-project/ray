@@ -94,7 +94,6 @@ class NodeMonitorGroup:
             if monitor is not None:
                 ray.kill(monitor)
             self._ongoing_polls.pop(node_id, None)
-            self._on_demand_polls.pop(node_id, None)
 
     def poll_status(
         self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S

@@ -59,8 +59,8 @@ class NodeMonitor:
 
     @ray.method(concurrency_group="on_demand")
     def poll_probes(self, probes: List[NodeProbe]) -> NodeMonitorStatus:
-        """Poll probes on demand, in a thread of their own, so that
-        ``poll_status()`` still answers meanwhile.
+        """Poll probes on demand, one call at a time, in a thread of their own,
+        so that ``poll_status()`` still answers meanwhile.
 
         Args:
             probes: The probes to poll.
