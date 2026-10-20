@@ -12,9 +12,11 @@ non-secret placeholder required by the client. This covers table/query reads,
 limits, scalar types, and timestamps. The TLS-specific test remains skipped
 because this fixture does not configure TLS.
 
-The script preserves the test command's exit status, saves server and readiness
+The script preserves a failing test command's exit status, saves server and readiness
 logs under `/tmp/artifacts/hive`, and removes the container, its anonymous
-volumes, and network on success or failure. Startup defaults to a 300-second
+volumes, and network on success or failure. If the container or network remains,
+or cleanup cannot be verified, an otherwise successful run fails. Resources
+already absent count as clean. Startup defaults to a 300-second
 deadline with a 30-second limit per SQL probe. `RAY_HIVE_STARTUP_TIMEOUT` and
 `RAY_HIVE_LOG_DIR` can override the deadline and log location for debugging.
 

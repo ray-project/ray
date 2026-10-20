@@ -29,6 +29,7 @@ def run_script(tmp_path):
             with open(os.environ['CALLS'], 'a') as log:
                 log.write(json.dumps([tool, *args]) + '\\n')
             scenario = os.environ['SCENARIO']
+            cleanup = os.environ['CLEANUP']
             if tool == 'docker':
                 if args[0] == 'run' and scenario == 'start_failure':
                     sys.exit(125)
@@ -45,6 +46,22 @@ def run_script(tmp_path):
                     print('false' if scenario == 'crashed' else 'true')
                 if args[0] == 'logs':
                     print('HiveServer2 diagnostic logs')
+                if args[0] == 'rm' or args[:2] == ['network', 'rm']:
+                    resource = 'container' if args[0] == 'rm' else 'network'
+                    if cleanup in (resource + '_residue', 'absent', 'daemon_error'):
+                        print('Removal failed: ' + args[-1], file=sys.stderr)
+                        sys.exit(1)
+                if args[:2] in (['container', 'ls'], ['network', 'ls']):
+                    if cleanup == 'daemon_error':
+                        print('Cannot connect to Docker daemon', file=sys.stderr)
+                        sys.exit(1)
+                    name = 'ray-hive-hive-test'
+                    if args[0] == 'network':
+                        name += '-network'
+                    # Similar names must not be mistaken for this run's resources.
+                    print(name + '-other')
+                    if cleanup == args[0] + '_residue':
+                        print(name)
             elif tool == 'bazel' and scenario == 'test_failure':
                 sys.exit(7)
             """
@@ -54,7 +71,7 @@ def run_script(tmp_path):
     for tool in ("docker", "bazel", "sleep"):
         (tmp_path / tool).symlink_to(executable)
 
-    def run(scenario):
+    def run(scenario, cleanup="success"):
         calls_path = tmp_path / "calls.jsonl"
         env = {
             **os.environ,
@@ -64,14 +81,34 @@ def run_script(tmp_path):
             "RAY_HIVE_STARTUP_TIMEOUT": "0" if scenario == "timeout" else "300",
             "CALLS": str(calls_path),
             "SCENARIO": scenario,
+            "CLEANUP": cleanup,
         }
         result = subprocess.run(
             ["bash", str(SCRIPT)], env=env, capture_output=True, text=True, timeout=15
         )
         calls = [json.loads(line) for line in calls_path.read_text().splitlines()]
-        assert calls[-2:] == [
+        assert calls[-4:] == [
             ["docker", "rm", "-f", "-v", "ray-hive-hive-test"],
             ["docker", "network", "rm", "ray-hive-hive-test-network"],
+            [
+                "docker",
+                "container",
+                "ls",
+                "--all",
+                "--format",
+                "{{.Names}}",
+                "--filter",
+                "name=ray-hive-hive-test",
+            ],
+            [
+                "docker",
+                "network",
+                "ls",
+                "--format",
+                "{{.Name}}",
+                "--filter",
+                "name=ray-hive-hive-test-network",
+            ],
         ]
         assert (
             "HiveServer2 diagnostic logs"
@@ -120,6 +157,34 @@ def test_failure_propagates_and_cleans_up(run_script, scenario, exit_code):
     assert result.returncode == exit_code
     assert "HiveServer2 diagnostic logs" in result.stdout
     assert any(call[0] == "bazel" for call in calls) == (scenario == "test_failure")
+
+
+@pytest.mark.parametrize(
+    "cleanup", ["container_residue", "network_residue", "daemon_error"]
+)
+@pytest.mark.parametrize("scenario,exit_code", [("success", 1), ("test_failure", 7)])
+def test_cleanup_failure_is_reported(run_script, cleanup, scenario, exit_code):
+    result, _ = run_script(scenario, cleanup)
+    assert result.returncode == exit_code
+    assert "Removal failed:" in result.stderr
+    assert "HiveServer2 diagnostic logs" in result.stdout
+    if cleanup == "daemon_error":
+        assert "Cannot connect to Docker daemon" in result.stderr
+        assert "Could not verify cleanup of ray-hive-hive-test" in result.stderr
+    else:
+        name = "ray-hive-hive-test"
+        if cleanup == "network_residue":
+            name += "-network"
+        assert f"Resource remains after cleanup: {name}\n" in result.stderr
+
+
+@pytest.mark.parametrize("scenario,exit_code", [("success", 0), ("start_failure", 125)])
+def test_already_absent_resources_are_clean(run_script, scenario, exit_code):
+    result, _ = run_script(scenario, "absent")
+    assert result.returncode == exit_code
+    assert "Removal failed:" in result.stderr
+    assert "Resource remains after cleanup:" not in result.stderr
+    assert "Could not verify cleanup" not in result.stderr
 
 
 if __name__ == "__main__":
