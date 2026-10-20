@@ -728,9 +728,9 @@ class RunningReplicaInfo:
     # keeps handles alive only while actively referenced by RunningReplica
     # instances (using WeakValueDictionary to avoid memory leaks).
     # Key: (actor_name, namespace) -> Value: ActorHandle (weakly referenced)
-    _actor_handle_cache: ClassVar[weakref.WeakValueDictionary] = (
-        weakref.WeakValueDictionary()
-    )
+    _actor_handle_cache: ClassVar[
+        weakref.WeakValueDictionary
+    ] = weakref.WeakValueDictionary()
 
     def get_actor_handle(self) -> ActorHandle:
         cache_key = (self.actor_name, SERVE_NAMESPACE)
