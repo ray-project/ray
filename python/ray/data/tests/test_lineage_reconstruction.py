@@ -446,6 +446,7 @@ def test_object_lost_in_task_output_raises_only_when_lineage_tracked(
     block_ref.is_nil.return_value = False
     streaming_gen = MagicMock()
     # The block ref arrives, then the stream stops where its metadata should be.
+    streaming_gen._stream_exhausted.return_value = False
     streaming_gen._next_sync.side_effect = [block_ref, StopIteration()]
 
     def raise_lost(ref):

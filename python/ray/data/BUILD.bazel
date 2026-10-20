@@ -2029,6 +2029,20 @@ py_test(
 )
 
 py_test(
+    name = "test_data_op_task_completion",
+    size = "medium",
+    srcs = ["tests/test_data_op_task_completion.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_streaming_executor",
     size = "medium",
     srcs = ["tests/test_streaming_executor.py"],
