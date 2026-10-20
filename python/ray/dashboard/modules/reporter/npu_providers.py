@@ -391,6 +391,8 @@ class NpuMetricProvider:
             return []
 
         npu_utilizations = []
+        # `get_logic_id` returns non-negative logical IDs, so synthetic
+        # fallback indices are negative to stay out of that value range.
         fallback_index = 0
         for card_id in card_ids:
             try:
@@ -401,7 +403,11 @@ class NpuMetricProvider:
 
             for device_id in range(device_count):
                 logic_id = self._query_optional("get_logic_id", card_id, device_id)
-                index = logic_id if logic_id is not None else fallback_index
+                if logic_id is not None:
+                    index = logic_id
+                else:
+                    fallback_index += 1
+                    index = -fallback_index
                 physical_id = (
                     self._query_optional("get_physical_id", logic_id)
                     if logic_id is not None
@@ -447,6 +453,5 @@ class NpuMetricProvider:
                     ),
                 )
                 npu_utilizations.append(info)
-                fallback_index += 1
 
         return npu_utilizations
