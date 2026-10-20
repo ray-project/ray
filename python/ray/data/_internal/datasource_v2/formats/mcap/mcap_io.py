@@ -19,7 +19,17 @@ Format specification: https://mcap.dev/spec
 
 import io
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Iterable, Iterator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from ray._common.utils import env_integer
 from ray.data._internal.util import KiB, MiB
@@ -106,13 +116,23 @@ def plan_chunk_reads(
     return planned
 
 
+# Takes a chunk that cannot be decoded and the error, in a read that skips
+# corrupt chunks (``SelectedMessageReader.iter_chunks``).
+OnCorrupt = Callable[["ChunkIndex", Exception], None]
+
+
 def read_chunks(
-    f: Any, chunk_indexes: Iterable["ChunkIndex"], reads: ChunkReads
-) -> Iterator[Tuple["ChunkIndex", "Chunk"]]:
+    f: Any,
+    chunk_indexes: Iterable["ChunkIndex"],
+    reads: ChunkReads,
+    on_corrupt: Optional[OnCorrupt] = None,
+) -> Iterator[Tuple["ChunkIndex", Optional["Chunk"]]]:
     """Yield the chunk record of each of ``chunk_indexes``, in that order.
 
     Each read of ``plan_chunk_reads`` is made when its first chunk is needed,
-    and its bytes are released once its last chunk is parsed.
+    and its bytes are released once its last chunk is parsed. With
+    ``on_corrupt``, a chunk record that does not parse is handed to it and
+    yielded as ``None``; an error reading ``f`` still raises.
     """
     for ranged_read in plan_chunk_reads(chunk_indexes, reads):
         # ``BytesIO`` shares the bytes rather than copying them; parsing a
@@ -121,7 +141,7 @@ def read_chunks(
         last = len(ranged_read.chunk_indexes) - 1
         for i, chunk_index in enumerate(ranged_read.chunk_indexes):
             position = chunk_index.chunk_start_offset - ranged_read.start
-            chunk = _parse_chunk(stream, position)
+            chunk = _parse_chunk_or_report(stream, position, chunk_index, on_corrupt)
             if i == last:
                 # Free the bytes now, not when the next read replaces them, so
                 # two reads are never held at once.
@@ -200,6 +220,23 @@ def read_chunk(f: Any, chunk_index: "ChunkIndex") -> "Chunk":
     start = chunk_index.chunk_start_offset
     stream = io.BytesIO(_read_range(f, start, start + chunk_index.chunk_length))
     return _parse_chunk(stream, 0)
+
+
+def _parse_chunk_or_report(
+    stream: io.BytesIO,
+    position: int,
+    chunk_index: "ChunkIndex",
+    on_corrupt: Optional[OnCorrupt],
+) -> Optional["Chunk"]:
+    """``_parse_chunk``, or ``None`` after handing a corrupt record to
+    ``on_corrupt``. Without ``on_corrupt`` the error raises."""
+    try:
+        return _parse_chunk(stream, position)
+    except Exception as e:  # noqa: BLE001 - any parse failure is a corrupt record
+        if on_corrupt is None:
+            raise
+        on_corrupt(chunk_index, e)
+        return None
 
 
 def _parse_chunk(stream: io.BytesIO, position: int) -> "Chunk":
