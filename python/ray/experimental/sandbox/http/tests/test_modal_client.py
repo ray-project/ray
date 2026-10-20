@@ -199,19 +199,29 @@ def test_runtime_network_policy_updates(facade) -> None:
     allowlisted._experimental_set_outbound_network_policy(
         outbound_cidr_allowlist=["1.0.0.1/32"]
     )
+    # Open access is what a sandbox gets by default: the public internet.
     allowlisted._experimental_set_outbound_network_policy()
     assert [call["cidrs"] for call in runtime.allowlist_calls] == [
         ["1.0.0.1/32"],
-        ["0.0.0.0/0", "::/0"],
+        ["internet"],
     ]
-    # A sandbox created with open egress has no ruleset to narrow later.
+    # Every public sandbox has a ruleset, so one created with open egress can
+    # be narrowed later.
+    open_runtime = FakeSandboxRuntime()
+    resolver.next_runtime = open_runtime
     open_egress = _create(client)
-    with pytest.raises(ConflictError, match="without a cidr_allowlist"):
-        open_egress._experimental_set_outbound_network_policy(
+    open_egress._experimental_set_outbound_network_policy(
+        outbound_cidr_allowlist=["1.1.1.1/32"]
+    )
+    assert [call["cidrs"] for call in open_runtime.allowlist_calls] == [["1.1.1.1/32"]]
+    # A sandbox without network access has no ruleset to change.
+    blocked = _create(client, block_network=True)
+    with pytest.raises(ConflictError, match="only network='public' sandboxes"):
+        blocked._experimental_set_outbound_network_policy(
             outbound_cidr_allowlist=["1.1.1.1/32"]
         )
-    allowlisted.terminate()
-    open_egress.terminate()
+    for sandbox in (allowlisted, open_egress, blocked):
+        sandbox.terminate()
 
 
 _TOKEN = "facade-sdk-token"

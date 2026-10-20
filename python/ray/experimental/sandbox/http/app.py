@@ -28,6 +28,7 @@ from typing import Any, Awaitable, Dict, List, Optional
 from fastapi import APIRouter, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
 
+from ray.experimental.sandbox.config import DEFAULT_PUBLIC_ALLOWLIST
 from ray.experimental.sandbox.http.host import HostSettings, SandboxSpec
 from ray.experimental.sandbox.http.resolver import (
     RayActorHandleResolver,
@@ -376,6 +377,14 @@ def create_app(
         # cluster the new actor may legitimately be queued for a while.
         handle.boot.remote()
         created_at = datetime.now(timezone.utc)
+        # The allowlist in force, as the host reports it once it runs.
+        cidr_allowlist = None
+        if request.network == "public":
+            cidr_allowlist = list(
+                request.cidr_allowlist
+                if request.cidr_allowlist is not None
+                else DEFAULT_PUBLIC_ALLOWLIST
+            )
         info = {
             "sandbox_id": sandbox_id,
             "status": "pending",
@@ -384,7 +393,7 @@ def create_app(
             "ttl_seconds": effective_ttl,
             "expires_at": (created_at + timedelta(seconds=effective_ttl)).isoformat(),
             "network": request.network,
-            "cidr_allowlist": request.cidr_allowlist,
+            "cidr_allowlist": cidr_allowlist,
             "labels": request.labels,
             "error": None,
         }

@@ -705,6 +705,17 @@ def test_create_passes_cidr_allowlist_and_reports_it(
         assert runtime.create_calls[0]["cidr_allowlist"] == ["10.0.1.0/24"]
 
 
+def test_create_reports_the_default_allowlist(fake_resolver: FakeResolver) -> None:
+    """A public sandbox created without a list runs with ["internet"], and the
+    create response says so, as describe() does once the sandbox runs."""
+    with _client(fake_resolver) as client:
+        public = _create_sandbox(client, network="public")
+        assert public["cidr_allowlist"] == ["internet"]
+        running = _wait_running(client, public["sandbox_id"])
+        assert running["cidr_allowlist"] == ["internet"]
+        assert _create_sandbox(client)["cidr_allowlist"] is None
+
+
 def test_cidr_allowlist_without_public_network_is_422(
     fake_resolver: FakeResolver,
 ) -> None:
