@@ -149,9 +149,10 @@ def write_prometheus_config(prometheus_dir: str, authorization_config: str) -> P
     """
     config_file = Path(prometheus_dir) / "ray_prometheus.yml"
     config_file.unlink(missing_ok=True)
-    fd = os.open(
-        config_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
-    )
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(config_file, flags, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(Path(PROMETHEUS_CONFIG_INPUT_PATH).read_text() + authorization_config)
     return config_file
