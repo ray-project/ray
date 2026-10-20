@@ -12,6 +12,10 @@ from starlette.datastructures import Headers
 
 from ray.exceptions import RayActorError, RaySystemError
 from ray.llm._internal.serve.constants import get_llm_serve_runtime_env
+from ray.llm._internal.serve.core.configs.llm_config import (
+    LLMConfig,
+    ModelLoadingConfig,
+)
 from ray.llm._internal.serve.core.ingress import (
     router_application as router_application_module,
 )
@@ -105,7 +109,20 @@ def _new(cls, *args):
     return obj
 
 
-def _new_router(model_apps=MODEL_APPS, missing_apps=None):
+def _llm_configs(model_apps=MODEL_APPS, api_keys=None):
+    api_keys = api_keys or {}
+    return [
+        LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id=model_id),
+            engine_kwargs=(
+                {"api_key": api_keys[model_id]} if model_id in api_keys else {}
+            ),
+        )
+        for model_id in model_apps
+    ]
+
+
+def _new_router(model_apps=MODEL_APPS, missing_apps=None, api_keys=None):
     handles = {}
     missing_apps = set(missing_apps or [])
 
@@ -119,7 +136,7 @@ def _new_router(model_apps=MODEL_APPS, missing_apps=None):
         router_application_module.serve, "get_app_handle", get_app_handle
     )
     patcher.start()
-    router = _new(RouterApplication, model_apps)
+    router = _new(RouterApplication, model_apps, _llm_configs(model_apps, api_keys))
     return router, handles, patcher
 
 
@@ -201,6 +218,46 @@ class TestModels:
                     for model_id in MODEL_APPS
                 ],
             }
+            assert handles == {}
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_models_only_include_authorized_models(self):
+        router, handles, patcher = _new_router(api_keys={"model-a": ["key-a"]})
+        try:
+            response = await _route(router, "GET", "/v1/models")
+            assert [model["id"] for model in _body(response)["data"]] == ["org/model-b"]
+
+            response = await _route(
+                router,
+                "GET",
+                "/v1/models",
+                headers={"authorization": "Bearer key-a"},
+            )
+            assert [model["id"] for model in _body(response)["data"]] == list(
+                MODEL_APPS
+            )
+            assert handles == {}
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_private_model_data_requires_api_key(self):
+        router, handles, patcher = _new_router(api_keys={"model-a": ["key-a"]})
+        try:
+            response = await _route(router, "GET", "/v1/models/model-a")
+            assert response.status_code == 401
+            assert _body(response) == {"error": "Unauthorized"}
+
+            response = await _route(
+                router,
+                "GET",
+                "/v1/models/model-a",
+                headers={"authorization": "Bearer key-a"},
+            )
+            assert response.status_code == 200
+            assert _body(response)["id"] == "model-a"
             assert handles == {}
         finally:
             patcher.stop()
@@ -330,7 +387,7 @@ class TestRoutingDecision:
         ), patch.object(
             router_application_module.serve, "get_app_handle", get_app_handle
         ):
-            router = _new(RouterApplication, MODEL_APPS)
+            router = _new(RouterApplication, MODEL_APPS, _llm_configs())
             decisions = await asyncio.gather(
                 _chat(router, {"model": "model-a"}),
                 _chat(router, {"model": "model-a"}),
@@ -352,7 +409,7 @@ class TestRoutingDecision:
         with patch.object(
             router_application_module.serve, "get_app_handle", get_app_handle
         ):
-            router = _new(RouterApplication, MODEL_APPS)
+            router = _new(RouterApplication, MODEL_APPS, _llm_configs())
             chat_task = asyncio.create_task(_chat(router, {"model": "model-a"}))
             assert await asyncio.to_thread(lookup_started.wait, 1)
 
@@ -374,7 +431,7 @@ class TestRoutingDecision:
         with patch.object(
             router_application_module.asyncio, "to_thread", blocked_to_thread
         ):
-            router = _new(RouterApplication, MODEL_APPS)
+            router = _new(RouterApplication, MODEL_APPS, _llm_configs())
             try:
                 response = await _chat(router, {"model": "model-a"})
                 assert response.status_code == 503
@@ -482,7 +539,7 @@ class TestRoutingDecision:
         with patch.object(
             router_application_module.serve, "get_app_handle", get_app_handle
         ):
-            router = _new(RouterApplication, MODEL_APPS)
+            router = _new(RouterApplication, MODEL_APPS, _llm_configs())
             try:
                 await asyncio.sleep(0.05)
                 deployed = True
@@ -504,7 +561,7 @@ class TestRoutingDecision:
         with patch.object(
             router_application_module.serve, "get_app_handle", get_app_handle
         ):
-            router = _new(RouterApplication, MODEL_APPS)
+            router = _new(RouterApplication, MODEL_APPS, _llm_configs())
             try:
                 await asyncio.sleep(0.05)
                 deployed = True
@@ -526,7 +583,8 @@ class TestRoutingDecision:
         with patch.object(
             router_application_module.serve, "get_app_handle", get_app_handle
         ):
-            router = _new(RouterApplication, {"model-a": "llm-model-a"})
+            model_apps = {"model-a": "llm-model-a"}
+            router = _new(RouterApplication, model_apps, _llm_configs(model_apps))
             with pytest.raises(TypeError, match="bug"):
                 await _chat(router, {"model": "model-a"})
             await asyncio.sleep(0.05)

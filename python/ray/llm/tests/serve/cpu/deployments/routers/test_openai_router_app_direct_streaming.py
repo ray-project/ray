@@ -82,7 +82,12 @@ def _deploy(model_configs: Dict[str, LLMConfig]) -> None:
                 route_prefix=f"/models/{model_id.replace('/', '--')}",
             )
     serve.run(
-        build_openai_router_app({"model_applications": MODEL_APPLICATIONS}),
+        build_openai_router_app(
+            {
+                "model_applications": MODEL_APPLICATIONS,
+                "llm_configs": list(model_configs.values()),
+            }
+        ),
         name="llm",
         route_prefix="/",
     )
