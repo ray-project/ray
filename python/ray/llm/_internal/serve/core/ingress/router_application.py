@@ -8,10 +8,13 @@ global control-plane responses.
 
 import asyncio
 import copy
+import hashlib
 import json
+import os
+import secrets
 import time
 from types import SimpleNamespace
-from typing import Any, Dict, Mapping, Optional
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 from urllib.parse import unquote
 
 from fastapi import FastAPI, Request, status
@@ -24,6 +27,7 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
     get_llm_serve_runtime_env,
 )
+from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.router import (
     _BODY_TRUNCATED_HEADER,
     _get_routing_payload_from_body,
@@ -117,6 +121,32 @@ def _model_card(model_id: str) -> Dict[str, Any]:
     }
 
 
+def _api_key_hashes(llm_config: LLMConfig) -> Sequence[bytes]:
+    api_keys = llm_config.get_engine_config().frontend_kwargs.get("api_key")
+    if not api_keys:
+        api_key = (llm_config.runtime_env or {}).get("env_vars", {}).get(
+            "VLLM_API_KEY"
+        ) or os.getenv("VLLM_API_KEY")
+        api_keys = [api_key] if api_key else []
+    elif isinstance(api_keys, str):
+        api_keys = [api_keys]
+    return tuple(hashlib.sha256(key.encode()).digest() for key in api_keys if key)
+
+
+def _has_valid_api_key(
+    authorization: Optional[str], key_hashes: Sequence[bytes]
+) -> bool:
+    if not key_hashes:
+        return True
+    if not authorization:
+        return False
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        return False
+    token_hash = hashlib.sha256(token.encode()).digest()
+    return any(secrets.compare_digest(token_hash, key_hash) for key_hash in key_hashes)
+
+
 _CORS_OPTIONS = {
     "allow_origins": ["*"],
     "allow_credentials": True,
@@ -139,8 +169,15 @@ class RouterApplication:
     responses, so listing models never starts a scale-to-zero model application.
     """
 
-    def __init__(self, model_applications: Mapping[str, str]):
+    def __init__(
+        self,
+        model_applications: Mapping[str, str],
+        llm_configs: List[LLMConfig],
+    ):
         self._model_applications = dict(model_applications)
+        self._api_key_hashes = {
+            config.model_id: _api_key_hashes(config) for config in llm_configs
+        }
         # Resolve every handle in parallel without gating router health on them.
         self._handles: Dict[str, "asyncio.Task[DeploymentHandle]"] = {
             model_id: asyncio.create_task(self._resolve_handle(app_name))
@@ -178,25 +215,32 @@ class RouterApplication:
                     headers={"Allow": "GET, HEAD"},
                 )
             if path == "/v1/models":
-                return await self.models()
-            return await self.model_data(unquote(path.removeprefix("/v1/models/")))
+                return await self.models(request)
+            return await self.model_data(
+                unquote(path.removeprefix("/v1/models/")), request
+            )
 
         # The selected model application's native ASGI app owns its public API
         # routes. The control plane only chooses an application and replica; it
         # must not maintain a duplicate allowlist of vLLM routes.
         return await self._route_to_model_application(request)
 
-    async def models(self):
+    async def models(self, request: Request):
+        model_ids = [
+            model_id
+            for model_id in self._model_applications
+            if self._is_authorized(model_id, request)
+        ]
+        if not model_ids:
+            return self._unauthorized()
         return _response(
             {
                 "object": "list",
-                "data": [
-                    _model_card(model_id) for model_id in self._model_applications
-                ],
+                "data": [_model_card(model_id) for model_id in model_ids],
             }
         )
 
-    async def model_data(self, model: str):
+    async def model_data(self, model: str, request: Request):
         # Like the OpenAI ingress, accept `--` for `/`.
         model = model.replace("--", "/")
         if model not in self._model_applications:
@@ -206,7 +250,18 @@ class RouterApplication:
                 "you have permission.",
                 "InvalidModel",
             )
+        if not self._is_authorized(model, request):
+            return self._unauthorized()
         return _response(_model_card(model))
+
+    def _is_authorized(self, model_id: str, request: Request) -> bool:
+        return _has_valid_api_key(
+            request.headers.get("authorization"), self._api_key_hashes[model_id]
+        )
+
+    @staticmethod
+    def _unauthorized() -> JSONResponse:
+        return _response({"error": "Unauthorized"}, status.HTTP_401_UNAUTHORIZED)
 
     async def _route_to_model_application(self, request: Request):
         data = None

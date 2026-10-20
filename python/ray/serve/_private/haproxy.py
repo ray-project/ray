@@ -237,17 +237,23 @@ def _format_router_application_pools_lua(
         servers = sorted(backend.servers, key=lambda s: (s.host, s.port))
         colocated = [s for s in servers if s.host == local_host]
         remote = [s for s in servers if s.host != local_host]
-        pool = colocated + remote
-        if not pool and backend.fallback_server is not None:
-            pool = [backend.fallback_server]
-        pool_lua = ", ".join(
-            f"{{ host = {_lua_str(s.host)}, port = {s.port}, "
-            f"host_header = {_lua_str(f'{s.host}:{s.port}')} }}"
-            for s in pool
-        )
+        if not colocated and not remote and backend.fallback_server is not None:
+            colocated = [backend.fallback_server]
+
+        def format_pool(pool: List[ServerConfig]) -> str:
+            return ", ".join(
+                f"{{ host = {_lua_str(s.host)}, port = {s.port}, "
+                f"host_header = {_lua_str(f'{s.host}:{s.port}')} }}"
+                for s in pool
+            )
+
+        local_pool_lua = format_pool(colocated)
+        remote_pool_lua = format_pool(remote)
         entries.append(
             f"    [{_lua_str(backend.name)}] = {{ app = {_lua_str(backend.app_name)}, "
-            f"p = {_lua_str(backend.path_prefix or '/')}, pool = {{ {pool_lua} }} }}"
+            f"p = {_lua_str(backend.path_prefix or '/')}, "
+            f"local_pool = {{ {local_pool_lua} }}, "
+            f"remote_pool = {{ {remote_pool_lua} }} }}"
         )
     if not entries:
         return None

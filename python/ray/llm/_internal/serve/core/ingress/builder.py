@@ -164,6 +164,26 @@ class IngressClsConfig(BaseModelExtended):
         return value
 
 
+def _parse_llm_configs(
+    value: List[Union[str, dict, LLMConfig]],
+) -> List[LLMConfig]:
+    llm_configs = []
+    for config in value:
+        if isinstance(config, str):
+            if not os.path.exists(config):
+                raise ValueError(
+                    f"Could not load model config from {config}, as the file does not exist."
+                )
+            llm_configs.append(LLMConfig.from_file(config))
+        elif isinstance(config, dict):
+            llm_configs.append(LLMConfig.model_validate(config))
+        elif isinstance(config, LLMConfig):
+            llm_configs.append(config)
+        else:
+            raise TypeError(f"Invalid LLMConfig type: {type(config)}")
+    return llm_configs
+
+
 class LLMServingArgs(BaseModelExtended):
     llm_configs: List[Union[str, dict, LLMConfig]] = Field(
         description="A list of LLMConfigs, or dicts representing LLMConfigs, or paths to yaml files defining LLMConfigs.",
@@ -193,21 +213,7 @@ class LLMServingArgs(BaseModelExtended):
     def _validate_llm_configs(
         cls, value: List[Union[str, dict, LLMConfig]]
     ) -> List[LLMConfig]:
-        llm_configs = []
-        for config in value:
-            if isinstance(config, str):
-                if not os.path.exists(config):
-                    raise ValueError(
-                        f"Could not load model config from {config}, as the file does not exist."
-                    )
-                llm_configs.append(LLMConfig.from_file(config))
-            elif isinstance(config, dict):
-                llm_configs.append(LLMConfig.model_validate(config))
-            elif isinstance(config, LLMConfig):
-                llm_configs.append(config)
-            else:
-                raise TypeError(f"Invalid LLMConfig type: {type(config)}")
-        return llm_configs
+        return _parse_llm_configs(value)
 
     @model_validator(mode="after")
     def _validate_model_ids(self):
@@ -341,11 +347,31 @@ class OpenAIRouterArgs(BaseModelExtended):
     """Configuration for the multi-application OpenAI router."""
 
     model_applications: Dict[str, str]
+    llm_configs: List[Union[str, dict, LLMConfig]]
 
     @field_validator("model_applications", mode="before")
     @classmethod
     def _validate_mapping(cls, value: Any) -> Dict[str, str]:
         return _validate_model_applications(value)
+
+    @field_validator("llm_configs")
+    @classmethod
+    def _validate_llm_configs(
+        cls, value: List[Union[str, dict, LLMConfig]]
+    ) -> List[LLMConfig]:
+        return _parse_llm_configs(value)
+
+    @model_validator(mode="after")
+    def _validate_model_configs(self):
+        config_model_ids = [config.model_id for config in self.llm_configs]
+        if len(set(config_model_ids)) != len(config_model_ids):
+            raise ValueError("Duplicate models found. Make sure model ids are unique.")
+        if set(config_model_ids) != set(self.model_applications):
+            raise ValueError(
+                "llm_configs must contain exactly one config for each model in "
+                "model_applications."
+            )
+        return self
 
 
 def build_openai_router_app(
@@ -371,4 +397,7 @@ def build_openai_router_app(
     return serve.deployment(
         RouterApplication,
         **RouterApplication.get_deployment_options(),
-    ).bind(model_applications=args.model_applications)
+    ).bind(
+        model_applications=args.model_applications,
+        llm_configs=args.llm_configs,
+    )
