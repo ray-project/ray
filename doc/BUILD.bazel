@@ -626,7 +626,6 @@ doctest_each(
         "source/core/actors/named-actors.md",
         "source/core/actors/task-orders.md",
         "source/core/actors/terminating-actors.md",
-        "source/core/configure.md",
         "source/core/internals/task-lifecycle.md",
         "source/core/miscellaneous.md",
         "source/core/objects/index.md",
