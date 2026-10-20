@@ -318,7 +318,7 @@ Each variable controls one part of the path:
 The following diagram shows how task events flow after you enable this path.
 
 ```{image} ../images/task-events-out-of-gcs.png
-:alt: Core workers on a worker node send task and profile events through RayTaskEventRecorder to the node's aggregator agent. The aggregator agent publishes them to the task events head on the head node. The GCS sends job and worker death events to the task events head over a pub-sub connection, and the State APIs read from the task events head. The direct path from the core worker to the GCS is disabled.
+:alt: Core workers on a worker node send task and profile events through RayTaskEventRecorder to the node's aggregator agent. The aggregator agent publishes them to the task events head in the Ray API server on the head node. The GCS sends job and worker death events to the task events head over a pub-sub connection, and the State APIs read from the task events head. The direct path from the core worker to the GCS is disabled.
 ```
 
 Each core worker emits task definition, lifecycle, and profile events through `RayTaskEventRecorder` to the aggregator agent on its node. The aggregator agent publishes them to the task events module on the Ray API server. That module stores the task events in memory and reconciles them against the worker death and job completion events that it receives from the GCS over a pub-sub connection. The State APIs read task events from that store. In this configuration, the core worker doesn't send task events directly to the GCS.
