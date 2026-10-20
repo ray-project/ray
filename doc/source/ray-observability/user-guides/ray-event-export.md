@@ -305,12 +305,12 @@ Each variable controls one part of the path:
 
 - `RAY_enable_ray_event=1` to use Ray event export as the event collection backend. Ray records task events for this path only when you set this variable.
 - `RAY_enable_ray_task_event_recorder=1` to record task events with the Ray task event recorder. When the recorder is active, the core worker `TaskEventBuffer` stops sending events to the aggregator agent, so `RAY_enable_core_worker_ray_event_to_aggregator` no longer affects task events.
-- `RAY_enable_core_worker_task_event_to_gcs=0` to stop the core worker from sending task events to the GCS. When you set this variable to `0` and enable the recorder, the core worker task event buffer stops recording task events.
+- `RAY_enable_core_worker_task_event_to_gcs=0` to stop the core worker from sending task events to the GCS. When you set this variable to `0` and enable the recorder, the core worker `TaskEventBuffer` stops recording task events.
 - `RAY_enable_task_events_to_dashboard_head=1` to complete the migration. This variable makes the aggregator agent publish task events to the Ray API server, starts the task events module there, and points `ray list tasks` and `ray.timeline()`/`ray timeline` at the Ray API server instead of the GCS.
 
 ### Requirements
 
-- Start your Ray cluster with the dashboard running. The Ray API server serves the task events on this path, so `ray.timeline()`/`ray timeline` needs it. `ray list tasks` and the Ray Dashboard need the dashboard on either path.
+- Start your Ray cluster with the dashboard running. Ray starts the dashboard by default when the dashboard component is installed; install it with `ray[default]` and see {ref}`observability-getting-started` for setup. The Ray API server serves the task events on this path, so `ray.timeline()`/`ray timeline` needs it. `ray list tasks` and the Ray Dashboard need the dashboard on either path.
 - Ray stores the task events in memory. If the Ray API server restarts, Ray loses the task events that it stored.
 
 ### Architecture

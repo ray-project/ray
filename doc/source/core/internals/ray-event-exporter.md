@@ -267,7 +267,7 @@ Starting in Ray 2.58, Ray can route task events to a dedicated module on the Ray
 - Reports the task attempts it drops to the aggregator agent, so consumers know the data is incomplete
 - Drops later events for an attempt it already dropped, so an attempt is never partly reported
 
-This is in parity with how the core worker task event buffer behaves currently.
+This is in parity with how the core worker `TaskEventBuffer` behaves currently.
 
 ### TaskEventsHead
 
