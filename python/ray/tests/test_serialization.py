@@ -879,5 +879,49 @@ def test_streaming_generator_replay_inconsistent_error_deserialization(monkeypat
     assert expected_message in str(result)
 
 
+def test_library_serializers_wait_for_the_library(shutdown_only):
+    """A worker registers a library's serializers once the library is imported,
+    not by importing it: a process that never uses pyarrow doesn't load it (or
+    the threads it starts), and one that does still gets Arrow's serializers."""
+    pytest.importorskip("pyarrow")
+    ray.init(num_cpus=1)
+
+    @ray.remote
+    class Actor:
+        def loaded(self):
+            return "pyarrow" in sys.modules
+
+        def sliced(self):
+            import pyarrow as pa
+
+            return pa.table({"x": list(range(100_000))}).slice(0, 1)
+
+    actor = Actor.remote()
+    # The first call's result creates the process's serialization context.
+    ray.get(actor.loaded.remote())
+    assert not ray.get(actor.loaded.remote())
+    table = ray.get(actor.sliced.remote())
+    assert table.num_rows == 1
+    assert ray.get(actor.loaded.remote())
+
+
+def test_library_serializers_apply_to_functions(shutdown_only):
+    """A library imported after `ray.init` gets its serializers for the
+    functions the process pickles, not just its values: a remote function
+    capturing a slice of an Arrow table carries only the slice."""
+    # No dashboard: nothing serializes a value before the function is pickled.
+    ray.init(num_cpus=1, include_dashboard=False)
+    pa = pytest.importorskip("pyarrow")
+
+    table = pa.table({"x": list(range(100_000))})
+    sliced = table.slice(0, 1)
+
+    @ray.remote
+    def buffer_size():
+        return sliced.get_total_buffer_size()
+
+    assert ray.get(buffer_size.remote()) < table.get_total_buffer_size()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
