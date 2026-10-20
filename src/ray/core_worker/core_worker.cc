@@ -4299,9 +4299,10 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
   for (const auto &object_location_update : object_location_updates) {
     const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
 
-    // Handled before the spill below: a raylet that pins a moved object can spill
-    // it before its primary-moved update leaves, and the owner records a moved
-    // object's spill only from the node that holds its primary copy.
+    // Handle the primary moved update before the spill update if they are in the same
+    // message, since the owner records a spill only from the node that holds its primary
+    // copy. If promotion to primary and spilling both happen and are reported in the same
+    // message, we need to honor both.
     if (object_location_update.has_primary_moved_to_node_id()) {
       // The object was moved: the consumer's node now pins the primary copy,
       // so the copy on the previous primary's node is freed.

@@ -988,18 +988,19 @@ std::optional<NodeID> ReferenceCounter::UpdateObjectPrimaryMoved(
     return std::nullopt;
   }
   if (is_node_dead_(node_id)) {
-    // The new primary is already gone. The previous primary was never freed, so
-    // it still pins the object and stays the primary. If it is gone too, or
-    // recovery is already in flight, the node removal handles the object.
+    // The new primary holder node is already gone. The previous primary was never freed,
+    // so it still pins the object and stays the primary.
     return std::nullopt;
   }
   const std::optional<NodeID> previous_primary = it->second.pinned_at_node_id_;
   UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
   it->second.pinned_at_node_id_ = node_id;
   std::optional<NodeID> node_to_free;
-  // There is no previous primary while recovery is in flight, and the previous
-  // primary is the new node when the owner handles the same move twice, which
-  // happens when the raylet resends a location batch after a lost reply.
+  // The consumer's node is now the primary. There is nothing to free when there
+  // is no previous primary, This would happen when the producer (previous
+  // primary) node died and recovery started. Previous primary is same as the current
+  // node when the owner handles the same move twice after the raylet resends a location
+  // batch whose reply was lost.
   if (previous_primary.has_value() && *previous_primary != node_id) {
     node_to_free = previous_primary;
     it->second.locations_being_freed.insert(*node_to_free);
