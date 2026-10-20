@@ -294,7 +294,7 @@ class MessageQueue(Send):
 
             # Keep the event set once closed or errored so that subsequent
             # calls return immediately instead of blocking forever.
-            if len(self._message_queue) == 0 and not self._closed and not self._error:
+            if len(self._message_queue) == 0 and not self._closed and self._error is None:
                 self._new_message_event.clear()
 
             return msg
