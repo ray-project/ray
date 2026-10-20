@@ -104,7 +104,7 @@ def mixed_encoding_messages(n=6):
     return messages
 
 
-def write_mcap_without_summary_schemas(path):
+def write_mcap_without_summary_schemas(path, b_declared_in_chunk_1=False):
     """Write two JSON channels with two schemas, one message per chunk.
 
     The schema records are written only inside the chunks
@@ -113,6 +113,9 @@ def write_mcap_without_summary_schemas(path):
 
         chunk   0   1   2   3   4   5
         topic   /a  /b  /a  /b  /a  /b
+
+    Both schemas are declared in chunk 0, or with ``b_declared_in_chunk_1``,
+    ``other_schema`` only in chunk 1.
     """
     from mcap.writer import CompressionType, IndexType, Writer
 
@@ -126,15 +129,23 @@ def write_mcap_without_summary_schemas(path):
         )
         writer.start(profile="", library="ray-test")
         channels = {}
-        for topic, name in (("/a", "test_schema"), ("/b", "other_schema")):
+
+        def declare(topic, name):
             schema_id = writer.register_schema(
                 name=name, encoding="jsonschema", data=b'{"type": "object"}'
             )
             channels[topic] = writer.register_channel(
                 schema_id=schema_id, topic=topic, message_encoding="json"
             )
+
+        declare("/a", "test_schema")
+        if not b_declared_in_chunk_1:
+            declare("/b", "other_schema")
         for i in range(6):
             topic = "/a" if i % 2 == 0 else "/b"
+            if topic not in channels:
+                # Chunk 0 closed after its message, so this lands in chunk 1.
+                declare(topic, "other_schema")
             writer.add_message(
                 channel_id=channels[topic],
                 log_time=BASE_TIME + i * STEP,
@@ -379,8 +390,9 @@ def record_parsed_chunks(monkeypatch) -> List[int]:
     real_read_chunks = mcap_chunks.read_chunks
     offsets: List[int] = []
 
-    def read_chunks(f, chunk_indexes, reads):
-        for chunk_index, chunk in real_read_chunks(f, chunk_indexes, reads):
+    def read_chunks(f, chunk_indexes, reads, on_corrupt=None):
+        chunks = real_read_chunks(f, chunk_indexes, reads, on_corrupt)
+        for chunk_index, chunk in chunks:
             offsets.append(chunk_index.chunk_start_offset)
             yield chunk_index, chunk
 
