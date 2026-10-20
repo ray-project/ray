@@ -41,6 +41,28 @@ the baseline from the diff:
 - **After:** what it does with this PR applied, and what users or operators
   will observe differently.
 
+When possible, express before vs. after as a single mermaid diagram with
+color coding so the difference is interpretable at a glance: put the two
+states in `Before` and `After` subgraphs, and color components that are
+removed, added, or changed — leave unchanged components uncolored.
+
+```mermaid
+flowchart LR
+    subgraph Before
+        A1[ReadParquet] --> B1[MapBatches]
+        B1 --> D1[Write]
+    end
+    subgraph After
+        A2[ReadParquet] --> B2[MapBatches]
+        B2 --> C2[StreamingRepartition]
+        C2 --> D2[Write]
+    end
+    classDef removed fill:#ffcdd2,stroke:#c62828,color:#000
+    classDef added fill:#c8e6c9,stroke:#2e7d32,color:#000
+    classDef changed fill:#fff9c4,stroke:#f9a825,color:#000
+    class C2 added
+```
+
 If behavior is unchanged (pure refactor), say so explicitly and state what
 invariant was preserved and how it was verified.
 
@@ -74,6 +96,9 @@ versus which are mechanical ripple edits.
 
 ## After
 <new behavior and what's observably different>
+
+<!-- Where possible, show before vs. after as one color-coded mermaid diagram
+     (Before/After subgraphs; red = removed, green = added, yellow = changed) -->
 
 ## Subsystems
 <e.g. logical planning, execution, resource allocation>
