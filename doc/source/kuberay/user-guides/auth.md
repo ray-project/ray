@@ -39,7 +39,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the lates
 
 If you are using KubeRay v1.6.0 or newer, you can use the `authOptions` API in RayCluster to enable token authentication:
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth.yaml
 ```
 
 When enabled, the KubeRay operator will:
@@ -50,7 +50,7 @@ If you are using a KubeRay version older than v1.7.0, you can enable token authe
 
 ```bash
 kubectl create secret generic ray-cluster-with-auth --from-literal=auth_token=$(openssl rand -base64 32)
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth-manual.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/refs/heads/master/ray-operator/config/samples/ray-cluster.auth-manual.yaml
 ```
 
 ## Verify initial unauthenticated access

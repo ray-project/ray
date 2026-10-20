@@ -1,6 +1,9 @@
 import contextlib
 import ctypes
+import errno
+import json
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -14,16 +17,27 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
+from ray.experimental.sandbox._internal.image_utils import (
+    DEFAULT_IMAGES_DIR,
+    image_cache_name,
+)
+from ray.experimental.sandbox.backend import gvisor
 from ray.experimental.sandbox.backend.base import SandboxStatus
-from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.backend.gvisor import (
+    GVisorSandboxBackend,
+    _exec_processes,
+)
 from ray.experimental.sandbox.config import GVisorSandboxConfig
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
     SandboxError,
     SandboxExecError,
     SandboxNotFoundError,
+    SandboxTimeoutError,
 )
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+_BUSYBOX_CACHE = os.path.join(DEFAULT_IMAGES_DIR, image_cache_name("busybox:latest"))
 
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
@@ -87,7 +101,7 @@ def test_gvisor_backend_container_image_support():
         assert sandbox_id.startswith("ray-sandbox-")
         assert backend.get_status(sandbox_id) == SandboxStatus.RUNNING
 
-        extracted_dir = "/tmp/ray/sandbox/images/busybox_latest"
+        extracted_dir = _BUSYBOX_CACHE
         assert os.path.exists(extracted_dir)
         assert os.path.isdir(extracted_dir)
         assert os.path.exists(os.path.join(extracted_dir, ".extracted"))
@@ -95,7 +109,7 @@ def test_gvisor_backend_container_image_support():
         # doubling its footprint.
         assert os.path.isfile(os.path.join(extracted_dir, "rootfs.erofs"))
         assert not os.path.exists(os.path.join(extracted_dir, "rootfs"))
-        assert not os.path.exists("/tmp/ray/sandbox/images/busybox_latest.tar")
+        assert not os.path.exists(_BUSYBOX_CACHE + ".tar")
 
         res = backend.exec_command(sandbox_id, "/bin/sh -c 'echo hello from busybox'")
         assert res.exit_code == 0
@@ -103,7 +117,7 @@ def test_gvisor_backend_container_image_support():
     finally:
         backend.delete_sandbox(sandbox_id)
 
-    assert os.path.exists("/tmp/ray/sandbox/images/busybox_latest")
+    assert os.path.exists(_BUSYBOX_CACHE)
 
 
 def test_gvisor_backend_image_required():
@@ -304,6 +318,121 @@ def test_disk_caps_a_readonly_sandbox_with_a_workdir():
         runtime.delete(instance_id)
 
 
+def _procfs_dump(*procs):
+    """What ``runsc trace procfs`` prints for (pid, ppid, pgid, sid) tuples."""
+    lines = ["PROCFS DUMP"]
+    for pid, ppid, pgid, sid in procs:
+        status, stat = {"pid": pid, "ppid": ppid}, {"pgid": pgid, "sid": sid}
+        lines += ["", json.dumps({"status": status, "stat": stat})]
+    return "\n".join(lines) + "\n"
+
+
+def test_exec_processes_follows_the_session_and_children():
+    dump = _procfs_dump(
+        (1, 0, 1, 1),  # The sandbox's init.
+        (2, 0, 2, 2),  # The command, a session leader.
+        (3, 2, 2, 2),  # Its child,
+        (4, 3, 4, 2),  # a grandchild in a group of its own,
+        (5, 1, 2, 2),  # and reparented children, in the command's group
+        (6, 1, 6, 2),  # or in a group of their own.
+        (7, 3, 7, 7),  # A child that called setsid(), and its child.
+        (8, 7, 7, 7),
+        (9, 1, 9, 9),  # A daemon: it called setsid() and its parent exited.
+        (10, 0, 10, 10),  # Another command and its child.
+        (11, 10, 10, 10),
+        (13, 1, 13, 12),  # The reparented child of a command that exited.
+    )
+    assert _exec_processes(dump, 2) == [2, 3, 4, 5, 6, 7, 8]
+    assert _exec_processes(dump, 10) == [10, 11]
+    assert _exec_processes(dump, 12) == [13]
+    assert _exec_processes("PROCFS DUMP\n", 2) == []
+    assert _exec_processes("loading sandbox: not found", 2) == []
+
+
+def test_exec_timeout_kills_the_command_and_its_children():
+    """A timed-out exec returns at its timeout and leaves nothing running.
+    Killing only `runsc exec` used to leave the command running, and the
+    exec returned only when it exited."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        start = time.monotonic()
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(instance_id, "sleep 30; echo done", timeout=1)
+        assert time.monotonic() - start < 10
+        assert "sleep 30" not in runtime.exec(instance_id, "ps").stdout
+        # The sandbox is still usable.
+        assert runtime.exec(instance_id, "echo ok").stdout == "ok\n"
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_background_jobs_that_outlive_the_shell():
+    """A background job holding the output pipes outlives the shell that
+    started it, so the exec times out. The job is reparented to PID 1, and
+    GNU timeout also moves to a process group of its own, but both stay in
+    the command's session, and the timeout kills them."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="python:3.10-slim")
+    try:
+        for command in ["sleep 1000 & exit", "timeout 1001 sleep 1001 & exit"]:
+            with pytest.raises(SandboxTimeoutError):
+                runtime.exec(instance_id, command, timeout=1)
+        # The image has no ps. A killed process left as a zombie has an
+        # empty cmdline.
+        cmdlines = runtime.exec(instance_id, r"cat /proc/[0-9]*/cmdline | tr '\0' ' '")
+        assert "sleep 100" not in cmdlines.stdout
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_a_setsid_child_of_the_command():
+    """A child that left the command's session with setsid() is found only
+    through its parent, so the processes are listed before any is killed."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="python:3.10-slim")
+    try:
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(instance_id, "setsid sleep 1002 & sleep 1000", timeout=1)
+        cmdlines = runtime.exec(instance_id, r"cat /proc/[0-9]*/cmdline | tr '\0' ' '")
+        assert "sleep 100" not in cmdlines.stdout
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_timeout_kills_processes_started_during_the_kill():
+    """A child that keeps starting processes starts more between the listing
+    of the command's processes and its own kill. Those are killed too."""
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        with pytest.raises(SandboxTimeoutError):
+            runtime.exec(
+                instance_id,
+                "sh -c 'while :; do sleep 1000 & done' & wait",
+                timeout=0.5,
+            )
+        # A killed process left as a zombie shows up as [sleep].
+        assert "sleep 1000" not in runtime.exec(instance_id, "ps").stdout
+    finally:
+        runtime.delete(instance_id)
+
+
+def test_exec_replaces_output_that_is_not_utf8():
+    runtime = SandboxRuntime()
+    instance_id = runtime.create(image="busybox:latest", shell="/bin/sh")
+    try:
+        result = runtime.exec(
+            instance_id, r"printf 'ok \377\376\r\n'; printf '\377' >&2"
+        )
+        assert result.exit_code == 0
+        # Like the bytes, line endings come back as printed.
+        assert result.stdout == "ok ��\r\n"
+        assert result.stderr == "�"
+    finally:
+        runtime.delete(instance_id)
+
+
 def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
     """readonly + explicit workdir currently runs on a private writable
     overlay: the workdir works, and rootfs writes land in the overlay and are
@@ -326,7 +455,7 @@ def test_readonly_rootfs_with_workdir_runs_on_private_overlay():
     finally:
         backend.delete_sandbox(sb)
     # The write went to the sandbox's overlay, not the shared image cache.
-    assert not os.path.exists("/tmp/ray/sandbox/images/busybox_latest/probe.txt")
+    assert not os.path.exists(os.path.join(_BUSYBOX_CACHE, "probe.txt"))
 
 
 def test_workdir_writability_matrix():
@@ -571,8 +700,11 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert cmd[:2] == ["bash", "-c"]
     script = cmd[2]
 
-    # The shell stays the parent of every helper and reaps them as it exits.
+    # The shell, and so everything it starts, ignores a Ctrl-C sent to its
+    # owner's process group. It stays the parent of every helper and reaps
+    # them as it exits.
     assert script.startswith(
+        "trap '' INT QUIT; "
         "trap 'kill -KILL ${NSPID:-$HOLDER} $SLIRP 2>/dev/null; wait' EXIT; "
         "setpriv --pdeathsig KILL -- "
         "unshare --user --map-root-user --net --fork --kill-child "
@@ -580,8 +712,9 @@ def test_build_run_command_public_wraps_with_slirp4netns():
     assert script.endswith("run --bundle /tmp/rd sb-1 & wait $!")
     for fragment in (
         "/tmp/rd/netns.pid",
-        # slirp4netns stays in the sandbox's process group and its ready
-        # file, written once the tap is configured, gates the runsc start.
+        # slirp4netns stays in the foreground under the launch shell, and
+        # its ready file, written once the tap is configured, gates the
+        # runsc start.
         "setpriv --pdeathsig KILL -- "
         "slirp4netns --configure --cidr=198.18.0.0/24 --mtu=65520 --disable-host-loopback "
         "--disable-dns --enable-seccomp --ready-fd=3 "
@@ -619,10 +752,11 @@ def test_build_run_command_public_keeps_rootless_cgroup_tolerance(monkeypatch):
 @pytest.mark.parametrize(
     "network,rootless", [("none", True), ("host", True), ("sandbox", False)]
 )
-def test_build_run_command_other_modes_unwrapped(network, rootless):
-    """Every mode but "public" keeps today's bare runsc invocation."""
+def test_build_run_command_other_modes_exec_runsc(network, rootless):
+    """Every mode but "public" runs runsc itself: a shell makes it ignore a
+    Ctrl-C sent to its owner's process group, then execs it."""
     cmd = _run_argv(network, rootless=rootless)
-    assert cmd[0] == "runsc"
+    assert cmd[:5] == ["sh", "-c", "trap '' INT QUIT; exec \"$@\"", "sh", "runsc"]
     assert "slirp4netns" not in cmd
     assert cmd[cmd.index("--network") + 1] == network
     assert cmd[-4:] == ["run", "--bundle", "/tmp/rd", "sb-1"]
@@ -646,29 +780,21 @@ def test_create_sandbox_requires_netns_binaries(monkeypatch, binary):
     assert binary in str(err.value)
 
 
-def test_terminate_tree_kills_the_group_only_before_reaping_it(monkeypatch):
-    """Once the launch process is reaped, its pid, which is the group id, can
-    go to an unrelated process group. A launch process that exits on its own
-    leaves an empty group, so teardown kills the group only for one that
-    hangs, and before it reaps that one."""
+def test_terminate_tree_kills_only_a_launch_process_that_hangs(monkeypatch):
+    """The launch process shares its owner's process group, so teardown never
+    signals a group. It reaps a launch process that exits on its own, and
+    SIGKILLs only one that hangs."""
     monkeypatch.setattr(
         "ray.experimental.sandbox.backend.gvisor._TREE_EXIT_GRACE_SECONDS", 0.2
     )
-    exits = subprocess.Popen(["true"], start_new_session=True)
-    hangs = subprocess.Popen(["sleep", "60"], start_new_session=True)
-    killed = []
-    killpg = os.killpg
-
-    def recording_killpg(pgid, sig):
-        # A return code means the Popen has reaped the group's leader.
-        killed.append((pgid, (exits if pgid == exits.pid else hangs).returncode))
-        killpg(pgid, sig)
-
-    monkeypatch.setattr(os, "killpg", recording_killpg)
+    exits = subprocess.Popen(["true"])
+    hangs = subprocess.Popen(["sleep", "60"])
+    signaled_groups = []
+    monkeypatch.setattr(os, "killpg", lambda pgid, sig: signaled_groups.append(pgid))
     backend = GVisorSandboxBackend()
     backend._terminate_tree(exits)
     backend._terminate_tree(hangs)
-    assert killed == [(hangs.pid, None)]
+    assert signaled_groups == []
     assert (exits.returncode, hangs.returncode) == (0, -signal.SIGKILL)
 
 
@@ -859,6 +985,331 @@ def _cmdline(entry: Path) -> bytes:
         return (entry / "cmdline").read_bytes()
     except OSError:
         return b""
+
+
+class _RecordingImageManager:
+    def __init__(self):
+        self.released = []
+
+    def pull_image(self, *args, **kwargs):
+        raise RuntimeError("pull failed")
+
+    def release_image(self, image, instance_id):
+        self.released.append((image, instance_id))
+
+
+@pytest.fixture
+def private_bundles(tmp_path, monkeypatch):
+    """Point the backend at an empty bundle directory, with a fake runsc that
+    logs its arguments to ``runsc.log`` in the returned directory. Creates
+    start no background reclaim, so only the test reclaims there."""
+    monkeypatch.setattr(gvisor, "_RAY_SANDBOX_DIR", str(tmp_path / "sandbox"))
+    monkeypatch.setattr(
+        GVisorSandboxBackend, "_maybe_reclaim_unowned_bundles", lambda self: None
+    )
+    runsc = tmp_path / "runsc"
+    runsc.write_text('#!/bin/sh\necho "$@" >> "$(dirname "$0")/runsc.log"\n')
+    runsc.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    return tmp_path
+
+
+def test_reclaim_takes_only_bundles_whose_owner_is_gone(private_bundles, monkeypatch):
+    """A bundle whose owner file nobody holds loses its runsc state, its files
+    and its image pin. A live owner's bundle, one still being created, one an
+    earlier Ray made, and anything not named like a bundle stay."""
+    monkeypatch.delenv("RAY_SANDBOX_IGNORE_CGROUPS")
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    bundles = Path(gvisor._RAY_SANDBOX_DIR)
+
+    def bundle(name, image=None, **config):
+        root = bundles / name
+        root.mkdir(parents=True)
+        (root / "overlay").write_bytes(b"\0" * 1024)
+        if image:
+            config = GVisorSandboxConfig(image=image, **config)
+            return backend._own_bundle(config, str(root))
+
+    live = bundle("ray-sandbox-00000000000a", "busybox:latest")
+    bundle("ray-sandbox-00000000000b", "python:3.12-slim", rootless=False).close()
+    bundle("ray-sandbox-00000000000c")  # Being created, or from an earlier Ray.
+    bundle("ray-sandbox-other", "busybox:latest").close()
+    try:
+        assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000b"]
+        assert sorted(os.listdir(bundles)) == [
+            "ray-sandbox-00000000000a",
+            "ray-sandbox-00000000000c",
+            "ray-sandbox-other",
+        ]
+    finally:
+        live.close()
+    assert images.released == [("python:3.12-slim", "ray-sandbox-00000000000b")]
+    # With the owner's flags, and a kill first: an owner that wasn't a Ray
+    # worker may have left its sandbox running.
+    assert (private_bundles / "runsc.log").read_text().splitlines() == [
+        "--root /tmp/runsc kill ray-sandbox-00000000000b SIGKILL",
+        "--root /tmp/runsc delete -force ray-sandbox-00000000000b",
+    ]
+
+    # The owner of the first bundle closed its file, so it goes next.
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000a"]
+
+
+def test_reclaim_never_runs_a_command_from_the_owner_file(private_bundles):
+    """The bundle directory may be writable by others, and so the owner file:
+    reclaiming runs runsc from PATH with known flags only."""
+    root = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000d")
+    root.mkdir(parents=True)
+    marker = private_bundles / "ran"
+    (root / ".owner").write_text(
+        json.dumps(
+            {
+                "image": "busybox:latest",
+                "runsc_args": ["/bin/sh", "-c", f"touch {marker}", "--"],
+            }
+        )
+    )
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000d"]
+    assert not marker.exists()
+    assert (private_bundles / "runsc.log").read_text().splitlines()[0] == (
+        "--root /tmp/runsc kill ray-sandbox-00000000000d SIGKILL"
+    )
+
+
+def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch):
+    """A reclaim pass runs in a daemon thread, so it can be cut short, say with
+    the process that runs it. Everything but the owner file goes first, so a
+    later pass still finds the bundle and finishes."""
+    root = Path(gvisor._RAY_SANDBOX_DIR, "ray-sandbox-00000000000e")
+    (root / "workdir").mkdir(parents=True)
+    (root / "workdir" / "file").write_text("data")
+    (root / "overlay").write_bytes(b"\0" * 1024)
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
+    config = GVisorSandboxConfig(image="busybox:latest")
+    backend._own_bundle(config, str(root)).close()
+    rmtree = shutil.rmtree
+
+    def cut_short(path, *args, **kwargs):
+        if Path(path) == root:
+            raise RuntimeError("the pass was cut short")
+        rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(shutil, "rmtree", cut_short)
+    assert backend._reclaim_unowned_bundles() == []
+    assert os.listdir(root) == [".owner"]
+
+    monkeypatch.setattr(shutil, "rmtree", rmtree)
+    assert backend._reclaim_unowned_bundles() == ["ray-sandbox-00000000000e"]
+    assert not root.exists()
+    assert ("busybox:latest", "ray-sandbox-00000000000e") in images.released
+
+
+@pytest.mark.parametrize("failure", ["pull", "owner file"])
+def test_failed_create_leaves_no_bundle(private_bundles, monkeypatch, failure):
+    """A create that fails before its sandbox starts deletes its bundle, even
+    one without an owner file for a reclaim to find."""
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    if failure == "owner file":
+
+        def no_space(*args):
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+
+        monkeypatch.setattr(backend, "_own_bundle", no_space)
+    with pytest.raises(SandboxCreationError):
+        backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
+    assert os.listdir(gvisor._RAY_SANDBOX_DIR) == []
+
+
+def test_reclaim_runs_in_the_background(monkeypatch):
+    """A create starts a reclaim pass without waiting for it, at most once a
+    minute per process."""
+    started, release = threading.Event(), threading.Event()
+    passes = []
+
+    def slow_reclaim(self):
+        passes.append(self)
+        started.set()
+        release.wait(10)
+        return []
+
+    monkeypatch.setattr(GVisorSandboxBackend, "_reclaim_unowned_bundles", slow_reclaim)
+    monkeypatch.setattr(gvisor, "_last_reclaim", float("-inf"))
+    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    start = time.monotonic()
+    backend._maybe_reclaim_unowned_bundles()
+    backend._maybe_reclaim_unowned_bundles()
+    try:
+        assert time.monotonic() - start < 1
+        assert started.wait(5)
+        assert len(passes) == 1
+    finally:
+        release.set()
+
+
+# Creates a sandbox, prints what the test needs to find it, and waits.
+_OWNER = r"""
+import json, signal, sys, time
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.config import GVisorSandboxConfig
+
+backend = GVisorSandboxBackend()
+sandbox_id = backend.create_sandbox(
+    GVisorSandboxConfig(image="busybox:latest", shell="/bin/sh", network=sys.argv[1])
+)
+# Like a Jupyter kernel, the owner survives an interrupt.
+signal.signal(signal.SIGINT, lambda *args: None)
+root_dir = backend._sandbox_metadata[sandbox_id]["root_dir"]
+print(json.dumps({"id": sandbox_id, "root_dir": root_dir}), flush=True)
+time.sleep(600)
+"""
+
+
+def _sandbox_processes(sandbox: dict, network: str) -> set:
+    """PIDs of runsc's processes for a sandbox and, for a public one, of its
+    namespace holder and slirp4netns."""
+    pids = {
+        int(entry.name)
+        for entry in Path("/proc").iterdir()
+        if entry.name.isdigit() and sandbox["id"].encode() in _cmdline(entry)
+    }
+    if network == "public":
+        pids |= set(_netns_helpers(sandbox["root_dir"]))
+    return pids
+
+
+def _running(pids) -> set:
+    return {pid for pid in pids if (_stat(pid) or ("Z",))[0] != "Z"}
+
+
+def _wait_until_stopped(pids, timeout: float = 10) -> set:
+    deadline = time.monotonic() + timeout
+    while _running(pids) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    return _running(pids)
+
+
+def _check_owner_death(network: str, whole_group: bool) -> None:
+    """Kill the process that owns a sandbox, with its process group as the
+    raylet does for a worker, or alone, as a driver can die. Either way the
+    sandbox must stop, by then or once a reclaim runs, and the reclaim must
+    delete its runsc state, bundle and image pin."""
+    backend = GVisorSandboxBackend()
+    with _subreaper():
+        # A Ray worker leads its own process group.
+        owner = subprocess.Popen(
+            [sys.executable, "-c", _OWNER, network],
+            stdout=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            sandbox = json.loads(owner.stdout.readline() or "null")
+            assert sandbox, "the owner failed to create its sandbox"
+            pin = Path(
+                backend._image_manager.get_image_dir("busybox:latest"),
+                ".users",
+                sandbox["id"],
+            )
+            assert pin.exists()
+            pids = _sandbox_processes(sandbox, network)
+            assert len(pids) >= 2, pids
+
+            if whole_group:
+                os.killpg(owner.pid, signal.SIGKILL)
+                owner.wait()
+                assert not _wait_until_stopped(pids)
+            else:
+                owner.kill()
+                owner.wait()
+                time.sleep(2)
+                assert _running(pids) == pids
+            assert sandbox["id"] in backend._reclaim_unowned_bundles()
+            assert not _wait_until_stopped(pids)
+            assert not os.path.exists(sandbox["root_dir"])
+            assert not pin.exists()
+            listed = subprocess.run(
+                ["runsc", "--root", "/tmp/runsc", "list", "-quiet"],
+                capture_output=True,
+                text=True,
+            )
+            assert sandbox["id"] not in listed.stdout.split()
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(owner.pid, signal.SIGKILL)
+            owner.wait()
+            backend._reclaim_unowned_bundles()
+
+
+def test_owner_group_kill_stops_its_sandbox():
+    _check_owner_death("none", whole_group=True)
+
+
+def test_reclaim_stops_a_sandbox_whose_owner_died_alone():
+    _check_owner_death("none", whole_group=False)
+
+
+def test_netns_owner_group_kill_stops_its_sandbox(ensure_slirp4netns):
+    _check_owner_death("public", whole_group=True)
+
+
+def test_netns_reclaim_stops_a_sandbox_whose_owner_died_alone(ensure_slirp4netns):
+    _check_owner_death("public", whole_group=False)
+
+
+def _check_owner_interrupt(network: str) -> None:
+    """A Ctrl-C in a driver's terminal, or a Jupyter kernel interrupt, sends
+    SIGINT to the owner's whole process group, and the owner survives it. Its
+    sandbox must keep running, network and all, and still stop when the group
+    gets SIGTERM, which is what the raylet sends a dead worker's group first."""
+    backend = GVisorSandboxBackend()
+    config = GVisorSandboxConfig(image="busybox:latest", network=network)
+    with _subreaper():
+        owner = subprocess.Popen(
+            [sys.executable, "-c", _OWNER, network],
+            stdout=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            sandbox = json.loads(owner.stdout.readline() or "null")
+            assert sandbox, "the owner failed to create its sandbox"
+            pids = _sandbox_processes(sandbox, network)
+
+            os.killpg(owner.pid, signal.SIGINT)
+            time.sleep(2)
+            assert owner.poll() is None
+            assert _running(pids) == pids
+            command = "echo Example"
+            if network == "public":
+                command = "wget -q -T 15 -O - http://example.com"
+            res = subprocess.run(
+                [*backend._runsc_base_args(config), "exec", sandbox["id"]]
+                + ["sh", "-c", command],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            assert "Example" in res.stdout, res.stderr
+
+            os.killpg(owner.pid, signal.SIGTERM)
+            owner.wait()
+            assert not _wait_until_stopped(pids)
+        finally:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(owner.pid, signal.SIGKILL)
+            owner.wait()
+            backend._reclaim_unowned_bundles()
+
+
+def test_owner_interrupt_leaves_its_sandbox_running():
+    _check_owner_interrupt("none")
+
+
+def test_netns_owner_interrupt_leaves_its_sandbox_running(ensure_slirp4netns):
+    _check_owner_interrupt("public")
 
 
 _UDP_CLIENT = r"""
