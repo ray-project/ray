@@ -50,6 +50,33 @@ def test_batching_arrow_ipc_bytes(ensure_copy, max_chunksize, prefix_rows):
     assert pa.concat_tables(batches).equals(expected)
 
 
+@pytest.mark.parametrize("batch_size", [None, 4])
+@pytest.mark.parametrize("numpy_copy_follows", [False, True])
+@pytest.mark.parametrize(
+    "values,copy_skippable",
+    [(list(range(4)), True), ([[i] for i in range(4)], False)],
+)
+def test_batcher_numpy_copy_follows(
+    batch_size, numpy_copy_follows, values, copy_skippable
+):
+    block = pa.table({"a": values})
+    batcher = Batcher(
+        batch_size, ensure_copy=True, numpy_copy_follows=numpy_copy_follows
+    )
+    batcher.add(block)
+    batcher.done_adding()
+    batch = batcher.next_batch()
+
+    def data_address(table):
+        return table.column("a").chunk(0).buffers()[-1].address
+
+    # The block copy is skipped only for columns that the later NumPy copy
+    # fully copies.
+    copy_skipped = data_address(batch) == data_address(block)
+    assert copy_skipped == (numpy_copy_follows and copy_skippable)
+    assert batch.equals(block)
+
+
 def test_shuffling_batcher():
     batch_size = 5
     buffer_size = 20
