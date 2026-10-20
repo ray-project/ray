@@ -291,7 +291,9 @@ class ProtocolsProvider:
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
             with open(dest_file, "wb") as fout:
-                shutil.copyfileobj(fin, fout)
+                # Use 1 MiB chunks to bound memory usage while reducing read/write
+                # calls for large runtime environment packages.
+                shutil.copyfileobj(fin, fout, length=1024 * 1024)
 
 
 def _download_remote_uri(self, source_uri, dest_file):
