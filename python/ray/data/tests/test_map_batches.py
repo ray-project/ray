@@ -526,6 +526,48 @@ def test_map_batches_batch_zero_copy(
     assert mutated_ids == list(range(1, num_rows + 1))
 
 
+@pytest.mark.parametrize("batch_size", [2, 3])
+@pytest.mark.parametrize("with_variable_shaped_tensor", [False, True])
+def test_map_batches_numpy_batch_mutation(
+    ray_start_regular_shared, batch_size, with_variable_shaped_tensor
+):
+    # With ``zero_copy_batch=False``, mutating a NumPy batch in place must not
+    # change the source. Fixed-width columns are only copied as NumPy arrays,
+    # while variable-shaped tensors convert to object arrays whose elements point
+    # into the block, so the block itself has to be copied too.
+    def make_row(i, value):
+        row = {"id": value, "tensor": np.full((2, 2), value)}
+        if with_variable_shaped_tensor:
+            row["ragged"] = np.full(i + 1, value)
+        return row
+
+    def mutate(batch):
+        batch["id"] += 1
+        batch["tensor"] += 1
+        if with_variable_shaped_tensor:
+            for arr in batch["ragged"]:
+                arr += 1
+        return batch
+
+    def assert_rows(rows, offset):
+        rows = sorted(rows, key=lambda row: row["id"])
+        for i, row in enumerate(rows):
+            expected = make_row(i, i + offset)
+            assert row.keys() == expected.keys()
+            for key, value in expected.items():
+                np.testing.assert_array_equal(row[key], value)
+
+    source = ray.data.from_items(
+        [make_row(i, i) for i in range(4)], override_num_blocks=2
+    ).materialize()
+    mutated = source.map_batches(
+        mutate, batch_format="numpy", batch_size=batch_size, zero_copy_batch=False
+    )
+
+    assert_rows(mutated.take_all(), offset=1)
+    assert_rows(source.take_all(), offset=0)
+
+
 BLOCK_BUNDLING_TEST_CASES = [
     (block_size, batch_size)
     for batch_size in range(1, 8)
