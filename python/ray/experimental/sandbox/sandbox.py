@@ -200,6 +200,20 @@ class Sandbox:
         """
         return self.runtime.get_status(self.instance_id)
 
+    def set_egress_allowlist(self, cidrs: List[str]) -> None:
+        """Replace the egress allowlist of this network="public" sandbox.
+
+        The update is atomic. Connections the new list no longer allows stall
+        from their next packet, and no list opens the cluster's control
+        plane; see ``SandboxRuntime.set_egress_allowlist``.
+
+        Args:
+            cidrs: The new allowlist, in the forms ``cidr_allowlist`` takes.
+                ``ALLOW_ALL_CIDRS`` opens every destination outside the
+                control-plane guard.
+        """
+        self.runtime.set_egress_allowlist(self.instance_id, cidrs)
+
     def delete(self) -> None:
         """Clean up and terminate the sandbox instance."""
         self.runtime.delete(self.instance_id)
