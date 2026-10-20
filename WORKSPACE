@@ -228,9 +228,19 @@ local_runtime_repo(
     on_failure = "warn",
 )
 
+# Windows has no python3.exe; this one only gets used where python3 failed.
+local_runtime_repo(
+    name = "local_python",
+    interpreter_path = "python",
+    on_failure = "warn",
+)
+
 local_runtime_toolchains_repo(
     name = "local_python3_toolchains",
-    runtimes = ["local_python3"],
+    runtimes = [
+        "local_python3",
+        "local_python",
+    ],
 )
 
 register_toolchains("@local_python3_toolchains//:all")
