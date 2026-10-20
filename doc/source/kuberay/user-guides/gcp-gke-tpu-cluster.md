@@ -26,7 +26,7 @@ Replace the following:
 
 Run the following commands on your local machine or in [Google Cloud Shell](https://cloud.google.com/shell). If you run them from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
-Create a Standard GKE cluster and enable the Ray Operator add-on. For supported GKE versions by TPU generation, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#choose-tpu-version):
+For supported GKE versions by TPU generation, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#choose-tpu-version). Create a Standard GKE cluster and enable the Ray Operator add-on:
 
 ```bash
 gcloud container clusters create $CLUSTER_NAME \
@@ -36,7 +36,7 @@ gcloud container clusters create $CLUSTER_NAME \
     --num-nodes=1
 ```
 
-Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
+To add a TPU node pool to the cluster, run the commands in one of the following tabs. You can also create the node pool from the [Google Cloud console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console).
 
 ::::{tab-set}
 
@@ -102,7 +102,7 @@ gcloud container node-pools create tpu7x-multihost \
 
 ::::
 
-The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes, so the number of TPU hosts must equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-classes). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
+The `--tpu-topology` flag, or `--accelerator-topology` on a workload policy, specifies the physical topology of the TPU Pod slice. For example, each `ct6e-standard-4t` host has four chips, so a `4x4` v6e slice has 16 chips across four TPU hosts, each scheduled on its own node. GKE treats a multi-host TPU slice as an atomic unit and scales it as a node pool rather than as individual nodes. The number of TPU hosts must therefore equal the number of nodes in the TPU node pool. To provision multiple multi-host slices, create one node pool per slice or use [custom compute classes](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#custom-compute-classes). For more information about selecting a TPU topology and accelerator, see [About TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus).
 
 GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired machine type and topology. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#workload_preparation).
 
@@ -111,7 +111,7 @@ GKE uses Kubernetes node selectors to ensure TPU workloads run on the desired ma
 Configure the following node pool options based on your workload:
 
 - **Consumption options**: Add `--spot` for Spot VMs, `--flex-start` with `--num-nodes=0 --enable-autoscaling` for Dynamic Workload Scheduler Flex-Start, or `--reservation-affinity=specific --reservation=<reservation-name>` for reserved capacity. See [Choose a TPU consumption option](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus#tpu_reservation).
-- **Multi-NIC networking**: Multi-host TPU VMs include multiple network interfaces for high-bandwidth data center network traffic alongside the inter-chip interconnect. For multi-slice training or disaggregated reinforcement learning weight transfer, enable GKE Dataplane V2 with `--enable-dataplane-v2` when creating the cluster. Then pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` when creating the node pool. See [Configure automated multi-network support for TPUs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
+- **Multi-NIC networking**: Multi-host TPU VMs include multiple network interfaces for high-bandwidth data center network traffic alongside the inter-chip interconnect. For multi-slice training or disaggregated reinforcement learning weight transfer, enable GKE Dataplane V2 with `--enable-dataplane-v2` when you create the cluster. Then pass `--accelerator-network-profile=auto` and `--node-labels=cloud.google.com/gke-networking-dra-driver=true` when you create the node pool. See [Configure automated multi-network support for TPUs](https://cloud.google.com/kubernetes-engine/docs/how-to/config-auto-net-for-accelerators).
 
 ## Step 2: Connect to the GKE cluster
 
@@ -121,11 +121,11 @@ Run the following command to download Google Cloud credentials and configure `ku
 gcloud container clusters get-credentials $CLUSTER_NAME --location=$ZONE
 ```
 
-The remote GKE cluster is reachable through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
+You can then reach the remote GKE cluster through `kubectl`. For more details, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/how-to/cluster-access-for-kubectl).
 
 ### Optional: Manually install KubeRay and the TPU webhook
 
-In a cluster without the Ray Operator add-on enabled, install KubeRay with Helm by running the following commands. See {ref}`KubeRay operator installation <kuberay-operator-deploy>` for the full installation guide:
+If your cluster doesn't have the Ray Operator add-on enabled, install KubeRay with Helm by running the following commands. For the full installation guide, see {ref}`KubeRay operator installation <kuberay-operator-deploy>`.
 
 ```bash
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/

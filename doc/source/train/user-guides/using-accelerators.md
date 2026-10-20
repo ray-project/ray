@@ -47,7 +47,7 @@ To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. Also 
 
 Each worker maps to one TPU VM host. The total number of workers must be a multiple of the number of hosts in a single slice. For example, a `v6e` TPU slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
 
-For PyTorch workloads that use TorchTPU with {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device, and set `num_workers` to the total number of logical TPU devices across your slices. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
+For PyTorch workloads that use TorchTPU with {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device. Then set `num_workers` to the total number of logical TPU devices across your slices. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 
 For details on how TPU topologies map to the number of hosts, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
@@ -146,7 +146,9 @@ trainer = JaxTrainer(
 trainer.fit()
 ```
 
-When you use {class}`~ray.train.torch.TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for [TorchTPU](https://torchtpu.readthedocs.io/en/latest/), sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`:
+When you use {class}`~ray.train.torch.TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for [TorchTPU](https://torchtpu.readthedocs.io/en/latest/), sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`.
+
+The following example runs one training step with TorchTPU on 16 per-device workers:
 
 ```{testcode}
 :skipif: True
@@ -232,7 +234,7 @@ trainer.fit()
 :sync: TPU
 Each TPU VM host has multiple TPU chips. By default, when you specify `topology` and `accelerator_type`, Ray Train auto-detects the correct `resources_per_worker` for the given TPU slice configuration.
 
-To override the default, specify the number of chips explicitly in `resources_per_worker`. Supported chip counts are 1, 2, 4, and 8. For example, to use only two of the four chips on a `ct6e-standard-4t` host:
+To override the default, specify the number of chips in `resources_per_worker`. Supported chip counts are 1, 2, 4, and 8. The following example uses only two of the four chips on a `ct6e-standard-4t` host:
 
 ```python
 from ray.train import ScalingConfig
@@ -292,7 +294,7 @@ ScalingConfig(
 
 ### PyTorch: Set the communication backend
 
-PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) for communicating tensors across workers. By default, Ray Train uses NCCL when `use_gpu=True`, `tpu_dist` when `use_tpu=True`, and Gloo otherwise.
+PyTorch Distributed supports multiple [backends](https://docs.pytorch.org/docs/stable/distributed.html#backends) to communicate tensors across workers. By default, Ray Train uses NCCL when `use_gpu=True`, `tpu_dist` when `use_tpu=True`, and Gloo otherwise.
 
 To override the default, configure a {class}`~ray.train.torch.TorchConfig` and pass it to the {class}`~ray.train.torch.TorchTrainer`.
 
