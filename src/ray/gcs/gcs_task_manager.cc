@@ -181,7 +181,8 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
   // Truncate the profile events if needed.
   auto max_num_profile_events_per_task =
       RayConfig::instance().task_events_max_num_profile_events_per_task();
-  if (existing_task.profile_events().events_size() > max_num_profile_events_per_task) {
+  if (max_num_profile_events_per_task >= 0 &&
+      existing_task.profile_events().events_size() > max_num_profile_events_per_task) {
     auto to_drop =
         existing_task.profile_events().events_size() - max_num_profile_events_per_task;
     existing_task.mutable_profile_events()->mutable_events()->DeleteSubrange(0, to_drop);
