@@ -344,6 +344,13 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
+# Opt-in: when enabled, the optimizer may derive an advisory
+# `op_resource_reservation_ratio` from plan statistics. It never overrides a
+# value explicitly set by the user (via env var or `DataContext`).
+DEFAULT_ENABLE_COST_BASED_OPTIMIZATION = env_bool(
+    "RAY_DATA_ENABLE_COST_BASED_OPTIMIZATION", False
+)
+
 DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S = env_float(
     "RAY_DATA_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S", None
 )
@@ -810,6 +817,9 @@ class DataContext:
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
             each operator.
+        enable_cost_based_optimization: Whether to let the optimizer derive the
+            resource reservation ratio from plan statistics. Disabled by default.
+            Has no effect if ``op_resource_reservation_ratio`` is set explicitly.
         object_store_reservation_overshoot_ratio: An operator loses its share of the
             shared object-store memory pool once its object-store usage exceeds this
             multiple of its total reservation. The headroom above 1x absorbs the
@@ -1133,6 +1143,7 @@ class DataContext:
     max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+    enable_cost_based_optimization: bool = DEFAULT_ENABLE_COST_BASED_OPTIMIZATION
     output_backpressure_guard_release_interval_s: Optional[
         float
     ] = DEFAULT_OUTPUT_BACKPRESSURE_GUARD_RELEASE_INTERVAL_S
@@ -1238,7 +1249,26 @@ class DataContext:
         # This value increments only upon re-execution of the exact same pipeline.
         self._execution_idx = 0
 
+        # Whether `op_resource_reservation_ratio` was explicitly configured by the
+        # user (env var, constructor argument or attribute assignment). An explicit
+        # value always takes precedence over the CBO-derived one.
+        self._user_set_reservation_ratio = (
+            "RAY_DATA_OP_RESERVATION_RATIO" in os.environ
+            or self.op_resource_reservation_ratio
+            != DEFAULT_OP_RESOURCE_RESERVATION_RATIO
+        )
+        # Advisory reservation ratio derived by the optimizer for the most recently
+        # planned execution. Never written to `op_resource_reservation_ratio`.
+        self._cbo_derived_reservation_ratio: Optional[float] = None
+
     def __setattr__(self, name: str, value: Any) -> None:
+        if (
+            name == "op_resource_reservation_ratio"
+            and "_user_set_reservation_ratio" in self.__dict__
+        ):
+            # Assignments after `__post_init__` are explicit user configuration.
+            super().__setattr__("_user_set_reservation_ratio", True)
+
         if name == "scheduling_strategy" and (
             name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
         ):

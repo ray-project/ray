@@ -291,7 +291,9 @@ def _entry_identity(experiment_type: str, entry: Dict[str, Any]) -> str:
     )
 
 
-def _sort_entries(experiment_type: str, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _sort_entries(
+    experiment_type: str, entries: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     if experiment_type == "per_rule":
         return sorted(entries, key=lambda entry: str(entry.get("rule_name", "")))
     if experiment_type == "end_to_end":
@@ -548,7 +550,9 @@ def merge_benchmark_payloads(
     elif experiment_type == "end_to_end":
         runs = [benchmark_harness.RunMetrics(**entry) for entry in merged_entries]
         aggregates = benchmark_harness.aggregate_runs(runs)
-        merged_payload = build_end_to_end_payload(merged_entries, aggregates, merged_config)
+        merged_payload = build_end_to_end_payload(
+            merged_entries, aggregates, merged_config
+        )
     elif experiment_type == "r_value_matrix":
         merged_payload = build_r_value_matrix_payload(merged_entries, merged_config)
     elif experiment_type == "memory_profile":
@@ -646,7 +650,9 @@ def _render_matrix_lines(
     mean_r_error = round(
         statistics.mean(float(result.get("r_error") or 0.0) for result in results), 4
     )
-    within_005 = sum(1 for result in results if float(result.get("r_error") or 0.0) <= 0.05)
+    within_005 = sum(
+        1 for result in results if float(result.get("r_error") or 0.0) <= 0.05
+    )
     lines = [
         "## R-Value Matrix Summary",
         "",
@@ -809,7 +815,11 @@ def _render_end_to_end_lines(payload: Dict[str, Any]) -> List[str]:
             continue
         off_duration = float(off["duration_s_mean"])
         on_duration = float(on["duration_s_mean"])
-        delta_pct = ((on_duration - off_duration) / off_duration * 100.0) if off_duration else 0.0
+        delta_pct = (
+            ((on_duration - off_duration) / off_duration * 100.0)
+            if off_duration
+            else 0.0
+        )
         lines.append(
             f"| {mode} | {off_duration:.3f} | {on_duration:.3f} | {delta_pct:+.1f}% |"
         )
@@ -856,7 +866,9 @@ def render_markdown_report(
     elif experiment_type == "memory_profile":
         lines.extend(_render_memory_profile_lines(payload))
     else:
-        raise ValueError(f"Unsupported experiment_type for report rendering: {experiment_type}")
+        raise ValueError(
+            f"Unsupported experiment_type for report rendering: {experiment_type}"
+        )
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -967,10 +979,22 @@ def render_execution_log_markdown(
         _render_key_value_table(
             [
                 ("observed_payloads", coverage.get("observed_payloads", "")),
-                ("observed_subtask_indices", coverage.get("observed_subtask_indices", "")),
-                ("missing_subtask_indices", coverage.get("missing_subtask_indices", "")),
-                ("duplicate_subtask_indices", coverage.get("duplicate_subtask_indices", "")),
-                ("unexpected_subtask_indices", coverage.get("unexpected_subtask_indices", "")),
+                (
+                    "observed_subtask_indices",
+                    coverage.get("observed_subtask_indices", ""),
+                ),
+                (
+                    "missing_subtask_indices",
+                    coverage.get("missing_subtask_indices", ""),
+                ),
+                (
+                    "duplicate_subtask_indices",
+                    coverage.get("duplicate_subtask_indices", ""),
+                ),
+                (
+                    "unexpected_subtask_indices",
+                    coverage.get("unexpected_subtask_indices", ""),
+                ),
                 ("is_complete", coverage.get("is_complete", "")),
             ]
         )
@@ -983,7 +1007,10 @@ def render_execution_log_markdown(
     )
     lines.extend(
         _render_key_value_table(
-            [(name, path) for name, path in sorted(bundle_manifest["artifacts"].items())]
+            [
+                (name, path)
+                for name, path in sorted(bundle_manifest["artifacts"].items())
+            ]
         )
     )
     lines.extend(
@@ -1005,10 +1032,17 @@ def render_execution_log_markdown(
 def _render_matrix_qa_lines(payload: Dict[str, Any]) -> List[str]:
     results = payload.get("results", [])
     runtime_feedback = payload.get("runtime_feedback") or {}
-    mean_r_error = round(
-        statistics.mean(float(result.get("r_error") or 0.0) for result in results), 4
-    ) if results else 0.0
-    within_005 = sum(1 for result in results if float(result.get("r_error") or 0.0) <= 0.05)
+    mean_r_error = (
+        round(
+            statistics.mean(float(result.get("r_error") or 0.0) for result in results),
+            4,
+        )
+        if results
+        else 0.0
+    )
+    within_005 = sum(
+        1 for result in results if float(result.get("r_error") or 0.0) <= 0.05
+    )
     lines = [
         "### Q5: CBO 推导的 reservation_ratio 是否可信？",
         "",
@@ -1204,7 +1238,11 @@ def write_publication_bundle(
         render_community_qa_markdown(merged_payload, bundle_manifest),
         encoding="utf-8",
     )
-    bundle_manifest_path.write_text(json.dumps(bundle_manifest, indent=2), encoding="utf-8")
+    bundle_manifest_path.write_text(
+        json.dumps(bundle_manifest, indent=2), encoding="utf-8"
+    )
     bundle_manifest["artifacts"]["bundle_manifest_json"] = str(bundle_manifest_path)
-    bundle_manifest_path.write_text(json.dumps(bundle_manifest, indent=2), encoding="utf-8")
+    bundle_manifest_path.write_text(
+        json.dumps(bundle_manifest, indent=2), encoding="utf-8"
+    )
     return bundle_manifest

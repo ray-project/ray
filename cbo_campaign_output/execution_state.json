@@ -1,0 +1,18 @@
+{
+  "campaign_name": "cbo_phase6_campaign",
+  "generated_at": "2026-04-26T16:18:27.959551+00:00",
+  "updated_at": "2026-04-26T16:18:27.959911+00:00",
+  "state_path": "/Users/windwheel/Documents/gitrepo/ray/cbo_campaign_output/execution_state.json",
+  "tasks": {
+    "r_value_matrix.finalize": {
+      "status": "skipped_existing",
+      "experiment_type": "r_value_matrix",
+      "stage": "finalize",
+      "output_path": "/private/var/folders/qw/27p9xr7d5w5550fl20ykjsr80000gn/T/pytest-of-windwheel/pytest-28/test_execute_campaign_plan_fin0/campaign_out/r_value_matrix/bundle/bundle_manifest.json",
+      "log_path": "/private/var/folders/qw/27p9xr7d5w5550fl20ykjsr80000gn/T/pytest-of-windwheel/pytest-28/test_execute_campaign_plan_fin0/campaign_out/r_value_matrix/logs/finalize.log",
+      "dependency_ids": [],
+      "attempts": 0,
+      "finished_at": "2026-04-26T16:18:27.959909+00:00"
+    }
+  }
+}

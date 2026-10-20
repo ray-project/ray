@@ -26,14 +26,16 @@ import importlib.util
 import json
 import os
 import statistics
-import sys
 import time
 from contextlib import contextmanager
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray.data import DataContext, Dataset
+
+if TYPE_CHECKING:
+    import numpy as np
 
 try:
     from ray.data.benchmarks import cbo_benchmark_campaign as benchmark_campaign
@@ -62,25 +64,40 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _CBO_STATS_PATH = os.path.join(
-    os.path.dirname(__file__), os.pardir,
-    "_internal", "cbo_stats", "operator_statistics.py",
+    os.path.dirname(__file__),
+    os.pardir,
+    "_internal",
+    "cbo_stats",
+    "operator_statistics.py",
 )
 _CBO_STATS_PATH = os.path.abspath(_CBO_STATS_PATH)
 
 _cbo_mod = None
 
 
+def _has_native_cbo() -> bool:
+    """Whether the imported Ray build ships the CBO statistics package."""
+    return importlib.util.find_spec("ray.data._internal.cbo_stats") is not None
+
+
 def _load_cbo_module():
-    """Lazy-load the CBO statistics module from the local source tree."""
+    """Load the CBO statistics module, from the source tree on pre-CBO builds."""
     global _cbo_mod
     if _cbo_mod is not None:
         return _cbo_mod
+    if _has_native_cbo():
+        from ray.data._internal.cbo_stats import operator_statistics
+
+        _cbo_mod = operator_statistics
+        return _cbo_mod
     spec = importlib.util.spec_from_file_location(
-        "cbo_operator_statistics", _CBO_STATS_PATH,
+        "cbo_operator_statistics",
+        _CBO_STATS_PATH,
     )
     _cbo_mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(_cbo_mod)
     return _cbo_mod
+
 
 # ---------------------------------------------------------------------------
 # CBO statistics validation
@@ -103,11 +120,15 @@ def validate_statistics_infrastructure() -> bool:
 
     # 1. Basic creation
     stats = OperatorStatistics(num_rows=100000, size_bytes=8_000_000, confidence=0.95)
-    print(f"\n  [Read] stats: rows={stats.num_rows}, "
-          f"bytes={stats.size_bytes}, confidence={stats.confidence}")
+    print(
+        f"\n  [Read] stats: rows={stats.num_rows}, "
+        f"bytes={stats.size_bytes}, confidence={stats.confidence}"
+    )
 
     # 2. Selectivity estimation
-    col = ColumnStatistics(name="id", min_value=0, max_value=99999, distinct_count=100000)
+    col = ColumnStatistics(
+        name="id", min_value=0, max_value=99999, distinct_count=100000
+    )
     sel_eq = estimate_sel("id", "EQ", 42, col)
     sel_gt = estimate_sel("id", "GT", 50000, col)
     sel_lt = estimate_sel("id", "LT", 30000, col)
@@ -117,34 +138,46 @@ def validate_statistics_infrastructure() -> bool:
 
     # 3. Scale
     filtered = stats.scale(0.333)
-    print(f"\n  [Filter] After id%%3==0 (sel=0.333): "
-          f"rows={filtered.num_rows}, bytes={filtered.size_bytes}")
+    print(
+        f"\n  [Filter] After id%%3==0 (sel=0.333): "
+        f"rows={filtered.num_rows}, bytes={filtered.size_bytes}"
+    )
 
     # 4. Limit
     if filtered.num_rows and filtered.num_rows > 0:
         ratio = min(1.0, 1000 / filtered.num_rows)
         limited = filtered.scale(ratio)
-        print(f"  [Limit]  After limit(1000) (ratio={ratio:.4f}): "
-              f"rows={limited.num_rows}, bytes={limited.size_bytes}")
+        print(
+            f"  [Limit]  After limit(1000) (ratio={ratio:.4f}): "
+            f"rows={limited.num_rows}, bytes={limited.size_bytes}"
+        )
 
     # 5. Merge (Union)
     a = OperatorStatistics(num_rows=5000, size_bytes=400000, confidence=0.9)
     b = OperatorStatistics(num_rows=3000, size_bytes=240000, confidence=0.8)
     m = a.merge(b)
-    print(f"\n  [Union]  Merge: ({a.num_rows}+{b.num_rows})={m.num_rows} rows, "
-          f"({a.size_bytes}+{b.size_bytes})={m.size_bytes} bytes")
+    print(
+        f"\n  [Union]  Merge: ({a.num_rows}+{b.num_rows})={m.num_rows} rows, "
+        f"({a.size_bytes}+{b.size_bytes})={m.size_bytes} bytes"
+    )
 
     # 6. Full chain
-    print(f"\n  --- Full Pipeline Statistics Chain ---")
+    print("\n  --- Full Pipeline Statistics Chain ---")
     rs = OperatorStatistics(num_rows=100000, size_bytes=8_000_000, confidence=0.95)
     fs = rs.scale(0.333)
     print(f"  Read:        rows={rs.num_rows:>8}, bytes={rs.size_bytes:>10}")
     print(f"  Filter(33%): rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10}")
-    print(f"  MapBatches:  rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10} (pass-through)")
-    print(f"  Repartition: rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10} (pass-through)")
-    print(f"  Sort:        rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10} (pass-through)")
+    print(
+        f"  MapBatches:  rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10} (pass-through)"
+    )
+    print(
+        f"  Repartition: rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10} (pass-through)"
+    )
+    print(
+        f"  Sort:        rows={fs.num_rows:>8}, bytes={fs.size_bytes:>10} (pass-through)"
+    )
 
-    print(f"\n  All statistics checks PASSED!")
+    print("\n  All statistics checks PASSED!")
     return True
 
 
@@ -157,9 +190,11 @@ def _inject_infer_statistics():
     """Monkey-patch ``infer_statistics()`` onto installed ray operators.
 
     This is only needed when the installed Ray build does not yet ship with
-    CBO-aware operator classes.  The injected methods mirror the real
-    implementations in the local source tree.
+    CBO-aware operator classes.  The injected methods are simplified versions
+    of the real implementations in the local source tree.
     """
+    if _has_native_cbo():
+        return
     mod = _load_cbo_module()
     OperatorStatistics = mod.OperatorStatistics
     ConfidenceLevel = mod.ConfidenceLevel
@@ -167,10 +202,12 @@ def _inject_infer_statistics():
     from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
     from ray.data._internal.logical.operators.read_operator import Read
     from ray.data._internal.logical.operators.one_to_one_operator import (
-        AbstractOneToOne, Limit,
+        AbstractOneToOne,
+        Limit,
     )
     from ray.data._internal.logical.operators.all_to_all_operator import (
-        AbstractAllToAll, Repartition,
+        AbstractAllToAll,
+        Repartition,
     )
     from ray.data._internal.logical.operators.n_ary_operator import Union
 
@@ -184,9 +221,11 @@ def _inject_infer_statistics():
         if md.num_rows is None and md.size_bytes is None:
             return None
         return OperatorStatistics(
-            num_rows=md.num_rows, size_bytes=md.size_bytes,
+            num_rows=md.num_rows,
+            size_bytes=md.size_bytes,
             confidence=ConfidenceLevel.HIGH.value,
         )
+
     Read.infer_statistics = _read_stats
 
     # --- OneToOne (pass-through or None) ---
@@ -200,6 +239,7 @@ def _inject_infer_statistics():
         if callable(cmr):
             cmr = cmr()
         return inp if not cmr else None
+
     AbstractOneToOne.infer_statistics = _oto_stats
 
     # --- Filter (default 0.5 selectivity for UDF-based predicates) ---
@@ -211,6 +251,7 @@ def _inject_infer_statistics():
                 return None
             inp = self.input_dependencies[0].infer_statistics()
             return inp.scale(0.5) if inp is not None else None
+
         Filter.infer_statistics = _filter_stats
     except ImportError:
         pass
@@ -226,6 +267,7 @@ def _inject_infer_statistics():
         if lim and inp.num_rows and inp.num_rows > 0:
             return inp.scale(min(1.0, lim / inp.num_rows))
         return inp
+
     Limit.infer_statistics = _limit_stats
 
     # --- AllToAll (pass-through) ---
@@ -233,6 +275,7 @@ def _inject_infer_statistics():
         if not self.input_dependencies:
             return None
         return self.input_dependencies[0].infer_statistics()
+
     AbstractAllToAll.infer_statistics = _a2a_stats
 
     # --- Repartition (update num_blocks) ---
@@ -240,10 +283,13 @@ def _inject_infer_statistics():
         s = AbstractAllToAll.infer_statistics(self)
         if s is not None and self._num_outputs is not None:
             s = OperatorStatistics(
-                num_rows=s.num_rows, size_bytes=s.size_bytes,
-                num_blocks=self._num_outputs, confidence=s.confidence,
+                num_rows=s.num_rows,
+                size_bytes=s.size_bytes,
+                num_blocks=self._num_outputs,
+                confidence=s.confidence,
             )
         return s
+
     Repartition.infer_statistics = _repart_stats
 
     # --- Union (merge branches) ---
@@ -255,6 +301,7 @@ def _inject_infer_statistics():
                 return None
             merged = ds if merged is None else merged.merge(ds)
         return merged
+
     Union.infer_statistics = _union_stats
 
 
@@ -274,7 +321,8 @@ def _print_dag_statistics(dag, depth=0):
             parts.append(f"bytes={stats.size_bytes}")
         if stats.num_blocks is not None:
             parts.append(f"blocks={stats.num_blocks}")
-        print(f"  {indent}{name}: {', '.join(parts) or '?'}")
+        parts.append(f"confidence={stats.confidence:.2f}")
+        print(f"  {indent}{name}: {', '.join(parts)}")
     else:
         print(f"  {indent}{name}: [statistics unavailable]")
 
@@ -292,21 +340,23 @@ def demo_live_statistics(num_rows: int = 10000):
     ds = ray.data.range(num_rows)
     ds = ds.filter(lambda row: row["id"] % 3 == 0)
     ds = ds.map_batches(
-        lambda b: {"id": b["id"] * 2}, batch_size=2048, batch_format="numpy",
+        lambda b: {"id": b["id"] * 2},
+        batch_size=2048,
+        batch_format="numpy",
     )
     ds = ds.repartition(16)
     ds = ds.sort(key="id")
-    _print_dag_statistics(ds._plan._logical_plan.dag)
+    _print_dag_statistics(ds._logical_plan.dag)
 
     # Pipeline 2: Read → Limit
     print(f"\n  --- range({num_rows}) → limit(100) ---")
     ds2 = ray.data.range(num_rows).limit(100)
-    _print_dag_statistics(ds2._plan._logical_plan.dag)
+    _print_dag_statistics(ds2._logical_plan.dag)
 
     # Pipeline 3: Union
-    print(f"\n  --- union(range(5000), range(3000)) ---")
+    print("\n  --- union(range(5000), range(3000)) ---")
     ds3 = ray.data.range(5000).union(ray.data.range(3000))
-    _print_dag_statistics(ds3._plan._logical_plan.dag)
+    _print_dag_statistics(ds3._logical_plan.dag)
 
 
 # ---------------------------------------------------------------------------
@@ -415,33 +465,6 @@ def _estimate_chain_data_scale_bytes(
     return num_rows * (8 + max(payload_bytes_per_row, 0))
 
 
-def _estimate_filtered_rows(num_rows: int) -> int:
-    return max(num_rows // 3, 1)
-
-
-def _estimate_shuffle_bytes(
-    num_rows: int,
-    payload_bytes_per_row: int,
-) -> int:
-    return _estimate_filtered_rows(num_rows) * (8 + max(payload_bytes_per_row, 0))
-
-
-def _estimate_output_buffer_bytes(
-    num_rows: int,
-    payload_bytes_per_row: int,
-) -> int:
-    return _estimate_shuffle_bytes(num_rows, payload_bytes_per_row)
-
-
-def _estimate_reserved_budget_bytes(
-    data_scale_bytes: int,
-    transform_ops: int,
-    reservation_ratio: float,
-) -> float:
-    eligible_ops = max(transform_ops + 2, 1)
-    return max(float(data_scale_bytes) * float(reservation_ratio) / eligible_ops, 1.0)
-
-
 def build_parameterized_chain_dataset(
     num_rows: int,
     transform_ops: int,
@@ -478,16 +501,13 @@ def _summarize_stats(
     mode: str,
     enable_cbo: bool,
     batch_latencies: Optional[List[float]] = None,
-    transform_ops: Optional[int] = None,
-    payload_bytes_per_row: int = 0,
-    input_num_rows: Optional[int] = None,
 ) -> benchmark_harness.RunMetrics:
     """Extract execution stats from the materialised dataset.
 
     Handles missing or ``None`` stat fields gracefully so the benchmark can
     run against Ray builds that report partial statistics.
     """
-    plan = getattr(ds, "_plan", None)
+    plan = getattr(ds, "_logical_plan", None)
     if plan is None:
         # Fallback: return a bare RunMetrics with just timing
         return benchmark_harness.RunMetrics(
@@ -497,8 +517,9 @@ def _summarize_stats(
         )
 
     try:
-        plan_stats = plan.stats()
-        summary = plan_stats.to_summary()
+        # ``DatasetStatsSummary`` is the execution-mode-agnostic view of the
+        # operator stats; it does not trigger execution when already cached.
+        summary = ds.get_stats_summary()
     except Exception:
         return benchmark_harness.RunMetrics(
             mode=mode,
@@ -508,16 +529,15 @@ def _summarize_stats(
 
     operators_payload: List[Dict[str, Any]] = []
     total_input_rows = 0
-    operator_time_total_s = 0.0
-    critical_path_operator = ""
-    critical_path_time_s = 0.0
 
     for op in getattr(summary, "operators_stats", []):
-        op_rows = (
-            op.output_num_rows.get("sum", 0)
-            if isinstance(getattr(op, "output_num_rows", None), dict)
-            else 0
-        )
+        output_rows = getattr(op, "output_num_rows", None)
+        if isinstance(output_rows, dict):
+            # Older Ray builds expose a plain dict of aggregates.
+            op_rows = output_rows.get("sum", 0)
+        else:
+            # Current builds expose a ``StatsSummary`` dataclass.
+            op_rows = getattr(output_rows, "sum", 0) or 0
         time_s = getattr(op, "time_total_s", None) or 0.0
         operators_payload.append(
             {
@@ -530,12 +550,6 @@ def _summarize_stats(
             }
         )
         total_input_rows += getattr(op, "total_input_num_rows", 0) or 0
-        operator_time_total_s += time_s
-        if time_s >= critical_path_time_s:
-            critical_path_time_s = time_s
-            critical_path_operator = getattr(op, "operator_name", "unknown")
-
-    ctx = DataContext.get_current()
 
     # Streaming latency percentiles
     p50 = p95 = p99 = mean_lat = 0.0
@@ -549,6 +563,8 @@ def _summarize_stats(
 
     peak_heap_bytes = None
     try:
+        # Upstream Ray removed heap-memory tracking from ``DatasetStatsSummary``;
+        # this stays for builds that still expose it and degrades to ``None``.
         peak_heap_mib = summary.get_max_heap_memory()
         if peak_heap_mib:
             peak_heap_bytes = int(float(peak_heap_mib) * 1024 * 1024)
@@ -556,50 +572,16 @@ def _summarize_stats(
         peak_heap_bytes = None
 
     peak_object_store_bytes = _get_peak_object_store_bytes(summary)
-    global_bytes_restored = int(getattr(summary, "global_bytes_restored", 0) or 0)
-    dataset_bytes_restored = int(getattr(summary, "dataset_bytes_restored", 0) or 0)
-    operator_time_total_s = round(operator_time_total_s, 4)
-    stall_time_s = round(max(duration_s - operator_time_total_s, 0.0), 4)
-
-    estimated_shuffle_bytes = None
-    estimated_output_buffer_bytes = None
-    pressure_ratio = None
-    output_pressure_ratio = None
-    if transform_ops is not None and input_num_rows is not None:
-        data_scale_bytes = _estimate_chain_data_scale_bytes(
-            num_rows=input_num_rows,
-            payload_bytes_per_row=payload_bytes_per_row,
-        )
-        reserved_budget_bytes = _estimate_reserved_budget_bytes(
-            data_scale_bytes=data_scale_bytes,
-            transform_ops=transform_ops,
-            reservation_ratio=getattr(ctx, "op_resource_reservation_ratio", 0.5),
-        )
-        estimated_shuffle_bytes = _estimate_shuffle_bytes(
-            num_rows=input_num_rows,
-            payload_bytes_per_row=payload_bytes_per_row,
-        )
-        estimated_output_buffer_bytes = _estimate_output_buffer_bytes(
-            num_rows=input_num_rows,
-            payload_bytes_per_row=payload_bytes_per_row,
-        )
-        pressure_ratio = round(estimated_shuffle_bytes / reserved_budget_bytes, 4)
-        output_pressure_ratio = round(
-            estimated_output_buffer_bytes / max(reserved_budget_bytes * 0.5, 1.0),
-            4,
-        )
 
     return benchmark_harness.RunMetrics(
         mode=mode,
         enable_cbo=enable_cbo,
         duration_s=round(duration_s, 4),
-        reservation_ratio=getattr(ctx, "op_resource_reservation_ratio", 0.5),
+        reservation_ratio=_effective_reservation_ratio(ds),
         operator_count=len(operators_payload),
         operators=operators_payload,
         global_bytes_spilled=getattr(summary, "global_bytes_spilled", 0),
         dataset_bytes_spilled=getattr(summary, "dataset_bytes_spilled", 0),
-        global_bytes_restored=global_bytes_restored,
-        dataset_bytes_restored=dataset_bytes_restored,
         streaming_schedule_s=round(
             getattr(summary, "streaming_exec_schedule_s", 0.0), 4
         ),
@@ -608,22 +590,31 @@ def _summarize_stats(
         latency_p95_ms=round(p95, 3),
         latency_p99_ms=round(p99, 3),
         latency_mean_ms=round(mean_lat, 3),
-        operator_time_total_s=operator_time_total_s,
-        stall_time_s=stall_time_s,
-        critical_path_operator=critical_path_operator,
-        critical_path_time_s=round(critical_path_time_s, 4),
         peak_object_store_bytes=peak_object_store_bytes,
         peak_heap_bytes=peak_heap_bytes,
-        estimated_shuffle_bytes=estimated_shuffle_bytes,
-        estimated_output_buffer_bytes=estimated_output_buffer_bytes,
-        pressure_ratio=pressure_ratio,
-        output_pressure_ratio=output_pressure_ratio,
     )
 
 
 # ---------------------------------------------------------------------------
 # Context management
 # ---------------------------------------------------------------------------
+
+
+def _effective_reservation_ratio(ds: Dataset) -> float:
+    """The reservation ratio the executor of ``ds`` actually used.
+
+    The CBO rule records the derived ratio on the dataset's own context (a copy
+    of the current context), so the current context's
+    ``op_resource_reservation_ratio`` is only the configured value.
+    """
+    ctx = getattr(ds, "context", None)
+    if ctx is None:
+        ctx = DataContext.get_current()
+    try:
+        from ray.data._internal.execution import resolve_reservation_ratio
+    except ImportError:  # Pre-CBO builds.
+        return getattr(ctx, "op_resource_reservation_ratio", 0.5)
+    return resolve_reservation_ratio(ctx)
 
 
 def _get_peak_object_store_bytes(summary) -> Optional[int]:
@@ -658,23 +649,16 @@ def _configure_context(
     have the ``enable_cost_based_optimization`` attribute (pre-CBO builds).
     """
     ctx = DataContext.get_current().copy()
-    # These attributes only exist in CBO-enabled builds; set them
-    # dynamically so the benchmark also works against stock Ray.
-    try:
-        ctx.enable_cost_based_optimization = enable_cbo
-    except (AttributeError, TypeError):
-        setattr(ctx, "enable_cost_based_optimization", enable_cbo)
-    try:
-        ctx._user_set_reservation_ratio = False
-    except (AttributeError, TypeError):
-        setattr(ctx, "_user_set_reservation_ratio", False)
+    # These attributes only exist in CBO-enabled builds. Data contexts accept
+    # unknown attributes, so the benchmark also works against stock Ray.
+    ctx.enable_cost_based_optimization = enable_cbo
+    ctx._user_set_reservation_ratio = False
     if forced_reservation_ratio is not None:
         ctx.op_resource_reservation_ratio = forced_reservation_ratio
-        try:
-            ctx._user_set_reservation_ratio = True
-        except (AttributeError, TypeError):
-            setattr(ctx, "_user_set_reservation_ratio", True)
-    if memory_poll_interval_s is not None and hasattr(ctx, "memory_usage_poll_interval_s"):
+        ctx._user_set_reservation_ratio = True
+    if memory_poll_interval_s is not None and hasattr(
+        ctx, "memory_usage_poll_interval_s"
+    ):
         ctx.memory_usage_poll_interval_s = memory_poll_interval_s
     ctx.execution_options.verbose_progress = False
     return ctx
@@ -784,9 +768,6 @@ def run_parameterized_workload(
             duration,
             mode="batch",
             enable_cbo=enable_cbo,
-            transform_ops=transform_ops,
-            payload_bytes_per_row=payload_bytes_per_row,
-            input_num_rows=num_rows,
         )
         metrics.workload_id = workload_id
         metrics.plan_description = plan_description
@@ -800,8 +781,6 @@ def run_parameterized_workload(
                 "transform_ops": transform_ops,
                 "payload_bytes_per_row": payload_bytes_per_row,
                 "pipeline_desc": plan_description,
-                "estimated_shuffle_bytes": metrics.estimated_shuffle_bytes,
-                "estimated_output_buffer_bytes": metrics.estimated_output_buffer_bytes,
             }
         )
         return metrics
@@ -831,12 +810,6 @@ def _aggregate_repeated_runs(
         dataset_bytes_spilled=int(
             statistics.mean(run.dataset_bytes_spilled for run in runs)
         ),
-        global_bytes_restored=int(
-            statistics.mean(run.global_bytes_restored for run in runs)
-        ),
-        dataset_bytes_restored=int(
-            statistics.mean(run.dataset_bytes_restored for run in runs)
-        ),
         streaming_schedule_s=round(
             statistics.mean(run.streaming_schedule_s for run in runs),
             4,
@@ -846,39 +819,41 @@ def _aggregate_repeated_runs(
         latency_p95_ms=round(statistics.mean(run.latency_p95_ms for run in runs), 3),
         latency_p99_ms=round(statistics.mean(run.latency_p99_ms for run in runs), 3),
         latency_mean_ms=round(statistics.mean(run.latency_mean_ms for run in runs), 3),
-        operator_time_total_s=round(
-            statistics.mean(run.operator_time_total_s for run in runs), 4
-        ),
-        stall_time_s=round(statistics.mean(run.stall_time_s for run in runs), 4),
-        critical_path_operator=max(
-            runs,
-            key=lambda run: run.critical_path_time_s,
-        ).critical_path_operator,
-        critical_path_time_s=round(
-            statistics.mean(run.critical_path_time_s for run in runs), 4
-        ),
         data_scale_bytes=first.data_scale_bytes,
-        peak_object_store_bytes=max(
-            run.peak_object_store_bytes or 0 for run in runs
-        )
+        peak_object_store_bytes=max(run.peak_object_store_bytes or 0 for run in runs)
         or None,
         peak_heap_bytes=max(run.peak_heap_bytes or 0 for run in runs) or None,
-        estimated_shuffle_bytes=int(
-            statistics.mean(run.estimated_shuffle_bytes or 0 for run in runs)
-        )
-        or None,
-        estimated_output_buffer_bytes=int(
-            statistics.mean(run.estimated_output_buffer_bytes or 0 for run in runs)
-        )
-        or None,
-        pressure_ratio=round(
-            statistics.mean(run.pressure_ratio or 0.0 for run in runs), 4
-        ),
-        output_pressure_ratio=round(
-            statistics.mean(run.output_pressure_ratio or 0.0 for run in runs), 4
-        ),
         metadata=dict(first.metadata),
     )
+
+
+def _rotate(items: List[Any], offset: int) -> List[Any]:
+    """Rotates a list so that every block starts with a different setting."""
+    if not items:
+        return []
+    offset %= len(items)
+    return list(items[offset:]) + list(items[:offset])
+
+
+def _paired_delta_stats(deltas: List[float]) -> Dict[str, Any]:
+    """Summarizes paired relative deltas.
+
+    A single pair carries no spread information, so it is reported as not
+    significant instead of pretending its point estimate is a result.
+    """
+    mean_delta = statistics.mean(deltas) if deltas else 0.0
+    median_delta = statistics.median(deltas) if deltas else 0.0
+    interval = (
+        benchmark_harness.bootstrap_mean_ci95(deltas) if len(deltas) >= 2 else None
+    )
+    return {
+        "mean": mean_delta,
+        "median": median_delta,
+        "ci95": interval,
+        "significant": bool(
+            interval is not None and (interval[0] > 0 or interval[1] < 0)
+        ),
+    }
 
 
 def run_r_value_matrix_experiment(
@@ -888,59 +863,171 @@ def run_r_value_matrix_experiment(
     subtask_index: Optional[int] = None,
     subtask_count: Optional[int] = None,
     log_fn=print,
-    checkpoint_hook=None,
+    warmup: bool = True,
 ) -> List[benchmark_harness.RValueMatrixResult]:
+    """Runs the R sweep as paired, interleaved blocks.
+
+    Each block executes every setting (derived, then each manual ratio) in a
+    rotated order and repeats the default ratio once at the end. Two properties
+    follow: no setting always runs first or last, and the spread between the two
+    identical default samples is an empirical noise floor. A ratio only leaves
+    the default when its paired delta both excludes zero and exceeds that floor.
+
+    ``derived`` is CBO enabled with the ratio resolved by the rule, not a manual
+    R; the derived-versus-default delta therefore includes every other CBO
+    effect and is reported with its own paired confidence interval.
+    """
     default_ratio = 0.5
+    ratios = list(dict.fromkeys([*sweep_ratios, default_ratio]))
+    settings: List[Any] = [("derived", True, None)] + [
+        (f"r={ratio:g}", False, ratio) for ratio in ratios
+    ]
+    default_key = f"r={default_ratio:g}"
+
     results: List[benchmark_harness.RValueMatrixResult] = []
     for workload in workloads:
         log_fn(
             f"[r-matrix] {workload.workload_id} rows={workload.num_rows} "
             f"ops={workload.transform_ops}"
         )
-        derived_runs = [
+        workload_kwargs = {
+            "num_rows": workload.num_rows,
+            "transform_ops": workload.transform_ops,
+        }
+        if warmup:
+            log_fn(f"[r-matrix][warmup] {workload.workload_id} derived + default")
+            run_parameterized_workload(**workload_kwargs, enable_cbo=True)
             run_parameterized_workload(
-                num_rows=workload.num_rows,
-                transform_ops=workload.transform_ops,
-                enable_cbo=True,
+                **workload_kwargs,
+                enable_cbo=False,
+                forced_reservation_ratio=default_ratio,
             )
-            for _ in range(repetitions)
-        ]
-        derived_metrics = _aggregate_repeated_runs(derived_runs)
-        sweep_detail: List[Dict[str, Any]] = []
-        for ratio in sweep_ratios:
-            manual_runs = [
-                run_parameterized_workload(
-                    num_rows=workload.num_rows,
-                    transform_ops=workload.transform_ops,
-                    enable_cbo=False,
+
+        runs: Dict[str, List[benchmark_harness.RunMetrics]] = {
+            key: [] for key, _, _ in settings
+        }
+        block_means: List[Dict[str, float]] = []
+        duplicate_gaps: List[float] = []
+        duplicate_spreads: List[float] = []
+
+        for block in range(1, repetitions + 1):
+            durations: Dict[str, List[float]] = {key: [] for key, _, _ in settings}
+            for key, enable_cbo, ratio in _rotate(settings, block - 1):
+                log_fn(
+                    f"[r-matrix] {workload.workload_id} "
+                    f"block {block}/{repetitions} {key}"
+                )
+                metrics = run_parameterized_workload(
+                    **workload_kwargs,
+                    enable_cbo=enable_cbo,
                     forced_reservation_ratio=ratio,
                 )
-                for _ in range(repetitions)
+                durations[key].append(metrics.duration_s)
+                runs[key].append(metrics)
+
+            duplicate = run_parameterized_workload(
+                **workload_kwargs,
+                enable_cbo=False,
+                forced_reservation_ratio=default_ratio,
+            )
+            durations[default_key].append(duplicate.duration_s)
+            runs[default_key].append(duplicate)
+
+            first, second = durations[default_key][0], durations[default_key][1]
+            baseline = (first + second) / 2
+            if baseline > 0:
+                duplicate_gaps.append(abs(first - second))
+                duplicate_spreads.append(abs(first - second) / baseline)
+            block_means.append(
+                {key: statistics.mean(values) for key, values in durations.items()}
+            )
+
+        noise_floor_s = statistics.median(duplicate_gaps) if duplicate_gaps else 0.0
+        noise_floor_pct = (
+            statistics.median(duplicate_spreads) if duplicate_spreads else 0.0
+        )
+
+        def _paired_deltas(key: str) -> List[float]:
+            return [
+                (means[key] - means[default_key]) / means[default_key]
+                for means in block_means
+                if means[default_key] > 0
             ]
-            manual_metrics = _aggregate_repeated_runs(manual_runs)
+
+        aggregates = {
+            key: _aggregate_repeated_runs(values) for key, values in runs.items()
+        }
+
+        sweep_detail: List[Dict[str, Any]] = []
+        for ratio in ratios:
+            key = f"r={ratio:g}"
+            is_default = abs(ratio - default_ratio) < 1e-9
+            summary = _paired_delta_stats(_paired_deltas(key))
+            time_values = [means[key] for means in block_means]
+            time_ci = benchmark_harness.bootstrap_mean_ci95(time_values)
+            metrics = aggregates[key]
             sweep_detail.append(
                 {
                     "ratio": ratio,
-                    "time_s": round(manual_metrics.duration_s, 4),
-                    "spill_bytes": max(
-                        manual_metrics.global_bytes_spilled,
-                        manual_metrics.dataset_bytes_spilled,
+                    "time_s": round(metrics.duration_s, 4),
+                    "time_s_samples": [round(value, 4) for value in time_values],
+                    "time_ci95": (
+                        None
+                        if time_ci is None
+                        else [round(time_ci[0], 4), round(time_ci[1], 4)]
                     ),
-                    "peak_heap_bytes": manual_metrics.peak_heap_bytes,
-                    "peak_object_store_bytes": manual_metrics.peak_object_store_bytes,
-                    "is_default": abs(ratio - default_ratio) < 1e-9,
+                    "delta_vs_default_pct": round(summary["mean"] * 100, 2),
+                    "delta_median_pct": round(summary["median"] * 100, 2),
+                    "delta_ci95": (
+                        None
+                        if summary["ci95"] is None
+                        else [
+                            round(summary["ci95"][0] * 100, 2),
+                            round(summary["ci95"][1] * 100, 2),
+                        ]
+                    ),
+                    "significant": bool(
+                        summary["significant"]
+                        and not is_default
+                        and abs(summary["median"]) > noise_floor_pct
+                    ),
+                    "spill_bytes": max(
+                        metrics.global_bytes_spilled,
+                        metrics.dataset_bytes_spilled,
+                    ),
+                    "peak_heap_bytes": metrics.peak_heap_bytes,
+                    "peak_object_store_bytes": metrics.peak_object_store_bytes,
+                    "is_default": is_default,
+                    "is_best": False,
                 }
             )
 
-        best = min(sweep_detail, key=lambda entry: entry["time_s"])
-        default_entry = next(
-            (
-                entry
-                for entry in sweep_detail
-                if abs(entry["ratio"] - default_ratio) < 1e-9
-            ),
-            sweep_detail[0],
+        default_entry = next(entry for entry in sweep_detail if entry["is_default"])
+        faster = [
+            entry
+            for entry in sweep_detail
+            if not entry["is_default"]
+            and entry["significant"]
+            and entry["delta_vs_default_pct"] < 0
+        ]
+        if faster:
+            best_entry = min(faster, key=lambda entry: entry["time_s"])
+            best_is_significant = True
+        else:
+            # Nothing beat the default beyond the noise floor; reporting a
+            # noisy argmin as the oracle value would be a fabrication.
+            best_entry = default_entry
+            best_is_significant = False
+        best_entry["is_best"] = True
+
+        derived_summary = _paired_delta_stats(_paired_deltas("derived"))
+        derived_metrics = aggregates["derived"]
+        derived_ci = derived_summary["ci95"]
+        derived_significant = bool(
+            derived_summary["significant"]
+            and abs(derived_summary["median"]) > noise_floor_pct
         )
+
         results.append(
             benchmark_harness.RValueMatrixResult(
                 workload_id=workload.workload_id,
@@ -948,12 +1035,15 @@ def run_r_value_matrix_experiment(
                 transform_ops=workload.transform_ops,
                 derived_ratio=float(derived_metrics.reservation_ratio),
                 derived_duration_s=derived_metrics.duration_s,
-                best_ratio=float(best["ratio"]),
-                best_duration_s=float(best["time_s"]),
+                best_ratio=float(best_entry["ratio"]),
+                best_duration_s=float(best_entry["time_s"]),
                 default_ratio=default_ratio,
                 default_duration_s=float(default_entry["time_s"]),
                 r_error=round(
-                    abs(float(derived_metrics.reservation_ratio) - float(best["ratio"])),
+                    abs(
+                        float(derived_metrics.reservation_ratio)
+                        - float(best_entry["ratio"])
+                    ),
                     4,
                 ),
                 operator_count=derived_metrics.operator_count,
@@ -968,10 +1058,19 @@ def run_r_value_matrix_experiment(
                 sweep_detail=sweep_detail,
                 subtask_index=subtask_index,
                 subtask_count=subtask_count,
+                blocks=len(block_means),
+                noise_floor_s=round(noise_floor_s, 4),
+                noise_floor_pct=round(noise_floor_pct * 100, 2),
+                best_is_significant=best_is_significant,
+                derived_vs_default_pct=round(derived_summary["mean"] * 100, 2),
+                derived_vs_default_ci95=(
+                    None
+                    if derived_ci is None
+                    else [round(derived_ci[0] * 100, 2), round(derived_ci[1] * 100, 2)]
+                ),
+                derived_vs_default_significant=derived_significant,
             )
         )
-        if checkpoint_hook is not None:
-            checkpoint_hook(results)
     return results
 
 
@@ -983,8 +1082,25 @@ def run_memory_profile_experiment(
     subtask_count: Optional[int] = None,
     preset_name: Optional[str] = None,
     log_fn=print,
-    checkpoint_hook=None,
+    warmup: bool = False,
 ) -> List[benchmark_harness.RunMetrics]:
+    if warmup:
+        warmed = set()
+        for case in plan:
+            key = (case.num_rows, case.transform_ops, case.payload_bytes_per_row)
+            if key in warmed:
+                continue
+            warmed.add(key)
+            log_fn(f"[warmup] {case.workload_id} memory-profile CBO=off/on")
+            for enable_cbo in (False, True):
+                run_parameterized_workload(
+                    num_rows=case.num_rows,
+                    transform_ops=case.transform_ops,
+                    enable_cbo=enable_cbo,
+                    payload_bytes_per_row=case.payload_bytes_per_row,
+                    memory_poll_interval_s=memory_poll_interval_s,
+                )
+
     results: List[benchmark_harness.RunMetrics] = []
     for case in plan:
         cbo_label = "ON" if case.cbo_enabled else "OFF"
@@ -1005,21 +1121,15 @@ def run_memory_profile_experiment(
             {
                 "run_id": case.run_id,
                 "repetition": case.repetition,
+                "block": case.block,
+                "slot": case.slot,
                 "run_group_id": f"{case.workload_id}:rep{case.repetition}",
                 "subtask_index": subtask_index,
                 "subtask_count": subtask_count,
                 "preset_name": preset_name,
             }
         )
-        if checkpoint_hook is not None:
-            checkpoint_hook(results)
     return results
-
-
-def _write_checkpoint_payload(path: str, payload: Dict[str, Any]) -> None:
-    _ensure_parent_dir(path)
-    with open(path, "w", encoding="utf-8") as fp:
-        json.dump(payload, fp, indent=2)
 
 
 def _parse_int_list(raw: str) -> List[int]:
@@ -1201,11 +1311,14 @@ def bench_operator_fusion(
     t_on = _timed_materialize(build, reps)
     imp = (t_off - t_on) / t_off * 100 if t_off > 0 else 0
     return benchmark_harness.RuleBenchResult(
-        rule_name="OperatorFusion", rule_category="RBO",
+        rule_name="OperatorFusion",
+        rule_category="RBO",
         optimization_goal="Throughput",
         pipeline_desc="range->map(x2)->map(+1)->map(heavy)",
-        baseline_label="No fusion", optimized_label="Fused",
-        baseline_time_s=round(t_off, 3), optimized_time_s=round(t_on, 3),
+        baseline_label="No fusion",
+        optimized_label="Fused",
+        baseline_time_s=round(t_off, 3),
+        optimized_time_s=round(t_on, 3),
         improvement_pct=round(imp, 1),
     )
 
@@ -1235,11 +1348,14 @@ def bench_predicate_pushdown(
     t_early = _timed_materialize(build_early, reps)
     imp = (t_late - t_early) / t_late * 100 if t_late > 0 else 0
     return benchmark_harness.RuleBenchResult(
-        rule_name="PredicatePushdown", rule_category="RBO",
+        rule_name="PredicatePushdown",
+        rule_category="RBO",
         optimization_goal="Throughput",
         pipeline_desc="range->[filter <-> map(heavy)]",
-        baseline_label="Filter after map", optimized_label="Filter before map",
-        baseline_time_s=round(t_late, 3), optimized_time_s=round(t_early, 3),
+        baseline_label="Filter after map",
+        optimized_label="Filter before map",
+        baseline_time_s=round(t_late, 3),
+        optimized_time_s=round(t_early, 3),
         improvement_pct=round(imp, 1),
     )
 
@@ -1273,12 +1389,14 @@ def bench_limit_pushdown(
     t_early = _timed_materialize(build_early, reps)
     imp = (t_late - t_early) / t_late * 100 if t_late > 0 else 0
     return benchmark_harness.RuleBenchResult(
-        rule_name="LimitPushdown", rule_category="RBO",
+        rule_name="LimitPushdown",
+        rule_category="RBO",
         optimization_goal="Throughput",
         pipeline_desc=f"range({num_rows})->[limit({limit_n}) <-> map+sort]",
         baseline_label="Limit after map+sort",
         optimized_label="Limit before map+sort",
-        baseline_time_s=round(t_late, 3), optimized_time_s=round(t_early, 3),
+        baseline_time_s=round(t_late, 3),
+        optimized_time_s=round(t_early, 3),
         improvement_pct=round(imp, 1),
     )
 
@@ -1309,11 +1427,14 @@ def bench_combine_shuffles(
     t_single = _timed_materialize(build_single, reps)
     imp = (t_double - t_single) / t_double * 100 if t_double > 0 else 0
     return benchmark_harness.RuleBenchResult(
-        rule_name="CombineShuffles", rule_category="RBO",
+        rule_name="CombineShuffles",
+        rule_category="RBO",
         optimization_goal="Throughput",
         pipeline_desc="map->repart(32)->repart(16) vs map->repart(16)",
-        baseline_label="Double repart", optimized_label="Single repart",
-        baseline_time_s=round(t_double, 3), optimized_time_s=round(t_single, 3),
+        baseline_label="Double repart",
+        optimized_label="Single repart",
+        baseline_time_s=round(t_double, 3),
+        optimized_time_s=round(t_single, 3),
         improvement_pct=round(imp, 1),
     )
 
@@ -1332,26 +1453,35 @@ def bench_reservation_ratio(
         ctx.op_resource_reservation_enabled = True
         ctx.execution_options.verbose_progress = False
         with _context_scope(ctx):
+
             def _build(r=ratio):  # noqa: B023
                 ds = ray.data.range(num_rows)
                 ds = ds.filter(lambda row: row["id"] % 2 == 0)
                 ds = ds.map_batches(_heavy_udf, batch_format="numpy")
                 return ds.sort(key="id")
+
             t = _timed_materialize(_build, reps)
-        sweep.append({"ratio": ratio, "time_s": round(t, 3),
-                       "is_default": ratio == default_r})
+        sweep.append(
+            {"ratio": ratio, "time_s": round(t, 3), "is_default": ratio == default_r}
+        )
     best = min(sweep, key=lambda e: e["time_s"])
     dflt = next(e for e in sweep if e["is_default"])
-    imp = ((dflt["time_s"] - best["time_s"]) / dflt["time_s"] * 100
-           if dflt["time_s"] > 0 else 0)
+    imp = (
+        (dflt["time_s"] - best["time_s"]) / dflt["time_s"] * 100
+        if dflt["time_s"] > 0
+        else 0
+    )
     return benchmark_harness.RuleBenchResult(
-        rule_name="DeriveReservationRatio", rule_category="CBO",
+        rule_name="DeriveReservationRatio",
+        rule_category="CBO",
         optimization_goal="Resource",
         pipeline_desc="filter->map->sort @ sweep R",
         baseline_label=f"R={default_r}",
         optimized_label=f"R={best['ratio']}",
-        baseline_time_s=dflt["time_s"], optimized_time_s=best["time_s"],
-        improvement_pct=round(imp, 1), sweep_detail=sweep,
+        baseline_time_s=dflt["time_s"],
+        optimized_time_s=best["time_s"],
+        improvement_pct=round(imp, 1),
+        sweep_detail=sweep,
     )
 
 
@@ -1364,27 +1494,37 @@ def bench_shuffle_partitions(
     default_n = 64
     sweep: List[Dict[str, Any]] = []
     for n in counts:
+
         def _build(n_parts=n):  # noqa: B023
             ds = ray.data.range(num_rows)
             ds = ds.map_batches(
-                lambda b: {"id": b["id"] * 2}, batch_format="numpy",
+                lambda b: {"id": b["id"] * 2},
+                batch_format="numpy",
             )
             return ds.repartition(n_parts)
+
         t = _timed_materialize(_build, reps)
-        sweep.append({"num_partitions": n, "time_s": round(t, 3),
-                       "is_default": n == default_n})
+        sweep.append(
+            {"num_partitions": n, "time_s": round(t, 3), "is_default": n == default_n}
+        )
     best = min(sweep, key=lambda e: e["time_s"])
     dflt = next(e for e in sweep if e["is_default"])
-    imp = ((dflt["time_s"] - best["time_s"]) / dflt["time_s"] * 100
-           if dflt["time_s"] > 0 else 0)
+    imp = (
+        (dflt["time_s"] - best["time_s"]) / dflt["time_s"] * 100
+        if dflt["time_s"] > 0
+        else 0
+    )
     return benchmark_harness.RuleBenchResult(
-        rule_name="DeriveShufflePartitions", rule_category="CBO",
+        rule_name="DeriveShufflePartitions",
+        rule_category="CBO",
         optimization_goal="Resource",
         pipeline_desc="map->repart(N) @ sweep N",
         baseline_label=f"N={default_n}",
         optimized_label=f"N={best['num_partitions']}",
-        baseline_time_s=dflt["time_s"], optimized_time_s=best["time_s"],
-        improvement_pct=round(imp, 1), sweep_detail=sweep,
+        baseline_time_s=dflt["time_s"],
+        optimized_time_s=best["time_s"],
+        improvement_pct=round(imp, 1),
+        sweep_detail=sweep,
     )
 
 
@@ -1435,182 +1575,271 @@ END_TO_END_RUNNERS = {
 }
 
 
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Production benchmark for Ray Data CBO."
     )
     # -- mode selection --
     parser.add_argument(
-        "--per-rule", action="store_true", default=False,
+        "--per-rule",
+        action="store_true",
+        default=False,
         help="Run per-rule benchmarks instead of end-to-end comparison.",
     )
     parser.add_argument(
-        "--rules", type=str, default=None,
+        "--rules",
+        type=str,
+        default=None,
         help="Comma-separated rule names to benchmark (default: all).  "
-             "E.g. 'OperatorFusion,LimitPushdown'.",
+        "E.g. 'OperatorFusion,LimitPushdown'.",
     )
     parser.add_argument(
-        "--validate-stats", action="store_true", default=False,
+        "--validate-stats",
+        action="store_true",
+        default=False,
         help="Run CBO statistics infrastructure validation.",
     )
     parser.add_argument(
-        "--r-value-matrix", action="store_true", default=False,
+        "--r-value-matrix",
+        action="store_true",
+        default=False,
         help="Run same-chain reservation-ratio matrix experiment.",
     )
     parser.add_argument(
-        "--memory-profile", action="store_true", default=False,
+        "--memory-profile",
+        action="store_true",
+        default=False,
         help="Run peak memory profiling experiment.",
     )
     parser.add_argument(
-        "--list-benchmarks", action="store_true", default=False,
+        "--list-benchmarks",
+        action="store_true",
+        default=False,
         help="Print the registered benchmark catalog and execution plan, then exit.",
     )
     parser.add_argument(
-        "--merge-results", action="store_true", default=False,
+        "--merge-results",
+        action="store_true",
+        default=False,
         help="Merge existing benchmark JSON payloads without starting Ray.",
     )
     parser.add_argument(
-        "--input-results", type=str, default=None,
+        "--input-results",
+        type=str,
+        default=None,
         help="Comma-separated JSON result files to merge for --merge-results.",
     )
     parser.add_argument(
-        "--input-results-file", type=str, default=None,
+        "--input-results-file",
+        type=str,
+        default=None,
         help="JSON file containing a list of result files to merge for --merge-results.",
     )
     parser.add_argument(
-        "--merge-manifest", type=str, default=None,
+        "--merge-manifest",
+        type=str,
+        default=None,
         help="Optional subtask manifest JSON used to validate merged shard coverage.",
     )
     parser.add_argument(
-        "--report-markdown", type=str, default=None,
+        "--report-markdown",
+        type=str,
+        default=None,
         help="Optional path to write a markdown benchmark report.",
     )
     parser.add_argument(
-        "--report-title", type=str, default=None,
+        "--report-title",
+        type=str,
+        default=None,
         help="Optional report title used by --report-markdown.",
     )
     parser.add_argument(
-        "--report-bundle-dir", type=str, default=None,
+        "--report-bundle-dir",
+        type=str,
+        default=None,
         help="Optional output directory for the Phase5 publication bundle.",
     )
     parser.add_argument(
-        "--environment-metadata-json", type=str, default=None,
+        "--environment-metadata-json",
+        type=str,
+        default=None,
         help="Optional JSON file with environment metadata merged into the publication bundle.",
     )
     parser.add_argument(
-        "--campaign-template-output", type=str, default=None,
+        "--campaign-template-output",
+        type=str,
+        default=None,
         help="Write a Phase6 campaign-spec template JSON, then exit.",
     )
     parser.add_argument(
-        "--campaign-spec", type=str, default=None,
+        "--campaign-spec",
+        type=str,
+        default=None,
         help="Load a Phase6 campaign spec JSON.",
     )
     parser.add_argument(
-        "--campaign-plan-output", type=str, default=None,
+        "--campaign-plan-output",
+        type=str,
+        default=None,
         help="Optional path to write the generated campaign plan JSON.",
     )
     parser.add_argument(
-        "--run-campaign", action="store_true", default=False,
+        "--run-campaign",
+        action="store_true",
+        default=False,
         help="Execute the task plan generated from --campaign-spec.",
     )
     parser.add_argument(
-        "--campaign-dry-run", action="store_true", default=False,
+        "--campaign-dry-run",
+        action="store_true",
+        default=False,
         help="Print campaign commands without executing them.",
     )
     parser.add_argument(
-        "--no-campaign-resume", action="store_true", default=False,
+        "--no-campaign-resume",
+        action="store_true",
+        default=False,
         help="Disable Phase6 skip-completed behavior when running a campaign.",
     )
     parser.add_argument(
-        "--feedback-alpha", type=float, default=0.7,
+        "--feedback-alpha",
+        type=float,
+        default=0.7,
         help="EMA alpha used by Phase4 runtime-feedback convergence analysis.",
     )
     parser.add_argument(
-        "--feedback-tolerance", type=float, default=0.02,
+        "--feedback-tolerance",
+        type=float,
+        default=0.02,
         help="Convergence tolerance for Phase4 runtime-feedback analysis.",
     )
     parser.add_argument(
-        "--feedback-max-iterations", type=int, default=5,
+        "--feedback-max-iterations",
+        type=int,
+        default=5,
         help="Maximum feedback iterations simulated in Phase4 analysis.",
     )
     # -- data scale --
     parser.add_argument(
-        "--num-rows", type=int, default=200_000,
+        "--num-rows",
+        type=int,
+        default=200_000,
         help="Row count for per-rule benchmarks (default: 200000).",
     )
     parser.add_argument(
-        "--batch-rows", type=int, default=200_000,
+        "--batch-rows",
+        type=int,
+        default=200_000,
         help="Row count for end-to-end batch workload.",
     )
     parser.add_argument(
-        "--streaming-rows", type=int, default=150_000,
+        "--streaming-rows",
+        type=int,
+        default=150_000,
         help="Row count for end-to-end streaming workload.",
     )
     parser.add_argument(
-        "--matrix-row-scales", type=str, default="200000,500000",
+        "--matrix-row-scales",
+        type=str,
+        default="200000,500000",
         help="Comma-separated row counts for the R-value matrix experiment.",
     )
     parser.add_argument(
-        "--matrix-operator-counts", type=str, default="2,4,6",
+        "--matrix-operator-counts",
+        type=str,
+        default="2,4,6",
         help="Comma-separated transform-operator counts for the R-value matrix experiment.",
     )
     parser.add_argument(
-        "--matrix-ratios", type=str, default="0.1,0.3,0.5,0.7,0.9",
+        "--matrix-ratios",
+        type=str,
+        default="0.1,0.3,0.5,0.7,0.9",
         help="Comma-separated reservation ratios to sweep in the R-value matrix experiment.",
     )
     parser.add_argument(
-        "--profile-row-scales", type=str, default="200000,500000",
+        "--profile-row-scales",
+        type=str,
+        default="200000,500000",
         help="Comma-separated row counts for the memory-profile experiment.",
     )
     parser.add_argument(
-        "--profile-operator-counts", type=str, default="2,4,6",
+        "--profile-operator-counts",
+        type=str,
+        default="2,4,6",
         help="Comma-separated transform-operator counts for the memory-profile experiment.",
     )
     parser.add_argument(
-        "--payload-bytes-per-row", type=int, default=2048,
+        "--payload-bytes-per-row",
+        type=int,
+        default=2048,
         help="Synthetic payload size per row for the memory-profile experiment.",
     )
     parser.add_argument(
-        "--profile-preset", type=str, default=None,
+        "--profile-preset",
+        type=str,
+        default=None,
         help="Named memory-profile preset. Available: 10gb_10m.",
     )
     parser.add_argument(
-        "--memory-poll-interval-s", type=float, default=0.1,
+        "--memory-poll-interval-s",
+        type=float,
+        default=0.1,
         help="Polling interval used to capture peak heap memory during memory profiling.",
     )
     # -- execution --
     parser.add_argument(
-        "--repetitions", type=int, default=3,
-        help="How many times to repeat each configuration.",
+        "--repetitions",
+        type=int,
+        default=3,
+        help=(
+            "How many paired blocks to run per configuration. End-to-end runs "
+            "repeat both settings twice per block; matrix runs repeat the "
+            "default ratio once per block to measure the noise floor."
+        ),
     )
     parser.add_argument(
-        "--object-store-memory-bytes", type=int, default=None,
+        "--object-store-memory-bytes",
+        type=int,
+        default=None,
         help="Optional object store memory override passed to ray.init().",
     )
     parser.add_argument(
-        "--ray-address", type=str, default="local",
+        "--ray-address",
+        type=str,
+        default="local",
         help="Ray address passed to ray.init() (default: local).",
     )
     parser.add_argument(
-        "--subtask-count", type=int, default=1,
+        "--subtask-count",
+        type=int,
+        default=1,
         help="How many subtasks to split matrix/profile workloads into.",
     )
     parser.add_argument(
-        "--subtask-index", type=int, default=0,
+        "--subtask-index",
+        type=int,
+        default=0,
         help="Which subtask shard to execute.",
     )
     parser.add_argument(
-        "--subtask-manifest-output", type=str, default=None,
+        "--subtask-manifest-output",
+        type=str,
+        default=None,
         help="Optional path to write the computed subtask manifest JSON.",
     )
     parser.add_argument(
-        "--warmup", action="store_true", default=False,
-        help="Run a warmup iteration (discarded) before timing.",
+        "--warmup",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Run one discarded warmup iteration per workload before timing "
+            "(default: on; use --no-warmup to disable)."
+        ),
     )
     parser.add_argument(
-        "--output", type=str, default="cbo_benchmark_results.json",
+        "--output",
+        type=str,
+        default="cbo_benchmark_results.json",
         help="Path to write the JSON results.",
     )
     args = parser.parse_args()
@@ -1638,7 +1867,9 @@ def main() -> None:
     if args.feedback_max_iterations < 0:
         parser.error("--feedback-max-iterations must be non-negative.")
     if args.merge_results and not (args.input_results or args.input_results_file):
-        parser.error("--merge-results requires --input-results or --input-results-file.")
+        parser.error(
+            "--merge-results requires --input-results or --input-results-file."
+        )
     if args.input_results and args.input_results_file:
         parser.error("Use only one of --input-results or --input-results-file.")
     if args.run_campaign and not args.campaign_spec:
@@ -1669,16 +1900,12 @@ def main() -> None:
     if args.campaign_spec:
         campaign_spec = benchmark_campaign.load_campaign_spec_file(args.campaign_spec)
         campaign_plan = benchmark_campaign.build_campaign_plan(campaign_spec)
-        campaign_plan_output = (
-            args.campaign_plan_output
-            or os.path.join(campaign_plan["output_dir"], "campaign_plan.json")
+        campaign_plan_output = args.campaign_plan_output or os.path.join(
+            campaign_plan["output_dir"], "campaign_plan.json"
         )
         benchmark_campaign.write_campaign_plan(campaign_plan_output, campaign_plan)
         print(benchmark_campaign.render_campaign_plan_summary(campaign_plan))
-        print(
-            "\nCampaign plan written to "
-            f"{os.path.abspath(campaign_plan_output)}"
-        )
+        print("\nCampaign plan written to " f"{os.path.abspath(campaign_plan_output)}")
         if args.run_campaign:
             campaign_result = benchmark_campaign.execute_campaign_plan(
                 campaign_plan,
@@ -1717,8 +1944,7 @@ def main() -> None:
                 args.feedback_max_iterations,
             )
             print(
-                "Markdown report written to "
-                f"{os.path.abspath(args.report_markdown)}"
+                "Markdown report written to " f"{os.path.abspath(args.report_markdown)}"
             )
         if args.report_bundle_dir:
             bundle_manifest = _write_publication_bundle(
@@ -1773,9 +1999,7 @@ def main() -> None:
             )
         )
         print()
-        print(
-            benchmark_harness.describe_memory_profile_plan(memory_plan)
-        )
+        print(benchmark_harness.describe_memory_profile_plan(memory_plan))
         manifest_payload: Dict[str, Any] = {}
         if args.subtask_count > 1:
             matrix_manifest = benchmark_harness.build_parameterized_subtask_manifest(
@@ -1823,12 +2047,6 @@ def main() -> None:
         except Exception as exc:
             print(f"\n  [WARN] Statistics validation skipped: {exc}")
 
-    if args.memory_profile and "RAY_DATA_CLUSTER_AUTOSCALER" not in os.environ:
-        # The local 10M/10GiB memory-profile workload does not benefit from
-        # autoscaling, and V2 can trip an internal utilization assertion under
-        # heavy spill pressure on single-node runs.
-        os.environ["RAY_DATA_CLUSTER_AUTOSCALER"] = "V1"
-
     ray_init_kwargs: Dict[str, Any] = {"ignore_reinit_error": True}
     if args.ray_address:
         ray_init_kwargs["address"] = args.ray_address
@@ -1854,8 +2072,7 @@ def main() -> None:
         if args.per_rule:
             # -- per-rule benchmark mode --
             rule_list = (
-                [r.strip() for r in args.rules.split(",")]
-                if args.rules else None
+                [r.strip() for r in args.rules.split(",")] if args.rules else None
             )
             selected_cases = benchmark_harness.select_rule_benchmark_cases(
                 RULE_BENCHMARK_CASES,
@@ -1864,7 +2081,8 @@ def main() -> None:
             if args.warmup:
                 print("\n[warmup] Running warmup pipeline ...")
                 ray.data.range(min(args.num_rows, 50_000)).map_batches(
-                    lambda b: b, batch_format="numpy",
+                    lambda b: b,
+                    batch_format="numpy",
                 ).materialize()
                 print("[warmup] Done.\n")
 
@@ -1900,31 +2118,29 @@ def main() -> None:
                 subtask_index=args.subtask_index,
                 subtask_count=args.subtask_count,
             )
+            matrix_results = run_r_value_matrix_experiment(
+                workloads=selected_workloads,
+                sweep_ratios=_parse_float_list(args.matrix_ratios),
+                repetitions=args.repetitions,
+                subtask_index=args.subtask_index,
+                subtask_count=args.subtask_count,
+                warmup=args.warmup,
+            )
             payload_config = {
                 "row_scales": _parse_int_list(args.matrix_row_scales),
                 "operator_counts": _parse_int_list(args.matrix_operator_counts),
                 "sweep_ratios": _parse_float_list(args.matrix_ratios),
                 "repetitions": args.repetitions,
+                "warmup": args.warmup,
+                "design": "paired_interleaved_blocks",
+                "noise_floor": "default ratio run twice per block",
+                "ci_method": "paired bootstrap over block deltas",
                 "subtask_index": args.subtask_index,
                 "subtask_count": args.subtask_count,
                 "selected_workload_ids": [
                     workload.workload_id for workload in selected_workloads
                 ],
             }
-            matrix_results = run_r_value_matrix_experiment(
-                workloads=selected_workloads,
-                sweep_ratios=_parse_float_list(args.matrix_ratios),
-                repetitions=args.repetitions,
-                checkpoint_hook=lambda partial_results: _write_checkpoint_payload(
-                    args.output,
-                    build_r_value_matrix_payload(
-                        [asdict(result) for result in partial_results],
-                        payload_config,
-                    ),
-                ),
-                subtask_index=args.subtask_index,
-                subtask_count=args.subtask_count,
-            )
         elif args.memory_profile:
             profile_inputs = _resolve_profile_inputs(args)
             memory_plan = benchmark_harness.build_memory_profile_plan(
@@ -1947,12 +2163,23 @@ def main() -> None:
                 subtask_index=args.subtask_index,
                 subtask_count=args.subtask_count,
             )
+            memory_profile_runs = run_memory_profile_experiment(
+                plan=selected_plan,
+                repetitions=args.repetitions,
+                memory_poll_interval_s=args.memory_poll_interval_s,
+                subtask_index=args.subtask_index,
+                subtask_count=args.subtask_count,
+                preset_name=profile_inputs["preset_name"],
+                warmup=args.warmup,
+            )
             payload_config = {
                 "row_scales": profile_inputs["row_counts"],
                 "operator_counts": profile_inputs["operator_counts"],
                 "payload_bytes_per_row": profile_inputs["payload_bytes_per_row"],
                 "memory_poll_interval_s": args.memory_poll_interval_s,
                 "repetitions": args.repetitions,
+                "warmup": args.warmup,
+                "design": "paired_interleaved_blocks",
                 "profile_preset": profile_inputs["preset_name"],
                 "target_total_bytes": profile_inputs.get("target_total_bytes"),
                 "target_rows": profile_inputs.get("target_rows"),
@@ -1960,32 +2187,8 @@ def main() -> None:
                 "subtask_count": args.subtask_count,
                 "selected_run_ids": [case.run_id for case in selected_plan],
             }
-            memory_profile_runs = run_memory_profile_experiment(
-                plan=selected_plan,
-                repetitions=args.repetitions,
-                memory_poll_interval_s=args.memory_poll_interval_s,
-                checkpoint_hook=lambda partial_runs: _write_checkpoint_payload(
-                    args.output,
-                    build_memory_profile_payload(
-                        [asdict(run) for run in partial_runs],
-                        payload_config,
-                    ),
-                ),
-                subtask_index=args.subtask_index,
-                subtask_count=args.subtask_count,
-                preset_name=profile_inputs["preset_name"],
-            )
         else:
             # -- end-to-end comparison mode --
-            if args.warmup:
-                print("\n[warmup] Running warmup iterations ...")
-                run_batch_workload(
-                    min(args.batch_rows, 50_000), enable_cbo=False,
-                )
-                run_streaming_workload(
-                    min(args.streaming_rows, 50_000), enable_cbo=False,
-                )
-                print("[warmup] Done.\n")
             execution_plan = benchmark_harness.build_end_to_end_execution_plan(
                 batch_rows=args.batch_rows,
                 streaming_rows=args.streaming_rows,
@@ -1995,6 +2198,7 @@ def main() -> None:
                 execution_plan,
                 END_TO_END_RUNNERS,
                 repetitions=args.repetitions,
+                warmup=args.warmup,
             )
     finally:
         ray.shutdown()
@@ -2003,7 +2207,9 @@ def main() -> None:
     if rule_results is not None:
         print(
             benchmark_harness.format_rule_results_table(
-                rule_results, args.num_rows, args.repetitions,
+                rule_results,
+                args.num_rows,
+                args.repetitions,
             )
         )
         payload = build_per_rule_payload(
@@ -2011,6 +2217,7 @@ def main() -> None:
             {
                 "num_rows": args.num_rows,
                 "repetitions": args.repetitions,
+                "warmup": args.warmup,
             },
         )
     elif matrix_results is not None:
@@ -2035,6 +2242,10 @@ def main() -> None:
                 "batch_rows": args.batch_rows,
                 "streaming_rows": args.streaming_rows,
                 "repetitions": args.repetitions,
+                "warmup": args.warmup,
+                "design": "paired_interleaved_blocks",
+                "block_slots": 2,
+                "order": "rotated per block, on/off slots swapped every block",
             },
         )
 
@@ -2057,10 +2268,7 @@ def main() -> None:
             args.feedback_tolerance,
             args.feedback_max_iterations,
         )
-        print(
-            "Markdown report written to "
-            f"{os.path.abspath(args.report_markdown)}"
-        )
+        print("Markdown report written to " f"{os.path.abspath(args.report_markdown)}")
     if args.report_bundle_dir:
         bundle_manifest = _write_publication_bundle(
             args.report_bundle_dir,

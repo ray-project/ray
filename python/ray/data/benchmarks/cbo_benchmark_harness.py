@@ -1,10 +1,33 @@
 from __future__ import annotations
 
+import random
 import statistics
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 GIB = 1024**3
+
+# Fixed seed so that reported intervals are reproducible across runs.
+BOOTSTRAP_SEED = 20261020
+BOOTSTRAP_RESAMPLES = 2000
+
+
+def bootstrap_mean_ci95(
+    values: Sequence[float],
+    resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = BOOTSTRAP_SEED,
+) -> Optional[Tuple[float, float]]:
+    """Percentile bootstrap interval of the mean of ``values``.
+
+    Returns None for an empty sample. The interval is only meaningful for
+    paired samples (one value per block).
+    """
+    if not values:
+        return None
+    rng = random.Random(seed)
+    n = len(values)
+    means = sorted(statistics.mean(rng.choices(values, k=n)) for _ in range(resamples))
+    return means[int(0.025 * resamples)], means[int(0.975 * resamples) - 1]
 
 
 @dataclass
@@ -21,25 +44,15 @@ class RunMetrics:
     operators: List[Dict[str, Any]] = field(default_factory=list)
     global_bytes_spilled: int = 0
     dataset_bytes_spilled: int = 0
-    global_bytes_restored: int = 0
-    dataset_bytes_restored: int = 0
     streaming_schedule_s: float = 0.0
     total_input_rows: int = 0
     latency_p50_ms: float = 0.0
     latency_p95_ms: float = 0.0
     latency_p99_ms: float = 0.0
     latency_mean_ms: float = 0.0
-    operator_time_total_s: float = 0.0
-    stall_time_s: float = 0.0
-    critical_path_operator: str = ""
-    critical_path_time_s: float = 0.0
     data_scale_bytes: Optional[int] = None
     peak_object_store_bytes: Optional[int] = None
     peak_heap_bytes: Optional[int] = None
-    estimated_shuffle_bytes: Optional[int] = None
-    estimated_output_buffer_bytes: Optional[int] = None
-    pressure_ratio: Optional[float] = None
-    output_pressure_ratio: Optional[float] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -95,6 +108,11 @@ class WorkloadExecutionCase:
     cbo_enabled: bool
     repetition: int
     runner_key: str
+    # Repetition index used to pair the CBO on/off runs of the same block.
+    block: int = 0
+    # Slot within a block: ``off_a``, ``off_b``, ``on_a`` or ``on_b``. The
+    # duplicate slots measure the noise floor of a single setting.
+    slot: str = ""
 
 
 @dataclass(frozen=True)
@@ -119,6 +137,10 @@ class ParameterizedExecutionCase:
     payload_bytes_per_row: int
     cbo_enabled: bool
     repetition: int
+    # Interleaving metadata. Memory-profile runs are too large to duplicate, so
+    # they alternate the CBO order per repetition instead of using two slots.
+    block: int = 0
+    slot: str = ""
 
 
 @dataclass
@@ -144,6 +166,17 @@ class RValueMatrixResult:
     sweep_detail: Optional[List[Dict[str, Any]]] = None
     subtask_index: Optional[int] = None
     subtask_count: Optional[int] = None
+    # -- measurement-quality fields --
+    # ``blocks`` paired repetitions were executed; every block repeated the
+    # default ratio once to measure the same-setting noise floor. ``best_ratio``
+    # only moves away from the default when the improvement clears that floor.
+    blocks: int = 0
+    noise_floor_s: float = 0.0
+    noise_floor_pct: float = 0.0
+    best_is_significant: bool = False
+    derived_vs_default_pct: Optional[float] = None
+    derived_vs_default_ci95: Optional[List[float]] = None
+    derived_vs_default_significant: bool = False
 
 
 @dataclass(frozen=True)
@@ -183,24 +216,38 @@ def build_end_to_end_execution_plan(
     streaming_rows: int,
     repetitions: int,
 ) -> List[WorkloadExecutionCase]:
+    """Builds an interleaved, paired execution plan.
+
+    Every block runs CBO off and on next to each other, in an order that
+    alternates between blocks, and repeats each setting once (slots ``a`` and
+    ``b``). The duplicate gives a same-setting noise floor, and the alternation
+    prevents one mode from always running second (see §benchmark methodology).
+    """
     plan: List[WorkloadExecutionCase] = []
-    for rep in range(1, repetitions + 1):
+    for block in range(1, repetitions + 1):
+        forward = block % 2 == 1
         for workload in build_default_end_to_end_workloads(batch_rows, streaming_rows):
-            for cbo_enabled in (False, True):
-                cbo_label = "on" if cbo_enabled else "off"
-                plan.append(
-                    WorkloadExecutionCase(
-                        run_id=(
-                            f"{workload.workload_id}-rep{rep}-cbo-{cbo_label}"
-                        ),
-                        workload_id=workload.workload_id,
-                        mode=workload.mode,
-                        num_rows=workload.num_rows,
-                        cbo_enabled=cbo_enabled,
-                        repetition=rep,
-                        runner_key=workload.runner_key,
+            pair = (False, True) if forward else (True, False)
+            for slot in ("a", "b"):
+                for cbo_enabled in pair:
+                    cbo_label = "on" if cbo_enabled else "off"
+                    run_slot = f"{cbo_label}_{slot}"
+                    plan.append(
+                        WorkloadExecutionCase(
+                            run_id=(
+                                f"{workload.workload_id}-rep{block}-cbo-{cbo_label}"
+                                f"-{slot}"
+                            ),
+                            workload_id=workload.workload_id,
+                            mode=workload.mode,
+                            num_rows=workload.num_rows,
+                            cbo_enabled=cbo_enabled,
+                            repetition=block,
+                            runner_key=workload.runner_key,
+                            block=block,
+                            slot=run_slot,
+                        )
                     )
-                )
     return plan
 
 
@@ -273,14 +320,23 @@ def build_memory_profile_plan(
     repetitions: int,
     payload_bytes_per_row: int,
 ) -> List[ParameterizedExecutionCase]:
+    """Builds a plan that alternates the CBO order on every repetition.
+
+    These runs allocate gigabytes each, so the setting is not duplicated to
+    measure a noise floor. Alternating the order still removes the systematic
+    "CBO always runs second" advantage, and the repetition index doubles as the
+    pairing block for reporting.
+    """
     plan: List[ParameterizedExecutionCase] = []
     for rep in range(1, repetitions + 1):
+        forward = rep % 2 == 1
+        order = (False, True) if forward else (True, False)
         for workload in build_parameterized_workloads(
             row_counts=row_counts,
             operator_counts=operator_counts,
             payload_bytes_per_row=payload_bytes_per_row,
         ):
-            for cbo_enabled in (False, True):
+            for cbo_enabled in order:
                 cbo_label = "on" if cbo_enabled else "off"
                 plan.append(
                     ParameterizedExecutionCase(
@@ -291,6 +347,8 @@ def build_memory_profile_plan(
                         payload_bytes_per_row=workload.payload_bytes_per_row,
                         cbo_enabled=cbo_enabled,
                         repetition=rep,
+                        block=rep,
+                        slot="single",
                     )
                 )
     return plan
@@ -402,9 +460,7 @@ def build_memory_profile_subtask_manifest(
 def describe_rule_catalog(cases: Sequence[RuleBenchmarkCase]) -> str:
     lines = ["Per-rule benchmark catalog:"]
     for case in cases:
-        lines.append(
-            f"  - {case.name} [{case.category}/{case.optimization_goal}]"
-        )
+        lines.append(f"  - {case.name} [{case.category}/{case.optimization_goal}]")
     return "\n".join(lines)
 
 
@@ -520,21 +576,51 @@ def execute_end_to_end_plan(
     runner_registry: Dict[str, WorkloadRunner],
     repetitions: int,
     log_fn: Callable[[str], None] = print,
+    warmup: bool = False,
 ) -> List[RunMetrics]:
+    if warmup:
+        _warmup_workloads(plan, runner_registry, log_fn)
+
     results: List[RunMetrics] = []
     for case in plan:
         runner = runner_registry.get(case.runner_key)
         if runner is None:
-            raise KeyError(
-                f"No workload runner registered for key '{case.runner_key}'"
-            )
+            raise KeyError(f"No workload runner registered for key '{case.runner_key}'")
         cbo_label = "ON" if case.cbo_enabled else "OFF"
         log_fn(
             f"[rep {case.repetition}/{repetitions}] "
-            f"{case.workload_id} mode={case.mode} CBO={cbo_label}"
+            f"{case.workload_id} mode={case.mode} CBO={cbo_label} "
+            f"slot={case.slot}"
         )
-        results.append(runner(case.num_rows, case.cbo_enabled))
+        metrics = runner(case.num_rows, case.cbo_enabled)
+        metrics.metadata.setdefault("block", case.block)
+        metrics.metadata.setdefault("slot", case.slot)
+        results.append(metrics)
     return results
+
+
+def _warmup_workloads(
+    cases: Sequence[Any],
+    runner_registry: Dict[str, WorkloadRunner],
+    log_fn: Callable[[str], None],
+) -> None:
+    """Runs every workload once per mode and discards the samples.
+
+    Worker start-up, module imports and metadata caches otherwise land in
+    whichever run happens to be first and bias the comparison.
+    """
+    warmed = set()
+    for case in cases:
+        key = (case.runner_key, case.num_rows)
+        if key in warmed:
+            continue
+        warmed.add(key)
+        runner = runner_registry.get(case.runner_key)
+        if runner is None:
+            raise KeyError(f"No workload runner registered for key '{case.runner_key}'")
+        log_fn(f"[warmup] {case.workload_id} rows={case.num_rows}")
+        for enable_cbo in (False, True):
+            runner(case.num_rows, enable_cbo)
 
 
 def aggregate_runs(runs: Sequence[RunMetrics]) -> Dict[str, Dict[str, Any]]:
@@ -560,38 +646,7 @@ def aggregate_runs(runs: Sequence[RunMetrics]) -> Dict[str, Dict[str, Any]]:
             "dataset_bytes_spilled_mean": int(
                 statistics.mean(value.dataset_bytes_spilled for value in values)
             ),
-            "global_bytes_restored_mean": int(
-                statistics.mean(value.global_bytes_restored for value in values)
-            ),
-            "dataset_bytes_restored_mean": int(
-                statistics.mean(value.dataset_bytes_restored for value in values)
-            ),
-            "operator_time_total_s_mean": round(
-                statistics.mean(value.operator_time_total_s for value in values), 4
-            ),
-            "stall_time_s_mean": round(
-                statistics.mean(value.stall_time_s for value in values), 4
-            ),
-            "critical_path_time_s_mean": round(
-                statistics.mean(value.critical_path_time_s for value in values), 4
-            ),
         }
-        pressure_values = [
-            value.pressure_ratio for value in values if value.pressure_ratio is not None
-        ]
-        output_pressure_values = [
-            value.output_pressure_ratio
-            for value in values
-            if value.output_pressure_ratio is not None
-        ]
-        if pressure_values:
-            aggregate["pressure_ratio_mean"] = round(
-                statistics.mean(pressure_values), 4
-            )
-        if output_pressure_values:
-            aggregate["output_pressure_ratio_mean"] = round(
-                statistics.mean(output_pressure_values), 4
-            )
         if values[0].mode == "streaming":
             aggregate["latency_p50_ms_mean"] = round(
                 statistics.mean(value.latency_p50_ms for value in values), 3
@@ -604,112 +659,64 @@ def aggregate_runs(runs: Sequence[RunMetrics]) -> Dict[str, Dict[str, Any]]:
             )
         aggregates[key] = aggregate
 
+    for mode in {run.mode for run in runs}:
+        paired = _paired_analysis([run for run in runs if run.mode == mode])
+        if paired is not None:
+            aggregates[f"{mode}-paired"] = paired
+
     return aggregates
 
 
-def compute_tail_event_labels(
-    runs: Sequence[RunMetrics],
-    baseline_multiplier: float = 1.15,
-    absolute_stall_ratio: float = 0.25,
-    pressure_threshold: float = 1.0,
-) -> List[Dict[str, Any]]:
-    grouped: Dict[str, Dict[bool, RunMetrics]] = {}
+def _paired_analysis(runs: Sequence[RunMetrics]) -> Optional[Dict[str, Any]]:
+    """Paired CBO on/off comparison over interleaved blocks.
+
+    Each block averages the two duplicate slots per setting, so the reported
+    delta is robust to order, and the same-setting spread is the noise floor
+    that a delta has to exceed to be called significant.
+    """
+    blocks: Dict[Any, Dict[str, float]] = {}
     for run in runs:
-        group_id = str(run.metadata.get("run_group_id") or run.workload_id)
-        grouped.setdefault(group_id, {})[bool(run.enable_cbo)] = run
-
-    labels: List[Dict[str, Any]] = []
-    for group_id, pair in grouped.items():
-        off_run = pair.get(False)
-        on_run = pair.get(True)
-        sample = on_run or off_run
-        if sample is None:
+        block = run.metadata.get("block")
+        slot = run.metadata.get("slot")
+        if block is None or not slot:
             continue
-        baseline_duration = off_run.duration_s if off_run is not None else sample.duration_s
-        observed_duration = on_run.duration_s if on_run is not None else sample.duration_s
-        delta_ratio = (
-            (observed_duration - baseline_duration) / baseline_duration
-            if baseline_duration > 0
-            else 0.0
-        )
-        stall_ratio_value = (
-            sample.stall_time_s / sample.duration_s if sample.duration_s > 0 else 0.0
-        )
-        pressure_ratio = sample.pressure_ratio or 0.0
-        is_tail = (
-            observed_duration >= baseline_duration * baseline_multiplier
-            or stall_ratio_value >= absolute_stall_ratio
-            or pressure_ratio >= pressure_threshold
-        )
-        labels.append(
-            {
-                "group_id": group_id,
-                "workload_id": sample.workload_id,
-                "transform_ops": sample.metadata.get("transform_ops"),
-                "repetition": sample.metadata.get("repetition"),
-                "cbo_enabled": sample.enable_cbo,
-                "baseline_duration_s": round(baseline_duration, 4),
-                "observed_duration_s": round(observed_duration, 4),
-                "delta_ratio": round(delta_ratio, 4),
-                "stall_ratio": round(stall_ratio_value, 4),
-                "pressure_ratio": round(pressure_ratio, 4),
-                "critical_path_operator": sample.critical_path_operator,
-                "critical_path_time_s": round(sample.critical_path_time_s, 4),
-                "is_tail_event": is_tail,
-            }
-        )
-    return sorted(
-        labels,
-        key=lambda item: (
-            int(item.get("transform_ops") or 0),
-            int(item.get("repetition") or 0),
-            str(item["group_id"]),
-        ),
-    )
+        blocks.setdefault(block, {})[slot] = run.duration_s
 
+    required = {"off_a", "off_b", "on_a", "on_b"}
+    complete = [slots for slots in blocks.values() if required <= set(slots)]
+    if not complete:
+        return None
 
-def summarize_tail_risk_by_ops(
-    runs: Sequence[RunMetrics],
-    baseline_multiplier: float = 1.15,
-    absolute_stall_ratio: float = 0.25,
-    pressure_threshold: float = 1.0,
-) -> List[Dict[str, Any]]:
-    labels = compute_tail_event_labels(
-        runs,
-        baseline_multiplier=baseline_multiplier,
-        absolute_stall_ratio=absolute_stall_ratio,
-        pressure_threshold=pressure_threshold,
-    )
-    grouped: Dict[int, List[Dict[str, Any]]] = {}
-    for label in labels:
-        ops = int(label.get("transform_ops") or 0)
-        grouped.setdefault(ops, []).append(label)
+    deltas: List[float] = []
+    noise: List[float] = []
+    for slots in complete:
+        off = (slots["off_a"] + slots["off_b"]) / 2
+        on = (slots["on_a"] + slots["on_b"]) / 2
+        if off <= 0 or on <= 0:
+            continue
+        deltas.append((on - off) / off)
+        noise.append(abs(slots["off_a"] - slots["off_b"]) / off)
+        noise.append(abs(slots["on_a"] - slots["on_b"]) / on)
+    if not deltas:
+        return None
 
-    summaries: List[Dict[str, Any]] = []
-    for ops, entries in sorted(grouped.items()):
-        deltas = [float(entry["delta_ratio"]) for entry in entries]
-        stall_ratios = [float(entry["stall_ratio"]) for entry in entries]
-        pressures = [float(entry["pressure_ratio"]) for entry in entries]
-        tail_events = [entry for entry in entries if entry["is_tail_event"]]
-        best = min(entries, key=lambda entry: entry["delta_ratio"])
-        worst = max(entries, key=lambda entry: entry["delta_ratio"])
-        summaries.append(
-            {
-                "transform_ops": ops,
-                "samples": len(entries),
-                "tail_events": len(tail_events),
-                "tail_rate": round(len(tail_events) / len(entries), 4) if entries else 0.0,
-                "delta_ratio_mean": round(statistics.mean(deltas), 4),
-                "delta_ratio_median": round(statistics.median(deltas), 4),
-                "stall_ratio_mean": round(statistics.mean(stall_ratios), 4),
-                "pressure_ratio_mean": round(statistics.mean(pressures), 4),
-                "best_group_id": best["group_id"],
-                "best_delta_ratio": round(float(best["delta_ratio"]), 4),
-                "worst_group_id": worst["group_id"],
-                "worst_delta_ratio": round(float(worst["delta_ratio"]), 4),
-            }
-        )
-    return summaries
+    mean_delta = statistics.mean(deltas)
+    median_delta = statistics.median(deltas)
+    noise_floor = statistics.median(noise)
+    interval = bootstrap_mean_ci95(deltas)
+    ci_low, ci_high = interval if interval is not None else (0.0, 0.0)
+    # A single outlier can pull the mean (and its interval) away from zero while
+    # the typical block shows no effect. Requiring the median to clear the noise
+    # floor keeps one slow run from being reported as a CBO result.
+    significant = (ci_low > 0 or ci_high < 0) and abs(median_delta) > noise_floor
+    return {
+        "blocks": len(deltas),
+        "delta_pct_mean": round(mean_delta * 100, 2),
+        "delta_pct_median": round(median_delta * 100, 2),
+        "delta_pct_ci95": [round(ci_low * 100, 2), round(ci_high * 100, 2)],
+        "noise_floor_pct": round(noise_floor * 100, 2),
+        "significant": bool(significant),
+    }
 
 
 def format_end_to_end_comparison(aggregates: Dict[str, Dict[str, Any]]) -> str:
@@ -733,9 +740,7 @@ def format_end_to_end_comparison(aggregates: Dict[str, Dict[str, Any]]) -> str:
         duration_off = off["duration_s_mean"]
         duration_on = on["duration_s_mean"]
         delta_pct = (
-            (duration_on - duration_off) / duration_off * 100
-            if duration_off > 0
-            else 0
+            (duration_on - duration_off) / duration_off * 100 if duration_off > 0 else 0
         )
         lines.append(
             f"  {'Duration (s)':<35} {duration_off:>12.3f} {duration_on:>12.3f} "
@@ -765,6 +770,28 @@ def format_end_to_end_comparison(aggregates: Dict[str, Dict[str, Any]]) -> str:
                     f"{value_off:>12.3f} {value_on:>12.3f}"
                 )
 
+        paired = aggregates.get(f"{mode}-paired")
+        if paired:
+            ci_low, ci_high = paired["delta_pct_ci95"]
+            lines.append(
+                f"  {'Paired delta (on-off), blocks':<35} "
+                f"{paired['delta_pct_mean']:>+11.1f}% "
+                f"{paired['blocks']:>3d} blocks"
+            )
+            lines.append(
+                f"  {'Paired delta median (on-off)':<35} "
+                f"{paired['delta_pct_median']:>+11.1f}%"
+            )
+            lines.append(
+                f"  {'Paired delta 95% CI':<35} "
+                f"{ci_low:>+11.1f}% {ci_high:>+11.1f}%"
+            )
+            lines.append(
+                f"  {'Noise floor (same setting)':<35} "
+                f"{paired['noise_floor_pct']:>11.1f}%  "
+                f"significant={'yes' if paired['significant'] else 'no'}"
+            )
+
     lines.append("\n" + "=" * 72)
     return "\n".join(lines)
 
@@ -781,11 +808,7 @@ def _fmt_sweep(
     lines.append(f"    {'---' * 13}")
     for entry in entries:
         value = entry[key]
-        delta = (
-            (entry["time_s"] - default_t) / default_t * 100
-            if default_t > 0
-            else 0
-        )
+        delta = (entry["time_s"] - default_t) / default_t * 100 if default_t > 0 else 0
         tag = "  (default)" if entry["is_default"] else ""
         if entry["time_s"] == best_t and not entry["is_default"]:
             tag = "  <- best"
@@ -847,7 +870,7 @@ def format_rule_results_table(
 def format_r_value_matrix_table(
     results: Sequence[RValueMatrixResult],
 ) -> str:
-    width = 108
+    width = 118
     separator = "=" * width
     lines: List[str] = [
         separator,
@@ -856,23 +879,61 @@ def format_r_value_matrix_table(
         (
             f"  {'Workload':<28} {'Rows':>10} {'Ops':>6} {'Derived R':>10} "
             f"{'Best R':>10} {'R Error':>10} {'Derived (s)':>12} {'Best (s)':>10}"
+            f" {'Derived vs Default':>19}"
         ),
         f"  {'-' * (width - 4)}",
     ]
     for result in results:
+        delta = result.derived_vs_default_pct
+        delta_text = "n/a" if delta is None else f"{delta:+.1f}%"
         lines.append(
             f"  {result.workload_id:<28} {result.num_rows:>10,} "
             f"{result.transform_ops:>6} {result.derived_ratio:>10.3f} "
             f"{result.best_ratio:>10.3f} {result.r_error:>10.3f} "
             f"{result.derived_duration_s:>12.3f} {result.best_duration_s:>10.3f}"
+            f" {delta_text:>19}"
         )
     lines.append(f"  {'-' * (width - 4)}")
     lines.append("\n  Sweep details:")
     for result in results:
+        best_note = "" if result.best_is_significant else " (not significant)"
         lines.append(
             f"    {result.workload_id}: default={result.default_ratio:.2f} "
-            f"({result.default_duration_s:.3f}s), derived={result.derived_ratio:.2f}, "
-            f"best={result.best_ratio:.2f}"
+            f"({result.default_duration_s:.3f}s), derived={result.derived_ratio:.2f} "
+            f"({result.derived_duration_s:.3f}s), best={result.best_ratio:.2f} "
+            f"({result.best_duration_s:.3f}s){best_note}"
+        )
+        for entry in result.sweep_detail or []:
+            tag = "  (default)" if entry.get("is_default") else ""
+            if entry.get("is_best"):
+                tag = (
+                    "  <- fallback (no significant winner)"
+                    if entry.get("is_default")
+                    else "  <- best"
+                )
+            delta = entry.get("delta_vs_default_pct")
+            delta_text = "n/a" if delta is None else f"{delta:+.1f}%"
+            ci = entry.get("delta_ci95")
+            ci_text = "" if not ci else f" [{ci[0]:+.1f}%, {ci[1]:+.1f}%]"
+            significant = entry.get("significant")
+            if significant is None:
+                significance = ""
+            else:
+                significance = " sig" if significant else " n/s"
+            lines.append(
+                f"      r={entry['ratio']:<5.2f} {entry['time_s']:>8.3f}s "
+                f"{delta_text:>8}{ci_text:<20}{significance}{tag}"
+            )
+    lines.append("\n  Measurement quality:")
+    for result in results:
+        ci = result.derived_vs_default_ci95
+        ci_text = "n/a" if not ci else f"[{ci[0]:+.1f}%, {ci[1]:+.1f}%]"
+        lines.append(
+            f"    {result.workload_id}: blocks={result.blocks}, "
+            f"noise floor={result.noise_floor_s:.3f}s "
+            f"({result.noise_floor_pct:.1f}%), "
+            f"derived vs default={ci_text} "
+            f"significant={'yes' if result.derived_vs_default_significant else 'no'}"
         )
     lines.append(f"\n{separator}")
     return "\n".join(lines)
@@ -881,7 +942,7 @@ def format_r_value_matrix_table(
 def format_memory_profile_table(
     runs: Sequence[RunMetrics],
 ) -> str:
-    width = 168
+    width = 120
     separator = "=" * width
     lines: List[str] = [
         separator,
@@ -890,7 +951,6 @@ def format_memory_profile_table(
         (
             f"  {'Workload':<28} {'CBO':>5} {'Rows':>10} {'Ops':>6} "
             f"{'Peak Heap MB':>14} {'Peak Obj MB':>14} {'Spill MB':>12} "
-            f"{'Restore MB':>12} {'Pressure':>10} {'Stall %':>9} "
             f"{'R':>6} {'Time (s)':>10}"
         ),
         f"  {'-' * (width - 4)}",
@@ -898,7 +958,6 @@ def format_memory_profile_table(
     for run in runs:
         transform_ops = run.metadata.get("transform_ops")
         spill_bytes = max(run.global_bytes_spilled, run.dataset_bytes_spilled)
-        restored_bytes = max(run.global_bytes_restored, run.dataset_bytes_restored)
         peak_heap_mb = (
             (run.peak_heap_bytes or 0) / (1024**2)
             if run.peak_heap_bytes is not None
@@ -917,9 +976,6 @@ def format_memory_profile_table(
             f"{peak_heap_mb:>14.1f} "
             f"{peak_obj_mb:>14.1f} "
             f"{spill_bytes / (1024**2):>12.1f} "
-            f"{restored_bytes / (1024**2):>12.1f} "
-            f"{(run.pressure_ratio or 0.0):>10.2f} "
-            f"{((run.stall_time_s / run.duration_s * 100.0) if run.duration_s > 0 else 0.0):>9.1f} "
             f"{run.reservation_ratio:>6.2f} "
             f"{run.duration_s:>10.3f}"
         )

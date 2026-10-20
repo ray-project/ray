@@ -8,6 +8,7 @@ from .configure_map_task_memory import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
 from .derive_list_files_pushdown import DeriveListFilesPushdown
+from .derive_reservation_ratio_rule import DeriveReservationRatioRule
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
 from .operator_fusion import FuseOperators, are_remote_args_compatible
@@ -26,6 +27,7 @@ __all__ = [
     "ConfigureMapTaskMemoryRule",
     "ConfigureMapTaskMemoryUsingOutputSize",
     "DeriveListFilesPushdown",
+    "DeriveReservationRatioRule",
     "FuseOperators",
     "InheritTargetMaxBlockSizeRule",
     "LimitPushdownRule",

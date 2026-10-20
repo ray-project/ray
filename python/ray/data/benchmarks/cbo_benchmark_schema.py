@@ -304,6 +304,17 @@ def normalize_r_value_matrix_records(
                 "sweep_detail": result.get("sweep_detail"),
                 "subtask_index": result.get("subtask_index"),
                 "subtask_count": result.get("subtask_count"),
+                # Measurement quality: a best ratio only means something when the
+                # paired delta clears the same-setting noise floor.
+                "blocks": result.get("blocks"),
+                "noise_floor_s": result.get("noise_floor_s"),
+                "noise_floor_pct": result.get("noise_floor_pct"),
+                "best_is_significant": result.get("best_is_significant"),
+                "derived_vs_default_pct": result.get("derived_vs_default_pct"),
+                "derived_vs_default_ci95": result.get("derived_vs_default_ci95"),
+                "derived_vs_default_significant": result.get(
+                    "derived_vs_default_significant"
+                ),
             },
         )
         normalized.append(record.to_dict())
@@ -344,8 +355,12 @@ def normalize_memory_profile_records(
             run.get("total_input_rows"),
             run.get("data_scale_bytes"),
         )
-        plan_desc = run.get("plan_description") or metadata.get("pipeline_desc") or (
-            f"filter->map_batches*x{metadata.get('transform_ops')}->repartition->sort"
+        plan_desc = (
+            run.get("plan_description")
+            or metadata.get("pipeline_desc")
+            or (
+                f"filter->map_batches*x{metadata.get('transform_ops')}->repartition->sort"
+            )
         )
         spill_bytes = max(
             int(run.get("global_bytes_spilled", 0) or 0),
@@ -440,7 +455,9 @@ def validate_record(record: Dict[str, Any]) -> List[str]:
             errors.append(f"{key} must be a non-empty string")
 
     if record.get("record_type") not in {item.value for item in RecordType}:
-        errors.append(f"record_type must be one of {[item.value for item in RecordType]}")
+        errors.append(
+            f"record_type must be one of {[item.value for item in RecordType]}"
+        )
 
     duration_s = record.get("duration_s")
     if not isinstance(duration_s, (int, float)) or duration_s < 0:

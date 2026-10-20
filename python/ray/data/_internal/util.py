@@ -2111,6 +2111,25 @@ def get_max_task_capacity(
     return min(capacity.cpu, capacity.gpu, capacity.memory)
 
 
+def _format_cbo_statistics(plan: "LogicalPlan") -> str:
+    """Render the per-operator CBO statistics of an optimized logical plan."""
+    lines = []
+    for op in plan.dag.post_order_iter():
+        try:
+            stats = op.infer_statistics()
+        except Exception as e:
+            logger.debug(f"Failed to infer statistics of {op.name}: {e}")
+            stats = None
+        if stats is not None and stats.is_available():
+            lines.append(f"{op.name}: {stats.to_log_string()}")
+        else:
+            lines.append(f"{op.name}: [unknown]")
+    derived = getattr(plan.context, "_cbo_derived_reservation_ratio", None)
+    if derived is not None:
+        lines.append(f"Derived op resource reservation ratio: {derived:.2f}")
+    return "\n-------- Statistics (CBO) --------\n" + "\n".join(lines)
+
+
 def explain_plan(logical_plan: "LogicalPlan") -> str:
     """Return a string representation of the logical and physical plan."""
     from ray.data._internal.dataset_repr import _format_operator_dag
@@ -2131,6 +2150,11 @@ def explain_plan(logical_plan: "LogicalPlan") -> str:
 
     optimized_logical = LogicalOptimizer().optimize(logical_plan)
     _add_section("Logical Plan (Optimized)", optimized_logical)
+
+    if logical_plan.context.enable_cost_based_optimization:
+        # Statistics are inferred on the optimized plan, so they describe what
+        # the pushed-down operators will actually read and emit.
+        sections.append(_format_cbo_statistics(optimized_logical))
 
     physical_plan, _ = create_planner().plan(optimized_logical)
     _add_section("Physical Plan", physical_plan)

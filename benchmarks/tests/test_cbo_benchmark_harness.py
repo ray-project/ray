@@ -6,7 +6,12 @@ from pathlib import Path
 def _load_harness_module():
     repo_root = Path(__file__).resolve().parents[2]
     module_path = (
-        repo_root / "python" / "ray" / "data" / "benchmarks" / "cbo_benchmark_harness.py"
+        repo_root
+        / "python"
+        / "ray"
+        / "data"
+        / "benchmarks"
+        / "cbo_benchmark_harness.py"
     )
     spec = importlib.util.spec_from_file_location("cbo_benchmark_harness", module_path)
     module = importlib.util.module_from_spec(spec)
@@ -56,11 +61,34 @@ def test_build_end_to_end_execution_plan_expands_matrix():
         repetitions=2,
     )
 
-    assert len(plan) == 8
-    assert plan[0].run_id == "batch_primary-rep1-cbo-off"
-    assert plan[1].run_id == "batch_primary-rep1-cbo-on"
-    assert plan[2].run_id == "streaming_primary-rep1-cbo-off"
-    assert plan[-1].run_id == "streaming_primary-rep2-cbo-on"
+    # 2 workloads x 2 settings x 2 duplicate slots x 2 blocks.
+    assert len(plan) == 16
+    assert plan[0].run_id == "batch_primary-rep1-cbo-off-a"
+    assert plan[1].run_id == "batch_primary-rep1-cbo-on-a"
+    assert plan[2].run_id == "batch_primary-rep1-cbo-off-b"
+    assert plan[3].run_id == "batch_primary-rep1-cbo-on-b"
+    assert plan[4].run_id == "streaming_primary-rep1-cbo-off-a"
+    # The second block reverses the order so CBO never always runs second.
+    assert plan[8].run_id == "batch_primary-rep2-cbo-on-a"
+    assert plan[9].run_id == "batch_primary-rep2-cbo-off-a"
+    assert plan[-1].run_id == "streaming_primary-rep2-cbo-off-b"
+
+
+def test_build_end_to_end_execution_plan_pairs_every_setting():
+    plan = harness.build_end_to_end_execution_plan(
+        batch_rows=1000,
+        streaming_rows=500,
+        repetitions=2,
+    )
+
+    for block in (1, 2):
+        for workload_id in ("batch_primary", "streaming_primary"):
+            slots = {
+                case.slot
+                for case in plan
+                if case.block == block and case.workload_id == workload_id
+            }
+            assert slots == {"off_a", "off_b", "on_a", "on_b"}
 
 
 def test_execute_end_to_end_plan_uses_runner_registry():
@@ -161,6 +189,84 @@ def test_aggregate_runs_computes_expected_means():
     assert aggregates["batch-cbo-False"]["global_bytes_spilled_mean"] == 20
     assert aggregates["streaming-cbo-True"]["reservation_ratio_mean"] == 0.35
     assert aggregates["streaming-cbo-True"]["latency_p95_ms_mean"] == 22.0
+    # Runs without interleaving metadata carry no paired comparison.
+    assert "batch-paired" not in aggregates
+
+
+def _slotted_run(mode, block, slot, duration_s):
+    metrics = harness.RunMetrics(
+        mode=mode,
+        enable_cbo=slot.startswith("on"),
+        duration_s=duration_s,
+    )
+    metrics.metadata.update({"block": block, "slot": slot})
+    return metrics
+
+
+def test_paired_analysis_reports_delta_ci_and_noise_floor():
+    runs = []
+    for block in (1, 2):
+        runs.extend(
+            [
+                _slotted_run("batch", block, "off_a", 10.0),
+                _slotted_run("batch", block, "off_b", 10.2),
+                _slotted_run("batch", block, "on_a", 8.0),
+                _slotted_run("batch", block, "on_b", 8.1),
+            ]
+        )
+
+    paired = harness.aggregate_runs(runs)["batch-paired"]
+    assert paired["blocks"] == 2
+    assert paired["delta_pct_mean"] < 0
+    assert 0 < paired["noise_floor_pct"] < 3
+    ci_low, ci_high = paired["delta_pct_ci95"]
+    assert ci_high < 0
+    assert paired["significant"] is True
+
+
+def test_paired_analysis_does_not_treat_one_outlier_block_as_a_result():
+    # Shape of an observed 20k-row batch run: one block is ~34% slower while the
+    # other two are within a few percent, and same-setting duplicates vary by
+    # ~10%. The mean interval excludes zero but the median does not clear the
+    # noise floor, so the effect is not reported as real.
+    blocks = [
+        (1.2411, 1.1534, 1.1338, 1.3186),
+        (1.1564, 1.1682, 1.2056, 1.2517),
+        (1.2920, 1.1329, 1.9334, 1.3185),
+    ]
+    runs = []
+    for block, (off_a, off_b, on_a, on_b) in enumerate(blocks, start=1):
+        runs.extend(
+            [
+                _slotted_run("batch", block, "off_a", off_a),
+                _slotted_run("batch", block, "off_b", off_b),
+                _slotted_run("batch", block, "on_a", on_a),
+                _slotted_run("batch", block, "on_b", on_b),
+            ]
+        )
+
+    paired = harness.aggregate_runs(runs)["batch-paired"]
+    assert paired["delta_pct_ci95"][0] > 0
+    assert paired["delta_pct_median"] < paired["noise_floor_pct"]
+    assert paired["significant"] is False
+
+
+def test_paired_analysis_ignores_incomplete_blocks():
+    runs = [
+        _slotted_run("batch", 1, "off_a", 10.0),
+        _slotted_run("batch", 1, "off_b", 10.1),
+        _slotted_run("batch", 1, "on_a", 8.0),
+    ]
+    assert "batch-paired" not in harness.aggregate_runs(runs)
+
+
+def test_bootstrap_mean_ci95_is_deterministic_and_brackets_the_mean():
+    values = [1.0, 2.0, 3.0, 4.0]
+    first = harness.bootstrap_mean_ci95(values)
+    second = harness.bootstrap_mean_ci95(values)
+    assert first == second
+    assert first[0] <= 2.5 <= first[1]
+    assert harness.bootstrap_mean_ci95([]) is None
 
 
 def test_build_memory_profile_plan_expands_cbo_pairs():
@@ -174,7 +280,10 @@ def test_build_memory_profile_plan_expands_cbo_pairs():
     assert len(plan) == 8
     assert plan[0].run_id == "chain_rows1000_ops2-rep1-cbo-off"
     assert plan[1].run_id == "chain_rows1000_ops2-rep1-cbo-on"
-    assert plan[-1].run_id == "chain_rows1000_ops4-rep2-cbo-on"
+    # The second repetition reverses the order to remove the fixed-runner bias.
+    assert plan[4].run_id == "chain_rows1000_ops2-rep2-cbo-on"
+    assert plan[5].run_id == "chain_rows1000_ops2-rep2-cbo-off"
+    assert plan[-1].run_id == "chain_rows1000_ops4-rep2-cbo-off"
 
 
 def test_format_r_value_matrix_table_contains_error_column():
