@@ -4,11 +4,13 @@ import weakref
 from collections import deque
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
+    BlockMapTransformFn,
     MapTransformer,
     TransformClock,
 )
@@ -291,6 +293,186 @@ def test_every_output_block_is_timed():
         f"per-block transform times {[round(s, 4) for s in reported_s]} do not all "
         f"cover the {SLEEP_S}s slept while producing each block"
     )
+
+
+def _failing_block_transformer(tables_before_error):
+    """A one-stage transformer whose function yields ``tables_before_error``
+    one-row tables, then raises ``ValueError("bad input")``. Its output blocks
+    are 1 MiB, so the tables share one buffered block."""
+
+    def fn(blocks, ctx):
+        for i in range(tables_before_error):
+            yield pa.table({"x": [i]})
+        raise ValueError("bad input")
+
+    return MapTransformer(
+        [
+            BlockMapTransformFn(
+                fn,
+                output_block_size_option=OutputBlockSizeOption.of(
+                    target_max_block_size=1024 * 1024
+                ),
+            )
+        ]
+    )
+
+
+def _outputs(transformer, **retry_settings):
+    """The transformer's output blocks for one one-row input block, in a task
+    whose ``TaskContext`` carries ``retry_settings`` (how ``_map_task`` and Ray
+    rerun it).
+
+    A generator, so the task context is current while the blocks are drawn, as
+    ``_map_task`` sets it.
+    """
+    ctx = TaskContext(task_idx=0, op_name="test", **retry_settings)
+    with TaskContext.current(ctx):
+        yield from transformer.apply_transform(
+            iter([pa.table({"x": [0]})]), ctx, clock=TransformClock()
+        )
+
+
+@pytest.fixture
+def skip_errors(monkeypatch):
+    """Let the job skip an errored block (``max_errored_blocks=1``); returns the
+    patched ``DataContext``."""
+    from ray.data.context import DataContext
+
+    context = DataContext.get_current()
+    monkeypatch.setattr(context, "max_errored_blocks", 1)
+    return context
+
+
+def test_a_skipped_error_emits_the_buffered_rows_first(skip_errors):
+    """When the job skips errors, rows a transform produced before raising come
+    out as one last block, then the error is raised, so the task keeps them."""
+    out = _outputs(_failing_block_transformer(tables_before_error=2))
+
+    assert BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist() == [0, 1]
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_an_error_that_fails_the_job_emits_no_partial_block():
+    """With ``max_errored_blocks=0``, the default, the job fails anyway, so the
+    transform raises without emitting its buffered rows."""
+    out = _outputs(_failing_block_transformer(tables_before_error=2))
+
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_a_transform_failing_before_any_output_emits_no_block(skip_errors):
+    """A transform that raises before producing a row raises at once, without
+    an empty block."""
+    out = _outputs(_failing_block_transformer(tables_before_error=0))
+
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_a_transform_that_may_rerun_raises_without_a_partial_block(skip_errors):
+    """When ``_map_task`` may rerun the transform (``retried_map_errors``), the
+    buffered rows are not emitted: the rerun skips as many blocks as were
+    emitted, so a partial block would hide rows of the rerun's first block."""
+    # ``None`` patterns retry any error, as ``retried_map_errors=True`` sets them.
+    out = _outputs(
+        _failing_block_transformer(tables_before_error=2),
+        map_retries_left=1,
+        map_retried_errors=None,
+    )
+
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_an_error_no_retry_pattern_matches_emits_the_buffered_rows_first(
+    skip_errors,
+):
+    """``_map_task`` retries only errors that match ``retried_map_errors``, so an
+    error that matches none won't rerun the transform, and its buffered rows come
+    out first."""
+    out = _outputs(
+        _failing_block_transformer(tables_before_error=2),
+        map_retries_left=1,
+        map_retried_errors=["connection reset"],
+    )
+
+    assert BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist() == [0, 1]
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_an_error_a_retry_pattern_matches_raises_without_a_partial_block(
+    skip_errors,
+):
+    """An error that matches a ``retried_map_errors`` pattern may rerun the
+    transform, so its buffered rows are not emitted."""
+    out = _outputs(
+        _failing_block_transformer(tables_before_error=2),
+        map_retries_left=1,
+        map_retried_errors=["bad input"],
+    )
+
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_an_error_ray_reruns_the_task_on_raises_without_a_partial_block(
+    skip_errors,
+):
+    """Ray reruns a task on an error its ``retry_exceptions`` names, so the
+    buffered rows are not emitted, as for ``retried_map_errors``."""
+    out = _outputs(
+        _failing_block_transformer(tables_before_error=2),
+        ray_retried_exceptions=[ValueError],
+    )
+
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_an_error_ray_does_not_rerun_the_task_on_emits_the_buffered_rows_first(
+    skip_errors,
+):
+    """An error that ``retry_exceptions`` does not name won't rerun the task,
+    so its buffered rows come out first."""
+    out = _outputs(
+        _failing_block_transformer(tables_before_error=2),
+        ray_retried_exceptions=[KeyError],
+    )
+
+    assert BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist() == [0, 1]
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_the_last_map_attempt_emits_the_buffered_rows_first(skip_errors):
+    """On its last attempt ``_map_task`` won't rerun the transform even for an
+    error a pattern matches, so the buffered rows come out first."""
+    out = _outputs(
+        _failing_block_transformer(tables_before_error=2),
+        map_retries_left=0,
+        map_retried_errors=["bad input"],
+    )
+
+    assert BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist() == [0, 1]
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
+
+
+def test_actor_retry_settings_do_not_stop_a_task_pool_map_from_emitting(
+    skip_errors, monkeypatch
+):
+    """``actor_task_retry_on_errors`` applies to actor tasks only, through their
+    ``retry_exceptions``. A task that Ray won't rerun still emits its buffered
+    rows when the setting is on."""
+    monkeypatch.setattr(skip_errors, "actor_task_retry_on_errors", True)
+    out = _outputs(_failing_block_transformer(tables_before_error=2))
+
+    assert BlockAccessor.for_block(next(out)).to_arrow()["x"].to_pylist() == [0, 1]
+    with pytest.raises(ValueError, match="bad input"):
+        next(out)
 
 
 if __name__ == "__main__":
