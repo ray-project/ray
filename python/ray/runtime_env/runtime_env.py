@@ -272,8 +272,10 @@ class RuntimeEnv(dict):
             https://docs.docker.com/engine/reference/run/
             Each `run_options` item is passed as exactly one argument, so
             write a flag and its value as `--flag=value` or as two items.
-            `$NAME` and `${NAME}` in an item are expanded; `$$` is a literal
-            `$`. Expanded values, like the rest of `run_options`, appear on
+            `$NAME` and `${NAME}` in an item are expanded from the node's
+            whole environment, the job's `env_vars` as written, and the values
+            Ray sets for the container, such as the mounted
+            `RAY_AUTH_TOKEN_PATH`; `$$` is a literal `$`. Expanded values, like the rest of `run_options`, appear on
             podman's command line.
         env_vars: Environment variables to set.
         worker_process_setup_hook: Experimental. The setup hook that's

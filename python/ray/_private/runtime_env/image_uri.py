@@ -106,7 +106,7 @@ def _modify_context_impl(
     # Ray-owned values for the container. The job's env_vars and the host's
     # RAY_* vars are added when the worker is exec'd; see
     # RuntimeEnvContext._exec_container_worker.
-    container_env = dict()
+    ray_container_env = dict()
 
     # A token kept only in a file has no value in podman's environment to pass
     # by name, so mount the file read-only. A token in RAY_AUTH_TOKEN reaches
@@ -123,7 +123,7 @@ def _modify_context_impl(
         )
         if os.path.isfile(token_path):
             container_command.extend(["-v", f"{token_path}:{token_path}:ro"])
-            container_env["RAY_AUTH_TOKEN_PATH"] = token_path
+            ray_container_env["RAY_AUTH_TOKEN_PATH"] = token_path
 
     run_options = list(run_options or [])
     # Expanded at exec time, but checked here so a malformed item fails
@@ -147,7 +147,7 @@ def _modify_context_impl(
         "run_options": run_options,
         "image": image_uri,
         "entrypoint": "python",
-        "env_vars": container_env,
+        "env_vars": ray_container_env,
     }
 
 

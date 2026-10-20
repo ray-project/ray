@@ -157,11 +157,13 @@ class RuntimeEnvContext:
         # The job's env_vars go to the container only: podman runs with the
         # raylet's environment, so job values such as LD_PRELOAD can't affect
         # the host launcher. RAY_* vars are passed by name, so podman reads
-        # their values from that environment and they stay off podman's argv.
+        # their values from that environment and the --env flags carry none;
+        # a run_options item that references one still puts its value on argv.
         container_env: Dict[str, Optional[str]] = {
             name: None for name in launcher_env if name.startswith("RAY_")
         }
         # Passed as written, without expanding ${VAR} against the host env.
+        # TODO(ray-project/ray#67216): move job values off argv (--env-file).
         container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 
@@ -169,9 +171,10 @@ class RuntimeEnvContext:
         for name, value in container_env.items():
             cmd.extend(["--env", name if value is None else f"{name}={value}"])
         # After the --env flags, so a user's `--env NAME=VALUE` wins, as podman
-        # applies the last value given for a name. Expanded from what a shell
-        # running podman would have seen.
-        run_option_env = {**launcher_env, **self.env_vars}
+        # applies the last value given for a name. Expanded from the raylet's
+        # environment plus the values the container gets, with the job's
+        # env_vars as written, without the ${VAR} expansion update_envs applies.
+        run_option_env = {**launcher_env, **self.env_vars, **self.container["env_vars"]}
         for run_option in self.container["run_options"]:
             cmd.append(expand_run_option(run_option, run_option_env))
         cmd.extend(

@@ -1,7 +1,8 @@
 import logging
 import os
 import sys
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, NoReturn, Optional, Tuple
 from unittest import mock
 
 import pytest
@@ -24,6 +25,13 @@ def auth_env(monkeypatch, tmp_path):
     yield monkeypatch
     monkeypatch.undo()
     reset_auth_token_state()
+
+
+def _write_default_token(tmp_path: Path, token: str = TOKEN) -> Path:
+    token_path = tmp_path / ".ray" / "auth_token"
+    token_path.parent.mkdir()
+    token_path.write_text(token)
+    return token_path
 
 
 class _Exec(Exception):
@@ -49,10 +57,10 @@ def _launch(
     # The worker launcher gets the context through serialize()/deserialize().
     context = RuntimeEnvContext.deserialize(context.serialize())
 
-    def fake_execvpe(file, args, env):
+    def fake_execvpe(file: str, args: List[str], env: Dict[str, str]) -> NoReturn:
         raise _Exec(args, env)
 
-    def shell_launch(*args, **kwargs):
+    def shell_launch(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("container worker launched through a shell")
 
     with mock.patch.dict(os.environ), mock.patch.object(
@@ -72,9 +80,7 @@ def _container_command(
 
 
 def test_mounts_default_token_file(auth_env, tmp_path):
-    token_path = tmp_path / ".ray" / "auth_token"
-    token_path.parent.mkdir()
-    token_path.write_text(TOKEN)
+    token_path = _write_default_token(tmp_path)
     auth_env.setenv("RAY_AUTH_MODE", "token")
     reset_auth_token_state()
 
@@ -104,9 +110,7 @@ def test_mounts_token_path_from_env(auth_env, tmp_path, relative):
 
 
 def test_ignores_token_path_from_job_env_vars(auth_env, tmp_path):
-    token_path = tmp_path / ".ray" / "auth_token"
-    token_path.parent.mkdir()
-    token_path.write_text(TOKEN)
+    token_path = _write_default_token(tmp_path)
     host_file = tmp_path / "host_file"
     host_file.write_text("not a token")
     auth_env.setenv("RAY_AUTH_MODE", "token")
@@ -122,10 +126,19 @@ def test_ignores_token_path_from_job_env_vars(auth_env, tmp_path):
     assert f"RAY_AUTH_TOKEN_PATH={host_file}" not in command
 
 
+def test_run_options_see_the_container_token_path(auth_env, tmp_path):
+    token_path = _write_default_token(tmp_path)
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    reset_auth_token_state()
+    context = RuntimeEnvContext(env_vars={"RAY_AUTH_TOKEN_PATH": "/job/path"})
+
+    argv, _ = _launch(context, run_options=["--label=p=$RAY_AUTH_TOKEN_PATH"])
+
+    assert f"--label=p={token_path}" in argv
+
+
 def test_job_token_is_passed_as_given(auth_env, tmp_path):
-    token_path = tmp_path / ".ray" / "auth_token"
-    token_path.parent.mkdir()
-    token_path.write_text(TOKEN)
+    _write_default_token(tmp_path)
     auth_env.setenv("RAY_AUTH_MODE", "token")
     reset_auth_token_state()
     context = RuntimeEnvContext(env_vars={"RAY_AUTH_TOKEN": "job-token"})
@@ -137,9 +150,7 @@ def test_job_token_is_passed_as_given(auth_env, tmp_path):
 
 
 def test_token_from_env_is_passed_by_name(auth_env, tmp_path):
-    token_path = tmp_path / ".ray" / "auth_token"
-    token_path.parent.mkdir()
-    token_path.write_text("file-token")
+    token_path = _write_default_token(tmp_path, "file-token")
     auth_env.setenv("RAY_AUTH_MODE", "token")
     auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
     reset_auth_token_state()
@@ -156,9 +167,7 @@ def test_token_from_env_is_passed_by_name(auth_env, tmp_path):
 
 
 def test_no_mount_when_auth_disabled(auth_env, tmp_path):
-    token_path = tmp_path / ".ray" / "auth_token"
-    token_path.parent.mkdir()
-    token_path.write_text(TOKEN)
+    _write_default_token(tmp_path)
     auth_env.setenv("RAY_AUTH_MODE", "disabled")
     reset_auth_token_state()
 
@@ -173,8 +182,10 @@ def test_log_omits_env_var_values(auth_env, caplog):
     context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
 
     with caplog.at_level(logging.INFO):
-        _container_command(context)
+        _launch(context, run_options=["--label=x=$HOME"])
 
+    assert "podman run" in caplog.text
+    assert "--label=x=$HOME" in caplog.text
     assert "fake-image" in caplog.text
     assert "user-secret" not in caplog.text
     assert "host-secret" not in caplog.text
@@ -228,15 +239,23 @@ def test_expand_run_option_rejects_malformed(run_option):
 
 
 def test_malformed_run_option_fails_setup(auth_env):
+    # Fails in runtime env setup, before any worker launch is attempted.
     with pytest.raises(ValueError, match="Unsupported expansion"):
-        _launch(run_options=["--volume=${HOME:-/tmp}:/data"])
+        _modify_context_impl(
+            "fake-image",
+            "/fake/default_worker.py",
+            ["--volume=${HOME:-/tmp}:/data"],
+            RuntimeEnvContext(),
+            logging.getLogger(__name__),
+            "/tmp/ray",
+        )
 
 
 def test_run_options_expand_from_launcher_and_job_env(auth_env):
     auth_env.setenv("RAY_AUTH_MODE", "disabled")
     reset_auth_token_state()
     auth_env.setenv("HOST_DIR", "/host data")
-    context = RuntimeEnvContext(env_vars={"JOB_VAR": "job value"})
+    context = RuntimeEnvContext(env_vars={"JOB_VAR": "job value", "D": "${HOST_DIR}/x"})
 
     auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
     argv, _ = _launch(
@@ -246,6 +265,7 @@ def test_run_options_expand_from_launcher_and_job_env(auth_env):
             "$HOST_DIR:/data",
             "--label=job=$JOB_VAR",
             "--label=t=$RAY_AUTH_TOKEN",
+            "--label=d=$D",
         ],
     )
 
@@ -255,6 +275,8 @@ def test_run_options_expand_from_launcher_and_job_env(auth_env):
     # RAY_* vars expand like any other, so this puts the token on argv; the
     # RuntimeEnv docstring says expanded values appear on the command line.
     assert f"--label=t={TOKEN}" in argv
+    # A job value is used as written, not expanded a second time.
+    assert "--label=d=${HOST_DIR}/x" in argv
 
 
 def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
