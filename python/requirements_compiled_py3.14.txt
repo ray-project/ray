@@ -102,7 +102,9 @@ argon2-cffi==25.1.0
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
 array-record==0.8.3
-    # via tensorflow-datasets
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   tensorflow-datasets
 arro3-core==0.8.0
     # via deltalake
 arrow==1.4.0

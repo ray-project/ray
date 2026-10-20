@@ -3,8 +3,6 @@
 # TensorFlow 2.19 keeps protobuf 5.27.5 compatible on Python 3.10–3.11.
 tensorflow==2.19.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow==2.20.0; python_version >= '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
-tensorflow-macos==2.19.1; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version < '3.12'
-tensorflow-macos==2.20.0; sys_platform == 'darwin' and platform_machine == 'arm64' and python_version >= '3.12'
 tensorboard==2.19.0; python_version < '3.12'
 tensorboard==2.20.0; python_version >= '3.12'
 tensorflow-probability==0.24.0
