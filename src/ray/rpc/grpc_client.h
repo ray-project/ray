@@ -121,12 +121,14 @@ class GrpcClient {
       int64_t method_timeout_ms = -1) {
     num_calls_in_flight_->fetch_add(1);
     // The counter is shared so a reply that lands after this client is destroyed
-    // still has somewhere to decrement.
+    // still has somewhere to decrement. Decrement only after the callback has run,
+    // so the client can't look idle (and be evicted) while it is still handling
+    // the reply.
     ClientCallback<Reply> callback = [num_calls_in_flight = num_calls_in_flight_,
                                       user_callback](const Status &status,
                                                      Reply &&reply) {
-      num_calls_in_flight->fetch_sub(1);
       user_callback(status, std::move(reply));
+      num_calls_in_flight->fetch_sub(1);
     };
     testing::RpcFailure failure = skip_testing_intra_node_rpc_failure_
                                       ? testing::RpcFailure::None
