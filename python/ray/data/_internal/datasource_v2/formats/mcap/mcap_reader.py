@@ -10,14 +10,17 @@ time.
 
 A message row has the columns of ``message_schema``. Its optional ``row_id``
 is a deterministic name for the message, built from the file path, the chunk's
-byte offset and the message's position in the chunk. A sample read's manifest
-rows are samples instead, and each becomes one row of each topic's steps.
+byte offset and the message's position in the chunk. At ``attachment`` and
+``metadata`` granularity a row is one record of that kind. A sample read's
+manifest rows are samples instead, and each becomes one row of each topic's
+steps.
 
 This module groups the manifest by file and finishes every table with its
 partition and synthesized columns. The other modules read and build the rows:
 
 - ``mcap_chunks`` reads the selected messages of a file.
 - ``mcap_message_rows`` builds message rows.
+- ``mcap_records`` builds attachment and metadata rows.
 - ``mcap_sample_rows`` builds sample rows, with the step rules of
   ``mcap_samples``. With ``video``, ``mcap_decoded_samples`` decodes their
   camera frames, with ``mcap_decode``.
@@ -25,24 +28,31 @@ partition and synthesized columns. The other modules read and build the rows:
 
 import itertools
 import logging
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from functools import partial
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
+    Deque,
     Dict,
+    Generator,
     Iterator,
     List,
     Optional,
     Sequence,
     Set,
     Tuple,
+    TypeVar,
 )
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, LocalFileSystem
+from typing_extensions import override
 
+from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
@@ -58,9 +68,17 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
     DEFAULT_MAX_LEAD_IN_NS,
+    MESSAGE_GRANULARITY,
+    METADATA_GRANULARITY,
     MCAPSelection,
     VideoOptions,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_records import (
+    RecordRows,
+    RecordSettings,
+    iter_records,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
@@ -70,19 +88,28 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     group_samples_by_file,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import TopicPlan
-from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import chunk_unit_id
+from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+    attachment_unit_id,
+    chunk_unit_id,
+    metadata_unit_id,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     task_summaries,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnit
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB, iterate_with_retry
+from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -97,19 +124,41 @@ logger = logging.getLogger(__name__)
 # Larger reads leave more freed memory in glibc's heap next to the frame buffers.
 _DECODING_CHUNK_READ_BYTES = min(ChunkReads().max_bytes, 4 * MiB)
 
+# Names the read unit at a listing row's byte offset when the rows are
+# Attachment or Metadata records. For messages the offsets are chunks.
+_RECORD_UNIT_IDS: Dict[str, Callable[[str, int], str]] = {
+    ATTACHMENT_GRANULARITY: attachment_unit_id,
+    METADATA_GRANULARITY: metadata_unit_id,
+}
+
+# Record files a read task reads at once. A file's records take small requests
+# in a row (open, then a read per record), so a task of small files waits on
+# request latency, not on the CPU.
+_RECORD_FILES_IN_FLIGHT = env_integer("RAY_DATA_MCAP_RECORD_FILES_IN_FLIGHT", 16)
+
+_T = TypeVar("_T")
+_R = TypeVar("_R")
+
 
 @DeveloperAPI
-class MCAPReader(Reader[FileManifest]):
+class MCAPReader(Reader[FileManifest], SupportsMetadata):
     """Reads the chunks of MCAP files a manifest assigns to one task.
 
     Created by ``MCAPScanner.create_reader`` with every pushdown applied:
     the message selection, the projected columns and the per-task row limit.
+    Also answers ``count()`` from the summaries (:meth:`read_metadata`) when
+    the selection can be counted there.
     """
+
+    # Files per count task: one, so a file whose summary cannot be read fails only
+    # its own count. The count's listing has one file per block to match.
+    _COUNT_ROWS_BATCH_SIZE = 1
 
     def __init__(
         self,
         *,
         selection: MCAPSelection,
+        granularity: str = MESSAGE_GRANULARITY,
         include_metadata: bool = True,
         include_row_id: bool = False,
         log_time_order: bool = True,
@@ -131,6 +180,8 @@ class MCAPReader(Reader[FileManifest]):
 
         Args:
             selection: Which messages to keep.
+            granularity: What one row of a read of paths is: ``message``,
+                ``attachment`` or ``metadata``.
             include_metadata: Whether to emit the channel and schema columns.
             include_row_id: Whether to emit ``row_id``.
             log_time_order: Whether each file's messages come out in ascending
@@ -159,6 +210,19 @@ class MCAPReader(Reader[FileManifest]):
                 (``RAY_DATA_MCAP_MAX_LEAD_IN_S``).
         """
         self._message_reader = SelectedMessageReader(selection, log_time_order)
+        self._selection = selection
+        self._video = video
+        self._granularity = granularity
+        self._record_rows: Optional[RecordRows] = None
+        if granularity in _RECORD_UNIT_IDS:
+            self._record_rows = RecordRows(
+                RecordSettings(
+                    granularity=granularity,
+                    selection=selection,
+                    include_row_id=include_row_id,
+                    target_block_size=target_block_size,
+                )
+            )
         self._decode_json = decode_json
         self._include_metadata = include_metadata
         self._include_row_id = include_row_id
@@ -195,12 +259,15 @@ class MCAPReader(Reader[FileManifest]):
         self._sample_paths = SamplePaths(filesystem)
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read the files and chunks named by ``input_split``.
+        """Read the files and chunks (or records) named by ``input_split``.
 
         All rows that name one file are read together. Files come out in
-        manifest order. With ``limit``, reading stops at that many rows: no
-        later message is added to a table and no later chunk or file is read.
-        A sample row is built whole, so the table that reaches the limit is cut.
+        manifest order, though a task's record files are read several at a
+        time (``_RECORD_FILES_IN_FLIGHT``). With ``limit``, reading stops at
+        that many rows: no later message is added to a table and no later chunk
+        or file is read. A sample row is built whole, and record rows come a
+        table at a time, so for those rows the table that reaches the limit is
+        cut.
 
         When ``DataContext.max_errored_blocks`` lets errors be skipped, a
         corrupt chunk costs only itself: the reader skips it and reads the
@@ -218,17 +285,22 @@ class MCAPReader(Reader[FileManifest]):
         read_past_failures = context.max_errored_blocks != 0
         remaining = self._limit
         failures: List[Tuple[str, Exception]] = []
-        for path, read_file in self._file_reads(input_split):
+        file_reads = self._file_reads(input_split)
+        read_ahead = self._read_records_ahead(file_reads, retried_io_errors)
+        for path, read_file in file_reads:
             if remaining is not None and remaining <= 0:
                 break
             # The chunks skipped as corrupt, by offset. Each attempt starts it
             # afresh, so it holds the last attempt's.
             corrupt: Optional[Dict[int, Exception]] = {} if read_past_failures else None
-            tables = iterate_with_retry(
-                partial(read_file, remaining, corrupt),
-                f"read MCAP file {path}",
-                match=retried_io_errors,
-            )
+            if read_ahead is not None:
+                tables: Iterator[pa.Table] = next(read_ahead)
+            else:
+                tables = iterate_with_retry(
+                    partial(read_file, remaining, corrupt),
+                    f"read MCAP file {path}",
+                    match=retried_io_errors,
+                )
             try:
                 for table in tables:
                     if remaining is not None:
@@ -243,6 +315,176 @@ class MCAPReader(Reader[FileManifest]):
                     failures.append((path, _corrupt_chunks_error(path, corrupt)))
         if failures:
             raise _read_error(failures)
+
+    # -- metadata ----------------------------------------------------------
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per file with its row count.
+
+        ``Statistics`` counts messages per channel and the attachment and
+        metadata records per file, so no payload is read. A file whose summary
+        cannot answer is counted by reading it as ``read`` does.
+        """
+        filesystem = self._filesystem or LocalFileSystem()
+        for path in dict.fromkeys(str(p) for p in file_manifest.paths):
+            with filesystem.open_input_file(path) as f:
+                summary = read_summary_from(f, path)
+                statistics = summary.statistics if summary is not None else None
+                if self._record_rows is not None:
+                    num_rows = self._count_records(f, summary)
+                elif (
+                    summary is not None
+                    and statistics is not None
+                    and self._channel_counts_complete(summary)
+                    and self._schemas_known_for_selection(summary)
+                ):
+                    selected = self._selection.selected_channel_ids(
+                        summary.channels, summary.schemas
+                    )
+                    num_rows = sum(
+                        statistics.channel_message_counts.get(cid, 0)
+                        for cid in selected
+                    )
+                else:
+                    # The summary cannot answer: no statistics, per-channel
+                    # counts that miss messages, or a channel or schema record
+                    # declared only inside a chunk. Count by reading.
+                    num_rows = self._count_by_reading(f, path, summary)
+            yield BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=None,
+                exec_stats=None,
+                input_files=(path,),
+            )
+
+    def _count_by_reading(self, f: Any, path: str, summary: Optional["Summary"]) -> int:
+        """Count the selected messages of one file by reading what ``read`` reads.
+
+        An indexed file is counted over the chunks a read reads, so a chunk that
+        names only channels the summary omits is skipped here too. A count needs
+        no order, so the messages stream in file order, unsorted. A file
+        without a chunk index is scanned through a read buffer of
+        ``DataContext.streaming_read_buffer_size`` bytes, as ``read`` scans it.
+        """
+        from ray.data.context import DataContext
+
+        if summary is None or not summary.chunk_indexes:
+            buffer_size = DataContext.get_current().streaming_read_buffer_size
+            messages = self._message_reader.iter_unindexed(
+                buffered(f, buffer_size), path, log_time_order=False
+            )
+        else:
+            messages = self._message_reader.iter_chunks(
+                f, path, summary, None, log_time_order=False
+            )
+        return sum(1 for _ in messages)
+
+    def _count_records(self, f: Any, summary: Optional["Summary"]) -> int:
+        """Count one file's records of the granularity's kind: from the
+        statistics, else from the record index, else by scanning the file."""
+        from mcap.records import Attachment, Metadata
+
+        statistics = summary.statistics if summary is not None else None
+        attachments = self._granularity == ATTACHMENT_GRANULARITY
+        if statistics is not None:
+            return (
+                statistics.attachment_count
+                if attachments
+                else statistics.metadata_count
+            )
+        indexes = (
+            None
+            if summary is None
+            else summary.attachment_indexes
+            if attachments
+            else summary.metadata_indexes
+        )
+        if indexes:
+            return len(indexes)
+        return sum(1 for _ in iter_records(f, Attachment if attachments else Metadata))
+
+    @staticmethod
+    def _channel_counts_complete(summary: "Summary") -> bool:
+        """Whether the per-channel counts cover every message of the file.
+
+        An empty map means the counts are not available. A map that does not
+        add up to ``message_count``, or that counts a channel the summary does
+        not list, cannot be summed for a selection.
+        """
+        statistics = summary.statistics
+        assert statistics is not None
+        counts = statistics.channel_message_counts
+        return set(counts) <= set(summary.channels) and (
+            sum(counts.values()) == statistics.message_count
+        )
+
+    def _schemas_known_for_selection(self, summary: "Summary") -> bool:
+        """Whether the summary carries every schema ``message_types`` needs.
+
+        A channel whose schema record lives only inside a chunk passes the
+        listing's schema filter unchecked. The reader filters its messages once
+        the chunk declares the schema, so a count summed from the statistics
+        would include them. Without ``message_types`` the schemas do not matter.
+        """
+        if self._selection.message_types is None:
+            return True
+        return all(
+            not channel.schema_id or channel.schema_id in summary.schemas
+            for channel in summary.channels.values()
+        )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # Statistics count records, not the records in a time range. Metadata
+        # records carry no time, so a time range does not change their count.
+        # A sample row is not one record, so nothing counts it. A decoded read
+        # emits frames, which ``fps`` thins and a decoder may drop.
+        if self._granularity == METADATA_GRANULARITY:
+            return {MetadataType.NUM_ROWS}
+        if (
+            self._sample_rows is not None
+            or self._selection.time_range is not None
+            or self._video is not None
+        ):
+            return set()
+        return {MetadataType.NUM_ROWS}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return self._COUNT_ROWS_BATCH_SIZE
+
+    def _read_records_ahead(
+        self,
+        file_reads: List[Tuple[str, Callable[..., Iterator[pa.Table]]]],
+        retried_io_errors: List[str],
+    ) -> Optional[Iterator[Iterator[pa.Table]]]:
+        """Each file's record tables, read several files at a time, in order.
+
+        ``None`` means one file at a time: for rows other than records, a
+        single file, or a read with a limit, which may need only its first
+        file. The packer bounds the records of a task with several files, so a
+        few files' tables held at once stay within its budget. A file that
+        failed raises when its tables are iterated, so ``read`` can go on to the
+        next file.
+        """
+        if self._record_rows is None or len(file_reads) < 2 or self._limit is not None:
+            return None
+
+        def read_file(
+            file_read: Tuple[str, Callable[..., Iterator[pa.Table]]],
+        ) -> List[pa.Table]:
+            path, read = file_read
+            return list(
+                iterate_with_retry(
+                    partial(read, None, None),
+                    f"read MCAP file {path}",
+                    match=retried_io_errors,
+                )
+            )
+
+        reads = _read_ahead(read_file, file_reads, _RECORD_FILES_IN_FLIGHT)
+        return (_tables_of(read) for read in reads)
 
     def _file_reads(
         self, manifest: FileManifest
@@ -292,6 +534,21 @@ class MCAPReader(Reader[FileManifest]):
                 # copy indexes only the owned chunks.
                 summary = parse_summary_records(owned.summary_records, path)
                 file_summary = None if offsets is None else _FileSummary(f, path)
+            if self._record_rows is not None:
+                # Records need no chunk index. Their index records, carried or
+                # read from the summary, give their lengths.
+                unit = _read_unit(path, offsets, _RECORD_UNIT_IDS[self._granularity])
+                yield from _within_limit(
+                    self._record_rows.tables(
+                        f,
+                        path,
+                        offsets,
+                        summary,
+                        lambda table: self._finish(table, path, unit, 0),
+                    ),
+                    limit,
+                )
+                return
             if summary is None or not summary.chunk_indexes:
                 buffer_size = DataContext.get_current().streaming_read_buffer_size
                 messages = self._message_reader.iter_unindexed(
@@ -475,13 +732,66 @@ class MCAPReader(Reader[FileManifest]):
         return array
 
 
+def _read_unit(
+    path: str,
+    offsets: Optional[Set[int]],
+    unit_id: Callable[[str, int], str] = chunk_unit_id,
+) -> ReadUnit:
+    """The read unit every table of a task's file reports.
+
+    It is the file for a whole-file read, else the task's first chunk or
+    record, which ``unit_id`` names. Listing
+    excludes read units chunk by chunk (``excluded_read_unit_ids``), so handing
+    this unit back would skip only that first chunk. Nothing hands units back
+    yet: a ``row_id`` checkpoint filters rows by id instead.
+    """
+    if offsets is None:
+        return ReadUnit(id=path, source=path, count=1)
+    return ReadUnit(id=unit_id(path, min(offsets)), source=path)
+
+
+def _read_ahead(
+    read: Callable[[_T], _R], items: Sequence[_T], in_flight: int
+) -> Generator["Future[_R]", None, None]:
+    """``read(item)`` for each item in order, with up to ``in_flight`` running.
+
+    Each read is yielded as its future once it has finished, so a read that
+    failed raises only when its result is taken, and the reads after it go on.
+    Closing the iterator cancels the reads not started yet and does not wait
+    for the running ones.
+    """
+    in_flight = max(1, in_flight)
+    pool = ThreadPoolExecutor(max_workers=in_flight)
+    pending: Deque["Future[_R]"] = deque(
+        pool.submit(read, item) for item in items[:in_flight]
+    )
+    following = iter(items[in_flight:])
+    try:
+        while pending:
+            finished = pending.popleft()
+            wait([finished])
+            for item in itertools.islice(following, 1):
+                pending.append(pool.submit(read, item))
+            yield finished
+    finally:
+        # Never wait here. After a failed read this generator sits in a
+        # reference cycle with the error, so the garbage collector closes it,
+        # from any thread, where joining the pool's threads can deadlock.
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
+def _tables_of(read: "Future[List[pa.Table]]") -> Iterator[pa.Table]:
+    """The tables of a finished read, or its error, raised when iterated."""
+    yield from read.result()
+
+
 def _within_limit(
     tables: Iterator[pa.Table], limit: Optional[int]
 ) -> Iterator[pa.Table]:
     """``tables``, cut to hold at most ``limit`` rows in all.
 
-    A sample row is built whole, so the table that reaches the limit is cut
-    here, and no later table is built.
+    Sample, decoded and record rows are built a table at a time, so the table
+    that reaches the limit is cut here, and no later table is built.
     """
     if limit is None:
         yield from tables

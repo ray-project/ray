@@ -8,8 +8,14 @@ then read by many tasks, and a small one shares a task with its neighbours
 (``mcap_file_cuts``). A file whose summary shows it cannot match the selection
 is dropped before any payload is read.
 
-A file whose summary is missing, has no chunk index or lists no channels is
-listed as one whole-file row.
+At ``attachment`` and ``metadata`` granularity there is one row per indexed
+record of that kind instead, weighted by its bytes plus the requests that
+reading it takes, so a read task takes at most 16 small records
+(``_RECORDS_PER_READ_TASK``).
+
+A file whose summary cannot place what the granularity needs is listed as one
+whole-file row: no summary, chunk index or channel records for messages, and no
+record index for records.
 
 Each row also carries the summary records its read task will need, so read
 tasks do not read summaries (``mcap_task_summary``).
@@ -39,13 +45,24 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     MessageRowLayout,
 )
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    ATTACHMENT_GRANULARITY,
+    MESSAGE_GRANULARITY,
+    RECORD_GRANULARITIES,
+    MCAPSelection,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
+    narrow_selection,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
     _DEFAULT_SUMMARY_IO_CONCURRENCY,
     ListedSummary,
+    attachment_unit_id,
     chunk_run,
     chunk_unit_id,
+    metadata_unit_id,
     read_listed_summaries,
+    record_run,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     split_section,
@@ -60,6 +77,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 if TYPE_CHECKING:
     from concurrent.futures import Future
 
+    from mcap.summary import Summary
     from pyarrow.fs import FileSystem
 
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
@@ -68,6 +86,11 @@ if TYPE_CHECKING:
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
+
+# A read task takes at most this many small records. Reading a record also
+# opens its file, a request before the read, so each record row also weighs
+# this share of the task's budget.
+_RECORDS_PER_READ_TASK = env_integer("RAY_DATA_MCAP_RECORDS_PER_READ_TASK", 16)
 
 
 class MCAPSummaryIndexer(NonSamplingFileIndexer):
@@ -87,6 +110,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         ignore_missing_paths: bool,
         read_task_bytes: int,
         row_layout: MessageRowLayout = MessageRowLayout(),
+        granularity: str = MESSAGE_GRANULARITY,
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
@@ -104,12 +128,29 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         self._read_task_bytes = read_task_bytes
         # The columns a row carries, which size each chunk's listing row.
         self._row_layout = row_layout
+        # What one row is: messages, or attachment or metadata records.
+        self._granularity = granularity
+        # What reading a record weighs besides its bytes.
+        self._record_read_bytes = read_task_bytes // max(1, _RECORDS_PER_READ_TASK)
         self._io_concurrency = (
             io_concurrency
             if io_concurrency is not None
             else env_integer(
                 "RAY_DATA_MCAP_SUMMARY_IO_CONCURRENCY", _DEFAULT_SUMMARY_IO_CONCURRENCY
             )
+        )
+
+    def as_whole_file_indexer(self) -> NonSamplingFileIndexer:
+        """A plain indexer for ``count()``, with one file per listing block.
+
+        ``PushdownCountFiles`` reads each block's summaries in one task, so a file
+        whose summary cannot be read fails only its own count, as in a read.
+        """
+        return NonSamplingFileIndexer(
+            ignore_missing_paths=self._ignore_missing_paths,
+            skip_paths=self._skip_paths,
+            num_workers=self._num_workers,
+            max_paths_per_output=1,
         )
 
     def list_files(
@@ -126,9 +167,13 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
-        # ``predicate``, ``limit`` and ``projected_columns`` are not used here:
-        # the scanner applies the limit per task, and the selection this indexer
-        # prunes on is fixed at construction.
+        # ``predicate`` holds the ``topic`` and ``log_time`` conjuncts the
+        # scanner folded into its selection. Folding them into the same base
+        # selection lets listing prune with the selection the reader applies.
+        # The scanner applies ``limit`` per task, and ``projected_columns`` is unused.
+        selection = self._selection
+        if predicate is not None:
+            selection = narrow_selection(self._selection, predicate).selection
         file_infos = self._iter_file_infos_for_list(
             paths,
             filesystem=filesystem,
@@ -146,7 +191,9 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             except Exception as e:  # noqa: BLE001 - the file's own read task fails
                 manifest = self._unreadable_file_manifest(file_info, e)
             else:
-                manifest = self._manifest_for_file(file_info, listed, excluded)
+                manifest = self._manifest_for_file(
+                    file_info, listed, excluded, selection
+                )
             if manifest is not None:
                 yield manifest
 
@@ -161,6 +208,79 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         return read_listed_summaries(
             filesystem, file_infos, lambda info: info.path, self._io_concurrency
         )
+
+    def _record_manifest(
+        self,
+        path: str,
+        size: int,
+        listed: Optional[ListedSummary],
+        excluded_read_unit_ids: AbstractSet[str],
+        selection: MCAPSelection,
+    ) -> Optional[FileManifest]:
+        """Listing rows for a file's Attachment or Metadata records, one each.
+
+        The summary indexes both kinds by byte offset. A row weighs its record's
+        bytes plus ``_record_read_bytes``, and carries its record's index record,
+        which gives the record's length. Excluded records are skipped, and so
+        are attachments whose ``log_time`` is outside ``time_range``. A file
+        whose statistics count zero records of the kind yields nothing. A file
+        without a summary, or whose records were written without an index, is
+        one whole-file row that the reader scans.
+        """
+        summary = listed.summary if listed is not None else None
+        attachments = self._granularity == ATTACHMENT_GRANULARITY
+        if summary is None or not (
+            summary.attachment_indexes if attachments else summary.metadata_indexes
+        ):
+            if self._statistics_rule_out_records(summary):
+                return None
+            # The read task gets the whole summary, as for messages.
+            manifest = FileManifest.construct_manifest(
+                paths=[path], sizes=[size], chunk_metadatas=[None]
+            )
+            records = (
+                b"" if listed is None else split_section(listed.section).everything
+            )
+            return with_listing_records(manifest, records, [None])
+        runs = []
+        if attachments:
+            for attachment in summary.attachment_indexes:
+                if not selection.overlaps(attachment.log_time, attachment.log_time):
+                    continue
+                if (
+                    attachment_unit_id(path, attachment.offset)
+                    in excluded_read_unit_ids
+                ):
+                    continue
+                weight = attachment.data_size + self._record_read_bytes
+                runs.append(record_run(attachment.offset, weight))
+        else:
+            for metadata in summary.metadata_indexes:
+                if metadata_unit_id(path, metadata.offset) in excluded_read_unit_ids:
+                    continue
+                weight = metadata.length + self._record_read_bytes
+                runs.append(record_run(metadata.offset, weight))
+        if not runs:
+            return None
+        manifest = FileManifest.construct_manifest(
+            paths=[path] * len(runs),
+            sizes=[size] * len(runs),
+            chunk_metadatas=[run.to_metadata() for run in runs],
+        )
+        assert listed is not None
+        records = split_section(listed.section)
+        return with_listing_records(
+            manifest, b"", [records.record_indexes[run.unit_ids[0]] for run in runs]
+        )
+
+    def _statistics_rule_out_records(self, summary: Optional["Summary"]) -> bool:
+        """Whether the statistics count zero records of the granularity's kind."""
+        statistics = summary.statistics if summary is not None else None
+        if statistics is None:
+            return False
+        if self._granularity == ATTACHMENT_GRANULARITY:
+            return statistics.attachment_count == 0
+        return statistics.metadata_count == 0
 
     def _unreadable_file_manifest(
         self, file_info: FileInfo, error: Exception
@@ -192,6 +312,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         file_info: FileInfo,
         listed: Optional[ListedSummary],
         excluded_read_unit_ids: AbstractSet[str],
+        selection: MCAPSelection,
     ) -> Optional[FileManifest]:
         """The listing rows of one file, or ``None`` when it cannot match.
 
@@ -204,6 +325,10 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         assert file_info.size is not None
         summary = listed.summary if listed is not None else None
 
+        if self._granularity in RECORD_GRANULARITIES:
+            return self._record_manifest(
+                path, file_info.size, listed, excluded_read_unit_ids, selection
+            )
         if summary is None or not summary.chunk_indexes or not summary.channels:
             # Without a summary, a chunk index or channel records, nothing says
             # which chunk holds what. The read task gets the whole summary.
@@ -215,10 +340,8 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
             )
             return with_listing_records(manifest, records, [None])
 
-        selected = self._selection.selected_channel_ids(
-            summary.channels, summary.schemas
-        )
-        if not self._selection.file_may_match(
+        selected = selection.selected_channel_ids(summary.channels, summary.schemas)
+        if not selection.file_may_match(
             summary.statistics, selected, has_channels=bool(summary.channels)
         ):
             logger.debug("Skipping %s: no chunk can match the selection", path)
@@ -231,7 +354,7 @@ class MCAPSummaryIndexer(NonSamplingFileIndexer):
         runs = [
             chunk_run(chunk_index, summary.statistics, total_uncompressed, row_bytes)
             for chunk_index in summary.chunk_indexes
-            if self._selection.chunk_may_match(chunk_index, selected)
+            if selection.chunk_may_match(chunk_index, selected)
             and chunk_unit_id(path, chunk_index.chunk_start_offset)
             not in excluded_read_unit_ids
         ]
