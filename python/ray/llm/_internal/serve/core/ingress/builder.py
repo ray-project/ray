@@ -396,7 +396,7 @@ def build_openai_router_app(
     args = OpenAIRouterArgs.model_validate(router_args)
     return serve.deployment(
         RouterApplication,
-        **RouterApplication.get_deployment_options(),
+        **RouterApplication.get_deployment_options(args.llm_configs),
     ).bind(
         model_applications=args.model_applications,
         llm_configs=args.llm_configs,

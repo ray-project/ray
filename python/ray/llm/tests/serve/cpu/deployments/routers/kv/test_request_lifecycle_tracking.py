@@ -24,10 +24,12 @@ from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
     get_worker_id,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking import (
+    RouterApplicationLifecycleMiddleware,
     enable_token_tracking,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockAsyncLLM
 from ray.serve.llm.request_router import KVAwareRouter
+from ray.serve._private.constants import SERVE_ROUTER_APPLICATION_NAME_HEADER
 
 # The @ray.remote actors below are pickled by reference, so a worker must import
 # this module -- but pytest imports it under a bare name the worker cannot import
@@ -270,7 +272,9 @@ async def consume(stream, limit=None):
 
 async def drain(engine):
     """Wait for the engine forwarder's queued lifecycle batches to land."""
-    await engine._lifecycle_forwarder.flush()
+    await asyncio.gather(
+        *(forwarder.flush() for forwarder in engine._lifecycle_forwarders.values())
+    )
 
 
 def decode_counts(events):
@@ -635,6 +639,64 @@ def test_decorator_returns_subclass():
 
 
 @pytest.mark.asyncio
+async def test_routed_request_reports_to_router_application(monkeypatch):
+    class RouterApplicationTarget:
+        def __init__(self):
+            self.model_id = None
+            self.events = []
+
+        async def on_model_lifecycle_events(self, model_id, events):
+            self.model_id = model_id
+            self.events.extend(events)
+
+    target = RouterApplicationTarget()
+    monkeypatch.setattr(
+        serve,
+        "get_deployment_handle",
+        lambda deployment, app_name: _BroadcastHandle(target),
+    )
+    monkeypatch.setattr(
+        serve,
+        "get_replica_context",
+        lambda: SimpleNamespace(
+            replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
+        ),
+    )
+    engine = enable_token_tracking(MockAsyncLLM, model_id="model-a")(delta_steps(2))
+
+    async def app(scope, receive, send):
+        await consume(
+            engine.generate(
+                PROMPT,
+                SamplingParams(output_kind=RequestOutputKind.DELTA),
+                "request-1",
+            )
+        )
+
+    middleware = RouterApplicationLifecycleMiddleware(app)
+    await middleware(
+        {
+            "type": "http",
+            "headers": [
+                (
+                    SERVE_ROUTER_APPLICATION_NAME_HEADER.encode(),
+                    b"control-app",
+                )
+            ],
+        },
+        None,
+        None,
+    )
+    await drain(engine)
+
+    assert target.model_id == "model-a"
+    assert [name for name, _ in target.events] == [
+        "on_prefill_complete",
+        "on_request_completed",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_passthrough_without_llm_router(monkeypatch):
     """Outside a replica (no LLMRouter handle resolvable) the engine is a pure
     pass-through."""
@@ -656,7 +718,7 @@ async def test_passthrough_without_llm_router(monkeypatch):
     )
 
     assert len(outputs) == 2
-    assert engine._lifecycle_forwarder is None  # resolution failed; retried next call
+    assert engine._lifecycle_forwarders == {}  # resolution failed; retried next call
 
 
 @pytest.mark.parametrize(

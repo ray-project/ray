@@ -5,7 +5,7 @@ import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Dict, List, Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from starlette.datastructures import Headers
@@ -20,7 +20,13 @@ from ray.llm._internal.serve.core.ingress import (
     router_application as router_application_module,
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_TOKEN_KEY_HEADER,
+    KV_TOKEN_METADATA_KEY,
+    REQUEST_TOKEN_IDS_KWARG,
+)
 from ray.serve._private.constants import (
+    RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER,
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
@@ -65,6 +71,7 @@ class FakeHandle:
         # Raised by the pick-only (`_reserve=False`) path only.
         self.pick_only_error: Optional[Exception] = None
         self.delay_s = 0.0
+        self.routing_stats = {}
         self.pick_only_delay_s = 0.0
 
     def _init(self):
@@ -99,7 +106,11 @@ class FakeHandle:
             raise self.error
         replica_id = MagicMock()
         replica_id.to_full_id_str.return_value = self.replica_id
-        yield MagicMock(_replica=SimpleNamespace(replica_id=replica_id))
+        yield MagicMock(
+            _replica=SimpleNamespace(
+                replica_id=replica_id, routing_stats=self.routing_stats
+            )
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -357,6 +368,43 @@ class TestRoutingDecision:
             assert payload.model == model_id
             assert payload.messages == body["messages"]
             assert call["kwargs"] == {"_reserve": False}
+        finally:
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_kv_aware_selection_forwards_prompt_tokens(self):
+        router, handles, patcher = _new_router()
+        try:
+            tokenizer = MagicMock()
+            tokenizer.tokenize = AsyncMock(return_value=[1, 2, 3])
+            router._tokenizers["model-a"] = asyncio.create_task(
+                asyncio.sleep(0, result=tokenizer)
+            )
+            router._token_sender = MagicMock()
+            router._token_sender.push.return_value = True
+            await asyncio.gather(*router._handles.values())
+            handle = handles["llm-model-a"]
+            handle.routing_stats = {
+                KV_TOKEN_METADATA_KEY: {"endpoint": "tcp://127.0.0.1:1234"}
+            }
+
+            decision = await _chat(
+                router,
+                {
+                    "model": "model-a",
+                    "messages": [{"role": "user", "content": "hello"}],
+                },
+            )
+
+            assert handle.calls[-1]["kwargs"][REQUEST_TOKEN_IDS_KWARG] == [1, 2, 3]
+            token_key = decision[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD][
+                KV_TOKEN_KEY_HEADER
+            ]
+            router._token_sender.push.assert_called_once()
+            assert router._token_sender.push.call_args.args[:2] == (
+                "tcp://127.0.0.1:1234",
+                token_key,
+            )
         finally:
             patcher.stop()
 
