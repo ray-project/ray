@@ -7,9 +7,8 @@ pyo3_extension(
     edition = "2021",
 )
 
-# Consuming the .so as a data file, the shape Ray uses for _raylet.so. On the
-# Bazel 7.5 POC this was the only option (two rules_python copies, two PyInfo
-# providers); see ray_probe_ext_deps_test below for the deps form.
+# Consuming the .so as a data file, the shape Ray uses for _raylet.so. Kept
+# alongside ray_probe_ext_deps_test below, which uses the normal deps form.
 py_test(
     name = "ray_probe_ext_test",
     tags = ["team:core"],
