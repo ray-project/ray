@@ -84,6 +84,21 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_node_gpu_temperature_celsius`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
   - The current GPU temperature per GPU, in Celsius.
+* - `ray_tpu_tensorcore_utilization`
+  - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
+  - The TensorCore utilization percentage per TPU device (0.\.100). Exported on Google Cloud TPU nodes when the GKE TPU device plugin metric server is active. See {ref}`What the KubeRay TPU webhook configures <kuberay-tpu-webhook-config>`.
+* - `ray_tpu_memory_bandwidth_utilization`
+  - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
+  - The high-bandwidth memory (HBM) bandwidth utilization percentage per TPU device (0.\.100).
+* - `ray_tpu_duty_cycle`
+  - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
+  - The percentage of the sample period that the TPU spends actively processing (0.\.100).
+* - `ray_tpu_memory_used`
+  - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
+  - The amount of HBM allocated per TPU device, in bytes.
+* - `ray_tpu_memory_total`
+  - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
+  - The total amount of HBM available per TPU device, in bytes.
 * - `ray_node_disk_usage`
   - `instance`
   - The amount of disk space used per node, in bytes.
