@@ -469,12 +469,13 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             input_blocks = [entry.ref for entry in bundle.blocks]
             self._actor_pool.on_task_submitted(actor)
 
+            actor_task_args = dict(self._ray_actor_task_remote_args)
             ctx = TaskContext(
                 task_idx=self._next_data_task_idx,
                 op_name=self.name,
                 target_max_block_size_override=self.target_max_block_size_override,
+                ray_retried_exceptions=actor_task_args.get("retry_exceptions", False),
             )
-            actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
                 num_returns="streaming",
