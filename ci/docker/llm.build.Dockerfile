@@ -49,6 +49,8 @@ PY
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
     # Validate Triton on inference workers so CPU frontends can build configs.
+    # TODO (jeffreywang): Remove this patch once vLLM PR #62576 is included in Ray's pinned version.
+    # https://github.com/vllm-project/vllm/pull/62576
     git apply "${VLLM_DEFER_TRITON_PATCH}"
 )
 
