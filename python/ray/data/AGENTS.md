@@ -46,22 +46,37 @@ color coding so the difference is interpretable at a glance: put the two
 states in `Before` and `After` subgraphs, and color components that are
 removed, added, or changed — leave unchanged components uncolored.
 
+Structure each side **from high level to low level**: start at the subsystem
+(use the vocabulary from section 4), then the component within it, down to
+the specific piece that changed. The diagram should show a reviewer not just
+*what* changed but *which subsystem it lives in and where inside that
+subsystem* — demonstrating the author has that context is the point.
+
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph Before
-        A1[ReadParquet] --> B1[MapBatches]
-        B1 --> D1[Write]
+        subgraph BS[Subsystem: execution]
+            subgraph BC[Component: streaming executor]
+                B1[MapBatches] --> B2[Write]
+            end
+        end
     end
     subgraph After
-        A2[ReadParquet] --> B2[MapBatches]
-        B2 --> C2[StreamingRepartition]
-        C2 --> D2[Write]
+        subgraph AS[Subsystem: execution]
+            subgraph AC[Component: streaming executor]
+                A1[MapBatches] --> A3[StreamingRepartition] --> A2[Write]
+            end
+        end
     end
     classDef removed fill:#ffcdd2,stroke:#c62828,color:#000
     classDef added fill:#c8e6c9,stroke:#2e7d32,color:#000
     classDef changed fill:#fff9c4,stroke:#f9a825,color:#000
-    class C2 added
+    class A3 added
 ```
+
+Pick the drill-down depth that locates the change precisely: subsystem →
+module → operator/class → method, stopping at the level where the change
+actually lives. Collapse levels that add no information.
 
 If behavior is unchanged (pure refactor), say so explicitly and state what
 invariant was preserved and how it was verified.
@@ -98,7 +113,8 @@ versus which are mechanical ripple edits.
 <new behavior and what's observably different>
 
 <!-- Where possible, show before vs. after as one color-coded mermaid diagram
-     (Before/After subgraphs; red = removed, green = added, yellow = changed) -->
+     (Before/After subgraphs; red = removed, green = added, yellow = changed),
+     structured high level to low level: subsystem -> component -> change -->
 
 ## Subsystems
 <e.g. logical planning, execution, resource allocation>
