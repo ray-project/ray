@@ -22,8 +22,11 @@ partition and synthesized columns. The other modules read and build the rows:
 - ``mcap_message_rows`` builds message rows.
 - ``mcap_records`` builds attachment and metadata rows.
 - ``mcap_sample_rows`` builds sample rows, with the step rules of
-  ``mcap_samples``. With ``video``, ``mcap_decoded_samples`` decodes their
-  camera frames, with ``mcap_decode``.
+  ``mcap_samples``.
+- With ``video``, ``mcap_decoded_messages`` builds one row per decoded frame,
+  and ``mcap_decoded_samples`` decodes the frames of sample rows.
+  ``mcap_video_source`` picks what a decoding task reads, and ``mcap_decode``
+  decodes the frames.
 """
 
 import itertools
@@ -38,6 +41,7 @@ from typing import (
     Callable,
     Deque,
     Dict,
+    FrozenSet,
     Generator,
     Iterator,
     List,
@@ -57,6 +61,10 @@ from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
     _Selected,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decoded_messages import (
+    DecodedMessageRows,
+    DecodedRowSettings,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     ChunkReads,
@@ -173,6 +181,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         max_row_bytes: int = DEFAULT_MAX_ROW_BYTES,
         topic_plans: Sequence[TopicPlan] = (),
         video: Optional[VideoOptions] = None,
+        video_topics: FrozenSet[str] = frozenset(),
         decoded_topics: Sequence[str] = (),
         max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS,
     ):
@@ -202,8 +211,11 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
             topic_plans: For a sample read, each topic's steps
                 (``mcap_samples``), in the order the row's columns take. Empty
                 for a read of message rows.
-            video: For a sample read, decode the frames that the steps of
-                ``decoded_topics`` take, scaled to ``video.resize``.
+            video: Decode the video topics in the task, scaled to
+                ``video.resize``: in message rows one frame per row; in sample
+                rows the frames that the steps of ``decoded_topics`` take.
+            video_topics: Topics to read as video besides those with a known
+                video schema name (``read_mcap(video_topics=...)``).
             decoded_topics: The topics of sample rows that get frame columns,
                 settled at planning.
             max_lead_in_ns: How far back a decoder looks for a keyframe
@@ -235,16 +247,26 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         self._synthesized_columns = tuple(synthesized_columns)
         self._target_block_size = target_block_size
         self._schema = schema
+        decoding_reader = SelectedMessageReader(
+            selection, log_time_order, ChunkReads(max_bytes=_DECODING_CHUNK_READ_BYTES)
+        )
+        self._decoded_messages: Optional[DecodedMessageRows] = None
+        if video is not None and not topic_plans:
+            settings = DecodedRowSettings(
+                selection=selection,
+                video=video,
+                video_topics=frozenset(video_topics),
+                include_metadata=include_metadata,
+                include_row_id=include_row_id,
+                columns=self._columns,
+                target_block_size=target_block_size,
+                max_lead_in_ns=max_lead_in_ns,
+            )
+            self._decoded_messages = DecodedMessageRows(settings, decoding_reader)
         self._sample_rows: Optional[SampleRows] = None
         if topic_plans:
             decodes = video is not None and bool(decoded_topics)
-            sample_reader = self._message_reader
-            if decodes:
-                sample_reader = SelectedMessageReader(
-                    selection,
-                    log_time_order,
-                    ChunkReads(max_bytes=_DECODING_CHUNK_READ_BYTES),
-                )
+            sample_reader = decoding_reader if decodes else self._message_reader
             self._sample_rows = SampleRows(
                 topic_plans,
                 sample_reader,
@@ -265,9 +287,9 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         manifest order, though a task's record files are read several at a
         time (``_RECORD_FILES_IN_FLIGHT``). With ``limit``, reading stops at
         that many rows: no later message is added to a table and no later chunk
-        or file is read. A sample row is built whole, and record rows come a
-        table at a time, so for those rows the table that reaches the limit is
-        cut.
+        or file is read. A sample row is built whole, a decoded frame can leave
+        its decoder after later messages, and record rows come a table at a
+        time, so for those rows the table that reaches the limit is cut.
 
         When ``DataContext.max_errored_blocks`` lets errors be skipped, a
         corrupt chunk costs only itself: the reader skips it and reads the
@@ -439,7 +461,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         # Statistics count records, not the records in a time range. Metadata
         # records carry no time, so a time range does not change their count.
         # A sample row is not one record, so nothing counts it. A decoded read
-        # emits frames, which ``fps`` thins and a decoder may drop.
+        # emits frames, which a decoder may drop.
         if self._granularity == METADATA_GRANULARITY:
             return {MetadataType.NUM_ROWS}
         if (
@@ -549,6 +571,9 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                     limit,
                 )
                 return
+            if self._decoded_messages is not None:
+                yield from self._decoded_tables(f, owned, summary, file_summary, limit)
+                return
             if summary is None or not summary.chunk_indexes:
                 buffer_size = DataContext.get_current().streaming_read_buffer_size
                 messages = self._message_reader.iter_unindexed(
@@ -566,6 +591,37 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
                     else partial(_record_corrupt_chunk, corrupt),
                 )
             yield from self._tables(itertools.islice(messages, limit), path, offsets)
+
+    def _decoded_tables(
+        self,
+        f: Any,
+        owned: "_OwnedFile",
+        summary: Optional["Summary"],
+        file_summary: Optional["_FileSummary"],
+        limit: Optional[int],
+    ) -> Iterator[pa.Table]:
+        """Yield the decoded frame rows of one file, at most ``limit`` of them.
+
+        The decoders look at chunks the task does not own, so they plan with
+        the file's whole summary. A decoded frame needs every message back to
+        its keyframe, so a corrupt chunk fails the file whole.
+        """
+        assert self._decoded_messages is not None
+        path, offsets = owned.path, owned.offsets
+        whole = None
+        if summary is not None and summary.chunk_indexes:
+            whole = summary if file_summary is None else file_summary()
+        unit = _read_unit(path, offsets)
+        wanted = set(self._columns) if self._columns is not None else None
+        tables = self._decoded_messages.tables(
+            f,
+            path,
+            offsets,
+            whole,
+            lambda table, rows_before: self._finish(table, path, unit, rows_before),
+            self._appended_row_bytes(path, unit, wanted),
+        )
+        yield from _within_limit(tables, limit)
 
     def _read_samples(
         self,
@@ -602,15 +658,7 @@ class MCAPReader(Reader[FileManifest], SupportsMetadata):
         Messages are pulled one at a time, so a chunk is read only once its
         first message is the next one needed.
         """
-        # Every table reports one read unit: the file for a whole-file read, else
-        # the task's first chunk. Listing excludes read units chunk by chunk
-        # (``excluded_read_unit_ids``), so handing this unit back would skip only
-        # that first chunk. Nothing hands units back yet: a ``row_id`` checkpoint
-        # filters rows by id instead.
-        if offsets is None:
-            unit = ReadUnit(id=path, source=path, count=1)
-        else:
-            unit = ReadUnit(id=chunk_unit_id(path, min(offsets)), source=path)
+        unit = _read_unit(path, offsets)
         wanted = set(self._columns) if self._columns is not None else None
         builder = _MessageTableBuilder(
             columns=wanted,

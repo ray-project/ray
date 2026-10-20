@@ -11,9 +11,9 @@ decodes JPEG and PNG. The codec comes from the message's ``format`` field or its
 bytes (see ``mcap_video``).
 Each packet is stamped with its message's ``log_time``, and the decoded frame
 carries that stamp back. This attributes each frame to the message that held
-it, even when the decoder reorders or delays its output. An H.264 or H.265 decoder whose first keyframe comes without the stream's
-parameter sets gets them from where the stream starts (see
-``mcap_video_source``).
+it, even when the decoder reorders or delays its output. An H.264 or H.265
+decoder whose first keyframe comes without the stream's parameter sets gets
+them from where the stream starts (see ``mcap_video_source``).
 """
 
 import io
@@ -312,3 +312,54 @@ def warn_cold_channel(topic: str, path: str, cap_ns: int, before: int) -> None:
             cap_ns / 1e9,
             before,
         )
+
+
+def decode_one(
+    payloads: List[bytes],
+    codec: VideoCodec,
+    resize: Optional[Tuple[int, int]],
+    read_parameter_sets: Optional[Callable[[VideoCodec], bytes]] = None,
+) -> Optional["np.ndarray"]:
+    """Decode the first frame of a stream's head, for schema inference.
+
+    ``payloads`` are a channel's messages up to and including a keyframe, in
+    order. The messages before the keyframe may carry the parameter sets (SPS,
+    PPS) the decoder needs. When none does, ``read_parameter_sets`` reads them
+    from the start of the stream (``FrameDecoder``). Returns ``None`` when
+    nothing decodes, so planning falls back to a variable-shaped tensor
+    instead of failing on a stream the read task may still decode.
+    """
+    decoder = FrameDecoder(
+        codec, resize=resize, read_parameter_sets=read_parameter_sets
+    )
+    if codec.every_frame_is_a_keyframe:
+        return decoder._decode_still_or_none(payloads[-1], 0)
+    try:
+        frames = _decode_stream_head(decoder, payloads, codec)
+        return decoder._to_array(frames[0]) if frames else None
+    finally:
+        decoder.close()
+
+
+def _decode_stream_head(
+    decoder: FrameDecoder, payloads: List[bytes], codec: VideoCodec
+) -> List[Any]:
+    """Feed ``payloads`` until a frame comes out; drain the decoder if none does."""
+    import av
+
+    frames: List[Any] = []
+    for payload in payloads:
+        frame = decoder._with_parameter_sets(_frame_bytes(payload, codec))
+        try:
+            frames.extend(decoder._context.decode(av.Packet(frame)))
+        except av.FFmpegError as e:
+            # A message holding only parameter sets can raise "no frame". The
+            # keyframe after it still decodes, using those parameter sets.
+            logger.debug("Planning-time decode of a stream-head packet failed: %s", e)
+            continue
+        if frames:
+            return frames
+    try:
+        return list(decoder._context.decode(None))
+    except av.FFmpegError:
+        return []

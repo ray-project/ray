@@ -1,7 +1,7 @@
 """The MCAP ``Scanner``: the read's options plus the optimizer's pushdowns."""
 
 from dataclasses import dataclass, replace
-from typing import List, Optional, Tuple
+from typing import FrozenSet, List, Optional, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem
@@ -54,7 +54,8 @@ class MCAPScanner(
     JSON values when every selected channel of the sampled files is
     JSON-encoded, and the payload bytes otherwise. A sample read carries each
     topic's steps in ``topic_plans``, and with ``video``, ``decoded_topics``
-    names the topics the planned schema gives frame columns.
+    names the topics the planned schema gives frame columns. A read of message
+    rows with ``video`` has a ``frame`` column in place of ``data``.
     """
 
     schema: pa.Schema
@@ -71,6 +72,7 @@ class MCAPScanner(
     max_row_bytes: int = DEFAULT_MAX_ROW_BYTES
     topic_plans: Tuple[TopicPlan, ...] = ()
     video: Optional[VideoOptions] = None
+    video_topics: FrozenSet[str] = frozenset()
     decoded_topics: Tuple[str, ...] = ()
     max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS
     # The conjuncts :meth:`push_filters` folded into ``selection``. The planner
@@ -100,7 +102,7 @@ class MCAPScanner(
         by topic or message type is exact from metadata. It also counts
         attachments and metadata records. It cannot say how many records fall
         inside a time range, and it does not count sample rows. Decoded rows
-        are frames, which ``fps`` thins and a decoder may drop.
+        are frames, which a decoder may drop.
         """
         if self.limit is not None or self.partition_predicate is not None:
             return False
@@ -183,6 +185,7 @@ class MCAPScanner(
             max_row_bytes=self.max_row_bytes,
             topic_plans=self.topic_plans,
             video=self.video,
+            video_topics=self.video_topics,
             decoded_topics=self.decoded_topics,
             max_lead_in_ns=self.max_lead_in_ns,
         )
