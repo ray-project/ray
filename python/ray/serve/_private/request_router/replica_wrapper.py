@@ -85,9 +85,11 @@ class ActorReplicaWrapper(ReplicaWrapper):
                 RequestMetadataProto(
                     request_id=pr.metadata.request_id,
                     # Default call method in java is "call," not "__call__" like Python.
-                    call_method="call"
-                    if pr.metadata.call_method == "__call__"
-                    else pr.metadata.call_method,
+                    call_method=(
+                        "call"
+                        if pr.metadata.call_method == "__call__"
+                        else pr.metadata.call_method
+                    ),
                 ).SerializeToString(),
                 pr.args,
             ),

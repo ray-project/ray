@@ -1,9 +1,9 @@
 import json
 import weakref
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, ClassVar
-from collections.abc import Awaitable, Callable
 
 from starlette.types import Scope
 
@@ -450,9 +450,11 @@ class DeploymentStatusInfo:
             elif trigger == DeploymentStatusInternalTrigger.HEALTHY:
                 return self._updated_copy(
                     status=DeploymentStatus.HEALTHY,
-                    status_trigger=DeploymentStatusTrigger.UPSCALE_COMPLETED
-                    if self.status == DeploymentStatus.UPSCALING
-                    else DeploymentStatusTrigger.DOWNSCALE_COMPLETED,
+                    status_trigger=(
+                        DeploymentStatusTrigger.UPSCALE_COMPLETED
+                        if self.status == DeploymentStatus.UPSCALING
+                        else DeploymentStatusTrigger.DOWNSCALE_COMPLETED
+                    ),
                     message=message,
                 )
 
@@ -879,8 +881,9 @@ class StreamingHTTPRequest:
         asgi_scope: Scope,
         *,
         proxy_actor_name: str | None = None,
-        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
-        | None = None,
+        receive_asgi_messages: (
+            Callable[[RequestMetadata], Awaitable[bytes]] | None
+        ) = None,
     ):
         self._asgi_scope: Scope = asgi_scope
 
