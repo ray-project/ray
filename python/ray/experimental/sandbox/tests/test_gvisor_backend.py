@@ -25,8 +25,11 @@ from ray.experimental.sandbox._internal.image_utils import (
 from ray.experimental.sandbox.backend import gvisor
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.gvisor import (
+    _RESOLVER_PROBE,
+    _RESOLVER_UNREACHABLE,
     GVisorSandboxBackend,
     _exec_processes,
+    _guard_may_miss_new_nodes,
     _holder_namespace_ids,
     _namespace_ids,
     _render_egress_ruleset,
@@ -1233,6 +1236,173 @@ def test_set_egress_allowlist_serializes_concurrent_updates(tmp_path, monkeypatc
     assert f"ip daddr {recorded} accept" in (tmp_path / "egress.nft").read_text()
 
 
+def test_guard_may_miss_new_nodes():
+    """Only an allowlist that could reach a node that joins later needs its
+    guard kept current: a network entry, or internet on a cluster whose nodes
+    have public IPv4 addresses."""
+    private = ["10.0.0.5/32", "127.0.0.1/32", "fe80::1/128", "2600:1f18::5/128"]
+    for cidrs in ([], ["internet"], ["internet:443", "10.0.0.84/32:8000"]):
+        assert not _guard_may_miss_new_nodes(cidrs, private), cidrs
+    for cidrs in (
+        ["10.0.0.0/8"],
+        ["10.0.0.84/32"],
+        ["52.0.0.0/8:443"],
+        list(ALLOW_ALL_CIDRS),
+    ):
+        assert _guard_may_miss_new_nodes(cidrs, private), cidrs
+    assert _guard_may_miss_new_nodes(["internet"], private + ["52.1.2.3/32"])
+
+
+def _fake_public_sandbox(root_dir: Path, cidrs: list, cluster: list) -> dict:
+    """Metadata of a public sandbox whose namespace holder is this process."""
+    root_dir.mkdir()
+    (root_dir / "netns.pid").write_text(f"{os.getpid()}\n")
+    cfg = GVisorSandboxConfig(
+        image="busybox:latest", shell="/bin/sh", network="public", cidr_allowlist=cidrs
+    )
+    _write_egress_ruleset(str(root_dir), cfg.cidr_allowlist, cfg.dns, cluster=cluster)
+    return {
+        "root_dir": str(root_dir),
+        "config": cfg,
+        "egress_allowlist": cfg.cidr_allowlist,
+        "egress_cluster": list(cluster),
+        "netns_ids": _namespace_ids(os.getpid()),
+    }
+
+
+@_needs_proc_ns
+def test_refresh_guards_adds_nodes_that_joined(tmp_path, monkeypatch):
+    """A guard that could miss a node that joined since gets the cluster's
+    current addresses, once. An allowlist that can't reach new nodes costs no
+    lookup."""
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-private"] = _fake_public_sandbox(
+        tmp_path / "private", ["10.0.0.0/8"], ["10.0.0.5/32"]
+    )
+    backend._sandbox_metadata["sb-internet"] = _fake_public_sandbox(
+        tmp_path / "internet", ["internet"], ["10.0.0.5/32"]
+    )
+    joined = ["10.0.0.5/32", "10.0.0.9/32"]
+    lookups = []
+    monkeypatch.setattr(
+        egress_guard, "cluster_addresses", lambda: lookups.append(1) or joined
+    )
+
+    class _Completed:
+        returncode = 0
+        stderr = b""
+
+    loaded = []
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
+        lambda args, **kwargs: loaded.append(args[-1]) or _Completed(),
+    )
+    assert backend._refresh_guards() == ["sb-private"]
+    assert loaded == [str(tmp_path / "private" / "egress.nft")]
+    assert "10.0.0.9" in (tmp_path / "private" / "egress.nft").read_text()
+    assert "10.0.0.9" not in (tmp_path / "internet" / "egress.nft").read_text()
+    assert backend._sandbox_metadata["sb-private"]["egress_cluster"] == joined
+    assert backend._sandbox_metadata["sb-private"]["egress_allowlist"] == ["10.0.0.0/8"]
+    # Nothing changed since, so nothing reloads.
+    assert backend._refresh_guards() == []
+    assert len(loaded) == 1
+
+    del backend._sandbox_metadata["sb-private"]
+    lookups.clear()
+    assert backend._refresh_guards() == []
+    assert lookups == []
+
+
+def test_guard_refresher_runs_while_public_sandboxes_exist(monkeypatch):
+    """The refresher starts with the first public sandbox, runs as one thread
+    however many sandboxes start it, and stops once none is left."""
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor._GUARD_REFRESH_SECONDS", 0.01
+    )
+    backend = GVisorSandboxBackend(image_manager=object())
+    refreshed = threading.Event()
+    monkeypatch.setattr(backend, "_refresh_guards", lambda: refreshed.set() or [])
+    backend._sandbox_metadata["sb-1"] = {"egress_allowlist": ["internet"]}
+    backend._ensure_guard_refresher()
+    thread = backend._guard_refresher
+    backend._ensure_guard_refresher()
+    assert backend._guard_refresher is thread
+    assert refreshed.wait(timeout=10)
+
+    del backend._sandbox_metadata["sb-1"]
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert backend._guard_refresher is None
+
+
+def test_resolver_probe_names_the_first_unreachable_resolver():
+    """The probe sends each resolver one datagram and names the first whose
+    send fails. A broadcast address fails on any host, because the probe's
+    socket doesn't set SO_BROADCAST."""
+    probe = [sys.executable, "-I", "-c", _RESOLVER_PROBE]
+    reached = subprocess.run(
+        probe + ["127.0.0.1"], capture_output=True, text=True, timeout=30
+    )
+    assert reached.returncode == 0, reached.stderr
+    failed = subprocess.run(
+        probe + ["127.0.0.1", "255.255.255.255"],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert failed.returncode == _RESOLVER_UNREACHABLE, failed.stderr
+    server, reason = failed.stdout.strip().split("\t")
+    assert server == "255.255.255.255"
+    assert reason
+
+
+@_needs_proc_ns
+def test_unreachable_resolver_probes_inside_the_sandbox(tmp_path, monkeypatch):
+    """The probe runs in the sandbox's network namespace, entered through an
+    fd, and enters its user namespace only if this process isn't root. Only
+    its own verdict counts, so a probe that can't run blocks nothing."""
+    backend = GVisorSandboxBackend(image_manager=object())
+    backend._sandbox_metadata["sb-1"] = _fake_public_sandbox(
+        tmp_path / "sb", ["internet"], []
+    )
+    results = []
+    calls = []
+
+    def fake_run(args, pass_fds=(), **kwargs):
+        calls.append((args, _fd_namespace_ids(pass_fds)))
+        result = results.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(
+        "ray.experimental.sandbox.backend.gvisor.subprocess.run", fake_run
+    )
+    results.append(
+        subprocess.CompletedProcess(
+            [], _RESOLVER_UNREACHABLE, "10.16.0.10\tOperation not permitted\n", ""
+        )
+    )
+    assert backend._unreachable_resolver("sb-1", ["10.16.0.10"]) == (
+        "10.16.0.10",
+        "Operation not permitted",
+    )
+    ((args, passed_ns),) = calls
+    assert args[:2] == ["nsenter", "--preserve-credentials"]
+    assert args[-5:] == [sys.executable, "-I", "-c", _RESOLVER_PROBE, "10.16.0.10"]
+    assert passed_ns == _namespace_ids(os.getpid())
+    entered = [arg.split("=")[0] for arg in args if arg.startswith("--") and "=" in arg]
+    assert entered == (["--net"] if os.geteuid() == 0 else ["--user", "--net"])
+
+    for result in (
+        subprocess.CompletedProcess([], 0, "", ""),
+        subprocess.CompletedProcess([], 1, "", "nsenter: reassociate failed"),
+        subprocess.TimeoutExpired("nsenter", 10),
+    ):
+        results.append(result)
+        assert backend._unreachable_resolver("sb-1", ["10.16.0.10"]) is None
+
+
 def test_netns_concurrent_same_port_bind_and_isolation(ensure_slirp4netns):
     """Two "public" sandboxes both bind 0.0.0.0:2222 (the terminal-bench QEMU
     hostfwd contract): each reaches its own listener, the bind never surfaces in
@@ -1443,6 +1613,65 @@ def test_netns_egress_allowlist_runtime_update(ensure_slirp4netns):
         assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
     finally:
         backend.delete_sandbox(sb)
+
+
+def test_netns_guard_refresh_closes_a_node_that_joined(ensure_slirp4netns, monkeypatch):
+    """A Ray node that joins after a sandbox started enters its guard at the
+    next refresh, so an allowlist that reached the node's address no longer
+    does. A public address stands in for the new node."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="python:3.10-slim",
+            network="public",
+            cidr_allowlist=list(ALLOW_ALL_CIDRS),
+        )
+    )
+    try:
+        reach = backend.exec_command(sb, _probe("1.1.1.1", 443), timeout=60)
+        assert reach.stdout.strip() == "open", reach.stderr
+        cluster = egress_guard.cluster_addresses()
+        monkeypatch.setattr(
+            egress_guard, "cluster_addresses", lambda: cluster + ["1.1.1.1/32"]
+        )
+        assert backend._refresh_guards() == [sb]
+        reach = backend.exec_command(sb, _probe("1.1.1.1", 443), timeout=60)
+        assert reach.stdout.strip() == "timeout", reach.stderr
+        assert backend._refresh_guards() == []
+    finally:
+        backend.delete_sandbox(sb)
+
+
+def test_netns_unreachable_dns_resolver_fails_the_create(ensure_slirp4netns):
+    """A dns resolver the sandbox can't reach fails the create with the
+    reason, rather than every lookup in the sandbox. Sandboxes have no IPv6
+    route, so an IPv6 resolver stands in for a Service IP that the cluster's
+    network translates and the egress filter then drops."""
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(
+            image="busybox:latest",
+            shell="/bin/sh",
+            network="public",
+            dns=["1.1.1.1", "8.8.8.8"],
+        )
+    )
+    backend.delete_sandbox(sb)
+
+    before = _slirp4netns_pids()
+    with pytest.raises(
+        SandboxCreationError, match="2001:4860:4860::8888 .* Network is unreachable"
+    ):
+        backend.create_sandbox(
+            GVisorSandboxConfig(
+                image="busybox:latest",
+                shell="/bin/sh",
+                network="public",
+                dns=["1.1.1.1", "2001:4860:4860::8888"],
+            )
+        )
+    assert backend._sandbox_metadata == {}
+    assert _slirp4netns_pids() == before
 
 
 def _nft_ruleset(*nsenter_target: str) -> tuple:
