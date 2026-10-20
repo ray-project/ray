@@ -178,4 +178,4 @@ spec:
     mode: DenyAllIngress
 ```
 
-`spec.networkPolicy` also requires the `RayClusterNetworkPolicy` feature gate on the operator. See the [KubeRay API reference](https://ray-project.github.io/kuberay/reference/api/#networkpolicyconfig) for `NetworkPolicyConfig` field details.
+`spec.networkPolicy` also requires the `RayClusterNetworkPolicy` feature gate on the operator. See the [KubeRay API reference](https://kuberay-project.github.io/kuberay/reference/api/#networkpolicyconfig) for `NetworkPolicyConfig` field details.
