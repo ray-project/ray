@@ -1634,6 +1634,35 @@ def test_orc_declared_col0_is_read_by_name(tmp_path):
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_scanner_options_preserve_native_behavior(tmp_path, monkeypatch, file_format):
+    schema = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, schema))
+    native_factory = MagicMock(wraps=source._source.create_scanner)
+    monkeypatch.setattr(source._source, "create_scanner", native_factory)
+    ignore_prefixes = ["_custom"]
+
+    scanner = source.create_scanner(
+        schema, partitioning=None, ignore_prefixes=ignore_prefixes
+    )
+
+    native_factory.assert_called_once_with(
+        schema,
+        filesystem=source._source.filesystem,
+        partitioning=None,
+        ignore_prefixes=ignore_prefixes,
+    )
+    assert scanner.schema == schema
+    assert scanner.partitioning is None
+    reader = scanner.create_reader()
+    native_reader = reader._reader if file_format == "parquet" else reader
+    assert native_reader._partition_parser is None
+    # Parquet consumes this option; ORC retains its native factory's default.
+    expected_prefixes = ignore_prefixes if file_format == "parquet" else None
+    assert scanner.ignore_prefixes == expected_prefixes
+    assert native_reader._ignore_prefixes == expected_prefixes
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_empty_table_keeps_declared_schema(tmp_path, file_format):
     declared = pa.schema([("id", pa.int64())])
     source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))

@@ -3,7 +3,12 @@
 import re
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
-from dataclasses import dataclass, field as dataclass_field, fields, replace
+from dataclasses import (
+    dataclass,
+    field as dataclass_field,
+    fields as dataclass_fields,
+    replace,
+)
 from typing import Iterable, List, Optional, Set, Tuple
 from urllib.parse import urlsplit
 
@@ -961,14 +966,14 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
 
     def create_scanner(self, schema: pa.Schema, filesystem=None, **options):
         scanner = self._source.create_scanner(
-            schema, filesystem=self._source.filesystem
+            schema, filesystem=self._source.filesystem, **options
         )
         scanner_type = (
             _HiveParquetScanner if self._file_format == "parquet" else _HiveOrcScanner
         )
         scanner_options = {
             descriptor.name: getattr(scanner, descriptor.name)
-            for descriptor in fields(scanner)
+            for descriptor in dataclass_fields(scanner)
             if descriptor.init
         }
         if self._file_format == "orc":
