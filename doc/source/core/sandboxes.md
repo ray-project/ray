@@ -30,6 +30,8 @@ Untrusted code interacts with gVisor's user-space kernel rather than the host Li
 
 The runtime cost is low next to full virtual machines (VMs) and MicroVMs, which boot a guest OS kernel and manage heavy disk images. A gVisor sandbox boots in tens of milliseconds, adds minimal memory overhead, and uses near-zero idle CPU, so Ray worker nodes can densely pack hundreds of concurrent sandboxes alongside standard Ray tasks and actors and sustain the high-frequency execution loops that RL rollouts and agent tool calls need.
 
+(ray-sandbox-requirements)=
+
 ## Requirements
 
 Ray Sandboxes need the following on every Ray node that runs a sandbox:
@@ -492,7 +494,13 @@ DNS is the one exception to the allowlist. UDP and TCP port 53 to the resolvers 
 
 ### Change the allowlist of a running sandbox
 
-`SandboxRuntime.set_egress_allowlist` replaces the allowlist of a running `public` sandbox in one atomic step, and looks up the Ray cluster's node addresses again. Connections that the new allowlist doesn't allow stall from their next packet, because Ray doesn't reset them. The following example installs a package over HTTPS, then cuts the sandbox off from everything but DNS:
+`set_egress_allowlist` replaces the allowlist of a running `public` sandbox in one atomic step, and looks up the Ray cluster's node addresses again. Connections that the new allowlist doesn't allow stall from their next packet, because Ray doesn't reset them. On a sandbox from `sandbox.create()`, call it on the actor:
+
+```python
+ray.get(sb.set_egress_allowlist.remote(["internet:443"]))
+```
+
+With `SandboxRuntime`, pass the sandbox's instance ID. The following example installs a package over HTTPS, then cuts the sandbox off from everything but DNS:
 
 ```python
 from ray.experimental.sandbox import SandboxRuntime
@@ -512,7 +520,7 @@ runtime.exec(instance_id, "pip install requests")
 runtime.set_egress_allowlist(instance_id, [])
 ```
 
-A sandbox from `sandbox.create()` keeps the allowlist you created it with, and so does a sandbox from the [HTTP API service](#http-api-service). The [gRPC facade](#grpc-facade-for-third-party-sandbox-clients) changes it through the client SDK.
+The [HTTP API service](#http-api-service) sets the allowlist only when it creates a sandbox. The [gRPC facade](#grpc-facade-for-third-party-sandbox-clients) changes it through the client SDK.
 
 ### Block more destinations on every sandbox
 
@@ -547,7 +555,9 @@ workerGroupSpecs:
 
 ### DNS in locked-down networks
 
-Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `dns` can't resolve names. Pass your network's resolver instead, such as `network="public", dns=["10.0.0.2"]`. On Kubernetes clusters that translate Service IPs, the cluster's DNS Service, which is the nameserver in a Pod's `/etc/resolv.conf`, doesn't work as a `dns` entry, so use a resolver that isn't a Service.
+Some virtual private clouds (VPCs) block outbound port 53 to public resolvers, so the default `dns` can't resolve names. Pass your network's resolver instead, such as `network="public", dns=["10.0.0.2"]`. Pass IPv4 addresses, because `public` sandboxes have no IPv6 route. On Kubernetes clusters that translate Service IPs, the cluster's DNS Service, which is the nameserver in a Pod's `/etc/resolv.conf`, doesn't work as a `dns` entry, so use a resolver that isn't a Service.
+
+When you pass `dns`, Ray checks that the sandbox can reach each resolver before it hands you the sandbox. If the sandbox can't reach one, creation fails with an error that names the resolver, instead of every name lookup failing inside the sandbox.
 
 If the sandbox can't reach any resolver, `network="host"` uses the node's own `/etc/resolv.conf`. It also opens the cluster's control plane to the sandbox, so use it only for trusted code. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
@@ -624,7 +634,7 @@ The egress filter blocks the addresses that Ray knows belong to your cluster. Ke
 
 * Anything on a public address counts as the internet. Under `internet`, a sandbox can reach a public Kubernetes API endpoint, a load balancer in front of Ray Serve or the Ray dashboard, and a Ray node's public IP address if the node has one. Ray passes no credentials into the sandbox, but the sandbox can call any of them that doesn't require credentials. Add those addresses to `RAY_SANDBOX_EGRESS_DENY`.
 * Private networks that use public address ranges count as the internet too. If your cluster's nodes or services use public ranges internally, add those ranges to `RAY_SANDBOX_EGRESS_DENY`.
-* Ray caches the cluster's node addresses for up to 30 seconds, and writes them into a sandbox's guard when it creates the sandbox and when its allowlist changes. A node that joins later isn't in the guard. The default `["internet"]` still blocks the node when its address is private, but an allowlist that includes private networks reaches it until the allowlist changes again.
+* A Ray node that joins after a sandbox starts can stay reachable from it for up to a minute. Every 30 seconds, Ray looks up the cluster's node addresses, which it caches for up to 30 seconds, and adds new ones to the guard of every sandbox whose allowlist could reach them, such as `["10.0.0.0/8"]` or `ALLOW_ALL_CIDRS`. An allowlist made only of `internet` and single-address-and-port entries, such as `["internet", "10.0.0.84:8000"]`, skips the lookup while your nodes have private addresses, because `internet` blocks those already.
 
 :::{tip}
 For defense in depth, turn on Ray's token authentication with `RAY_AUTH_MODE=token` on clusters that host sandboxes, so that Ray's own ports refuse callers without the cluster's token. On Kubernetes, also set `automountServiceAccountToken: false` on worker Pods that don't call the Kubernetes API.
@@ -882,6 +892,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
   EOF
   ```
 
+* **`dns resolver ... isn't reachable from a network='public' sandbox`**: The sandbox's egress filter dropped the resolver's traffic, or the sandbox has no route to it. Pass an IPv4 resolver that isn't a Kubernetes Service IP, such as your cloud network's resolver. See [DNS in locked-down networks](#dns-in-locked-down-networks).
 * **`Failed to write the egress ruleset`**: Ray couldn't build a `public` sandbox's ruleset, so it didn't start the sandbox. The message names the cause, which is an entry in `RAY_SANDBOX_EGRESS_DENY` that isn't an IP address or network, a `dns` entry that isn't an IP address, or a failed lookup of the cluster's nodes in GCS.
 * **A `public` sandbox can't reach a service on your network**: The default allowlist blocks private networks. Add the service's address and port to `cidr_allowlist`, such as `10.0.0.84:8000`. If the service runs on a Ray node, the entry must name one address and its ports, because the control-plane guard blocks Ray nodes otherwise. On Kubernetes clusters that translate Service IPs, list the addresses of the Service's Pods. See [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist).
 * **Connections from a `public` sandbox hang or fail**: The egress filter blocked them. A blocked TCP connection times out, and a blocked UDP packet fails at once with `Operation not permitted`. `public` sandboxes have no IPv6 route, so IPv6 connections fail with `Network is unreachable`.

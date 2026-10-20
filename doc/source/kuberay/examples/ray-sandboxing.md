@@ -154,28 +154,11 @@ Code in a `public` sandbox can still send data anywhere on the internet, so keep
 
 ## (Optional) Step 5: Build a custom Ray image with pre-installed `runsc`
 
-Ray Sandboxes require the `runsc` binary in the Ray worker container's `$PATH`, for example `/usr/local/bin/runsc`.
+Ray Sandboxes need `runsc` in the Ray container's `$PATH`, for example `/usr/local/bin/runsc`, and `mkfs.erofs` from erofs-utils. For `network="public"`, they also need slirp4netns and nftables. {ref}`The Ray Sandboxes requirements <ray-sandbox-requirements>` list the version that each tool needs.
 
-The example above downloads `runsc` at Pod startup. For production, pre-install `runsc` in your container image. Pre-baking the binary eliminates runtime network dependencies, avoids external download failures or rate limits, and decreases Pod startup latency.
+The preceding example downloads `runsc` at Pod startup. For production, pre-install these tools in your container image. Pre-baking them eliminates runtime network dependencies, avoids external download failures or rate limits, and decreases Pod startup latency.
 
-You can build a custom Ray worker image using the following `Dockerfile`:
-
-```dockerfile
-FROM rayproject/ray:2.58.0-py312
-
-USER root
-
-# Install wget and nftables, then download gVisor runsc and slirp4netns into
-# the system PATH. slirp4netns and nftables are for network="public".
-RUN apt-get update && apt-get install -y --no-install-recommends nftables wget && \
-    ARCH=$(uname -m) && \
-    wget "https://storage.googleapis.com/gvisor/releases/release/latest/${ARCH}/runsc" -O /usr/local/bin/runsc && \
-    wget "https://github.com/rootless-containers/slirp4netns/releases/download/v1.3.5/slirp4netns-${ARCH}" -O /usr/local/bin/slirp4netns && \
-    chmod a+rx /usr/local/bin/runsc /usr/local/bin/slirp4netns && \
-    rm -rf /var/lib/apt/lists/*
-
-USER ray
-```
+Build the image with one of the Dockerfiles in {ref}`the Ray Sandboxes requirements <ray-sandbox-requirements>`. They add every tool to a Ray image, and they build erofs-utils from source because the package in Ray's Ubuntu 22.04 images is too old. Base the image on the same Ray version as your RayCluster's `rayVersion`, then set it as the `image` of the Ray container in each worker group that runs sandboxes.
 
 ---
 
