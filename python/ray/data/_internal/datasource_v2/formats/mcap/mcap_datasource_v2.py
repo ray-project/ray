@@ -16,6 +16,8 @@ which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 A sample read (``read_mcap(samples=...)``) lists nothing: the samples dataset
 names the files, and ``read_api`` feeds it to the read tasks as their manifest.
 Its rows hold each topic's steps around a sample's anchor (``mcap_samples``).
+With ``video``, a ``VideoPlanner`` (``mcap_video_planning``) settles which of its
+topics are decoded.
 
 Format specification: https://mcap.dev/spec
 """
@@ -26,12 +28,15 @@ import copy
 from typing import (
     TYPE_CHECKING,
     Any,
+    Dict,
+    FrozenSet,
     Iterable,
     Iterator,
     List,
     Literal,
     Mapping,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -57,9 +62,12 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     MCAPSelection,
     TimeRange,
+    VideoOptions,
+    max_lead_in_ns,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
+    SamplePaths,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
     TopicPlan,
@@ -70,6 +78,9 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     TaskSummaryPartitioner,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_topic_spec import TopicSpec
+from ray.data._internal.datasource_v2.formats.mcap.mcap_video_planning import (
+    VideoPlanner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -91,6 +102,7 @@ from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    from mcap.summary import Summary
     from pyarrow.fs import FileSystem
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
@@ -128,6 +140,9 @@ class MCAPDatasourceV2(FileDataSourceV2):
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         samples_schema: Optional[pa.Schema] = None,
         local_sample_files: bool = False,
+        video: Optional[VideoOptions] = None,
+        video_topics: Optional[Iterable[str]] = None,
+        sample_files: Sequence[str] = (),
     ):
         """Set up a read of ``paths``, or, with ``samples_schema``, a sample read.
 
@@ -136,11 +151,20 @@ class MCAPDatasourceV2(FileDataSourceV2):
         Its files come with the samples, so ``paths`` is empty and the read
         tasks resolve each file against ``filesystem``, or its URI. With
         ``local_sample_files``, the files use the ``local://`` scheme, so the
-        read tasks run on the driver's node.
+        read tasks run on the driver's node. With ``video``, planning opens
+        ``sample_files``, some of the samples' files, to settle which topics
+        are decoded.
         """
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
+        assert video is None or samples_schema is not None, "video is for samples"
+        if video is None and video_topics:
+            raise ValueError(
+                "video_topics lists topics to decode, so it needs "
+                "video=VideoOptions(...)."
+            )
         self._samples_schema = samples_schema
+        self._sample_files = tuple(sample_files)
         self._topic_plans: Tuple[TopicPlan, ...] = ()
         if samples_schema is not None:
             assert isinstance(topics, Mapping), "a sample read maps topics to specs"
@@ -160,6 +184,14 @@ class MCAPDatasourceV2(FileDataSourceV2):
             self._paths = resolved_paths
             self._filesystem = resolved_filesystem
         self._selection = MCAPSelection.create(topics, time_range, message_types)
+        self._video = video
+        self._video_topics = _listed_video_topics(video_topics, self._selection)
+        # With ``video``, the topics that get frame columns, settled by
+        # ``infer_schema``.
+        self._decoded_topics: Tuple[str, ...] = ()
+        # The summaries video planning read, by sample path as the samples name
+        # it, so the samples-per-task estimate does not read them again.
+        self._sample_summaries: Dict[str, Optional[Summary]] = {}
         self._include_metadata = include_metadata
         self._log_time_order = log_time_order
         self._include_row_id = include_row_id
@@ -200,6 +232,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def topic_plans(self) -> Tuple[TopicPlan, ...]:
         """For a sample read, each topic's steps; empty otherwise."""
         return self._topic_plans
+
+    @property
+    def sample_summaries(self) -> Mapping[str, Optional[Summary]]:
+        """The sample files' summaries that ``infer_schema`` read, by path as
+        the samples name it: ``None`` for a file without one."""
+        return self._sample_summaries
 
     def _get_file_indexer(self) -> FileIndexer:
         return MCAPSummaryIndexer(
@@ -280,7 +318,14 @@ class MCAPDatasourceV2(FileDataSourceV2):
         each topic's (``sample_row_schema``).
         """
         if self._samples_schema is not None:
-            return sample_row_schema(self._samples_schema, self._topic_plans)
+            resize = None
+            if self._video is not None:
+                resize = self._video.resize
+                self._decoded_topics = self._sample_decoded_topics()
+                _refuse_slots_of_decoded_topics(self._topic_plans, self._decoded_topics)
+            return sample_row_schema(
+                self._samples_schema, self._topic_plans, self._decoded_topics, resize
+            )
         assert sample is not None, "MCAP always receives a sample"
         data_type = (
             infer_data_type(
@@ -355,4 +400,64 @@ class MCAPDatasourceV2(FileDataSourceV2):
             topic_plans=self._topic_plans,
             # A run of samples holds at most a read task's budget of chunks.
             max_run_bytes=_BIN_PACKING_BYTES,
+            video=self._video,
+            decoded_topics=self._decoded_topics,
+            max_lead_in_ns=max_lead_in_ns(),
         )
+
+    def _sample_decoded_topics(self) -> Tuple[str, ...]:
+        """The topics a sample read decodes: the listed video topics, and the
+        video topics of the sample files on the first one's filesystem."""
+        # One resolver, so files on the same filesystem share its object.
+        sample_paths = SamplePaths(self._filesystem)
+        resolved = [sample_paths.resolve(p) for p in self._sample_files]
+        if not resolved:
+            return tuple(sorted(self._video_topics))
+        filesystem = resolved[0][1]
+        paths = [path for path, fs in resolved if fs is filesystem]
+        planner = VideoPlanner(
+            self._selection,
+            filesystem,
+            self._video_topics,
+            owner=self,
+            summary_budget_bytes=_BIN_PACKING_BYTES,
+        )
+        decoded = planner.decoded_topics(paths)
+        self._sample_summaries = {
+            named: planner.summaries[path]
+            for named, (path, fs) in zip(self._sample_files, resolved)
+            if fs is filesystem and path in planner.summaries
+        }
+        return decoded
+
+
+def _refuse_slots_of_decoded_topics(
+    plans: Sequence[TopicPlan], decoded: Sequence[str]
+) -> None:
+    """Fail on a decoded topic read with ``match.all_in_step``: a step holds one
+    decoded frame, not a list of them."""
+    slotted = sorted(p.topic for p in plans if p.all_in_step and p.topic in decoded)
+    if slotted:
+        raise ValueError(
+            f"match.all_in_step() takes a list of messages per step, so it cannot "
+            f"be decoded to frames: {slotted}. Use match.nearest() or "
+            "match.backward() for a decoded camera topic."
+        )
+
+
+def _listed_video_topics(
+    video_topics: Optional[Iterable[str]], selection: MCAPSelection
+) -> FrozenSet[str]:
+    """``video_topics`` as a set, each entry checked to be a selected topic.
+
+    An empty list means none. With ``topics``, every entry must be one of them.
+    """
+    listed = frozenset(video_topics or ())
+    if selection.topics is not None:
+        unselected = sorted(listed - selection.topics)
+        if unselected:
+            raise ValueError(
+                f"video_topics lists topics that topics does not select: "
+                f"{unselected}. Add them to topics, or drop them from video_topics."
+            )
+    return listed
