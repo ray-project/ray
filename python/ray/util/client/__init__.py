@@ -273,6 +273,12 @@ class _ClientContext:
     def __getattr__(self, key: str):
         if self.is_connected():
             return getattr(self.api, key)
+        elif self.client_worker is not None and self.client_worker._rejection:
+            if key in ["is_initialized", "_internal_kv_initialized"]:
+                # Stay initialized, so the auto-init hook doesn't start a local
+                # cluster and the next ray.* call reports the rejection.
+                return lambda: True
+            raise self.client_worker._rejection
         elif key in ["is_initialized", "_internal_kv_initialized"]:
             # Client is not connected, thus Ray is not considered initialized.
             return lambda: False
@@ -404,6 +410,13 @@ class RayAPIStub:
 
 
 ray = RayAPIStub()
+
+
+def _disconnect_if_rejected() -> None:
+    """Drop a client whose token the server rejected, so a reconnect starts fresh."""
+    worker = ray.get_context().client_worker
+    if worker is not None and worker._rejection is not None:
+        ray.disconnect()
 
 
 @DeveloperAPI

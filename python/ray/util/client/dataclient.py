@@ -277,7 +277,7 @@ class DataClient:
                     reconnecting = self._can_reconnect(e)
                     if not reconnecting:
                         if e.code() == grpc.StatusCode.UNAUTHENTICATED:
-                            self._last_exception = AuthenticationError(e.details())
+                            self._last_exception = self.client_worker._reject(e)
                         else:
                             self._last_exception = e
                         return

@@ -657,7 +657,9 @@ class _RejectingStub:
         return reject
 
 
-@pytest.mark.parametrize("operation", ["put", "get", "pending_future"])
+@pytest.mark.parametrize(
+    "operation", ["put", "get", "pending_future", "cluster_resources"]
+)
 def test_rejected_reconnect_raises_authentication_error(
     operation, call_ray_start_shared
 ):
@@ -678,6 +680,7 @@ def test_rejected_reconnect_raises_authentication_error(
             middleman.logs_servicer,
         ):
             servicer.stub = _RejectingStub()
+        accept_tokens_again = middleman.reset_channel
         middleman.reset_channel = lambda: None
         middleman.channel.close()
 
@@ -687,6 +690,7 @@ def test_rejected_reconnect_raises_authentication_error(
             "put": lambda: ray.put(42),
             "get": lambda: ray.get(ref),
             "pending_future": lambda: pending.result(timeout=20),
+            "cluster_resources": ray.cluster_resources,
         }[operation]
 
         def get_after_rejection():
@@ -703,6 +707,14 @@ def test_rejected_reconnect_raises_authentication_error(
             not get_thread.is_alive()
         ), f"{operation} hung after the token was rejected"
         assert isinstance(outcome.get("error"), AuthenticationError), outcome
+        assert not ray.util.client.ray.is_connected()
+        # A retry must connect again: here the server still rejects the token.
+        with pytest.raises(AuthenticationError):
+            ray.init("ray://localhost:10011")
+
+        accept_tokens_again()
+        ray.init("ray://localhost:10011")
+        assert ray.get(ray.put(42)) == 42
 
 
 if __name__ == "__main__":

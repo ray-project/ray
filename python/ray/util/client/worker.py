@@ -207,6 +207,8 @@ class Worker:
         # Set to True when the connection cannot be recovered and reconnect
         # attempts should be stopped
         self._in_shutdown = False
+        # Set when the server rejects the token; re-raised by every later call.
+        self._rejection: Optional[AuthenticationError] = None
         # Set to True after initial connection succeeds
         self._has_connected = False
 
@@ -315,8 +317,6 @@ class Worker:
                 # Note that channel_ready_future constitutes its own timeout,
                 # which is why we do not sleep here.
             except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.UNAUTHENTICATED:
-                    raise AuthenticationError(e.details()) from e
                 logger.debug(
                     f"Ray client server unavailable, retrying in {timeout}s..."
                 )
@@ -389,7 +389,7 @@ class Worker:
                     time.sleep(0.5)
                     continue
                 if e.code() == grpc.StatusCode.UNAUTHENTICATED:
-                    raise AuthenticationError(e.details()) from e
+                    raise self._reject(e) from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -398,7 +398,7 @@ class Worker:
                 # again.
                 time.sleep(0.5)
                 continue
-        raise ConnectionError("Client is shutting down.")
+        raise self._rejection or ConnectionError("Client is shutting down.")
 
     def _get_object_iterator(
         self, req: ray_client_pb2.GetRequest, *args, **kwargs
@@ -439,7 +439,7 @@ class Worker:
                     time.sleep(0.5)
                     continue
                 if e.code() == grpc.StatusCode.UNAUTHENTICATED:
-                    raise AuthenticationError(e.details()) from e
+                    raise self._reject(e) from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -448,7 +448,16 @@ class Worker:
                 # again.
                 time.sleep(0.5)
                 continue
-        raise ConnectionError("Client is shutting down.")
+        raise self._rejection or ConnectionError("Client is shutting down.")
+
+    def _reject(self, e: grpc.RpcError) -> AuthenticationError:
+        """Record a token rejection, which no retry can fix.
+
+        Safe to call from the data thread: it doesn't set ``_in_shutdown``,
+        which would make the main thread's calls fail with a generic error.
+        """
+        self._rejection = AuthenticationError(e.details())
+        return self._rejection
 
     def _add_ids_to_metadata(self, metadata: Any):
         """
@@ -848,7 +857,14 @@ class Worker:
     ):
         req = ray_client_pb2.ClusterInfoRequest()
         req.type = req_type
-        resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
+        try:
+            resp = self.server.ClusterInfo(req, timeout=timeout, metadata=self.metadata)
+        except grpc.RpcError as e:
+            # Only a rejection is converted: _connect_channel retries other
+            # RpcErrors from ping_server.
+            if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                raise self._reject(e) from e
+            raise
         if resp.WhichOneof("response_type") == "resource_table":
             # translate from a proto map to a python dict
             output_dict = dict(resp.resource_table.table)
@@ -950,7 +966,7 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
-        return not self._in_shutdown and self._has_connected
+        return not self._in_shutdown and self._has_connected and self._rejection is None
 
     def _server_init(
         self, job_config: JobConfig, ray_init_kwargs: Optional[Dict[str, Any]] = None
@@ -1008,6 +1024,8 @@ def make_client_id() -> str:
 
 
 def decode_exception(e: grpc.RpcError) -> Exception:
+    if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+        return AuthenticationError(e.details())
     if e.code() != grpc.StatusCode.ABORTED:
         # The ABORTED status code is used by the server when an application
         # error is serialized into the exception details. If the code
