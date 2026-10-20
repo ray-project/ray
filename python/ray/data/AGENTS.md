@@ -44,6 +44,25 @@ the baseline from the diff:
 If behavior is unchanged (pure refactor), say so explicitly and state what
 invariant was preserved and how it was verified.
 
+### 4. List the Ray Data subsystems touched
+
+Name the subsystems the PR changes so reviewers and CODEOWNERS can route and
+scope their review. Use these names (with the main code location):
+
+- **API** — public `Dataset`/`DataIterator`/`read_*` surface (`dataset.py`, `read_api.py`, `iterator/`)
+- **Logical planning / query optimization** — logical operators, optimizer rules (`_internal/logical/`)
+- **Physical planning** — logical-to-physical translation (`_internal/planner/`)
+- **Execution** — streaming executor, physical operators (`_internal/execution/`)
+- **Resource allocation / backpressure** — resource manager, backpressure policies, autoscaling (`_internal/execution/resource_manager.py`, `backpressure_policy/`, `autoscaler/`, `actor_autoscaler/`, `cluster_autoscaler/`)
+- **IO** — datasources and datasinks (`_internal/datasource/`, `_internal/datasource_v2/`, `datasource/`)
+- **Block / data format** — block builders, Arrow/pandas blocks, batching (`arrow_block.py`, `pandas_block.py`, `block_batching/`, `batcher.py`)
+- **Shuffle / aggregation** — sorts, joins, repartitions, aggregates (`aggregate.py`, `gpu_shuffle/`, shuffle operators)
+- **Observability** — stats, metrics, progress, issue detection (`stats.py`, `progress/`, `issue_detection/`, exporters)
+
+A single line is enough, e.g. `Subsystems: physical planning, execution`. If a
+change spans many subsystems, call out which one carries the behavioral change
+versus which are mechanical ripple edits.
+
 ### Template
 
 ````markdown
@@ -55,6 +74,9 @@ invariant was preserved and how it was verified.
 
 ## After
 <new behavior and what's observably different>
+
+## Subsystems
+<e.g. logical planning, execution, resource allocation>
 
 ## Data flow
 ```mermaid
