@@ -177,9 +177,10 @@ class MCAPReader(Reader[FileManifest]):
         first message is the next one needed.
         """
         # Every table reports one read unit: the file for a whole-file read, else
-        # the task's first chunk. Each chunk has one owner, so a checkpoint that
-        # hands the unit back skips only this task's rows. The unit is finished
-        # once every table of the file is written.
+        # the task's first chunk. Listing excludes read units chunk by chunk
+        # (``excluded_read_unit_ids``), so handing this unit back would skip only
+        # that first chunk. Nothing hands units back yet: a ``row_id`` checkpoint
+        # filters rows by id instead.
         if offsets is None:
             unit = ReadUnit(id=path, source=path, count=1)
         else:
