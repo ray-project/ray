@@ -39,7 +39,7 @@ Follow the instructions in [KubeRay operator](kuberay-operator-deploy) to instal
 # Step 3: Create a RayCluster
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.verl.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.verl.yaml
 ```
 
 # Step 4: Install verl in the head Pod
@@ -146,5 +146,5 @@ It's not necessary to wait for all steps to complete. You can stop the job if yo
 # Step 8: Clean up
 
 ```sh
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.verl.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.verl.yaml
 ```

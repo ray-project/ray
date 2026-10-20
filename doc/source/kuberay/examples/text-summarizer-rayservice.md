@@ -22,7 +22,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ```sh
 # Create a RayService
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.text-summarizer.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.text-summarizer.yaml
 ```
 
 * In the RayService, the head Pod doesn't have any `tolerations`. Meanwhile, the worker Pods use the following `tolerations` so the scheduler won't assign the head Pod to the GPU node.
@@ -67,9 +67,9 @@ python text_summarizer_req.py
 ## Step 6: Delete your service
 
 ```sh
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.text-summarizer.yaml
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.text-summarizer.yaml
 ```
 
 ## Step 7: Uninstall your KubeRay operator
 
-Follow [this document](https://github.com/ray-project/kuberay/tree/master/helm-chart/kuberay-operator) to uninstall the latest stable KubeRay operator using the Helm repository.
+Follow [this document](https://github.com/kuberay-project/kuberay/tree/master/helm-chart/kuberay-operator) to uninstall the latest stable KubeRay operator using the Helm repository.
