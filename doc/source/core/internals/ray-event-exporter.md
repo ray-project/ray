@@ -261,7 +261,7 @@ Starting in Ray 2.58, Ray can route task events to a dedicated module on the Ray
 
 ### RayTaskEventRecorder
 
-`RayTaskEventRecorder` is a task-aware recorder that shares a base class with `RayEventRecorder`. The core worker records to it when both `enable_ray_event` and `enable_ray_task_event_recorder` are true, and while it's active, the core worker task event buffer stops sending to the aggregator agent. Compared to the generic recorder, it:
+`RayTaskEventRecorder` is a task-aware recorder that shares a base class with `RayEventRecorder`. The core worker records to it when both `enable_ray_event` and `enable_ray_task_event_recorder` are true, and while it's active, the core worker `TaskEventBuffer` stops sending to the aggregator agent. Compared to the generic recorder, it:
 
 - Buffers status events and profile events separately, each with its own size limit
 - Reports the task attempts it drops to the aggregator agent, so consumers know the data is incomplete
