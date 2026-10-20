@@ -109,7 +109,7 @@ class XCCLGroup(BaseGroup):
             if meta is not None:
                 addr, port = meta.decode().rsplit(":", 1)
                 try:
-                    return dist.TCPStore(
+                    store = dist.TCPStore(
                         addr,
                         int(port),
                         world_size,
@@ -118,6 +118,13 @@ class XCCLGroup(BaseGroup):
                     )
                 except (RuntimeError, OSError) as e:
                     last_err = e
+                else:
+                    # The short timeout only bounds the connect attempt. Ranks
+                    # can reach their first collective far apart (e.g. a
+                    # trainer waiting for weights), and the lazy communicator
+                    # setup waits on this store, so restore the full timeout.
+                    store.set_timeout(self._timeout)
+                    return store
             time.sleep(0.1)
         raise TimeoutError(f"XCCL rendezvous timed out for group '{group_name}': {last_err}")
 
