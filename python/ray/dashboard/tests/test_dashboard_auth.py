@@ -7,6 +7,8 @@ import requests
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import reset_autoscaler_v2_enabled_cache
+from ray.autoscaler.v2.utils import is_autoscaler_v2
 from ray.experimental.internal_kv import _internal_kv_get
 
 
@@ -177,7 +179,21 @@ def _metrics_reachable(url):
         return False
 
 
-def test_metrics_endpoints_require_token(setup_cluster_with_token_auth):
+@pytest.fixture(params=["v1", "v2"])
+def autoscaler_version(request, monkeypatch):
+    """Run before the cluster fixture so the monitor starts in the chosen version."""
+    monkeypatch.setenv(
+        "RAY_enable_autoscaler_v2", "1" if request.param == "v2" else "0"
+    )
+    yield request.param
+    # The head built in this process caches the version for later tests.
+    reset_autoscaler_v2_enabled_cache()
+
+
+def test_metrics_endpoints_require_token(
+    autoscaler_version, setup_cluster_with_token_auth
+):
+    assert is_autoscaler_v2(fetch_from_server=True) == (autoscaler_version == "v2")
     token = setup_cluster_with_token_auth["token"]
     accepted_forms = [
         {"headers": {"Authorization": f"Bearer {token}"}},

@@ -27,7 +27,6 @@ from ray.dashboard.modules.metrics.templates import (
     GRAFANA_DATASOURCE_TEMPLATE,
     GRAFANA_INI_TEMPLATE,
     PROMETHEUS_YML_TEMPLATE,
-    get_prometheus_authorization_config,
 )
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
@@ -450,20 +449,11 @@ class MetricsHead(SubprocessModule):
         prom_discovery_file_path = os.path.join(
             self.session_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
-        try:
-            authorization_config = get_prometheus_authorization_config()
-        except ValueError as e:
-            logger.warning(
-                f"{e} Until then, a Prometheus using {prometheus_config_output_path} "
-                "can't scrape Ray's metrics endpoints."
-            )
-            authorization_config = ""
         with open(prometheus_config_output_path, "w") as f:
             f.write(
                 PROMETHEUS_YML_TEMPLATE.format(
                     prom_metrics_service_discovery_file_path=prom_discovery_file_path
                 )
-                + authorization_config
             )
 
     async def run(self):

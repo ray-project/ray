@@ -524,6 +524,9 @@ def fetch_raw_prometheus(prom_addresses, timeout=None):
             response = requests.get(
                 f"http://{address}/metrics", headers=headers, **kwargs
             )
+            # Surface a rejected token as an HTTPError instead of an empty scrape.
+            if response.status_code in (401, 403):
+                response.raise_for_status()
             yield address, response.text
         except requests.exceptions.ConnectionError:
             continue

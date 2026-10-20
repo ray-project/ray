@@ -247,10 +247,13 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
     return "";
   }
 
-  std::string token;
-  std::getline(token_file, token);
-  token_file.close();
-  return token;
+  std::string line;
+  while (std::getline(token_file, line)) {
+    if (!TrimWhitespace(line).empty()) {
+      return line;
+    }
+  }
+  return "";
 }
 
 std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
