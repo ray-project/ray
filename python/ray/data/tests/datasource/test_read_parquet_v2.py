@@ -1544,11 +1544,15 @@ def test_prelisted_partition_filter_uses_logical_types(tmp_path, restore_ctx, ye
     listing = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(listing, ListFiles)
     assert listing.prelisted_file_infos is not None
-    rows = (
-        ds.filter(expr=col("year") == year).select_columns(["id"]).limit(2).take_all()
-    )
-    assert len(rows) == (2 if year == 2024 else 0)
-    assert all(row["id"] in [4, 5, 6, 7] for row in rows)
+    filtered = ds.filter(expr=col("year") == year).select_columns(["id"])
+    expected_ids = [4, 5, 6, 7] if year == 2024 else []
+    all_rows = filtered.take_all()
+    assert sorted(row["id"] for row in all_rows) == expected_ids
+
+    # Keep the prelisted Limit path covered as well as the complete result set.
+    rows = filtered.limit(2).take_all()
+    assert len(rows) == min(2, len(expected_ids))
+    assert all(row["id"] in expected_ids for row in rows)
 
 
 if __name__ == "__main__":

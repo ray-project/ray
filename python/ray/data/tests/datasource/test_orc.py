@@ -103,6 +103,72 @@ def test_read_orc_v2_partition_predicate_matches_memory_logical_schema(
     assert partitioning.field_types == {}
 
 
+def test_read_orc_v2_partition_predicate_uses_float32_logical_type(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "year=16777217"
+    directory.mkdir()
+    path = directory / "data.orc"
+    _write_orc(
+        str(path),
+        pa.table(
+            {
+                "id": [1],
+                "year": pa.array([16777217.0], type=pa.float32()),
+            }
+        ),
+    )
+
+    source = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
+        override_num_blocks=1,
+    )
+    schema = source.schema().base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == pa.float32()
+
+    rows = source.filter(expr=col("year") == 16777216.0).take_all()
+    assert rows == [{"id": 1, "year": 16777216.0}]
+
+
+def test_read_orc_v2_partition_predicate_does_not_cast_unused_invalid_field(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data.context import DataContext
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    directory = tmp_path / "year=invalid" / "country=US"
+    directory.mkdir(parents=True)
+    path = directory / "data.orc"
+    _write_orc(
+        str(path),
+        pa.table(
+            {
+                "id": [1],
+                "year": pa.array([2024], type=pa.int32()),
+            }
+        ),
+    )
+
+    source = ray.data.read_orc(
+        str(tmp_path),
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year", "country"]),
+        override_num_blocks=1,
+    )
+    schema = source.schema().base_schema
+    assert isinstance(schema, pa.Schema)
+    assert schema.field("year").type == pa.int32()
+
+    rows = source.filter(expr=col("country") == "US").select_columns(["id"]).take_all()
+    assert rows == [{"id": 1}]
+
+
 @pytest.mark.parametrize("reverse_paths", [False, True])
 @pytest.mark.parametrize(
     "operation", ["and", "or", "limit", "empty", "count", "empty_count"]
