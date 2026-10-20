@@ -5,7 +5,7 @@ import re
 import shlex
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, NoReturn, Optional
 
 from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
@@ -153,7 +153,7 @@ class RuntimeEnvContext:
 
     def _exec_container_worker(
         self, launcher_env: Dict[str, str], passthrough_args: List[str]
-    ):
+    ) -> NoReturn:
         # The job's env_vars go to the container only: podman runs with the
         # raylet's environment, so job values such as LD_PRELOAD can't affect
         # the host launcher. RAY_* vars are passed by name, so podman reads
@@ -161,7 +161,7 @@ class RuntimeEnvContext:
         container_env: Dict[str, Optional[str]] = {
             name: None for name in launcher_env if name.startswith("RAY_")
         }
-        # Raw values, as master passed them single-quoted.
+        # Passed as written, without expanding ${VAR} against the host env.
         container_env.update(self.env_vars)
         container_env.update(self.container["env_vars"])
 

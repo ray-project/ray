@@ -108,9 +108,9 @@ def _modify_context_impl(
     # RuntimeEnvContext._exec_container_worker.
     container_env = dict()
 
-    # Mount the token file rather than passing the token via --env, which is
-    # logged and visible in `ps`. A token set only in RAY_AUTH_TOKEN reaches the
-    # container by name with the other RAY_* vars.
+    # A token kept only in a file has no value in podman's environment to pass
+    # by name, so mount the file read-only. A token in RAY_AUTH_TOKEN reaches
+    # the container by name with the other RAY_* vars.
     if (
         is_token_auth_enabled()
         and "RAY_AUTH_TOKEN" not in context.env_vars

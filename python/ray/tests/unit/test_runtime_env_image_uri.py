@@ -46,10 +46,20 @@ def _launch(
         ray_tmp_dir,
     )
 
+    # The worker launcher gets the context through serialize()/deserialize().
+    context = RuntimeEnvContext.deserialize(context.serialize())
+
     def fake_execvpe(file, args, env):
         raise _Exec(args, env)
 
-    with mock.patch.dict(os.environ), mock.patch.object(os, "execvpe", fake_execvpe):
+    def shell_launch(*args, **kwargs):
+        raise AssertionError("container worker launched through a shell")
+
+    with mock.patch.dict(os.environ), mock.patch.object(
+        os, "execvpe", fake_execvpe
+    ), mock.patch.object(os, "execvp", shell_launch), mock.patch(
+        "subprocess.Popen", shell_launch
+    ):
         with pytest.raises(_Exec) as exec_call:
             context.exec_worker(["/host/default_worker.py"], Language.PYTHON)
     return exec_call.value.args
@@ -107,6 +117,23 @@ def test_ignores_token_path_from_job_env_vars(auth_env, tmp_path):
 
     assert f"-v {token_path}:{token_path}:ro" in command
     assert f"-v {host_file}" not in command
+    # The container sees the mounted node path, not the job's.
+    assert f"--env RAY_AUTH_TOKEN_PATH={token_path}" in command
+    assert f"RAY_AUTH_TOKEN_PATH={host_file}" not in command
+
+
+def test_job_token_is_passed_as_given(auth_env, tmp_path):
+    token_path = tmp_path / ".ray" / "auth_token"
+    token_path.parent.mkdir()
+    token_path.write_text(TOKEN)
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    reset_auth_token_state()
+    context = RuntimeEnvContext(env_vars={"RAY_AUTH_TOKEN": "job-token"})
+
+    command = _container_command(context)
+
+    assert ":ro" not in command
+    assert "--env RAY_AUTH_TOKEN=job-token" in command
 
 
 def test_token_from_env_is_passed_by_name(auth_env, tmp_path):
@@ -211,20 +238,30 @@ def test_run_options_expand_from_launcher_and_job_env(auth_env):
     auth_env.setenv("HOST_DIR", "/host data")
     context = RuntimeEnvContext(env_vars={"JOB_VAR": "job value"})
 
+    auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
     argv, _ = _launch(
         context,
-        run_options=["-v", "$HOST_DIR:/data", "--label=job=$JOB_VAR"],
+        run_options=[
+            "-v",
+            "$HOST_DIR:/data",
+            "--label=job=$JOB_VAR",
+            "--label=t=$RAY_AUTH_TOKEN",
+        ],
     )
 
     # An expanded value stays inside its one argument.
     assert argv[argv.index("/host data:/data") - 1] == "-v"
     assert "--label=job=job value" in argv
+    # RAY_* vars expand like any other, so this puts the token on argv; the
+    # RuntimeEnv docstring says expanded values appear on the command line.
+    assert f"--label=t={TOKEN}" in argv
 
 
 def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     auth_env.setenv("RAY_AUTH_MODE", "disabled")
     reset_auth_token_state()
     auth_env.setenv("RAY_RAYLET_PID", "1234")
+    auth_env.setenv("RAY_JOB_ID", "01000000")
     auth_env.setenv("RAY_AUTH_TOKEN", TOKEN)
     auth_env.setenv("RAY_RUNTIME_ENV_BEARER_TOKEN", "bearer-secret")
     injected = "x'$(touch /tmp/pwned)'`id`"
@@ -251,6 +288,7 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
     # RAY_* vars are passed by name, so their values stay off podman's argv.
     for name, value in [
         ("RAY_RAYLET_PID", "1234"),
+        ("RAY_JOB_ID", "01000000"),
         ("RAY_AUTH_TOKEN", TOKEN),
         ("RAY_RUNTIME_ENV_BEARER_TOKEN", "bearer-secret"),
     ]:

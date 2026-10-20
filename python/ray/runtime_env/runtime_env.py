@@ -273,7 +273,8 @@ class RuntimeEnv(dict):
             Each `run_options` item is passed as exactly one argument, so
             write a flag and its value as `--flag=value` or as two items.
             `$NAME` and `${NAME}` in an item are expanded; `$$` is a literal
-            `$`.
+            `$`. Expanded values, like the rest of `run_options`, appear on
+            podman's command line.
         env_vars: Environment variables to set.
         worker_process_setup_hook: Experimental. The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.
