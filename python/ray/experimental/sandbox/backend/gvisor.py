@@ -644,7 +644,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     root_dir, egress_allowlist, config.dns, cluster=egress_cluster
                 )
             except Exception as err:
+                shutil.rmtree(root_dir, ignore_errors=True)
                 self._image_manager.release_image(config.image, sandbox_id)
+                owner_file.close()
                 raise SandboxCreationError(
                     f"Failed to write the egress ruleset for '{root_dir}': {err}"
                 ) from err

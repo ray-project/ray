@@ -1019,9 +1019,12 @@ def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypa
     monkeypatch.setattr(egress_guard, "cluster_addresses", unavailable)
     images = _StubImageManager()
     backend = GVisorSandboxBackend(image_manager=images)
+    bundles = set(tmp_path.iterdir())
     with pytest.raises(SandboxCreationError, match="GCS unavailable"):
         backend.create_sandbox(_public_config())
     assert len(images.released) == 1
+    # The failed create deletes its bundle rather than leaving it locked.
+    assert set(tmp_path.iterdir()) <= bundles
 
 
 def test_set_egress_allowlist_needs_a_public_sandbox(tmp_path):
