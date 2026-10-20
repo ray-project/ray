@@ -203,9 +203,7 @@ ray.get(gpu_task.remote())
 ray.shutdown()
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import ray
 
@@ -228,9 +226,7 @@ ray.get(gpu_actor.ping.remote())
 ray.get(gpu_task.remote())
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 (GPUActor pid=52420) GPU IDs: [0]
 (GPUActor pid=52420) ROCR_VISIBLE_DEVICES: 0
 (gpu_task pid=51830) GPU IDs: [1]
@@ -246,9 +242,7 @@ ray.get(gpu_task.remote())
 ray.shutdown()
 ```
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import ray
 
@@ -271,9 +265,7 @@ ray.get(gpu_actor.ping.remote())
 ray.get(gpu_task.remote())
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 (GPUActor pid=52420) GPU IDs: [0]
 (GPUActor pid=52420) ZE_AFFINITY_MASK: 0
 (gpu_task pid=51830) GPU IDs: [1]
