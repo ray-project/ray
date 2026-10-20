@@ -3,7 +3,7 @@
 local DIRECT_RESPONSE_HEADER = "${DIRECT_RESPONSE_HEADER}"
 local ORIGINAL_METHOD_HEADER = "${ORIGINAL_METHOD_HEADER}"
 
--- router backend -> { app, p = route prefix, pool = replicas or fallback proxy }
+-- router backend -> { app, p = route prefix, local_pool, remote_pool }
 local ROUTERS = ${ROUTERS}
 
 -- app name -> { b = backend, p = route prefix, d = ingress deployment, r = { replica_id = server } }
@@ -139,6 +139,7 @@ local function route(txn, router)
     local headers = header_line("Content-Type", first_header(hdrs, "content-type"))
         .. header_line(REQUEST_ID_HEADER, first_header(hdrs, REQUEST_ID_HEADER))
         .. header_line(SESSION_HEADER, session_id_from(hdrs))
+        .. header_line("Authorization", first_header(hdrs, "authorization"))
         .. header_line("Origin", first_header(hdrs, "origin"))
         .. header_line("Access-Control-Request-Method", first_header(hdrs, "access-control-request-method"))
         .. header_line("Access-Control-Request-Headers", first_header(hdrs, "access-control-request-headers"))
@@ -154,16 +155,26 @@ local function route(txn, router)
         path = moved_path("/internal/route", "/", router.p),
     }
 
-    local pool = router.pool
-    local n = #pool
     local start = _rr_cursor[router.app] or 0
     _rr_cursor[router.app] = start + 1
     local response, reason
-    for i = 0, n - 1 do
-        response, reason = call_router(pool[(start + i) % n + 1], request)
-        if response or reason ~= "router_unreachable" then
-            break
+
+    local function try_pool(pool)
+        local pool_response, pool_reason
+        for i = 0, #pool - 1 do
+            pool_response, pool_reason = call_router(pool[(start + i) % #pool + 1], request)
+            if pool_response or pool_reason ~= "router_unreachable" then
+                break
+            end
         end
+        return pool_response, pool_reason
+    end
+
+    if #router.local_pool > 0 then
+        response, reason = try_pool(router.local_pool)
+    end
+    if not response and (reason == nil or reason == "router_unreachable") and #router.remote_pool > 0 then
+        response, reason = try_pool(router.remote_pool)
     end
     if not response then
         return fail(txn, reason)
@@ -216,7 +227,7 @@ end
 core.register_action("route_via_router_application", {"http-req"}, function(txn)
     local router_app = txn:get_var("txn.router_app")
     local router = router_app and ROUTERS[router_app]
-    if not router or #router.pool == 0 then
+    if not router or (#router.local_pool == 0 and #router.remote_pool == 0) then
         return fail(txn, "router_unavailable")
     end
     route(txn, router)

@@ -197,6 +197,8 @@ class TestRouterApplicationMaps:
         assert "port = 9000" in local_lua
         assert local_lua.index("port = 9001") < local_lua.index("port = 9002")
         assert local_lua.index("port = 9002") < local_lua.index("port = 9000")
+        assert local_lua.index("local_pool") < local_lua.index("port = 9001")
+        assert local_lua.index("remote_pool") < local_lua.index("port = 9000")
 
         remote_lua = _format_router_application_pools_lua([backend], "10.0.0.9")
         assert "port = 9001" in remote_lua
@@ -226,7 +228,7 @@ class TestRouterApplicationMaps:
 def _serve(app: FastAPI, port: int) -> uvicorn.Server:
     server = uvicorn.Server(
         uvicorn.Config(
-            app=app, host="127.0.0.1", port=port, log_level="error", access_log=False
+            app=app, host="0.0.0.0", port=port, log_level="error", access_log=False
         )
     )
     threading.Thread(target=lambda: asyncio.run(server.serve()), daemon=True).start()
@@ -326,6 +328,7 @@ async def _router_cluster(
     extra_app: Optional[str] = None,
     router_scaled_to_zero: bool = False,
     router_fallback: bool = False,
+    remote_router: bool = False,
 ):
     """HAProxy with a router at `router_prefix` and model-a, model-b, control."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -333,14 +336,27 @@ async def _router_cluster(
         replica_names = ["a1", "b1", "b2", "c1"]
         if extra_app:
             replica_names.append("extra")
-        ports = {k: find_free_port() for k in ["r1", *replica_names]}
+        ports = {k: find_free_port() for k in ["r1", "r2", *replica_names]}
         router = FakeRouter(ports["r1"], route_prefix=router_prefix)
+        remote = (
+            FakeRouter(ports["r2"], route_prefix=router_prefix)
+            if remote_router
+            else None
+        )
+        router.remote = remote
         replicas = {name: _fake_replica(ports[name], name) for name in replica_names}
+        router_servers = (
+            [] if router_scaled_to_zero else [_server("router", "r1", ports["r1"])]
+        )
+        if remote is not None:
+            router_servers.append(
+                _server("router", "r2", ports["r2"], host="127.0.0.2")
+            )
         backends = [
             _backend(
                 "router",
                 router_prefix,
-                [] if router_scaled_to_zero else [_server("router", "r1", ports["r1"])],
+                router_servers,
                 is_router_application=True,
                 fallback_server=(
                     ServerConfig(name="proxy", host="127.0.0.1", port=ports["r1"])
@@ -391,7 +407,11 @@ async def _router_cluster(
             yield url, router, replicas
         finally:
             await api.stop()
-            for server in [router.server, *replicas.values()]:
+            for server in [
+                router.server,
+                *(remote.server for remote in [remote] if remote),
+                *replicas.values(),
+            ]:
                 server.should_exit = True
 
 
@@ -414,7 +434,11 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
     url, router, _ = router_cluster
 
     cases = [
-        ("model-b", "b2", {"x-request-id": "req-b2"}),
+        (
+            "model-b",
+            "b2",
+            {"x-request-id": "req-b2", "authorization": "Bearer secret"},
+        ),
         (
             "model-a",
             "a1",
@@ -449,6 +473,8 @@ async def test_post_dispatches_to_selected_replica(router_cluster):
             == "/v1/chat/completions?x=1"
         )
         assert call["headers"]["x-request-id"] == served["request_id"]
+        if "authorization" in headers:
+            assert call["headers"]["authorization"] == headers["authorization"]
         if "x-request-id" in headers:
             assert served["request_id"] == headers["x-request-id"]
         else:
@@ -699,6 +725,23 @@ async def test_fails_closed_when_router_unreachable(router_cluster):
         lambda: _chat(url, {}).headers.get("x-serve-reason") == "router_unreachable",
         timeout=10,
     )
+
+
+@pytest.mark.asyncio
+async def test_remote_router_is_only_used_after_local_connection_failure():
+    async with _router_cluster(remote_router=True) as (url, router, _):
+        router.decide("model-a", "a1")
+        router.remote.decide("model-b", "b1")
+
+        for _ in range(3):
+            assert _chat(url, {}).json()["replica"] == "a1"
+        assert router.remote.calls == []
+
+        router.server.should_exit = True
+        await async_wait_for_condition(
+            lambda: _chat(url, {}).json().get("replica") == "b1", timeout=10
+        )
+        assert router.remote.calls
 
 
 @pytest.mark.asyncio
