@@ -79,6 +79,7 @@ versus which are mechanical ripple edits.
 <e.g. logical planning, execution, resource allocation>
 
 ## Data flow
+<!-- Optional - include only if data flow changes -->
 ```mermaid
 flowchart LR
     ...
