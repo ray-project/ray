@@ -28,7 +28,7 @@ Ray Core natively supports the following accelerators:
 * - Intel GPU
   - GPU
   - Experimental, supported by the community
-* - [AWS Neuron Core](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/model-architecture-fit.html)
+* - [AWS Neuron Core](https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/index.html)
   - neuron_cores
   - Experimental, supported by the community
 * - Google TPU
