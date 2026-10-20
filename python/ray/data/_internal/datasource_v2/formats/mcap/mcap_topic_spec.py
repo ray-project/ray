@@ -436,7 +436,8 @@ class TopicSpec:
             ``"zeros"`` leaves such a window empty. With ``match.backward()`` it
             repeats only a message logged at or before the step. A step with
             nothing on its side to repeat stays empty, as with ``"zeros"``.
-            ``"zeros"`` gives an empty payload. ``"raise"`` fails the read,
+            ``"zeros"`` gives an empty payload, or a black frame when the topic
+            is decoded. ``"raise"`` fails the read,
             naming the sample. ``is_pad:<topic>`` marks a padded step ``True``.
             A window of every message has no fixed steps to pad: ``"raise"``
             fails the read when it reaches past the clip, and the other two cut
