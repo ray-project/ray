@@ -206,13 +206,13 @@ if __name__ == "__main__":
         # positional index).
         elif ort_session is None:
             example_obs = torch.from_numpy(obs).unsqueeze(0)
-            torch.onnx.export(
+            torch.onnx.export_event(
                 _ONNXWrapper(rl_module),
                 (example_obs,),
                 f="test.onnx",
                 input_names=[Columns.OBS],
                 output_names=[Columns.ACTION_DIST_INPUTS],
-                dynamic_shapes={Columns.OBS: {0: torch.export.Dim("batch")}},
+                dynamic_shapes={Columns.OBS: {0: torch.export_event.Dim("batch")}},
                 dynamo=True,
             )
             ort_session = onnxruntime.InferenceSession(

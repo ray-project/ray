@@ -413,7 +413,7 @@ class RemoteFunction:
             )
 
             self._last_export_cluster_and_job = worker.current_cluster_and_job
-            worker.function_actor_manager.export(self)
+            worker.function_actor_manager.export_event(self)
 
         kwargs = {} if kwargs is None else kwargs
         args = [] if args is None else args

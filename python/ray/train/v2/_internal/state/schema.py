@@ -583,8 +583,8 @@ class TrainNcclHangEvent(BaseModel):
         description="Orders the attempt's events, strictly increasing."
     )
     timestamp_ms: int = Field(
-        description="When the poll was taken (the detector stopped, for "
-        "STOPPED and DISABLED), in ms since the UNIX epoch."
+        description="When the poll's `ncclras` query returned (the detector "
+        "stopped, for STOPPED and DISABLED), in ms since the UNIX epoch."
     )
     detector_status: NcclHangDetectorStatus = Field(
         description="The detector's status."
@@ -600,6 +600,5 @@ class TrainNcclHangEvent(BaseModel):
     )
     communicators: List[NcclCommunicator] = Field(
         default_factory=list,
-        description="The hung communicators; empty on the poll where the last "
-        "one recovers.",
+        description="The hung communicators; empty on the poll where the last one recovers.",
     )

@@ -104,7 +104,7 @@ if __name__ == "__main__":
     ]
 
     # This line will export the model to ONNX.
-    torch.onnx.export(
+    torch.onnx.export_event(
         onnx_compatible,
         tuple(test_data_onnx_input[n] for n in input_names),
         exported_model_file,

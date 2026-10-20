@@ -30,6 +30,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import (
     Any,
@@ -79,11 +80,9 @@ from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
 
-# Query timeout lengths
-_STACK_DUMP_TIMEOUT_S: float = 30.0
-_NVIDIA_SMI_TIMEOUT_S: float = 30.0
-_FLIGHT_RECORDER_DUMP_TIMEOUT_S: float = 30.0
-_NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
+# User-facing escalation milestones
+_FIRST_SUSPICION_AFTER_S: float = 60.0
+_PERIODIC_WARN_EVERY_S: float = 120.0
 
 # Every diagnostic is uploaded to
 # `<experiment_fs_path>/<HANG_DETECTOR_DIRNAME>/<tool>/`.
@@ -92,19 +91,18 @@ _NCCL_RAS_TOOL: str = "nccl_ras"
 _NVIDIA_SMI_TOOL: str = "nvidia_smi"
 _FLIGHT_RECORDER_TOOL: str = "flight_recorder"
 
-# Polls of RAS history kept on top of the ones a confirmation consumes, so the
-# saved history always starts before the communicator stalled.
-_RAS_HISTORY_MARGIN_POLLS: int = 10
+# Query timeout lengths
+_STACK_DUMP_TIMEOUT_S: float = 30.0
+_NVIDIA_SMI_TIMEOUT_S: float = 30.0
+_FLIGHT_RECORDER_DUMP_TIMEOUT_S: float = 30.0
+_NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 
-# Characters not kept when a RAS timestamp is turned into a filename.
-_UNSAFE_FILENAME_CHARS = re.compile(r"[^0-9A-Za-z._-]")
+# Polls of RAS history kept on top of confirmed ones, so the saved history
+# can start before the first communicator stalled.
+_RAS_HISTORY_POLL_MARGIN: int = 10
 
-# User-facing escalation milestones
-_FIRST_SUSPICION_AFTER_S: float = 60.0
-_PERIODIC_WARN_EVERY_S: float = 120.0
-
-# Rank ranges named per list in a log line; the rest are summarised as a
-# count so a 1000-rank job doesn't log 1000 ranks per poll.
+# Maximum number of Ranks named per list in a log line; the rest are
+# summarised as a count so a 1000-rank job doesn't log 1000 ranks per poll.
 _MAX_RANKS_LOGGED: int = 8
 
 
@@ -186,7 +184,6 @@ class RASReport:
     """Structured summary of an ``ncclras`` JSON report.
 
     Attributes:
-        timestamp: str, when `ncclras` responded.
         comm_op_counts: Maps each communicator id to ``{global_rank: {op_name:
             count}}`` for ALL of that communicator's ranks (no filtering, no
             majority logic).
@@ -195,13 +192,18 @@ class RASReport:
         comm_rank_processes: Maps each communicator and their ranks to the
             ``(host, pid)`` of the process running that rank, used to find the
             Ray Train worker behind a communicator rank.
+        taken_at_ms: When the query returned, on the controller's clock, in
+            ms since the UNIX epoch. ``ncclras``'s own timestamp isn't used as
+            it can come from the clock of whichever worker's node answered,
+            which can differ between polls.
         raw_json: The ``ncclras`` output this report was parsed from
     """
 
-    timestamp: str
     comm_op_counts: Dict[str, Dict[int, Dict[str, int]]]
     comm_rank_status: Dict[str, Dict[int, str]]
     comm_rank_processes: Dict[str, Dict[int, Tuple[str, int]]]
+
+    taken_at_ms: int
     raw_json: str
 
     @property
@@ -276,6 +278,22 @@ class RASReport:
             return "INIT"
 
 
+# TODO REMOVE
+def format_utc_ms(epoch_ms: int) -> str:
+    """Format a time as a filename-safe UTC timestamp, e.g.
+    ``20260619T065156.123Z``.
+
+    Args:
+        epoch_ms: The time in ms since the UNIX epoch.
+
+    Returns:
+        The time in UTC, to the millisecond.
+    """
+    seconds, ms = divmod(epoch_ms, 1000)
+    utc = datetime.fromtimestamp(seconds, tz=timezone.utc)
+    return f"{utc:%Y%m%dT%H%M%S}.{ms:03d}Z"
+
+
 def compute_report_op_diff(
     prev: RASReport, curr: RASReport
 ) -> Dict[str, Dict[int, Dict[str, int]]]:
@@ -313,7 +331,7 @@ def compute_report_op_diff(
 _MISSING_COMMA_RE = re.compile(r'([\d"el])(\s*\n\s*)("[^"\n]*"\s*:)')
 
 
-def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
+def parse_ras_schema(ras_json: str, taken_at_ms: int) -> Optional[RASReport]:
     """Parse ``ncclras -f json`` output into a :class:`RASReport`.
 
     Targets the NCCL 2.28-2.30 JSON schema::
@@ -338,6 +356,7 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
 
     Args:
         ras_json: The raw ``ncclras -f json`` output.
+        taken_at_ms: When the query returned, in ms since the UNIX epoch.
 
     Returns:
         The parsed :class:`RASReport`, or ``None`` if the parsing failed.
@@ -371,10 +390,10 @@ def parse_ras_schema(ras_json: str) -> Optional[RASReport]:
             }
 
         return RASReport(
-            timestamp=data["timestamp"],
             comm_op_counts=comm_op_counts,
             comm_rank_status=comm_rank_status,
             comm_rank_processes=comm_rank_processes,
+            taken_at_ms=taken_at_ms,
             raw_json=ras_json,
         )
     except (KeyError, TypeError, ValueError) as e:
@@ -429,8 +448,8 @@ class RASPoller:
     the controller drains with :meth:`next_result`, one item per controller
     tick. A fatal query failure is published as the :class:`RASQueryError`
     itself and the thread exits, so every state change stays on the controller
-    thread. :meth:`query` is also used synchronously by the callback for the
-    human-readable ``-f text`` report at hang time.
+    thread. :meth:`query_text` is also used synchronously by the callback for
+    the human-readable ``-f text`` report at hang time.
     """
 
     def __init__(self, worker_group: WorkerGroup, interval_s: float):
@@ -531,6 +550,21 @@ class RASPoller:
                 last_error = e
         raise last_error
 
+    def query_text(self) -> Optional[str]:
+        """Synchronously fetch ``ncclras -f text`` for the logs.
+
+        Runs on the caller's thread; only called once a hang is suspected or
+        confirmed, when the job is already stalled.
+
+        Returns:
+            The report, or ``None`` if no worker could produce one.
+        """
+        try:
+            return self.query("text")
+        except RASQueryError as e:
+            logger.info("Could not fetch the `ncclras` text report (%s).", e)
+            return None
+
     def _query_worker(
         self, worker: Worker, fmt: Literal["json", "text"]
     ) -> Union[RASReport, str]:
@@ -552,6 +586,7 @@ class RASPoller:
                 run_ncclras, self._binary_path, _NCCL_RAS_QUERY_TIMEOUT_S, fmt
             )
             result = ray.get(ref, timeout=_NCCL_RAS_QUERY_TIMEOUT_S)
+            taken_at_ms = int(time.time() * 1000)
         except GetTimeoutError:
             raise RASQueryError("query_timeout")
         except Exception as e:  # noqa: BLE001
@@ -576,7 +611,7 @@ class RASPoller:
 
         if fmt == "json":
             logger.debug("`ncclras` json output: %s", result["stdout"])
-            report = parse_ras_schema(result["stdout"])
+            report = parse_ras_schema(result["stdout"], taken_at_ms)
             if report is None:
                 raise RASQueryError("unparseable_json")
             return report
@@ -694,7 +729,7 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
     return "\n".join(lines)
 
 
-def run_nvidia_smi(timeout_s: float) -> DiagnosticResult:
+def dump_nvidia_smi(timeout_s: float) -> DiagnosticResult:
     """Snapshot `nvidia-smi -q` on the current (worker) node.
 
     Args:
@@ -727,6 +762,142 @@ def run_nvidia_smi(timeout_s: float) -> DiagnosticResult:
         )
 
     return DiagnosticResult(value=proc.stdout)
+
+
+def dump_flight_recorder() -> DiagnosticResult:
+    """Dump the PyTorch Flight Recorder buffer of the current (worker) process.
+
+    The buffer has to be armed *before* the process group is created (see
+    ``TORCH_FR_BUFFER_SIZE``); it cannot be switched on retroactively in a hung
+    process, in which case the dump holds no collectives.
+
+    Returns:
+        The dump as a JSON string, or the error saying why there is no dump,
+        which is written into the rank's file so a gap is never silent.
+    """
+    try:
+        from torch._C import _distributed_c10d as c10d
+    except ImportError as e:
+        return DiagnosticResult(error=e)
+
+    try:
+        # The default dumps every collective on this rank (no timeout available on torch side)
+        trace_bytes = c10d._dump_fr_trace_json()
+        trace_json = trace_bytes.decode("utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001
+        return DiagnosticResult(error=e)
+
+    return DiagnosticResult(value=trace_json)
+
+
+def collect_stack_traces(workers: List[Worker]) -> Dict[str, str]:
+    """Fan out a native stack dump to every worker.
+
+    Args:
+        workers: The train workers to dump.
+
+    Returns:
+        ``{"rank_<world rank>.log": stack trace}``. A rank whose dump could not
+        be launched, timed out, or failed to collect holds why instead.
+    """
+    dumps = fan_out_to_workers(
+        workers,
+        dump_stack_trace,
+        _STACK_DUMP_TIMEOUT_S - 1,
+        timeout_s=_STACK_DUMP_TIMEOUT_S,
+    )
+    return {
+        f"rank_{rank}.log": str(dump.value) if dump.error is None else str(dump.error)
+        for rank, dump in dumps.items()
+    }
+
+
+def collect_flight_recorder(workers: List[Worker]) -> Dict[str, str]:
+    """Fan out a Flight Recorder dump to every worker.
+
+    Each rank's buffer holds the collectives still in the ring with their
+    process group, sequence id, state, input/output shapes and dtypes, and
+    issuing call stack.
+
+    Args:
+        workers: The train workers to dump.
+
+    Returns:
+        ``{"rank_<world rank>.json": dump}``, or ``{}`` when the ring buffer
+        wasn't armed. A rank without a dump holds ``{"dump_error": ...}``.
+    """
+    if TORCH_FR_BUFFER_SIZE_ENV_VAR not in os.environ:
+        return {}
+
+    dumps = fan_out_to_workers(
+        workers, dump_flight_recorder, timeout_s=_FLIGHT_RECORDER_DUMP_TIMEOUT_S
+    )
+
+    files: Dict[str, str] = {}
+    for rank, dump in dumps.items():
+        if dump.error is not None:
+            logger.info("No Flight Recorder dump from rank %d: %s", rank, dump.error)
+            files[f"rank_{rank}.json"] = json.dumps({"dump_error": str(dump.error)})
+        else:
+            files[f"rank_{rank}.json"] = str(dump.value)
+    return files
+
+
+def collect_nvidia_smi(workers: List[Worker]) -> Dict[str, str]:
+    """Snapshot every node's GPUs.
+
+    GPUs belong to the node rather than the rank, so exactly one worker per
+    node is queried.
+
+    Args:
+        workers: The train workers, possibly several per node.
+
+    Returns:
+        ``{"node_<node ip>.log": nvidia-smi report}``.
+    """
+    node_workers: Dict[str, Worker] = {}
+    node_ips: Dict[int, str] = {}
+    for worker in workers:
+        node_workers.setdefault(worker.metadata.node_ip, worker)
+        node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
+
+    dumps = fan_out_to_workers(
+        list(node_workers.values()),
+        dump_nvidia_smi,
+        _NVIDIA_SMI_TIMEOUT_S - 1,
+        timeout_s=_NVIDIA_SMI_TIMEOUT_S,
+    )
+    return {
+        f"node_{node_ips[rank]}.log": (
+            str(dump.value)
+            if dump.error is None
+            else f"no `nvidia-smi` snapshot: {dump.error}"
+        )
+        for rank, dump in dumps.items()
+    }
+
+
+def collect_ras_history(
+    history: Iterable[RASReport], text_report: Optional[str]
+) -> Dict[str, str]:
+    """The retained RAS polls, plus NCCL's text report.
+
+    Args:
+        history: The retained polls.
+        text_report: The ``ncclras -f text`` report fetched at confirmation,
+            or ``None`` if no worker could produce one.
+
+    Returns:
+        Each poll's JSON, named by when it was taken (UTC), and
+        ``ncclras_report.txt``.
+    """
+    files = {
+        f"ncclras_{format_utc_ms(report.taken_at_ms)}.json": report.raw_json
+        for report in history
+    }
+    if text_report:
+        files["ncclras_report.txt"] = text_report
+    return files
 
 
 def translate_ras_ranks_to_train(
@@ -809,43 +980,15 @@ def format_ranks(comm_ranks: Iterable[int], train_rank_of: Dict[int, int]) -> st
     return ", ".join(parts)
 
 
-def dump_flight_recorder() -> DiagnosticResult:
-    """Dump the PyTorch Flight Recorder buffer of the current (worker) process.
-
-    The buffer has to be armed *before* the process group is created (see
-    ``TORCH_FR_BUFFER_SIZE``); it cannot be switched on retroactively in a hung
-    process, in which case the dump holds no collectives.
-
-    Returns:
-        The dump as a JSON string, or the error saying why there is no dump,
-        which is written into the rank's file so a gap is never silent.
-    """
-    try:
-        from torch._C import _distributed_c10d as c10d
-    except ImportError as e:
-        return DiagnosticResult(error=e)
-
-    try:
-        # The default dumps every collective on this rank (no timeout available on torch side)
-        trace_bytes = c10d._dump_fr_trace_json()
-        trace_json = trace_bytes.decode("utf-8", errors="replace")
-    except Exception as e:  # noqa: BLE001
-        return DiagnosticResult(error=e)
-
-    return DiagnosticResult(value=trace_json)
-
-
 @dataclass
 class CommStall:
-    """A communicator's open stall: consecutive polls without collective progress."""
+    """A communicator's stall metadata."""
 
     # Consecutive frozen polls.
     polls: int
-    # When the stall began, the poll before its first frozen poll (its counts
-    # were already frozen then), in ms since the UNIX epoch.
+    # Timestamp when the stall began
     since_ms: int
-    # Whether the stall reached the confirm duration; it stays confirmed until
-    # the stall ends.
+    # Whether the stall reached the confirmation duration
     confirmed: bool = False
 
 
@@ -858,24 +1001,15 @@ class PollOutcome:
     ``diagnostics``), so every output reports the same poll the same way.
     """
 
-    # Communicators confirmed on this poll.
-    confirmed: List[str] = field(default_factory=list)
     # Communicators the suspicion warning names, and whether they newly
-    # reached the threshold rather than being a periodic reminder.
-    suspected: List[str] = field(default_factory=list)
+    # reached the threshold or the periodic reminder.
+    suspected_comms: List[str] = field(default_factory=list)
     new_suspicion: bool = False
+    periodic_remainer: bool = False
+    # Communicators confirmed on this poll.
+    confirmed_comms: List[str] = field(default_factory=list)
     # Suspected stalls that ended on this poll, as they were when they ended.
-    recovered: Dict[str, CommStall] = field(default_factory=dict)
-    # The `ncclras -f text` report fetched on this poll, if any.
-    ras_text_report: Optional[str] = None
-    # Where each diagnostic was uploaded on confirmation, ``{tool: dir}``,
-    # ``None`` for the ones that captured nothing.
-    diagnostics: Dict[str, Optional[str]] = field(default_factory=dict)
-
-    @property
-    def reported(self) -> bool:
-        """Whether the poll reached a milestone the detector reports on."""
-        return bool(self.confirmed or self.suspected or self.recovered)
+    recovered_comms: Dict[str, CommStall] = field(default_factory=dict)
 
 
 class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
@@ -950,19 +1084,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
         # The previous successful poll's report
         self.prev_report: Optional[RASReport] = None
-        # Circular buffer of ncclras json queries
+        # Circular buffer of ncclras json queries for diagnostics
         self.ras_history: Deque[RASReport] = deque(
-            maxlen=self._confirm_poll_counts + _RAS_HISTORY_MARGIN_POLLS
+            maxlen=self._confirm_poll_counts + _RAS_HISTORY_POLL_MARGIN
         )
         # Per-communicator open stalls ({comm_id: stall}).
         # As a deadlock requires the whole comm to be frozen (no op advancing),
         # any op progressing would indicate the comm overall isn't deadlocked.
         self.comm_stalls: Dict[str, CommStall] = {}
-
-        # Whether the `ncclras` text report was logged since the latest new
-        # suspicion, so it's logged once per suspicion rather than on every
-        # warning, and retried on the next warning if the fetch failed.
-        self._ras_text_logged: bool = False
 
         # One-time degradation (e.g. missing binary) so we stop querying.
         self._is_ras_degraded: bool = False
@@ -970,56 +1099,59 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # Identify the exported events, set when a worker group starts.
         self._run_id: str = ""
         self._attempt_id: str = ""
-        # The attempt's polls, numbering its events so `poll_index` strictly
-        # increases.
         self._poll_index: int = 0
-        # When the latest report was taken from the poller, in ms since epoch.
-        self._poll_time_ms: int = 0
-        self._exporter = NcclHangEventExporter()
 
-    @property
-    def comm_deadlock_count(self) -> Dict[str, int]:
-        """Each open stall's consecutive frozen polls, ``{comm_id: polls}``."""
-        return {comm_id: stall.polls for comm_id, stall in self.comm_stalls.items()}
-
-    def reset_detection_state(self):
-        """Full worker-group lifecycle reset (on (re)start / shutdown)."""
-        self.prev_report = None
-        self.ras_history.clear()
-        self.reset_hang_counters()
-
-    def reset_hang_counters(self):
-        """Per-healthy-poll debounce reset `_prev_report` left for the next poll as comparison."""
-        self.comm_stalls = {}
+        self._event_exporter = NcclHangEventExporter()
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
+        # A new worker group is a new set of communicators, so detection
+        # starts afresh.
         self._worker_group = worker_group
-        self.reset_detection_state()
+        self.prev_report = None
+        self.ras_history.clear()
+        self.comm_stalls = {}
         self._poll_index = 0
-        self._poll_time_ms = 0
-        try:
-            self._run_id = worker_group._train_run_context.run_id
-            self._attempt_id = worker_group.get_worker_group_context().run_attempt_id
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not read the run and attempt ids.", exc_info=True)
-        self._retire_poller()
+        self._run_id = worker_group._train_run_context.run_id
+        self._attempt_id = worker_group.get_worker_group_context().run_attempt_id
         if self._is_ras_degraded:
             return
         self._ras_poller = RASPoller(worker_group, self._poll_interval_s)
         self._ras_poller.start()
 
-    def before_worker_group_shutdown(self, worker_group):
-        self._retire_poller()
-        # An attempt that ends with a hung communicator ends with STOPPED,
-        # unless the detector was disabled, which already ended its events.
-        if not self._is_ras_degraded and self.stalled_communicators():
-            self.export_lifecycle(NcclHangDetectorStatus.STOPPED)
-        self._worker_group = None
-
-    def _retire_poller(self):
+    def before_worker_group_shutdown(self, worker_group: WorkerGroup):
         if self._ras_poller is not None:
             self._ras_poller.stop()
             self._ras_poller = None
+        # An attempt that ends with a hung communicator ends with STOPPED,
+        # unless the detector was disabled, which already ended its events.
+        if not self._is_ras_degraded and any(
+            stall.polls >= self._suspicion_polls
+            for comm_id, stall in self.comm_stalls.items()
+        ):
+            self._poll_index += 1
+            self.export_event(NcclHangDetectorStatus.STOPPED, int(time.time() * 1000))
+        self._worker_group = None
+
+    def before_worker_group_abort(self, worker_group_context):
+        # An abort skips `before_worker_group_shutdown`, but ends the attempt
+        self.before_worker_group_shutdown(self._worker_group)
+
+    def disable(self, reason: NcclHangDisabledReason):
+        """Disable the detector for the rest of the run, exporting DISABLED.
+
+        Args:
+            reason: Why the detector is disabled.
+        """
+        self._is_ras_degraded = True
+        if self._ras_poller is not None:
+            self._ras_poller.stop()
+            self._ras_poller = None
+        self._poll_index += 1
+        self.export_event(
+            NcclHangDetectorStatus.DISABLED,
+            int(time.time() * 1000),
+            disabled_reason=reason,
+        )
 
     def after_worker_group_poll_status(self, worker_group_status):
         if self._is_ras_degraded or self._ras_poller is None:
@@ -1032,7 +1164,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             if result is None:
                 # The poller hasn't completed a new poll since the last tick
                 return
-            if isinstance(result, RASQueryError):
+            elif isinstance(result, RASQueryError):
                 logger.warning(
                     "Disabling Ray Train NCCL hang detector for the rest of this run as `ncclras` returns %s.",
                     result,
@@ -1040,19 +1172,32 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 self.disable(NcclHangDisabledReason.RAS_UNAVAILABLE)
                 return
 
+            # Result is a RASReport
             self._poll_index += 1
-            prev_poll_time_ms = self._poll_time_ms
-            self._poll_time_ms = int(time.time() * 1000)
             self.ras_history.append(result)
 
-            outcome = self.evaluate_comm_mismatch(result, prev_poll_time_ms)
+            # Determine the poll outcome and what to do
+            outcome: PollOutcome = self.evaluate_ras_poll(result)
             self.prev_report = result
-            self.gather_evidence(outcome)
-            self.log_outcome(result, outcome)
-            # Exported before the action, so the event exists even if it raises.
-            self.export_poll(outcome)
-            if outcome.confirmed:
-                self.act_on_confirmed_hangs(result, outcome)
+
+            if outcome.confirmed_comms:
+                self.capture_diagnostics()
+                self.export_event()
+                self.build_hang_report(result, outcome)
+
+            elif (
+                outcome.new_suspicion
+                or outcome.periodic_remainer
+                or outcome.recovered_comms
+            ):
+                if outcome.new_suspicion:
+                    ras_text_report = self._ras_poller.query_text()
+                else:
+                    ras_text_report = None
+
+                self.log_suspected_and_recovered_comms(result, outcome, ras_text_report)
+                self.export_event()
+
         except NCCLHangError:
             raise
         except Exception:  # noqa: BLE001
@@ -1062,172 +1207,87 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             )
             self.disable(NcclHangDisabledReason.INTERNAL_ERROR)
 
-    def disable(self, reason: NcclHangDisabledReason):
-        """Disable the detector for the rest of the run, exporting DISABLED.
+    def evaluate_ras_poll(self, report: RASReport) -> PollOutcome:
+        """Using the latest ras poll, update the per-communicator stalls.
 
         Args:
-            reason: Why the detector is disabled.
-        """
-        self._is_ras_degraded = True
-        self.export_lifecycle(NcclHangDetectorStatus.DISABLED, reason)
-
-    def evaluate_comm_mismatch(
-        self, report: RASReport, prev_poll_time_ms: int
-    ) -> PollOutcome:
-        """Advance the per-communicator stalls and decide what the poll found.
-
-        A communicator is deadlocked only when *no* rank advanced *any* op since
-        the last poll: a real hang blocks every rank, so every op freezes. It's
-        possible for an op mismatch to occur and NCCL continue which isn't
-        detected currently.
-
-        Args:
-            report: The current poll's report.
-            prev_poll_time_ms: When the previous report was taken, which
-                dates a stall that begins on this poll.
+            report: The current poll's report. A stall that begins on this
+                poll is dated from the previous report, whose counts were
+                already frozen.
 
         Returns:
             What the poll found. It only decides; nothing is logged or acted on.
         """
-        # 1. Classify: which mismatched communicators made no progress this
-        # poll (the first poll has nothing to compare against)
-        frozen_counts = (
-            self.compute_frozen_streaks(report) if self.prev_report is not None else {}
-        )
+        # Extend the stall of every mismatched communicator that made no
+        # progress this poll (the first poll has nothing to compare against).
+        # Communicators that progressed, or are new this poll, have no stall.
+        updated_stalls: Dict[str, CommStall] = {}
+        if self.prev_report is not None:
+            op_diff = compute_report_op_diff(self.prev_report, report)
 
-        # 2. Update state: a communicator that progressed ends its stall
+            for comm_id in report.mismatched_comms:
+                if comm_id not in op_diff:
+                    continue
+
+                comm_frozen = all(
+                    delta == 0
+                    for op_deltas in op_diff[comm_id].values()
+                    for delta in op_deltas.values()
+                )
+                if comm_frozen:
+                    stall = self.comm_stalls.get(comm_id) or CommStall(
+                        polls=0, since_ms=self.prev_report.taken_at_ms
+                    )
+                    stall.polls += 1
+                    updated_stalls[comm_id] = stall
+
+        # Decide which milestones the poll reached
         outcome = PollOutcome(
-            recovered={
+            suspected_comms=[
+                comm_id
+                for comm_id, stall in updated_stalls.items()
+                if stall.polls >= self._suspicion_polls
+            ],
+            new_suspicion=any(
+                stall.polls == self._suspicion_polls
+                for comm_id, stall in updated_stalls.items()
+            ),
+            periodic_remainer=(
+                max(stall.polls for stall in updated_stalls.values())
+                - self._suspicion_polls
+            )
+            % self._periodic_warn_polls
+            == 0,
+            confirmed_comms=[
+                comm_id
+                for comm_id, stall in updated_stalls.items()
+                if stall.polls == self._confirm_poll_counts
+            ],
+            # A suspected communicator that collective count increased will end its stall
+            recovered_comms={
                 comm_id: stall
                 for comm_id, stall in self.comm_stalls.items()
-                if comm_id not in frozen_counts and stall.polls >= self._suspicion_polls
-            }
+                if comm_id not in updated_stalls
+                and stall.polls >= self._suspicion_polls
+            },
         )
-        stalls = {}
-        for comm_id, polls in frozen_counts.items():
-            stall = self.comm_stalls.get(comm_id) or CommStall(
-                polls=0, since_ms=prev_poll_time_ms
-            )
-            stall.polls = polls
-            stalls[comm_id] = stall
-        self.comm_stalls = stalls
+        self.comm_stalls = updated_stalls
+        for comm_id in outcome.confirmed_comms:
+            self.comm_stalls[comm_id].confirmed = True
 
-        # 3. Decide which milestones the poll reached
-        outcome.confirmed = [
-            comm_id
-            for comm_id, stall in stalls.items()
-            if stall.polls == self._confirm_poll_counts
-        ]
-        for comm_id in outcome.confirmed:
-            stalls[comm_id].confirmed = True
-        if outcome.confirmed or not stalls:
-            return outcome
-
-        # A communicator first warns at the suspicion threshold, then every
-        # `_periodic_warn_polls` after it.
-        new_suspicions = [
-            comm_id
-            for comm_id, stall in stalls.items()
-            if stall.polls == self._suspicion_polls
-        ]
-        if new_suspicions:
-            outcome.suspected = new_suspicions
-            outcome.new_suspicion = True
-        elif any(
-            stall.polls > self._suspicion_polls
-            and (stall.polls - self._suspicion_polls) % self._periodic_warn_polls == 0
-            for stall in stalls.values()
-        ):
-            outcome.suspected = list(stalls)
         return outcome
 
-    def compute_frozen_streaks(self, report: RASReport) -> Dict[str, int]:
-        """Extend the frozen streak of every mismatched communicator that stalled.
-
-        Args:
-            report: The current poll's report, diffed against ``prev_report``.
-
-        Returns:
-            ``{comm_id: consecutive frozen polls}`` for the communicators that
-            are mismatched in ``report`` and whose ranks all advanced zero ops
-            since ``prev_report``. Communicators that progressed, or are new
-            this poll, are absent so their streak restarts from zero.
-        """
-        op_diff = compute_report_op_diff(self.prev_report, report)
-
-        frozen_counts: Dict[str, int] = {}
-        for comm_id in report.mismatched_comms:
-            if comm_id not in op_diff:
-                continue
-            comm_frozen = all(
-                delta == 0
-                for op_deltas in op_diff[comm_id].values()
-                for delta in op_deltas.values()
-            )
-            if comm_frozen:
-                frozen_counts[comm_id] = self.comm_deadlock_count.get(comm_id, 0) + 1
-        return frozen_counts
-
-    def gather_evidence(self, outcome: PollOutcome):
-        """Fetch what the outputs report alongside the poll's milestones.
-
-        A confirmation captures the diagnostics, fetching the text report for
-        them. A suspicion fetches the text report once per suspected hang,
-        retried on the next warning if the fetch failed.
-
-        Args:
-            outcome: The poll's outcome, filled in with the evidence.
-        """
-        if outcome.confirmed:
-            outcome.diagnostics, outcome.ras_text_report = self.capture_diagnostics()
-        elif outcome.suspected:
-            if outcome.new_suspicion:
-                # An earlier report predates these communicators stalling.
-                self._ras_text_logged = False
-            if not self._ras_text_logged:
-                outcome.ras_text_report = self.fetch_ras_human_report()
-
-    def capture_diagnostics(self) -> Tuple[Dict[str, Optional[str]], Optional[str]]:
-        """Capture and upload every diagnostic of a confirmed hang.
-
-        Returns:
-            ``{tool: uploaded dir or None}`` and the ``ncclras -f text`` report
-            fetched for the history, or ``None`` if it couldn't be fetched.
-        """
-        ras_text_report: Optional[str] = None
-
-        def dump_ras_history() -> Optional[str]:
-            nonlocal ras_text_report
-            ras_text_report = self.fetch_ras_human_report()
-            return self.dump_ras_query_history(ras_text_report)
-
-        # Record first to prevent buffer being overwritten by other ranks
-        diagnostics = {
-            _FLIGHT_RECORDER_TOOL: self.capture_diagnostic(
-                "Flight Recorder dumps", self.dump_workers_flight_recorder
-            ),
-            _NVIDIA_SMI_TOOL: self.capture_diagnostic(
-                "nvidia-smi snapshots", self.dump_nodes_nvidia_smi
-            ),
-            _NCCL_RAS_TOOL: self.capture_diagnostic(
-                "`ncclras` query history", dump_ras_history
-            ),
-            _STACK_TRACES_TOOL: self.capture_diagnostic(
-                "worker stack traces", self.dump_workers_stack_traces
-            ),
-        }
-        return diagnostics, ras_text_report
-
-    def log_outcome(self, report: RASReport, outcome: PollOutcome) -> None:
+    def log_suspected_and_recovered_comms(
+        self, report: RASReport, outcome: PollOutcome
+    ) -> None:
         """Log the poll's recoveries and suspicion warning.
-
-        The confirmation is logged, or raised, by :meth:`act_on_confirmed_hangs`.
 
         Args:
             report: The current poll's report.
             outcome: The poll's outcome.
         """
-        for comm_id, stall in outcome.recovered.items():
+        # TODO merge all these recovered comms into a single log
+        for comm_id, stall in outcome.recovered_comms.items():
             logger.info(
                 "The Ray Train NCCL hang detector callback detects that the "
                 "NCCL communicator %s resumed making progress after being stalled "
@@ -1237,46 +1297,88 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 stall.polls,
             )
 
-        if not outcome.suspected:
-            return
-        if outcome.new_suspicion:
+        if outcome.new_suspicion or outcome.periodic_remainer:
             headline = (
                 f"Possible NCCL hang detected by the Ray Train NCCL hang detector callback! "
-                f"{len(outcome.suspected)} communicator(s) have made no collective progress "
-                f"for {self._suspicion_polls * self._poll_interval_s:.0f} seconds "
-                "while their ranks disagree on how many collectives they have "
-                "launched. Continuing to monitor, this might be a transient stall."
+                f"{len(outcome.suspected_comms)} communicator(s) have made no collective progress "
+                "while their ranks disagree on how many collectives they have launched. "
+                "Continuing to monitor, this might be a transient stall."
             )
-        else:
-            headline = (
-                "NCCL hang still suspected by the Ray Train NCCL hang detector callback! "
-                f"{len(outcome.suspected)} communicator(s) have made no progress."
-            )
-        if self._action == NCCL_RAS_ACTION_FAIL:
-            remaining_polls = self._confirm_poll_counts - max(
-                stall.polls for stall in self.comm_stalls.values()
-            )
-            headline += (
-                " A NCCLHangError will be raised in "
-                f"{remaining_polls * self._poll_interval_s:.0f} seconds "
-                f"({remaining_polls} more polls) if this persists."
-            )
-        logger.warning(
-            "%s\n%s", headline, self.describe_stalled_comms(report, outcome.suspected)
-        )
 
-        # NCCL's own view of the hang, once per suspected hang; it is saved
-        # with the diagnostics if the hang is confirmed.
-        if outcome.ras_text_report:
-            logger.info(
-                "NCCL's own `ncclras` report of the suspected hang (logged "
-                "once per hang). Its ranks are numbered per communicator, "
-                "not by Ray Train world rank:\n%s",
-                outcome.ras_text_report.rstrip(),
+            if self._action == NCCL_RAS_ACTION_FAIL:
+                remaining_polls = self._confirm_poll_counts - max(
+                    stall.polls for stall in self.comm_stalls.values()
+                )
+                headline += (
+                    " A NCCLHangError will be raised in "
+                    f"{remaining_polls * self._poll_interval_s:.0f} seconds "
+                    f"({remaining_polls} more polls) if this persists."
+                )
+            logger.warning(
+                "%s\n%s",
+                headline,
+                self.describe_stalled_comms(report, outcome.suspected_comms),
             )
-            self._ras_text_logged = True
 
-    def act_on_confirmed_hangs(self, report: RASReport, outcome: PollOutcome):
+            # NCCL's own view of the hang, fetched once per suspected hang
+            # TODO fix
+            if ras_text_report:
+                logger.info(
+                    "NCCL's own `ncclras` report of the suspected hang (logged "
+                    "once per hang). Its ranks are numbered per communicator, "
+                    "not by Ray Train world rank:\n%s",
+                    ras_text_report.rstrip(),
+                )
+
+    def describe_stalled_comms(
+        self, report: RASReport, stalled_comm_ids: List[str]
+    ) -> str:
+        """One line per communicator with its launch counts by train rank.
+
+        NCCL numbers a communicator's ranks from 0, which differs from the
+        Ray Train world rank on any communicator but the world one, so every
+        rank is translated, e.g. ``AllReduce launches: 622 by train rank 2;
+        621 by train rank 3``. Only the collectives whose counts disagree are
+        listed.
+
+        Args:
+            report: The current poll's report.
+            stalled_comm_ids: The stalled communicators to describe.
+
+        Returns:
+            One line per communicator, or ``""`` if they couldn't be built.
+        """
+
+        try:
+            workers = self._worker_group.get_workers() if self._worker_group else []
+            described_stalls = []
+            for comm_id in stalled_comm_ids:
+                train_rank_of = translate_ras_ranks_to_train(
+                    workers, report.comm_rank_processes.get(comm_id, {})
+                )
+                ops = [
+                    f"{op} launches: "
+                    + "; ".join(
+                        f"{count} by {format_ranks(ranks, train_rank_of)}"
+                        for count, ranks in sorted(ranks_by_count.items(), reverse=True)
+                    )
+                    for op, ranks_by_count in sorted(
+                        report.mismatched_op_ranks(comm_id).items()
+                    )
+                ]
+                comm_ranks = format_ranks(report.comm_op_counts[comm_id], train_rank_of)
+                stalled_s = self.comm_stalls[comm_id].polls * self._poll_interval_s
+                described_stalls.append(
+                    f"  - Communicator {comm_id} over {comm_ranks}, "
+                    f"no progress for {stalled_s:.0f}s. {'. '.join(ops)}"
+                )
+            return "\n".join(described_stalls)
+
+        except Exception:  # noqa: BLE001
+            logger.debug("Could not describe the stalled communicators.", exc_info=True)
+            return ""
+
+    def build_hang_report(self, report: RASReport, outcome: PollOutcome):
         """Raise (fail mode) or log (observe mode) the confirmed hangs.
 
         Args:
@@ -1285,15 +1387,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """
         message = (
             "NCCL hang detected by the Ray Train hang detector callback! "
-            f"{len(outcome.confirmed)} communicator(s) made no collective "
+            f"{len(outcome.confirmed_comms)} communicator(s) made no collective "
             f"progress for {self._confirm_duration_s:.0f} seconds "
             f"({self._confirm_poll_counts} polls) while their ranks disagree on "
             "how many collectives they have launched.\n"
-            f"{self.describe_stalled_comms(report, outcome.confirmed)}\n"
+            f"{self.describe_stalled_comms(report, outcome.confirmed_comms)}\n"
             "Common causes are a rank taking a divergent code path or exiting "
             "early, ranks launching collectives in a different order or with "
             "mismatched shapes or dtypes, or a GPU or network failure.\n"
         )
+        # TODO fix
         stack_trace_dir = outcome.diagnostics.get(_STACK_TRACES_TOOL)
         ras_history_dir = outcome.diagnostics.get(_NCCL_RAS_TOOL)
         nvidia_smi_dir = outcome.diagnostics.get(_NVIDIA_SMI_TOOL)
@@ -1329,323 +1432,89 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         elif self._action == NCCL_RAS_ACTION_OBSERVE:
             logger.warning(message)
 
-    def stalled_communicators(self) -> List[NcclCommunicator]:
-        """The hung communicators, i.e. every stall past the suspicion
-        threshold, ordered by communicator id."""
-        return [
-            NcclCommunicator(
-                communicator_id=comm_id,
-                state=(
-                    NcclCommunicatorState.CONFIRMED
-                    if stall.confirmed
-                    else NcclCommunicatorState.SUSPECTED
-                ),
-                stalled_since_ms=stall.since_ms,
-            )
-            for comm_id, stall in sorted(self.comm_stalls.items())
-            if stall.polls >= self._suspicion_polls
-        ]
+    def capture_diagnostics(self):
+        """Capture and upload every diagnostic of a confirmed hang.
 
-    def export_poll(self, outcome: PollOutcome) -> None:
-        """Export the poll as an MONITORING event, if it reached a milestone.
-
-        Never raises, so exporting can never affect detection.
-
-        Args:
-            outcome: The poll's outcome.
+        Each tool's files are uploaded to
+        ``<experiment_fs_path>/<HANG_DETECTOR_DIRNAME>/<tool>/``. A diagnostic
+        that fails is logged rather than raised, so it never takes the hang
+        handling with it, and one with nothing to record uploads nothing.
         """
-        if not outcome.reported:
-            return
-        try:
-            diagnostics_uploaded = any(outcome.diagnostics.values())
-            self._emit(
-                TrainNcclHangEvent(
-                    run_id=self._run_id,
-                    attempt_id=self._attempt_id,
-                    poll_index=self._poll_index,
-                    timestamp_ms=self._poll_time_ms,
-                    detector_status=NcclHangDetectorStatus.MONITORING,
-                    ras_text_report=outcome.ras_text_report or None,
-                    diagnostics_dir=(
-                        self.diagnostics_dir() if diagnostics_uploaded else None
-                    ),
-                    communicators=self.stalled_communicators(),
-                )
-            )
-        except Exception:  # noqa: BLE001
-            logger.debug(
-                "Could not export NCCL hang poll %d.", self._poll_index, exc_info=True
-            )
+        workers = list(self._worker_group.get_workers())
+        storage_context = self._worker_group._storage_context
 
-    def export_lifecycle(
+        def ras_history() -> Dict[str, str]:
+            return collect_ras_history(self.ras_history, self._ras_poller.query_text())
+
+        # Flight Recorder first, before ranks still running overwrite its ring
+        # buffer; nvidia-smi before the slow stack traces, so the GPU reading
+        # is as close to the moment of the hang as possible.
+        collectors: Dict[str, Callable[[], Dict[str, str]]] = {
+            _FLIGHT_RECORDER_TOOL: lambda: collect_flight_recorder(workers),
+            _NVIDIA_SMI_TOOL: lambda: collect_nvidia_smi(workers),
+            _NCCL_RAS_TOOL: ras_history,
+            _STACK_TRACES_TOOL: lambda: collect_stack_traces(workers),
+        }
+        for tool, collect in collectors.items():
+            try:
+                files = collect()
+                if not files:
+                    continue
+                fs_path = os.path.join(
+                    storage_context.experiment_fs_path, HANG_DETECTOR_DIRNAME, tool
+                )
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    for name, contents in files.items():
+                        (Path(temp_dir) / name).write_text(contents)
+                    _upload_to_fs_path(
+                        temp_dir, storage_context.storage_filesystem, fs_path
+                    )
+            except Exception:  # noqa: BLE001
+                logger.exception("Trying to capture the %s diagnostics failed.", tool)
+
+    def export_event(
         self,
         status: NcclHangDetectorStatus,
+        timestamp_ms: int,
         disabled_reason: Optional[NcclHangDisabledReason] = None,
+        outcome: Optional[PollOutcome] = None,
     ):
-        """Export that the detector stopped watching the attempt or was
-        disabled, with the communicators still hung.
+        """Export an event listing the communicators hung right now.
 
-        Never raises, as it runs on the paths that disable the detector.
+        Hands it to the Train state actor, fire-and-forget; the exporter never
+        raises, so exporting can never affect detection.
 
         Args:
-            status: STOPPED or DISABLED.
+            status: MONITORING for a poll that reached a milestone, STOPPED
+                or DISABLED when the detector stops watching the attempt.
+            timestamp_ms: When the event happened, in ms since the UNIX epoch.
             disabled_reason: Why the detector was disabled, for DISABLED.
+            outcome: The poll's outcome, for MONITORING, carrying the text
+                report and the diagnostics.
         """
-        self._poll_index += 1
-        try:
-            self._emit(
-                TrainNcclHangEvent(
-                    run_id=self._run_id,
-                    attempt_id=self._attempt_id,
-                    poll_index=self._poll_index,
-                    timestamp_ms=int(time.time() * 1000),
-                    detector_status=status,
-                    disabled_reason=disabled_reason,
-                    communicators=self.stalled_communicators(),
-                )
-            )
-        except Exception:  # noqa: BLE001
-            logger.debug(
-                "Could not export the NCCL hang %s event.", status.value, exc_info=True
-            )
-
-    def _emit(self, event: TrainNcclHangEvent):
-        """Hand an event to the Train state actor, fire-and-forget."""
-        self._exporter.export(event)
-
-    def diagnostics_dir(self) -> Optional[str]:
-        """Where the diagnostics of a confirmed hang are uploaded, if known."""
-        try:
-            return os.path.join(
-                self._worker_group._storage_context.experiment_fs_path,
-                HANG_DETECTOR_DIRNAME,
-            )
-        except Exception:  # noqa: BLE001
-            return None
-
-    def describe_stalled_comms(
-        self, report: RASReport, stalled_comm_ids: List[str]
-    ) -> str:
-        """One line per communicator with its launch counts by train rank.
-
-        NCCL numbers a communicator's ranks from 0, which differs from the
-        Ray Train world rank on any communicator but the world one, so every
-        rank is translated, e.g. ``AllReduce launches: 622 by train rank 2;
-        621 by train rank 3``. Only the collectives whose counts disagree are
-        listed.
-
-        Never raises: a failure here only loses log detail, so it must not
-        reach the poll hook and disable detection.
-
-        Args:
-            report: The current poll's report.
-            stalled_comm_ids: The stalled communicators to describe.
-
-        Returns:
-            One line per communicator, or ``""`` if they couldn't be built.
-        """
-
-        try:
-            workers = self._worker_group.get_workers() if self._worker_group else []
-            described_stalls = []
-            for comm_id in stalled_comm_ids:
-                train_rank_of = translate_ras_ranks_to_train(
-                    workers, report.comm_rank_processes.get(comm_id, {})
-                )
-                ops = [
-                    f"{op} launches: "
-                    + "; ".join(
-                        f"{count} by {format_ranks(ranks, train_rank_of)}"
-                        for count, ranks in sorted(ranks_by_count.items(), reverse=True)
+        outcome = outcome or PollOutcome()
+        self._event_exporter.export(
+            TrainNcclHangEvent(
+                run_id=self._run_id,
+                attempt_id=self._attempt_id,
+                poll_index=self._poll_index,
+                timestamp_ms=timestamp_ms,
+                detector_status=status,
+                disabled_reason=disabled_reason,
+                ras_text_report=outcome.ras_text_report or None,
+                diagnostics_dir=outcome.diagnostics_dir,
+                communicators=[
+                    NcclCommunicator(
+                        communicator_id=comm_id,
+                        state=(
+                            NcclCommunicatorState.CONFIRMED
+                            if stall.confirmed
+                            else NcclCommunicatorState.SUSPECTED
+                        ),
+                        stalled_since_ms=stall.since_ms,
                     )
-                    for op, ranks_by_count in sorted(
-                        report.mismatched_op_ranks(comm_id).items()
-                    )
-                ]
-                comm_ranks = format_ranks(report.comm_op_counts[comm_id], train_rank_of)
-                stalled_s = (
-                    self.comm_deadlock_count.get(comm_id, 0) * self._poll_interval_s
-                )
-                described_stalls.append(
-                    f"  - Communicator {comm_id} over {comm_ranks}, "
-                    f"no progress for {stalled_s:.0f}s. {'. '.join(ops)}"
-                )
-            return "\n".join(described_stalls)
-
-        except Exception:  # noqa: BLE001
-            logger.debug("Could not describe the stalled communicators.", exc_info=True)
-            return ""
-
-    def fetch_ras_human_report(self) -> Optional[str]:
-        """Synchronously fetch ``ncclras -f text`` for the logs.
-
-        Runs on the controller thread; only called once a hang is suspected or
-        confirmed, when the job is already stalled.
-
-        Returns:
-            The report, or ``None`` if no worker could produce one.
-        """
-        try:
-            return self._ras_poller.query("text")
-        except RASQueryError as e:
-            logger.info("Could not fetch the `ncclras` text report (%s).", e)
-            return None
-
-    @staticmethod
-    def capture_diagnostic(
-        name: str, capture: Callable[[], Optional[str]]
-    ) -> Optional[str]:
-        """Run one diagnostic capture, logging rather than raising on failure.
-
-        Args:
-            name: What is being captured, for the log message.
-            capture: The capture, returning where it was uploaded.
-
-        Returns:
-            Where the diagnostic was uploaded, or ``None`` if it failed.
-        """
-        try:
-            return capture()
-        except Exception:  # noqa: BLE001
-            logger.exception("Trying to capture the %s failed.", name)
-            return None
-
-    def dump_ras_query_history(
-        self, human_report: Optional[str] = None
-    ) -> Optional[str]:
-        """Write the retained RAS polls to the run's storage.
-
-        Args:
-            human_report: The ``ncclras -f text`` report fetched at confirmation,
-                or ``None`` if no worker could produce one.
-
-        Returns:
-            The path to the folder with the history, or ``None`` if no poll has
-            been recorded yet.
-        """
-        files = {
-            f"ncclras_{_UNSAFE_FILENAME_CHARS.sub('-', report.timestamp)}.json": report.raw_json
-            for report in self.ras_history
-        }
-        if human_report:
-            files["ncclras_report.txt"] = human_report
-
-        if files:
-            return self.upload_diagnostics(_NCCL_RAS_TOOL, files)
-        return None
-
-    def dump_workers_stack_traces(self) -> Optional[str]:
-        """Fan out a native stack dump to every worker and write it to the log dir.
-
-        Every rank gets a ``rank_<worker rank>.log`` in the uploaded folder. A rank
-        whose dump could not be launched, timed out, or failed to collect gets a
-        one-line placeholder saying so users know why it failed.
-
-        Returns:
-            The path to the folder with the stack traces.
-        """
-        workers = list(self._worker_group.get_workers())
-        if not workers:
-            return None
-
-        dumps = fan_out_to_workers(
-            workers,
-            dump_stack_trace,
-            _STACK_DUMP_TIMEOUT_S - 1,
-            timeout_s=_STACK_DUMP_TIMEOUT_S,
-        )
-        files = {
-            f"rank_{rank}.log": str(dump.value)
-            if dump.error is None
-            else str(dump.error)
-            for rank, dump in dumps.items()
-        }
-        return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
-
-    def dump_workers_flight_recorder(self) -> Optional[str]:
-        """Fan out a Flight Recorder dump to every worker and write it to the log dir.
-
-        Every rank gets a ``rank_<world_rank>.json`` holding that rank's buffer:
-        the collectives still in the ring with their process group, sequence id,
-        state, input/output shapes and dtypes, and issuing call stack.
-
-        Returns:
-            The path to the folder with the dumps.
-        """
-        if TORCH_FR_BUFFER_SIZE_ENV_VAR not in os.environ:
-            return None
-
-        workers = list(self._worker_group.get_workers())
-        if not workers:
-            return None
-
-        dumps = fan_out_to_workers(
-            workers, dump_flight_recorder, timeout_s=_FLIGHT_RECORDER_DUMP_TIMEOUT_S
-        )
-
-        files: Dict[str, str] = {}
-        for rank, diagnostic_result in dumps.items():
-            error = diagnostic_result.error
-            if error is not None:
-                logger.info("No Flight Recorder dump from rank %d: %s", rank, error)
-                files[f"rank_{rank}.json"] = json.dumps({"dump_error": str(error)})
-                continue
-
-            files[f"rank_{rank}.json"] = str(diagnostic_result.value)
-
-        return self.upload_diagnostics(_FLIGHT_RECORDER_TOOL, files)
-
-    def dump_nodes_nvidia_smi(self) -> Optional[str]:
-        """Snapshot every node's GPUs and write the reports to the log dir.
-
-        GPUs belong to the node rather than the rank, so exactly one worker
-        per node is queried and each node gets a ``node_<node ip>.log``.
-
-        Returns:
-            The path to the folder with the snapshots.
-        """
-        node_workers: Dict[str, Worker] = {}
-        node_ips: Dict[int, str] = {}
-        for worker in self._worker_group.get_workers():
-            node_workers.setdefault(worker.metadata.node_ip, worker)
-            node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
-        if not node_workers:
-            return None
-
-        dumps = fan_out_to_workers(
-            list(node_workers.values()),
-            run_nvidia_smi,
-            _NVIDIA_SMI_TIMEOUT_S - 1,
-            timeout_s=_NVIDIA_SMI_TIMEOUT_S,
-        )
-
-        files: Dict[str, str] = {}
-        for rank, dump in dumps.items():
-            node_ip = node_ips[rank]
-            files[f"node_{node_ip}.log"] = (
-                str(dump.value)
-                if dump.error is None
-                else f"no `nvidia-smi` snapshot: {dump.error}"
+                    for comm_id, stall in sorted(self.comm_stalls.items())
+                    if stall.polls >= self._suspicion_polls
+                ],
             )
-
-        return self.upload_diagnostics(_NVIDIA_SMI_TOOL, files)
-
-    def upload_diagnostics(self, tool: str, files: Dict[str, str]) -> str:
-        """Upload one tool's files to the run's storage filesystem.
-
-        Args:
-            tool: The sub-directory of ``hang_detector/`` to write to.
-            files: ``{filename: contents}`` to write into that directory.
-
-        Returns:
-            The path the files were uploaded to, which survives cluster teardown.
-        """
-        storage_context = self._worker_group._storage_context
-        fs_path = os.path.join(
-            storage_context.experiment_fs_path, HANG_DETECTOR_DIRNAME, tool
         )
-        with tempfile.TemporaryDirectory() as temp_dir:
-            for name, contents in files.items():
-                (Path(temp_dir) / name).write_text(contents)
-            _upload_to_fs_path(temp_dir, storage_context.storage_filesystem, fs_path)
-        return fs_path

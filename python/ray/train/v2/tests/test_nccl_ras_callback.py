@@ -1,5 +1,4 @@
 """Unit tests for the NCCL RAS hang-detection callback (no GPU required)."""
-import itertools
 import json
 import logging
 import re
@@ -23,11 +22,11 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     RASQueryError,
     RASReport,
     dump_flight_recorder,
+    dump_nvidia_smi,
     dump_stack_trace,
     fan_out_to_workers,
     parse_ras_addr,
     parse_ras_schema,
-    run_nvidia_smi,
 )
 from ray.train.v2._internal.constants import (
     HANG_DETECTOR_DIRNAME,
@@ -38,6 +37,7 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
     TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
+from ray.train.v2._internal.state import state_manager
 from ray.train.v2._internal.state.schema import (
     NcclCommunicatorState,
     NcclHangDetectorStatus,
@@ -395,15 +395,40 @@ MULTI_COMM_RAS_JSON = """{
 
 def test_parse_healthy_ras_example():
     # Every rank at the same op-count -> healthy, no mismatched comms.
-    report = parse_ras_schema(HEALTHY_RAS_JSON)
+    report = parse_ras_schema(HEALTHY_RAS_JSON, taken_at_ms=0)
     assert report is not None
     assert report.healthy is True
     assert report.mismatched_comms == set()
 
 
 def test_parse_keeps_the_raw_output():
-    assert parse_ras_schema(HEALTHY_RAS_JSON).raw_json == HEALTHY_RAS_JSON
-    assert parse_ras_schema(DEAD_RANK_RAS_JSON).raw_json == DEAD_RANK_RAS_JSON
+    assert (
+        parse_ras_schema(HEALTHY_RAS_JSON, taken_at_ms=0).raw_json == HEALTHY_RAS_JSON
+    )
+    assert (
+        parse_ras_schema(DEAD_RANK_RAS_JSON, taken_at_ms=0).raw_json
+        == DEAD_RANK_RAS_JSON
+    )
+
+
+def test_parse_ignores_the_ncclras_timestamp():
+    # `ncclras`'s timestamp is from the answering node's clock, so the
+    # report is dated by the controller and the key isn't needed.
+    data = json.loads(HEALTHY_RAS_JSON)
+    del data["timestamp"]
+    report = parse_ras_schema(json.dumps(data), taken_at_ms=123)
+    assert report is not None
+    assert report.taken_at_ms == 123
+
+
+def test_query_dates_the_report_when_it_returns(monkeypatch):
+    monkeypatch.setattr(
+        nccl_ras.ray, "get", lambda *a, **kw: {"ok": True, "stdout": HEALTHY_RAS_JSON}
+    )
+    monkeypatch.setattr(nccl_ras.time, "time", lambda: 1_760_000_000.25)
+    poller = RASPoller(MagicMock(), interval_s=1.0)
+    report = poller._query_worker(MagicMock(), "json")
+    assert report.taken_at_ms == 1_760_000_000_250
 
 
 def test_parse_ras_missing_comma():
@@ -412,7 +437,7 @@ def test_parse_ras_missing_comma():
     with pytest.raises(json.JSONDecodeError):
         json.loads(DEAD_RANK_RAS_JSON)
 
-    report = parse_ras_schema(DEAD_RANK_RAS_JSON)
+    report = parse_ras_schema(DEAD_RANK_RAS_JSON, taken_at_ms=0)
     assert report is not None
     assert report.comm_op_counts["0xa1349768e9517ed7"] == {
         0: {
@@ -429,7 +454,7 @@ def test_parse_ras_missing_comma():
 def test_parse_keeps_each_ranks_process():
     # The host and pid of every rank are what joins a RAS rank to its Ray Train
     # worker, so the parser has to keep them.
-    report = parse_ras_schema(HEALTHY_RAS_JSON)
+    report = parse_ras_schema(HEALTHY_RAS_JSON, taken_at_ms=0)
     assert report.comm_rank_processes["0x514e98cf4e44862b"] == {
         0: ("10.0.77.184", 8813),
         1: ("10.0.77.184", 8814),
@@ -438,7 +463,7 @@ def test_parse_keeps_each_ranks_process():
 
 def test_parse_multicomm_ras_example():
     # Three communicators, but only 0x4e01... diverges
-    report = parse_ras_schema(MULTI_COMM_RAS_JSON)
+    report = parse_ras_schema(MULTI_COMM_RAS_JSON, taken_at_ms=0)
     assert report is not None
     assert report.healthy is False
     assert report.mismatched_comms == {"0x4e0104c2022fa2f9"}
@@ -471,10 +496,15 @@ def test_parse_ras_addr_malformed_raises(addr):
 # ---------------------------------------------------------------------------
 
 
+_REAL_EXPORT = nccl_ras.NcclHangEventExporter.export
+
+
 @pytest.fixture(autouse=True)
 def no_export(monkeypatch):
     """Drop every exported event; ``emitted`` collects them instead."""
-    monkeypatch.setattr(NCCLRASCallback, "_emit", lambda self, event: None)
+    monkeypatch.setattr(
+        nccl_ras.NcclHangEventExporter, "export", lambda self, event: None
+    )
 
 
 class FakePoller:
@@ -497,26 +527,25 @@ class FakePoller:
     def next_result(self):
         return self._results.pop(0) if self._results else None
 
-    def query(self, fmt):
+    def query_text(self):
         # The one-off human-readable fetch at hang time must not consume a
         # result from the scripted JSON sequence.
-        assert fmt == "text"
         self.text_queries += 1
         return self.TEXT_REPORT
 
 
-# The callback's diagnostic dump methods, keyed by tool, in the order a
-# confirmed hang captures them.
-_DIAGNOSTIC_METHODS = {
-    nccl_ras._FLIGHT_RECORDER_TOOL: "dump_workers_flight_recorder",
-    nccl_ras._NVIDIA_SMI_TOOL: "dump_nodes_nvidia_smi",
-    nccl_ras._NCCL_RAS_TOOL: "dump_ras_query_history",
-    nccl_ras._STACK_TRACES_TOOL: "dump_workers_stack_traces",
+# The module's diagnostic collectors, keyed by tool, in the order a confirmed
+# hang captures them.
+_DIAGNOSTIC_COLLECTORS = {
+    nccl_ras._FLIGHT_RECORDER_TOOL: "collect_flight_recorder",
+    nccl_ras._NVIDIA_SMI_TOOL: "collect_nvidia_smi",
+    nccl_ras._NCCL_RAS_TOOL: "collect_ras_history",
+    nccl_ras._STACK_TRACES_TOOL: "collect_stack_traces",
 }
-_ALL_DIAGNOSTICS = list(_DIAGNOSTIC_METHODS)
+_ALL_DIAGNOSTICS = list(_DIAGNOSTIC_COLLECTORS)
 
-# What a stubbed diagnostic does: True uploads a directory, False uploads
-# nothing (returns None), and an exception is raised from the capture.
+# What a stubbed diagnostic does: True collects a file (so a directory is
+# uploaded), False collects nothing, and an exception is raised from it.
 _DiagnosticOutcome = Union[bool, Exception]
 
 
@@ -547,7 +576,7 @@ def make_nccl_ras_callback(
         periodic_warn_every_polls: Frozen polls between reminders (120s in
             production).
         diagnostics: Each tool's stubbed outcome (default: every tool uploads
-            a directory). The real dump methods are tested on their own.
+            a directory). The real collectors are tested on their own.
 
     Returns:
         The callback and the ``(tool, args)`` calls its diagnostic stubs
@@ -566,7 +595,9 @@ def make_nccl_ras_callback(
     callback = NCCLRASCallback()
     assert callback._confirm_poll_counts == confirm_count
     callback._worker_group = MagicMock()
+    callback._worker_group._storage_context.experiment_fs_path = "/exp"
     callback._ras_poller = FakePoller(reports)
+    monkeypatch.setattr(nccl_ras, "_upload_to_fs_path", lambda *args: None)
 
     diagnostics = diagnostics or {}
     calls: List[Tuple[str, tuple]] = []
@@ -574,18 +605,23 @@ def make_nccl_ras_callback(
     def stub(tool):
         outcome = diagnostics.get(tool, True)
 
-        def capture(*args):
+        def collect(*args):
             calls.append((tool, args))
             if isinstance(outcome, Exception):
                 raise outcome
-            return f"/exp/{HANG_DETECTOR_DIRNAME}/{tool}" if outcome else None
+            return {"dump.txt": "contents"} if outcome else {}
 
-        return capture
+        return collect
 
-    for tool, method in _DIAGNOSTIC_METHODS.items():
-        setattr(callback, method, stub(tool))
+    for tool, collector in _DIAGNOSTIC_COLLECTORS.items():
+        monkeypatch.setattr(nccl_ras, collector, stub(tool))
 
     return callback, calls
+
+
+def stall_polls(callback) -> Dict[str, int]:
+    """Each open stall's consecutive frozen polls, ``{comm_id: polls}``."""
+    return {comm_id: stall.polls for comm_id, stall in callback.comm_stalls.items()}
 
 
 def captured_tools(calls):
@@ -607,12 +643,14 @@ _RankCounts = Dict[int, Union[int, Dict[str, int]]]
 def create_report(
     comms: Optional[Dict[str, _RankCounts]] = None,
     processes: Optional[Dict[str, Dict[int, Tuple[str, int]]]] = None,
+    taken_at_ms: int = 0,
 ):
     """Build a RASReport from ``{comm_id: {global_rank: counts}}`` specs.
 
     A rank's ``counts`` is either an ``AllReduce`` count (int) or an explicit
     ``{op_name: count}`` mapping. Every rank is reported as RUNNING.
     ``processes`` is the ``{comm_id: {rank: (host, pid)}}`` RAS reports.
+    ``taken_at_ms`` is when the poller took the report.
     """
     comms = comms or {}
     comm_op_counts = {
@@ -626,7 +664,7 @@ def create_report(
         comm_id: {rank: "RUNNING" for rank in ranks} for comm_id, ranks in comms.items()
     }
     return RASReport(
-        timestamp="2026-06-19 00:00:00",
+        taken_at_ms=taken_at_ms,
         comm_op_counts=comm_op_counts,
         comm_rank_status=comm_rank_status,
         comm_rank_processes=processes or {},
@@ -634,14 +672,14 @@ def create_report(
     )
 
 
-def create_single_comm_report(counts, comm_id=_COMM_A):
+def create_single_comm_report(counts, comm_id=_COMM_A, taken_at_ms=0):
     """One communicator with ``{global_rank: AllReduce count}``."""
-    return create_report(comms={comm_id: counts})
+    return create_report(comms={comm_id: counts}, taken_at_ms=taken_at_ms)
 
 
-def create_healthy_report():
+def create_healthy_report(taken_at_ms=0):
     """A report with no communicators, so nothing is ever mismatched."""
-    return create_report()
+    return create_report(taken_at_ms=taken_at_ms)
 
 
 def create_two_op_report(allgather):
@@ -783,7 +821,7 @@ def test_frozen_streaks(monkeypatch, confirm_count, polls):
                 tick(callback)
         else:
             tick(callback)
-            assert callback.comm_deadlock_count == expected, f"after poll {i}"
+            assert stall_polls(callback) == expected, f"after poll {i}"
 
     hung = isinstance(polls[-1][1], str)
     assert captured_tools(calls) == (_ALL_DIAGNOSTICS if hung else [])
@@ -836,7 +874,9 @@ def test_confirmed_hang_capture_order(monkeypatch):
     # The text report is fetched once when the hang is first suspected (and
     # logged), then once more at confirmation and saved alongside the history.
     assert callback._ras_poller.text_queries == 2
-    assert dict(calls)[nccl_ras._NCCL_RAS_TOOL] == (FakePoller.TEXT_REPORT,)
+    history, text_report = dict(calls)[nccl_ras._NCCL_RAS_TOOL]
+    assert list(history) == [_FROZEN] * 3
+    assert text_report == FakePoller.TEXT_REPORT
 
 
 _MESSAGE_CASES = [
@@ -892,14 +932,19 @@ def test_confirmed_hang_action(monkeypatch, caplog, propagate_logs, action):
     assert captured_tools(calls) == _ALL_DIAGNOSTICS
 
 
-def test_capture_diagnostic_swallows_failures(caplog, propagate_logs):
+def test_failing_diagnostic_is_logged(monkeypatch, caplog, propagate_logs):
     # A diagnostic that fails must never take the run's hang handling with it.
-    def boom():
-        raise RuntimeError("upload failed")
+    callback, calls = make_nccl_ras_callback(
+        monkeypatch,
+        NCCL_RAS_ACTION_FAIL,
+        confirm_count=2,
+        reports=[_FROZEN] * 3,
+        diagnostics={nccl_ras._STACK_TRACES_TOOL: RuntimeError("upload failed")},
+    )
 
     with caplog.at_level(logging.ERROR, logger=nccl_ras.logger.name):
-        assert NCCLRASCallback.capture_diagnostic("worker stack traces", boom) is None
-    assert "worker stack traces" in caplog.text
+        confirm_hang(callback)
+    assert f"capture the {nccl_ras._STACK_TRACES_TOOL} diagnostics" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -1103,10 +1148,26 @@ def test_callback_starts_and_stops_poller(monkeypatch):
     second = callback._ras_poller
     assert second is not first and second.is_alive
     assert callback.prev_report is None
-    assert callback.comm_deadlock_count == {}
+    assert callback.comm_stalls == {}
     assert len(callback.ras_history) == 0
     callback.before_worker_group_shutdown(MagicMock())
     assert _join(second)
+
+
+def test_abort_stops_the_poller_and_ends_the_attempt(monkeypatch, emitted):
+    # `WorkerGroup.abort()` skips `before_worker_group_shutdown`, so the abort
+    # hook has to stop the poller and end the attempt's events itself.
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=10, reports=[_FROZEN] * 2
+    )
+    poller = callback._ras_poller
+    tick(callback)
+    tick(callback)  # suspected
+
+    callback.before_worker_group_abort(MagicMock())
+
+    assert poller.stopped and callback._ras_poller is None
+    assert summarize(emitted)[-1] == (STOPPED, {_COMM_A: SUSPECTED})
 
 
 def test_callback_degrades_on_fatal_poll_result(monkeypatch):
@@ -1122,7 +1183,7 @@ def test_callback_degrades_on_fatal_poll_result(monkeypatch):
     assert callback._is_ras_degraded is True
     tick(callback)  # no-op once degraded: the queued report is never consumed
     assert callback.prev_report is None
-    assert callback.comm_deadlock_count == {}
+    assert callback.comm_stalls == {}
     assert not calls
 
     # A degraded callback does not start a poller for a later worker group.
@@ -1343,29 +1404,6 @@ def test_ras_text_report_is_logged_once_per_suspicion(
     assert logged_at == text_polls
 
 
-def test_ras_text_report_fetch_is_retried_while_suspected(
-    monkeypatch, caplog, propagate_logs
-):
-    # A failed fetch at the first suspicion is retried on the next warning
-    # rather than lost until the hang is confirmed.
-    reports = [create_single_comm_report({1: 5, 2: 4})] * 4
-    callback, _ = make_nccl_ras_callback(
-        monkeypatch,
-        NCCL_RAS_ACTION_OBSERVE,
-        confirm_count=100,
-        reports=reports,
-        periodic_warn_every_polls=1,
-    )
-    fetches = iter([None, FakePoller.TEXT_REPORT, FakePoller.TEXT_REPORT])
-    callback.fetch_ras_human_report = lambda: next(fetches)
-
-    with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
-        for _ in reports:
-            callback.after_worker_group_poll_status(MagicMock())
-
-    assert caplog.text.count(FakePoller.TEXT_REPORT) == 1
-
-
 def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
     # Observe mode still surfaces the suspicion/periodic warnings but must never
     # threaten to raise an error, since it only observes.
@@ -1475,7 +1513,7 @@ def test_dump_stack_trace_falls_back_to_python(
 def test_nvidia_smi_returns_the_report(monkeypatch):
     calls = fake_subprocess_run(monkeypatch, stdout="GPU 00000000:00:04.0\n")
 
-    assert run_nvidia_smi(25.0) == DiagnosticResult(value="GPU 00000000:00:04.0\n")
+    assert dump_nvidia_smi(25.0) == DiagnosticResult(value="GPU 00000000:00:04.0\n")
     ((cmd, kwargs),) = calls
     assert cmd == ["nvidia-smi", "-q"]
     # The driver is what might be wedged, so the call is always bounded.
@@ -1510,7 +1548,7 @@ def test_nvidia_smi_failures_say_why(
     # The reason is written into the node's file, so it has to be readable.
     fake_subprocess_run(monkeypatch, **run_result)
 
-    result = run_nvidia_smi(25.0)
+    result = dump_nvidia_smi(25.0)
 
     assert result.value is None
     assert isinstance(result.error, expected_type)
@@ -1679,7 +1717,7 @@ def test_fan_out_keeps_a_returned_diagnostic_result(fan_out):
     error = RuntimeError("no GPUs")
     workers = [fan_out.worker(0, value=DiagnosticResult(error=error))]
 
-    dumps = fan_out_to_workers(workers, run_nvidia_smi, 25.0, timeout_s=30.0)
+    dumps = fan_out_to_workers(workers, dump_nvidia_smi, 25.0, timeout_s=30.0)
 
     assert dumps[0].value is None and dumps[0].error is error
 
@@ -1687,6 +1725,169 @@ def test_fan_out_keeps_a_returned_diagnostic_result(fan_out):
 # ---------------------------------------------------------------------------
 # Diagnostics, stage 3: turning each tool's dumps into uploaded files
 # ---------------------------------------------------------------------------
+
+
+def scripted_fan_out(monkeypatch, dumps):
+    """Replace the worker fan-out with fixed dumps, recording how it was called."""
+    calls = []
+
+    def fake_fan_out(workers, fn, *fn_args, timeout_s):
+        calls.append((workers, fn, fn_args, timeout_s))
+        return dumps
+
+    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", fake_fan_out)
+    return calls
+
+
+def two_node_workers():
+    """Two workers, each on its own node."""
+    return [make_worker(rank, node_ip=f"10.0.0.{rank}") for rank in (0, 1)]
+
+
+@dataclass
+class FanOutDiagnostic:
+    """How one fan-out diagnostic talks to its workers and names its files.
+
+    Attributes:
+        tool: The ``hang_detector/`` sub-directory it uploads to.
+        collect: The module-level function that collects its files.
+        fn: The worker-side function fanned out.
+        fn_args: The arguments ``fn`` is fanned out with.
+        timeout_s: The fan-out's budget.
+        filename: The file a rank's dump lands in (nvidia-smi: its node's).
+        placeholder: What is written in place of a dump that failed with
+            ``reason``.
+    """
+
+    tool: str
+    collect: Callable[[List[Any]], Dict[str, str]]
+    fn: Callable[..., Any]
+    fn_args: tuple
+    timeout_s: float
+    filename: Callable[[int], str]
+    placeholder: Callable[[str], str]
+
+
+_FAN_OUT_DIAGNOSTICS = [
+    FanOutDiagnostic(
+        tool=nccl_ras._STACK_TRACES_TOOL,
+        collect=nccl_ras.collect_stack_traces,
+        fn=nccl_ras.dump_stack_trace,
+        # py-spy has to give up before the controller stops waiting.
+        fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
+        timeout_s=nccl_ras._STACK_DUMP_TIMEOUT_S,
+        filename=lambda rank: f"rank_{rank}.log",
+        placeholder=lambda reason: reason,
+    ),
+    FanOutDiagnostic(
+        tool=nccl_ras._NVIDIA_SMI_TOOL,
+        collect=nccl_ras.collect_nvidia_smi,
+        fn=nccl_ras.dump_nvidia_smi,
+        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
+        timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
+        filename=lambda rank: f"node_10.0.0.{rank}.log",
+        placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}",
+    ),
+    FanOutDiagnostic(
+        tool=nccl_ras._FLIGHT_RECORDER_TOOL,
+        collect=nccl_ras.collect_flight_recorder,
+        fn=nccl_ras.dump_flight_recorder,
+        fn_args=(),
+        timeout_s=nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S,
+        filename=lambda rank: f"rank_{rank}.json",
+        # Still valid JSON, so every file in the directory parses.
+        placeholder=lambda reason: json.dumps({"dump_error": reason}),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "diagnostic", _FAN_OUT_DIAGNOSTICS, ids=lambda diagnostic: diagnostic.tool
+)
+def test_diagnostic_one_file_per_target(monkeypatch, diagnostic):
+    # Every rank (nvidia-smi: every node) gets its own file, named so it can be
+    # matched to the RAS report, holding exactly what the worker returned.
+    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+    workers = two_node_workers()
+    calls = scripted_fan_out(
+        monkeypatch,
+        {rank: DiagnosticResult(value=f"dump {rank}") for rank in (0, 1)},
+    )
+
+    files = diagnostic.collect(workers)
+
+    assert files == {diagnostic.filename(rank): f"dump {rank}" for rank in (0, 1)}
+    assert calls == [(workers, diagnostic.fn, diagnostic.fn_args, diagnostic.timeout_s)]
+
+
+@pytest.mark.parametrize(
+    "diagnostic", _FAN_OUT_DIAGNOSTICS, ids=lambda diagnostic: diagnostic.tool
+)
+def test_diagnostic_failed_target_gets_placeholder(monkeypatch, diagnostic):
+    # A rank or node with no dump gets a file saying why
+    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+    reason = "it went wrong"
+    bad_dump = DiagnosticResult(error=RuntimeError(reason))
+
+    scripted_fan_out(monkeypatch, {0: bad_dump, 1: DiagnosticResult(value="dump 1")})
+
+    assert diagnostic.collect(two_node_workers()) == {
+        diagnostic.filename(0): diagnostic.placeholder(reason),
+        diagnostic.filename(1): "dump 1",
+    }
+
+
+def test_nvidia_smi_queries_one_worker_per_node(monkeypatch):
+    # Two ranks share a node and a third is on its own: `nvidia-smi` reports
+    # every GPU on a node, so the shared node must only be queried once.
+    workers = [
+        make_worker(0, node_ip="10.0.0.1"),
+        make_worker(1, node_ip="10.0.0.1"),
+        make_worker(2, node_ip="10.0.0.2"),
+    ]
+    calls = scripted_fan_out(
+        monkeypatch,
+        {
+            0: DiagnosticResult(value="node 1 GPUs"),
+            2: DiagnosticResult(value="node 2 GPUs"),
+        },
+    )
+
+    files = nccl_ras.collect_nvidia_smi(workers)
+
+    ((queried, *_),) = calls
+    assert queried == [workers[0], workers[2]]
+    assert files == {
+        "node_10.0.0.1.log": "node 1 GPUs",
+        "node_10.0.0.2.log": "node 2 GPUs",
+    }
+
+
+def test_nvidia_smi_report_reaches_the_file(monkeypatch):
+    # The whole worker-side path: what `nvidia-smi` prints has to arrive intact
+    # in the node's file.
+    fake_subprocess_run(monkeypatch, stdout="Driver Version : 580.65.06\n")
+
+    def local_fan_out(workers, fn, *fn_args, timeout_s):
+        return {
+            worker.distributed_context.world_rank: fn(*fn_args) for worker in workers
+        }
+
+    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
+
+    files = nccl_ras.collect_nvidia_smi([make_worker(0, node_ip="10.0.0.1")])
+
+    assert files == {"node_10.0.0.1.log": "Driver Version : 580.65.06\n"}
+
+
+def test_flight_recorder_skipped_when_not_armed(monkeypatch):
+    # The ring buffer has to be armed before the process group is created, so
+    # an unarmed run has nothing to dump.
+    monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
+    calls = scripted_fan_out(monkeypatch, {})
+
+    assert nccl_ras.collect_flight_recorder(two_node_workers()) == {}
+    assert calls == []
 
 
 @pytest.fixture
@@ -1703,221 +1904,37 @@ def uploads(monkeypatch):
     return calls
 
 
-def make_diagnostics_callback(workers=None, experiment_fs_path="/exp"):
-    """A callback wired to a worker group, to exercise the real dump methods.
-
-    By default two workers, each on its own node.
-    """
-    if workers is None:
-        workers = [make_worker(rank, node_ip=f"10.0.0.{rank}") for rank in (0, 1)]
+def test_capture_diagnostics_uploads_each_tool(monkeypatch, uploads):
+    # Each tool's files land in its own `hang_detector/` sub-directory, and a
+    # tool with nothing to record (here, an unarmed Flight Recorder) leaves no
+    # empty directory behind in the user's experiment directory.
+    monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
+    scripted_fan_out(monkeypatch, {0: DiagnosticResult(value="dump")})
     callback = NCCLRASCallback()
-    worker_group = MagicMock()
-    worker_group.get_workers.return_value = workers
-    worker_group._storage_context.experiment_fs_path = experiment_fs_path
-    callback._worker_group = worker_group
-    return callback
+    callback._worker_group = MagicMock()
+    callback._worker_group.get_workers.return_value = [
+        make_worker(0, node_ip="10.0.0.0")
+    ]
+    callback._worker_group._storage_context.experiment_fs_path = "/exp"
+    callback._ras_poller = FakePoller([])
 
+    outcome = nccl_ras.PollOutcome()
+    callback.capture_diagnostics(outcome)
 
-def scripted_fan_out(monkeypatch, dumps):
-    """Replace the worker fan-out with fixed dumps, recording how it was called."""
-    calls = []
-
-    def fake_fan_out(workers, fn, *fn_args, timeout_s):
-        calls.append((workers, fn, fn_args, timeout_s))
-        return dumps
-
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", fake_fan_out)
-    return calls
-
-
-@dataclass
-class FanOutDiagnostic:
-    """How one fan-out diagnostic talks to its workers and names its files.
-
-    Attributes:
-        tool: The ``hang_detector/`` sub-directory it uploads to.
-        method: The callback method that captures it.
-        fn: The worker-side function fanned out.
-        fn_args: The arguments ``fn`` is fanned out with.
-        timeout_s: The fan-out's budget.
-        ok: The worker's return value for a successful dump of ``contents``.
-        filename: The file a rank's dump lands in (nvidia-smi: its node's).
-        placeholder: What is written in place of a dump that failed with
-            ``reason``.
-    """
-
-    tool: str
-    method: str
-    fn: Callable[..., Any]
-    fn_args: tuple
-    timeout_s: float
-    ok: Callable[[str], Any]
-    filename: Callable[[int], str]
-    placeholder: Callable[[str], str]
-
-
-_FAN_OUT_DIAGNOSTICS = [
-    FanOutDiagnostic(
-        tool=nccl_ras._STACK_TRACES_TOOL,
-        method="dump_workers_stack_traces",
-        fn=nccl_ras.dump_stack_trace,
-        # py-spy has to give up before the controller stops waiting.
-        fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
-        timeout_s=nccl_ras._STACK_DUMP_TIMEOUT_S,
-        ok=lambda contents: contents,
-        filename=lambda rank: f"rank_{rank}.log",
-        placeholder=lambda reason: reason,
-    ),
-    FanOutDiagnostic(
-        tool=nccl_ras._NVIDIA_SMI_TOOL,
-        method="dump_nodes_nvidia_smi",
-        fn=nccl_ras.run_nvidia_smi,
-        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
-        timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
-        ok=lambda contents: contents,
-        filename=lambda rank: f"node_10.0.0.{rank}.log",
-        placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}",
-    ),
-    FanOutDiagnostic(
-        tool=nccl_ras._FLIGHT_RECORDER_TOOL,
-        method="dump_workers_flight_recorder",
-        fn=nccl_ras.dump_flight_recorder,
-        fn_args=(),
-        timeout_s=nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S,
-        ok=lambda contents: contents,
-        filename=lambda rank: f"rank_{rank}.json",
-        # Still valid JSON, so every file in the directory parses.
-        placeholder=lambda reason: json.dumps({"dump_error": reason}),
-    ),
-]
-
-
-@pytest.mark.parametrize(
-    "diagnostic", _FAN_OUT_DIAGNOSTICS, ids=lambda diagnostic: diagnostic.tool
-)
-def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic):
-    # Every rank (nvidia-smi: every node) gets its own file, named so it can be
-    # matched to the RAS report, holding exactly what the worker returned.
-    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
-    callback = make_diagnostics_callback()
-    workers = callback._worker_group.get_workers()
-    calls = scripted_fan_out(
-        monkeypatch,
-        {
-            rank: DiagnosticResult(value=diagnostic.ok(f"dump {rank}"))
-            for rank in (0, 1)
-        },
-    )
-
-    fs_path = getattr(callback, diagnostic.method)()
-
-    assert fs_path == f"/exp/{HANG_DETECTOR_DIRNAME}/{diagnostic.tool}"
+    root = f"/exp/{HANG_DETECTOR_DIRNAME}"
     assert uploads == [
-        (fs_path, {diagnostic.filename(rank): f"dump {rank}" for rank in (0, 1)})
+        (f"{root}/nvidia_smi", {"node_10.0.0.0.log": "dump"}),
+        (f"{root}/nccl_ras", {"ncclras_report.txt": FakePoller.TEXT_REPORT}),
+        (f"{root}/stack_traces", {"rank_0.log": "dump"}),
     ]
-    assert calls == [(workers, diagnostic.fn, diagnostic.fn_args, diagnostic.timeout_s)]
-
-
-@pytest.mark.parametrize(
-    "diagnostic", _FAN_OUT_DIAGNOSTICS, ids=lambda diagnostic: diagnostic.tool
-)
-def test_diagnostic_failed_target_gets_placeholder(monkeypatch, uploads, diagnostic):
-    # A rank or node with no dump gets a file saying why
-    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
-    callback = make_diagnostics_callback()
-    reason = "it went wrong"
-    bad_dump = DiagnosticResult(error=RuntimeError(reason))
-
-    scripted_fan_out(
-        monkeypatch, {0: bad_dump, 1: DiagnosticResult(value=diagnostic.ok("dump 1"))}
-    )
-    getattr(callback, diagnostic.method)()
-
-    ((_, files),) = uploads
-    assert files == {
-        diagnostic.filename(0): diagnostic.placeholder(reason),
-        diagnostic.filename(1): "dump 1",
+    assert outcome.diagnostics == {
+        nccl_ras._FLIGHT_RECORDER_TOOL: None,
+        nccl_ras._NVIDIA_SMI_TOOL: f"{root}/nvidia_smi",
+        nccl_ras._NCCL_RAS_TOOL: f"{root}/nccl_ras",
+        nccl_ras._STACK_TRACES_TOOL: f"{root}/stack_traces",
     }
-
-
-def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
-    # Two ranks share a node and a third is on its own: `nvidia-smi` reports
-    # every GPU on a node, so the shared node must only be queried once.
-    workers = [
-        make_worker(0, node_ip="10.0.0.1"),
-        make_worker(1, node_ip="10.0.0.1"),
-        make_worker(2, node_ip="10.0.0.2"),
-    ]
-    callback = make_diagnostics_callback(workers)
-    calls = scripted_fan_out(
-        monkeypatch,
-        {
-            0: DiagnosticResult(value="node 1 GPUs"),
-            2: DiagnosticResult(value="node 2 GPUs"),
-        },
-    )
-
-    callback.dump_nodes_nvidia_smi()
-
-    ((queried, *_),) = calls
-    assert queried == [workers[0], workers[2]]
-    ((_, files),) = uploads
-    assert files == {
-        "node_10.0.0.1.log": "node 1 GPUs",
-        "node_10.0.0.2.log": "node 2 GPUs",
-    }
-
-
-def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
-    # The whole worker-side path: what `nvidia-smi` prints has to arrive intact
-    # in the node's file.
-    fake_subprocess_run(monkeypatch, stdout="Driver Version : 580.65.06\n")
-    callback = make_diagnostics_callback([make_worker(0, node_ip="10.0.0.1")])
-
-    def local_fan_out(workers, fn, *fn_args, timeout_s):
-        return {
-            worker.distributed_context.world_rank: fn(*fn_args) for worker in workers
-        }
-
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
-
-    callback.dump_nodes_nvidia_smi()
-
-    ((_, files),) = uploads
-    assert files == {"node_10.0.0.1.log": "Driver Version : 580.65.06\n"}
-
-
-@pytest.mark.parametrize(
-    "method,has_workers,fr_armed",
-    [
-        ("dump_workers_stack_traces", False, True),
-        ("dump_nodes_nvidia_smi", False, True),
-        ("dump_workers_flight_recorder", False, True),
-        # The ring buffer has to be armed so unarmed dumps nothing
-        ("dump_workers_flight_recorder", True, False),
-        # Nothing polled yet: the history has nothing to write.
-        ("dump_ras_query_history", True, True),
-    ],
-    ids=[
-        "stack_traces_no_workers",
-        "nvidia_smi_no_workers",
-        "flight_recorder_no_workers",
-        "flight_recorder_not_armed",
-        "ras_history_empty",
-    ],
-)
-def test_diagnostic_skipped(monkeypatch, uploads, method, has_workers, fr_armed):
-    # With nothing to record there is no empty directory to leave behind in the
-    # user's experiment directory, and the error does not point at one.
-    if fr_armed:
-        monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
-    else:
-        monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
-    callback = make_diagnostics_callback(None if has_workers else [])
-    calls = scripted_fan_out(monkeypatch, [])
-
-    assert getattr(callback, method)() is None
-    assert calls == [] and uploads == []
+    assert outcome.diagnostics_dir == root
+    assert outcome.ras_text_report == FakePoller.TEXT_REPORT
 
 
 # ---------------------------------------------------------------------------
@@ -1928,7 +1945,7 @@ def test_diagnostic_skipped(monkeypatch, uploads, method, has_workers, fr_armed)
 def test_ras_history_buffer(monkeypatch):
     # Every successful poll is recorded, healthy or not, evicting the oldest beyond.
     confirm_count = 3
-    maxlen = confirm_count + nccl_ras._RAS_HISTORY_MARGIN_POLLS
+    maxlen = confirm_count + nccl_ras._RAS_HISTORY_POLL_MARGIN
     reports = [create_single_comm_report({1: count}) for count in range(maxlen + 5)]
     callback, _ = make_nccl_ras_callback(
         monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=confirm_count, reports=reports
@@ -1944,25 +1961,31 @@ def test_ras_history_buffer(monkeypatch):
 @pytest.mark.parametrize(
     "text_report", ["human readable report", None], ids=["with_text", "without_text"]
 )
-def test_ras_history_upload(uploads, text_report):
-    # Each retained poll is written verbatim
-    callback = make_diagnostics_callback()
-    callback.ras_history.extend(
-        parse_ras_schema(ras_json)
-        for ras_json in (HEALTHY_RAS_JSON, DEAD_RANK_RAS_JSON, MULTI_COMM_RAS_JSON)
-    )
+def test_ras_history_files(text_report):
+    # Each retained poll is written verbatim, named by when the controller
+    # took it (in UTC), not by `ncclras`'s own timestamp.
+    history = [
+        parse_ras_schema(ras_json, taken_at_ms)
+        for ras_json, taken_at_ms in (
+            (HEALTHY_RAS_JSON, 1_781_851_916_000),
+            (DEAD_RANK_RAS_JSON, 1_781_851_916_500),
+            (MULTI_COMM_RAS_JSON, 1_781_852_184_007),
+        )
+    ]
 
-    fs_path = callback.dump_ras_query_history(text_report)
-
-    assert fs_path == f"/exp/{HANG_DETECTOR_DIRNAME}/nccl_ras"
     expected = {
-        "ncclras_2026-06-19-06-51-56.json": HEALTHY_RAS_JSON,
-        "ncclras_2026-06-19-06-55-57.json": DEAD_RANK_RAS_JSON,
-        "ncclras_2026-06-19-06-56-24.json": MULTI_COMM_RAS_JSON,
+        "ncclras_20260619T065156.000Z.json": HEALTHY_RAS_JSON,
+        "ncclras_20260619T065156.500Z.json": DEAD_RANK_RAS_JSON,
+        "ncclras_20260619T065624.007Z.json": MULTI_COMM_RAS_JSON,
     }
     if text_report:
         expected["ncclras_report.txt"] = text_report
-    assert uploads == [(fs_path, expected)]
+    assert nccl_ras.collect_ras_history(history, text_report) == expected
+
+
+def test_ras_history_empty_has_no_files():
+    # Nothing polled yet: the history has nothing to write.
+    assert nccl_ras.collect_ras_history([], None) == {}
 
 
 def make_train_worker(world_rank: int, node_ip: str, pid: int) -> MagicMock:
@@ -2059,6 +2082,7 @@ def test_only_mismatched_ops_are_described(monkeypatch):
         monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=[]
     )
     callback._worker_group.get_workers.return_value = []
+    callback.comm_stalls = {_COMM_A: CommStall(polls=1, since_ms=0)}
 
     line = callback.describe_stalled_comms(report, [_COMM_A])
     assert "AllGather launches: 3 by comm ranks 0, 2" in line
@@ -2125,7 +2149,9 @@ def emitted(monkeypatch) -> List[TrainNcclHangEvent]:
     """The events every callback hands to the exporter, in order."""
     events: List[TrainNcclHangEvent] = []
     monkeypatch.setattr(
-        NCCLRASCallback, "_emit", lambda self, event: events.append(event)
+        nccl_ras.NcclHangEventExporter,
+        "export",
+        lambda self, event: events.append(event),
     )
     return events
 
@@ -2196,17 +2222,20 @@ def test_stall_that_confirms(monkeypatch, emitted, action):
 def test_stall_is_dated_from_the_poll_before_its_first_frozen_poll(
     monkeypatch, emitted
 ):
-    # A clock that advances a second per reading, so polls are apart.
-    seconds = itertools.count(1_760_000_000)
-    monkeypatch.setattr(nccl_ras.time, "time", lambda: float(next(seconds)))
+    reports = [
+        create_single_comm_report({1: 5, 2: 4}, taken_at_ms=1_760_000_000_000),
+        create_single_comm_report({1: 5, 2: 4}, taken_at_ms=1_760_000_001_000),
+    ]
     callback, _ = make_nccl_ras_callback(
-        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=10, reports=[_FROZEN] * 2
+        monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=10, reports=reports
     )
-    tick(callback)  # baseline, taken at the first reading
+    tick(callback)  # baseline
     tick(callback)  # suspected
+    # Both times are when the poller took the reports, not when the
+    # controller read them.
     [suspected] = emitted
     assert suspected.communicators[0].stalled_since_ms == 1_760_000_000_000
-    assert suspected.timestamp_ms > 1_760_000_000_000
+    assert suspected.timestamp_ms == 1_760_000_001_000
 
 
 def test_confirmed_without_diagnostics_has_no_directory(monkeypatch, emitted):
@@ -2299,7 +2328,13 @@ def test_new_stall_after_recovery_is_dated_afresh(monkeypatch, emitted):
         monkeypatch,
         NCCL_RAS_ACTION_FAIL,
         confirm_count=10,
-        reports=[_FROZEN, _FROZEN, create_healthy_report(), _FROZEN, _FROZEN],
+        reports=[
+            create_single_comm_report({1: 5, 2: 4}, taken_at_ms=1000),
+            create_single_comm_report({1: 5, 2: 4}, taken_at_ms=2000),
+            create_healthy_report(taken_at_ms=3000),
+            create_single_comm_report({1: 5, 2: 4}, taken_at_ms=4000),
+            create_single_comm_report({1: 5, 2: 4}, taken_at_ms=5000),
+        ],
     )
     for _ in range(5):
         tick(callback)
@@ -2312,11 +2347,9 @@ def test_new_stall_after_recovery_is_dated_afresh(monkeypatch, emitted):
     first, _, second = emitted
     # The new stall began at the poll before its first frozen poll (the
     # 4th), after the first stall's recovery event.
-    assert (
-        second.communicators[0].stalled_since_ms
-        >= emitted[1].timestamp_ms
-        >= first.communicators[0].stalled_since_ms
-    )
+    assert first.communicators[0].stalled_since_ms == 1000
+    assert emitted[1].timestamp_ms == 3000
+    assert second.communicators[0].stalled_since_ms == 4000
     # A new suspected hang shares NCCL's report again.
     assert second.ras_text_report == FakePoller.TEXT_REPORT
 
@@ -2389,10 +2422,13 @@ def test_unexpected_error_exports_disabled_with_the_hung_communicators(
 
 @pytest.mark.parametrize("action", [NCCL_RAS_ACTION_FAIL, NCCL_RAS_ACTION_OBSERVE])
 def test_failing_export_never_affects_detection(monkeypatch, action):
-    def boom(self, event):
+    # The real exporter, with the state actor failing underneath it.
+    def boom():
         raise RuntimeError("export bug")
 
-    monkeypatch.setattr(NCCLRASCallback, "_emit", boom)
+    monkeypatch.setattr(nccl_ras.NcclHangEventExporter, "export", _REAL_EXPORT)
+    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(state_manager, "get_state_actor", boom)
     callback, calls = make_nccl_ras_callback(
         monkeypatch, action, confirm_count=2, reports=[_FROZEN] * 3
     )

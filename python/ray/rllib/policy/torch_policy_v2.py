@@ -997,7 +997,7 @@ class TorchPolicyV2(Policy):
             }
 
             file_name = os.path.join(export_dir, "model.onnx")
-            torch.onnx.export(
+            torch.onnx.export_event(
                 self.model,
                 (dummy_inputs, state_ins, seq_lens),
                 file_name,

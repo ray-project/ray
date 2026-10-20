@@ -35,26 +35,12 @@ package ray.rpc;
 //     `poll_index` restarts.
 //   - DISABLED when the detector gives up for the rest of the run. No further
 //     events are emitted for the run, for this or any later attempt.
-//
-// Compatibility, for writers and readers of this event:
-//   - Fields and enum values are only ever added, never renumbered, renamed or
-//     repurposed. A removed field's number is reserved.
-//   - Readers ignore fields they don't know, and treat an enum value they
-//     don't know as the safe default: a communicator state they don't know is
-//     not hung, and a detector status they don't know is not watching.
-//   - `schema_version` changes only for a change readers can't ignore, e.g. a
-//     field changing meaning. Readers skip versions they don't support.
-//
-// Kept out of export_train_state.proto so that the Train run schema version
-// is unaffected by changes to this event.
 message ExportTrainNcclHangEventData {
   enum DetectorStatus {
     DETECTOR_STATUS_UNSPECIFIED = 0;
-    // Monitoring the attempt. Whether a hang is suspected or confirmed is
-    // given by `communicators`, not by this status.
+    // Monitoring a suspected or confirmed hang
     MONITORING = 1;
-    // Stopped monitoring the attempt, as its worker group shut down while a
-    // communicator was hung.
+    // Stopped monitoring as worker group shut down while a communicator was hung.
     STOPPED = 2;
     // Disabled for the rest of the run.
     DISABLED = 3;
@@ -62,8 +48,7 @@ message ExportTrainNcclHangEventData {
 
   enum DisabledReason {
     DISABLED_REASON_UNSPECIFIED = 0;
-    // `ncclras` can't be used, e.g. the binary is missing or rejects the
-    // query, which a change to the cluster's setup can fix.
+    // `ncclras` can't be used, e.g. the binary is missing or rejects the query
     RAS_UNAVAILABLE = 1;
     // The detector hit an unexpected error.
     INTERNAL_ERROR = 2;
@@ -75,30 +60,26 @@ message ExportTrainNcclHangEventData {
       STATE_UNSPECIFIED = 0;
       // Stalled past the suspicion threshold.
       SUSPECTED = 1;
-      // Stalled for the confirm duration. It stays confirmed until it
-      // recovers.
+      // Stalled pass the confirmation threshold.
       CONFIRMED = 2;
     }
 
     // The NCCL RAS communicator hash.
     string communicator_id = 1;
     State state = 2;
-    // When the stall began: the poll before the first frozen poll, in
-    // milliseconds since the UNIX epoch.
+    // When the stall began in milliseconds since the UNIX epoch.
     int64 stalled_since_ms = 3;
   }
 
-  // Version of the message schema, starting at 1.
+  // Version of the message schema
   uint32 schema_version = 1;
   // The Ray Train run id (the `id` of ExportTrainRunEventData).
   string run_id = 2;
   // The run attempt id (the `attempt_id` of ExportTrainRunAttemptEventData).
   string attempt_id = 3;
-  // Orders the events of an attempt, strictly increasing. It restarts with
-  // each attempt, so it only orders events with the same `attempt_id`.
+  // Index of the current poll, reset for each training attempt.
   int64 poll_index = 4;
-  // When the poll was taken (when the detector stopped, for STOPPED and
-  // DISABLED), in milliseconds since the UNIX epoch.
+  // When the poll's `ncclras` query returned in milliseconds since the UNIX epoch.
   int64 timestamp_ms = 5;
   DetectorStatus detector_status = 6;
   // Why the detector was disabled. Set for DISABLED only.
@@ -109,8 +90,7 @@ message ExportTrainNcclHangEventData {
   // Where the diagnostics were uploaded (`<experiment_fs_path>/hang_detector`),
   // on the poll that confirmed a communicator.
   optional string diagnostics_dir = 9;
-  // The hung communicators at this poll, ordered by `communicator_id`; empty
-  // on the poll where the last one recovers. For STOPPED and DISABLED, those
-  // still hung at the stop.
+  // The hung communicators at this poll, ordered by `communicator_id`.
+  // If a communicator recovered it will not appear in subsequent lists
   repeated Communicator communicators = 10;
 }
