@@ -1319,7 +1319,6 @@ def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
 
 
 def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
-    """serve.run rejects a custom router on the ingress under HAProxy."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
 
@@ -1337,8 +1336,7 @@ def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
 
 
 def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
-    """A config override that sets a custom router on the ingress fails to deploy
-    under HAProxy."""
+    """A config override cannot silently bypass the ingress request router."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()

@@ -32,6 +32,7 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     MULTIPLEXED_FUNCTION_MARKER_ATTR,
+    ROUTER_APPLICATION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -516,6 +517,23 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
         return ASGIIngressWrapper
 
     return decorator
+
+
+def _router_application(cls: Type[Any]) -> Type[Any]:
+    """Mark a deployment class as an application-level router.
+
+    HAProxy asks the ingress of an application whose class carries this marker for
+    ``{"application", "replica_id"}`` and sends the request to that replica.
+
+    Internal-only, unstable hook for Serve LLM direct streaming.
+    """
+    if not isinstance(cls, type):
+        raise TypeError(
+            "@serve._router_application can only decorate a class, got "
+            f"{type(cls).__name__}."
+        )
+    setattr(cls, ROUTER_APPLICATION_MARKER_ATTR, True)
+    return cls
 
 
 @PublicAPI(stability="stable")

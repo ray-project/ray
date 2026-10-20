@@ -523,6 +523,7 @@ class MockReplicaActorWrapper:
         self.stopped = False
         # Expected to be set in the test.
         self.done_stopping = False
+        self.killed = False
         # Will be set when `force_stop()` is called.
         self.force_stopped_counter = 0
         # Will be set when `check_health()` is called.
@@ -791,7 +792,9 @@ class MockReplicaActorWrapper:
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
-    def check_stopped(self) -> bool:
+    def check_stopped(self, *, kill_actor: bool = True) -> bool:
+        if self.done_stopping and kill_actor:
+            self.killed = True
         return self.done_stopping
 
     @staticmethod
@@ -799,6 +802,7 @@ class MockReplicaActorWrapper:
         REMOVED_GANG_PG_NAMES.append(pg_name)
 
     def force_stop(self, log_shutdown_message: bool = False):
+        self.killed = True
         self.force_stopped_counter += 1
 
     def check_health(self):
