@@ -257,6 +257,8 @@ print(result.stdout)
 ray.get(sandbox_actor.delete.remote())
 ```
 
+When a command runs past its `timeout`, Ray kills it and every process it started, and `exec` raises `SandboxTimeoutError`. Only a daemon keeps running: a process that left the command's session with `setsid` and whose parent has exited. Output bytes that aren't valid UTF-8 come back as U+FFFD replacement characters.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
