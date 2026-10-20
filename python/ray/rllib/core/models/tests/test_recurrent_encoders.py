@@ -175,8 +175,8 @@ class TestRecurrentEncoders(unittest.TestCase):
         model = FlatEncoder().eval()
         # Export from a batch of two: from a batch of one, torch may fix the batch
         # dim at one.
-        batch = torch.export_event.Dim("batch")
-        onnx_program = torch.onnx.export_event(
+        batch = torch.export.Dim("batch")
+        onnx_program = torch.onnx.export(
             model, inputs(2), dynamic_shapes=[{0: batch}] * 3, dynamo=True
         )
         x = inputs(3)

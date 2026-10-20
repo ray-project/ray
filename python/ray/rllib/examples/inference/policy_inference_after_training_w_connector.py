@@ -290,8 +290,8 @@ if __name__ == "__main__":
             example_obs = torch.from_numpy(input_dict[Columns.OBS])
             example_h = torch.from_numpy(input_dict[Columns.STATE_IN]["h"])
             example_c = torch.from_numpy(input_dict[Columns.STATE_IN]["c"])
-            batch = torch.export_event.Dim("batch")
-            torch.onnx.export_event(
+            batch = torch.export.Dim("batch")
+            torch.onnx.export(
                 _ONNXWrapper(rl_module),
                 (example_obs, example_h, example_c),
                 f="test.onnx",

@@ -304,7 +304,7 @@ class PrometheusStatsExporter(base_exporter.StatsExporter):
         in order to be sent to Prometheus in a sync or async way.
         """
         if view_data is not None:  # pragma: NO COVER
-            self.transport.export_event(view_data)
+            self.transport.export(view_data)
 
     def on_register_view(self, view):
         return NotImplementedError("Not supported by Prometheus")
