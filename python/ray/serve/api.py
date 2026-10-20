@@ -1301,7 +1301,9 @@ async def get_app_handle_async(name: str) -> DeploymentHandle:
 
     Same as `serve.get_app_handle`, but awaits the Serve controller instead of
     blocking the calling thread, so it doesn't stall the event loop when called
-    from async code such as an async deployment method.
+    from async code such as an async deployment method. The first Serve call in
+    a process still blocks briefly to look up the controller and record usage
+    telemetry.
 
     Args:
         name: Name of application to get a handle to.
@@ -1486,7 +1488,9 @@ async def get_deployment_handle_async(
 
     Same as `serve.get_deployment_handle`, but awaits the Serve controller
     instead of blocking the calling thread, so it doesn't stall the event loop
-    when called from async code such as an async deployment method.
+    when called from async code such as an async deployment method. The first
+    Serve call in a process still blocks briefly to look up the controller and
+    record usage telemetry.
 
     Args:
         deployment_name: Name of deployment to get a handle to.

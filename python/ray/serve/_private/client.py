@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import random
 import time
@@ -49,6 +50,22 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _ensure_connected(f: Callable) -> Callable:
+    """Raise if the client has been shut down before running `f`.
+
+    Coroutine functions get a coroutine wrapper so they stay detectable with
+    `inspect.iscoroutinefunction` and raise when awaited, like any other error
+    from the coroutine, rather than at call time.
+    """
+    if inspect.iscoroutinefunction(f):
+
+        @wraps(f)
+        async def check_async(self, *args, **kwargs):
+            if self._shutdown:
+                raise RayServeException("Client has already been shut down.")
+            return await f(self, *args, **kwargs)
+
+        return check_async
+
     @wraps(f)
     def check(self, *args, **kwargs):
         if self._shutdown:

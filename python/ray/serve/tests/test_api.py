@@ -1362,8 +1362,10 @@ def test_get_handle_async_within_deployment(serve_instance):
 
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class Caller:
-        def __init__(self, multiplier: DeploymentHandle):
-            self._multiplier = multiplier
+        def __init__(self, unused_multiplier: DeploymentHandle):
+            # Bound only so `Multiplier` is deployed in this application; the
+            # call below must look it up by name instead.
+            pass
 
         async def __call__(self, val: int) -> int:
             adder = await serve.get_app_handle_async("adder")
