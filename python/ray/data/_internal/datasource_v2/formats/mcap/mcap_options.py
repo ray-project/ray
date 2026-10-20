@@ -1,7 +1,7 @@
 """Message filters and video options of ``read_mcap``.
 
 ``TimeRange`` is the public time filter of ``read_mcap``, and ``VideoOptions``
-how a sample read decodes its video topics. Both are re-exported from
+how a read decodes its video topics. Both are re-exported from
 ``ray.data.datasource``.
 
 ``MCAPSelection`` bundles the ``topics``, ``message_types`` and ``time_range``
@@ -10,8 +10,20 @@ hold selected messages. The indexer and the reader both use it, so they agree
 on which chunks can match.
 """
 
+import math
+import numbers
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, FrozenSet, Iterable, Mapping, Optional, Set, Tuple
+from fractions import Fraction
+from typing import (
+    TYPE_CHECKING,
+    FrozenSet,
+    Iterable,
+    Mapping,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 from ray._common.utils import env_float
 from ray.util.annotations import PublicAPI
@@ -85,31 +97,57 @@ class TimeRange:
 @PublicAPI(stability="alpha")
 @dataclass(frozen=True)
 class VideoOptions:
-    """Decode the video topics of a sample read (``read_mcap(samples=...)``)
-    inside the read task.
+    """Decode the video topics of a ``read_mcap`` inside the read task.
 
-    Each video topic's steps become a ``frames:<topic>`` tensor of shape
-    ``(steps, height, width, 3)``, and the other topics keep their payloads.
-    A sample row whose frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the
+    In a read of paths every selected topic must be video, and each row is one
+    RGB frame in a ``frame`` column, ``uint8`` of shape ``(height, width, 3)``,
+    in place of ``data``. In a sample read (``read_mcap(samples=...)``), each
+    video topic's steps become a ``frames:<topic>`` tensor of shape
+    ``(steps, height, width, 3)``, and the other topics keep their payloads. A
+    sample row whose frames exceed ``RAY_DATA_MCAP_MAX_ROW_BYTES`` fails the
     read, so use ``resize`` to keep rows small.
 
     A topic is video when its schema name is a known video schema or
     ``read_mcap(video_topics=...)`` lists it. Its codec comes from the
     message's ``format`` field or its bytes (JPEG, PNG, H.264, H.265, VP9,
-    AV1). Every frame is complete: a step's frame is decoded from the last
-    keyframe before it, at most ``RAY_DATA_MCAP_MAX_LEAD_IN_S`` (10 s) back.
-    Requires ``av`` for H.264, H.265, VP9 and AV1, and ``Pillow`` for JPEG and
-    PNG.
+    AV1). Every frame is complete, even when a read task starts mid-stream: it
+    is decoded from the last keyframe before it, at most
+    ``RAY_DATA_MCAP_MAX_LEAD_IN_S`` (10 s) back. Requires ``av`` for H.264,
+    H.265, VP9 and AV1, and ``Pillow`` for JPEG and PNG.
 
     Attributes:
         resize: Scale frames to exactly this ``(height, width)``. A frame of
             another aspect ratio is stretched to it, not cropped or padded.
             ``None`` keeps the coded size.
+        fps: For a read of paths, keep one frame per slot of ``1/fps`` seconds
+            of ``log_time`` per topic: the frame nearest the slot's centre, the
+            earlier one on a tie. A sample read leaves it unset, since each
+            ``TopicSpec`` sets its own steps. Slot ``k`` is centred on
+            ``k / fps`` seconds since the epoch, computed exactly, so the kept
+            frames depend neither on the recording's date nor on how the read
+            is split into tasks. A camera at a whole multiple of ``fps`` keeps
+            evenly spaced frames. Accepts a ``fractions.Fraction``, such as
+            ``Fraction(30000, 1001)`` for NTSC rates. A ``float`` is read as
+            the decimal it prints as, so ``29.97`` is ``2997/100``. Set to a
+            camera's own rate, ``fps`` can still drop a frame when capture
+            jitter puts two frames in one slot: leave it ``None`` to keep
+            every frame.
     """
 
     resize: Optional[Tuple[int, int]] = None
+    fps: Optional[Union[float, Fraction]] = None
 
     def __post_init__(self):
+        if self.fps is not None:
+            fps = self.exact_fps
+            assert fps is not None
+            if fps <= 0:
+                raise ValueError(f"fps must be a positive number, got {self.fps!r}")
+            if fps > _NS_PER_S:
+                raise ValueError(
+                    "fps must leave at least one nanosecond per slot, got "
+                    f"{self.fps!r}"
+                )
         if self.resize is not None:
             if len(self.resize) != 2 or any(
                 isinstance(v, bool) or not isinstance(v, int) or v <= 0
@@ -120,6 +158,25 @@ class VideoOptions:
                     f"got {self.resize!r}"
                 )
             object.__setattr__(self, "resize", tuple(self.resize))
+
+    @property
+    def exact_fps(self) -> Optional[Fraction]:
+        """``fps`` as an exact fraction, as the slots use it; ``None`` without it.
+
+        A float is read as the decimal it prints as.
+        """
+        if self.fps is None:
+            return None
+        fps = self.fps
+        if isinstance(fps, bool) or not isinstance(fps, numbers.Real):
+            raise ValueError(
+                f"fps must be a positive number or a Fraction, got {fps!r}"
+            )
+        if isinstance(fps, numbers.Rational):
+            return Fraction(fps.numerator, fps.denominator)
+        if not math.isfinite(fps):
+            raise ValueError(f"fps must be finite, got {fps!r}")
+        return Fraction(str(fps))
 
 
 @dataclass(frozen=True)

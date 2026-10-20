@@ -3,7 +3,10 @@
 A read task needs, per file, the schema and channel records and the index
 records of the chunks it owns. The listing has read every summary already, so
 it hands those records on, and a read task neither requests nor parses the
-whole summary. They stay MCAP records, in two steps:
+whole summary. A task that decodes video is the exception: its decoders look at
+chunks it does not own and at their message indexes, so it reads each file's
+whole summary once (``mcap_video_source``). The records stay MCAP records, in
+two steps:
 
 1. ``MCAPSummaryIndexer`` adds two columns to its listing rows
    (``with_listing_records``): each row's own index record, and the file's

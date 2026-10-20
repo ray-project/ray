@@ -12,12 +12,15 @@ memory:
   ``parse_summary_records`` parses records copied out of a section.
 - ``read_chunks`` fetches chunk records that lie close together in one ranged
   read, as ``ChunkReads`` allows; ``read_chunk`` fetches one chunk record.
+- ``read_message_index`` fetches one channel's Message Index record of a chunk
+  in one ranged read.
 - ``buffered`` wraps a file for a linear scan, so it reads in large blocks.
 
 Format specification: https://mcap.dev/spec
 """
 
 import io
+import struct
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -267,6 +270,39 @@ def _extends(
 def _ranged_read(group: List["ChunkIndex"]) -> RangedRead:
     """The read that spans the chunk records of ``group``, in file order."""
     return RangedRead(group[0].chunk_start_offset, _record_end(group[-1]), tuple(group))
+
+
+def read_message_index(
+    f: Any, chunk_index: "ChunkIndex", channel_id: int
+) -> List[Tuple[int, int]]:
+    """The ``(log_time, offset)`` entries of a channel's Message Index record.
+
+    The records follow their chunk back to back, so one ends where the next
+    starts, or where the chunk's message index section ends: one ranged read.
+    A record longer than that takes a second read. Empty when the record at
+    the indexed offset is not a Message Index.
+    """
+    from mcap.data_stream import ReadDataStream
+    from mcap.opcode import Opcode
+    from mcap.records import MessageIndex
+
+    offsets = chunk_index.message_index_offsets
+    start = offsets[channel_id]
+    section_end = (
+        chunk_index.chunk_start_offset
+        + chunk_index.chunk_length
+        + chunk_index.message_index_length
+    )
+    end = min((o for o in offsets.values() if o > start), default=section_end)
+    data = _read_range(f, start, max(end, start + _RECORD_PREFIX_BYTES))
+    opcode, length = struct.unpack_from("<BQ", data)
+    if opcode != Opcode.MESSAGE_INDEX:
+        return []
+    body_end = _RECORD_PREFIX_BYTES + length
+    if body_end > len(data):
+        data += _read_range(f, start + len(data), start + body_end)
+    body = io.BytesIO(data[_RECORD_PREFIX_BYTES:body_end])
+    return MessageIndex.read(ReadDataStream(body)).records
 
 
 def buffered(f: Any, buffer_size: int) -> io.BufferedReader:
