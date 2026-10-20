@@ -19,7 +19,8 @@ partition and synthesized columns. The other modules read and build the rows:
 - ``mcap_chunks`` reads the selected messages of a file.
 - ``mcap_message_rows`` builds message rows.
 - ``mcap_sample_rows`` builds sample rows, with the step rules of
-  ``mcap_samples``.
+  ``mcap_samples``. With ``video``, ``mcap_decoded_samples`` decodes their
+  camera frames, with ``mcap_decode``.
 """
 
 import itertools
@@ -48,6 +49,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     _Selected,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
+    ChunkReads,
     buffered,
     parse_summary_records,
     read_summary_from,
@@ -55,7 +57,11 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     _MessageTableBuilder,
 )
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    DEFAULT_MAX_LEAD_IN_NS,
+    MCAPSelection,
+    VideoOptions,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
     DEFAULT_MAX_ROW_BYTES,
     SampleFile,
@@ -76,7 +82,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import iterate_with_retry
+from ray.data._internal.util import MiB, iterate_with_retry
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -86,6 +92,10 @@ if TYPE_CHECKING:
     from mcap.summary import Summary
 
 logger = logging.getLogger(__name__)
+
+# Largest read of a decoding task: RAY_DATA_MCAP_CHUNK_READ_BYTES, at most 4 MiB.
+# Larger reads leave more freed memory in glibc's heap next to the frame buffers.
+_DECODING_CHUNK_READ_BYTES = min(ChunkReads().max_bytes, 4 * MiB)
 
 
 @DeveloperAPI
@@ -113,6 +123,9 @@ class MCAPReader(Reader[FileManifest]):
         decode_json: bool = False,
         max_row_bytes: int = DEFAULT_MAX_ROW_BYTES,
         topic_plans: Sequence[TopicPlan] = (),
+        video: Optional[VideoOptions] = None,
+        decoded_topics: Sequence[str] = (),
+        max_lead_in_ns: int = DEFAULT_MAX_LEAD_IN_NS,
     ):
         """Initialize the reader.
 
@@ -138,6 +151,12 @@ class MCAPReader(Reader[FileManifest]):
             topic_plans: For a sample read, each topic's steps
                 (``mcap_samples``), in the order the row's columns take. Empty
                 for a read of message rows.
+            video: For a sample read, decode the frames that the steps of
+                ``decoded_topics`` take, scaled to ``video.resize``.
+            decoded_topics: The topics of sample rows that get frame columns,
+                settled at planning.
+            max_lead_in_ns: How far back a decoder looks for a keyframe
+                (``RAY_DATA_MCAP_MAX_LEAD_IN_S``).
         """
         self._message_reader = SelectedMessageReader(selection, log_time_order)
         self._decode_json = decode_json
@@ -154,13 +173,24 @@ class MCAPReader(Reader[FileManifest]):
         self._schema = schema
         self._sample_rows: Optional[SampleRows] = None
         if topic_plans:
+            decodes = video is not None and bool(decoded_topics)
+            sample_reader = self._message_reader
+            if decodes:
+                sample_reader = SelectedMessageReader(
+                    selection,
+                    log_time_order,
+                    ChunkReads(max_bytes=_DECODING_CHUNK_READ_BYTES),
+                )
             self._sample_rows = SampleRows(
                 topic_plans,
-                self._message_reader,
+                sample_reader,
                 self._project,
                 columns=self._columns,
                 target_block_size=target_block_size,
                 max_row_bytes=max_row_bytes,
+                decoded_topics=decoded_topics if decodes else (),
+                resize=video.resize if video is not None else None,
+                max_lead_in_ns=max_lead_in_ns,
             )
         self._sample_paths = SamplePaths(filesystem)
 

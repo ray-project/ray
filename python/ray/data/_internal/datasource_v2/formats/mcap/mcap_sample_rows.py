@@ -33,6 +33,7 @@ from typing import (
     Set,
     Tuple,
     Union,
+    cast,
 )
 
 import pyarrow as pa
@@ -42,11 +43,17 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
     _Selected,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decoded_samples import (
+    FrameColumns,
+    FrameKey,
+    RunDecoder,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import buffered
 from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
     CLIP_END_COLUMN,
     CLIP_START_COLUMN,
     DATA_PREFIX,
+    FRAMES_PREFIX,
     SAMPLE_ID_COLUMN,
     TIMES_PREFIX,
     VALID_PREFIX,
@@ -358,6 +365,60 @@ class _Run:
         return min(low for low, _ in self.spans.values())
 
 
+@dataclass(frozen=True)
+class _Resolved:
+    """A sample with its topics' steps, and the log times their messages span.
+
+    A sample whose steps hold no message spans its anchor.
+    """
+
+    sample: _Sample
+    steps: Dict[str, _TopicSteps]
+    low: int
+    high: int
+
+    @classmethod
+    def of(cls, sample: _Sample, steps: Dict[str, _TopicSteps]) -> "_Resolved":
+        times: List[int] = []
+        for topic_steps in steps.values():
+            for step in topic_steps:
+                if isinstance(step, SlotStep):
+                    times.extend(m[2].log_time for m in step.messages)
+                elif step.message is not None:
+                    times.append(step.message[2].log_time)
+        anchor = sample.times.anchor
+        return cls(
+            sample, steps, min(times, default=anchor), max(times, default=anchor)
+        )
+
+
+class _Group:
+    """Resolved samples whose steps' messages meet, whose rows are built together.
+
+    A group ends at ``_MAX_RUN_SAMPLES`` samples, so the frames it decodes stay
+    few.
+    """
+
+    def __init__(self):
+        self.members: List[_Resolved] = []
+        self.low: Optional[int] = None
+        self._high: Optional[int] = None
+
+    def joins(self, resolved: _Resolved) -> bool:
+        """Whether ``resolved`` can join the group: it is empty, or the sample's
+        messages start before the group's end."""
+        if self._high is None:
+            return True
+        return len(self.members) < _MAX_RUN_SAMPLES and resolved.low <= self._high
+
+    def add(self, resolved: _Resolved) -> None:
+        self.members.append(resolved)
+        self.low = resolved.low if self.low is None else min(self.low, resolved.low)
+        self._high = (
+            resolved.high if self._high is None else max(self._high, resolved.high)
+        )
+
+
 def _samples_of(file: SampleFile) -> List[_Sample]:
     """The samples of one file, in anchor order as the manifest holds them."""
     table = file.samples
@@ -410,7 +471,8 @@ class SampleTableBuilder:
     """Accumulates the sample rows of one file and builds Arrow tables of them.
 
     A row is the sample's own columns, taken from its manifest row, then the
-    wanted columns of each topic. Only the wanted columns are built.
+    wanted columns of each topic. A decoded topic has ``frames:`` in place of
+    ``data:`` (``FrameColumns``). Only the wanted columns are built.
     """
 
     def __init__(
@@ -418,6 +480,9 @@ class SampleTableBuilder:
         samples: pa.Table,
         plans: Sequence[TopicPlan],
         wanted: Optional[Set[str]],
+        *,
+        decoded: Sequence[str] = (),
+        resize: Optional[Tuple[int, int]] = None,
     ):
         self._samples = samples.select(
             [
@@ -430,8 +495,10 @@ class SampleTableBuilder:
         self._plans = list(plans)
         self._wanted = wanted
         self._rows: List[int] = []
-        self._columns = {
-            plan.topic: _TopicColumns(
+        self._columns: Dict[str, Any] = {
+            plan.topic: FrameColumns(plan, resize)
+            if plan.topic in decoded
+            else _TopicColumns(
                 with_data=self._wants(DATA_PREFIX, plan.topic),
                 nested=plan.all_in_step,
             )
@@ -443,15 +510,34 @@ class SampleTableBuilder:
     def num_rows(self) -> int:
         return len(self._rows)
 
-    def add_row(self, index: int, steps: Dict[str, _TopicSteps]) -> int:
+    def add_row(
+        self,
+        index: int,
+        steps: Dict[str, _TopicSteps],
+        frames: Optional[Dict[FrameKey, Any]] = None,
+        where: str = "",
+    ) -> int:
         """Add the sample at ``index`` of the manifest with its topics' steps.
 
-        Returns the bytes of the payloads the row carries.
+        ``frames`` holds the decoded frames the steps of decoded topics take, or
+        is ``None`` when no frame is built. Returns the bytes of the payloads
+        and frames the row carries.
         """
         self._rows.append(index)
         added = 0
         for plan in self._plans:
-            added += self._columns[plan.topic].add(steps.get(plan.topic, []))
+            columns = self._columns[plan.topic]
+            topic_steps = steps.get(plan.topic, [])
+            if isinstance(columns, FrameColumns):
+                # Planning refuses all_in_step on a decoded topic, so its steps
+                # are plain steps.
+                plain = cast(List[Step[_Entry]], topic_steps)
+                # A camera whose frames are projected away is not decoded, so
+                # its steps keep their validity.
+                built = frames if self._wants(FRAMES_PREFIX, plan.topic) else None
+                added += columns.add(plain, built, where)
+            else:
+                added += columns.add(topic_steps)
         self.estimated_bytes += (
             self._sample_row_bytes
             + added
@@ -558,8 +644,9 @@ class SampleRows:
     """Builds the sample rows of one read task, one file at a time.
 
     ``plans`` are the topics of ``read_mcap(topics=...)``, in order. Only the
-    topics with a column left after projection are read. A row whose payloads
-    pass ``max_row_bytes`` fails the read.
+    topics with a column left after projection are read, and a decoded topic
+    is decoded only when its ``frames:`` column is left. A row whose payloads
+    or frames pass ``max_row_bytes`` fails the read.
     """
 
     def __init__(
@@ -571,6 +658,9 @@ class SampleRows:
         columns: Optional[Sequence[str]],
         target_block_size: Optional[int],
         max_row_bytes: int,
+        decoded_topics: Sequence[str] = (),
+        resize: Optional[Tuple[int, int]] = None,
+        max_lead_in_ns: int = 0,
     ):
         self._wanted = set(columns) if columns is not None else None
         self._plans = [
@@ -579,10 +669,18 @@ class SampleRows:
             if self._wanted is None
             or not self._wanted.isdisjoint(topic_column_names(plan.topic))
         ]
+        self._decoded = [p.topic for p in self._plans if p.topic in decoded_topics]
+        self._decodes = [
+            topic
+            for topic in self._decoded
+            if self._wanted is None or f"{FRAMES_PREFIX}{topic}" in self._wanted
+        ]
         self._message_reader = message_reader
         self._finish = finish
         self._target_block_size = target_block_size
         self._max_row_bytes = max_row_bytes
+        self._resize = resize
+        self._max_lead_in_ns = max_lead_in_ns
 
     @property
     def reads_messages(self) -> bool:
@@ -606,38 +704,91 @@ class SampleRows:
         """Yield the rows of the samples of one open file, in anchor order.
 
         ``summary`` is the file's whole summary, or ``None`` when the file has
-        no chunk index. The chunks of a run of samples are read together, and
-        let go of once the runs to come start after them.
+        no chunk index. The chunks of a run of samples are read together.
+        Samples whose steps' messages meet form a group, whose rows are built
+        once its last sample is resolved, so each camera is decoded once per
+        group. A camera's decoder may run on into the next group
+        (``RunDecoder``).
         """
         timeline = self._timeline(f, file.path, summary)
-        builder = SampleTableBuilder(file.samples, self._plans, self._wanted)
+        decoder = self._decoder(f, file.path, summary)
+        builder = SampleTableBuilder(
+            file.samples,
+            self._plans,
+            self._wanted,
+            decoded=self._decoded,
+            resize=self._resize,
+        )
+        group = _Group()
         runs = list(_runs(_samples_of(file), self._plans))
-        for i, run in enumerate(runs):
-            timeline.read_spans(run.spans)
-            for sample in run.samples:
-                yield from self._add_row(builder, sample, self._steps(timeline, sample))
-            if i + 1 < len(runs):
-                timeline.forget_before(runs[i + 1].low)
+        try:
+            for i, run in enumerate(runs):
+                timeline.read_spans(run.spans)
+                for sample in run.samples:
+                    resolved = _Resolved.of(sample, self._steps(timeline, sample))
+                    if not group.joins(resolved):
+                        yield from self._add_rows(builder, decoder, timeline, group)
+                        group = _Group()
+                    group.add(resolved)
+                if i + 1 < len(runs):
+                    kept_from = self._kept_from(runs[i + 1], group, decoder)
+                    timeline.forget_before(kept_from)
+            yield from self._add_rows(builder, decoder, timeline, group)
+        finally:
+            if decoder is not None:
+                decoder.close()
         if builder.num_rows > 0:
             yield self._finish(builder.build())
 
-    def _add_row(
+    def _decoder(
+        self, f: Any, path: str, summary: Optional["Summary"]
+    ) -> Optional[RunDecoder]:
+        """The file's decoder of camera frames, when a decoded topic is built."""
+        if not self._decodes:
+            return None
+        return RunDecoder(
+            f,
+            path,
+            summary,
+            resize=self._resize,
+            max_lead_in_ns=self._max_lead_in_ns,
+        )
+
+    def _add_rows(
         self,
         builder: SampleTableBuilder,
-        sample: _Sample,
-        steps: Dict[str, _TopicSteps],
+        decoder: Optional[RunDecoder],
+        timeline: Any,
+        group: "_Group",
     ) -> Iterator[pa.Table]:
-        """Add one sample's row, and yield the table once it is full."""
-        if builder.add_row(sample.index, steps) > self._max_row_bytes:
-            raise ValueError(
-                f"{sample.where}: its payloads would exceed {self._max_row_bytes} "
-                "bytes (RAY_DATA_MCAP_MAX_ROW_BYTES). Shorten its windows."
-            )
-        if (
-            self._target_block_size is not None
-            and builder.estimated_bytes >= self._target_block_size
-        ):
-            yield self._finish(builder.build())
+        """Decode a group's frames and add its rows, yielding each full table."""
+        frames = None if decoder is None else self._frames(decoder, timeline, group)
+        for resolved in group.members:
+            sample = resolved.sample
+            added = builder.add_row(sample.index, resolved.steps, frames, sample.where)
+            if added > self._max_row_bytes:
+                raise ValueError(
+                    f"{sample.where}: its payloads and frames would exceed "
+                    f"{self._max_row_bytes} bytes (RAY_DATA_MCAP_MAX_ROW_BYTES). "
+                    "Shorten its windows, or shrink frames with "
+                    "VideoOptions(resize=(height, width))."
+                )
+            if (
+                self._target_block_size is not None
+                and builder.estimated_bytes >= self._target_block_size
+            ):
+                yield self._finish(builder.build())
+
+    def _kept_from(
+        self, next_run: _Run, group: "_Group", decoder: Optional[RunDecoder]
+    ) -> int:
+        """The earliest log time whose chunks the reads to come may need.
+
+        The next run starts there, unless the group still to build starts
+        earlier. A decoder looks back up to the look-back cap before it.
+        """
+        low = next_run.low if group.low is None else min(next_run.low, group.low)
+        return low - (self._max_lead_in_ns if decoder is not None else 0)
 
     def _timeline(
         self,
@@ -672,6 +823,22 @@ class SampleRows:
                 plan, timeline.view(plan.topic), sample.times, sample.where
             )
         return steps
+
+    def _frames(
+        self, decoder: RunDecoder, timeline: Any, group: "_Group"
+    ) -> Dict[FrameKey, Any]:
+        """The frames the group's steps take, each camera decoded once."""
+        frames: Dict[FrameKey, Any] = {}
+        for topic in self._decodes:
+            taken = [
+                step.message
+                for resolved in group.members
+                for step in cast(List[Step[_Entry]], resolved.steps[topic])
+                if step.message is not None
+            ]
+            if taken:
+                frames.update(decoder.frames(timeline.view(topic), taken))
+        return frames
 
 
 class SamplePaths:

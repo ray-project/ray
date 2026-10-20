@@ -66,6 +66,10 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
+)
 
 if TYPE_CHECKING:
     import numpy as np
@@ -82,11 +86,18 @@ SAMPLE_COLUMNS: Tuple[str, ...] = (FILES_COLUMN, CLIP_START_COLUMN, CLIP_END_COL
 # An optional column whose value names a sample in error messages.
 SAMPLE_ID_COLUMN = "sample_id"
 
-# A sample row's columns per topic.
+# A sample row's columns per topic. A topic decoded with ``video`` has
+# ``frames:`` in place of ``data:``.
 DATA_PREFIX = "data:"
+FRAMES_PREFIX = "frames:"
 TIMES_PREFIX = "times:"
 VALID_PREFIX = "valid:"
-TOPIC_PREFIXES: Tuple[str, ...] = (DATA_PREFIX, TIMES_PREFIX, VALID_PREFIX)
+TOPIC_PREFIXES: Tuple[str, ...] = (
+    DATA_PREFIX,
+    FRAMES_PREFIX,
+    TIMES_PREFIX,
+    VALID_PREFIX,
+)
 
 _NS_PER_S = 1_000_000_000
 # The latest log time an MCAP message can have: the edge of a recording that a
@@ -882,14 +893,29 @@ def topic_column_names(topic: str) -> List[str]:
     return [f"{prefix}{topic}" for prefix in TOPIC_PREFIXES]
 
 
-def topic_fields(plan: TopicPlan) -> List[pa.Field]:
+def frames_type(plan: TopicPlan, resize: Optional[Tuple[int, int]]) -> pa.DataType:
+    """The type of a decoded topic's ``frames:`` column.
+
+    Fixed steps decoded to a fixed ``resize`` have one shape in every row.
+    Otherwise frames keep their coded size, which can differ between
+    recordings, and ``steps.every`` varies in length.
+    """
+    if plan.num_steps is not None and resize is not None:
+        return ArrowTensorTypeV2((plan.num_steps, *resize, 3), pa.uint8())
+    return ArrowVariableShapedTensorType(pa.uint8(), 4)
+
+
+def topic_fields(
+    plan: TopicPlan, decoded: bool, resize: Optional[Tuple[int, int]] = None
+) -> List[pa.Field]:
     """A topic's columns in a sample row, one list entry per step.
 
     ``data:<topic>`` holds each step's payload, empty for a step that
-    ``"zeros"`` pads. ``times:<topic>`` holds each step's log time and
-    ``valid:<topic>`` whether the step took a message of its own. With
-    ``match.all_in_step``, a step's ``data:`` and ``times:`` entries are lists
-    of every message of its slot.
+    ``"zeros"`` pads. A decoded topic has ``frames:<topic>`` instead, a
+    ``uint8`` tensor of shape ``(steps, height, width, 3)``. ``times:<topic>``
+    holds each step's log time and ``valid:<topic>`` whether the step took a
+    message of its own. With ``match.all_in_step``, a step's ``data:`` and
+    ``times:`` entries are lists of every message of its slot.
     """
     topic = plan.topic
     if plan.all_in_step:
@@ -898,21 +924,29 @@ def topic_fields(plan: TopicPlan) -> List[pa.Field]:
             pa.field(f"{TIMES_PREFIX}{topic}", pa.list_(pa.list_(pa.int64()))),
             pa.field(f"{VALID_PREFIX}{topic}", pa.list_(pa.bool_())),
         ]
+    if decoded:
+        payload = pa.field(f"{FRAMES_PREFIX}{topic}", frames_type(plan, resize))
+    else:
+        payload = pa.field(f"{DATA_PREFIX}{topic}", pa.list_(pa.large_binary()))
     return [
-        pa.field(f"{DATA_PREFIX}{topic}", pa.list_(pa.large_binary())),
+        payload,
         pa.field(f"{TIMES_PREFIX}{topic}", pa.list_(pa.int64())),
         pa.field(f"{VALID_PREFIX}{topic}", pa.list_(pa.bool_())),
     ]
 
 
 def sample_row_schema(
-    samples_schema: pa.Schema, plans: Sequence[TopicPlan]
+    samples_schema: pa.Schema,
+    plans: Sequence[TopicPlan],
+    decoded_topics: Sequence[str] = (),
+    resize: Optional[Tuple[int, int]] = None,
 ) -> pa.Schema:
     """The schema of sample rows: the samples' own columns, then each topic's.
 
     Topics come in the order ``read_mcap(topics=...)`` gives them.
     """
+    decoded = set(decoded_topics)
     fields = list(samples_schema)
     for plan in plans:
-        fields += topic_fields(plan)
+        fields += topic_fields(plan, plan.topic in decoded, resize)
     return pa.schema(fields)
