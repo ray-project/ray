@@ -1,8 +1,10 @@
 import sys
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 
+import httpx
 import pytest
 
 import ray
@@ -355,15 +357,25 @@ def test_surge_rolling_update_with_autoscaling(serve_instance_with_signal):
 
 
 def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
-    """Surge replaces whole gangs; a failed update keeps the old gangs for rollback."""
+    """Surge drains requests and replaces gangs; a failed update preserves rollback."""
     client, signal = serve_instance_with_signal
     failures = Accumulator.options(name="failed-gangs").remote()
+    request_env = {
+        "BLOCK_ON_SIGNAL": "1",
+        # Keep draining replicas reachable while HAProxy reloads its backends.
+        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "5",
+    }
     healthy = {
         "name": "FailOnFlag",
         "num_replicas": 4,
+        "max_ongoing_requests": 1,
         "max_surge_percent": 25,
         "gang_scheduling_config": {"gang_size": 2},
-        "ray_actor_options": {"num_cpus": 0.1},
+        "graceful_shutdown_timeout_s": 60,
+        "ray_actor_options": {
+            "num_cpus": 0.1,
+            "runtime_env": {"env_vars": request_env},
+        },
     }
     deployment_id = DeploymentID(name="FailOnFlag", app_name=SERVE_DEFAULT_APP_NAME)
 
@@ -386,25 +398,27 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
         initial_gangs = running_gang_sizes()
         assert len(initial_gangs) == 2 and set(initial_gangs.values()) == {2}
 
-        with _background_traffic():
-            client.deploy_apps(
-                _rolling_update_config(
-                    _env_override(
-                        healthy,
-                        BLOCK_INIT_ON_SIGNAL="1",
-                        FAIL_ON_INIT="1",
-                        RECORD_FAILED_GANGS="failed-gangs",
-                    )
+        client.deploy_apps(
+            _rolling_update_config(
+                _env_override(
+                    healthy,
+                    **request_env,
+                    BLOCK_INIT_ON_SIGNAL="1",
+                    FAIL_ON_INIT="1",
+                    RECORD_FAILED_GANGS="failed-gangs",
                 )
             )
-            # The one replica allowance rounds up to a whole replacement gang.
-            wait_for_condition(
-                _check_surged,
-                client=client,
-                states={"RUNNING": 4, "STARTING": 2},
-                old_pids=initial_pids,
-            )
-            ray.get(signal.send.remote())
+        )
+        # The one replica allowance rounds up to a whole replacement gang.
+        wait_for_condition(
+            _check_surged,
+            client=client,
+            states={"RUNNING": 4, "STARTING": 2},
+            old_pids=initial_pids,
+        )
+        ray.get(signal.send.remote())
+
+        with _background_traffic():
 
             def check_failed_keeping_gangs():
                 assert _running_replica_pids(client) == initial_pids
@@ -428,10 +442,60 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
             assert _running_replica_pids(client) == initial_pids
             assert running_gang_sizes() == initial_gangs
 
-            # A working version replaces one whole gang at a time.
-            client.deploy_apps(
-                _rolling_update_config(_env_override(healthy, MARKER="v2"))
-            )
+        ray.get(signal.send.remote(clear=True))
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            responses = []
+            try:
+                # One blocked request per replica makes premature kills observable.
+                # Confirm each admission before sending the next request so HAProxy's
+                # leastconn policy routes it to an idle replica.
+                for num_waiters in range(1, 5):
+                    responses.append(
+                        executor.submit(httpx.get, "http://localhost:8000/", timeout=90)
+                    )
+                    wait_for_condition(
+                        lambda: ray.get(signal.cur_num_waiters.remote()) == num_waiters,
+                        timeout=60,
+                    )
+
+                # A working version replaces one whole gang at a time.
+                forward = _env_override(healthy, **request_env, MARKER="v2")
+                client.deploy_apps(_rolling_update_config(forward))
+
+                def check_old_gangs_draining():
+                    assert not any(response.done() for response in responses)
+                    replicas = _deployment_details(client).replicas
+                    old = [r for r in replicas if r.pid in initial_pids]
+                    return (
+                        len(old) == 4
+                        and sum(r.state == "STOPPING" for r in old) == 2
+                        and _replica_states() == {"RUNNING": 4, "STOPPING": 2}
+                    )
+
+                wait_for_condition(
+                    check_old_gangs_draining, raise_exceptions=True, timeout=60
+                )
+                # Observe further reconciliations before releasing requests, so
+                # the test cannot pass by releasing them before an early kill.
+                loops = ray.get(client._controller.get_health_metrics.remote())[
+                    "num_control_loops"
+                ]
+                wait_for_condition(
+                    lambda: ray.get(client._controller.get_health_metrics.remote())[
+                        "num_control_loops"
+                    ]
+                    >= loops + 2,
+                    timeout=60,
+                )
+                assert check_old_gangs_draining()
+            finally:
+                ray.get(signal.send.remote())
+
+            for response in responses:
+                result = response.result(timeout=60)
+                assert result.status_code == 200 and result.text == "ok"
+
+        with _background_traffic():
 
             def check_gangs_replaced():
                 gangs = running_gang_sizes()
@@ -449,6 +513,7 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
             wait_for_condition(check_gangs_replaced, raise_exceptions=True, timeout=90)
             assert set(running_gang_sizes().values()) == {2}
     finally:
+        ray.get(signal.send.remote())
         client.delete_apps([SERVE_DEFAULT_APP_NAME])
         ray.kill(failures)
 
