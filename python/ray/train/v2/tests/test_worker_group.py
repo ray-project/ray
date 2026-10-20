@@ -8,8 +8,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor
 from ray._private.state import state as ray_state
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
 from ray.runtime_env import RuntimeEnv
 from ray.train.v2._internal.callbacks import backend_setup
 from ray.train.v2._internal.callbacks.backend_setup import BackendSetupCallback
@@ -35,11 +36,13 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
+    ExecutionResult,
     RayTrainWorker,
     Worker,
     WorkerGroup,
     WorkerGroupContext,
     WorkerGroupState,
+    collect_results,
 )
 from ray.train.v2._internal.util import ObjectRefWrapper
 from ray.train.v2.api.config import RunConfig, ScalingConfig
@@ -1012,6 +1015,50 @@ def test_replica_group_callback():
     assert hooks.init_context_workers == new_rg.get_workers()
 
     wg.shutdown()
+
+
+def test_collect_results_gets_each_value_or_error():
+    @ray.remote
+    def return_or_raise(value):
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    results = collect_results(
+        [
+            return_or_raise.remote(1),
+            return_or_raise.remote(ValueError("bad input")),
+            return_or_raise.remote(3),
+        ],
+        timeout_s=30,
+    )
+
+    # A failed call doesn't cost the others their values, and the results keep
+    # the order of the refs.
+    assert [result.value for result in results] == [1, None, 3]
+    assert results[0].error is None and results[2].error is None
+    assert isinstance(results[1].error, RayTaskError)
+    assert isinstance(results[1].error.cause, ValueError)
+
+
+def test_collect_results_times_out_unfinished_calls():
+    @ray.remote
+    def wait_for(signal):
+        ray.get(signal.wait.remote())
+        return "finished"
+
+    signal = SignalActor.remote()
+    unfinished = wait_for.remote(signal)
+
+    results = collect_results([ray.put("done"), unfinished], timeout_s=0.1)
+
+    assert results[0] == ExecutionResult(value="done")
+    assert results[1].value is None
+    assert isinstance(results[1].error, GetTimeoutError)
+    assert str(results[1].error) == "timed out after 0.1s"
+    # The unfinished call keeps running.
+    ray.get(signal.send.remote())
+    assert ray.get(unfinished) == "finished"
 
 
 def test_worker_group_abort(monkeypatch):
