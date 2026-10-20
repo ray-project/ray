@@ -1,4 +1,5 @@
 import os
+import shutil
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
@@ -290,7 +291,7 @@ class ProtocolsProvider:
 
         with open_file(source_uri, "rb", transport_params=tp) as fin:
             with open(dest_file, "wb") as fout:
-                fout.write(fin.read())
+                shutil.copyfileobj(fin, fout)
 
 
 def _download_remote_uri(self, source_uri, dest_file):
