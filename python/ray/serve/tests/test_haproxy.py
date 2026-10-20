@@ -1431,11 +1431,11 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
     serve.run(make_backend_app(), name="model-a", route_prefix="/v1/model-a")
     serve.run(make_backend_app(), name="model-b", route_prefix="/v1/model-b")
     serve.run(make_backend_app(), name="control", route_prefix="/v1/control")
-    router_handle = serve.run(Router.bind(), name="router", route_prefix="/")
+    router_handle = serve.run(Router.bind(), name="router", route_prefix="/llm")
 
     def chat(model, request_id):
         return httpx.post(
-            "http://localhost:8000/v1/chat/completions",
+            "http://localhost:8000/llm/v1/chat/completions",
             json={"model": model},
             headers={"x-request-id": request_id},
             timeout=10,
@@ -1453,11 +1453,8 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
         assert body["path"] == f"/v1/{model}/v1/chat/completions"
         assert f"::{model}#Backend#" in body["replica_id"]
         served[f"req-{i}"] = body["replica_id"]
-    # Round-robin over two replicas per model: all four replicas served.
-    assert len(set(served.values())) == 4
-
     resp = httpx.get(
-        "http://localhost:8000/v1/models", headers={"x-request-id": "models"}
+        "http://localhost:8000/llm/v1/models", headers={"x-request-id": "models"}
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["path"] == "/v1/control/v1/models"

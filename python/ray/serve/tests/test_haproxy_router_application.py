@@ -180,7 +180,7 @@ def test_manager_carries_router_marker_to_backend_config():
 
 
 class TestRouterApplicationMaps:
-    def test_pool_prefers_colocated_replicas(self):
+    def test_pool_prefers_colocated_replicas_with_remote_fallbacks(self):
         backend = _backend(
             "router",
             "/",
@@ -194,7 +194,9 @@ class TestRouterApplicationMaps:
         local_lua = _format_router_application_pools_lua([backend], "10.0.0.1")
         assert "port = 9001" in local_lua
         assert "port = 9002" in local_lua
-        assert "port = 9000" not in local_lua
+        assert "port = 9000" in local_lua
+        assert local_lua.index("port = 9001") < local_lua.index("port = 9002")
+        assert local_lua.index("port = 9002") < local_lua.index("port = 9000")
 
         remote_lua = _format_router_application_pools_lua([backend], "10.0.0.9")
         assert "port = 9001" in remote_lua
@@ -263,7 +265,7 @@ def _fake_replica(port: int, name: str) -> uvicorn.Server:
 class FakeRouter:
     """Router ingress that answers with `self.response` and records calls."""
 
-    def __init__(self, port: int):
+    def __init__(self, port: int, route_prefix: str = "/"):
         self.calls: List[Dict] = []
         self.response: Tuple[int, str] = (500, "unset")
         self.response_headers: Dict[str, str] = {}
@@ -275,7 +277,13 @@ class FakeRouter:
         async def health():
             return "ok"
 
-        @app.post("/internal/route")
+        internal_route = (
+            "/internal/route"
+            if route_prefix == "/"
+            else f"{route_prefix}/internal/route"
+        )
+
+        @app.post(internal_route)
         async def route(request: Request):
             self.calls.append(
                 {
@@ -326,7 +334,7 @@ async def _router_cluster(
         if extra_app:
             replica_names.append("extra")
         ports = {k: find_free_port() for k in ["r1", *replica_names]}
-        router = FakeRouter(ports["r1"])
+        router = FakeRouter(ports["r1"], route_prefix=router_prefix)
         replicas = {name: _fake_replica(ports[name], name) for name in replica_names}
         backends = [
             _backend(
@@ -507,6 +515,7 @@ async def test_router_prefix_is_replaced(router_cluster):
         router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
         == "/v1/chat/completions?x=1"
     )
+    assert router.calls[-1]["path"] == "/llm/internal/route"
 
     resp = requests.get(f"{url}/llm?x=1", timeout=10)
 
@@ -514,6 +523,7 @@ async def test_router_prefix_is_replaced(router_cluster):
     assert (
         router.calls[-1]["headers"][SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER] == "/?x=1"
     )
+    assert router.calls[-1]["path"] == "/llm/internal/route"
 
     # Paths outside the router's prefix are not routed by it.
     assert requests.post(f"{url}/v1/chat/completions", timeout=10).status_code == 404

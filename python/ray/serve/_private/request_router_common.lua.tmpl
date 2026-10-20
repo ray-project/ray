@@ -44,7 +44,7 @@ local function call_router(server, request)
     if not sock:connect(server.host, server.port) then
         return nil, "router_unreachable"
     end
-    local req = "POST /internal/route HTTP/1.0\r\n"
+    local req = "POST " .. (request.path or "/internal/route") .. " HTTP/1.0\r\n"
         .. "Host: " .. server.host_header .. "\r\n"
         .. "Connection: close\r\n"
         .. "Content-Length: " .. #request.body .. "\r\n"

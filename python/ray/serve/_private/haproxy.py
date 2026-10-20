@@ -236,7 +236,8 @@ def _format_router_application_pools_lua(
             continue
         servers = sorted(backend.servers, key=lambda s: (s.host, s.port))
         colocated = [s for s in servers if s.host == local_host]
-        pool = colocated or servers
+        remote = [s for s in servers if s.host != local_host]
+        pool = colocated + remote
         if not pool and backend.fallback_server is not None:
             pool = [backend.fallback_server]
         pool_lua = ", ".join(
