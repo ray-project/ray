@@ -1036,7 +1036,7 @@ class DeploymentAutoscalingState:
         look_back_period_s = self._config.look_back_period_s
         errors: List[str] = []
         if elapsed is None:
-            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
+            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE.value)
 
         policy = self._config.policy.get_policy()
 
