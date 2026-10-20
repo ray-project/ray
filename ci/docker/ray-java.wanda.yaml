@@ -7,6 +7,8 @@ srcs:
   - .bazelversion
   - .bazelrc
   - WORKSPACE
+  - MODULE.bazel
+  - MODULE.bazel.lock
   - BUILD.bazel
   - bazel/
   - thirdparty/
