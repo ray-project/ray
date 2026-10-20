@@ -142,6 +142,19 @@ def is_video_channel(
     return schema_name in VIDEO_SCHEMA_NAMES or topic in video_topics
 
 
+def require_video_channel(
+    topic: str, schema_name: Optional[str], video_topics: AbstractSet[str], path: str
+) -> None:
+    """Fail a decode request for a channel that is not video."""
+    if not is_video_channel(topic, schema_name, video_topics):
+        raise ValueError(
+            f"Cannot decode topic {topic!r} in {path!r}: it is not a video topic. "
+            f"Its schema {schema_name!r} is not a known video schema. List it in "
+            "video_topics=[...] if it carries video, or pass topics=[...] to "
+            "select only the video topics."
+        )
+
+
 # -- Annex-B (H.264 / H.265) ---------------------------------------------------
 
 

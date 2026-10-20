@@ -1293,10 +1293,48 @@ def test_read_mcap_samples_refuses_a_row_id_checkpoint(
     importlib.util.find_spec("av") is None,
     reason="av not available. Install with: pip install av",
 )
+def test_read_mcap_decode_video(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2
+):
+    """With ``video``, each row is one decoded frame, also from tasks that start
+    mid-GOP."""
+    from ray.data.datasource import VideoOptions
+    from ray.data.tests.unit.datasource_v2.mcap_testing import (
+        encode_h264,
+        write_payloads,
+    )
+
+    path = os.path.join(tmp_path, "h264.mcap")
+    # 30 frames at about 30 fps, a keyframe every 10, in small chunks.
+    write_payloads(
+        path, encode_h264(30), schema_name="foxglove.CompressedVideo", chunk_size=400
+    )
+
+    if not datasource_v2:
+        with pytest.raises(NotImplementedError, match="video"):
+            ray.data.read_mcap(path, video=VideoOptions())
+        return
+
+    # One task per chunk, so most tasks start inside a group of pictures.
+    monkeypatch.setattr(mcap_datasource_v2, "_BIN_PACKING_BYTES", 1)
+    ds = ray.data.read_mcap(path, video=VideoOptions(resize=(24, 32))).materialize()
+    rows = sorted(ds.take_all(), key=lambda row: row["sequence"])
+
+    assert "frame" in ds.schema().names and "data" not in ds.schema().names
+    assert [row["sequence"] for row in rows] == list(range(30))
+    assert all(row["frame"].shape == (24, 32, 3) for row in rows)
+    # More blocks than the stream's three keyframes, so some task starts
+    # mid-GOP.
+    assert ds.num_blocks() > 3
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
 def test_read_mcap_decode_samples(ray_start_regular_shared, tmp_path, datasource_v2):
     """With ``video``, a sample read decodes its camera topics: each row holds
-    one frame per step, resized to one shape. A read of paths refuses
-    ``video``."""
+    one frame per step, resized to one shape."""
     from ray.data.datasource import TopicSpec, VideoOptions
     from ray.data.datasource.mcap import steps
     from ray.data.tests.unit.datasource_v2.mcap_testing import (
@@ -1337,8 +1375,6 @@ def test_read_mcap_decode_samples(ray_start_regular_shared, tmp_path, datasource
     # Frame 5's steps reach before the stream starts and repeat its first frame.
     assert rows[0]["valid:/camera"] == [False, True, True]
     assert all(row["valid:/camera"] == [True] * 3 for row in rows[1:])
-    with pytest.raises(ValueError, match="only to a sample read"):
-        ray.data.read_mcap(path, video=VideoOptions())
 
 
 def _optimized(ds):

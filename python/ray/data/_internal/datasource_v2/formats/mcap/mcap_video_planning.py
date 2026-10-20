@@ -1,26 +1,40 @@
-"""Video planning: which topics of a sample read with ``video`` are decoded.
+"""Video planning: the frame type and the decoded topics of a read with ``video``.
 
-``VideoPlanner`` reads the first message of each selected channel in the first
-``_SCHEMA_SAMPLE_FILES`` sampled files. ``decoded_topics`` names the topics that
-get ``frames:`` columns: the listed ``video_topics`` and the sampled video
-topics. A sampled video topic needs a codec and its decoder::
+``VideoPlanner`` reads the first in-range message of each selected channel in
+the first ``_SCHEMA_SAMPLE_FILES`` sampled files. For ``message`` rows every
+such channel must be video, and ``frame_type`` gives the ``frame`` column's
+tensor type. For a sample read, ``decoded_topics`` names the topics that get
+frame columns. A sampled video channel needs a codec and its decoder::
 
-    first message of each selected channel in the sample
-      not video?              -> not decoded
+    first in-range message of each selected channel in the sample
+      not video?              -> message rows: fail, naming the topic and
+                                 video_topics; sample rows: not decoded
       no codec found?         -> fail
       decoder not installed?  -> fail (Pillow for JPEG/PNG, av for the rest)
-    decoded_topics: video_topics + the sampled video topics
+    frame_type (message rows):
+      resize                  -> fixed (h, w, 3)
+      else decode one keyframe per channel:
+        one size              -> fixed (h, w, 3)
+        none, or sizes differ -> variable-shaped
+    decoded_topics (sample rows): video_topics + the sampled video topics
+
+A keyframe that comes without the stream's parameter sets gets them from where
+the stream starts, as in a read task (``StreamStart``).
 
 Peeking stays cheap. Each sampled summary is read once. The search for first
 messages skips each chunk whose message index names no channel still unseen. A
 file without an index is scanned to its end, through a read buffer. Reading on
-for a codec stops after ``_KEYFRAME_SCAN_MESSAGES`` of the channel's messages or
-``_KEYFRAME_SCAN_RECORDS`` records. A sampled file whose summary or records
-cannot be read is skipped, so it fails its own read task rather than planning.
+for a codec or a keyframe stops after ``_KEYFRAME_SCAN_MESSAGES`` of the
+channel's messages or ``_KEYFRAME_SCAN_RECORDS`` records. A sampled file whose
+summary or records cannot be read is skipped, as ``inspect_sample`` skips one
+whose summary cannot be read, so it fails its own read task rather than
+planning.
 """
 
+import functools
 import itertools
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
@@ -36,13 +50,28 @@ from typing import (
     TypeVar,
 )
 
+import pyarrow as pa
+
+from ray.data._internal.datasource_v2.formats.mcap.mcap_decode import decode_one
 from ray.data._internal.datasource_v2.formats.mcap.mcap_io import buffered, read_chunk
-from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
+    MCAPSelection,
+    max_lead_in_ns,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summaries
 from ray.data._internal.datasource_v2.formats.mcap.mcap_video import (
+    NalFormat,
     VideoCodec,
+    carries_picture,
     channel_codec,
+    is_keyframe,
     is_video_channel,
+    require_video_channel,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_video_source import StreamStart
+from ray.data._internal.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    ArrowVariableShapedTensorType,
 )
 from ray.data._internal.util import _check_import
 
@@ -55,7 +84,8 @@ logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
-# Sampled files the planner opens. They settle which topics get frame columns.
+# Sampled files the planner opens. They settle the frame type, or in a sample
+# read which topics get frame columns.
 _SCHEMA_SAMPLE_FILES = 4
 
 # Scan budget of ``VideoPlanner._channel_payloads``: messages of the channel,
@@ -69,12 +99,21 @@ class _UnreadableRecords(Exception):
     """A sampled file's chunk or record stream does not parse."""
 
 
+@dataclass(frozen=True)
+class _SampledVideoChannel:
+    """A selected channel of a sample file, vetted as decodable video."""
+
+    path: str
+    channel_id: int
+    topic: str
+    codec: VideoCodec
+
+
 class VideoPlanner:
-    """Plans the decoded topics of a sample read with ``video`` from its sampled
-    files.
+    """Plans the decoded columns of a read with ``video`` from its sampled files.
 
     Args:
-        selection: The read's topic filter.
+        selection: The read's topic, schema and time filters.
         filesystem: The filesystem the files are on.
         video_topics: The topics ``read_mcap(video_topics=...)`` lists.
         owner: The object a missing decoder's ``ImportError`` names: the
@@ -94,6 +133,29 @@ class VideoPlanner:
         self._owner = owner
         # The readable sampled files' summaries, read once each.
         self._summaries: Dict[str, Optional["Summary"]] = {}
+
+    def frame_type(
+        self, sampled_paths: Sequence[str], resize: Optional[Tuple[int, int]]
+    ) -> pa.DataType:
+        """The tensor type of decoded frames, for ``message`` rows.
+
+        Every selected channel of the sample must be decodable video, or the
+        read fails here, naming the topic. The frame shape comes from
+        ``resize`` when given. Otherwise it is the shape of the sampled
+        channels' first keyframes when they agree. Cameras of different sizes,
+        or no decodable keyframe, give a variable-shaped tensor.
+        """
+        channels = self._vet_video_channels(sampled_paths[:_SCHEMA_SAMPLE_FILES])
+        if resize is not None:
+            height, width = resize
+            return ArrowTensorTypeV2((height, width, 3), pa.uint8())
+        shapes = {
+            shape for shape in map(self._keyframe_shape, channels) if shape is not None
+        }
+        if len(shapes) == 1:
+            (shape,) = shapes
+            return ArrowTensorTypeV2(shape, pa.uint8())
+        return ArrowVariableShapedTensorType(pa.uint8(), 3)
 
     def decoded_topics(self, sampled_paths: Sequence[str]) -> Tuple[str, ...]:
         """The topics a decoded sample row gets frame columns for, sorted.
@@ -177,6 +239,51 @@ class VideoPlanner:
                 if targets is not None and seen >= targets:
                     return
 
+    def _keyframe_shape(
+        self, channel: _SampledVideoChannel
+    ) -> Optional[Tuple[int, ...]]:
+        """The shape of the channel's first keyframe once decoded, or ``None``."""
+        try:
+            head = self._stream_head(channel.path, channel.channel_id, channel.codec)
+        except _UnreadableRecords as exc:
+            logger.debug("No frame shape from %s: %s", channel.path, exc.__cause__)
+            return None
+        read = functools.partial(self._stream_parameter_sets, channel)
+        frame = decode_one(head, channel.codec, None, read) if head else None
+        return tuple(frame.shape) if frame is not None else None
+
+    def _stream_parameter_sets(
+        self, channel: _SampledVideoChannel, codec: VideoCodec
+    ) -> bytes:
+        """The parameter sets where the channel's stream starts, for a head whose
+        keyframe comes without them (``StreamStart``)."""
+        with self._filesystem.open_input_file(channel.path) as f:
+            start = StreamStart(f, channel.path, self._summaries[channel.path])
+            return start.read(channel.channel_id, channel.topic, codec)
+
+    def _vet_video_channels(self, paths: Sequence[str]) -> List[_SampledVideoChannel]:
+        """Check that every selected channel of the sample files is decodable video.
+
+        Returns the channels in the order found. Fails at the first one that is
+        not, naming its topic.
+        """
+        channels: List[_SampledVideoChannel] = []
+        for path in self._readable(paths):
+            channels += self._unless_unreadable(path, self._file_video_channels)
+        return channels
+
+    def _file_video_channels(self, path: str) -> List[_SampledVideoChannel]:
+        """The selected channels of one sampled file, each checked to be video."""
+        channels = []
+        for channel, schema, message in self._first_messages(path):
+            schema_name = schema.name if schema else None
+            require_video_channel(channel.topic, schema_name, self._video_topics, path)
+            codec = self._decodable_codec(path, channel, schema, message)
+            channels.append(
+                _SampledVideoChannel(path, channel.id, channel.topic, codec)
+            )
+        return channels
+
     def _decodable_codec(
         self,
         path: str,
@@ -202,21 +309,25 @@ class VideoPlanner:
             _check_import(self._owner, module="av", package="av")
         return codec
 
-    def _channel_payloads(self, path: str, channel_id: int) -> Iterator[bytes]:
-        """The channel's payloads in file order.
+    def _channel_payloads(
+        self, path: str, channel_id: int, since: Optional[int] = None
+    ) -> Iterator[Tuple[int, bytes]]:
+        """The channel's ``(log_time, payload)`` pairs in file order.
 
-        At most ``_KEYFRAME_SCAN_MESSAGES`` of the channel's messages and
-        ``_KEYFRAME_SCAN_RECORDS`` records of any kind are read.
+        Messages logged before ``since`` are skipped, and so are the chunks
+        that end before it. At most ``_KEYFRAME_SCAN_MESSAGES`` of the
+        channel's messages and ``_KEYFRAME_SCAN_RECORDS`` records of any kind
+        are read.
         """
         summary = self._summaries[path]
         messages_left = _KEYFRAME_SCAN_MESSAGES
         records_left = _KEYFRAME_SCAN_RECORDS
         with self._filesystem.open_input_file(path) as f:
-            for record in _channel_records(f, summary, channel_id):
+            for record in _channel_records(f, summary, channel_id, since):
                 records_left -= 1
-                message = _channel_message(record, channel_id)
+                message = _channel_message(record, channel_id, since)
                 if message is not None:
-                    yield message.data
+                    yield message.log_time, message.data
                     messages_left -= 1
                 if messages_left <= 0 or records_left <= 0:
                     return
@@ -234,11 +345,47 @@ class VideoPlanner:
         the scan budget, only if neither its ``format`` nor its bytes settle
         the codec.
         """
+        payloads = (data for _, data in self._channel_payloads(path, channel.id))
         return channel_codec(
             schema.name if schema else None,
             channel.message_encoding,
-            itertools.chain((first,), self._channel_payloads(path, channel.id)),
+            itertools.chain((first,), payloads),
         )
+
+    def _stream_head(
+        self, path: str, channel_id: int, codec: VideoCodec
+    ) -> List[bytes]:
+        """The payloads that decode the channel's first frame in ``time_range``.
+
+        That frame comes from the last keyframe at or before it, within the
+        look-back cap, or else from the first keyframe in the range. Before the
+        keyframe, the head holds the parameter sets written on their own since
+        the keyframe before; pictures there need an earlier keyframe, so they
+        are left out. The payloads come as Annex-B access units
+        (``NalFormat``). Empty when no such keyframe is found within the scan
+        budget.
+        """
+        start, end = self._selection.start_time, self._selection.end_time
+        since = None if start is None else start - max_lead_in_ns()
+        nal_format = NalFormat(codec)
+        head: List[bytes] = []
+        pending: List[bytes] = []
+        for log_time, payload in self._channel_payloads(path, channel_id, since):
+            if end is not None and log_time >= end:
+                break
+            payload = nal_format.annex_b(payload)
+            in_range = start is None or log_time >= start
+            keyframe = is_keyframe(payload, codec)
+            if head and in_range and not keyframe and carries_picture(payload, codec):
+                # The range's first frame decodes from the keyframe in ``head``.
+                break
+            if keyframe or not carries_picture(payload, codec):
+                pending.append(payload)
+            if keyframe:
+                head, pending = pending, []
+                if in_range:
+                    break
+        return head
 
 
 def _messages_by_scan(
@@ -320,13 +467,13 @@ def _lacks_schemas(summary: "Summary", channel_ids: Set[int]) -> bool:
 
 
 def _channel_records(
-    f: Any, summary: Optional["Summary"], channel_id: int
+    f: Any, summary: Optional["Summary"], channel_id: int, since: Optional[int]
 ) -> Iterator[Any]:
-    """The records that may hold the channel's messages.
+    """The records that may hold the channel's messages from ``since`` on.
 
     A file without a chunk index is read from its start. Otherwise only the
-    chunks whose message index, when present, names the channel are read, in
-    order.
+    chunks whose message index, when present, names the channel and that end
+    at or after ``since`` are read, in order.
     """
     if summary is None or not summary.chunk_indexes:
         yield from _scan(f)
@@ -335,6 +482,8 @@ def _channel_records(
         if chunk_index.message_index_offsets and channel_id not in (
             chunk_index.message_index_offsets
         ):
+            continue
+        if since is not None and chunk_index.message_end_time < since:
             continue
         yield from _chunk_records(f, chunk_index)
 
@@ -368,10 +517,14 @@ def _scan(f: Any) -> Iterator[Any]:
         raise _UnreadableRecords() from exc
 
 
-def _channel_message(record: Any, channel_id: int) -> Optional["Message"]:
-    """``record`` if it is a message on ``channel_id``."""
+def _channel_message(
+    record: Any, channel_id: int, since: Optional[int]
+) -> Optional["Message"]:
+    """``record`` if it is a message on ``channel_id`` logged at or after ``since``."""
     from mcap.records import Message
 
     if not isinstance(record, Message) or record.channel_id != channel_id:
+        return None
+    if since is not None and record.log_time < since:
         return None
     return record
