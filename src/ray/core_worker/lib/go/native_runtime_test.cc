@@ -113,6 +113,13 @@ __attribute__((weak)) void *GoGetObjectData(void *handle) { return nullptr; }
 // Mock GoGetObjectSize - returns 0
 __attribute__((weak)) size_t GoGetObjectSize(void *handle) { return 0; }
 
+// Mock GoTriggerActorShutdown - no-op.
+// Referenced by runtime_callbacks.cc's actor shutdown callback; the test must
+// provide this Go-exported symbol to satisfy the link.
+__attribute__((weak)) void GoTriggerActorShutdown() {
+  // Stub: no-op
+}
+
 // Mock GoExecuteTask - returns null to indicate no task execution
 // This stub allows the test to link without requiring the actual Go runtime
 __attribute__((weak)) CSerializedObjectArray *GoExecuteTask(
@@ -677,6 +684,29 @@ TEST(NativeRuntimeGCCTest, GCCollectCallbackThreadSafety) {
 
   // Test passes if no deadlocks or race conditions occur
   SUCCEED() << "GC callback is thread-safe";
+}
+
+// ============================================================================
+// Actor Shutdown Callback Tests
+// ============================================================================
+
+TEST(NativeRuntimeActorShutdownTest, ActorShutdownCallbackFactoryReturnsNonNull) {
+  // Test: CreateActorShutdownCallback must return a non-null std::function so
+  // the core worker's shutdown executor dispatches the Go-side teardown hook
+  // on graceful actor exit.
+  using ray::go::CreateActorShutdownCallback;
+
+  auto shutdown_callback = CreateActorShutdownCallback();
+  EXPECT_TRUE(static_cast<bool>(shutdown_callback));
+}
+
+TEST(NativeRuntimeActorShutdownTest, ActorShutdownCallbackDispatchIsSafeNoop) {
+  // Test: Invoking the factory-produced callback must not crash. Without a
+  // registered Go-side hook the dispatch is a no-op (the Go worker default).
+  using ray::go::CreateActorShutdownCallback;
+
+  auto shutdown_callback = CreateActorShutdownCallback();
+  EXPECT_NO_THROW(shutdown_callback());
 }
 
 // ============================================================================

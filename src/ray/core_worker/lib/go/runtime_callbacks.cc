@@ -64,6 +64,18 @@ std::function<void()> CreateGCCollectCallback() {
   };
 }
 
+std::function<void()> CreateActorShutdownCallback() {
+  return []() {
+    try {
+      GoTriggerActorShutdown();
+    } catch (const std::exception &e) {
+      RAY_LOG(ERROR) << "Actor shutdown callback failed: " << e.what();
+    } catch (...) {
+      RAY_LOG(ERROR) << "Actor shutdown callback failed with unknown exception";
+    }
+  };
+}
+
 std::function<ray::Status(
     const ray::rpc::Address &caller_address,
     ray::rpc::TaskType task_type,

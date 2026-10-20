@@ -52,3 +52,16 @@ func TestFunctionArgByValue_DeepCopy(t *testing.T) {
 		t.Error("arg metadata shares backing array with source; expected a deep copy")
 	}
 }
+
+// TestConvertArgToFunctionArgTypedRefByRef verifies that a typed ObjectRef
+// (any T, not just *ObjectRef[any]) is routed by reference. The by-ref check
+// must catch every ObjectRef instantiation via the ObjectID interface shape;
+// the direct *ObjectRef[any] assertion alone would miss typed refs and fall
+// through to serialization, re-writing the payload into the object store.
+func TestConvertArgToFunctionArgTypedRefByRef(t *testing.T) {
+	ref := &ObjectRef[[]byte]{} // zero ObjectID is fine: only by-ref routing is asserted
+	arg := convertArgToFunctionArg(ref)
+	if !arg.IsPassByRef() {
+		t.Fatal("typed ObjectRef arg routed by value, want by-ref")
+	}
+}

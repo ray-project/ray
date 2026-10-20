@@ -7,6 +7,7 @@ go_library(
         "call.go",
         "manager.go",
         "parallel_actor_executor.go",
+        "shutdown.go",
     ],
     importpath = "github.com/ray-project/ray/go/internal/runtime/actor",
     visibility = ["//visibility:public"],
@@ -24,6 +25,7 @@ go_test(
     srcs = [
         "actor_test.go",
         "parallel_actor_executor_test.go",
+        "shutdown_test.go",
     ],
     embed = [":actor"],
     deps = [

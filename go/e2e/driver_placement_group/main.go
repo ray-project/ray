@@ -53,8 +53,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/ray-project/ray/go/e2e/userfuncs"
@@ -66,6 +68,16 @@ import (
 
 var runModeFlag = flag.String("run-mode", "driver", "Run mode: driver or local")
 
+// requireUserfuncsPlugin fails fast when the plugin artifact is missing from
+// the working directory: without the check, worker startup fails late inside
+// raygo's plugin discovery with an opaque error.
+func requireUserfuncsPlugin(path string) {
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(os.Stderr, "userfuncs plugin not found at %s: build it with `bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin` and ship it in the job's working dir (%v)\n", path, err)
+		os.Exit(1)
+	}
+}
+
 // initRay initializes the Ray runtime with a JobConfig that carries the
 // userfuncs.so code search path, so PG-bound remote tasks and actors can be
 // resolved by the Go worker. The GCS address is read from the RAY_ADDRESS
@@ -76,6 +88,7 @@ func initRay() error {
 		return fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	codeSearchPath := filepath.Join(cwd, "userfuncs.so")
+	requireUserfuncsPlugin(codeSearchPath)
 
 	jobConfigBuilder := options.NewJobConfigBuilder().
 		WithCodeSearchPath(codeSearchPath)
@@ -85,6 +98,32 @@ func initRay() error {
 	}
 	log.Printf("driver code search path: %s", codeSearchPath)
 	return nil
+}
+
+// maxE2ETimeout caps the scaled e2e deadline so a huge
+// RAY_GO_E2E_TIMEOUT_SCALE cannot overflow time.Duration into a negative
+// (shorter) deadline.
+const maxE2ETimeout = 24 * time.Hour
+
+// e2eTimeout scales a base deadline by RAY_GO_E2E_TIMEOUT_SCALE (default 1.0,
+// floor 1.0): shared clusters export a larger value (e.g. 3) instead of
+// editing per-driver deadline constants when waits flake under load. The
+// scaled result is capped at maxE2ETimeout so the helper only ever loosens a
+// deadline.
+func e2eTimeout(base time.Duration) time.Duration {
+	s := os.Getenv("RAY_GO_E2E_TIMEOUT_SCALE")
+	if s == "" {
+		return base
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 1.0 {
+		return base
+	}
+	scaled := float64(base) * f
+	if scaled > float64(maxE2ETimeout) {
+		return maxE2ETimeout
+	}
+	return time.Duration(scaled)
 }
 
 // newPGName builds a unique placement group name for a test.
@@ -172,6 +211,7 @@ func testPGLifecycle(ctx context.Context) error {
 	if pg.ID().IsNil() {
 		return fmt.Errorf("created placement group has a nil id")
 	}
+	defer func() { _ = api.RemovePlacementGroup(ctx, pg.ID()) }()
 	if pg.Name() != name {
 		return fmt.Errorf("pg.Name() = %q, want %q", pg.Name(), name)
 	}
@@ -253,7 +293,7 @@ func testPGLifecycle(ctx context.Context) error {
 		return fmt.Errorf("RemovePlacementGroup failed: %w", err)
 	}
 	fmt.Println("  RemovePlacementGroup -> nil ✓")
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(e2eTimeout(15 * time.Second))
 	for {
 		gone, err := api.GetPlacementGroup(ctx, pg.ID())
 		if err != nil {
@@ -288,6 +328,7 @@ func testPGBinding(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("CreatePlacementGroup (binding) failed: %w", err)
 	}
+	defer func() { _ = api.RemovePlacementGroup(ctx, pg.ID()) }()
 	ready, err := pg.Wait(60)
 	if err != nil {
 		return fmt.Errorf("pg.Wait (binding) failed: %w", err)
@@ -367,6 +408,7 @@ func testPGBinding(ctx context.Context) error {
 	if probe == nil || probe.ID().IsNil() {
 		return fmt.Errorf("PG-bound actor returned a nil handle")
 	}
+	defer func() { _ = api.KillActor(probe, true) }()
 	typed := api.NewActorHandleImpl[map[string]string](probe.ID())
 	ref, err := typed.Task((*userfuncs.RuntimeContextProbe).Probe).Remote()
 	if err != nil {
@@ -472,6 +514,7 @@ func testLocalPGChange() error {
 	if pg == nil || pg.ID().IsNil() {
 		return fmt.Errorf("local CreatePlacementGroup returned a nil id")
 	}
+	defer func() { _ = api.RemovePlacementGroup(context.Background(), pg.ID()) }()
 	fmt.Printf("  local create -> id %s ✓\n", pg.ID().Hex())
 
 	ready, err := pg.Wait(1)

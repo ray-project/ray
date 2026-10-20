@@ -38,8 +38,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"math"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/ray-project/ray/go/pkg/log"
@@ -48,6 +51,61 @@ import (
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 )
+
+// errGetTimeout marks a Get that did not complete within its budget; it is
+// distinct from a task failure, so deadline loops treat it as "not yet
+// decided" rather than as evidence of death.
+var errGetTimeout = errors.New("Get timed out")
+
+// getWithTimeout bounds a blocking ObjectRef.Get: a Get on a ref whose worker
+// hangs (dying but not dead — task neither completes nor errors) never
+// returns, which would block a deadline loop past its wall-clock bound. The
+// abandoned goroutine leaks until process exit, acceptable in a one-shot
+// driver binary.
+func getWithTimeout[T any](ref *api.ObjectRef[T], budget time.Duration) (T, error) {
+	type result struct {
+		val T
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, err := ref.Get()
+		ch <- result{v, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.val, r.err
+	case <-time.After(budget):
+		var zero T
+		return zero, errGetTimeout
+	}
+}
+
+// maxE2ETimeout caps the scaled e2e deadline so a huge
+// RAY_GO_E2E_TIMEOUT_SCALE cannot overflow time.Duration into a negative
+// (shorter) deadline.
+const maxE2ETimeout = 24 * time.Hour
+
+// e2eTimeout scales a base deadline by RAY_GO_E2E_TIMEOUT_SCALE (default 1.0,
+// floor 1.0): shared clusters export a larger value (e.g. 3) instead of
+// editing per-driver deadline constants when waits flake under load. The
+// scaled result is capped at maxE2ETimeout so the helper only ever loosens a
+// deadline.
+func e2eTimeout(base time.Duration) time.Duration {
+	s := os.Getenv("RAY_GO_E2E_TIMEOUT_SCALE")
+	if s == "" {
+		return base
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 1.0 {
+		return base
+	}
+	scaled := float64(base) * f
+	if scaled > float64(maxE2ETimeout) {
+		return maxE2ETimeout
+	}
+	return time.Duration(scaled)
+}
 
 // Student mirrors the C++ Student struct (name, age) registered in
 // cpp_xlang_worker.cc. Field names must serialize to the same msgpack keys as
@@ -293,6 +351,7 @@ func testActor() error {
 	if err != nil {
 		return fmt.Errorf("create Calculator actor failed: %w", err)
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 	if handle.ID().IsNil() {
 		return fmt.Errorf("Calculator actor handle ID is nil")
 	}
@@ -334,24 +393,19 @@ func testActor() error {
 	// CoreWorker::KillActor is asynchronous (GCS -> raylet -> worker SIGKILL),
 	// so poll until a method call fails, proving both the kill and no-restart
 	// semantics. A call succeeding while the worker is still dying is fine.
-	deadline := time.Now().Add(5 * time.Second)
-	confirmedDead := false
+	deadline := time.Now().Add(e2eTimeout(5 * time.Second))
 	for {
 		deadRef, err := api.CppActorTask[int](handle, "get_value").Remote()
 		if err == nil {
-			_, err = api.Get(deadRef)
+			_, err = getWithTimeout(deadRef, time.Until(deadline))
 		}
-		if err != nil {
-			confirmedDead = true
+		if err != nil && !errors.Is(err, errGetTimeout) {
 			break
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("expected C++ actor to be unavailable after KillWithNoRestart()")
 		}
 		time.Sleep(200 * time.Millisecond)
-	}
-	if !confirmedDead {
-		return fmt.Errorf("C++ actor still alive after KillWithNoRestart()")
 	}
 	fmt.Printf("AC4 call after KillWithNoRestart correctly failed: %v\n", err)
 	return nil
@@ -379,6 +433,7 @@ func testActorConcurrencyGroup() error {
 	if err != nil {
 		return fmt.Errorf("create Calculator actor with concurrency group failed: %w", err)
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 	fmt.Printf("P2 created Calculator actor with group cg_sleep (MaxCalls=1)\n")
 
 	// 2. Route two sleeping calls into the group by name and submit them

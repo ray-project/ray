@@ -42,6 +42,18 @@ namespace ray::go {
 std::function<void()> CreateGCCollectCallback();
 
 /**
+ * @brief Creates the actor shutdown callback function for the core worker.
+ *
+ * This callback is invoked by the core worker during graceful actor exit. It
+ * dispatches the Go-side actor-exit hook via GoTriggerActorShutdown. It is
+ * always wired (never null) so the core worker dispatches the Go-side teardown
+ * hook on graceful actor exit.
+ *
+ * @return std::function<void()> A function that triggers the Go actor shutdown hook
+ */
+std::function<void()> CreateActorShutdownCallback();
+
+/**
  * @brief Creates a task execution callback function for the core worker.
  *
  * This callback is invoked by the core worker when a task needs to be

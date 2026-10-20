@@ -4,7 +4,7 @@ This package demonstrates Ray Go's **dual-mode high-performance design**:
 
 | Mode | How to use | Performance | Best for |
 |------|------------|-------------|----------|
-| **Reflection mode** (default) | `go build -buildmode=plugin` | ~500ns/call | Low-frequency calls, prototyping |
+| **Reflection mode** (default) | `bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin` | ~500ns/call | Low-frequency calls, prototyping |
 | **Precompiled mode** (optional) | add `//go:ray:task` + raygen | ~5ns/call (100x faster!) | High-frequency calls, performance-critical paths |
 
 ## Quick start
@@ -22,9 +22,15 @@ func goAdd(x, y int) int {
 
 **Build**:
 ```bash
-cd go/e2e/userfuncs
-go build -buildmode=plugin -o userfuncs.so funcs.go
+# Build the plugin (target userfuncs_plugin, out = "userfuncs.so").
+bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+# Then copy the produced artifact into the job's working directory.
+cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so .
 ```
+
+A bare `go build -buildmode=plugin` does not work here: the plugin entry point
+lives in the non-main `go/e2e/userfuncs/plugin` package, so the build must go
+through the bazel target above.
 
 **Submit a job**:
 ```bash
@@ -36,6 +42,11 @@ The worker invokes the function through reflection (`reflect.Call()`), at about 
 ---
 
 ### Mode 2: Precompiled mode (optional, high performance)
+
+> **The generator is not in this repository.** raygen is an internal tool that
+> is not part of this tree, the checked-in `generated_*.go` files are
+> hand-maintained, and the steps below describe the original internal workflow
+> (see the note further down).
 
 **Step 1: Mark your functions**
 
@@ -64,7 +75,7 @@ raygen --input funcs.go --output generated_wrappers.go,generated_registry.go
 go generate
 
 # Method 3: use bazel build (executed automatically)
-bazel build //go/e2e/userfuncs:all
+bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
 ```
 
 > **Note on the generator in this tree**: raygen is an internal code

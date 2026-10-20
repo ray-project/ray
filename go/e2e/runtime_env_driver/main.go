@@ -61,6 +61,16 @@ import (
 	protolib "google.golang.org/protobuf/proto"
 )
 
+// requireUserfuncsPlugin fails fast when the plugin artifact is missing from
+// the working directory: without the check, worker startup fails late inside
+// raygo's plugin discovery with an opaque error.
+func requireUserfuncsPlugin(path string) {
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(os.Stderr, "userfuncs plugin not found at %s: build it with `bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin` and ship it in the job's working dir (%v)\n", path, err)
+		os.Exit(1)
+	}
+}
+
 // initRay initializes the Ray runtime with a JobConfig that carries the
 // userfuncs.so code search path, so the RuntimeEnvProbe actor created below can
 // be resolved by the Go worker. The GCS address is read from the RAY_ADDRESS
@@ -71,6 +81,7 @@ func initRay() error {
 		return fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	codeSearchPath := filepath.Join(cwd, "userfuncs.so")
+	requireUserfuncsPlugin(codeSearchPath)
 
 	jobConfigBuilder := options.NewJobConfigBuilder().
 		WithCodeSearchPath(codeSearchPath)
@@ -363,6 +374,7 @@ func testRuntimeEnvSubmit() error {
 	if handle == nil || handle.ID().IsNil() {
 		return fmt.Errorf("expected a non-nil actor handle")
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 	fmt.Printf("  created RuntimeEnvProbe actor (ID=%s) with runtime env\n", handle.ID().Hex())
 
 	typed := api.NewActorHandleImpl[string](handle.ID())

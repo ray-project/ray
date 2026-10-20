@@ -38,6 +38,7 @@ import (
 
 	"github.com/ray-project/ray/go/internal/errors"
 	"github.com/ray-project/ray/go/internal/proctitle"
+	"github.com/ray-project/ray/go/internal/runtime/actor"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
@@ -539,4 +540,16 @@ func GoTriggerGC() {
 	// Force garbage collection
 	// Go's runtime.GC() is thread-safe and can be called concurrently
 	runtime.GC()
+}
+
+// GoTriggerActorShutdown is exported for C++ to trigger the Go-side actor
+// shutdown hook during a core worker's graceful actor exit. It is wired to
+// CoreWorkerOptions.actor_shutdown_callback by RuntimeOperations::InitializeCoreWorker so the
+// core worker dispatches the Go-side teardown hook during a worker's graceful
+// actor exit (the shutdown executor invokes the callback when present). The
+// dispatch is a no-op when no shutdown hook is registered.
+//
+//export GoTriggerActorShutdown
+func GoTriggerActorShutdown() {
+	actor.RunActorShutdownCallback()
 }

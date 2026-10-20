@@ -44,6 +44,7 @@ go_library(
     deps = [
         "//go/internal/errors",
         "//go/internal/proctitle",
+        "//go/internal/runtime/actor",
         "//go/internal/runtime/base",
         "//go/pkg/ids",
         "//go/pkg/log",

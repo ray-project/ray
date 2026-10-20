@@ -634,10 +634,6 @@ type ActorCreator[T any] struct {
 	functionDescriptor *function.GoFunctionDescriptor
 	// args are the constructor arguments.
 	args []function.FunctionArg
-	// err is the deferred descriptor-resolution error surfaced by Create. It is
-	// declared explicitly (rather than read from the embedded builder state) so
-	// the creator carries its own creation-time error.
-	err error
 	// actorOptions are the shared actor creation options and builder state.
 	actorOptions[*ActorCreator[T]]
 }
@@ -731,10 +727,6 @@ func (c *ActorCreator[T]) WithMaxConcurrency(maxConcurrency int) *ActorCreator[T
 //   - *ActorHandleImpl[T]: A handle to the created actor.
 //   - error: Any error encountered during actor creation.
 func (c *ActorCreator[T]) Create(args ...interface{}) (*ActorHandleImpl[T], error) {
-	if c.err != nil {
-		return nil, c.err
-	}
-
 	functionArgs := convertArgs(args...)
 
 	actorID, err := createActorWithSubmitter("create_actor", functionArgs, func(s submitter.TaskSubmitter) (ids.ActorID, error) {
@@ -1565,13 +1557,23 @@ func extractActorFunctionDescriptor(actorClass interface{}) *function.GoFunction
 	return function.NewGoActorMethodDescriptorOrUnknown(moduleName, pkgPath, typeName, function.ConstructorName)
 }
 
+// objectRefShape is satisfied by every ObjectRef[T] instantiation regardless
+// of T, letting by-ref detection catch typed refs (e.g. *ObjectRef[[]byte])
+// that the direct *ObjectRef[any] assertion alone would miss.
+type objectRefShape interface {
+	ObjectID() ids.ObjectID
+}
+
 // convertArgToFunctionArg converts an interface{} argument to a FunctionArg.
 // This function implements object passing threshold control:
 // - Objects smaller than threshold (100KB) are passed by value (serialized directly)
 // - Objects larger than threshold are passed by reference (stored in object store)
 func convertArgToFunctionArg(arg interface{}) function.FunctionArg {
-	if objRef, ok := arg.(*ObjectRef[any]); ok {
-		return function.NewFunctionArgByRef(objRef.ObjectID(), nil)
+	if ref, ok := arg.(objectRefShape); ok {
+		if rv := reflect.ValueOf(ref); rv.Kind() == reflect.Ptr && rv.IsNil() {
+			panic("convertArgToFunctionArg: nil ObjectRef passed as a task argument")
+		}
+		return function.NewFunctionArgByRef(ref.ObjectID(), nil)
 	}
 
 	// Use the global serializer from object package

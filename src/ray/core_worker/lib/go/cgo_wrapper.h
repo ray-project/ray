@@ -242,6 +242,18 @@ extern "C" void GoTriggerGC();
 void GoTriggerGC();
 #endif
 
+/**
+ * @brief Trigger the Go-side actor shutdown hook.
+ * This callback is invoked by the core worker during graceful actor exit and
+ * dispatches the Go-side actor-exit hook via GoTriggerActorShutdown; wiring it
+ * enables Go frameworks to register actor-exit teardown.
+ */
+#ifdef __cplusplus
+extern "C" void GoTriggerActorShutdown();
+#else
+void GoTriggerActorShutdown();
+#endif
+
 #ifdef __cplusplus
 }  // extern "C"
 

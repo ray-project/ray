@@ -58,8 +58,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/ray-project/ray/go/e2e/userfuncs"
@@ -73,6 +75,16 @@ import (
 
 var runModeFlag = flag.String("run-mode", "driver", "Run mode: driver or local")
 
+// requireUserfuncsPlugin fails fast when the plugin artifact is missing from
+// the working directory: without the check, worker startup fails late inside
+// raygo's plugin discovery with an opaque error.
+func requireUserfuncsPlugin(path string) {
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(os.Stderr, "userfuncs plugin not found at %s: build it with `bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin` and ship it in the job's working dir (%v)\n", path, err)
+		os.Exit(1)
+	}
+}
+
 // initRay initializes the Ray runtime with a JobConfig that carries the
 // userfuncs.so code search path. The GCS address is read from the RAY_ADDRESS
 // environment variable (set by `ray job submit`).
@@ -82,6 +94,7 @@ func initRay() error {
 		return fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	codeSearchPath := filepath.Join(cwd, "userfuncs.so")
+	requireUserfuncsPlugin(codeSearchPath)
 
 	jobConfigBuilder := options.NewJobConfigBuilder().
 		WithCodeSearchPath(codeSearchPath)
@@ -91,6 +104,32 @@ func initRay() error {
 	}
 	log.Printf("driver code search path: %s", codeSearchPath)
 	return nil
+}
+
+// maxE2ETimeout caps the scaled e2e deadline so a huge
+// RAY_GO_E2E_TIMEOUT_SCALE cannot overflow time.Duration into a negative
+// (shorter) deadline.
+const maxE2ETimeout = 24 * time.Hour
+
+// e2eTimeout scales a base deadline by RAY_GO_E2E_TIMEOUT_SCALE (default 1.0,
+// floor 1.0): shared clusters export a larger value (e.g. 3) instead of
+// editing per-driver deadline constants when waits flake under load. The
+// scaled result is capped at maxE2ETimeout so the helper only ever loosens a
+// deadline.
+func e2eTimeout(base time.Duration) time.Duration {
+	s := os.Getenv("RAY_GO_E2E_TIMEOUT_SCALE")
+	if s == "" {
+		return base
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 1.0 {
+		return base
+	}
+	scaled := float64(base) * f
+	if scaled > float64(maxE2ETimeout) {
+		return maxE2ETimeout
+	}
+	return time.Duration(scaled)
 }
 
 // newPGName builds a unique placement group name for a test.
@@ -128,7 +167,7 @@ func internalClient() (gcs.Client, error) {
 // removal: the by-id query returns nil or a REMOVED-state entry (GCS keeps the
 // table entry with state=REMOVED; state diagram Created -> Removed).
 func waitPGGone(ctx context.Context, client api.GCSClient, id ids.PlacementGroupID) error {
-	deadline := time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(e2eTimeout(15 * time.Second))
 	for {
 		got, err := client.GetPlacementGroupInfo(ctx, id)
 		if err != nil {
@@ -163,6 +202,7 @@ func testPGQueries(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("CreatePlacementGroup failed: %w", err)
 	}
+	defer func() { _ = api.RemovePlacementGroup(ctx, pg.ID()) }()
 	if ready, err := pg.Wait(60); err != nil || !ready {
 		return fmt.Errorf("pg.Wait failed (err=%v, ready=%v)", err, ready)
 	}
@@ -256,6 +296,11 @@ func testInternalKV(ctx context.Context) error {
 	if _, err := internal.Put(ctx, ns, key, value, true); err != nil {
 		return fmt.Errorf("internal Put failed: %w", err)
 	}
+	defer func() {
+		if _, err := internal.Del(ctx, ns, key, false); err != nil {
+			fmt.Printf("warning: internal Del cleanup failed: %v\n", err)
+		}
+	}()
 	got, err := apiClient.GetInternalKV(ctx, ns, key)
 	if err != nil {
 		return fmt.Errorf("GetInternalKV failed: %w", err)
@@ -265,18 +310,24 @@ func testInternalKV(ctx context.Context) error {
 	}
 	fmt.Printf("  GetInternalKV(%s) round trip matches ✓\n", key)
 
-	// GetInternalKV on a missing key must not panic (Java GcsClient returns
-	// null; Go returns a nil slice or an error depending on the bridge).
-	if _, err := apiClient.GetInternalKV(ctx, ns, key+"-missing"); err == nil {
-		// Accept both: nil value (treated as missing) or a key-not-found error.
-		fmt.Println("  GetInternalKV(missing) returned without error (nil value) ✓")
+	// GetInternalKV on a missing key must never yield a value. Whether the
+	// bridge reports absence as (empty, nil) or (empty, error) is not
+	// verifiable without a live GCS (the C++ authority,
+	// GlobalStateAccessor::GetInternalKV, returns nullptr on non-OK and an
+	// empty string on OK), so assert the invariant that holds under either
+	// contract — an empty result — which still catches a bridge regression
+	// that returns a stale or wrong value. The old check printed a checkmark
+	// for every outcome and detected nothing.
+	missing, err := apiClient.GetInternalKV(ctx, ns, key+"-missing")
+	if len(missing) != 0 {
+		return fmt.Errorf("GetInternalKV(%q) = %q, want empty: a missing key must never return a value", key+"-missing", missing)
+	}
+	if err != nil {
+		fmt.Printf("  GetInternalKV(missing) -> empty value with error %v (absent key) ✓\n", err)
 	} else {
-		fmt.Printf("  GetInternalKV(missing) returned error: %v ✓\n", err)
+		fmt.Println("  GetInternalKV(missing) -> empty value, no error ✓")
 	}
 
-	if _, err := internal.Del(ctx, ns, key, false); err != nil {
-		return fmt.Errorf("internal Del cleanup failed: %w", err)
-	}
 	return nil
 }
 
@@ -328,6 +379,7 @@ func testActorInfo(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("create Counter actor failed: %w", err)
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 	actorID := handle.ID()
 	fmt.Printf("  created Counter actor %s ✓\n", actorID.Hex())
 
@@ -339,7 +391,7 @@ func testActorInfo(ctx context.Context) error {
 
 	// Unfiltered listing must include the actor (poll until GCS observes it).
 	aliveState := gcs.ActorStateNameAlive
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(e2eTimeout(30 * time.Second))
 	var all []*proto.ActorTableData
 	for {
 		all, err = client.GetAllActorInfo(ctx, nil, nil)
@@ -367,7 +419,7 @@ func testActorInfo(ctx context.Context) error {
 	fmt.Printf("  GetAllActorInfo(jobID, nil) contains actor %s ✓\n", actorID.Hex())
 
 	// ALIVE state filter must include the actor (poll until GCS reports ALIVE).
-	deadline = time.Now().Add(30 * time.Second)
+	deadline = time.Now().Add(e2eTimeout(30 * time.Second))
 	var alive []*proto.ActorTableData
 	for {
 		alive, err = client.GetAllActorInfo(ctx, &jobID, &aliveState)

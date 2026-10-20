@@ -14,41 +14,19 @@
 
 // Package userfuncs provides example user functions for Ray Go.
 //
-// This package demonstrates the use of //go:ray:task markers for
-// high-performance task execution. Functions marked with //go:ray:task
-// are automatically wrapped with type-safe serializers, eliminating
-// the reflection overhead of the standard approach.
+// The task functions in this package are registered manually through
+// RegisterFunctions (see funcs.go). That is the mechanism both the driver (via
+// a package import) and the worker (via the userfuncs.so plugin) use to
+// populate the global function registry.
 //
-// # Usage
-//
-// Mark your functions with //go:ray:task:
-//
-//	//go:ray:task
-//	func goAdd(x, y int) int {
-//	    return x + y
-//	}
-//
-// Then run the code generator:
-//
-//	go generate  # or bazel build //go/e2e/driver_app
-//
-// The generator creates two files:
-//   - generated_wrappers.go: type-safe wrapper functions
-//   - generated_registry.go: automatic function registration
-//
-// # Performance
-//
-// Compared to the reflection-based approach, code generation provides:
-//   - 10-100x faster function calls (no reflect.Call)
-//   - 10x faster serialization (no reflect.New/reflect.ValueOf)
-//   - Better compile-time type checking
+// The checked-in generated_wrappers.go and generated_registry.go files were
+// produced by the raygen code generator, which is not part of this repository,
+// and are maintained by hand since its removal — edit them freely. The
+// //go:ray:task markers on the functions in funcs.go are inert documentation
+// of that history: nothing in this tree scans them.
 //
 // # Example
 //
-// See e2e/driver_app/main.go for complete examples of submitting tasks
-// with generated wrappers.
+// See e2e/driver_app/main.go for complete examples of submitting tasks through
+// the registered functions.
 package userfuncs
-
-// The checked-in generated_*.go files were produced by an internal code
-// generator that is not part of the open-source tree; registration is
-// otherwise manual (see RegisterFunctions in funcs.go).

@@ -299,6 +299,9 @@ void RuntimeOperations::InitializeCoreWorker(const RuntimeInitializeOptions &opt
   core_options.serialized_job_config = options.serialized_job_config;
   core_options.gc_collect = CreateGCCollectCallback();
   core_options.task_execution_callback = CreateTaskExecutionCallback();
+  // Wire the Go actor-exit hook: the core worker's shutdown executor
+  // invokes it during graceful actor exit when present.
+  core_options.actor_shutdown_callback = CreateActorShutdownCallback();
   // Register object allocator callback to enable Go heap allocation for objects
   // This allows Go GC to manage object lifecycles, similar to Java runtime
   core_options.object_allocator = [](const ray::RayObject &object,

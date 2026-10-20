@@ -118,6 +118,15 @@ into CI. The two pytest scripts (`test_go_call_python.py` and
 `test_python_call_go_simple.py`) are manual real-machine lanes for
 cross-language verification.
 
+On a shared or loaded cluster the poll-loop deadlines can flake even though the
+behavior under test is correct. Export `RAY_GO_E2E_TIMEOUT_SCALE` to scale every
+poll deadline in `actor_integration_driver`, `driver_app`, `driver_call_cpp`,
+`driver_gcs_client`, `driver_placement_group`, and `runtime_context_driver`
+(e.g. `RAY_GO_E2E_TIMEOUT_SCALE=3 ray job submit ...`) instead of editing the
+per-driver constants; values below 1.0 are ignored so an assertion deadline is
+never shortened. `global_state_accessor_driver` keeps its own validated override
+`GSA_ACTOR_STATE_TIMEOUT` (seconds) for the actor-state probe.
+
 ## Troubleshooting
 
 **1. Build fails: dependency not found**

@@ -49,10 +49,13 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/ray-project/ray/go/pkg/ids"
@@ -63,6 +66,71 @@ import (
 	"github.com/ray-project/ray/go/pkg/runtime/local"
 	"github.com/ray-project/ray/go/e2e/userfuncs"
 )
+
+// errGetTimeout marks a Get that did not complete within its budget; it is
+// distinct from a task failure, so deadline loops treat it as "not yet
+// decided" rather than as evidence of death.
+var errGetTimeout = errors.New("Get timed out")
+
+// getWithTimeout bounds a blocking ObjectRef.Get: a Get on a ref whose worker
+// hangs (dying but not dead — task neither completes nor errors) never
+// returns, which would block a deadline loop past its wall-clock bound. The
+// abandoned goroutine leaks until process exit, acceptable in a one-shot
+// driver binary.
+func getWithTimeout[T any](ref *api.ObjectRef[T], budget time.Duration) (T, error) {
+	type result struct {
+		val T
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, err := ref.Get()
+		ch <- result{v, err}
+	}()
+	select {
+	case r := <-ch:
+		return r.val, r.err
+	case <-time.After(budget):
+		var zero T
+		return zero, errGetTimeout
+	}
+}
+
+// maxE2ETimeout caps the scaled e2e deadline so a huge
+// RAY_GO_E2E_TIMEOUT_SCALE cannot overflow time.Duration into a negative
+// (shorter) deadline.
+const maxE2ETimeout = 24 * time.Hour
+
+// e2eTimeout scales a base deadline by RAY_GO_E2E_TIMEOUT_SCALE (default 1.0,
+// floor 1.0): shared clusters export a larger value (e.g. 3) instead of
+// editing per-driver deadline constants when waits flake under load. The
+// scaled result is capped at maxE2ETimeout so the helper only ever loosens a
+// deadline.
+func e2eTimeout(base time.Duration) time.Duration {
+	s := os.Getenv("RAY_GO_E2E_TIMEOUT_SCALE")
+	if s == "" {
+		return base
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 1.0 {
+		return base
+	}
+	scaled := float64(base) * f
+	if scaled > float64(maxE2ETimeout) {
+		return maxE2ETimeout
+	}
+	return time.Duration(scaled)
+}
+
+// requireUserfuncsPlugin fails fast when the plugin artifact is missing from
+// the working directory: without the check, worker startup fails late inside
+// raygo's plugin discovery with an opaque error.
+func requireUserfuncsPlugin(path string) {
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(os.Stderr, "userfuncs plugin not found at %s: build it with `bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin` and ship it in the job's working dir (%v)\n", path, err)
+		os.Exit(1)
+	}
+}
 
 // ============================================================================
 // Application configuration
@@ -78,24 +146,16 @@ const (
 	RunModeLocal
 )
 
-var (
-	runModeFlag      = flag.String("run-mode", "driver", "Run mode: driver or local")
-	gcsAddressFlag   = flag.String("gcs-address", "", "GCS address (host:port)")
-	nodeIPFlag       = flag.String("node-ip", "127.0.0.1", "Node IP address")
-	nodeManagerPort  = flag.Int("node-manager-port", 0, "Node manager port (from raylet)")
-	storeSocketFlag  = flag.String("store-socket", "", "Plasma store socket path")
-	rayletSocketFlag = flag.String("raylet-socket", "", "Raylet socket path")
-	logDirFlag       = flag.String("log-dir", "", "Log directory")
-)
+var runModeFlag = flag.String("run-mode", "driver", "Run mode: driver or local")
 
-func parseRunMode(s string) RunMode {
+func parseRunMode(s string) (RunMode, error) {
 	switch s {
 	case "driver":
-		return RunModeDriver
+		return RunModeDriver, nil
 	case "local":
-		return RunModeLocal
+		return RunModeLocal, nil
 	default:
-		return RunModeDriver
+		return RunModeDriver, fmt.Errorf("unknown --run-mode %q (want \"driver\" or \"local\")", s)
 	}
 }
 
@@ -105,7 +165,12 @@ func parseRunMode(s string) RunMode {
 
 func main() {
 	flag.Parse()
-	runMode := parseRunMode(*runModeFlag)
+	runMode, err := parseRunMode(*runModeFlag)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	// Initialize logger
 	if err := zap.SetupDefaultLogger(); err != nil {
@@ -158,14 +223,7 @@ func runDriver() {
 		os.Exit(1)
 	}
 	codeSearchPath := filepath.Join(cwd, "userfuncs.so")
-
-	// DEBUG: Print codeSearchPath and verify file exists
-	logger.Info("DEBUG: driver codeSearchPath", "cwd", cwd, "codeSearchPath", codeSearchPath)
-	if _, statErr := os.Stat(codeSearchPath); os.IsNotExist(statErr) {
-		logger.Error(nil, "DEBUG: userfuncs.so does NOT exist at codeSearchPath", "path", codeSearchPath)
-	} else {
-		logger.Info("DEBUG: userfuncs.so exists at codeSearchPath", "path", codeSearchPath)
-	}
+	requireUserfuncsPlugin(codeSearchPath)
 
 	// Build JobConfig with codeSearchPath.
 	// Note: runtime_env is automatically merged from RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -250,7 +308,6 @@ func runDriver() {
 	}
 
 	fmt.Println("\n✅ All tasks completed successfully!")
-	fmt.Println("[DEBUG] driver_app: about to call api.Shutdown()")
 }
 
 // runLocal runs in local mode without a Ray cluster.
@@ -763,6 +820,7 @@ func demonstrateKillActor() error {
 	if err != nil {
 		return fmt.Errorf("create kill actor failed: %w", err)
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 	typed := api.NewActorHandleImpl[int](handle.ID())
 
 	// Confirm the actor is alive and callable before killing.
@@ -783,14 +841,14 @@ func demonstrateKillActor() error {
 	// CoreWorker::KillActor is asynchronous (GCS -> raylet -> worker SIGKILL),
 	// so poll a method call until the worker has died and the call fails,
 	// proving both the kill and the no-restart semantics.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(e2eTimeout(5 * time.Second))
 	for {
 		ref, err = typed.Task((*userfuncs.Counter).Value).Remote()
 		if err == nil {
-			_, err = ref.Get()
+			_, err = getWithTimeout(ref, time.Until(deadline))
 		}
-		if err != nil {
-			break // worker is dead: submission or execution failed
+		if err != nil && !errors.Is(err, errGetTimeout) {
+			break // submission or execution failed: worker is dead
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("expected actor to be unavailable after kill")
@@ -988,6 +1046,7 @@ func demonstrateGetActorHandle() error {
 	if err != nil {
 		return fmt.Errorf("failed to create Counter actor: %w", err)
 	}
+	defer func() { _ = api.KillActor(created, true) }()
 	actorID := created.ID()
 	fmt.Printf("  Created Counter actor: %s\n", actorID.Hex())
 

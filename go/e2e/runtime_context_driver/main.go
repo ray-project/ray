@@ -38,6 +38,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -51,6 +52,16 @@ import (
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 )
 
+// requireUserfuncsPlugin fails fast when the plugin artifact is missing from
+// the working directory: without the check, worker startup fails late inside
+// raygo's plugin discovery with an opaque error.
+func requireUserfuncsPlugin(path string) {
+	if _, err := os.Stat(path); err != nil {
+		fmt.Fprintf(os.Stderr, "userfuncs plugin not found at %s: build it with `bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin` and ship it in the job's working dir (%v)\n", path, err)
+		os.Exit(1)
+	}
+}
+
 // initRay initializes the Ray runtime with a JobConfig that carries the
 // userfuncs.so code search path, so the RuntimeContextProbe actor created
 // below can be resolved by the Go worker. The GCS address is read from the
@@ -61,6 +72,7 @@ func initRay() error {
 		return fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	codeSearchPath := filepath.Join(cwd, "userfuncs.so")
+	requireUserfuncsPlugin(codeSearchPath)
 
 	jobConfigBuilder := options.NewJobConfigBuilder().
 		WithCodeSearchPath(codeSearchPath)
@@ -70,6 +82,32 @@ func initRay() error {
 	}
 	log.Printf("driver code search path: %s", codeSearchPath)
 	return nil
+}
+
+// maxE2ETimeout caps the scaled e2e deadline so a huge
+// RAY_GO_E2E_TIMEOUT_SCALE cannot overflow time.Duration into a negative
+// (shorter) deadline.
+const maxE2ETimeout = 24 * time.Hour
+
+// e2eTimeout scales a base deadline by RAY_GO_E2E_TIMEOUT_SCALE (default 1.0,
+// floor 1.0): shared clusters export a larger value (e.g. 3) instead of
+// editing per-driver deadline constants when waits flake under load. The
+// scaled result is capped at maxE2ETimeout so the helper only ever loosens a
+// deadline.
+func e2eTimeout(base time.Duration) time.Duration {
+	s := os.Getenv("RAY_GO_E2E_TIMEOUT_SCALE")
+	if s == "" {
+		return base
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 1.0 {
+		return base
+	}
+	scaled := float64(base) * f
+	if scaled > float64(maxE2ETimeout) {
+		return maxE2ETimeout
+	}
+	return time.Duration(scaled)
 }
 
 // mustNotNilID fails the run when an expected non-nil ID is nil.
@@ -190,6 +228,7 @@ func testActorContext() error {
 	if handle == nil || handle.ID().IsNil() {
 		return fmt.Errorf("expected a non-nil actor handle")
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 
 	typed := api.NewActorHandleImpl[map[string]string](handle.ID())
 	ref, err := typed.Task((*userfuncs.RuntimeContextProbe).Probe).Remote()
@@ -273,6 +312,7 @@ func testActorInfoListing() error {
 	if err != nil {
 		return fmt.Errorf("create Counter actor failed: %w", err)
 	}
+	defer func() { _ = api.KillActor(counter, true) }()
 	counterID := counter.ID()
 
 	ctx, err := api.GetRuntimeContext()
@@ -287,7 +327,7 @@ func testActorInfoListing() error {
 	// (not just the unfiltered list) so the listing below observes an actor
 	// that is both registered AND alive, mirroring how a real client waits for
 	// its actor to become available before querying cluster state.
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(e2eTimeout(10 * time.Second))
 	for {
 		if listed(counterID, ctx.GetAllActorInfoByFilter(ctx.JobID(), api.ActorStateAlive)) {
 			break
@@ -320,11 +360,6 @@ func testActorInfoListing() error {
 	}
 	fmt.Println("  GetAllActorInfoByFilter(job, Dead) excludes live actor ✓")
 
-	// Release the actor so the worker can be recycled.
-	typed := api.NewActorHandleImpl[struct{}](counterID)
-	if _, err := typed.Task((*userfuncs.Counter).Exit).Remote(); err != nil {
-		return fmt.Errorf("submit Exit for cleanup failed: %w", err)
-	}
 	return nil
 }
 

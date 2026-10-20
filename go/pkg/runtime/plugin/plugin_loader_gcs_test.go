@@ -8,14 +8,15 @@ import (
 	"testing"
 
 	"github.com/ray-project/ray/go/pkg/gcs"
+	"github.com/ray-project/ray/go/pkg/options"
 )
 
 // pluginPaths reads the test plugin .so paths injected via $(location) args.
 // rules_go runs tests from the package dir inside the runfiles tree, so the
 // injected paths are resolved against the runfiles root (TEST_SRCDIR/TEST_WORKSPACE).
-func pluginPaths(t *testing.T) (good, bad, incomplete string) {
+func pluginPaths(t *testing.T) (good, bad, incomplete, typednil string) {
 	t.Helper()
-	if len(os.Args) < 4 {
+	if len(os.Args) < 5 {
 		t.Skip("test plugin paths not injected via args (not running under bazel)")
 	}
 	root := os.Getenv("TEST_SRCDIR")
@@ -30,7 +31,7 @@ func pluginPaths(t *testing.T) (good, bad, incomplete string) {
 		}
 		return a
 	}
-	return abs(os.Args[1]), abs(os.Args[2]), abs(os.Args[3])
+	return abs(os.Args[1]), abs(os.Args[2]), abs(os.Args[3]), abs(os.Args[4])
 }
 
 // setPluginPath points FindPluginPath at the given .so via RAY_GO_RUNTIME_PATH.
@@ -50,7 +51,7 @@ func setPluginPath(t *testing.T, path string) {
 }
 
 func TestLoadGCSClient(t *testing.T) {
-	good, _, _ := pluginPaths(t)
+	good, _, _, _ := pluginPaths(t)
 	setPluginPath(t, good)
 
 	client, err := LoadGCSClient(gcs.ClientOptions{Address: "127.0.0.1:6379"})
@@ -66,7 +67,7 @@ func TestLoadGCSClient(t *testing.T) {
 }
 
 func TestLoadGCSClientBadSignature(t *testing.T) {
-	_, bad, _ := pluginPaths(t)
+	_, bad, _, _ := pluginPaths(t)
 	setPluginPath(t, bad)
 
 	_, err := LoadGCSClient(gcs.ClientOptions{Address: "127.0.0.1:6379"})
@@ -85,8 +86,26 @@ func TestLoadGCSClientMissingPlugin(t *testing.T) {
 	}
 }
 
+// TestLoadGCSClientTypedNilHandle pins the loader's typed-nil rejection: a
+// plugin whose Initialize returns a typed-nil handle (non-nil interface, nil
+// error) must fail the load with a clean error instead of panicking on the
+// follow-up handle.Runtime() call. LoadRuntimePlugin is the public entry that
+// reaches loadPluginInternal's load-time Initialize call.
+func TestLoadGCSClientTypedNilHandle(t *testing.T) {
+	_, _, _, typednil := pluginPaths(t)
+	setPluginPath(t, typednil)
+
+	_, err := LoadRuntimePlugin(typednil, options.InitializeOptions{})
+	if err == nil {
+		t.Fatal("LoadRuntimePlugin() = nil error, want error for typed-nil Initialize handle")
+	}
+	if !strings.Contains(err.Error(), "nil handle") {
+		t.Fatalf("error %q does not identify the nil handle", err)
+	}
+}
+
 func TestLoadLogBatchPublisher(t *testing.T) {
-	good, _, _ := pluginPaths(t)
+	good, _, _, _ := pluginPaths(t)
 	setPluginPath(t, good)
 
 	pub, err := LoadLogBatchPublisher(&fakeClient{addr: "127.0.0.1:6379"})
@@ -99,7 +118,7 @@ func TestLoadLogBatchPublisher(t *testing.T) {
 }
 
 func TestLoadLogBatchPublisherMissingSymbol(t *testing.T) {
-	_, bad, _ := pluginPaths(t)
+	_, bad, _, _ := pluginPaths(t)
 	setPluginPath(t, bad)
 
 	_, err := LoadLogBatchPublisher(&fakeClient{})
@@ -112,7 +131,7 @@ func TestLoadLogBatchPublisherMissingSymbol(t *testing.T) {
 }
 
 func TestValidatePluginLoadable(t *testing.T) {
-	good, _, incomplete := pluginPaths(t)
+	good, _, incomplete, _ := pluginPaths(t)
 
 	t.Run("success", func(t *testing.T) {
 		setPluginPath(t, good)
@@ -131,7 +150,7 @@ func TestValidatePluginLoadable(t *testing.T) {
 		}
 	})
 	t.Run("missing publisher symbol with driver symbols present", func(t *testing.T) {
-		_, bad, _ := pluginPaths(t)
+		_, bad, _, _ := pluginPaths(t)
 		setPluginPath(t, bad)
 		err := ValidatePluginLoadable()
 		if err == nil {
@@ -181,7 +200,7 @@ func TestResolvePluginPathRetriesAfterFailure(t *testing.T) {
 }
 
 func TestLoadLogBatchPublisherNilClient(t *testing.T) {
-	good, _, _ := pluginPaths(t)
+	good, _, _, _ := pluginPaths(t)
 	setPluginPath(t, good)
 	_, err := LoadLogBatchPublisher(nil)
 	if err == nil {

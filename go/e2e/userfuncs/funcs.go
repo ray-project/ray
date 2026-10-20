@@ -18,7 +18,8 @@
 //
 // Usage:
 //
-//	// Compile as plugin: go build -buildmode=plugin -o userfuncs.so funcs.go
+//	// Compile as plugin: bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+//	// (artifact: bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so)
 //	// Load in worker: plugin.Open("userfuncs.so")
 //	// Call RegisterFunctions() to register all functions with the global registry
 package userfuncs

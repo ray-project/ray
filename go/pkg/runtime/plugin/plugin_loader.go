@@ -448,9 +448,10 @@ func callPluginFunc(fn reflect.Value, args []reflect.Value, expectedResults int,
 	}
 	// Validate the trailing error result first: when a plugin function returns
 	// (nil, err) the err must surface as-is instead of being masked by a
-	// value-type validator ("must return gcs.Client, got <nil>"). This also
-	// kills the typed-nil path where a value validator would dereference a nil
-	// pointer (e.g. Initialize's handle.Runtime()) before the error is seen.
+	// value-type validator ("must return gcs.Client, got <nil>"). Error-first
+	// ordering only surfaces a non-nil error without reaching the value
+	// validator; the (typed-nil, nil error) case is rejected by
+	// validateRuntimeHandle's reflect-based nil check, not by this ordering.
 	for i := expectedResults - 1; i >= 0; i-- {
 		if i < len(resultValidators) {
 			if err := resultValidators[i](results[i]); err != nil {
@@ -474,6 +475,40 @@ func validateError(v reflect.Value) error {
 		return fmt.Errorf("expected error type, got %T", v.Interface())
 	}
 	return nil
+}
+
+// validateRuntimeHandle validates a reflect.Value returned by a plugin's
+// Initialize: it must be a non-nil implementation of contract.RuntimeHandle
+// (a typed-nil pointer passes a plain interface assertion, so nil-ness is
+// checked through reflect before any method is called on the handle) whose
+// Runtime() is not nil.
+func validateRuntimeHandle(v reflect.Value) error {
+	if v.IsValid() && isNilReflectValue(v) {
+		return fmt.Errorf("Initialize returned a nil handle of type %T", v.Interface())
+	}
+	handle, ok := v.Interface().(contract.RuntimeHandle)
+	if !ok {
+		return fmt.Errorf("Initialize must return contract.RuntimeHandle, got %T", v.Interface())
+	}
+	if r := handle.Runtime(); r == nil || isNilReflectValue(reflect.ValueOf(r)) {
+		return fmt.Errorf("contract.RuntimeHandle.Runtime() must not be nil")
+	}
+	return nil
+}
+
+// isNilReflectValue reports whether v is a nil value of a nilable kind. It
+// unwraps interfaces so a typed-nil pointer returned through the
+// contract.RuntimeHandle interface (a non-nil interface holding a nil pointer)
+// is detected before any method is dispatched on it.
+func isNilReflectValue(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+		return v.IsNil()
+	case reflect.Interface:
+		return v.IsNil() || isNilReflectValue(v.Elem())
+	default:
+		return false
+	}
 }
 
 // loadPluginInternal loads a plugin from the specified path without caching.
@@ -512,18 +547,7 @@ func loadPluginInternal(pluginPath string, opts options.InitializeOptions) (*Run
 	// Call Initialize function and validate results.
 	initArgs := []reflect.Value{reflect.ValueOf(opts)}
 	initResults, err := callPluginFunc(initFunc, initArgs, 2,
-		func(v reflect.Value) error {
-			// Validate first return value implements contract.RuntimeHandle interface
-			handle, ok := v.Interface().(contract.RuntimeHandle)
-			if !ok {
-				return fmt.Errorf("Initialize must return contract.RuntimeHandle, got %T", v.Interface())
-			}
-			// Additional validation: ensure Runtime() is not nil
-			if handle.Runtime() == nil {
-				return fmt.Errorf("contract.RuntimeHandle.Runtime() must not be nil")
-			}
-			return nil
-		},
+		validateRuntimeHandle,
 		validateError,
 	)
 	if err != nil {
@@ -535,18 +559,7 @@ func loadPluginInternal(pluginPath string, opts options.InitializeOptions) (*Run
 	initialize := func(opts options.InitializeOptions) (contract.RuntimeHandle, error) {
 		args := []reflect.Value{reflect.ValueOf(opts)}
 		results, err := callPluginFunc(initFunc, args, 2,
-			func(v reflect.Value) error {
-				// Validate return value implements contract.RuntimeHandle interface
-				handle, ok := v.Interface().(contract.RuntimeHandle)
-				if !ok {
-					return fmt.Errorf("Initialize must return contract.RuntimeHandle, got %T", v.Interface())
-				}
-				// Additional validation: ensure Runtime() is not nil
-				if handle.Runtime() == nil {
-					return fmt.Errorf("contract.RuntimeHandle.Runtime() must not be nil")
-				}
-				return nil
-			},
+			validateRuntimeHandle,
 			validateError,
 		)
 		if err != nil {

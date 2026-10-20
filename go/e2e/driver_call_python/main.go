@@ -106,6 +106,7 @@ func testClassMethod() error {
 	if err != nil {
 		return fmt.Errorf("create Calculator actor failed: %w", err)
 	}
+	defer func() { _ = api.KillActor(handle, true) }()
 	ref, err := api.ActorTask[int](handle, "add", 5).Remote()
 	if err != nil {
 		return fmt.Errorf("call Calculator.add failed: %w", err)

@@ -47,11 +47,13 @@ go_test(
         "$(location //go/pkg/runtime/plugin/testplugins/full:full)",
         "$(location //go/pkg/runtime/plugin/testplugins/bad:bad)",
         "$(location //go/pkg/runtime/plugin/testplugins/incomplete:incomplete)",
+        "$(location //go/pkg/runtime/plugin/testplugins/typednil:typednil)",
     ],
     data = [
         "//go/pkg/runtime/plugin/testplugins/bad",
         "//go/pkg/runtime/plugin/testplugins/full",
         "//go/pkg/runtime/plugin/testplugins/incomplete",
+        "//go/pkg/runtime/plugin/testplugins/typednil",
     ],
     embed = [":plugin"],
     deps = [
