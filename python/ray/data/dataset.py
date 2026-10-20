@@ -2711,44 +2711,34 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.range(100)
-                it1, it2 = ds.streaming_split(2, equal=True)
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
 
             Consume data from iterators in parallel.
 
-            .. testcode::
-
-                @ray.remote
-                def consume(it):
-                    for batch in it.iter_batches():
-                       pass
-
-                ray.get([consume.remote(it1), consume.remote(it2)])
+            >>> @ray.remote
+            ... def consume(it):
+            ...     for batch in it.iter_batches():
+            ...         pass
+            >>> ray.get([consume.remote(it1), consume.remote(it2)])
+            [None, None]
 
             You can loop over the iterators multiple times (multiple epochs).
 
-            .. testcode::
-
-                @ray.remote
-                def train(it):
-                    NUM_EPOCHS = 2
-                    for _ in range(NUM_EPOCHS):
-                        for batch in it.iter_batches():
-                            pass
-
-                ray.get([train.remote(it1), train.remote(it2)])
+            >>> @ray.remote
+            ... def train(it):
+            ...     NUM_EPOCHS = 2
+            ...     for _ in range(NUM_EPOCHS):
+            ...         for batch in it.iter_batches():
+            ...             pass
+            >>> ray.get([train.remote(it1), train.remote(it2)])
+            [None, None]
 
             The following remote function call blocks waiting for a read on ``it2`` to
             start.
 
-            .. testcode::
-                :skipif: True
-
-                ray.get(train.remote(it1))
+            >>> ray.get(train.remote(it1))  # doctest: +SKIP
 
         Args:
             n: Number of output iterators to return.
@@ -2788,18 +2778,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                @ray.remote
-                class Worker:
-
-                    def train(self, data_iterator):
-                        for batch in data_iterator.iter_batches(batch_size=8):
-                            pass
-
-                workers = [Worker.remote() for _ in range(4)]
-                shards = ray.data.range(100).split(n=4, equal=True)
-                ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            >>> import ray
+            >>> @ray.remote
+            ... class Worker:
+            ...     def train(self, data_iterator):
+            ...         for batch in data_iterator.iter_batches(batch_size=8):
+            ...             pass
+            >>> workers = [Worker.remote() for _ in range(4)]
+            >>> shards = ray.data.range(100).split(n=4, equal=True)
+            >>> ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            [None, None, None, None]
 
         Time complexity: O(1)
 
@@ -6955,21 +6943,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_images("example://image-datasets/simple")
-
-                for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
-                    print(batch)
-
-            .. testoutput::
-                :options: +MOCK
-
-                {'image': array([[[[...]]]], dtype=uint8)}
-                ...
-                {'image': array([[[[...]]]], dtype=uint8)}
+            >>> import ray
+            >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            >>> for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
+            ...     print(batch)
+            {'image': array([[[[...]]]], dtype=uint8)}
+            {'image': array([[[[...]]]], dtype=uint8)}
 
         .. note::
 
@@ -7180,21 +7159,13 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-                jax_dataset = ds.iter_jax_batches(batch_size=2)
-                for batch in jax_dataset:
-                    print(batch["sepal length (cm)"], batch["target"])
-                    break
-
-            .. testoutput::
-                :options: +MOCK
-
-                [5.1 4.9] [0 0]
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> jax_dataset = ds.iter_jax_batches(batch_size=2)
+            >>> for batch in jax_dataset:
+            ...     print(batch["sepal length (cm)"], batch["target"])
+            ...     break
+            [5.1 4.9] [0 0]
 
         Args:
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
@@ -7279,25 +7250,18 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-                tf_dataset = ds.to_tf(
-                    feature_columns="sepal length (cm)",
-                    label_columns="target",
-                    batch_size=2
-                )
-                for features, labels in tf_dataset:
-                    print(features, labels)
-
-            .. testoutput::
-
-                tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
-                ...
-                tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> tf_dataset = ds.to_tf(
+            ...     feature_columns="sepal length (cm)",
+            ...     label_columns="target",
+            ...     batch_size=2
+            ... )
+            >>> for features, labels in tf_dataset:
+            ...     print(features, labels)
+            tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
+            ...
+            tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
 
         Time complexity: O(1)
 
@@ -8040,26 +8004,14 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.range(10)
-            assert ds.stats() == ""
-
-            ds = ds.materialize()
-            print(ds.stats())
-
-        .. testoutput::
-            :options: +MOCK
-
-            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
-            * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
-            * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
-            * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
-            * Output num rows: 0 min, 1 max, 0 mean, 10 total
-            * Output size bytes: 0 min, 8 max, 4 mean, 80 total
-            * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> ds.stats()
+        ''
+        >>> ds = ds.materialize()
+        >>> print(ds.stats())
+        Operator 1 ReadRange...: ... tasks executed, ... blocks produced in ...
+        * Remote wall time: ...
 
         Returns:
             A string containing execution timing information, or an empty string if
@@ -8073,34 +8025,29 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-
-            import ray
-            from ray.data import Dataset
-            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            ds = ds.map(lambda x: x + 1)
-            ds.explain()
-
-        .. testoutput::
-
-            <BLANKLINE>
-            -------- Logical Plan --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Logical Plan (Optimized) --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Physical Plan --------
-            TaskPoolMapOperator[Map(<lambda>)]
-            +- TaskPoolMapOperator[ReadRange]
-               +- InputDataBuffer[Input]
-            <BLANKLINE>
-            -------- Physical Plan (Optimized) --------
-            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
-            +- InputDataBuffer[Input]
-            <BLANKLINE>
+        >>> import ray
+        >>> from ray.data import Dataset
+        >>> ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+        >>> ds = ds.map(lambda x: x + 1)
+        >>> ds.explain()
+        <BLANKLINE>
+        -------- Logical Plan --------
+        MapRows[Map(<lambda>)]
+        +- Read[ReadRange]
+        <BLANKLINE>
+        -------- Logical Plan (Optimized) --------
+        MapRows[Map(<lambda>)]
+        +- Read[ReadRange]
+        <BLANKLINE>
+        -------- Physical Plan --------
+        TaskPoolMapOperator[Map(<lambda>)]
+        +- TaskPoolMapOperator[ReadRange]
+           +- InputDataBuffer[Input]
+        <BLANKLINE>
+        -------- Physical Plan (Optimized) --------
+        TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+        +- InputDataBuffer[Input]
+        <BLANKLINE>
         """
         print(explain_plan(self._logical_plan))
 
@@ -8211,18 +8158,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-                serialized_ds = ds.serialize_lineage()
-                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-                print(ds)
-
-            .. testoutput::
-
-                Dataset(num_rows=?, schema=...)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> serialized_ds = ds.serialize_lineage()
+            >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            >>> print(ds)
+            Dataset(num_rows=?, schema=...)
 
 
         Returns:
@@ -8281,18 +8222,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-                serialized_ds = ds.serialize_lineage()
-                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-                print(ds)
-
-            .. testoutput::
-
-                Dataset(num_rows=?, schema=...)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> serialized_ds = ds.serialize_lineage()
+            >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            >>> print(ds)
+            Dataset(num_rows=?, schema=...)
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
