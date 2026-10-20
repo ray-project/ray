@@ -187,9 +187,7 @@ def test_consume_of_local_copy_pins_it_without_transfer(two_worker_nodes, as_byt
     wait_for_condition(lambda: _num_primary_copies(node_b.node_id) == copies_b + 1)
     assert _num_created_objects(node_b.node_id) == created_b
     wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a - 1)
-    wait_for_condition(
-        lambda: ray.get(owner.locations.remote())[0] == [node_b.node_id]
-    )
+    wait_for_condition(lambda: ray.get(owner.locations.remote())[0] == [node_b.node_id])
 
 
 def test_consume_of_evicted_local_copy_pulls_it_as_move(two_worker_nodes):
@@ -237,9 +235,7 @@ def test_consume_during_owner_fetch_pulls_once(two_worker_nodes):
     assert ray.get(owner.consume.remote()) == [20 * MiB] * count
     wait_for_condition(lambda: _num_primary_copies(node_b.node_id) == copies_b + count)
     assert _num_created_objects(node_b.node_id) == created_b + count
-    wait_for_condition(
-        lambda: _num_primary_copies(node_a.node_id) == copies_a - count
-    )
+    wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a - count)
 
 
 def test_consume_during_owner_get_pulls_once(two_worker_nodes):
@@ -263,9 +259,7 @@ def test_consume_during_owner_get_pulls_once(two_worker_nodes):
     assert ray.get(consumed) == [20 * MiB] * count
     wait_for_condition(lambda: _num_primary_copies(node_b.node_id) == copies_b + count)
     assert _num_created_objects(node_b.node_id) == created_b + count
-    wait_for_condition(
-        lambda: _num_primary_copies(node_a.node_id) == copies_a - count
-    )
+    wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a - count)
 
 
 def test_consumer_death_mid_move_keeps_object(two_worker_nodes):
@@ -290,7 +284,8 @@ def test_consumer_death_mid_move_keeps_object(two_worker_nodes):
     assert [int(a.sum()) for a in ray.get(refs)] == [20 * MiB] * count
     # Whichever moves completed, each object ends with exactly one primary copy.
     wait_for_condition(
-        lambda: _num_primary_copies(node_a.node_id) + _num_primary_copies(node_b.node_id)
+        lambda: _num_primary_copies(node_a.node_id)
+        + _num_primary_copies(node_b.node_id)
         == copies
     )
 
@@ -421,9 +416,7 @@ def test_topology_move_pins_consumer_copy(three_worker_nodes, owner_placement):
     wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a - 1)
     if owner_placement == "own_node":
         assert _num_primary_copies(owner_node.node_id) == copies_owner
-    wait_for_condition(
-        lambda: ray.get(owner.locations.remote())[0] == [node_b.node_id]
-    )
+    wait_for_condition(lambda: ray.get(owner.locations.remote())[0] == [node_b.node_id])
     # The owner can still read the object after the move.
     assert ray.get(owner.read.remote()) == MiB
 
@@ -472,9 +465,7 @@ def test_topology_owner_fetch_in_flight_then_consume(
     wait_for_condition(lambda: _num_primary_copies(node_b.node_id) == copies_b + count)
     # Each object is created once on the consumer's node, whoever's pull did it.
     assert _num_created_objects(node_b.node_id) == created_b + count
-    wait_for_condition(
-        lambda: _num_primary_copies(node_a.node_id) == copies_a - count
-    )
+    wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a - count)
     if owner_placement == "own_node":
         assert _num_primary_copies(owner_node.node_id) == copies_owner
 
