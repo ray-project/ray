@@ -12,9 +12,12 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_DIRECT_INGRESS_SHUTDOWN_BUFFER_S,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import _callable_uses_multiplexing
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import ServeApplicationSchema
 
@@ -46,6 +49,49 @@ def get_deploy_args(
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
 
+    uses_multiplexed = uses_multiplexing or _callable_uses_multiplexing(
+        replica_config.deployment_def
+    )
+
+    if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        if uses_multiplexed:
+            # HAProxy mode turns on direct ingress; prefer the HAProxy-specific error
+            # below so callers/tests see RAY_SERVE_ENABLE_HA_PROXY when applicable.
+            if not RAY_SERVE_ENABLE_HA_PROXY:
+                raise ValueError(
+                    "Model multiplexing (@serve.multiplexed) is not supported on "
+                    "ingress deployments when direct ingress is enabled. "
+                    "Multiplexing should only be used on downstream replicas composed "
+                    "via DeploymentHandle. The ingress is the routing entry point, "
+                    "not a model-serving leaf."
+                )
+
+    if uses_multiplexed:
+        if RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING:
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is disallowed because "
+                "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1 is set. "
+                "Remove multiplexed model loaders from your deployments or unset "
+                "this variable."
+            )
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is not supported when "
+                "RAY_SERVE_ENABLE_HA_PROXY=1. Disable HAProxy or remove "
+                "@serve.multiplexed from your deployments."
+            )
+        # Downstream multiplexing is the supported pattern; only warn when the
+        # non-recommended ingress placement is used (and did not already raise).
+        if ingress:
+            logger.warning(
+                "This ingress deployment uses @serve.multiplexed. Model "
+                "multiplexing on ingress is not recommended and is disallowed "
+                "when direct ingress is enabled. Use @serve.multiplexed only on "
+                "downstream replicas composed via DeploymentHandle. To fail "
+                "deployments that use multiplexing immediately, set "
+                "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1."
+            )
+
     deployment_config.version = version  # type: ignore[union-attr]
 
     controller_deploy_args = {
@@ -59,7 +105,7 @@ def get_deploy_args(
         "serialized_autoscaling_policy_def": serialized_autoscaling_policy_def,
         "serialized_request_router_cls": serialized_request_router_cls,
         "serialized_deployment_actors": serialized_deployment_actors,
-        "uses_multiplexing": uses_multiplexing,
+        "uses_multiplexing": uses_multiplexed,
     }
 
     return controller_deploy_args
