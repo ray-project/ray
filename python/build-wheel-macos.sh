@@ -56,7 +56,9 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   conda create -y -n "$CONDA_ENV_NAME"
   conda activate "$CONDA_ENV_NAME"
   conda remove -y python || true
-  conda install -y python="$PY_MM" pip=25.2
+  conda install -y python="$PY_MM" pip
+  # conda-forge can lag PyPI, so pin pip from PyPI.
+  python -m pip install pip==26.2.2
 
   # NOTE: We expect conda to set the PATH properly.
   PIP_CMD=pip

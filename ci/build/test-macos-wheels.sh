@@ -66,9 +66,11 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     conda create -y -n "$CONDA_ENV_NAME"
     conda activate "$CONDA_ENV_NAME"
     conda remove -y python || true
-    conda install -y python="${PY_MM}" pip=25.2
+    conda install -y python="${PY_MM}" pip
 
     PYTHON_EXE="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/python"
+    # conda-forge can lag PyPI, so pin pip from PyPI.
+    "$PYTHON_EXE" -m pip install pip==26.2.2
     PIP_CMD="/opt/homebrew/opt/miniforge/envs/${CONDA_ENV_NAME}/bin/pip"
   else
     PYTHON_EXE="$MACPYTHON_PY_PREFIX/$PY_MM/bin/python$PY_MM"

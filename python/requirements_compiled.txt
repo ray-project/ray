@@ -281,7 +281,7 @@ cachetools==5.5.2
     #   pyiceberg
 celery==5.6.3
     # via -r python/requirements.txt
-certifi==2026.4.22
+certifi==2026.10.19
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/security-requirements.txt
@@ -2605,7 +2605,7 @@ urllib3==1.26.20
     #   testcontainers
 utilsforecast==0.2.15
     # via statsforecast
-uv==0.8.9
+uv==0.13.4
     # via -r python/requirements/test-requirements.txt
 uvicorn==0.53.0
     # via

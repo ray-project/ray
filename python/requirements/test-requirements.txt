@@ -82,7 +82,7 @@ smart_open[s3]==6.2.0
 tqdm==4.67.1
 trustme==0.9.0
 testfixtures==7.0.0
-uv==0.8.9
+uv==0.13.4
 uvicorn>=0.26
 werkzeug==2.3.8
 xlrd==2.0.1

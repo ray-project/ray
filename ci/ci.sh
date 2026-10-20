@@ -55,7 +55,7 @@ compile_pip_dependencies() {
     cd "${WORKSPACE_DIR}"
 
     echo "Target file: $TARGET"
-    pip install "pip-tools==7.4.1" "wheel==0.45.1"
+    pip install "pip-tools==7.6.2" "wheel==0.45.1"
 
     # Required packages to lookup e.g. dragonfly-opt
     HAS_TORCH=0
@@ -118,7 +118,7 @@ compile_pip_dependencies_py314() {
 
   (
     cd "${WORKSPACE_DIR}"
-    pip install "uv==0.9.26"
+    pip install "uv==0.13.4"
 
     # Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
     env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \

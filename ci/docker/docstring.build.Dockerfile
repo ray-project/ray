@@ -21,7 +21,7 @@ RUN <<EOF
 set -euo pipefail
 
 # oss-ci-base_test doesn't ship uv; oss-ci-base_build gets it from ci.sh init.
-curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.13.4/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 

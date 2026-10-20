@@ -78,7 +78,7 @@ apt-get install -y \
   google-cloud-cli
 
 # Install uv
-curl -fsSL https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -fsSL https://astral.sh/uv/0.13.4/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 mkdir -p /usr/local/python
 # Install Python using uv
@@ -95,7 +95,7 @@ ln -s "$UV_PYTHON_BIN" /usr/local/bin/python
 
 # As a convention, we pin all python packages to a specific version. This
 # is to to make sure we can control version upgrades through code changes.
-uv pip install --system pip==25.0 cffi==1.16.0
+uv pip install --system pip==26.2.2 cffi==1.16.0
 
 # Point pip, uv and bazel at the CI package mirror's hosted PyPI index when it is
 # reachable: ci/pypi_proxy_profile.sh probes and decides per step (CI steps run

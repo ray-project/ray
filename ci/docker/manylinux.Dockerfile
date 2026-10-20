@@ -28,7 +28,7 @@ ENV BUILDKITE_BAZEL_CACHE_URL=$BUILDKITE_BAZEL_CACHE_URL
 
 RUN yum -y install sudo
 
-RUN curl -LsSf https://astral.sh/uv/0.8.17/install.sh | \
+RUN curl -LsSf https://astral.sh/uv/0.13.4/install.sh | \
     env UV_INSTALL_DIR=/usr/local/bin sh
 
 RUN <<EOF

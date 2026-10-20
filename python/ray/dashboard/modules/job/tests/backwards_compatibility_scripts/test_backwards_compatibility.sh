@@ -41,9 +41,9 @@ do
     # ray 3.0.0.dev0 in base with ray 2.0.1, and every subsequent
     # dashboard test that imports `ray._common` fails because 2.0.1
     # predates that module.
-    conda create -y -n "${env_name}" python="${PYTHON_VERSION}" pip=25.2
+    conda create -y -n "${env_name}" python="${PYTHON_VERSION}" pip
     conda activate "${env_name}"
-    python -m pip install --upgrade pip
+    python -m pip install pip==26.2.2
 
     # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
     # ray<2.9 is only compatible with pydantic<2 and setuptools < 70.

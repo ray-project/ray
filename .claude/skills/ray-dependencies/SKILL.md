@@ -90,11 +90,11 @@ ci/ci.sh compile_pip_dependencies
 ci/ci.sh compile_pip_dependencies my_custom_lock.txt
 ```
 
-Run inside an environment matching the target Python version (the function `pip install`s `pip-tools==7.4.1` and `wheel==0.45.1` itself). aarch64/arm64 is a no-op — the function returns early because not all pinned packages have aarch64 wheels.
+Run inside an environment matching the target Python version (the function `pip install`s `pip-tools==7.6.2` and `wheel==0.45.1` itself). aarch64/arm64 is a no-op — the function returns early because not all pinned packages have aarch64 wheels.
 
 ### What it does
 
-Both functions wrap `pip-compile` (pip-tools 7.4.1) with the same flags:
+Both functions wrap `pip-compile` (pip-tools 7.6.2) with the same flags:
 
 ```
 pip-compile --verbose --resolver=backtracking \
@@ -311,7 +311,7 @@ Cross-config dependencies are supported — e.g., `ci_data.depsets.yaml` referen
 
 ## Marker preservation (pip-compile, multi-Python locks)
 
-`pip-compile` (pip-tools 7.4.1, the version `ci/ci.sh` uses) **strips `python_version` markers** from output pins UNLESS the source declaration is **an exact-version pin with the marker attached**. This matters because the unified `requirements_compiled.txt` is consumed as a constraint at multiple `--python-version` targets via uv.
+`pip-compile` (pip-tools 7.6.2, the version `ci/ci.sh` uses) **strips `python_version` markers** from output pins UNLESS the source declaration is **an exact-version pin with the marker attached**. This matters because the unified `requirements_compiled.txt` is consumed as a constraint at multiple `--python-version` targets via uv.
 
 **What works (markers survive):**
 ```
