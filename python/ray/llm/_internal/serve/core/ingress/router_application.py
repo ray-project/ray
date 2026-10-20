@@ -620,7 +620,8 @@ class RouterApplication:
         for config in llm_configs or []:
             if not is_kv_aware(config):
                 continue
-            for name, value in (config.runtime_env or {}).get("env_vars", {}).items():
+            env_vars = (config.runtime_env or {}).get("env_vars") or {}
+            for name, value in env_vars.items():
                 if name == "VLLM_API_KEY":
                     continue
                 if name in env_vars and env_vars[name] != value:

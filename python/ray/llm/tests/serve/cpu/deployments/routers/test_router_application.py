@@ -752,5 +752,17 @@ def test_deployment_options_keep_router_available():
     }
 
 
+def test_deployment_options_allow_null_runtime_env_vars():
+    config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="model-a"),
+        runtime_env={"env_vars": None},
+    )
+
+    with patch.object(router_application_module, "is_kv_aware", return_value=True):
+        options = RouterApplication.get_deployment_options([config])
+
+    assert options["ray_actor_options"]["runtime_env"] == get_llm_serve_runtime_env()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
