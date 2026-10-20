@@ -6288,7 +6288,12 @@ class DeploymentState:
             elif replica.replica_id in partly_started_gang_members:
                 # Stop partly started gangs together so a STARTING/UPDATING
                 # member cannot be killed while a RUNNING sibling still serves.
-                self._stop_replica(replica)
+                self._stop_replica(
+                    replica,
+                    graceful_stop=(
+                        replica.actor_details.state != ReplicaState.STARTING
+                    ),
+                )
             # For RUNNING replicas, migrate them safely by starting
             # a replacement replica first.
             elif replica.actor_details.state == ReplicaState.RUNNING:

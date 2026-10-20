@@ -10204,9 +10204,20 @@ class TestGangDraining:
         assert stopping == gang_size
         assert ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 0
 
+        dsm.update()
+        if num_ready:
+            assert not any(r._actor.killed for r in replicas)
+        else:
+            # An all-STARTING gang can be killed without finishing shutdown.
+            assert all(r._actor.killed for r in replicas)
+
         replicas[0]._actor.set_done_stopping()
         dsm.update()
-        assert not any(r._actor.killed for r in replicas)
+        if reconfigure:
+            # UPDATING replicas still need to drain with their RUNNING siblings.
+            assert not any(r._actor.killed for r in replicas)
+        else:
+            assert all(r._actor.killed for r in replicas)
 
         # Complete stopping and start new replicas
         for r in ds._replicas.get([ReplicaState.STOPPING]):
