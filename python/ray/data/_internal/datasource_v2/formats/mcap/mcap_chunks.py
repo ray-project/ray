@@ -28,6 +28,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     OnCorrupt,
     read_chunk,
     read_chunks,
+    read_message_index,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
@@ -97,6 +98,86 @@ def _scan_declarations(f: Any, chunk_index: "ChunkIndex", declared: _Declared) -
             declared.schemas.setdefault(record.id, record)
 
 
+def latest_indexed_log_time(
+    f: Any, summary: "Summary", channel_id: int, low: int, high: int
+) -> Optional[int]:
+    """The latest log time of the channel's messages in ``[low, high)``, if any.
+
+    It is read from the Message Index records that follow each chunk, so no
+    chunk is decompressed. A chunk written without them is not searched.
+    """
+    chunks = sorted(
+        (
+            c
+            for c in summary.chunk_indexes
+            if channel_id in c.message_index_offsets
+            and c.message_start_time < high
+            and c.message_end_time >= low
+        ),
+        key=lambda c: c.message_end_time,
+        reverse=True,
+    )
+    latest: Optional[int] = None
+    for chunk in chunks:
+        if latest is not None and chunk.message_end_time <= latest:
+            break
+        for log_time, _ in read_message_index(f, chunk, channel_id):
+            if low <= log_time < high and (latest is None or log_time > latest):
+                latest = log_time
+    return latest
+
+
+def earliest_indexed_log_time(
+    f: Any,
+    summary: "Summary",
+    channel_id: int,
+    low: int,
+    high: int,
+    skip_offsets: Optional[Set[int]] = None,
+) -> Optional[int]:
+    """The earliest log time of the channel's messages in ``[low, high)``, if any.
+
+    As ``latest_indexed_log_time``, from the Message Index records, leaving
+    out the chunks at ``skip_offsets``. Chunks are searched by start time, so
+    the first that holds one usually ends it.
+    """
+    chunks = sorted(
+        (
+            c
+            for c in summary.chunk_indexes
+            if channel_id in c.message_index_offsets
+            and c.message_start_time < high
+            and c.message_end_time >= low
+            and (skip_offsets is None or c.chunk_start_offset not in skip_offsets)
+        ),
+        key=lambda c: c.message_start_time,
+    )
+    earliest: Optional[int] = None
+    for chunk in chunks:
+        if earliest is not None and chunk.message_start_time >= earliest:
+            break
+        for log_time, _ in read_message_index(f, chunk, channel_id):
+            if low <= log_time < high and (earliest is None or log_time < earliest):
+                earliest = log_time
+    return earliest
+
+
+def chunk_may_hold(
+    f: Any, chunk: "ChunkIndex", channel_id: int, low: int, high: int
+) -> bool:
+    """Whether the chunk may hold a message of the channel in ``[low, high)``.
+
+    The chunk's Message Index records answer without decompressing it. A chunk
+    written without them may hold any channel.
+    """
+    if not chunk.message_index_offsets:
+        return True
+    return channel_id in chunk.message_index_offsets and any(
+        low <= log_time < high
+        for log_time, _ in read_message_index(f, chunk, channel_id)
+    )
+
+
 class SelectedMessageReader:
     """Reads the messages a selection keeps out of an open MCAP file.
 
@@ -124,30 +205,41 @@ class SelectedMessageReader:
         file_summary: Optional[Callable[[], "Summary"]] = None,
         on_corrupt: Optional[OnCorrupt] = None,
         *,
+        chunk_indexes: Optional[List["ChunkIndex"]] = None,
+        selected: Optional[Set[int]] = None,
+        time_bounds: Optional[Tuple[Optional[int], Optional[int]]] = None,
         log_time_order: Optional[bool] = None,
     ) -> Iterator[_Selected]:
         """Yield the selected messages of the owned chunks of an indexed file.
 
         Chunks are read in file order, or merged by log time with
-        ``log_time_order``. ``summary`` may index only the owned chunks, as a
-        read task's summary does (``mcap_task_summary``). Then ``file_summary``
-        returns the whole summary, which reading back a declaration needs.
+        ``log_time_order``. ``summary`` may index only some of the file's
+        chunks, as a read task's records do (``mcap_task_summary``). Then
+        ``file_summary`` returns the whole summary, which reading back a
+        declaration needs.
+        ``chunk_indexes``, ``selected``, ``time_bounds`` and ``log_time_order``
+        override what the summary, the selection and the reader give. A
+        decoding task uses them to read a video channel's messages back from
+        before its own (``mcap_video_source``).
 
         With ``on_corrupt``, a chunk that cannot be decoded is handed to it and
         skipped, so the file's other chunks are still read. An error reading
-        ``f`` still raises. ``log_time_order`` overrides the reader's setting.
+        ``f`` still raises.
         """
+        if selected is None:
+            selected = self._selection.selected_channel_ids(
+                summary.channels, summary.schemas
+            )
+        if chunk_indexes is None:
+            chunk_indexes = self.candidate_chunks(summary, selected)
+        if offsets is not None:
+            chunk_indexes = [
+                c for c in chunk_indexes if c.chunk_start_offset in offsets
+            ]
+        if time_bounds is None:
+            time_bounds = (self._selection.start_time, self._selection.end_time)
         if log_time_order is None:
             log_time_order = self._log_time_order
-        selected = self._selection.selected_channel_ids(
-            summary.channels, summary.schemas
-        )
-        chunk_indexes = [
-            c
-            for c in self.candidate_chunks(summary, selected)
-            if offsets is None or c.chunk_start_offset in offsets
-        ]
-        time_bounds = (self._selection.start_time, self._selection.end_time)
         declared = _Declared(
             dict(summary.channels),
             dict(summary.schemas),
