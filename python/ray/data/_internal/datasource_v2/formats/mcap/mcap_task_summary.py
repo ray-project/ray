@@ -6,16 +6,18 @@ it hands those records on, and a read task neither requests nor parses the
 whole summary. They stay MCAP records, in two steps:
 
 1. ``MCAPSummaryIndexer`` adds two columns to its listing rows
-   (``with_listing_records``): each chunk row's ``ChunkIndex`` record, and the
-   file's records, stored once per file. For a chunk row those are the file's
-   schema and channel records. A whole-file row carries every record of the
-   summary, or none when the file has no summary. An unreadable file carries
-   null.
+   (``with_listing_records``): each row's own index record, and the file's
+   records, stored once per file. A chunk row's index record is its
+   ``ChunkIndex``, and the file's records are its schema and channel records.
+   At ``attachment`` and ``metadata`` granularity a row's index record is its
+   record's ``AttachmentIndex`` or ``MetadataIndex``, which gives the record's
+   offset and length. A whole-file row carries every record of the summary, or
+   none when the file has no summary. An unreadable file carries null.
 2. ``TaskSummaryPartitioner`` groups the rows into read tasks with
    ``OrderedFileCutter`` and ``OnlineBinPacker`` (``mcap_file_cuts``), which
    keep only paths, sizes and chunk metadata. To each packed row it adds the
-   file's records followed by the index records of the chunks the row names,
-   compressed with zstd (``TASK_SUMMARY_COLUMN``).
+   file's records followed by the index records of the chunks or records the
+   row names, compressed with zstd (``TASK_SUMMARY_COLUMN``).
 
 A carried ``ChunkIndex`` record leaves out its ``message_index_offsets``. The
 reader uses them only to pick the chunks that may hold a selected channel, and
@@ -36,7 +38,8 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
 )
 
-# Listing columns: the file's records, once per file, and each row's chunk.
+# Listing columns: the file's records, once per file, and each row's own index
+# record.
 FILE_RECORDS_COLUMN = "__mcap_file_records"
 CHUNK_INDEX_COLUMN = "__mcap_chunk_index"
 # Packed column: the records one read task needs for one file.
@@ -47,6 +50,8 @@ _FILE_RECORDS_TYPE = pa.dictionary(pa.int32(), pa.binary())
 _SCHEMA_OPCODE = 0x03
 _CHANNEL_OPCODE = 0x04
 _CHUNK_INDEX_OPCODE = 0x08
+_ATTACHMENT_INDEX_OPCODE = 0x0A
+_METADATA_INDEX_OPCODE = 0x0D
 # A ``ChunkIndex`` record: the opcode (1 byte) and the record length (8), the
 # chunk's two log times (8 each), its start offset (8) and length (8), then
 # ``message_index_offsets`` as a byte count (4) and 10 bytes per channel.
@@ -67,6 +72,8 @@ class SectionRecords:
     # Each ``ChunkIndex`` record without its message index offsets, by its
     # chunk's start offset.
     chunk_indexes: Mapping[int, bytes]
+    # Each ``AttachmentIndex`` and ``MetadataIndex`` record, by its record's offset.
+    record_indexes: Mapping[int, bytes]
 
 
 def split_section(section: memoryview) -> SectionRecords:
@@ -74,6 +81,7 @@ def split_section(section: memoryview) -> SectionRecords:
     everything: List[memoryview] = []
     declarations: List[memoryview] = []
     chunk_indexes: Dict[int, bytes] = {}
+    record_indexes: Dict[int, bytes] = {}
     for opcode, record in summary_records(section):
         everything.append(record)
         if opcode in (_SCHEMA_OPCODE, _CHANNEL_OPCODE):
@@ -82,10 +90,16 @@ def split_section(section: memoryview) -> SectionRecords:
             at = _CHUNK_START_OFFSET_AT
             offset = int.from_bytes(record[at : at + 8], "little")
             chunk_indexes[offset] = _without_message_index_offsets(record)
+        elif opcode in (_ATTACHMENT_INDEX_OPCODE, _METADATA_INDEX_OPCODE):
+            # The record's own offset is the index record's first field.
+            at = _RECORD_PREFIX_BYTES
+            offset = int.from_bytes(record[at : at + 8], "little")
+            record_indexes[offset] = bytes(record)
     return SectionRecords(
         everything=b"".join(everything),
         declarations=b"".join(declarations),
         chunk_indexes=chunk_indexes,
+        record_indexes=record_indexes,
     )
 
 
@@ -122,7 +136,8 @@ def with_listing_records(
     """One file's listing rows, plus the columns that carry its records.
 
     ``file_records`` is stored once, however many rows the file has.
-    ``chunk_index_records`` has one entry per row, ``None`` for a whole-file row.
+    ``chunk_index_records`` has one entry per row: its chunk's or record's index
+    record, ``None`` for a whole-file row.
     """
     num_rows = len(manifest)
     assert len(chunk_index_records) == num_rows
@@ -235,7 +250,7 @@ class TaskSummaryPartitioner(FilePartitioner):
         """The records of one packed row, releasing them once the file is packed.
 
         A packed row unites the listing rows of one file in one task: one per
-        chunk it names, or one whole-file row.
+        chunk or record it names, or one whole-file row.
         """
         held = self._held.get(path)
         if held is None:

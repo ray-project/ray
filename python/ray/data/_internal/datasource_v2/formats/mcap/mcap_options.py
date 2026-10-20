@@ -23,6 +23,20 @@ if TYPE_CHECKING:
 # Name of the deterministic per-row id column (see ``MCAPReader``).
 ROW_ID_COLUMN = "row_id"
 
+# What one output row of a read of paths is (``read_granularity``).
+# ``message`` is one message per row. ``attachment`` and ``metadata`` are one
+# Attachment or Metadata record per row. Those records live outside the message
+# stream (``mcap_records``).
+MESSAGE_GRANULARITY = "message"
+ATTACHMENT_GRANULARITY = "attachment"
+METADATA_GRANULARITY = "metadata"
+GRANULARITIES: Tuple[str, ...] = (
+    MESSAGE_GRANULARITY,
+    ATTACHMENT_GRANULARITY,
+    METADATA_GRANULARITY,
+)
+RECORD_GRANULARITIES: Tuple[str, ...] = (ATTACHMENT_GRANULARITY, METADATA_GRANULARITY)
+
 _NS_PER_S = 1_000_000_000
 
 # How far back, in seconds, a decoder looks for a keyframe before the first
