@@ -15,6 +15,7 @@ import ray
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
@@ -849,6 +850,61 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     # Rows with a=1.5 should have float a, with b=None
     assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_map_batches_sync_udf_not_fused_with_async_actor(shutdown_only, is_generator):
+    """A sync UDF must not fuse into an async callable-class operator.
+
+    Regression test for https://github.com/ray-project/ray/issues/57729. An async
+    UDF hosts an event loop on the map worker's thread, so fusing would make the
+    sync UDF's ``asyncio.run()`` fail with "cannot be called from a running event
+    loop". The two operators must stay separate at plan time.
+    """
+
+    def _load_batch(batch):
+        async def _load_all():
+            return await asyncio.gather(
+                *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
+            )
+
+        batch["data"] = asyncio.run(_load_all())
+        return batch
+
+    def sync_udf(batch):
+        return _load_batch(batch)
+
+    def sync_generator_udf(batch):
+        yield _load_batch(batch)
+
+    class AsyncActor:
+        # Stays async on purpose: it is what makes the fused worker host a loop.
+        async def __call__(self, batch):
+            await asyncio.sleep(0.001)
+            return batch
+
+    n = 4
+    ds = (
+        ray.data.range(n, override_num_blocks=n)
+        .map_batches(sync_generator_udf if is_generator else sync_udf)
+        .map_batches(AsyncActor, concurrency=1)
+    )
+
+    # Plan-time assertion: the operators stay separate. Fused, the sync UDF runs
+    # on the async worker's event-loop thread and `asyncio.run()` above raises.
+    op = get_execution_plan(ds._logical_plan)[0].dag
+    names = []
+    while op is not None:
+        names.append(type(op).__name__)
+        op = op.input_dependencies[0] if op.input_dependencies else None
+    assert names.count("ActorPoolMapOperator") == 1, names
+    assert (
+        names.count("TaskPoolMapOperator") == 1
+    ), f"sync UDF should stay its own task-pool operator, got {names}"
+
+    result = ds.take_all()
+    assert len(result) == n
+    assert sorted(row["data"] for row in result) == list(range(n))
 
 
 if __name__ == "__main__":
