@@ -284,7 +284,7 @@ If your output is hard to test and you don't want to display a sample output, ex
 
 ## How to add a page's examples to CI
 
-CI tests a documentation page's `doctest` and `testcode` examples only if `doc/BUILD.bazel` names the page. When you add the first runnable example to a page, add the page to its library's `doctest_each` list in `doc/BUILD.bazel`, or to the `team:none` list if no library owns it. The `doc_prose_doctest_targets` lint fails a PR that adds a runnable example to a page no target names, and a PR that leaves a page with no runnable example in a list.
+CI tests a documentation page's `doctest` and `testcode` examples only if `doc/BUILD.bazel` names the page. When you add the first runnable example to a page, add the page to its library's `doctest_each` list in `doc/BUILD.bazel`, or to the `team:none` list if no library owns it. The `doc_prose_doctest_targets` lint fails a PR that adds a runnable example to a page that no target names, and a PR that leaves a page with no runnable example in a list.
 
 ## How to test examples with GPUs
 
