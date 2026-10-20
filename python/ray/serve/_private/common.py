@@ -3,6 +3,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
+from pydantic import BaseModel
 from starlette.types import Scope
 
 import ray
@@ -972,6 +973,57 @@ OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
     "Use handle.options(_by_reference=True) to enable it."
 )
 
+
+class AutoscalingStatus(str, Enum):
+    UPSCALE = "AUTOSCALING_UPSCALE"
+    DOWNSCALE = "AUTOSCALING_DOWNSCALE"
+    STABLE = "AUTOSCALING_STABLE"
+
+    @staticmethod
+    def format_scaling_status(trigger: "AutoscalingStatus") -> str:
+        mapping = {
+            AutoscalingStatus.UPSCALE: "scaling up",
+            AutoscalingStatus.DOWNSCALE: "scaling down",
+            AutoscalingStatus.STABLE: "stable",
+        }
+        return mapping.get(trigger, str(trigger).lower())
+
+
+class DeploymentSnapshot(BaseModel):
+    snapshot_type: str = "deployment"
+    timestamp_str: str
+    app: str
+    deployment: str
+    current_replicas: int
+    target_replicas: int
+    min_replicas: Optional[int]
+    max_replicas: Optional[int]
+    scaling_status: str
+    policy_name: str
+    look_back_period_s: Optional[float]
+    queued_requests: Optional[float]
+    ongoing_requests: float
+    metrics_health: str
+    errors: List[str]
+
+    @staticmethod
+    def format_metrics_health_text(
+        *,
+        time_since_last_collected_metrics_s: Optional[float],
+        look_back_period_s: Optional[float],
+    ) -> str:
+        """
+        - < 1s  -> integer milliseconds
+        - >= 1s -> seconds with two decimals
+        """
+        if time_since_last_collected_metrics_s is None:
+            return "unknown"
+        val = time_since_last_collected_metrics_s
+        if val < 1.0:
+            return f"{val * 1000:.0f}ms"
+        return f"{val:.2f}s"
+
+
 RUNNING_REQUESTS_KEY = "running_requests"
 ONGOING_REQUESTS_KEY = "ongoing_requests"
 QUEUED_REQUESTS_KEY = "queued_requests"
@@ -1057,3 +1109,7 @@ class ReplicaMetricReport:
     replica_id: ReplicaID
     metrics: Dict[str, TimeSeries]
     timestamp: float
+
+
+class AutoscalingSnapshotError(str, Enum):
+    METRICS_UNAVAILABLE = "METRICS_UNAVAILABLE"
