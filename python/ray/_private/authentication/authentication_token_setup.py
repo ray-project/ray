@@ -39,17 +39,20 @@ def generate_and_save_token() -> None:
     token = generate_new_authentication_token()
 
     token_path = _get_default_token_path()
-    try:
-        # Create directory if it doesn't exist
-        token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 
-        # Write token to file with explicit flush and fsync
-        with open(token_path, "w") as f:
-            f.write(token)
+    # The token is the cluster credential, so keep it owner-only. The mode passed
+    # to os.open only applies when the file is created; fchmod covers a
+    # pre-existing (e.g. empty) file before the token is written into it.
+    # Windows has no os.fchmod before Python 3.13, and its chmod can't restrict
+    # reads anyway.
+    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        f.write(token)
 
-        logger.info(f"Generated new authentication token and saved to {token_path}")
-    except Exception:
-        raise
+    logger.info(f"Generated new authentication token and saved to {token_path}")
 
 
 def _get_default_token_path() -> Path:

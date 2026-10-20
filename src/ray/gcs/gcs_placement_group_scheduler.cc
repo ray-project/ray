@@ -459,12 +459,24 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   RAY_CHECK(it != placement_group_leasing_in_progress_.end());
   placement_group_leasing_in_progress_.erase(it);
 
-  // Add a prepared bundle locations to committed bundle locations.
+  // A node can die after its commit reply but before the last reply of this placement
+  // group returns. GcsPlacementGroupManager::OnNodeDead only reschedules bundles in the
+  // committed index, so bundles on dead nodes must be treated as uncommitted here.
+  auto committed_bundle_locations = std::make_shared<BundleLocations>();
+  for (const auto &[bundle_id, location] : *prepared_bundle_locations) {
+    const auto &[node_id, bundle] = location;
+    if (!gcs_node_manager_.IsNodeAlive(node_id)) {
+      RAY_LOG(INFO) << "Node " << node_id << " died before placement group "
+                    << placement_group_id << " finished committing bundle index "
+                    << bundle_id.second << ", the bundle will be rescheduled.";
+      lease_status_tracker->MarkBundleUncommitted(node_id, bundle);
+      continue;
+    }
+    committed_bundle_locations->emplace(bundle_id, location);
+  }
+
   committed_bundle_location_index_.AddBundleLocations(placement_group_id,
-                                                      prepared_bundle_locations);
-  cluster_resource_scheduler_.GetClusterResourceManager()
-      .GetBundleLocationIndex()
-      .AddOrUpdateBundleLocations(prepared_bundle_locations);
+                                                      committed_bundle_locations);
   // NOTE: If the placement group scheduling has been cancelled, we just need to destroy
   // the committed bundles. The reason is that only `RemovePlacementGroup` will mark the
   // state of placement group as `CANCELLED` and it will also destroy all prepared and
@@ -550,9 +562,6 @@ absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
 GcsPlacementGroupScheduler::GetAndRemoveBundlesOnNode(const NodeID &node_id) {
   auto bundles = GetBundlesOnNode(node_id);
   RAY_UNUSED(committed_bundle_location_index_.Erase(node_id));
-  RAY_UNUSED(cluster_resource_scheduler_.GetClusterResourceManager()
-                 .GetBundleLocationIndex()
-                 .Erase(node_id));
   return bundles;
 }
 
@@ -624,9 +633,6 @@ void GcsPlacementGroupScheduler::Initialize(
     }
     committed_bundle_location_index_.AddBundleLocations(placement_group_id,
                                                         committed_bundle_locations);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .AddOrUpdateBundleLocations(committed_bundle_locations);
   }
   for (const auto &req : prepared_pgs) {
     const auto &pg = req.placement_group;
@@ -702,9 +708,6 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
                                   /*current_retry_count*/ 0);
     }
     committed_bundle_location_index_.Erase(placement_group_id);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .Erase(placement_group_id);
   }
 }
 
@@ -807,11 +810,15 @@ void LeaseStatusTracker::MarkCommitRequestReturned(
     const std::shared_ptr<const BundleSpecification> &bundle,
     const Status &status) {
   commit_request_returned_count_ += 1;
-  // If the request succeeds, record it.
-  const auto &bundle_id = bundle->BundleId();
   if (!status.ok()) {
-    uncommitted_bundle_locations_->emplace(bundle_id, std::make_pair(node_id, bundle));
+    MarkBundleUncommitted(node_id, bundle);
   }
+}
+
+void LeaseStatusTracker::MarkBundleUncommitted(
+    const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle) {
+  uncommitted_bundle_locations_->emplace(bundle->BundleId(),
+                                         std::make_pair(node_id, bundle));
 }
 
 bool LeaseStatusTracker::AllCommitRequestReturned() const {

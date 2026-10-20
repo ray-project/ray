@@ -33,7 +33,7 @@ pip install -U "ray[data]"
 
 Using Ray Data for offline inference involves four basic steps:
 
-- **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different datasources and formats. For more details, see {ref}`Loading Data <loading_data>`.
+- **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different datasources and formats. For more details, see {ref}`Loading data <loading_data>`.
 - **Step 2:** Define a Python class to load the pre-trained model.
 - **Step 3:** Transform your dataset using the pre-trained model by calling {meth}`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see {ref}`Transforming Data <transforming_data>`.
 - **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the {ref}`Iterating over data <iterating-over-data>` and {ref}`Saving data <saving-data>` user guides.
@@ -194,9 +194,7 @@ predictions.show(limit=1)
 :sync: vLLM
 Ray Data offers native integration with vLLM, a high-performance inference engine for large language models (LLMs).
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 import numpy as np
@@ -234,9 +232,7 @@ ds = processor(ds)
 ds.show(limit=1)
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 ```
 :::
@@ -256,7 +252,7 @@ When enabled, Ray Data records progress during execution. If a batch inference j
 
 This is especially useful for large batch inference workloads where restarting from the beginning would be expensive.
 
-To enable job-level checkpointing, configure a {class}`~ray.data.checkpoint.CheckpointConfig` on the current {class}`~ray.data.DataContext`. See the {ref}`Execution Configurations <execution_configurations>` guide for details.
+To enable job-level checkpointing, configure a {class}`~ray.data.checkpoint.CheckpointConfig` on the current {class}`~ray.data.DataContext`. See the {ref}`Execution configurations <execution_configurations>` guide for details.
 
 ### Using GPUs for inference
 
@@ -451,9 +447,7 @@ If you run out of CPU RAM, you likely have too many model replicas that are runn
 
 Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most 3 of these actors per node, you can override the CPU or memory:
 
-```{testcode}
-:skipif: True
-
+```python
 from typing import Dict
 import numpy as np
 

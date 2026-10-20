@@ -9,7 +9,7 @@ in ``tests/test_http_schemas.py`` deliberately when you do.
 from datetime import datetime
 from typing import Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Re-exported so the wire contract documents its default in one place; the
 # canonical definition (and rationale) lives in the core sandbox config.
@@ -49,6 +49,14 @@ class ResourceSpec(BaseModel):
     cpu_limit: Optional[float] = Field(default=None, gt=0)
     memory_request_mb: Optional[int] = Field(default=None, gt=0)
     memory_limit_mb: Optional[int] = Field(default=None, gt=0)
+    disk_limit_mb: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Size cap of the sandbox's writable rootfs, in MiB. Writes past it "
+            "fail with ENOSPC. Requires readonly=false or a workdir."
+        ),
+    )
     custom: Optional[Dict[str, float]] = Field(
         default=None,
         description=(
@@ -141,6 +149,21 @@ class CreateSandboxRequest(BaseModel):
         if network not in VALID_NETWORK_MODES:
             raise ValueError(f"network must be one of {VALID_NETWORK_MODES}")
         return network
+
+    @model_validator(mode="after")
+    def _validate_disk_limit(self) -> "CreateSandboxRequest":
+        # The same rule as SandboxConfig's, answered with a 422 up front.
+        if (
+            self.resources
+            and self.resources.disk_limit_mb
+            and self.readonly
+            and not self.workdir
+        ):
+            raise ValueError(
+                "resources.disk_limit_mb caps the writable rootfs; it requires "
+                "readonly=false or a workdir"
+            )
+        return self
 
     @field_validator("labels")
     @classmethod
@@ -254,9 +277,11 @@ class SandboxAPISettings(BaseModel):
         default="RAY_SANDBOX_API_TOKEN",
         description=(
             "Environment variable read at app construction for the bearer "
-            "token. Unset/empty disables the app-level check (an Anyscale "
-            "service already enforces its own bearer token at the platform "
-            "edge)."
+            "token, which the REST app and the gRPC facade both require on "
+            "every call when it is set. Unset/empty disables the check: the "
+            "REST app then relies on what sits in front of it (an Anyscale "
+            "service enforces its own bearer token at the platform edge), "
+            "and the facade's CLI serves only loopback addresses."
         ),
     )
     num_replicas: int = Field(default=1, ge=1)

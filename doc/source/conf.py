@@ -59,6 +59,9 @@ extensions = [
     "callouts",  # custom extension from _ext folder
     "queryparamrefs",
     "api_sidebar",  # APIs tab: shared client-side API nav (see _ext/api_sidebar.py)
+    # Stops MyST {eval-rst} blocks from pickling the build environment into
+    # doctrees (see _ext/myst_eval_rst_doctree.py).
+    "myst_eval_rst_doctree",
     "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
     "sphinx.ext.napoleon",
@@ -124,30 +127,25 @@ llms_txt_exclude = [
     # nav pages; keep them out of the per-section llms-full shards.
     "_includes/*",
     "_templates/*",
-    "templates/*",
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
-    "ray-core/api/doc/*",
-    "ray-core/compiled-graph/doc/*",
+    "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/doc/*",
-    "rllib/package_ref/env/doc/*",
+    "rllib/api/doc/*",
+    "rllib/api/env/doc/*",
+    "ray-more-libs/api/doc/*",
     # Deprecated pages: surfacing a superseded API/guide to an agent is worse
     # than omitting it — the agent may follow the old API. (DOC-908)
     "train/api/deprecated",
     "train/deprecated-user-guides/*",
-    # Retired Ray AIR namespace: orphaned, no longer in the site nav.
-    "ray-air/deployment",
     # Include-only fragments spliced into other pages (no standalone title).
     "train/common/*",
     "ray-contribute/involvement",
     # Helper/utility code files and raw scripts rendered as pages — code, not
     # docs; the real guide pages that literalinclude them are kept.
     "train/user-guides/_collate_utils",
-    "tune/examples/pbt_visualization/pbt_visualization_utils",
+    "tune/examples/pbt-visualization/pbt-visualization-utils",
     "cluster/vms/user-guides/community/slurm-*",
     # Thin literalinclude example stubs (a heading + a code block, no prose).
     "tune/examples/includes/*",
@@ -181,16 +179,37 @@ llms_txt_exclude += [
     "data/api/loading_data",
     "data/api/preprocessor",
     "data/api/saving_data",
-    "ray-core/api/cli",
-    "ray-core/api/core",
-    "ray-core/api/exceptions",
-    "ray-core/api/index",
-    "ray-core/api/runtime-env",
-    "ray-core/api/scheduling",
-    "ray-core/api/utility",
-    "ray-core/compiled-graph/compiled-graph-api",
-    "train/examples/pytorch/torch_regression_example",
-    "train/examples/tf/tensorflow_regression_example",
+    "core/api/cli",
+    "core/api/core",
+    "core/api/exceptions",
+    "core/api/index",
+    "core/api/runtime-env",
+    "core/api/scheduling",
+    "core/api/utility",
+    "core/api/compiled-graph",
+    "serve/api/application",
+    "serve/api/config",
+    "serve/api/context",
+    "serve/api/exceptions",
+    "serve/api/handle",
+    "serve/api/llm",
+    "serve/api/observability",
+    "serve/api/request-router",
+    "serve/api/running",
+    "serve/api/schema",
+    "train/api/config",
+    "train/api/developer-api",
+    "train/api/exceptions",
+    "train/api/jax",
+    "train/api/lightgbm",
+    "train/api/lightning",
+    "train/api/result",
+    "train/api/tensorflow",
+    "train/api/torch",
+    "train/api/train-loop",
+    "train/api/transformers",
+    "train/api/tune-integration",
+    "train/api/xgboost",
     "tune/api/api",
     "tune/api/execution",
     "tune/api/integration",
@@ -235,15 +254,14 @@ docsearch_index_name = "docs-ray"
 # from the nav tree. These API-ref directories mirror the API-ref entries in
 # `llms_txt_exclude` above, which excludes the same pages from the agent corpus.
 remove_from_toctrees = [
-    "cluster/running-applications/job-submission/doc/*",
-    "ray-observability/reference/doc/*",
-    "ray-core/api/doc/*",
+    "core/api/doc/*",
     "data/api/doc/*",
     "train/api/doc/*",
     "tune/api/doc/*",
     "serve/api/doc/*",
-    "rllib/package_ref/doc/*",
-    "rllib/package_ref/env/doc/*",
+    "rllib/api/doc/*",
+    "rllib/api/env/doc/*",
+    "ray-more-libs/api/doc/*",
 ]
 
 myst_enable_extensions = [
@@ -398,14 +416,13 @@ autogen_files = AUTOGEN_FILES
 exclude_patterns = [
     # Committed intersphinx inventory snapshots + refresh tooling, not docs.
     "_intersphinx/**",
-    "templates/*",
     "cluster/running-applications/doc/ray.*",
     "data/api/ray.data.*.rst",
     # Hide README.md used for display on the console (anyscale templates)
     "serve/tutorials/**/content/**README.md",
     "data/examples/**/content/**README.md",
     "ray-overview/examples/**/content/**README.md",
-    "ray-core/examples/**/content/**README.md",
+    "core/examples/**/content/**README.md",
     "train/examples/**/content/**README.md",
     "tune/examples/**/content/**README.md",
     # Other misc files (overviews, console-only examples, etc)
@@ -423,6 +440,7 @@ all_toc_libs = [
 ]
 all_toc_libs += [
     "cluster",
+    "kuberay",
     "tune",
     "data",
     "train",
@@ -683,7 +701,7 @@ def add_custom_assets(
     ]:
         return "examples.html"
 
-    if pagename == "train/train":
+    if pagename == "train/index":
         app.add_css_file("css/ray-train.css")
     elif pagename == "ray-overview/ray-libraries":
         app.add_css_file("css/ray-libraries.css")
@@ -883,11 +901,15 @@ _intersphinx_targets = {
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
     "torch": (
-        "https://docs.pytorch.org/docs/stable/",
-        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt
-        # so cross-references only resolve to symbols that version ships. Bump this
-        # with that pin, then re-run _intersphinx/refresh.py torch.
-        "https://docs.pytorch.org/docs/2.9/objects.inv",
+        # Pinned to the torch version in python/requirements/ml/dl-*-requirements.txt.
+        # The inventory is derived from this base, so cross-references resolve only
+        # to symbols that version ships and link to that version's pages. Don't
+        # pair a pinned inventory with docs/stable/: stable serves the newest
+        # release, and PyTorch renames pages between releases, so the emitted links
+        # would 404. Bump this with the requirements pin, then re-run
+        # _intersphinx/refresh.py torch.
+        "https://docs.pytorch.org/docs/2.10/",
+        None,
     ),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }

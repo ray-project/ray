@@ -79,6 +79,8 @@ def test_boot_reaches_running_with_expected_create_kwargs() -> None:
     assert create_call["image"] == "python:3.12-slim"
     assert create_call["cpu"] == 2.0
     assert create_call["memory"] == "1024Mi"
+    # No disk_limit_mb means no cap.
+    assert create_call["disk"] == 0
     assert create_call["env"] == {"TASK_VAR": "1"}
     assert create_call["workdir"] == "/"
     # The API owns the TTL; the upstream runtime must not double-manage it.
@@ -92,6 +94,14 @@ def test_boot_reaches_running_with_expected_create_kwargs() -> None:
     assert create_call["readonly"] is False
     assert create_call["capabilities"] == list(DOCKER_DEFAULT_CAPABILITIES)
     assert "_oci_spec_transform_fn" not in create_call
+
+
+def test_boot_passes_the_disk_limit_to_the_runtime() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime, spec_overrides={"disk_limit_mb": 2048})
+    asyncio.run(host.boot())
+    (create_call,) = runtime.create_calls
+    assert create_call["disk"] == "2048Mi"
 
 
 def test_boot_failure_is_pollable_not_raised() -> None:

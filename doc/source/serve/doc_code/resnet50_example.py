@@ -1,3 +1,7 @@
+# doc/source/serve/advanced-guides/multi-app-container.md downloads this
+# file in a Dockerfile from its raw GitHub URL on master. Renaming or moving
+# the file breaks that page.
+
 # __serve_example_begin__
 import requests
 from io import BytesIO
