@@ -16,6 +16,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     MCAPSelection,
     TimeRange,
+    VideoOptions,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_pushdown import (
     narrow_selection,
@@ -27,6 +28,7 @@ from ray.data.expressions import col, lit
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     BASE_TIME,
     CHUNKED_FILE_MESSAGES,
+    FRAME_NS,
     STEP,
     OpenFilesLog,
     SeekLog,
@@ -252,6 +254,35 @@ def test_pushed_filter_tasks_read_only_the_chunks_it_keeps(chunked_file, monkeyp
     assert table.column("topic").to_pylist() == ["/a"] * len(kept)
     assert sorted(chunks_read(seek_log, chunked_file)) == kept
     assert seek_log.reads[chunked_file] == len(kept)
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("av") is None,
+    reason="av not available. Install with: pip install av",
+)
+def test_pushed_log_time_filter_keeps_the_decoded_frames(h264_file):
+    """A ``log_time`` filter pushed into a decoded read keeps the frames that a
+    filter above the read keeps: decoding still starts at the keyframe before
+    the bound."""
+    import pyarrow.compute as pc
+
+    # Mid-GOP: the keyframes are frames 0, 10 and 20.
+    start = 13 * FRAME_NS
+    datasource = MCAPDatasourceV2([h264_file], video=VideoOptions())
+    scanner = scanner_for(datasource)
+    pushed, residual = scanner.push_filters(col("log_time") >= start)
+    whole = read_all(datasource, *list_manifests(datasource), scanner=scanner)
+
+    narrowed = read_all(
+        datasource,
+        *list_manifests(datasource, predicate=pushed.pushed_predicate()),
+        scanner=pushed,
+    )
+
+    assert residual is None
+    expected = whole.filter(pc.field("log_time") >= start)
+    assert 0 < narrowed.num_rows < whole.num_rows
+    assert narrowed.equals(expected)
 
 
 # -- count from statistics --------------------------------------------------
