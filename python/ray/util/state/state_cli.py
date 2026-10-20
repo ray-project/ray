@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum, unique
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -10,6 +10,7 @@ import yaml
 import ray._private.services as services
 from ray._common.network_utils import parse_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.dashboard.modules.job.cli_utils import BoolOrStringParam, parse_headers
 from ray.util.annotations import PublicAPI
 from ray.util.state import (
     StateApiClient,
@@ -379,6 +380,31 @@ address_option = click.option(
         "automatically from querying the GCS server."
     ),
 )
+headers_option = click.option(
+    "--headers",
+    type=str,
+    default=None,
+    help=(
+        "HTTP headers as a JSON object. " 'Example: {"Authorization": "Bearer <token>"}'
+    ),
+)
+verify_option = click.option(
+    "--verify",
+    default=True,
+    show_default=True,
+    type=BoolOrStringParam(),
+    help=(
+        "Whether to verify the server TLS certificate, or a path to a "
+        "trusted CA file or directory."
+    ),
+)
+
+
+def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
+    try:
+        return parse_headers(headers, env_var="RAY_STATE_HEADERS")
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
 
 @click.command()
@@ -398,12 +424,16 @@ address_option = click.option(
 )
 @address_option
 @timeout_option
+@headers_option
+@verify_option
 @PublicAPI(stability="stable")
 def ray_get(
     resource: str,
     id: str,
     address: Optional[str],
     timeout: float,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Get a state of a given resource by ID.
 
@@ -437,6 +467,8 @@ def ray_get(
         id: The id of the resource.
         address: Ray bootstrap address. If None, it's resolved from the local cluster.
         timeout: Max timeout for the state API request.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -452,7 +484,9 @@ def ray_get(
 
     # Create the State API server and put it into context
     logger.debug(f"Create StateApiClient to ray instance at: {address}...")
-    client = StateApiClient(address=address)
+    client = StateApiClient(
+        address=address, headers=_handle_headers(headers), verify=verify
+    )
     options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
@@ -516,6 +550,8 @@ def ray_get(
 )
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @PublicAPI(stability="stable")
 def ray_list(
     resource: str,
@@ -525,6 +561,8 @@ def ray_list(
     detail: bool,
     timeout: float,
     address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """List all states of a given resource.
 
@@ -588,6 +626,8 @@ def ray_list(
         detail: When True, include detail-only columns.
         timeout: Max timeout for the state API request.
         address: Ray bootstrap address. If empty, resolved from the local cluster.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -602,7 +642,9 @@ def ray_list(
     format = AvailableFormat(format)
 
     # Create the State API server and put it into context
-    client = StateApiClient(address=address)
+    client = StateApiClient(
+        address=address, headers=_handle_headers(headers), verify=verify
+    )
 
     filter = [_parse_filter(f) for f in filter]
     filter = _normalize_filter_keys(resource, filter)
@@ -651,9 +693,17 @@ def summary_state_cli_group(ctx):
 @summary_state_cli_group.command(name="tasks")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def task_summary(ctx: click.Context, timeout: float, address: str):
+def task_summary(
+    ctx: click.Context,
+    timeout: float,
+    address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Summarize the task state of the cluster.
 
     By default, the output contains the information grouped by
@@ -666,6 +716,8 @@ def task_summary(ctx: click.Context, timeout: float, address: str):
         ctx: The Click invocation context.
         timeout: Max timeout for the state API request.
         address: Ray bootstrap address. If empty, resolved from the local cluster.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -678,6 +730,8 @@ def task_summary(ctx: click.Context, timeout: float, address: str):
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
             resource=StateResource.TASKS,
         )
@@ -687,9 +741,17 @@ def task_summary(ctx: click.Context, timeout: float, address: str):
 @summary_state_cli_group.command(name="actors")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def actor_summary(ctx: click.Context, timeout: float, address: str):
+def actor_summary(
+    ctx: click.Context,
+    timeout: float,
+    address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Summarize the actor state of the cluster.
 
     By default, the output contains the information grouped by
@@ -703,6 +765,8 @@ def actor_summary(ctx: click.Context, timeout: float, address: str):
         ctx: The Click invocation context.
         timeout: Max timeout for the state API request.
         address: Ray bootstrap address. If empty, resolved from the local cluster.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -715,6 +779,8 @@ def actor_summary(ctx: click.Context, timeout: float, address: str):
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
             resource=StateResource.ACTORS,
         )
@@ -724,9 +790,17 @@ def actor_summary(ctx: click.Context, timeout: float, address: str):
 @summary_state_cli_group.command(name="objects")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def object_summary(ctx: click.Context, timeout: float, address: str):
+def object_summary(
+    ctx: click.Context,
+    timeout: float,
+    address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Summarize the object state of the cluster.
 
     The API is recommended when debugging memory leaks.
@@ -759,6 +833,8 @@ def object_summary(ctx: click.Context, timeout: float, address: str):
         ctx: The Click invocation context.
         timeout: Max timeout for the state API request.
         address: Ray bootstrap address. If empty, resolved from the local cluster.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -771,6 +847,8 @@ def object_summary(ctx: click.Context, timeout: float, address: str):
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
         )
     )
@@ -899,6 +977,8 @@ def _print_log(
     task_id: Optional[str] = None,
     attempt_number: int = 0,
     submission_id: Optional[str] = None,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[bool, str] = True,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -928,6 +1008,8 @@ def _print_log(
         task_id=task_id,
         attempt_number=attempt_number,
         submission_id=submission_id,
+        headers=headers,
+        verify=verify,
     ):
         print(chunk, end="", flush=True)
 
@@ -1014,6 +1096,8 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
 @log_timeout_option
 @log_encoding_option
 @log_encoding_errors_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_cluster(
@@ -1028,6 +1112,8 @@ def log_cluster(
     timeout: int,
     encoding: str,
     encoding_errors: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Get/List logs that matches the GLOB_FILTER in the cluster.
     By default, it prints a list of log files that match the filter.
@@ -1072,6 +1158,8 @@ def log_cluster(
         timeout: Max timeout for the underlying API request.
         encoding: Encoding used to decode log bytes into strings.
         encoding_errors: Decoder error-handling scheme (e.g. ``strict``).
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Returns:
         ``None``. Output is written to stdout.
@@ -1084,12 +1172,15 @@ def log_cluster(
     if node_id is None and node_ip is None:
         node_ip = _get_head_node_ip(address)
 
+    parsed_headers = _handle_headers(headers)
     logs = list_logs(
         address=address,
         node_id=node_id,
         node_ip=node_ip,
         glob_filter=glob_filter,
         timeout=timeout,
+        headers=parsed_headers,
+        verify=verify,
     )
 
     log_files_found = []
@@ -1120,6 +1211,8 @@ def log_cluster(
         timeout=timeout,
         encoding=encoding,
         encoding_errors=encoding_errors,
+        headers=parsed_headers,
+        verify=verify,
     )
 
 
@@ -1148,6 +1241,8 @@ def log_cluster(
 @log_interval_option
 @log_timeout_option
 @log_suffix_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_actor(
@@ -1162,6 +1257,8 @@ def log_actor(
     interval: float,
     timeout: int,
     err: bool,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Get/List logs associated with an actor.
 
@@ -1199,6 +1296,8 @@ def log_actor(
         interval: How frequently to poll for new content when ``follow`` is set.
         timeout: Max timeout for the underlying API request.
         err: When True, query stderr files instead of stdout.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1223,6 +1322,8 @@ def log_actor(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+        headers=_handle_headers(headers),
+        verify=verify,
     )
 
 
@@ -1243,6 +1344,8 @@ def log_actor(
 @log_interval_option
 @log_timeout_option
 @log_suffix_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_worker(
@@ -1256,6 +1359,8 @@ def log_worker(
     interval: float,
     timeout: int,
     err: bool,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Get logs associated with a worker process.
 
@@ -1284,6 +1389,8 @@ def log_worker(
         interval: How frequently to poll for new content when ``follow`` is set.
         timeout: Max timeout for the underlying API request.
         err: When True, query stderr files instead of stdout.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1301,6 +1408,8 @@ def log_worker(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+        headers=_handle_headers(headers),
+        verify=verify,
     )
 
 
@@ -1320,6 +1429,8 @@ def log_worker(
 @log_tail_option
 @log_interval_option
 @log_timeout_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_job(
@@ -1330,6 +1441,8 @@ def log_job(
     tail: int,
     interval: float,
     timeout: int,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Get logs associated with a submission job.
 
@@ -1356,6 +1469,8 @@ def log_job(
         tail: Number of lines to tail from the end of the file. ``-1`` for all.
         interval: How frequently to poll for new content when ``follow`` is set.
         timeout: Max timeout for the underlying API request.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1370,6 +1485,8 @@ def log_job(
         interval=interval,
         timeout=timeout,
         submission_id=submission_id,
+        headers=_handle_headers(headers),
+        verify=verify,
     )
 
 
@@ -1395,6 +1512,8 @@ def log_job(
 @log_tail_option
 @log_timeout_option
 @log_suffix_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def log_task(
@@ -1407,6 +1526,8 @@ def log_task(
     tail: int,
     timeout: int,
     err: bool,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Get logs associated with a task.
 
@@ -1438,6 +1559,8 @@ def log_task(
         tail: Number of lines to tail from the end of the file. ``-1`` for all.
         timeout: Max timeout for the underlying API request.
         err: When True, query stderr files instead of stdout.
+        headers: JSON-serialized headers.
+        verify: TLS verification flag or path.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -1454,4 +1577,6 @@ def log_task(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+        headers=_handle_headers(headers),
+        verify=verify,
     )
