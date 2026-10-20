@@ -60,6 +60,6 @@ Always pull KubeRay images from Quay.io. The `kuberay` organization on Docker Hu
 
 KubeRay tags each image three ways:
 
-* **Version tags** such as `quay.io/kuberay/operator:v1.6.0` identify a stable release. Use a version tag for anything you depend on. The operator's version tag matches the KubeRay release, so chart version `1.6.0` installs `operator:v1.6.0`.
+* **Version tags** such as `quay.io/kuberay/operator:v1.7.0` identify a stable release. Use a version tag for anything you depend on. The operator's version tag matches the KubeRay release, so chart version `1.7.0` installs `operator:v1.7.0`.
 * **Commit tags** such as `quay.io/kuberay/operator:feeaf72` pin an image to an exact `master` commit. The tag is the short Git commit hash.
 * **The `nightly` tag** tracks the most recent `master` build. It moves with every merge, so it isn't a stable target. Use it only to try unreleased changes.
