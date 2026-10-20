@@ -269,6 +269,10 @@ class ReadFiles(
     # here). Applied in ``plan_read_files_op.do_read`` after each
     # table is read.
     block_udf: Optional[Callable[[Block], Block]] = None
+    # Whether each output row comes from one input row and keeps its columns,
+    # as in ``read_mcap(samples=...)``. A checkpoint then drops finished input
+    # rows before the read rather than finished rows after it.
+    checkpoint_on_input: bool = False
     input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
