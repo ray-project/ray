@@ -124,13 +124,15 @@ The opt-in step runs only on premerge builds, which the `go` label starts. Micro
 
 ### Docstring-only changes
 
-A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. For Ray Data, the `docstring-only` label skips those suites on a PR that changes nothing but docstrings and comments. Instead, it runs the `>>>` examples in the docstrings of only the modules the PR changed. Like the `go` label, it requires write access.
+A change to a docstring in `python/ray/` routes like a code change, so it runs every test suite the library's changes select. The `docstring-only` label is for a PR that changes nothing but docstrings and comments. It runs the `>>>` examples in the docstrings of only the modules the PR changed, and for Ray Data, it skips the library's test suites. Like the `go` label, it requires write access.
 
-With the label, a Data PR runs the following:
+With the label, a PR runs the following:
 
-* `data: docstring examples`, which runs each changed module's `>>>` examples in the Data CI image, with this PR's Ray installed. An example that shows output must print it, with `...` matching any text. An example that shows no output only has to run without raising. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
+* `doc: docstring examples`, which runs the `>>>` examples in each changed module under `python/ray/` that a CPU doctest target covers, in any library. It runs them in the light `docstringbuild` image, with this PR's Ray installed. An example that shows output must print it, with `...` matching any text. An example that shows no output only has to run without raising. It skips examples marked `# doctest: +SKIP`, and whole docstrings marked `+SKIP_EXAMPLE`.
 * The two API surface checks and lint.
 * `lint: validate docstring-only scope`, the guard the label can't turn off.
+
+The `docstringbuild` image leaves out heavy libraries such as torch and TensorFlow. The step reports a docstring that fails only because one of those libraries is missing as skipped, names the library, and repeats the skipped examples at the end of its log. Those examples run in their library's doctest target instead: on the same premerge build for libraries whose suites the label doesn't skip, and after merge for Ray Data.
 
 The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
@@ -139,7 +141,7 @@ python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/m
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
 
-The label covers Ray Data only. Other libraries' test steps still run in full, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+The label skips only Ray Data's test suites. Other libraries' test steps still run in full under the label, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
 
 ### What doesn't run on your PR
 
