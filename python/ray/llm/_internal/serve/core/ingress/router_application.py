@@ -122,9 +122,8 @@ def _model_card(model_id: str) -> Dict[str, Any]:
 def _api_key_hashes(llm_config: LLMConfig) -> Sequence[bytes]:
     api_keys = llm_config.get_engine_config().frontend_kwargs.get("api_key")
     if not api_keys:
-        api_key = (llm_config.runtime_env or {}).get("env_vars", {}).get(
-            "VLLM_API_KEY"
-        ) or os.getenv("VLLM_API_KEY")
+        env_vars = (llm_config.runtime_env or {}).get("env_vars") or {}
+        api_key = env_vars.get("VLLM_API_KEY") or os.getenv("VLLM_API_KEY")
         api_keys = [api_key] if api_key else []
     elif isinstance(api_keys, str):
         api_keys = [api_keys]
