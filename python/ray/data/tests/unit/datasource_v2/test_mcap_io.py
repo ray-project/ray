@@ -25,6 +25,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
 from ray.data.tests.unit.datasource_v2.mcap_testing import (
     CHUNKED_FILE_MESSAGES,
     round_robin_messages,
+    write_corrupt_chunk_header,
     write_cut_short,
     write_mcap,
     write_mcap_without_summary_schemas,
@@ -380,6 +381,32 @@ def test_read_chunks_fetches_a_read_when_its_first_chunk_is_needed(tmp_path):
         reads.append(f.reads)
 
     assert reads == [0, 1, 2, 3]
+
+
+def test_read_chunks_hands_a_record_that_does_not_parse_to_on_corrupt(tmp_path):
+    """With ``on_corrupt``, a chunk record that does not parse is handed to it
+    and yielded as ``None``, and the chunks around it in the same read are still
+    parsed. Without ``on_corrupt``, the error raises."""
+    source = os.path.join(tmp_path, "chunked.mcap")
+    write_mcap(source, round_robin_messages(CHUNKED_FILE_MESSAGES))
+    path = write_corrupt_chunk_header(os.path.join(tmp_path, "bad.mcap"), source, 4)
+    summary = read_summary_from(CountingFile(path), path)
+    assert summary is not None
+    chunk_indexes = sorted(summary.chunk_indexes, key=lambda c: c.chunk_start_offset)
+    expected = [read_chunk(CountingFile(path), c) for c in chunk_indexes[:4]]
+    expected += [None] + [read_chunk(CountingFile(path), c) for c in chunk_indexes[5:]]
+    reported = []
+
+    f = CountingFile(path)
+    chunks = list(
+        read_chunks(f, chunk_indexes, ChunkReads(), lambda c, e: reported.append(c))
+    )
+
+    assert [chunk for _, chunk in chunks] == expected
+    assert reported == [chunk_indexes[4]]
+    assert f.reads == 1
+    with pytest.raises(UnicodeDecodeError):
+        list(read_chunks(CountingFile(path), chunk_indexes, ChunkReads()))
 
 
 def test_buffered_scan_reads_in_large_blocks(tmp_path):
