@@ -837,6 +837,10 @@ class _BlockShapingIterator(Iterator[Block]):
 
     Unlike a generator, local variables in __next__ go out of scope when the method
     returns, avoiding holding references to yielded values.
+
+    When the results raise an error the job skips, the rows already buffered
+    come out as a last block before the error, so the skipped task keeps the
+    output it produced (see ``_emit_rows_before_error``).
     """
 
     def __init__(
@@ -848,6 +852,8 @@ class _BlockShapingIterator(Iterator[Block]):
         self._results_iter = iter(results)
         self._buffer = BlockOutputBuffer(output_block_size_option)
         self._finalized = False
+        # The error the results raised, held until the buffered rows are out.
+        self._error: Optional[Exception] = None
 
         if input_type == MapTransformFnDataType.Block:
             self._append_buffer = self._buffer.add_block
@@ -868,6 +874,9 @@ class _BlockShapingIterator(Iterator[Block]):
 
             # If finalized, no more data
             elif self._finalized:
+                if self._error is not None:
+                    error, self._error = self._error, None
+                    raise error
                 raise StopIteration
 
             try:
@@ -877,6 +886,74 @@ class _BlockShapingIterator(Iterator[Block]):
             except StopIteration:
                 self._buffer.finalize()
                 self._finalized = True
+            except Exception as e:
+                if not self._buffer.has_buffered_rows():
+                    raise
+                if not _emit_rows_before_error(e):
+                    raise
+                self._error = e
+                self._buffer.finalize()
+                self._finalized = True
+
+
+def _emit_rows_before_error(error: Exception) -> bool:
+    """Whether a map task that raised ``error`` first emits its buffered rows.
+
+    Only when the job skips the error (``DataContext.max_errored_blocks`` is not
+    0) and the task cannot run again. A rerun produces its blocks from the start
+    and skips as many as were already emitted, so a last block cut short at the
+    error would hide rows of the rerun's block in its place. ``_map_task``
+    reruns on an error that ``retried_map_errors`` matches while it has attempts
+    left. Ray reruns a task on a ``RaySystemError`` and on an error its
+    ``retry_exceptions`` names, which for an actor task come from
+    ``actor_task_retry_on_errors``.
+    """
+    import ray.exceptions
+    from ray.data.context import DataContext
+
+    may_rerun = (
+        _map_task_reruns_on(error)
+        or isinstance(error, ray.exceptions.RaySystemError)
+        or _ray_reruns_on(error)
+    )
+    return DataContext.get_current().max_errored_blocks != 0 and not may_rerun
+
+
+def _ray_reruns_on(error: Exception) -> bool:
+    """Whether Ray reruns the running task on ``error``.
+
+    Checks ``error`` and its causes against the task's ``retry_exceptions``, so
+    an error a transform wraps still counts.
+    """
+    task_context = TaskContext.get_current()
+    retried = task_context.ray_retried_exceptions if task_context else False
+    if isinstance(retried, bool):
+        return retried
+    cause: Optional[BaseException] = error
+    while cause is not None:
+        if isinstance(cause, tuple(retried)):
+            return True
+        cause = cause.__cause__
+    return False
+
+
+def _map_task_reruns_on(error: Exception) -> bool:
+    """Whether ``_map_task`` reruns the running attempt on ``error``.
+
+    It does while attempts are left and the error's message, with its causes,
+    matches a ``retried_map_errors`` pattern, as ``iterate_with_retry`` checks
+    it. ``None`` patterns match any error.
+    """
+    from ray._common.retry import format_exception, matches_error
+
+    task_context = TaskContext.get_current()
+    if task_context is None or task_context.map_retries_left <= 0:
+        return False
+    patterns = task_context.map_retried_errors
+    if patterns is None:
+        return True
+    text = format_exception(error, include_cause=True)
+    return any(matches_error(pattern, text) for pattern in patterns)
 
 
 class _RowBasedIterator(Iterator[Row]):

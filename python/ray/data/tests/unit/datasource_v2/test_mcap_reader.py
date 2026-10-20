@@ -8,6 +8,7 @@ import dataclasses
 import importlib.util
 import json
 import os
+import time
 
 import pyarrow as pa
 import pytest
@@ -41,14 +42,18 @@ from ray.data.tests.unit.datasource_v2.mcap_testing import (
     infer_schema,
     list_manifests,
     mixed_encoding_messages,
+    pack,
     read_all,
     record_parsed_chunks,
     round_robin_messages,
     scanner_for,
     selected_messages,
     summary_of,
+    write_corrupt_chunk,
+    write_corrupt_chunk_header,
     write_cut_short,
     write_mcap,
+    write_mcap_without_summary_schemas,
     write_mixed_channels,
 )
 
@@ -125,6 +130,288 @@ def test_reading_a_file_cut_short_fails_naming_it(tmp_path, chunked_file):
 
     with pytest.raises(ValueError, match="cut_short.mcap' is not a complete MCAP"):
         read_all(datasource, manifest)
+
+
+CORRUPT_CHUNK = 4  # the chunk, and so the message, a bad file loses
+
+
+def write_task_files(tmp_path, bad, corrupt=write_corrupt_chunk):
+    """Write ``a.mcap``, ``b.mcap`` and ``c.mcap`` (nine messages, one per chunk)
+    and corrupt chunk ``CORRUPT_CHUNK`` of the files named in ``bad`` with
+    ``corrupt``; return the three paths."""
+    paths = [os.path.join(tmp_path, f"{name}.mcap") for name in "abc"]
+    for path in paths:
+        write_mcap(path, round_robin_messages(CHUNKED_FILE_MESSAGES))
+        if os.path.basename(path) in bad:
+            corrupt_in_place(path, CORRUPT_CHUNK, corrupt)
+    return paths
+
+
+def corrupt_in_place(path, index, corrupt=write_corrupt_chunk):
+    """Corrupt chunk ``index`` of the MCAP file ``path`` with ``corrupt``."""
+    corrupt(path + ".tmp", path, index)
+    os.replace(path + ".tmp", path)
+
+
+def read_one_task(paths, max_errored_blocks=1, **options):
+    """Read ``paths`` as one read task under ``max_errored_blocks``, with the
+    datasource ``options``; return the tables it yields and its error."""
+    from ray.data.context import DataContext
+
+    DataContext.get_current().max_errored_blocks = max_errored_blocks
+    datasource = MCAPDatasourceV2(paths, include_paths=True, **options)
+    # preserve_order keeps the files in the order given; the listing threads
+    # otherwise finish in any order.
+    task = FileManifest.concat(list_manifests(datasource, preserve_order=True))
+    tables = []
+    with pytest.raises(Exception) as error:
+        for table in scanner_for(datasource).create_reader().read(task):
+            tables.append(table)
+    return tables, error.value
+
+
+def rows_of(tables):
+    """The ``(path, seq)`` of each row of ``tables``, in order."""
+    return [
+        (row["path"], row["data"]["seq"])
+        for table in tables
+        for row in table.select(["path", "data"]).to_pylist()
+    ]
+
+
+def file_rows(path, skipped=()):
+    """The ``(path, seq)`` rows of a file of ``round_robin_messages``, in order,
+    without the messages of the ``skipped`` chunks (one message per chunk)."""
+    return [(path, seq) for seq in range(CHUNKED_FILE_MESSAGES) if seq not in skipped]
+
+
+def chunk_offset(path, index):
+    """The byte offset of chunk ``index`` of the MCAP file ``path``."""
+    return summary_of(path).chunk_indexes[index].chunk_start_offset
+
+
+@pytest.fixture
+def restore_max_errored_blocks():
+    """Put ``DataContext.max_errored_blocks`` back after the test."""
+    from ray.data.context import DataContext
+
+    saved = DataContext.get_current().max_errored_blocks
+    yield
+    DataContext.get_current().max_errored_blocks = saved
+
+
+CORRUPTIONS = {"payload": write_corrupt_chunk, "header": write_corrupt_chunk_header}
+
+
+@pytest.mark.parametrize("log_time_order", [True, False])
+@pytest.mark.parametrize("corrupt", CORRUPTIONS.values(), ids=CORRUPTIONS.keys())
+def test_a_corrupt_chunk_costs_only_its_own_rows(
+    tmp_path, corrupt, log_time_order, restore_max_errored_blocks
+):
+    """When errors can be skipped, a task whose middle file has a corrupt chunk
+    yields every other row of the three files, then raises naming that file and
+    chunk. That holds for a payload that does not decompress and a record that
+    does not parse, in log-time and in file order."""
+    a, b, c = write_task_files(tmp_path, bad={"b.mcap"}, corrupt=corrupt)
+
+    tables, error = read_one_task([a, b, c], log_time_order=log_time_order)
+
+    skipped = {CORRUPT_CHUNK}
+    assert rows_of(tables) == file_rows(a) + file_rows(b, skipped) + file_rows(c)
+    assert isinstance(error, ValueError)
+    assert str(error).startswith(
+        f"Skipped 1 corrupt chunk at byte offset {chunk_offset(b, CORRUPT_CHUNK)} "
+        f"of MCAP file {b!r}: "
+    )
+
+
+def test_one_error_names_every_corrupt_chunk_of_a_file(
+    tmp_path, restore_max_errored_blocks
+):
+    """A file with two corrupt chunks, one of each kind, loses only their two
+    rows, and one error names both chunks."""
+    a, b, c = write_task_files(tmp_path, bad=set())
+    corrupt_in_place(b, 2, write_corrupt_chunk)
+    corrupt_in_place(b, 6, write_corrupt_chunk_header)
+
+    tables, error = read_one_task([a, b, c])
+
+    assert rows_of(tables) == file_rows(a) + file_rows(b, {2, 6}) + file_rows(c)
+    assert str(error).startswith(
+        f"Skipped 2 corrupt chunks at byte offsets {chunk_offset(b, 2)}, "
+        f"{chunk_offset(b, 6)} of MCAP file {b!r}: "
+    )
+
+
+def test_a_task_names_every_file_it_could_not_read_in_full(
+    tmp_path, restore_max_errored_blocks
+):
+    """Two files with a corrupt chunk fail their task once, with one error that
+    names both, after every other row of the three files is read."""
+    a, b, c = write_task_files(tmp_path, bad={"a.mcap", "c.mcap"})
+
+    tables, error = read_one_task([a, b, c], max_errored_blocks=-1)
+
+    skipped = {CORRUPT_CHUNK}
+    expected = file_rows(a, skipped) + file_rows(b) + file_rows(c, skipped)
+    assert rows_of(tables) == expected
+    assert isinstance(error, ValueError)
+    assert "2 MCAP files of this read task could not be read in full" in str(error)
+    assert a in str(error) and c in str(error)
+
+
+def test_a_task_fails_at_its_first_corrupt_chunk_when_errors_are_not_skipped(
+    tmp_path, restore_max_errored_blocks
+):
+    """With ``max_errored_blocks=0`` the read fails anyway, so the task raises at
+    the corrupt chunk without reading the file after it."""
+    a, b, c = write_task_files(tmp_path, bad={"b.mcap"})
+
+    tables, error = read_one_task([a, b, c], max_errored_blocks=0)
+
+    # b's rows before the corrupt chunk were still being built into a table.
+    assert rows_of(tables) == file_rows(a)
+    assert "b.mcap" in str(error)
+
+
+def test_an_error_reading_the_file_is_not_skipped_as_a_corrupt_chunk(
+    tmp_path, monkeypatch
+):
+    """An ``OSError`` while a chunk is decoded, here reading back an earlier
+    chunk for a schema, raises even when corrupt chunks are skipped, so the
+    file's read is retried rather than the chunk dropped."""
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_chunks
+
+    path = os.path.join(tmp_path, "schemas_in_chunks.mcap")
+    write_mcap_without_summary_schemas(path)
+    summary = summary_of(path)
+    # Chunks 2 to 5 declare no schema, so reading them reads chunk 0 back.
+    owned = {c.chunk_start_offset for c in summary.chunk_indexes[2:]}
+
+    def read_chunk(f, chunk_index):
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(mcap_chunks, "read_chunk", read_chunk)
+    reader = SelectedMessageReader(MCAPSelection(), log_time_order=False)
+    reported = []
+
+    with open(path, "rb") as f, pytest.raises(OSError, match="connection reset"):
+        for _ in reader.iter_chunks(
+            f, path, summary, owned, on_corrupt=lambda c, e: reported.append(c)
+        ):
+            pass
+
+    assert reported == []
+
+
+def test_a_corrupt_chunk_read_back_for_a_schema_costs_only_itself(tmp_path):
+    """A task reading back for a schema skips an earlier corrupt chunk and finds
+    the schema in the next one, so its own chunk is not reported as corrupt."""
+    clean = os.path.join(tmp_path, "clean.mcap")
+    write_mcap_without_summary_schemas(clean, b_declared_in_chunk_1=True)
+    path = write_corrupt_chunk(os.path.join(tmp_path, "bad.mcap"), clean, 0)
+    summary = summary_of(path)
+    # The task owns chunks 3 to 5. Chunk 3 (/b) reads back through chunk 0,
+    # which is corrupt, to chunk 1, which declares other_schema.
+    owned = {c.chunk_start_offset for c in summary.chunk_indexes[3:]}
+    reader = SelectedMessageReader(MCAPSelection(), log_time_order=False)
+    reported = []
+
+    with open(path, "rb") as f:
+        selected = list(
+            reader.iter_chunks(
+                f, path, summary, owned, on_corrupt=lambda c, e: reported.append(c)
+            )
+        )
+
+    assert [channel.topic for _, channel, _, _ in selected] == ["/b", "/a", "/b"]
+    assert reported == []
+
+
+def test_a_retried_read_reports_only_its_own_corrupt_chunks(
+    chunked_file, monkeypatch, restore_max_errored_blocks
+):
+    """A file read that is retried starts with no corrupt chunks recorded, so a
+    chunk the failed attempt recorded but the retry reads cleanly raises no
+    error."""
+    from ray.data._internal.datasource_v2.formats.mcap import mcap_chunks
+    from ray.data.context import DataContext
+
+    context = DataContext.get_current()
+    context.max_errored_blocks = 1
+    monkeypatch.setattr(context, "retried_io_errors", ["connection reset"])
+    # Skip the retry's backoff wait.
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    real_read_chunks = mcap_chunks.read_chunks
+    attempts = []
+
+    def read_chunks(f, chunk_indexes, reads, on_corrupt=None):
+        # The first attempt records its first chunk as corrupt, then fails.
+        attempts.append(1)
+        if len(attempts) == 1:
+            assert on_corrupt is not None
+            on_corrupt(list(chunk_indexes)[0], ValueError("stale"))
+            raise OSError("connection reset")
+        yield from real_read_chunks(f, chunk_indexes, reads, on_corrupt)
+
+    monkeypatch.setattr(mcap_chunks, "read_chunks", read_chunks)
+    datasource = MCAPDatasourceV2([chunked_file])
+
+    table = read_all(datasource, *list_manifests(datasource))
+
+    assert len(attempts) == 2
+    assert table.num_rows == CHUNKED_FILE_MESSAGES
+
+
+# Small files that share one read task, and which of them have a corrupt chunk:
+# the first and the last are among the five.
+TASK_FILES = 8
+BAD_FILES = {1: [3], 5: [0, 2, 3, 5, 7]}
+
+
+@pytest.mark.parametrize("num_bad", BAD_FILES.keys())
+def test_a_corrupt_chunk_in_a_shared_read_costs_only_its_own_rows(
+    tmp_path, num_bad, restore_max_errored_blocks
+):
+    """A corrupt chunk fetched in one ranged read with its neighbours costs only
+    its own rows: the bad files and the task's other files keep every other
+    row, and the error names each bad file, with one and with five bad files of
+    eight."""
+    from ray.data.context import DataContext
+
+    paths = [os.path.join(tmp_path, f"f{i}.mcap") for i in range(TASK_FILES)]
+    for path in paths:
+        write_mcap(path, round_robin_messages(CHUNKED_FILE_MESSAGES))
+    bad = [paths[i] for i in BAD_FILES[num_bad]]
+    for path in bad:
+        corrupt_in_place(path, CORRUPT_CHUNK)
+    # One allowed error is enough: the task raises once for all its bad files.
+    DataContext.get_current().max_errored_blocks = 1
+    datasource = MCAPDatasourceV2(paths, include_paths=True)
+    # The eight small files share one read task, which carries their summaries.
+    (task,) = pack(datasource, preserve_order=True)
+    seek_log = SeekLog()
+    scanner = dataclasses.replace(scanner_for(datasource), filesystem=seek_log)
+
+    tables = []
+    with pytest.raises(Exception) as error:
+        for table in scanner.create_reader().read(task):
+            tables.append(table)
+
+    # Each file, bad ones too, is one read from its first chunk: the corrupt
+    # chunk came in the same read as its neighbours, and no summary was read.
+    for path in paths:
+        assert seek_log.seeks[path] == [chunk_offset(path, 0)]
+    in_task_order = [str(p) for p in dict.fromkeys(task.paths.tolist())]
+    good = [path for path in in_task_order if path not in bad]
+    expected = [
+        row
+        for path in in_task_order
+        for row in file_rows(path, () if path in good else {CORRUPT_CHUNK})
+    ]
+    assert rows_of(tables) == expected
+    assert all(path in str(error.value) for path in bad)
+    assert not any(path in str(error.value) for path in good)
 
 
 def test_non_json_channel_under_a_decoded_plan_fails(tmp_path):
