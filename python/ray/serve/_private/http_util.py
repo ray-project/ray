@@ -224,7 +224,12 @@ class MessageQueue(Send):
         self._new_message_event.set()
 
     def set_error(self, e: BaseException):
+        """Set an error to be raised once all queued messages are consumed.
+
+        Wakes up any pending `get_one_message` call.
+        """
         self._error = e
+        self._new_message_event.set()
 
     def put_nowait(self, message: Message):
         self._message_queue.append(message)
@@ -282,15 +287,14 @@ class MessageQueue(Send):
                 the queue and an error has been set.
         """
 
-        if self._error:
-            raise self._error
-
         await self._new_message_event.wait()
 
         if len(self._message_queue) > 0:
             msg = self._message_queue.popleft()
 
-            if len(self._message_queue) == 0 and not self._closed:
+            # Keep the event set once closed or errored so that subsequent
+            # calls return immediately instead of blocking forever.
+            if len(self._message_queue) == 0 and not self._closed and not self._error:
                 self._new_message_event.clear()
 
             return msg

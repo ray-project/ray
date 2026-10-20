@@ -152,6 +152,40 @@ async def test_message_queue_wait_error():
             await queue.get_one_message()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("close_after_error", [False, True])
+async def test_message_queue_drains_messages_before_error(close_after_error: bool):
+    queue = MessageQueue()
+
+    # Messages queued before the error must still be returned, in order.
+    queue.put_nowait("A")
+    queue.put_nowait("B")
+    queue.set_error(TypeError("uh oh! something went wrong."))
+    if close_after_error:
+        queue.close()
+
+    assert await asyncio.wait_for(queue.get_one_message(), 1) == "A"
+    assert await asyncio.wait_for(queue.get_one_message(), 1) == "B"
+    for _ in range(10):
+        with pytest.raises(TypeError, match="uh oh! something went wrong"):
+            await asyncio.wait_for(queue.get_one_message(), 1)
+
+
+@pytest.mark.asyncio
+async def test_message_queue_error_wakes_pending_waiter():
+    queue = MessageQueue()
+
+    loop = asyncio.get_running_loop()
+    fetch_task = loop.create_task(queue.get_one_message())
+    # Let the task start waiting on the queue before the error is set.
+    await asyncio.sleep(0)
+    assert not fetch_task.done()
+
+    queue.set_error(TypeError("uh oh! something went wrong."))
+    with pytest.raises(TypeError, match="uh oh! something went wrong"):
+        await asyncio.wait_for(fetch_task, 1)
+
+
 @pytest.fixture
 @pytest.mark.asyncio
 def setup_receive_proxy(
