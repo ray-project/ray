@@ -77,9 +77,11 @@ def create(
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
         cidr_allowlist: Optional egress allowlist for network="public": only
-            the listed IPv4/IPv6 networks are reachable (plus DNS to the
-            ``dns`` resolvers). None means the public internet only, and the
-            cluster's control plane stays closed whatever the list says; see
+            the listed destinations are reachable (plus DNS to the ``dns``
+            resolvers). None means the public internet, with internal
+            addresses left out as a best effort, and a denylist keeps
+            instance metadata and the Kubernetes API service closed whatever
+            the list says; see
             :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none). Use

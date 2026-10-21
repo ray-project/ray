@@ -13,9 +13,10 @@ VALID_NETWORK_MODES = ("none", "public", "host", "sandbox")
 # Default resolvers for network="public" (Google and Cloudflare public DNS).
 DEFAULT_PUBLIC_DNS = ("8.8.8.8", "1.1.1.1")
 
-# The egress allowlist that permits every destination the control-plane
-# guard leaves open (EGRESS_ALWAYS_DENIED and the cluster's own addresses
-# stay closed): private networks included, unlike the default.
+# The egress allowlist that permits every destination outside the denylist
+# (EGRESS_ALWAYS_DENIED, the Kubernetes API service, and
+# RAY_SANDBOX_EGRESS_DENY): private networks, and any Ray node on them,
+# included, unlike the default.
 ALLOW_ALL_CIDRS = ("0.0.0.0/0", "::/0")
 
 # The cidr_allowlist entry for the public internet: every destination outside
@@ -23,19 +24,26 @@ ALLOW_ALL_CIDRS = ("0.0.0.0/0", "::/0")
 INTERNET = "internet"
 
 # The egress allowlist of a network="public" sandbox created without one: the
-# public internet only, so nothing on the cluster's private networks (nodes,
-# pods, services, kubelets, the Kubernetes API) is reachable by default.
+# public internet only. Leaving out the internal ranges is a best effort to
+# keep sandboxes off the networks where clusters usually run their nodes,
+# pods, and services; it covers a Ray node only if the node's address is in
+# one of them.
 DEFAULT_PUBLIC_ALLOWLIST = (INTERNET,)
 
 # Destinations no allowlist entry opens, ahead of every other rule but DNS:
-# "this network", loopback, and link-local, which holds the cloud instance
-# metadata services (169.254.169.254, EKS Pod Identity's 169.254.170.23).
-# The IPv6 entries are link-local, loopback, IPv4-mapped addresses, and AWS's
-# IPv6 metadata address; slirp4netns gives sandboxes no IPv6 today, so they
-# only keep that true if it ever does.
+# "this network", loopback, and link-local, which holds most clouds' instance
+# metadata services (169.254.169.254, EKS Pod Identity's 169.254.170.23),
+# plus the two that sit outside it: Alibaba Cloud's metadata service, and
+# Azure's platform endpoint, which serves VM agent configuration on a public
+# address that "internet" would otherwise open. The IPv6 entries are
+# link-local, loopback, IPv4-mapped addresses, and AWS's IPv6 metadata
+# address; slirp4netns gives sandboxes no IPv6 today, so they only keep
+# that true if it ever does.
 EGRESS_ALWAYS_DENIED = (
     "0.0.0.0/8",
+    "100.100.100.200/32",
     "127.0.0.0/8",
+    "168.63.129.16/32",
     "169.254.0.0/16",
     "::1/128",
     "::ffff:0:0/96",
@@ -44,14 +52,16 @@ EGRESS_ALWAYS_DENIED = (
 )
 
 # Environment variable with more destinations to treat like
-# EGRESS_ALWAYS_DENIED: comma-separated IP addresses or networks, such as a
-# Kubernetes API server's endpoint addresses or an external GCS Redis.
+# EGRESS_ALWAYS_DENIED: comma-separated IP addresses or networks, such as the
+# network the Ray nodes use, a Kubernetes API server's endpoint addresses,
+# or an external GCS Redis.
 EGRESS_DENY_ENV_VAR = "RAY_SANDBOX_EGRESS_DENY"
 
 # IPv4 networks that aren't the public internet: private (RFC 1918), shared
 # (RFC 6598), loopback, link-local, the other special-purpose ranges in the
-# IANA registry (RFC 6890), multicast, and reserved space. They hold a
-# cluster's nodes, pods, and services, and slirp4netns's own 198.18.0.0/24.
+# IANA registry (RFC 6890), multicast, and reserved space. Clusters usually
+# run their nodes, pods, and services in them, and slirp4netns's own
+# 198.18.0.0/24 is one.
 INTERNET_EXCLUDED_IPV4 = (
     "0.0.0.0/8",
     "10.0.0.0/8",
@@ -105,8 +115,12 @@ def parse_cidr_allowlist_entry(entry: str) -> Tuple[str, Optional[str]]:
     destination, ports = text, None
     if text.startswith("["):
         destination, close, rest = text[1:].partition("]")
-        if not close or (rest and not rest.startswith(":")):
+        if not close:
             raise ValueError(f"cidr_allowlist entry {entry!r} has an unclosed '['")
+        if rest and not rest.startswith(":"):
+            raise ValueError(
+                f"cidr_allowlist entry {entry!r} needs ':' and a port after ']'"
+            )
         ports = rest[1:] if rest else None
     elif text.count(":") == 1:
         destination, ports = text.split(":")
@@ -258,11 +272,12 @@ class SandboxConfig:
             slirp4netns: ports and loopback are per-sandbox, nothing in the
             sandbox is reachable from the host or from other sandboxes, and
             /etc/resolv.conf is generated from ``dns``, inheriting nothing
-            from the host resolver. Egress is filtered by ``cidr_allowlist``
-            (the public internet only by default), and the cluster's control
-            plane is never reachable: instance metadata, loopback, the
-            Kubernetes API service, this worker's addresses, and every Ray
-            node's address stay closed whatever the allowlist says.
+            from the host resolver. Egress is filtered by ``cidr_allowlist``,
+            the public internet only by default, which leaves out internal
+            addresses as a best effort; a denylist keeps instance metadata,
+            loopback, and the Kubernetes API service closed whatever the
+            allowlist says. For untrusted code that needs the network, set
+            an allowlist that names only the services it needs.
             Requires the ``slirp4netns`` and ``nft`` binaries on the node.
             "host" gives full host network identity — the host's
             resolv.conf, internal networks, every Ray port on the node, and a
@@ -284,14 +299,14 @@ class SandboxConfig:
             ``[2001:db8::1]:443``, ``internet:443``); see
             ``parse_cidr_allowlist_entry``. UDP and TCP port 53 to the
             resolvers in ``dns`` stays open so names still resolve, and
-            ``[]`` allows nothing but DNS. No entry opens the control-plane
-            guard: ``EGRESS_ALWAYS_DENIED``, the Kubernetes API service, and
-            the networks in ``RAY_SANDBOX_EGRESS_DENY`` are always closed,
-            and this worker's and every Ray node's addresses are closed to
-            all but entries naming one address and its ports
-            (``10.0.3.7:8000``, say, for a model server on a Ray node).
-            Entries are normalized (``10.0.1.5/24`` -> ``10.0.1.0/24``), and
-            host names are rejected. Only valid with network="public".
+            ``[]`` allows nothing but DNS. No entry opens the denylist:
+            ``EGRESS_ALWAYS_DENIED``, the Kubernetes API service, and the
+            networks in ``RAY_SANDBOX_EGRESS_DENY``. Ray doesn't track the
+            cluster's own nodes, so an entry that covers their addresses,
+            such as ``10.0.0.0/8``, reaches them; list their network in
+            ``RAY_SANDBOX_EGRESS_DENY`` to keep it closed. Entries are
+            normalized (``10.0.1.5/24`` -> ``10.0.1.0/24``), and host names
+            are rejected. Only valid with network="public".
         capabilities: Linux capabilities for the container process. None
             (default) keeps the runtime default (what ``runsc spec`` emits);
             otherwise the bounding/effective/permitted sets are written

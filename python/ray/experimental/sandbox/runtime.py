@@ -86,10 +86,11 @@ class SandboxRuntime:
             dns: Optional nameserver IPs for the generated /etc/resolv.conf
                 (public resolvers by default for "public").
             cidr_allowlist: Optional egress allowlist for network="public":
-                only the listed IPv4/IPv6 networks are reachable (plus DNS
-                to the ``dns`` resolvers). None means the public internet
-                only, and the cluster's control plane stays closed whatever
-                the list says; see
+                only the listed destinations are reachable (plus DNS to
+                the ``dns`` resolvers). None means the public internet,
+                with internal addresses left out as a best effort, and a
+                denylist keeps instance metadata and the Kubernetes API
+                service closed whatever the list says; see
                 :class:`~ray.experimental.sandbox.config.SandboxConfig`.
                 Change it later with :meth:`set_egress_allowlist`.
             capabilities: Linux capabilities, written exactly (None keeps
@@ -299,8 +300,8 @@ class SandboxRuntime:
 
         The new list takes effect for the next packet of every flow; flows
         it no longer permits stall rather than being reset. No list opens
-        the cluster's control plane; ``ALLOW_ALL_CIDRS`` opens everything
-        else, private networks included.
+        the denylist; ``ALLOW_ALL_CIDRS`` opens everything else, private
+        networks and any Ray node on them included.
 
         Args:
             instance_id: Unique identifier of the sandbox instance.

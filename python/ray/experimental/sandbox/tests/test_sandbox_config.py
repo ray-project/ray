@@ -166,7 +166,7 @@ def test_normalize_cidr_allowlist_ports_and_internet():
         ("10.0.0.5:", "port"),
         ("internet:https", "port"),
         ("[2001:db8::1:443", "unclosed"),
-        ("[2001:db8::1]443", "unclosed"),
+        ("[2001:db8::1]443", "after ']'"),
         ("example.com:443", "not an IP address"),
     ],
 )

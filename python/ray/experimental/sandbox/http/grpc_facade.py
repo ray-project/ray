@@ -172,9 +172,9 @@ def _network_policy(definition: Any) -> Tuple[str, Optional[List[str]]]:
     BLOCKED (and the deprecated ``block_network`` flag) is ``network="none"``;
     OPEN is ``"public"`` with the runtime's default allowlist, the public
     internet only, as a Modal sandbox has; ALLOWLIST is ``"public"`` with the
-    listed CIDRs enforced by the runtime. Either way the cluster's control
-    plane (instance metadata, the Kubernetes API, Ray nodes) stays closed. What the runtime cannot
-    enforce is refused, never widened: a sandbox must not run with fewer
+    listed CIDRs enforced by the runtime. Either way the runtime's denylist
+    (instance metadata, the Kubernetes API) stays closed. What the runtime
+    cannot enforce is refused, never widened: a sandbox must not run with fewer
     restrictions than its client believes it has. An inbound allowlist needs
     no mapping: the facade exposes no inbound path, so it holds trivially.
     """

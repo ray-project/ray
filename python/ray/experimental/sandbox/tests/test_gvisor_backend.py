@@ -1,6 +1,7 @@
 import contextlib
 import ctypes
 import errno
+import ipaddress
 import json
 import os
 import shutil
@@ -17,7 +18,6 @@ import pytest
 import ray
 from ray.actor import ActorHandle
 from ray.experimental.sandbox import create
-from ray.experimental.sandbox._internal import egress_guard
 from ray.experimental.sandbox._internal.image_utils import (
     DEFAULT_IMAGES_DIR,
     image_cache_name,
@@ -29,7 +29,6 @@ from ray.experimental.sandbox.backend.gvisor import (
     _RESOLVER_UNREACHABLE,
     GVisorSandboxBackend,
     _exec_processes,
-    _guard_may_miss_new_nodes,
     _holder_namespace_ids,
     _namespace_ids,
     _render_egress_ruleset,
@@ -818,14 +817,12 @@ def test_terminate_tree_kills_only_a_launch_process_that_hangs(monkeypatch):
 
 def test_render_egress_ruleset_pins_the_policy():
     """The ruleset is the enforcement, so pin its exact text: default drop;
-    loopback and DNS to the resolvers on port 53 first; then the guard's
-    always-denied networks; then the cluster's addresses; then one accept per
-    allowed network in its family."""
+    loopback and DNS to the resolvers on port 53 first; then the denylist;
+    then one accept per allowed network in its family."""
     text = _render_egress_ruleset(
         ["52.0.0.0/8", "10.0.1.5/24", "2001:db8::/32"],
         ["8.8.8.8"],
         denied=["169.254.0.0/16", "127.0.0.1/32", "127.0.0.0/8", "fe80::/10"],
-        cluster=["10.0.0.84/32", "10.0.0.85/32"],
     )
     assert text == (
         "flush ruleset\n"
@@ -837,7 +834,6 @@ def test_render_egress_ruleset_pins_the_policy():
         "        ip daddr 8.8.8.8 tcp dport 53 accept\n"
         "        ip daddr { 127.0.0.0/8, 169.254.0.0/16 } drop\n"
         "        ip6 daddr { fe80::/10 } drop\n"
-        "        ip daddr { 10.0.0.84/31 } drop\n"
         "        ip daddr 52.0.0.0/8 accept\n"
         "        ip daddr 10.0.1.0/24 accept\n"
         "        ip6 daddr 2001:db8::/32 accept\n"
@@ -847,10 +843,9 @@ def test_render_egress_ruleset_pins_the_policy():
 
 
 def test_render_egress_ruleset_ports_and_internet():
-    """A port entry accepts only that port, for TCP and UDP; one naming a
-    single address goes ahead of the cluster's addresses, but after the
-    always-denied networks. "internet" is every address outside the
-    non-public IPv4 networks, plus IPv6 global unicast."""
+    """A port entry accepts only that port, for TCP and UDP, after the
+    denylist. "internet" is every address outside the non-public IPv4
+    networks, plus IPv6 global unicast."""
     text = _render_egress_ruleset(
         [
             "10.0.0.5:8000",
@@ -861,7 +856,6 @@ def test_render_egress_ruleset_ports_and_internet():
         ],
         ["8.8.8.8"],
         denied=["169.254.0.0/16"],
-        cluster=["10.0.0.5/32"],
     )
     rules = [line.strip() for line in text.splitlines()[5:-2]]
     not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
@@ -873,11 +867,9 @@ def test_render_egress_ruleset_ports_and_internet():
         "ip daddr 10.0.0.5/32 udp dport 8000 accept",
         "ip6 daddr 2001:db8::1/128 tcp dport 443-444 accept",
         "ip6 daddr 2001:db8::1/128 udp dport 443-444 accept",
-        # Pinned too, but the always-denied drop above already took it.
+        # The denylist's drop above already took it.
         "ip daddr 169.254.169.254/32 tcp dport 80 accept",
         "ip daddr 169.254.169.254/32 udp dport 80 accept",
-        "ip daddr { 10.0.0.5/32 } drop",
-        # A network with a port is not pinned: the cluster stays closed.
         "ip daddr 10.0.0.0/8 tcp dport 22 accept",
         "ip daddr 10.0.0.0/8 udp dport 22 accept",
         f"{not_public} accept",
@@ -888,15 +880,13 @@ def test_render_egress_ruleset_ports_and_internet():
 
 
 def test_render_egress_ruleset_empty_allowlist_keeps_only_dns():
-    text = _render_egress_ruleset(
-        [], ["8.8.8.8", "1.1.1.1"], denied=["169.254.0.0/16"], cluster=[]
-    )
+    text = _render_egress_ruleset([], ["8.8.8.8", "1.1.1.1"], denied=["169.254.0.0/16"])
     assert "ip daddr 8.8.8.8 udp dport 53 accept" in text
     assert "ip daddr 1.1.1.1 tcp dport 53 accept" in text
     # Loopback plus two resolvers times two protocols: nothing else.
     assert text.count(" accept") == 5
     with pytest.raises(ValueError, match="dns"):
-        _render_egress_ruleset([], ["resolver.internal"], denied=[], cluster=[])
+        _render_egress_ruleset([], ["resolver.internal"], denied=[])
 
 
 def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
@@ -915,15 +905,11 @@ def test_write_egress_ruleset_defaults_to_public_dns_and_adds_the_guard(
     assert [p.name for p in tmp_path.iterdir()] == ["egress.nft"]
 
 
-def test_write_egress_ruleset_writes_nothing_without_the_guard(tmp_path, monkeypatch):
-    """No ruleset is written when the cluster's addresses can't be read, so
-    the sandbox never starts without them."""
-
-    def unavailable():
-        raise ConnectionError("GCS unavailable")
-
-    monkeypatch.setattr(egress_guard, "cluster_addresses", unavailable)
-    with pytest.raises(ConnectionError):
+def test_write_egress_ruleset_writes_nothing_with_a_bad_denylist(tmp_path, monkeypatch):
+    """No ruleset is written when RAY_SANDBOX_EGRESS_DENY can't be read, so a
+    typo there never starts a sandbox without the operator's denylist."""
+    monkeypatch.setenv("RAY_SANDBOX_EGRESS_DENY", "apiserver.internal")
+    with pytest.raises(ValueError, match="apiserver.internal"):
         _write_egress_ruleset(str(tmp_path), ["internet"], None)
     assert list(tmp_path.iterdir()) == []
 
@@ -1013,14 +999,11 @@ def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypa
     assert f"{not_public} accept" in text
     assert "169.254.0.0/16" in text
 
-    def unavailable():
-        raise ConnectionError("GCS unavailable")
-
-    monkeypatch.setattr(egress_guard, "cluster_addresses", unavailable)
+    monkeypatch.setenv("RAY_SANDBOX_EGRESS_DENY", "apiserver.internal")
     images = _StubImageManager()
     backend = GVisorSandboxBackend(image_manager=images)
     bundles = set(tmp_path.iterdir())
-    with pytest.raises(SandboxCreationError, match="GCS unavailable"):
+    with pytest.raises(SandboxCreationError, match="apiserver.internal"):
         backend.create_sandbox(_public_config())
     assert len(images.released) == 1
     # The failed create deletes its bundle rather than leaving it locked.
@@ -1239,103 +1222,20 @@ def test_set_egress_allowlist_serializes_concurrent_updates(tmp_path, monkeypatc
     assert f"ip daddr {recorded} accept" in (tmp_path / "egress.nft").read_text()
 
 
-def test_guard_may_miss_new_nodes():
-    """Only an allowlist that could reach a node that joins later needs its
-    guard kept current: a network entry, or internet on a cluster whose nodes
-    have public IPv4 addresses."""
-    private = ["10.0.0.5/32", "127.0.0.1/32", "fe80::1/128", "2600:1f18::5/128"]
-    for cidrs in ([], ["internet"], ["internet:443", "10.0.0.84/32:8000"]):
-        assert not _guard_may_miss_new_nodes(cidrs, private), cidrs
-    for cidrs in (
-        ["10.0.0.0/8"],
-        ["10.0.0.84/32"],
-        ["52.0.0.0/8:443"],
-        list(ALLOW_ALL_CIDRS),
-    ):
-        assert _guard_may_miss_new_nodes(cidrs, private), cidrs
-    assert _guard_may_miss_new_nodes(["internet"], private + ["52.1.2.3/32"])
-
-
-def _fake_public_sandbox(root_dir: Path, cidrs: list, cluster: list) -> dict:
+def _fake_public_sandbox(root_dir: Path, cidrs: list) -> dict:
     """Metadata of a public sandbox whose namespace holder is this process."""
     root_dir.mkdir()
     (root_dir / "netns.pid").write_text(f"{os.getpid()}\n")
     cfg = GVisorSandboxConfig(
         image="busybox:latest", shell="/bin/sh", network="public", cidr_allowlist=cidrs
     )
-    _write_egress_ruleset(str(root_dir), cfg.cidr_allowlist, cfg.dns, cluster=cluster)
+    _write_egress_ruleset(str(root_dir), cfg.cidr_allowlist, cfg.dns)
     return {
         "root_dir": str(root_dir),
         "config": cfg,
         "egress_allowlist": cfg.cidr_allowlist,
-        "egress_cluster": list(cluster),
         "netns_ids": _namespace_ids(os.getpid()),
     }
-
-
-@_needs_proc_ns
-def test_refresh_guards_adds_nodes_that_joined(tmp_path, monkeypatch):
-    """A guard that could miss a node that joined since gets the cluster's
-    current addresses, once. An allowlist that can't reach new nodes costs no
-    lookup."""
-    backend = GVisorSandboxBackend(image_manager=object())
-    backend._sandbox_metadata["sb-private"] = _fake_public_sandbox(
-        tmp_path / "private", ["10.0.0.0/8"], ["10.0.0.5/32"]
-    )
-    backend._sandbox_metadata["sb-internet"] = _fake_public_sandbox(
-        tmp_path / "internet", ["internet"], ["10.0.0.5/32"]
-    )
-    joined = ["10.0.0.5/32", "10.0.0.9/32"]
-    lookups = []
-    monkeypatch.setattr(
-        egress_guard, "cluster_addresses", lambda: lookups.append(1) or joined
-    )
-
-    class _Completed:
-        returncode = 0
-        stderr = b""
-
-    loaded = []
-    monkeypatch.setattr(
-        "ray.experimental.sandbox.backend.gvisor.subprocess.run",
-        lambda args, **kwargs: loaded.append(args[-1]) or _Completed(),
-    )
-    assert backend._refresh_guards() == ["sb-private"]
-    assert loaded == [str(tmp_path / "private" / "egress.nft")]
-    assert "10.0.0.9" in (tmp_path / "private" / "egress.nft").read_text()
-    assert "10.0.0.9" not in (tmp_path / "internet" / "egress.nft").read_text()
-    assert backend._sandbox_metadata["sb-private"]["egress_cluster"] == joined
-    assert backend._sandbox_metadata["sb-private"]["egress_allowlist"] == ["10.0.0.0/8"]
-    # Nothing changed since, so nothing reloads.
-    assert backend._refresh_guards() == []
-    assert len(loaded) == 1
-
-    del backend._sandbox_metadata["sb-private"]
-    lookups.clear()
-    assert backend._refresh_guards() == []
-    assert lookups == []
-
-
-def test_guard_refresher_runs_while_public_sandboxes_exist(monkeypatch):
-    """The refresher starts with the first public sandbox, runs as one thread
-    however many sandboxes start it, and stops once none is left."""
-    monkeypatch.setattr(
-        "ray.experimental.sandbox.backend.gvisor._GUARD_REFRESH_SECONDS", 0.01
-    )
-    backend = GVisorSandboxBackend(image_manager=object())
-    refreshed = threading.Event()
-    monkeypatch.setattr(backend, "_refresh_guards", lambda: refreshed.set() or [])
-    backend._sandbox_metadata["sb-1"] = {"egress_allowlist": ["internet"]}
-    backend._ensure_guard_refresher()
-    thread = backend._guard_refresher
-    backend._ensure_guard_refresher()
-    assert backend._guard_refresher is thread
-    assert refreshed.wait(timeout=10)
-
-    del backend._sandbox_metadata["sb-1"]
-    thread.join(timeout=10)
-    assert not thread.is_alive()
-    assert backend._guard_refresher is None
 
 
 def test_resolver_probe_names_the_first_unreachable_resolver():
@@ -1366,7 +1266,7 @@ def test_unreachable_resolver_probes_inside_the_sandbox(tmp_path, monkeypatch):
     its own verdict counts, so a probe that can't run blocks nothing."""
     backend = GVisorSandboxBackend(image_manager=object())
     backend._sandbox_metadata["sb-1"] = _fake_public_sandbox(
-        tmp_path / "sb", ["internet"], []
+        tmp_path / "sb", ["internet"]
     )
     results = []
     calls = []
@@ -1552,13 +1452,18 @@ def test_netns_egress_ports_and_internet(ensure_slirp4netns):
             listener.close()
 
 
-def test_netns_default_policy_keeps_the_control_plane_closed(ensure_slirp4netns):
+def test_netns_default_policy_leaves_out_internal_addresses(
+    ensure_slirp4netns, monkeypatch
+):
     """A public sandbox created without an allowlist reaches the internet but
-    not the worker's own address, where Ray's ports listen, nor instance
-    metadata or the Kubernetes API. No allowlist opens those: not even
-    allow-all, and the worker opens only to an entry naming its address and
-    port."""
+    not the worker's own address, where Ray's ports listen, because it's an
+    internal address; nor instance metadata or the Kubernetes API, which the
+    denylist closes. Ray doesn't track its nodes, so an allowlist that covers
+    internal networks reaches the worker, until RAY_SANDBOX_EGRESS_DENY
+    lists it."""
     host = _host_ip()
+    if ipaddress.ip_address(host).is_global:
+        pytest.skip("the worker's address is public, so internet covers it")
     listener = socket.create_server((host, 0))
     port = listener.getsockname()[1]
     targets = {
@@ -1591,9 +1496,10 @@ def test_netns_default_policy_keeps_the_control_plane_closed(ensure_slirp4netns)
         targets.pop("kubernetes", None)
         closed.pop("kubernetes", None)
         backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
-        assert reach() == {**closed, "internet": "open"}
-        backend.set_egress_allowlist(sb, ["internet", f"{host}:{port}"])
         assert reach() == {**closed, "worker": "open", "internet": "open"}
+        monkeypatch.setenv("RAY_SANDBOX_EGRESS_DENY", f"{host}/32")
+        backend.set_egress_allowlist(sb, list(ALLOW_ALL_CIDRS))
+        assert reach() == {**closed, "internet": "open"}
     finally:
         backend.delete_sandbox(sb)
         listener.close()
@@ -1614,33 +1520,6 @@ def test_netns_egress_allowlist_runtime_update(ensure_slirp4netns):
         assert res.exit_code == 0, res.stderr
         backend.set_egress_allowlist(sb, [])
         assert backend.exec_command(sb, _CONNECT_PROBE, timeout=60).exit_code != 0
-    finally:
-        backend.delete_sandbox(sb)
-
-
-def test_netns_guard_refresh_closes_a_node_that_joined(ensure_slirp4netns, monkeypatch):
-    """A Ray node that joins after a sandbox started enters its guard at the
-    next refresh, so an allowlist that reached the node's address no longer
-    does. A public address stands in for the new node."""
-    backend = GVisorSandboxBackend()
-    sb = backend.create_sandbox(
-        GVisorSandboxConfig(
-            image="python:3.10-slim",
-            network="public",
-            cidr_allowlist=list(ALLOW_ALL_CIDRS),
-        )
-    )
-    try:
-        reach = backend.exec_command(sb, _probe("1.1.1.1", 443), timeout=60)
-        assert reach.stdout.strip() == "open", reach.stderr
-        cluster = egress_guard.cluster_addresses()
-        monkeypatch.setattr(
-            egress_guard, "cluster_addresses", lambda: cluster + ["1.1.1.1/32"]
-        )
-        assert backend._refresh_guards() == [sb]
-        reach = backend.exec_command(sb, _probe("1.1.1.1", 443), timeout=60)
-        assert reach.stdout.strip() == "timeout", reach.stderr
-        assert backend._refresh_guards() == []
     finally:
         backend.delete_sandbox(sb)
 

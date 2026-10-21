@@ -87,10 +87,10 @@ _RAY_SANDBOX_DIR = "/tmp/ray/sandbox"
 # the worker's own.
 #
 # An nftables ruleset in the sandbox's network namespace (see
-# _render_egress_ruleset) closes that, for every network="public" sandbox.
-# It drops each locally generated packet bound for the control-plane guard
-# (egress_guard: instance metadata, loopback, the Kubernetes API, this
-# worker's and every Ray node's addresses) or outside cidr_allowlist, which
+# _render_egress_ruleset) narrows that, for every network="public" sandbox.
+# It drops each locally generated packet bound for the denylist
+# (egress_guard: instance metadata, loopback, the Kubernetes API, and the
+# operator's RAY_SANDBOX_EGRESS_DENY) or outside cidr_allowlist, which
 # defaults to the public internet, before it reaches the tap. It is
 # installed from the pod side, between slirp4netns coming up and runsc
 # starting, and a failed install aborts the start.
@@ -168,10 +168,6 @@ _EGRESS_TABLE = "ray_sandbox_egress"
 # The namespaces set_egress_allowlist enters to reload the ruleset.
 _EGRESS_NAMESPACES = ("user", "net")
 
-# How often a backend looks for Ray nodes that joined after a sandbox's
-# ruleset was written, for sandboxes whose allowlist could reach one.
-_GUARD_REFRESH_SECONDS = 30.0
-
 # Run inside a sandbox's namespaces with resolver addresses as arguments. It
 # sends each one a single byte on UDP port 53, which fails at once if the
 # egress filter drops the packet or the sandbox has no route to it, and
@@ -189,51 +185,6 @@ for server in sys.argv[1:]:
             sys.exit(3)
 """
 _RESOLVER_UNREACHABLE = 3
-
-
-def _in_internet(network: str) -> bool:
-    """Whether ``network`` lies inside the ``internet`` allowlist entry."""
-    net = ipaddress.ip_network(network, strict=False)
-    if net.version == 6:
-        return net.subnet_of(ipaddress.ip_network(INTERNET_IPV6))
-    return not any(
-        net.overlaps(ipaddress.ip_network(excluded))
-        for excluded in INTERNET_EXCLUDED_IPV4
-    )
-
-
-def _guard_may_miss_new_nodes(cidrs: List[str], cluster: List[str]) -> bool:
-    """Whether a Ray node that joins later could get through ``cidrs``.
-
-    A ruleset's guard holds the cluster's addresses from when it was
-    written. An entry naming one address and its ports goes through the
-    guard by design, and ``internet`` leaves out the private networks that
-    clusters usually run on, so neither needs the guard to keep up. Any
-    other entry could hold a new node, and so could ``internet`` when the
-    cluster's own IPv4 addresses are public. Sandboxes have no IPv6 route,
-    so IPv6 addresses don't count.
-
-    Args:
-        cidrs: A normalized allowlist.
-        cluster: The cluster addresses its ruleset was written with.
-
-    Returns:
-        True if the ruleset should be rewritten when the cluster changes.
-    """
-    internet = False
-    for entry in cidrs:
-        destination, ports = parse_cidr_allowlist_entry(entry)
-        if destination == INTERNET:
-            internet = True
-            continue
-        network = ipaddress.ip_network(destination)
-        if ports is None or network.prefixlen != network.max_prefixlen:
-            return True
-    return internet and any(
-        _in_internet(address)
-        for address in cluster
-        if ipaddress.ip_network(address, strict=False).version == 4
-    )
 
 
 def _namespace_ids(pid: int) -> Optional[List[Tuple[int, int]]]:
@@ -316,11 +267,7 @@ def _open_holder_namespaces(
 
 
 def _render_egress_ruleset(
-    cidrs: List[str],
-    dns_servers: List[str],
-    *,
-    denied: List[str],
-    cluster: List[str],
+    cidrs: List[str], dns_servers: List[str], *, denied: List[str]
 ) -> str:
     """Render the nftables ruleset that restricts a sandbox's egress to ``cidrs``.
 
@@ -332,11 +279,8 @@ def _render_egress_ruleset(
     1. Loopback (the sandbox's own) and DNS, UDP and TCP port 53, to the
        sandbox's resolvers: accepted.
     2. ``denied``: dropped, so no allowlist entry opens it.
-    3. Entries naming one address and its ports (``10.0.3.7/32:8000``):
-       accepted, ahead of the next rule.
-    4. ``cluster``: dropped.
-    5. The other entries: accepted. An entry with ports accepts only those
-       TCP and UDP ports, and ``internet`` accepts every address outside the
+    3. The entries: accepted. An entry with ports accepts only those TCP and
+       UDP ports, and ``internet`` accepts every address outside the
        non-public IPv4 networks plus IPv6 global unicast.
 
     Plain prefix matches, anonymous sets, and a numeric hook priority keep it
@@ -348,8 +292,6 @@ def _render_egress_ruleset(
             ``normalize_cidr_allowlist`` accepts).
         dns_servers: Resolver addresses the generated resolv.conf lists.
         denied: Networks no entry opens (``egress_guard.always_denied``).
-        cluster: The Ray cluster's addresses, which only pinned entries
-            open (``egress_guard.cluster_addresses``).
 
     Returns:
         The ruleset text, ready for ``nft -f``.
@@ -375,23 +317,11 @@ def _render_egress_ruleset(
         family = "ip6" if address.version == 6 else "ip"
         for proto in ("udp", "tcp"):
             lines.append(f"        {family} daddr {address} {proto} dport 53 accept")
-
-    def drop(networks: List[str]) -> None:
-        for family, members in zip(("ip", "ip6"), egress_guard.collapse(networks)):
-            if members:
-                lines.append(f"        {family} daddr {{ {', '.join(members)} }} drop")
-
-    pinned, others = [], []
+    for family, members in zip(("ip", "ip6"), egress_guard.collapse(denied)):
+        if members:
+            lines.append(f"        {family} daddr {{ {', '.join(members)} }} drop")
     for entry in normalize_cidr_allowlist(cidrs):
         destination, ports = parse_cidr_allowlist_entry(entry)
-        if destination != INTERNET:
-            network = ipaddress.ip_network(destination)
-            if ports is not None and network.prefixlen == network.max_prefixlen:
-                pinned.append((destination, ports))
-                continue
-        others.append((destination, ports))
-
-    def accept(destination: str, ports: Optional[str]) -> None:
         if destination == INTERNET:
             matches = [
                 " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4),
@@ -406,52 +336,34 @@ def _render_egress_ruleset(
             else:
                 for proto in ("tcp", "udp"):
                     lines.append(f"        {match} {proto} dport {ports} accept")
-
-    drop(denied)
-    for destination, ports in pinned:
-        accept(destination, ports)
-    drop(cluster)
-    for destination, ports in others:
-        accept(destination, ports)
     lines.extend(["    }", "}", ""])
     return "\n".join(lines)
 
 
 def _write_egress_ruleset(
-    root_dir: str,
-    cidrs: List[str],
-    dns: Optional[List[str]],
-    cluster: Optional[List[str]] = None,
+    root_dir: str, cidrs: List[str], dns: Optional[List[str]]
 ) -> str:
     """Write the egress ruleset for ``cidrs`` into ``root_dir`` atomically.
 
-    The rest of the control-plane guard is looked up afresh, so each write
-    also picks up changes to ``RAY_SANDBOX_EGRESS_DENY``.
+    The denylist is read afresh, so each write also picks up changes to
+    ``RAY_SANDBOX_EGRESS_DENY``.
 
     Args:
         root_dir: The sandbox's per-instance directory.
         cidrs: Allowed destination networks.
         dns: The sandbox's ``dns`` setting; None means the public defaults,
             the same rule the generated resolv.conf follows.
-        cluster: The Ray cluster's addresses for the guard, as
-            ``egress_guard.cluster_addresses`` gives them; None looks them
-            up, which also picks up Ray nodes that joined since.
 
     Returns:
         The path of the written ruleset.
 
     Raises:
-        Exception: If the guard can't be determined (for example, GCS
-            doesn't answer) or the file can't be written. Nothing is
-            written then.
+        Exception: If the denylist can't be read (for example, an entry in
+            ``RAY_SANDBOX_EGRESS_DENY`` isn't an IP address or network) or
+            the file can't be written. Nothing is written then.
     """
     resolvers = list(dns) if dns else list(DEFAULT_PUBLIC_DNS)
-    text = _render_egress_ruleset(
-        cidrs,
-        resolvers,
-        denied=egress_guard.always_denied(),
-        cluster=egress_guard.cluster_addresses() if cluster is None else cluster,
-    )
+    text = _render_egress_ruleset(cidrs, resolvers, denied=egress_guard.always_denied())
     path = os.path.join(root_dir, _EGRESS_RULES_FILE)
     fd, tmp_path = tempfile.mkstemp(dir=root_dir, prefix=_EGRESS_RULES_FILE + ".")
     try:
@@ -529,9 +441,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def __init__(self, image_manager: Optional[BaseImageManager] = None):
         super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}
-        # Runs _refresh_guards while this backend has public sandboxes.
-        self._guard_refresher: Optional[threading.Thread] = None
-        self._guard_refresher_lock = threading.Lock()
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -629,7 +538,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             owner_file.close()
             raise
         egress_allowlist = None
-        egress_cluster = None
         if config.network == "public":
             egress_allowlist = list(
                 config.cidr_allowlist
@@ -639,10 +547,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # Loaded by the run command inside the sandbox's network
             # namespace once slirp4netns has brought the tap up.
             try:
-                egress_cluster = egress_guard.cluster_addresses()
-                _write_egress_ruleset(
-                    root_dir, egress_allowlist, config.dns, cluster=egress_cluster
-                )
+                _write_egress_ruleset(root_dir, egress_allowlist, config.dns)
             except Exception as err:
                 shutil.rmtree(root_dir, ignore_errors=True)
                 self._image_manager.release_image(config.image, sandbox_id)
@@ -733,11 +638,8 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # The egress allowlist in force (None: not network="public");
             # updated by set_egress_allowlist.
             "egress_allowlist": egress_allowlist,
-            # The cluster addresses its guard holds; _refresh_guards rewrites
-            # the ruleset when Ray nodes join or leave.
-            "egress_cluster": egress_cluster,
-            # Serializes ruleset changes: the file, the nft load,
-            # egress_allowlist, and egress_cluster must change together.
+            # Serializes set_egress_allowlist: the ruleset file, the nft
+            # load, and egress_allowlist must change together.
             "egress_lock": threading.Lock(),
             # The sandbox's user and network namespaces (None if unknown,
             # which makes set_egress_allowlist refuse).
@@ -768,7 +670,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         "Service IP such as the cluster DNS Service's. Use an "
                         "IPv4 resolver that isn't a Service IP."
                     )
-            self._ensure_guard_refresher()
         return sandbox_id
 
     def delete_sandbox(self, sandbox_id: str) -> None:
@@ -816,14 +717,14 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         inside the sandbox's own namespaces. They're entered through the
         holder in netns.pid, but only once its namespaces match the ones
         recorded at creation, and through fds rather than the reusable pid.
-        The control-plane guard is looked up again and reinstalled with the
-        list, so no list opens it. Flows the new list no longer permits are
-        not reset; they stall from their next packet on.
+        The denylist is read again and reinstalled with the list, so no
+        list opens it. Flows the new list no longer permits are not
+        reset; they stall from their next packet on.
 
         Args:
             sandbox_id: Unique string identifier of the sandbox.
             cidrs: The new allowlist; ``ALLOW_ALL_CIDRS`` opens every
-                destination outside the guard.
+                destination outside the denylist.
 
         Raises:
             SandboxNotFoundError: If the sandbox is unknown.
@@ -837,38 +738,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 f"Sandbox '{sandbox_id}' has no egress allowlist: only "
                 "network='public' sandboxes have one."
             )
-        self._load_egress_ruleset(sandbox_id, meta, normalize_cidr_allowlist(cidrs))
-
-    def _load_egress_ruleset(
-        self,
-        sandbox_id: str,
-        meta: Dict,
-        cidrs: Optional[List[str]] = None,
-        cluster: Optional[List[str]] = None,
-    ) -> None:
-        """Rewrite a public sandbox's ruleset and load it in its namespaces.
-
-        Args:
-            sandbox_id: Unique string identifier of the sandbox.
-            meta: The sandbox's metadata.
-            cidrs: The normalized allowlist to install. None reinstalls the
-                one in force when the update starts.
-            cluster: The Ray cluster's addresses for the guard. None looks
-                them up.
-
-        Raises:
-            SandboxError: If the sandbox's namespaces can't be entered, or
-                the ruleset can't be written or loaded. The previous ruleset
-                stays in force then.
-        """
+        normalized = normalize_cidr_allowlist(cidrs)
         config: SandboxConfig = meta["config"]
         root_dir = meta["root_dir"]
 
         # One update at a time per sandbox, so two overlapping updates can
         # never leave one list loaded while the other is recorded.
         with meta.setdefault("egress_lock", threading.Lock()):
-            if cidrs is None:
-                cidrs = meta["egress_allowlist"]
             rules_path = os.path.join(root_dir, _EGRESS_RULES_FILE)
             try:
                 with open(rules_path, encoding="utf-8") as f:
@@ -886,9 +762,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             user_fd, net_fd = ns_fds
             try:
                 try:
-                    if cluster is None:
-                        cluster = egress_guard.cluster_addresses()
-                    _write_egress_ruleset(root_dir, cidrs, config.dns, cluster=cluster)
+                    _write_egress_ruleset(root_dir, normalized, config.dns)
                 except Exception as err:
                     raise SandboxError(
                         f"Failed to write the egress ruleset of sandbox "
@@ -928,8 +802,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     f"Failed to update the egress allowlist of sandbox "
                     f"'{sandbox_id}': {failure}"
                 )
-            meta["egress_allowlist"] = cidrs
-            meta["egress_cluster"] = cluster
+            meta["egress_allowlist"] = normalized
 
     def _unreachable_resolver(
         self, sandbox_id: str, resolvers: List[str]
@@ -937,7 +810,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """The first of ``resolvers`` that a public sandbox can't reach.
 
         Runs ``_RESOLVER_PROBE`` in the sandbox's network namespace, opened
-        the way ``_load_egress_ruleset`` opens it. A probe that can't run
+        the way ``set_egress_allowlist`` opens it. A probe that can't run
         proves nothing, so it counts as reachable.
 
         Args:
@@ -996,83 +869,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 proc.stderr.strip(),
             )
         return None
-
-    def _ensure_guard_refresher(self) -> None:
-        """Start the thread that runs ``_refresh_guards`` if it isn't running."""
-        with self._guard_refresher_lock:
-            if self._guard_refresher is None:
-                self._guard_refresher = threading.Thread(
-                    target=self._refresh_guards_while_needed,
-                    name="ray-sandbox-guard-refresh",
-                    daemon=True,
-                )
-                self._guard_refresher.start()
-
-    def _refresh_guards_while_needed(self) -> None:
-        """Run ``_refresh_guards`` periodically until no public sandbox is left."""
-        while True:
-            time.sleep(_GUARD_REFRESH_SECONDS)
-            # Decided under the lock that _ensure_guard_refresher takes, so a
-            # public sandbox created meanwhile either keeps this thread
-            # going or starts a new one.
-            with self._guard_refresher_lock:
-                if all(
-                    meta.get("egress_allowlist") is None
-                    for meta in list(self._sandbox_metadata.values())
-                ):
-                    self._guard_refresher = None
-                    return
-            try:
-                self._refresh_guards()
-            except Exception:
-                logger.exception("Failed to refresh the sandboxes' egress guards")
-
-    def _refresh_guards(self) -> List[str]:
-        """Add Ray nodes that joined since to the guards that could miss them.
-
-        A sandbox's guard holds the cluster's addresses from when its
-        ruleset was last written. For each public sandbox whose allowlist
-        could reach a node that joined since (see
-        ``_guard_may_miss_new_nodes``), this rewrites the ruleset when the
-        cluster's addresses have changed. Other sandboxes cost no lookup.
-
-        Returns:
-            The IDs of the sandboxes whose ruleset was rewritten.
-
-        Raises:
-            Exception: Whatever looking up the cluster's addresses raised.
-                Every ruleset stays as it was then.
-        """
-        stale = [
-            sandbox_id
-            for sandbox_id, meta in list(self._sandbox_metadata.items())
-            if meta.get("egress_allowlist") is not None
-            and _guard_may_miss_new_nodes(
-                meta["egress_allowlist"], meta.get("egress_cluster") or []
-            )
-        ]
-        if not stale:
-            return []
-        cluster = egress_guard.cluster_addresses()
-        refreshed = []
-        for sandbox_id in stale:
-            meta = self._sandbox_metadata.get(sandbox_id)
-            if meta is None or set(meta.get("egress_cluster") or []) == set(cluster):
-                continue
-            try:
-                self._load_egress_ruleset(sandbox_id, meta, cluster=cluster)
-            except Exception as err:
-                # A sandbox deleted meanwhile has nothing left to protect.
-                if sandbox_id in self._sandbox_metadata:
-                    logger.warning(
-                        "Failed to add Ray nodes that joined to the egress "
-                        "guard of sandbox %s: %s",
-                        sandbox_id,
-                        err,
-                    )
-                continue
-            refreshed.append(sandbox_id)
-        return refreshed
 
     def _read_account_file(self, sandbox_id: str, path: str) -> str:
         """``/etc/passwd`` or ``/etc/group`` as the running sandbox sees it."""
