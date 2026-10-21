@@ -2,7 +2,6 @@
 import asyncio
 import contextlib
 import ctypes
-import gc
 import os
 import sys
 import threading
@@ -690,52 +689,50 @@ def test_async_actor_reanchors_fiber_stack_before_first_python_call(
 def test_idle_async_actor_internal_task_does_not_leak(ray_start_regular_shared):
     """A task that never yields its fiber must not leak on an idle async actor.
 
-    The test calls `__ray_ready__` many times on an async actor, waiting for each
-    call to finish before sending the next, so that the actor has nothing else
-    running when each call starts. It counts the memory blocks the actor has
-    allocated before and after the calls. If each call leaves some objects
-    behind, the count grows with the number of calls.
+    On an async actor, Ray runs sync methods whose names start with `__ray` (such
+    as `__ray_ready__`) directly on the fiber, without handing off to the event
+    loop. The test calls such a method many times, waiting for each call to
+    finish before sending the next, so that the actor has nothing else running
+    when each call starts. Each call drops a payload on the fiber; if its
+    deallocation is deferred, the payload's finalizer never runs.
 
-    Both the idle actor and `__ray_ready__` are needed to expose the leak. When
-    no other task is in flight, a task that is not re-anchored at start runs with
-    the stack bounds of the OS thread that runs the actor's fibers, rather than
-    the previous fiber's own stack. CPython then thinks the stack is nearly full,
-    so it defers freeing objects instead of freeing them. Ordinary async methods
-    are re-anchored when they hand off to the event loop, and the deferred
-    objects are freed then. `__ray_ready__` never hands off, so without the
-    re-anchor at start, everything it defers is lost when it finishes.
+    Both the idle actor and a task that never hands off are needed to expose the
+    leak. When no other task is in flight, a task that is not re-anchored at
+    start runs with the stack bounds of the OS thread that runs the actor's
+    fibers, rather than the previous fiber's own stack. CPython then thinks the
+    stack is nearly full, so it defers freeing objects instead of freeing them.
+    Ordinary async methods are re-anchored when they hand off to the event loop,
+    and the deferred objects are freed then. A `__ray`-prefixed sync method
+    never hands off, so without the re-anchor at start, everything it defers is
+    lost when it finishes.
     """
+
+    class Payload:
+        pass
 
     @ray.remote
     class AsyncActor:
-        async def unused(self):
-            pass
+        def __init__(self):
+            self._finalizers = []
 
-    def allocated_blocks(self):
-        # Deferred objects are untracked by the GC, so collecting only rules out
-        # garbage cycles that are merely awaiting collection.
-        gc.collect()
-        return sys.getallocatedblocks()
+        def __ray_drop_payload__(self):
+            payload = Payload()
+            self._finalizers.append(weakref.finalize(payload, lambda: None))
 
+        async def num_finalized(self):
+            return sum(not f.alive for f in self._finalizers)
+
+    num_tasks = 50
     actor = AsyncActor.remote()
-    # Warm up, so one-time allocations on this path are not counted.
-    for _ in range(100):
-        ray.get(actor.__ray_ready__.remote())
-
-    # __ray_call__ deserializes its argument on the event loop, so it yields and
-    # is re-anchored: measuring does not leak by itself.
-    blocks_before = ray.get(actor.__ray_call__.remote(allocated_blocks))
-    num_tasks = 1000
     # Submit one at a time, so that the actor is idle when each task starts.
     for _ in range(num_tasks):
-        ray.get(actor.__ray_ready__.remote())
-    blocks_after = ray.get(actor.__ray_call__.remote(allocated_blocks))
+        ray.get(actor.__ray_drop_payload__.remote())
 
-    # Each leaking task strands ~170 blocks; a non-leaking run grows by a few.
-    assert blocks_after - blocks_before < num_tasks, (
-        f"{blocks_after - blocks_before} memory blocks were leaked by {num_tasks} "
-        "__ray_ready__ calls on an idle async actor, so deallocation is being "
-        "deferred and never completed"
+    num_finalized = ray.get(actor.num_finalized.remote())
+    assert num_finalized == num_tasks, (
+        f"{num_tasks - num_finalized} of {num_tasks} payloads dropped by tasks that "
+        "never yield on an idle async actor were never finalized, so their "
+        "deallocation is being deferred and never completed"
     )
 
 
