@@ -510,6 +510,29 @@ def test_generate_and_save_token(leftover_file_content, tmp_path, monkeypatch):
         assert token_path.stat().st_mode & 0o777 == 0o600
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32" or os.geteuid() == 0,
+    reason="Needs POSIX permissions that apply to the current user",
+)
+def test_generate_and_save_token_overwrites_an_unreadable_file(tmp_path, monkeypatch):
+    """A leftover token file the owner can write but not read is overwritten,
+    as before this change, instead of crashing token creation."""
+    from ray._private.authentication.authentication_token_setup import (
+        generate_and_save_token,
+    )
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    token_path = tmp_path / ".ray" / "auth_token"
+    token_path.parent.mkdir()
+    token_path.write_bytes(b"")
+    token_path.chmod(0o200)
+
+    generate_and_save_token()
+
+    assert token_path.stat().st_mode & 0o777 == 0o600
+    assert len(token_path.read_text()) == 64
+
+
 @pytest.mark.parametrize(
     "token_file_content, loaded_token",
     [

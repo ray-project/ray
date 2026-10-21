@@ -41,7 +41,7 @@ def generate_and_save_token() -> None:
 
     # Same rule as the C++ token loader: the token is the first non-blank line,
     # and bytes.strip() trims the same " \t\n\r\f\v" set as its TrimWhitespace.
-    with contextlib.suppress(FileNotFoundError):
+    with contextlib.suppress(OSError):
         if token_path.read_bytes().strip():
             return
 
