@@ -85,7 +85,7 @@ If you prefer your job to lose as little state as possible, then you may prefer 
 
 ## Putting it together
 
-Edit [the full YAML](https://github.com/ray-project/kuberay/blob/release-1.3/ray-operator/config/samples/ray-cluster.persistent-redis.yaml) to your satisfaction and apply it:
+Edit [the full YAML](https://github.com/kuberay-project/kuberay/blob/release-1.3/ray-operator/config/samples/ray-cluster.persistent-redis.yaml) to your satisfaction and apply it:
 
 ```
 kubectl apply -f config/samples/ray-cluster.persistent-redis.yaml

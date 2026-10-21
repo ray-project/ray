@@ -149,6 +149,38 @@ def test_create_maps_resources_to_actor_options_and_limits(
     assert create_call["memory"] == "2048Mi"
 
 
+def test_create_passes_the_disk_limit_to_the_runtime(
+    fake_resolver: FakeResolver,
+) -> None:
+    with _client(fake_resolver) as client:
+        info = _create_sandbox(client, resources={"disk_limit_mb": 10240})
+        _wait_running(client, info["sandbox_id"])
+        # A readonly rootfs with a workdir runs on a private writable overlay.
+        info = _create_sandbox(
+            client,
+            readonly=True,
+            workdir="/workspace",
+            resources={"disk_limit_mb": 512},
+        )
+        _wait_running(client, info["sandbox_id"])
+        # Without a workdir, a read-only rootfs has nothing for the cap to bound.
+        response = client.post(
+            f"{BASE}/sandboxes",
+            json={
+                "image": "python:3.12-slim",
+                "readonly": True,
+                "resources": {"disk_limit_mb": 10240},
+            },
+        )
+        assert response.status_code == 422
+        assert "readonly=false or a workdir" in response.text
+
+    assert [r.create_calls[0]["disk"] for r in fake_resolver.runtimes] == [
+        "10240Mi",
+        "512Mi",
+    ]
+
+
 def test_create_defaults_request_to_limit(fake_resolver: FakeResolver) -> None:
     with _client(fake_resolver) as client:
         _create_sandbox(client, resources={"cpu_limit": 4.0, "memory_limit_mb": 512})
