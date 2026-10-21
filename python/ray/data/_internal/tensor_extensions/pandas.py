@@ -432,6 +432,12 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         """
         from ray.data._internal.tensor_extensions.arrow import tensor_array_to_numpy
 
+        # A null row converts to a 1-D object array while a dense chunk stays
+        # (N, *shape); concatenating the two per-chunk results below would raise.
+        # Collapse to a single chunk first so nulls take one consistent conversion.
+        if isinstance(array, pa.ChunkedArray) and array.null_count > 0:
+            array = array.combine_chunks()
+
         if isinstance(array, pa.ChunkedArray):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
