@@ -101,6 +101,10 @@ OMITTED_LIBRARIES = {
     # for one docstring, and Ray Data's own doctest image installs it through
     # test-requirements.txt.
     "polars": (),
+    # Dataset.write_lance needs it, from the pylance distribution. It's about
+    # 138 MB installed on Linux aarch64, for one docstring, and Ray Data's own
+    # doctest image installs pylance through data-test-requirements.txt.
+    "lance": (),
     # The Azure node provider needs azure-cli-core to import, and its only
     # runnable example is a single private import. "azure" is a namespace
     # package, so if any azure-* distribution reaches the image, _installed
