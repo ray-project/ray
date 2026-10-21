@@ -7,17 +7,17 @@ import pytest
 
 import ray
 from ray import serve
-from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver
 from ray.serve._private.utils import inside_ray_client_context
 
 
 @pytest.fixture(scope="module")
 def ray_client_instance():
-    # A run killed before teardown can leave its cluster up, and `ray start --head` then
-    # fails against that stale GCS; conftest.py's ray_start_stop clears it the same way.
+    # A killed local run can leave its cluster up, and `ray start --head` would then
+    # fail against that stale GCS.
     subprocess.check_output(["ray", "stop", "--force"])
-    port = find_free_port()
+    # ray start's default; outside the ephemeral range, so nothing grabs it mid-start.
+    port = 10001
     subprocess.check_output(
         [
             "ray",
@@ -59,9 +59,7 @@ def serve_with_client(request, ray_client_instance):
 @pytest.mark.skipif(
     sys.platform != "linux" and sys.platform != "win32", reason="Buggy on MacOS"
 )
-def test_ray_client(ray_client_instance):
-    ray.util.connect(ray_client_instance, namespace="default_test_namespace")
-
+def test_ray_client(ray_client_instance, serve_with_client):
     start = """
 import ray
 ray.util.connect("{}", namespace="default_test_namespace")
@@ -132,9 +130,6 @@ serve.run(A.bind(), route_prefix="/A")
     run_string_as_driver(fastapi)
 
     assert httpx.get("http://localhost:8000/A", follow_redirects=True).json() == "hello"
-
-    serve.shutdown()
-    ray.util.disconnect()
 
 
 def test_quickstart_class(serve_with_client):
