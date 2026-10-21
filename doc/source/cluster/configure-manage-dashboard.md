@@ -65,6 +65,16 @@ $ ray dashboard [-p <port, 8265 by default>] <cluster config file>
 The dashboard is now visible at ``http://localhost:8265``.
 :::
 
+:::{tab-item} Manual configuration
+**Port forwarding** <br/> If you started the cluster manually with ``ray start``, forward a local port to the dashboard port on the head node over SSH:
+
+```shell
+ssh -L 8265:localhost:8265 <username>@<head-node-address>
+```
+
+Keep the SSH session open, and view the dashboard at ``http://localhost:8265``. If you started the head node with a non-default ``--dashboard-port``, use that port in place of the second ``8265``.
+:::
+
 :::{tab-item} KubeRay
 
 The KubeRay operator makes the dashboard available via a Service targeting the Ray head pod, named ``<RayCluster name>-head-svc``. Access the dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-svc:8265``.
