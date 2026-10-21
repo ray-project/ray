@@ -149,6 +149,9 @@ steps:
     depends_on: [ "mlgpubuild-multipy(python=3.10)", "forge" ]
 
   - label: ":train: ml: data integration tests"
+    # Skipped on "docstring-only" PRs like the Data steps it shares the `data`
+    # tag with. See the "doc: docstring examples" step in others.rayci.yml.
+    if: '!(build.pull_request.labels includes "docstring-only")'
     tags:
       - data
       - train

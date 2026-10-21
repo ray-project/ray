@@ -137,11 +137,13 @@ The `docstringbuild` image leaves out heavy libraries such as torch and TensorFl
 The guard compares each changed file before and after with its docstrings removed, using Python's `ast` module, and fails on any other difference. It also fails on any file that isn't a modified `.py` file, including added, deleted, or renamed files. Comments aren't part of the comparison, so comment edits pass. To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
-python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+python ci/ray_ci/doc/check_docstring_only.py --base upstream/master
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
 
-The label skips only Ray Data's test suites. Other libraries' test steps still run in full under the label, and so does `ml: data integration tests`. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
+Both scripts diff from the merge base of `--base` and your branch, so commits that land on master after you branch don't count as your changes.
+
+The label skips only Ray Data's test suites, including `ml: data integration tests`, which carries the `data` tag. Other libraries' test steps still run in full under the label. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
 
 ### What doesn't run on your PR
 
