@@ -33,8 +33,9 @@ pytest
 
 # Ray Data imports these lazily, inside the readers, writers, and aggregations
 # whose examples call them.
-# write_tfrecords. Its examples also need TensorFlow, which the image omits, so
-# no example that runs here needs crc32c.
+# write_tfrecords. Its datasink checks for crc32c before the example reaches
+# TensorFlow, which the image omits, so without crc32c the example fails
+# instead of skipping for TensorFlow.
 crc32c
 # ApproximateQuantile, ApproximateTopK, and Dataset.summary.
 datasketches
