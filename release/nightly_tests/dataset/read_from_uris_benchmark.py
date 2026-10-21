@@ -29,13 +29,20 @@ def parse_args() -> argparse.Namespace:
 
 
 def main(args: argparse.Namespace):
+    # A transient S3 error that outlives the download's own retries raises a
+    # DownloadError. Retry the task a couple of times before giving up, so a
+    # short S3 slowdown does not fail a long benchmark run.
+    ctx = ray.data.DataContext.get_current()
+    ctx.retried_map_errors = ["DownloadError"]
+    ctx.max_map_retries = 2
+
     benchmark = Benchmark()
     benchmark.run_fn("main", lambda: benchmark_fn(args.sf))
     benchmark.write_result()
 
     # Every key in the metadata exists in the bucket, so a row without bytes
-    # means a download failed and was dropped (DATA-3604). Fail after the
-    # result is written so the metrics are still reported.
+    # means a download failed and was dropped. Fail after the result is
+    # written so the metrics are still reported.
     metrics = benchmark.result["main"]
     num_dropped_rows = metrics[NUM_DROPPED_ROWS_METRIC]
     if num_dropped_rows > 0:
