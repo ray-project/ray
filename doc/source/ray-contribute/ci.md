@@ -149,7 +149,7 @@ The label skips only Ray Data's test suites, including `ml: data integration tes
 
 A Buildkite job marked `broken` never ran. A label-gated step is `broken` on any build that selects it without its label, so a `broken` label-gated step isn't a failure in your change.
 
-On a PR without the `docstring-only` label, `lint: validate docstring-only scope` shows as `broken`, and so does `doc: docstring examples` when the build includes it. On a PR without the `docs-example-test` label, `doc: docs example tests (opt-in)` shows as `broken`. The reverse holds under the `docstring-only` label: every Ray Data test step, including `data: docs example tests`, shows as `broken`, because the label skips them. Scheduled post-merge builds carry no PR labels, so all three label-gated steps show as `broken` there too.
+On a PR without the `docstring-only` label, `lint: validate docstring-only scope` shows as `broken`, and so does `doc: docstring examples` when the build includes it. On a PR without the `docs-example-test` label, `doc: docs example tests (opt-in)` shows as `broken`. The reverse holds under the `docstring-only` label: every Ray Data test step, such as `data: docs example tests`, shows as `broken`, because the label skips them. So does `ml: data integration tests`. Scheduled post-merge builds carry no PR labels, so all three label-gated steps show as `broken` there too.
 
 ### What doesn't run on your PR
 
