@@ -505,6 +505,7 @@ def _read_datasource_v2(
     compute: Optional[ComputeStrategy] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     block_udf: Optional[Callable[[Any], Any]] = None,
+    block_udf_modified_columns: Optional[Set[str]] = None,
     sample_all_files_for_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
@@ -747,6 +748,7 @@ def _read_datasource_v2(
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
+        block_udf_modified_columns=block_udf_modified_columns,
         input_dependencies=[list_files_op],
     )
 
@@ -1925,6 +1927,15 @@ def read_parquet(
             stacklevel=2,
         )
 
+    # Tensor decoding is a known transform of just the declared tensor
+    # columns. If a caller also supplies a custom block UDF, its effects are
+    # unknown and the read operator must retain the full predicate barrier.
+    block_udf_modified_columns = (
+        set(tensor_column_schema)
+        if tensor_column_schema is not None
+        and arrow_parquet_args.get("_block_udf") is None
+        else None
+    )
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -2064,6 +2075,7 @@ def read_parquet(
             concurrency=concurrency,
             partition_filter=partition_filter,
             block_udf=_block_udf,
+            block_udf_modified_columns=block_udf_modified_columns,
             sample_all_files_for_schema=merge_schema,
         )
         if select_columns_after_read is not None:

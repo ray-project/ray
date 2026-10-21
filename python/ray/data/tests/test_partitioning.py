@@ -1214,6 +1214,19 @@ def test_partition_predicate_does_not_hide_logical_cast_errors(year):
         )
 
 
+def test_partition_predicate_cast_error_includes_path():
+    parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
+    path = "year=not-an-int/data.parquet"
+
+    with pytest.raises(pa.ArrowInvalid) as exc:
+        parser.evaluate_predicate_on_partition(
+            path,
+            col("year") == 2024,
+            schema=pa.schema([("year", pa.int64())]),
+        )
+    assert path in str(exc.value)
+
+
 def test_partition_predicate_schema_does_not_fill_missing_path_keys():
     parser = PathPartitionParser(Partitioning(PartitionStyle.HIVE))
     schema = pa.schema([("year", pa.int64()), ("country", pa.string())])

@@ -385,6 +385,10 @@ class PathPartitionParser:
                 return bool(result.as_py())
 
             return bool(result)
+        except pa.ArrowInvalid as exc:
+            raise pa.ArrowInvalid(
+                f"Failed to evaluate predicate for partition path {path!r}: {exc}"
+            ) from exc
         except KeyError:
             # Only a missing partition column is a genuine "can't tell" -- keep
             # the file. Narrow, so a type mismatch (ArrowNotImplementedError,

@@ -240,6 +240,58 @@ def test_block_udf_keeps_post_read_predicates_above_the_read(tmp_path, predicate
     assert scanner.partition_predicate is None
 
 
+@pytest.mark.parametrize(
+    "predicate,expected_data,expected_partition",
+    [
+        (col("a") > 1, col("a") > 1, None),
+        (col("country") == "US", None, col("country") == "US"),
+    ],
+    ids=["unmodified_data_column", "unmodified_partition_column"],
+)
+def test_block_udf_allows_predicates_on_unmodified_columns(
+    tmp_path, predicate, expected_data, expected_partition
+):
+    op = _mk_partitioned_read_files(tmp_path)
+    op = replace(
+        op,
+        block_udf=lambda table: table,
+        block_udf_modified_columns={"b"},
+    )
+
+    assert op.supports_predicate_pushdown() is True
+    result = op.apply_predicate(predicate)
+
+    assert isinstance(result, ReadFiles) and result is not op
+    assert isinstance(result.scanner, ParquetScanner)
+    _assert_pred_equals(result.scanner.predicate, expected_data)
+    _assert_pred_equals(result.scanner.partition_predicate, expected_partition)
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("b") == "x",
+        (col("a") > 1) & (col("b") == "x"),
+        (col("a") > 1) | (col("b") == "x"),
+    ],
+    ids=["modified_column", "mixed_and", "mixed_or"],
+)
+def test_block_udf_keeps_predicates_referencing_modified_columns_above_read(
+    tmp_path, predicate
+):
+    op = _mk_partitioned_read_files(tmp_path)
+    op = replace(
+        op,
+        block_udf=lambda table: table,
+        block_udf_modified_columns={"b"},
+    )
+
+    assert op.supports_predicate_pushdown() is True
+    assert op.apply_predicate(predicate) is op
+    assert op.scanner.predicate is None
+    assert op.scanner.partition_predicate is None
+
+
 if __name__ == "__main__":
     import sys
 

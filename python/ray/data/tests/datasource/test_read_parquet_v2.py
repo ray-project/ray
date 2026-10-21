@@ -14,6 +14,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Iterator, cast
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -74,6 +75,36 @@ def test_read_parquet_builds_list_files_read_files_chain(tmp_path, restore_ctx):
     assert schema is not None
     assert "a" in schema.names
     assert "b" in schema.names
+
+
+def test_read_parquet_tracks_tensor_columns_for_predicate_pushdown(
+    tmp_path, restore_ctx
+):
+    f = tmp_path / "tensor.parquet"
+    _write(
+        f,
+        pa.table(
+            {
+                "id": [1, 2],
+                "tensor": [
+                    np.array([10], dtype=np.int64).tobytes(),
+                    np.array([20], dtype=np.int64).tobytes(),
+                ],
+            }
+        ),
+    )
+    restore_ctx.use_datasource_v2 = True
+    tensor_column_schema = {"tensor": (np.dtype(np.int64), (1,))}
+
+    ds = ray.data.read_parquet(str(f), tensor_column_schema=tensor_column_schema)
+    assert ds._logical_plan.dag.block_udf_modified_columns == {"tensor"}
+
+    ds_with_custom_udf = ray.data.read_parquet(
+        str(f),
+        tensor_column_schema=tensor_column_schema,
+        _block_udf=lambda table: table,
+    )
+    assert ds_with_custom_udf._logical_plan.dag.block_udf_modified_columns is None
 
 
 def test_read_parquet_v2_hive_partitioned(tmp_path, restore_ctx):
