@@ -5938,6 +5938,17 @@ def read_lance(
     Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
+    .. note::
+        Filtered reads may scan predicate columns during planning to compute row
+        counts, adding I/O and planning latency. Predicates over large payloads,
+        such as image or video bytes, can be more expensive.
+
+        Accurate row-count metadata assumes deterministic filters. Filters may
+        be evaluated separately for counting and reading. Non-deterministic
+        expressions such as ``random() < 0.5`` are not detected, so metadata can
+        differ from the actual rows read. This can give incorrect results for
+        ``count()`` and incorrect split sizes for ``train_test_split()``.
+
     Examples:
         >>> import ray
         >>> ds = ray.data.read_lance( # doctest: +SKIP
