@@ -29,6 +29,10 @@ class GPUTestActor:
         assert data.device.type == device
         return data.sum().item()
 
+    def sum_all(self, refs):
+        # A batched get posts every transfer before waiting on any of them.
+        return [t.sum().item() for t in ray.get(refs)]
+
     def produce(self, tensors):
         refs = []
         for t in tensors:
@@ -466,6 +470,48 @@ def test_nixl_agent_reuse_with_partial_tensors(ray_start_regular):
     assert ray.get(dst_actor.sum.remote(ref3, "cuda")) == 15
 
     del ref2, ref3
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_nixl_concurrent_batched_get_with_agent_version_change(ray_start_regular):
+    """
+    Several receivers batch-get from one sender at the same time. A batched get
+    posts every transfer before waiting, and the sender's objects each carry a
+    different metadata version. A fetch that sees a new version removes the remote
+    agent, which must not break the earlier transfers still in flight on it.
+    The tensors are large and the receivers many so that the transfers are slow
+    enough to still be in flight when the next fetch removes the agent.
+    """
+    num_receivers, objs_per_receiver = 5, 4
+    nbytes = 256 * 1024 * 1024
+    receivers = [
+        GPUTestActor.options(num_gpus=1 / num_receivers).remote()
+        for _ in range(num_receivers)
+    ]
+
+    def put(tensor: torch.Tensor) -> ray.ObjectRef:
+        return ray.put(tensor, _tensor_transport="nixl")
+
+    def put_then_bump_version(size: int) -> ray.ObjectRef:
+        ref = put(torch.ones(size, dtype=torch.uint8))
+        # Freeing a tensor deregisters its memory, which bumps the version.
+        spare = torch.ones(8, dtype=torch.uint8)
+        spare_ref = put(spare)
+        del spare_ref
+        gc.collect()
+        wait_tensor_freed(spare, timeout=10)
+        return ref
+
+    refs_per_receiver = [
+        [put_then_bump_version(nbytes) for _ in range(objs_per_receiver)]
+        for _ in range(num_receivers)
+    ]
+    results = ray.get(
+        [r.sum_all.remote(refs) for r, refs in zip(receivers, refs_per_receiver)]
+    )
+    assert results == [[nbytes] * objs_per_receiver] * num_receivers
+
+    del refs_per_receiver
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
