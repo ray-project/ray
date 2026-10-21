@@ -297,6 +297,10 @@ class _DownloadFailure:
     reason: str
     error: BaseException
     permanent: bool
+    # The store for this URI's store URL could not be built. Row-local on its
+    # own; if it happens to every URI in a block it points at the block's
+    # shared configuration instead and the first such error is raised.
+    store_failure: bool = False
 
 
 def _download_error(
@@ -1261,26 +1265,24 @@ async def _download_uris_with_obstore(
         else:
             skipped["invalid uri"] += 1
 
-    # Build the block's first store up front. Every store in the block shares
-    # ``fs_kwargs``, so a failure here is a configuration bug (an option the
-    # store rejects, bad credential settings) or a scheme the whole block
-    # uses that obstore cannot serve; it must surface as the real error
-    # rather than turn the column into nulls. Per-URI store failures after
-    # this point are row-local (see ``_fetch_whole``).
-    for index in pending:
-        try:
-            first_store_url, _ = _split_obstore_uri(uris[index])
-        except Exception:
-            continue  # Classified as "invalid uri" by ``_fetch_whole``.
-        registry.get(first_store_url)
-        break
-
-    # Permanent failures (missing object, access denied, invalid URI) become
-    # ``None``. Transient failures are re-fetched a bounded number of times,
-    # re-using the bytes already downloaded; if any still fail, raise.
+    # Permanent failures (missing object, access denied, invalid URI,
+    # unrecognised store URL) become ``None``. Transient failures are
+    # re-fetched a bounded number of times, re-using the bytes already
+    # downloaded; if any still fail, raise.
     max_attempts, backoff_ms = _download_attempt_settings()
     for attempt in range(1, max_attempts + 1):
         outcomes = await asyncio.gather(*[fetch(index) for index in pending])
+        # Every store in the block shares ``fs_kwargs``. If not a single store
+        # could be built, the problem is that configuration (an option the
+        # store rejects, bad credential settings, a negative duration) rather
+        # than one URI, and it must surface as the real error instead of a
+        # column of nulls. A store failing for some URIs is row-local. This
+        # does not depend on URI order, unlike probing the first URI would.
+        if pending and all(
+            isinstance(outcome, _DownloadFailure) and outcome.store_failure
+            for outcome in outcomes
+        ):
+            raise outcomes[0].error
         transient: List[Tuple[int, _DownloadFailure]] = []
         for index, outcome in zip(pending, outcomes):
             if not isinstance(outcome, _DownloadFailure):
@@ -1337,10 +1339,11 @@ async def _fetch_whole(
     permanent failure (missing object, access denied, invalid URI,
     unrecognised store URL) becomes ``None`` for the row; a transient one is
     re-fetched by the caller and raises ``DownloadError`` once the attempts
-    are used up. The caller builds the block's first store before calling
-    this, so a store that fails to build here is specific to this URI (an
+    are used up. A store that cannot be built for this URI's store URL (an
     unrecognised or malformed store URL, or a scheme the block's shared
-    options don't fit) rather than a configuration bug.
+    options don't fit) is reported as a permanent ``store_failure``; the
+    caller raises it only if no store in the block could be built, which
+    points at the shared configuration rather than at one URI.
     """
     import obstore as obs
 
@@ -1351,7 +1354,9 @@ async def _fetch_whole(
     try:
         store = registry.get(store_url)
     except Exception as e:
-        return _DownloadFailure(uri, _store_failure_reason(e), e, permanent=True)
+        return _DownloadFailure(
+            uri, _store_failure_reason(e), e, permanent=True, store_failure=True
+        )
     try:
         if semaphore is not None:
             async with semaphore:

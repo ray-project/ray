@@ -2174,6 +2174,26 @@ class TestDownloadErrorClassification:
         summaries = [m for m in _logged_warnings(mock_logger) if "Skipped" in m]
         assert len(summaries) == 1 and "Skipped 2 of 3 URIs" in summaries[0]
 
+    def test_malformed_first_uri_does_not_fail_block(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        # The outcome must not depend on URI order: a bad store URL in the
+        # first position is just as row-local as in any other position.
+        uris = ["s3:///no-bucket", f"file://{tmp_path}/f.bin"]
+        with patch("ray.data._internal.planner._obstore_download.logger"):
+            results = asyncio.run(_download_uris_with_obstore(uris, "uri"))
+        assert results == [None, b"data"]
+
+    def test_all_stores_failing_raises_the_real_error(self):
+        pytest.importorskip("obstore")
+        from obstore.exceptions import GenericError
+
+        # When no store in the block can be built, the shared configuration
+        # (or the block's whole scheme) is at fault, so the error surfaces
+        # instead of every row quietly becoming None.
+        with pytest.raises(GenericError, match="Unable to recognise URL"):
+            self._download(["ftp://host/a.bin", "ftp://host/b.bin"])
+
     def test_non_string_uris_yield_none(self, tmp_path):
         pytest.importorskip("obstore")
         (tmp_path / "f.bin").write_bytes(b"data")
