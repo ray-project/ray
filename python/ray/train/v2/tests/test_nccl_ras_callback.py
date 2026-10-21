@@ -1,4 +1,5 @@
 """Unit tests for the NCCL RAS hang-detection callback (no GPU required)."""
+import asyncio
 import json
 import logging
 import re
@@ -2051,6 +2052,84 @@ def test_detector_metrics_tagged_with_the_run(monkeypatch, mock_gauge):
     state_tags = {**base_tags, nccl_ras.GRAFANA_STATE_TAG_KEY: "HEALTHY"}
     state_metric = callback._metrics[nccl_ras.GRAFANA_STATE]
     assert state_metric._gauge.values == {frozenset(state_tags.items()): 1}
+
+
+def test_detector_metrics_reset_to_healthy_on_worker_group_restart(
+    monkeypatch, mock_gauge
+):
+    # A confirmed hang restarts the worker group, so the panel must not keep
+    # showing CONFIRMED while the new group comes up.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 3
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=2, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+    assert recorded_detector_metrics(callback) == (
+        NCCLHangDetectorState.CONFIRMED,
+        2.0,
+    )
+
+    monkeypatch.setattr(nccl_ras, "RASPoller", MagicMock())
+    callback.after_worker_group_start(MagicMock())
+    assert recorded_detector_metrics(callback) == (NCCLHangDetectorState.HEALTHY, 0.0)
+
+
+@pytest.mark.parametrize("cause", ["fatal_poll_result", "unexpected_error"])
+def test_detector_metrics_record_degraded(monkeypatch, mock_gauge, cause):
+    # Once detection is disabled the panel shows DEGRADED rather than a stale
+    # HEALTHY, including across a worker group restart.
+    fatal = RASQueryError("unsupported_f_option", "binary rejected `-f`", fatal=True)
+    frozen = create_single_comm_report({1: 5, 2: 4})
+    reports = [frozen, frozen, fatal]
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+    callback.after_worker_group_poll_status(MagicMock())
+    callback.after_worker_group_poll_status(MagicMock())
+    assert recorded_detector_metrics(callback) == (
+        NCCLHangDetectorState.SUSPECTED,
+        1.0,
+    )
+
+    if cause == "unexpected_error":
+
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("detector bug")
+
+        callback._ras_poller.next_result = boom
+    callback.after_worker_group_poll_status(MagicMock())
+    assert callback._is_ras_degraded is True
+    assert recorded_detector_metrics(callback) == (NCCLHangDetectorState.DEGRADED, 0)
+
+    callback.after_worker_group_start(MagicMock())
+    assert callback._ras_poller is None
+    assert recorded_detector_metrics(callback) == (NCCLHangDetectorState.DEGRADED, 0)
+
+
+def test_detector_metrics_reset_on_controller_shutdown(monkeypatch, mock_gauge):
+    # A finished run must not leave its last state set on the gauges.
+    reports = [create_single_comm_report({1: 5, 2: 4})] * 2
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=reports
+    )
+    callback.after_controller_start(create_dummy_run_context())
+    for _ in reports:
+        callback.after_worker_group_poll_status(MagicMock())
+
+    asyncio.run(callback.before_controller_shutdown())
+
+    for metric in callback._metrics.values():
+        assert set(metric._gauge.values.values()) == {0}
+
+
+def test_detector_metrics_shutdown_before_controller_start(monkeypatch):
+    callback, _ = make_nccl_ras_callback(
+        monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5, reports=[]
+    )
+    asyncio.run(callback.before_controller_shutdown())  # must not raise
 
 
 def test_detector_metrics_skipped_before_controller_start(monkeypatch):

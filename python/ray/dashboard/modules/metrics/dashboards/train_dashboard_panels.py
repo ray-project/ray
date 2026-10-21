@@ -44,7 +44,7 @@ CONTROLLER_OPERATION_TIME_PANEL = Panel(
 NCCL_HANG_DETECTOR_STATE_PANEL = Panel(
     id=31,
     title="NCCL Hang Detector State",
-    description="State of the NCCL hang detector for the run's most stalled communicator: HEALTHY, SUSPECTED or CONFIRMED. Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
+    description="State of the NCCL hang detector for the run's most stalled communicator: HEALTHY, SUSPECTED or CONFIRMED, or DEGRADED once detection is disabled for the run (e.g. `ncclras` is unavailable). Only recorded when the hang detector is enabled (RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1).",
     unit="",
     targets=[
         Target(

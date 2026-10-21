@@ -120,6 +120,7 @@ class NCCLHangDetectorState(Enum):
     HEALTHY = "HEALTHY"
     SUSPECTED = "SUSPECTED"
     CONFIRMED = "CONFIRMED"
+    DEGRADED = "DEGRADED"
 
 
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
@@ -958,11 +959,18 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             ),
         }
 
+    async def before_controller_shutdown(self):
+        # Clear the gauges so a finished run doesn't keep showing its last state.
+        if self._metrics is not None:
+            for metric in self._metrics.values():
+                metric.reset()
+
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
         self.ras_history.clear()
         self.reset_hang_counters()
+        self.record_detector_metrics()
 
     def reset_hang_counters(self):
         """Per-healthy-poll debounce reset `_prev_report` left for the next poll as comparison."""
@@ -1003,6 +1011,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     result,
                 )
                 self._is_ras_degraded = True
+                self.record_detector_metrics()
                 return
 
             self.ras_history.append(result)
@@ -1022,6 +1031,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 "disabling it for the rest of this training run."
             )
             self._is_ras_degraded = True
+            self.record_detector_metrics()
 
     def evaluate_comm_mismatch(self, report: RASReport):
         """Advance the per-communicator frozen streaks and act on them.
@@ -1086,6 +1096,11 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def record_detector_metrics(self):
         """Record the detector's current state and the longest stall."""
         if self._metrics is None:
+            return
+
+        if self._is_ras_degraded:
+            self._metrics[GRAFANA_STALL_DURATION_S].record(0)
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.DEGRADED)
             return
 
         max_streak = max(self.comm_deadlock_count.values(), default=0)
