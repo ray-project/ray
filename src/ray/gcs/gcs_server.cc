@@ -894,6 +894,7 @@ void GcsServer::InitGcsActorManager(
       clock_);
 
   gcs_actor_manager_->Initialize(gcs_init_data);
+  gcs_placement_group_manager_->RemoveStartupLeftoverPlacementGroups();
   // Service registration is centralized in RegisterRpcServices().
 }
 
@@ -919,6 +920,10 @@ void GcsServer::InitGcsPlacementGroupManager(
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
+      },
+      // gcs_actor_manager_ is constructed later; this is only called once it exists.
+      [this](const PlacementGroupID &placement_group_id) {
+        gcs_actor_manager_->DestroyActorsBoundToPlacementGroup(placement_group_id);
       },
       placement_group_gauge,
       placement_group_creation_latency_in_ms_histogram,

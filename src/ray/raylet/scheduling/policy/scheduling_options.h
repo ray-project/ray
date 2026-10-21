@@ -105,14 +105,14 @@ struct SchedulingOptions {
   }
 
   static SchedulingOptions NodeLabelScheduling(
-      const rpc::SchedulingStrategy &scheduling_strategy) {
+      const rpc::SchedulingStrategy &scheduling_strategy, bool require_node_available) {
     auto scheduling_context =
         std::make_unique<NodeLabelSchedulingContext>(scheduling_strategy);
     return SchedulingOptions(
         SchedulingType::NODE_LABEL,
         /*spread_threshold*/ 0,
         /*avoid_local_node*/ false,
-        /*require_node_available*/ true,
+        require_node_available,
         /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
         /*target_topology_assignment*/ std::nullopt,
         std::move(scheduling_context));

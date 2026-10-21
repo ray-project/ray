@@ -205,6 +205,12 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
       const std::string &scheduling_failure_message);
 
+  /// Destroy the actors bound to a placement group that are not alive yet, so that
+  /// their creation leases are cancelled wherever they wait.
+  ///
+  /// \param placement_group_id The placement group being removed.
+  void DestroyActorsBoundToPlacementGroup(const PlacementGroupID &placement_group_id);
+
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
   ///
