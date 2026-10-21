@@ -3079,7 +3079,9 @@ def read_orc(
         after discovery aren't included. Concurrent directory traversal isn't an
         atomic snapshot, and replacing a file at the same path is outside this
         guarantee. This option uses the existing schema unifier and reader; it
-        doesn't add support for otherwise unsupported schema changes.
+        doesn't add support for otherwise unsupported schema changes. In particular,
+        evolved nested struct fields can fail at read time on PyArrow 17 (see
+        https://github.com/ray-project/ray/issues/67064).
     """
 
     ctx = DataContext.get_current()
