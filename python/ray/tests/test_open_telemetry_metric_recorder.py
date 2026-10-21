@@ -9,7 +9,7 @@ from opentelemetry.metrics import NoOpHistogram
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 
-from ray._private.metrics_agent import Gauge, Record
+from ray._private.metrics_agent import Counter, Gauge, Record
 from ray._private.telemetry.metric_types import MetricType
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
@@ -107,6 +107,34 @@ def test_gauge_refresh_extends_ttl(
     # At t=1015 (>10s after the first report, but <10s after the refresh): still live.
     mock_monotonic.return_value = 1015.0
     assert [o.value for o in callback(None)] == [7.0]
+
+
+@patch("opentelemetry.metrics.set_meter_provider")
+@patch("opentelemetry.metrics.get_meter")
+def test_record_and_export_counter_sums_deltas(mock_get_meter, mock_set_meter_provider):
+    """A `Counter` record sums deltas; a `Gauge` keeps the last value."""
+    mock_meter = MagicMock()
+    mock_get_meter.return_value = mock_meter
+    recorder = OpenTelemetryMetricRecorder()
+    counter = Counter("test_events_total", "desc", "1", ["tag"])
+    gauge = Gauge("test_level", "desc", "1", ["tag"])
+
+    for value in (3, 4):
+        recorder.record_and_export(
+            [
+                Record(gauge=counter, value=value, tags={"tag": "a"}),
+                Record(gauge=gauge, value=value, tags={"tag": "a"}),
+            ],
+            global_tags={"Version": "x"},
+        )
+
+    mock_meter.create_observable_counter.assert_called_once()
+    assert mock_meter.create_observable_counter.call_args.kwargs["name"] == (
+        "ray_test_events_total"
+    )
+    tag_key = frozenset({("tag", "a"), ("Version", "x")})
+    assert recorder._counter_observations_by_name["test_events_total"] == {tag_key: 7.0}
+    assert _gauge_values(recorder) == {"test_level": {tag_key: 4.0}}
 
 
 @patch("ray._private.telemetry.open_telemetry_metric_recorder.logger.warning")
