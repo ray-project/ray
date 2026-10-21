@@ -11,18 +11,18 @@ from ray._private.authentication.authentication_constants import (
     AUTHORIZATION_HEADER_NAME,
 )
 from ray._private.authentication.authentication_utils import (
+    is_k8s_token_auth_enabled,
     is_token_auth_enabled,
     validate_request_token,
 )
-from ray._raylet import is_k8s_token_auth_enabled
 
 logger = logging.getLogger(__name__)
 
 _UNAUTHENTICATED_MESSAGE = "Invalid or missing authentication token"
 
 
-def _authenticate_request(metadata: tuple) -> Optional[str]:
-    """Authenticate incoming request. currently only supports token authentication.
+def _authentication_error(metadata: tuple) -> Optional[str]:
+    """Return the UNAUTHENTICATED message for a request that fails authentication.
 
     Args:
         metadata: gRPC metadata tuple of (key, value) pairs
@@ -39,6 +39,7 @@ def _authenticate_request(metadata: tuple) -> Optional[str]:
     if not is_token_auth_enabled():
         # Reject clients that send a token so that they opt out too.
         if auth_header is not None and not is_k8s_token_auth_enabled():
+            logger.debug("Rejecting a request with a token because auth is disabled")
             return AUTH_MODE_MISMATCH_ERROR_MESSAGE
         return None
 
@@ -53,7 +54,7 @@ def _authenticate_request(metadata: tuple) -> Optional[str]:
 
 async def _abort_if_unauthenticated(context) -> None:
     """Abort the RPC if authentication fails."""
-    error_message = _authenticate_request(context.invocation_metadata())
+    error_message = _authentication_error(context.invocation_metadata())
     if error_message:
         await context.abort(grpc.StatusCode.UNAUTHENTICATED, error_message)
 
@@ -89,7 +90,7 @@ def _wrap_sync_behavior(behavior):
         return None
 
     def wrapped(request_or_iterator, context):
-        error_message = _authenticate_request(context.invocation_metadata())
+        error_message = _authentication_error(context.invocation_metadata())
         if error_message:
             context.abort(grpc.StatusCode.UNAUTHENTICATED, error_message)
         return behavior(request_or_iterator, context)
@@ -147,8 +148,8 @@ class AsyncAuthenticationServerInterceptor(aiogrpc.ServerInterceptor):
 
     With RAY_AUTH_MODE=token, a request without a valid Bearer token in the
     "authorization" metadata header is rejected with UNAUTHENTICATED status. With
-    auth disabled, a request that carries that header is rejected with
-    UNAUTHENTICATED and AuthModeMismatch.
+    auth disabled and Kubernetes token auth off, a request that carries that
+    header is rejected with UNAUTHENTICATED and AuthModeMismatch.
     """
 
     async def intercept_service(
@@ -179,8 +180,8 @@ class SyncAuthenticationServerInterceptor(grpc.ServerInterceptor):
 
     With RAY_AUTH_MODE=token, a request without a valid Bearer token in the
     "authorization" metadata header is rejected with UNAUTHENTICATED status. With
-    auth disabled, a request that carries that header is rejected with
-    UNAUTHENTICATED and AuthModeMismatch.
+    auth disabled and Kubernetes token auth off, a request that carries that
+    header is rejected with UNAUTHENTICATED and AuthModeMismatch.
     """
 
     def intercept_service(

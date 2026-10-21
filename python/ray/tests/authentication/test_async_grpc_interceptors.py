@@ -179,12 +179,10 @@ async def test_async_server_with_auth_disabled_rejects_token(
             )
 
             if k8s_token_auth_enabled:
-                assert (
-                    await stub.HealthCheck(
-                        reporter_pb2.HealthCheckRequest(), metadata=metadata, timeout=5
-                    )
-                    is not None
+                reply = await stub.HealthCheck(
+                    reporter_pb2.HealthCheckRequest(), metadata=metadata, timeout=5
                 )
+                assert isinstance(reply, reporter_pb2.HealthCheckReply)
                 return
 
             with pytest.raises(grpc.RpcError) as exc_info:

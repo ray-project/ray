@@ -102,6 +102,7 @@ def create_grpc_server_with_interceptors(
 
     This function handles:
     - The authentication interceptor, which also rejects tokens when auth is disabled
+      and Kubernetes token auth is off
     - Both synchronous and asynchronous servers
     - Thread pool configuration for sync servers
 

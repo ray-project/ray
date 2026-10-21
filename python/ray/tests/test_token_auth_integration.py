@@ -817,6 +817,16 @@ def test_ray_start_address_with_token(token_match, setup_cluster_with_token_auth
 _AUTH_MODE_MISMATCH = "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled"
 
 
+def _assert_auth_mode_mismatch_only(output: str):
+    """The AuthModeMismatch error names only the opt-out fix, not the token help."""
+    from ray._private.authentication.authentication_constants import (
+        TOKEN_AUTH_FIX_MESSAGE,
+    )
+
+    assert _AUTH_MODE_MISMATCH in output, output
+    assert TOKEN_AUTH_FIX_MESSAGE not in output, output
+
+
 @pytest.fixture
 def disabled_head_with_token_file():
     """A head with RAY_AUTH_MODE=disabled, and a token file in the default path."""
@@ -879,7 +889,7 @@ def test_driver_on_auth_disabled_cluster(
         assert "driver ok" in output
     else:
         assert result.returncode != 0, output
-        assert _AUTH_MODE_MISMATCH in output
+        _assert_auth_mode_mismatch_only(output)
 
 
 @pytest.mark.skipif(
@@ -900,7 +910,7 @@ def test_ray_start_address_in_token_mode_on_auth_disabled_cluster(
         timeout=15,
     )
     assert result.returncode != 0
-    assert _AUTH_MODE_MISMATCH in result.stdout + result.stderr
+    _assert_auth_mode_mismatch_only(result.stdout + result.stderr)
 
 
 @pytest.mark.skipif(
@@ -933,7 +943,7 @@ def test_ray_client_on_auth_disabled_cluster(
         assert "client ok" in output
     else:
         assert result.returncode != 0, output
-        assert _AUTH_MODE_MISMATCH in output
+        _assert_auth_mode_mismatch_only(output)
 
 
 @pytest.mark.skipif(
