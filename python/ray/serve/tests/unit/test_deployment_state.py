@@ -4091,7 +4091,8 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     assert mocked_replica.replica_id != new_mocked_replica_version2.replica_id
 
 
-def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
+@pytest.mark.parametrize("gang_size", [None, 2])
+def test_actor_uninitialized_before_recover(mock_deployment_state_manager, gang_size):
     """Test replica actor was found alive but never finished initialization.
 
     Mirrors the production scenario where the previous controller crashed
@@ -4105,60 +4106,82 @@ def test_actor_uninitialized_before_recover(mock_deployment_state_manager):
     """
 
     create_dsm, _, _, _ = mock_deployment_state_manager
-    dsm = create_dsm()
+    dsm = create_dsm(create_placement_group_fn_override=MockPlacementGroup)
 
-    info1, v1 = deployment_info(version="1")
+    num_replicas = gang_size or 1
+    info1, v1 = deployment_info(
+        version="1",
+        num_replicas=num_replicas,
+        gang_scheduling_config=(
+            GangSchedulingConfig(gang_size=gang_size) if gang_size else None
+        ),
+    )
     target_state_changed = dsm.deploy(TEST_DEPLOYMENT_ID, info1)
     assert target_state_changed
     dsm.save_checkpoint()
     ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
 
     dsm.update()
-    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
-    mocked_replica = ds._replicas.get()[0]
-    replica_id = mocked_replica.replica_id
+    check_counts(
+        ds, total=num_replicas, by_state=[(ReplicaState.STARTING, num_replicas, v1)]
+    )
+    replicas = ds._replicas.get()
+    replica_ids = {replica.replica_id for replica in replicas}
 
-    mocked_replica._actor.set_ready()
+    for replica in replicas:
+        replica._actor.set_ready()
     dsm.update()
-    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, v1)])
+    check_counts(
+        ds, total=num_replicas, by_state=[(ReplicaState.RUNNING, num_replicas, v1)]
+    )
 
-    # Mark this replica as not-yet-initialized so that the new controller's
+    # Mark these replicas as not-yet-initialized so that the new controller's
     # async `was_initialized` probe will return False.
-    uninitialized_replicas_context.add(replica_id)
+    uninitialized_replicas_context.update(replica_ids)
 
-    new_dsm = create_dsm([replica_id.to_full_id_str()])
+    new_dsm = create_dsm(
+        [replica_id.to_full_id_str() for replica_id in replica_ids],
+        create_placement_group_fn_override=MockPlacementGroup,
+    )
     new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
 
     # `recover()` is non-blocking: the replica enters RECOVERING and the
     # probe is observed in the reconcile loop.
-    check_counts(new_ds, total=1, by_state=[(ReplicaState.RECOVERING, 1, v1)])
+    check_counts(
+        new_ds,
+        total=num_replicas,
+        by_state=[(ReplicaState.RECOVERING, num_replicas, v1)],
+    )
     starting_failures_before = new_ds._replica_failure_count
 
-    # Next update cycle: probe says False -> the replica is force-stopped
-    # (STOPPING) and a fresh replica is started in its place (STARTING) in
-    # the same reconcile pass.
+    # Reconcile the failed recovery probe through the normal controller loop.
     new_dsm.update()
     check_counts(
         new_ds,
         total=2,
-        by_state=[(ReplicaState.STOPPING, 1, v1), (ReplicaState.STARTING, 1, v1)],
+        by_state=[(ReplicaState.STOPPING, num_replicas, v1)],
     )
     # The drop must not bump the deploy-failure counter -- the underlying
     # cause is a previous controller crash, not user code.
     assert new_ds._replica_failure_count == starting_failures_before
-    # The fresh replica should have a new replica id.
-    starting_replicas = new_ds._replicas.get(states=[ReplicaState.STARTING])
-    assert len(starting_replicas) == 1
-    assert starting_replicas[0].replica_id != replica_id
-
-    # Drain the STOPPING replica and confirm we're left with just the
-    # replacement.
-    stopping_replica = new_ds._replicas.get(states=[ReplicaState.STOPPING])[0]
-    stopping_replica._actor.set_done_stopping()
+    # Complete actor termination and let the controller create replacements.
+    for replica in new_ds._replicas.get(states=[ReplicaState.STOPPING]):
+        replica._actor.set_done_stopping()
     new_dsm.update()
-    check_counts(new_ds, total=1, by_state=[(ReplicaState.STARTING, 1, v1)])
+    check_counts(
+        new_ds, total=num_replicas, by_state=[(ReplicaState.STARTING, num_replicas, v1)]
+    )
 
-    uninitialized_replicas_context.remove(replica_id)
+    uninitialized_replicas_context.difference_update(replica_ids)
+    starting_replicas = new_ds._replicas.get(states=[ReplicaState.STARTING])
+    assert replica_ids.isdisjoint(replica.replica_id for replica in starting_replicas)
+    for replica in starting_replicas:
+        replica._actor.set_ready()
+    new_dsm.update()
+    check_counts(
+        new_ds, total=num_replicas, by_state=[(ReplicaState.RUNNING, num_replicas, v1)]
+    )
+    assert new_ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def test_actor_died_before_recover(mock_deployment_state_manager):
@@ -4426,6 +4449,29 @@ def test_gang_pg_leak_detection_removes_unoccupied_pg(mock_deployment_state_mana
 
 
 class TestActorReplicaWrapper:
+    def test_poll_shutdown_without_killing(self):
+        wrapper = ActorReplicaWrapper(
+            version=deployment_version("1"),
+            replica_id=ReplicaID("replica", deployment_id=TEST_DEPLOYMENT_ID),
+        )
+        wrapper._graceful_shutdown_ref = Mock()
+        wrapper._placement_group = Mock()
+        handle = Mock()
+        with patch("ray.get_actor", return_value=handle), patch.object(
+            ds_mod,
+            "check_obj_ref_ready_nowait",
+            return_value=True,
+        ), patch("ray.get"), patch("ray.kill") as kill, patch(
+            "ray.util.remove_placement_group"
+        ) as remove_pg:
+            assert wrapper.check_stopped(kill_actor=False)
+            kill.assert_not_called()
+            remove_pg.assert_not_called()
+
+            assert wrapper.check_stopped()
+            kill.assert_called_once_with(handle, no_restart=True)
+            remove_pg.assert_called_once_with(wrapper._placement_group)
+
     def test_default_value(self):
         actor_replica = ActorReplicaWrapper(
             version=deployment_version("1"),
@@ -9472,30 +9518,93 @@ class TestGangRollingUpdate:
     def _gang_pg_names(self, ds):
         return {r.pg_name for r in ds._gang_reservations.values()}
 
-    def test_gang_pg_removed_only_after_last_member_stops(
-        self, mock_deployment_state_manager
+    @pytest.mark.parametrize("operation", ["rollout", "surge", "downscale", "delete"])
+    def test_graceful_shutdown_waits_for_every_gang_member(
+        self, mock_deployment_state_manager, operation
     ):
-        """One gang shares one PG, so it is freed only once every member is gone."""
-        gang_size, num_replicas = 2, 4
-        dsm, ds = self._deploy_gang(
-            mock_deployment_state_manager, gang_size, num_replicas
-        )
-        self._deploy_new_version(dsm, gang_size, num_replicas, "v2")
+        dsm, ds = self._deploy_gang(mock_deployment_state_manager, 2, 4)
+        version = ds._replicas.get()[0].version
+        if operation in {"rollout", "surge"}:
+            version = self._deploy_new_version(
+                dsm, 2, 4, "v2", max_surge_percent=50 if operation == "surge" else 0
+            )
+            dsm.update()
+            if operation == "surge":
+                self._finish_starting(ds)
+        elif operation == "downscale":
+            version = self._deploy_new_version(dsm, 2, 2, "v1")
+        else:
+            dsm.delete_deployment(TEST_DEPLOYMENT_ID)
         dsm.update()
 
         stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
-        assert len(stopping) == gang_size
-        first, last = stopping[0], stopping[1]
-        REMOVED_GANG_PG_NAMES.clear()
+        assert len(stopping) == (4 if operation == "delete" else 2)
+        assert all(r._actor.stopped for r in stopping)
+        assert not any(r._actor.killed for r in stopping)
 
-        # The first member out must not tear the PG from a sibling still draining.
+        gang_id = stopping[0].gang_context.gang_id
+        gang = [r for r in stopping if r.gang_context.gang_id == gang_id]
+        first, last = gang
+        pg_name = first.gang_context.pg_name
+        REMOVED_GANG_PG_NAMES.clear()
         first._actor.set_done_stopping()
         dsm.update()
+        assert not any(r._actor.killed for r in stopping)
+        assert all(ds._replicas.get_by_id(r.replica_id) is r for r in gang)
         assert REMOVED_GANG_PG_NAMES == []
 
         last._actor.set_done_stopping()
         dsm.update()
-        assert len(REMOVED_GANG_PG_NAMES) == 1
+        assert all(r._actor.killed for r in gang)
+        assert all(ds._replicas.get_by_id(r.replica_id) is None for r in gang)
+        assert REMOVED_GANG_PG_NAMES == [pg_name]
+        # Another gang's unfinished drain must not hold this one up.
+        assert not any(r._actor.killed for r in stopping if r not in gang)
+
+        if operation == "delete":
+            self._finish_stopping(ds)
+            dsm.update()
+            check_counts(ds, total=0)
+            assert dsm.get_deployment_statuses() == []
+        else:
+            if operation in {"rollout", "surge"}:
+                # Finish the remaining rollout wave and its replacements.
+                self._finish_starting(ds)
+                dsm.update()
+                self._advance_wave(dsm, ds, 2)
+                dsm.update()
+            num_replicas = 2 if operation == "downscale" else 4
+            check_counts(
+                ds,
+                total=num_replicas,
+                by_state=[(ReplicaState.RUNNING, num_replicas, version)],
+            )
+            assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_graceful_shutdown_timeout_kills_gang_together(
+        self, mock_deployment_state_manager
+    ):
+        dsm, ds = self._deploy_gang(mock_deployment_state_manager, 2, 2)
+        _, timer, _, _ = mock_deployment_state_manager
+        dsm.delete_deployment(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        first, last = ds._replicas.get(states=[ReplicaState.STOPPING])
+        first._actor.set_done_stopping()
+
+        timer.advance(first._actor.graceful_shutdown_timeout_s - 0.1)
+        dsm.update()
+        assert not first._actor.killed
+        assert not last._actor.killed
+
+        timer.advance(0.1)
+        dsm.update()
+        assert first._actor.killed
+        assert last._actor.force_stopped_counter == 1
+
+        last._actor.set_done_stopping()
+        dsm.update()
+        check_counts(ds, total=0)
+        assert dsm.get_deployment_statuses() == []
 
     def _depart(self, ds, replica):
         """Fully reap a replica: gone from the container and from bookkeeping."""
@@ -9697,6 +9806,11 @@ class TestGangRollingUpdate:
         # The rolling-update budget (pending_replicas=2) is already exhausted
         # by the missing slots, so v1 won't be stopped until new v3 replicas
         # fill those slots first.
+
+        # Superseded STARTING replicas need no drain, even if startup is stuck.
+        stopping = ds._replicas.get(states=[ReplicaState.STOPPING])
+        dsm.update()
+        assert all(r._actor.force_stopped_counter == 1 for r in stopping)
 
         # Wave 1: Finish v2 stops -> update starts 2 v3 (v1 not stopped yet).
         self._finish_stopping(ds)
@@ -9900,12 +10014,18 @@ class TestGangDraining:
         dsm.update()
         assert ds._replicas.count(states=[ReplicaState.STOPPING]) == num_replicas
 
-        for r in ds._replicas.get([ReplicaState.STOPPING]):
+        stopping = ds._replicas.get([ReplicaState.STOPPING])
+        stopping[0]._actor.set_done_stopping()
+        dsm.update()
+        assert not any(r._actor.killed for r in stopping)
+
+        for r in stopping:
             r._actor.set_done_stopping()
 
         # Schedule replacements and complete
         self._mock_gang_pgs(dsm, gang_size, num_replicas)
         dsm.update()
+        assert all(r._actor.killed for r in stopping)
         for r in ds._replicas.get([ReplicaState.STARTING]):
             r._actor.set_node_id(node_3)
             r._actor.set_ready()
@@ -10005,8 +10125,13 @@ class TestGangDraining:
         )
         assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
-    def test_starting_replicas_stopped(self, mock_deployment_state_manager):
-        """STARTING gang members on draining nodes are stopped immediately."""
+    @pytest.mark.parametrize(
+        "num_ready,reconfigure", [(0, False), (1, False), (1, True)]
+    )
+    def test_starting_or_updating_replicas_stopped(
+        self, mock_deployment_state_manager, num_ready, reconfigure
+    ):
+        """Gangs with STARTING or UPDATING members drain and stop together."""
         gang_size, num_replicas = 2, 2
         node_1 = "node-1"
         node_2 = "node-2"
@@ -10037,24 +10162,69 @@ class TestGangDraining:
         )
         dsm.update()
 
-        # Assign nodes but DON'T mark ready — replicas stay STARTING
+        # Assign nodes, then optionally reconfigure the running gang.
         replicas = ds._replicas.get([ReplicaState.STARTING])
         replicas[0]._actor.set_node_id(node_1)
         replicas[1]._actor.set_node_id(node_2)
+        if reconfigure:
+            for replica in replicas:
+                replica._actor.set_ready()
+            dsm.update()
+            info, v1 = deployment_info(
+                num_replicas=num_replicas,
+                version="v1",
+                user_config={"updated": True},
+                gang_scheduling_config=GangSchedulingConfig(gang_size=gang_size),
+            )
+            dsm.deploy(TEST_DEPLOYMENT_ID, info)
+            dsm.update()
 
-        # Drain node_2 while replicas are STARTING
+        for replica in replicas[:num_ready]:
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(
+            ds,
+            total=num_replicas,
+            by_state=[
+                (ReplicaState.RUNNING, num_ready, v1),
+                (
+                    ReplicaState.UPDATING if reconfigure else ReplicaState.STARTING,
+                    num_replicas - num_ready,
+                    v1,
+                ),
+            ],
+        )
+
+        # Drain the node with a STARTING or UPDATING member.
         cache.draining_nodes = {node_2: 60 * 1000}
         dsm.update()
 
-        # Both STARTING replicas in the gang should be stopped
+        # Both gang members should stop, including any RUNNING sibling.
         stopping = ds._replicas.count(states=[ReplicaState.STOPPING])
         assert stopping == gang_size
+        assert ds._replicas.count(states=[ReplicaState.PENDING_MIGRATION]) == 0
+
+        dsm.update()
+        if num_ready:
+            assert not any(r._actor.killed for r in replicas)
+        else:
+            # An all-STARTING gang can be killed without finishing shutdown.
+            assert all(r._actor.killed for r in replicas)
+
+        replicas[0]._actor.set_done_stopping()
+        dsm.update()
+        if reconfigure:
+            # UPDATING replicas still need to drain with their RUNNING siblings.
+            assert not any(r._actor.killed for r in replicas)
+        else:
+            assert all(r._actor.killed for r in replicas)
 
         # Complete stopping and start new replicas
         for r in ds._replicas.get([ReplicaState.STOPPING]):
             r._actor.set_done_stopping()
         self._mock_gang_pgs(dsm, gang_size, num_replicas)
         dsm.update()
+        assert all(r._actor.killed for r in replicas)
         for r in ds._replicas.get([ReplicaState.STARTING]):
             r._actor.set_node_id(node_1)
             r._actor.set_ready()
@@ -13003,6 +13173,18 @@ class TestMaxSurge:
         assert {r.replica_id for r in stopping} == {r.replica_id for r in all_starting}
         assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 5
 
+        # Cancel startup without waiting for graceful shutdown to finish.
+        dsm.update()
+        assert all(r._actor.killed for r in stopping)
+        for _ in range(4):
+            gang._finish_stopping(ds)
+            gang._mock_gang_pgs(dsm, 2, 2)
+            dsm.update()
+            gang._finish_starting(ds)
+        dsm.update()
+        check_counts(ds, total=6, by_state=[(ReplicaState.RUNNING, 6, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
     def test_gang_surge_stops_a_partly_started_gang_within_the_surplus(
         self, mock_deployment_state_manager
     ):
@@ -13034,6 +13216,16 @@ class TestMaxSurge:
             by_state=[(ReplicaState.RUNNING, 2, v1), (ReplicaState.RUNNING, 2, v2)],
         )
 
+        # The STARTING member skips its grace period but still waits for the
+        # RUNNING sibling to drain before either actor is killed.
+        dsm.update()
+        assert not any(r._actor.killed for r in stopping)
+        running, starting = gangs[1]
+        running._actor.set_done_stopping()
+        dsm.update()
+        assert running._actor.killed
+        assert starting._actor.force_stopped_counter == 1
+
         for _ in range(4):
             gang._finish_stopping(ds)
             gang._mock_gang_pgs(dsm, 2, 2)
@@ -13043,6 +13235,7 @@ class TestMaxSurge:
             if ds.curr_status_info.status == DeploymentStatus.HEALTHY:
                 break
         check_counts(ds, total=4, by_state=[(ReplicaState.RUNNING, 4, v2)])
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
     def test_surge_allowance_uses_an_integer_ceiling(
         self, mock_deployment_state_manager
