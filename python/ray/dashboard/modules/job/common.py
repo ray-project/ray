@@ -1,5 +1,4 @@
 import asyncio
-import atexit
 import json
 import logging
 import time
@@ -78,9 +77,6 @@ def _ensure_event_recorder_initialized() -> bool:
         max_buffer_size=10000,
         metric_source="submission_job",
     )
-    # Flush buffered events on interpreter exit. Processes that exit via
-    # os._exit (e.g. actors) must call shutdown_event_recorder() explicitly.
-    atexit.register(EventRecorder.shutdown)
     logger.info("Initialized ray event recorder for submission job events.")
     return True
 
