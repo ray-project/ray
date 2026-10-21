@@ -23,6 +23,7 @@ from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import (
     AutoscalingConfig,
+    DataContext,
 )
 
 
@@ -43,6 +44,7 @@ def test_actor_pool_scaling():
             actor_pool_util_downscaling_threshold=0.5,
             actor_pool_max_upscaling_delta=None,
         ),
+        data_context=DataContext.get_current(),
     )
 
     # Current actor pool utilization is 0.9, which is above the threshold.
@@ -50,6 +52,8 @@ def test_actor_pool_scaling():
         spec=_ActorPool,
         min_size=MagicMock(return_value=5),
         max_size=MagicMock(return_value=15),
+        dynamic_max_size=MagicMock(return_value=None),
+        effective_max_size=MagicMock(return_value=15),
         current_size=MagicMock(return_value=10),
         num_active_actors=MagicMock(return_value=10),
         num_running_actors=MagicMock(return_value=10),
@@ -74,6 +78,7 @@ def test_actor_pool_scaling():
         internal_input_queue_num_blocks=MagicMock(return_value=1),
         metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
         num_output_splits=MagicMock(return_value=1),
+        actor_pool_drain_in_progress=False,
     )
     op_state = OpState(
         op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
@@ -318,6 +323,156 @@ def test_actor_pool_scaling():
                     expected_reason="actor pool exceeds resource allocation",
                 )
 
+    # A draining pool still has to respect its resource allocation: the hard
+    # budget wins over the (possibly higher) drain floor.
+    op.actor_pool_drain_in_progress = True
+    with patch(resource_manager, "get_allocation", ExecutionResources(cpu=8)):
+        with patch(resource_manager, "get_op_usage", ExecutionResources(cpu=10)):
+            assert_autoscaling_action(
+                delta=-2,
+                expected_reason="actor pool exceeds resource allocation",
+            )
+    op.actor_pool_drain_in_progress = False
+
+
+def test_actor_pool_scaling_reclaims_a_draining_operator(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """A draining operator's utilization is meaningless -- the tasks that keep it
+    high are parked on the output budget, not doing work -- so its pool is shrunk
+    without waiting for utilization to drop below the downscaling threshold."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    op.actor_pool_drain_in_progress = True
+    assert actor_pool.get_pool_util() == 2.0  # would otherwise scale up
+
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    # Forced: a drain already established that more actors cannot help.
+    assert request == ActorPoolScalingRequest(
+        delta=-1, force=True, reason="draining a stalled actor pool"
+    )
+
+    # Nothing to reclaim at min size.
+    actor_pool.current_size = MagicMock(return_value=5)
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request == ActorPoolScalingRequest.no_op(reason="reached min size")
+
+    # And without a drain the utilization-based decision is unchanged.
+    op.actor_pool_drain_in_progress = False
+    actor_pool.current_size = MagicMock(return_value=10)
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request.delta > 0
+
+
+def test_draining_operator_is_not_preempted_by_consumed_inputs(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """A drain still has to be honored once all inputs have been dispatched.
+
+    By the time the stall window fills, an operator's inputs are commonly
+    already dispatched and its input queue empty. The end-of-input shortcut used
+    to preempt the drain branch in exactly that state, so the drain reason never
+    reached the pool and no actor was reclaimed for it.
+    """
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    op.actor_pool_drain_in_progress = True
+    op._inputs_complete = True
+    op_state.total_enqueued_input_blocks = MagicMock(return_value=0)
+    actor_pool.current_size = MagicMock(return_value=10)
+
+    request = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+    assert request == ActorPoolScalingRequest(
+        delta=-1, force=True, reason="draining a stalled actor pool"
+    )
+
+    # Once the drain releases, the end-of-input shortcut takes over again.
+    op.actor_pool_drain_in_progress = False
+    request = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+    assert request == ActorPoolScalingRequest(
+        delta=-1, force=True, reason="consumed all inputs"
+    )
+
+
+def test_draining_operator_walks_the_pool_down_one_actor_per_pass(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """``_compute_downscale_delta`` returns 1, so a drain reclaims a single actor
+    per scheduling pass and re-issues the forced request on every pass rather than
+    giving up: a pool at 4 with min_size 1 takes three passes to reach the floor.
+
+    Worth pinning, because the walk is what paces the release: the pool steps down
+    one actor at a time and re-decides on each pass, instead of dropping straight to
+    the floor in one go. Note what keeps a *busy* actor from being removed is not
+    the step size -- it is the in-flight check in
+    ``_ActorPool._try_remove_idle_actor``, which holds for any delta.
+    """
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    op.actor_pool_drain_in_progress = True
+    actor_pool.min_size = MagicMock(return_value=1)
+
+    # Apply each request the way the executor would, so the walk is simulated
+    # rather than hand-written. Bounded on purpose: a pool of 4 with min_size 1 can
+    # only take three steps, so needing a fourth means the floor is not being
+    # respected -- fail there rather than spin.
+    size = 4
+    walked = []
+    for _ in range(4):
+        actor_pool.current_size = MagicMock(return_value=size)
+        request = autoscaler._derive_target_scaling_config(
+            actor_pool=actor_pool,
+            op=op,
+            op_state=op_state,
+        )
+        if request.delta == 0:
+            break
+        assert request.force is True
+        assert request.reason == "draining a stalled actor pool"
+        assert request.delta < 0, "a drain must never scale up"
+        size += request.delta
+        walked.append(size)
+
+    assert walked == [3, 2, 1]
+    assert size == 1, "the drain walked below min_size"
+    assert request == ActorPoolScalingRequest.no_op(reason="reached min size")
+
 
 @pytest.fixture
 def autoscaler_max_upscaling_delta_setup():
@@ -331,6 +486,8 @@ def autoscaler_max_upscaling_delta_setup():
         spec=_ActorPool,
         min_size=MagicMock(return_value=5),
         max_size=MagicMock(return_value=20),
+        dynamic_max_size=MagicMock(return_value=None),
+        effective_max_size=MagicMock(return_value=20),
         current_size=MagicMock(return_value=10),
         get_current_size=MagicMock(return_value=10),
         num_pending_actors=MagicMock(return_value=0),
@@ -344,6 +501,7 @@ def autoscaler_max_upscaling_delta_setup():
         has_completed=MagicMock(return_value=False),
         _inputs_complete=False,
         metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        actor_pool_drain_in_progress=False,
     )
     op_state = MagicMock(
         spec=OpState,
@@ -366,6 +524,7 @@ def test_actor_pool_scaling_respects_small_max_upscaling_delta(
             actor_pool_util_downscaling_threshold=0.5,
             actor_pool_max_upscaling_delta=3,
         ),
+        data_context=DataContext.get_current(),
     )
     request = autoscaler._derive_target_scaling_config(
         actor_pool=actor_pool,
@@ -390,6 +549,7 @@ def test_actor_pool_scaling_respects_large_max_upscaling_delta(
             actor_pool_util_downscaling_threshold=0.5,
             actor_pool_max_upscaling_delta=100,
         ),
+        data_context=DataContext.get_current(),
     )
     request = autoscaler._derive_target_scaling_config(
         actor_pool=actor_pool,
@@ -401,6 +561,325 @@ def test_actor_pool_scaling_respects_large_max_upscaling_delta(
     # max_upscaling_delta=100 is large enough, but delta is limited by max_size:
     # max_size(20) - current_size(10) = 10, so delta = min(10, 100, 10) = 10
     assert request.delta == 10
+
+
+def test_actor_pool_scaling_respects_the_adaptive_ceiling(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """The drain policy's ceiling bounds upscaling, below the configured max."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    # Drain policy stepped the pool's ceiling down to 12: even though the delta
+    # plan is 10 and max_size is 20, only (12 - 10) = 2 actors may be added.
+    actor_pool.effective_max_size = MagicMock(return_value=12)
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=100,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request.delta == 2
+
+
+def test_actor_pool_scaling_stops_at_the_adaptive_ceiling(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """A pool already at its ceiling is not scaled up at all."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    actor_pool.effective_max_size = MagicMock(return_value=10)
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=100,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request.delta == 0
+    assert "dynamic max size" in request.reason
+
+
+def test_draining_operator_stops_at_the_adaptive_ceiling(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """A drained pool is walked down to its ceiling, not to `min_size`."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    op.actor_pool_drain_in_progress = True
+    # Ceiling equals the current size: nothing left to reclaim.
+    actor_pool.dynamic_max_size = MagicMock(return_value=10)
+    actor_pool.effective_max_size = MagicMock(return_value=10)
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request.delta == 0
+    assert request.reason == "reached drain target"
+
+
+def test_draining_operator_walks_down_to_the_adaptive_ceiling(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """While draining, the walk-down stops at the ceiling instead of `min_size`."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    op.actor_pool_drain_in_progress = True
+    actor_pool.dynamic_max_size = MagicMock(return_value=6)
+    actor_pool.effective_max_size = MagicMock(return_value=6)
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    # One actor per pass, as before -- just towards the ceiling (6) not min_size (5).
+    assert request.delta == -1
+    assert "draining a stalled actor pool" in request.reason
+
+
+def test_adaptive_ceiling_prevents_regrowth_after_drain_release(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """A pool parked at its adaptive ceiling must not bounce back up.
+
+    The drain policy clears ``actor_pool_drain_in_progress`` once the pool reaches
+    its adaptive floor. The ceiling must still block the utilization-based upscale
+    that would otherwise immediately undo the drain and start a shrink/grow cycle.
+    """
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=100,
+        ),
+        data_context=DataContext.get_current(),
+    )
+
+    size = 10
+    ceiling = 6
+    actor_pool.current_size = MagicMock(side_effect=lambda: size)
+    actor_pool.dynamic_max_size = MagicMock(return_value=ceiling)
+    actor_pool.effective_max_size = MagicMock(return_value=ceiling)
+    op.actor_pool_drain_in_progress = True
+
+    # Walk down to the adaptive floor exactly as repeated scheduling passes do.
+    while size > ceiling:
+        request = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+        assert request.delta == -1
+        assert request.force
+        size += request.delta
+
+    # The policy releases its drain flag at the floor. Utilization remains high,
+    # but the surviving ceiling must prevent an immediate regrowth.
+    op.actor_pool_drain_in_progress = False
+    for _ in range(3):
+        request = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+        assert request == ActorPoolScalingRequest.no_op(
+            reason="reached dynamic max size (drain cap)"
+        )
+        assert size == ceiling
+
+
+def test_upscale_gate_prevents_regrowth_without_an_adaptive_ceiling(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """With AIMD disabled, blocked output still must not cause grow/shrink cycles."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    resource_manager.downstream_can_absorb = MagicMock(return_value=False)
+    ctx = DataContext.get_current().copy()
+    ctx.actor_pool_drain_window_s = 5.0
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=100,
+        ),
+        data_context=ctx,
+    )
+
+    # Once the pool reaches min_size and releases its drain flag, high utilization
+    # alone must not grow the still-blocked pool again.
+    actor_pool.current_size = MagicMock(return_value=actor_pool.min_size())
+    op.actor_pool_drain_in_progress = False
+    for _ in range(3):
+        request = autoscaler._derive_target_scaling_config(actor_pool, op, op_state)
+        assert request == ActorPoolScalingRequest.no_op(
+            reason="downstream cannot absorb more output"
+        )
+
+
+def test_upscale_is_refused_when_the_downstream_cannot_absorb(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """A pool whose output is parked must not grow: the extra actors would produce
+    blocks nobody reads, which is what makes drain/re-grow cycles oscillate."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    resource_manager.downstream_can_absorb = MagicMock(return_value=False)
+    ctx = DataContext.get_current().copy()
+    ctx.actor_pool_drain_window_s = 5.0
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+            actor_pool_max_upscaling_delta=100,
+        ),
+        data_context=ctx,
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request.delta == 0
+    assert "downstream cannot absorb" in request.reason
+
+
+def test_a_pool_with_no_actors_is_never_gated(autoscaler_max_upscaling_delta_setup):
+    """The operator must be able to (re)start one actor even while its output is
+    parked, otherwise it could never make progress again."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    resource_manager.downstream_can_absorb = MagicMock(return_value=False)
+    actor_pool.get_pool_util = MagicMock(return_value=float("inf"))
+    autoscaler = DefaultActorAutoscaler(
+        topology=MagicMock(),
+        resource_manager=resource_manager,
+        config=AutoscalingConfig(
+            actor_pool_util_upscaling_threshold=1.0,
+            actor_pool_util_downscaling_threshold=0.5,
+        ),
+        data_context=DataContext.get_current(),
+    )
+    request = autoscaler._derive_target_scaling_config(
+        actor_pool=actor_pool,
+        op=op,
+        op_state=op_state,
+    )
+    assert request.delta == 1
+    assert request.reason == "no running actors, scale up immediately"
+
+
+def test_upscale_gate_follows_the_drain_feature_by_default(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """`None` (the default) means "auto": the gate belongs to the drain feature
+    family, so a pipeline that never enabled draining keeps its old behaviour."""
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    resource_manager.downstream_can_absorb = MagicMock(return_value=False)
+    config = AutoscalingConfig(
+        actor_pool_util_upscaling_threshold=1.0,
+        actor_pool_util_downscaling_threshold=0.5,
+        actor_pool_max_upscaling_delta=100,
+    )
+
+    def _gate_is_on(window_s):
+        # A snapshot copy, exactly like the read APIs hand to the executor: the
+        # executor's context is *not* the live ambient one, and the gate has to
+        # follow the context the drain policy was built from.
+        ctx = DataContext.get_current().copy()
+        ctx.actor_pool_drain_window_s = window_s
+        autoscaler = DefaultActorAutoscaler(
+            topology=MagicMock(),
+            resource_manager=resource_manager,
+            config=config,
+            data_context=ctx,
+        )
+        request = autoscaler._derive_target_scaling_config(
+            actor_pool=actor_pool,
+            op=op,
+            op_state=op_state,
+        )
+        return request
+
+    # Drain feature off in the snapshot: growth is not gated.
+    request = _gate_is_on(None)
+    assert request.delta == 10
+
+    # Drain feature on in the snapshot: the gate applies.
+    request = _gate_is_on(5.0)
+    assert request.delta == 0
+    assert "downstream cannot absorb" in request.reason
+
+
+def test_upscale_gate_ignores_the_ambient_context(
+    autoscaler_max_upscaling_delta_setup,
+):
+    """The gate must follow the context the executor was built with, not the live
+    ambient one.
+
+    The read APIs snapshot the context (`DataContext.get_current().copy()`) when a
+    Dataset is created, and the drain policy is built from that snapshot. Reading
+    the ambient context instead would let the gate be on for a pipeline whose
+    drain policy is inert -- and vice versa -- whenever the two diverge, which is
+    exactly what happens when the feature is toggled between creating a Dataset
+    and executing it.
+    """
+    resource_manager, actor_pool, op, op_state = autoscaler_max_upscaling_delta_setup
+    resource_manager.downstream_can_absorb = MagicMock(return_value=False)
+
+    # The executor's snapshot has draining off...
+    snapshot = DataContext.get_current().copy()
+    snapshot.actor_pool_drain_window_s = None
+    # ...while the live ambient context has it on.
+    original_window = DataContext.get_current().actor_pool_drain_window_s
+    DataContext.get_current().actor_pool_drain_window_s = 5.0
+    try:
+        autoscaler = DefaultActorAutoscaler(
+            topology=MagicMock(),
+            resource_manager=resource_manager,
+            config=AutoscalingConfig(
+                actor_pool_util_upscaling_threshold=1.0,
+                actor_pool_util_downscaling_threshold=0.5,
+                actor_pool_max_upscaling_delta=100,
+            ),
+            data_context=snapshot,
+        )
+        request = autoscaler._derive_target_scaling_config(
+            actor_pool=actor_pool,
+            op=op,
+            op_state=op_state,
+        )
+        # The gate follows the snapshot, so growth is untouched.
+        assert request.delta == 10
+    finally:
+        DataContext.get_current().actor_pool_drain_window_s = original_window
 
 
 class BarrierWaiter:
@@ -612,6 +1091,7 @@ def test_autoscaling_config_validation_zero_delta(autoscaler_config_mocks):
                 actor_pool_util_downscaling_threshold=0.5,
                 actor_pool_max_upscaling_delta=0,
             ),
+            data_context=DataContext.get_current(),
         )
 
 
@@ -629,6 +1109,7 @@ def test_autoscaling_config_validation_negative_delta(autoscaler_config_mocks):
                 actor_pool_util_downscaling_threshold=0.5,
                 actor_pool_max_upscaling_delta=-1,
             ),
+            data_context=DataContext.get_current(),
         )
 
 
@@ -643,6 +1124,7 @@ def test_autoscaling_config_validation_positive_delta(autoscaler_config_mocks):
             actor_pool_util_downscaling_threshold=0.5,
             actor_pool_max_upscaling_delta=5,
         ),
+        data_context=DataContext.get_current(),
     )
     assert autoscaler._actor_pool_max_upscaling_delta == 5
 
@@ -663,6 +1145,7 @@ def test_autoscaling_config_validation_zero_upscaling_threshold(
                 actor_pool_util_downscaling_threshold=0.5,
                 actor_pool_max_upscaling_delta=5,
             ),
+            data_context=DataContext.get_current(),
         )
 
 
@@ -682,6 +1165,7 @@ def test_autoscaling_config_validation_negative_upscaling_threshold(
                 actor_pool_util_downscaling_threshold=0.5,
                 actor_pool_max_upscaling_delta=5,
             ),
+            data_context=DataContext.get_current(),
         )
 
 

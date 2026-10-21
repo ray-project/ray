@@ -613,6 +613,8 @@ def test_output_backpressure_policy_tracking(ray_start_regular_shared):
     # Check that o2 has the first limiting policy tracked
     assert o2._in_task_output_backpressure is True
     assert o2._task_output_backpressure_policy == "Limiting"
+    # The guard did not fire, so this is genuine backpressure.
+    assert o2.task_output_backpressure_guard_unblocked is False
 
     # Now test with no output backpressure
     _process_completed_tasks_threaded(
@@ -667,6 +669,9 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
     # and the policy attribution should be cleared.
     assert o2._in_task_output_backpressure is False
     assert o2._task_output_backpressure_policy is None
+    # ... but the unblock is recorded separately, so an unblock caused by the
+    # guard is not mistaken for a genuine release.
+    assert o2.task_output_backpressure_guard_unblocked is True
 
 
 def test_summary_str_backpressure_policies(ray_start_regular_shared):
