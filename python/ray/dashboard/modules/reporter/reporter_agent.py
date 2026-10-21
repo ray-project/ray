@@ -5,6 +5,7 @@ import logging
 import os
 import socket
 import sys
+import time
 import traceback
 from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
@@ -134,6 +135,37 @@ def jsonify_asdict(o) -> str:
 # A list of gauges to record and export metrics.
 METRICS = {
     # GPU collection health
+    # GPU activity through GPM (Hopper and newer)
+    "node_gpu_sm_active_percent": Gauge(
+        "node_gpu_sm_active_percent",
+        "Share of the GPU's SMs that had work, averaged over the time since the "
+        "previous poll (0-100). NVML GPM SM_UTIL; Hopper and newer only.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_sm_active_seconds_total": Counter(
+        "node_gpu_sm_active_seconds_total",
+        "Cumulative SM-active seconds of the GPU (SM-active share times time); "
+        "rate() of this is the SM-active share at any scrape interval.",
+        "seconds",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_graphics_engine_active_percent": Gauge(
+        "node_gpu_graphics_engine_active_percent",
+        "Share of time the GPU's graphics/compute engine was active over the time "
+        "since the previous poll (0-100). NVML GPM GRAPHICS_UTIL, the same quantity "
+        "as DCGM_FI_PROF_GR_ENGINE_ACTIVE; Hopper and newer only. Counts engine "
+        "cycles, so it reads high for bursty work on GPUs that gate the engine "
+        "clock while idle.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_poll_duration_seconds": Gauge(
+        "node_gpu_poll_duration_seconds",
+        "Time the dashboard agent spent reading GPU metrics in its last poll",
+        "seconds",
+        NODE_TAG_KEYS,
+    ),
     "node_gpu_collection_errors_total": Counter(
         "node_gpu_collection_errors_total",
         "Number of failed reads of a GPU metric source on a ray node, by the "
@@ -619,7 +651,8 @@ class ReporterAgent(
 
         # Create GPU metric provider instance
         self._gpu_metric_provider = GpuMetricProvider(
-            enable_metric_report=dashboard_agent.enable_gpu_metrics
+            enable_metric_report=dashboard_agent.enable_gpu_metrics,
+            enable_gpm_metrics=dashboard_agent.enable_gpu_gpm_metrics,
         )
 
         if raylet_client:
@@ -1319,7 +1352,9 @@ class ReporterAgent(
         self._disk_io_stats_hist.append((now, disk_stats))
         disk_speed_stats = self._compute_speed_from_hist(self._disk_io_stats_hist)
 
+        gpu_poll_start = time.monotonic()
         gpus = self._get_gpu_usage()
+        gpu_poll_duration_s = time.monotonic() - gpu_poll_start
         raylet = self._get_raylet()
         stats = {
             "now": now,
@@ -1342,6 +1377,10 @@ class ReporterAgent(
             "disk_io": disk_stats,
             "disk_io_speed": disk_speed_stats,
             "gpus": gpus,
+            # Also reported when every read failed; absent on nodes without GPUs.
+            "gpu_poll_duration_s": gpu_poll_duration_s
+            if self._gpu_metric_provider.get_provider_name() is not None
+            else None,
             "tpus": self._get_tpu_usage(),
             "network": network_stats,
             "network_speed": network_speed_stats,
@@ -1877,7 +1916,42 @@ class ReporterAgent(
                                 tags=gpu_tags,
                             )
                         )
+                    # GPM metrics; absent when not measured.
+                    if gpu.get("sm_active_percent") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpu_sm_active_percent"],
+                                value=gpu["sm_active_percent"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu.get("graphics_engine_active_percent") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS[
+                                    "node_gpu_graphics_engine_active_percent"
+                                ],
+                                value=gpu["graphics_engine_active_percent"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu.get("sm_active_seconds") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpu_sm_active_seconds_total"],
+                                value=gpu["sm_active_seconds"],
+                                tags=gpu_tags,
+                            )
+                        )
                     records_reported.extend(gpu_records_to_add)
+        if stats.get("gpu_poll_duration_s") is not None:
+            records_reported.append(
+                Record(
+                    gauge=METRICS["node_gpu_poll_duration_seconds"],
+                    value=stats["gpu_poll_duration_s"],
+                    tags=node_tags,
+                )
+            )
 
         # -- GPU collection health --
         for (

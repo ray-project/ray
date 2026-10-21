@@ -84,6 +84,18 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_node_gpu_temperature_celsius`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
   - The current GPU temperature per GPU, in Celsius.
+* - `ray_node_gpu_sm_active_percent`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - The share of the GPU's streaming multiprocessors (SMs) that had work, averaged over the time since the previous reporter poll (0.\.100). Unlike `ray_node_gpus_utilization`, which reads 100 while a single SM is busy, this reflects how much of the GPU is in use. Read through NVML GPM, so only reported on NVIDIA Hopper and newer GPUs; absent on older GPUs and MIG slices. Accurate for windows of about 5 s or more (the default poll interval); much shorter `REPORTER_UPDATE_INTERVAL_MS` values under-read bursty workloads. Set `RAY_enable_gpu_gpm_metrics=0` on the node before `ray start` to turn it off.
+* - `ray_node_gpu_sm_active_seconds_total`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - Cumulative SM-active seconds of the GPU (the SM-active share times time). `rate()` over any range gives the SM-active share, independent of the Prometheus scrape interval. Resets to 0 when the dashboard agent restarts.
+* - `ray_node_gpu_graphics_engine_active_percent`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - The share of time the GPU's graphics/compute engine was active, averaged over the time since the previous reporter poll (0.\.100). The same quantity as DCGM's `DCGM_FI_PROF_GR_ENGINE_ACTIVE`, read through NVML GPM, so only reported on NVIDIA Hopper and newer GPUs. Like `ray_node_gpus_utilization`, it reads 100 while a single SM is busy. NVML computes it as engine-active cycles over elapsed engine cycles, so on GPUs that gate the engine clock while idle (observed on the RTX PRO 6000 Blackwell) idle time is under-counted and bursty workloads read high, for example 47 for a GPU busy 20 % of the time; on H100 it matched kernel time. For time-based activity use `ray_node_gpu_sm_active_percent`.
+* - `ray_node_gpu_poll_duration_seconds`
+  - `instance`
+  - How long the dashboard agent spent reading GPU metrics in its last poll, in seconds. Only reported on nodes with GPUs.
 * - `ray_node_gpu_collection_errors_total`
   - `instance`, `Api`, `Reason`
   - Number of failed reads of a GPU metric source on the node. `Api` is the source (for example `utilization`, `process_utilization`, `power`), `Reason` the error class the GPU library raised (for example `NVMLError_Unknown`). `init` counts polls where the GPU library failed to start, which leaves every GPU metric absent. APIs the device or driver doesn't have (`NVMLError_NotSupported`, `NVMLError_FunctionNotFound`) aren't counted. A GPU metric that is absent from the scrape while this counter grows is failing, not idle. Only present once a read has failed.

@@ -51,6 +51,7 @@ class DashboardAgent:
         disable_metrics_collection: bool = False,
         is_head: bool = False,
         enable_gpu_metrics: bool = True,
+        enable_gpu_gpm_metrics: bool = True,
         *,  # the following are required kwargs
         object_store_name: str,
         raylet_name: str,
@@ -82,6 +83,7 @@ class DashboardAgent:
         self.node_id = os.environ["RAY_NODE_ID"]
         self.metrics_collection_disabled = disable_metrics_collection
         self.enable_gpu_metrics = enable_gpu_metrics
+        self.enable_gpu_gpm_metrics = enable_gpu_gpm_metrics
         self.session_name = session_name
 
         # grpc server is None in mininal.
@@ -455,6 +457,12 @@ if __name__ == "__main__":
         help="Enable GPU metric collection in the dashboard agent.",
     )
     parser.add_argument(
+        "--enable-gpu-gpm-metrics",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Read SM activity through NVML GPM on GPUs that support it.",
+    )
+    parser.add_argument(
         "--head",
         action="store_true",
         help="Whether this node is the head node.",
@@ -530,6 +538,7 @@ if __name__ == "__main__":
             disable_metrics_collection=args.disable_metrics_collection,
             is_head=args.head,
             enable_gpu_metrics=args.enable_gpu_metrics,
+            enable_gpu_gpm_metrics=args.enable_gpu_gpm_metrics,
             session_name=args.session_name,
         )
 

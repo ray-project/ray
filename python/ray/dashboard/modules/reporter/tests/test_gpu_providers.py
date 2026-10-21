@@ -5,6 +5,7 @@ import time
 import unittest
 from unittest.mock import Mock, call, patch
 
+from ray.dashboard.modules.reporter.gpu_accounting import WindowAccountant
 from ray.dashboard.modules.reporter.gpu_providers import (
     MB,
     RAY_SKIP_PROCESS_UTIL_API,
@@ -156,10 +157,44 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         )
         mock_pynvml.nvmlDeviceGetPowerUsage.return_value = 100000
         mock_pynvml.nvmlDeviceGetTemperature.return_value = 50
+        # GPM off unless a test turns it on with _configure_gpm.
+        mock_pynvml.nvmlGpmQueryDeviceSupport.return_value = Mock(isSupportedDevice=0)
 
         self.provider._pynvml = mock_pynvml
         self.provider._initialized = True
         return handles
+
+    def _configure_gpm(self, mock_pynvml, readings):
+        """Script GPM: each nvmlGpmMetricsGet call pops {metric_id: (value, ret)}."""
+        mock_pynvml.nvmlGpmQueryDeviceSupport.return_value = Mock(isSupportedDevice=1)
+        mock_pynvml.nvmlGpmSampleAlloc.side_effect = lambda: object()
+        mock_pynvml.NVML_GPM_METRICS_GET_VERSION = 1
+        mock_pynvml.NVML_GPM_METRIC_GRAPHICS_UTIL = 1
+        mock_pynvml.NVML_GPM_METRIC_SM_UTIL = 2
+        mock_pynvml.c_nvmlGpmMetricsGet_t.side_effect = lambda: Mock(
+            metrics=[Mock(metricId=0, value=0.0, nvmlReturn=0) for _ in range(4)]
+        )
+        queue = list(readings)
+
+        def metrics_get(request):
+            reading = queue.pop(0)
+            for i in range(request.numMetrics):
+                value, ret = reading[request.metrics[i].metricId]
+                request.metrics[i].value = value
+                request.metrics[i].nvmlReturn = ret
+            return request
+
+        mock_pynvml.nvmlGpmMetricsGet.side_effect = metrics_get
+
+    def _gpm_clock(self, uuid="GPU-0"):
+        """Give the device's GPM state a fake monotonic clock."""
+        from ray.dashboard.modules.reporter.gpu_providers import _GpmState
+
+        clock = {"now": 1000.0}
+        self.provider._gpm_state[uuid] = _GpmState(
+            accountant=WindowAccountant(clock=lambda: clock["now"])
+        )
+        return clock
 
     def test_get_provider_name(self):
         """Test provider name."""
@@ -926,6 +961,159 @@ class TestNvidiaGpuProvider(unittest.TestCase):
             [(api, count) for (api, _), count in errors.items()], [("init", 1)]
         )
 
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_first_poll_opens_window_second_reports(self, mock_pynvml):
+        """SM active and graphics engine come from GPM over the poll window."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [{2: (25.0, 0), 1: (40.0, 0)}])
+        clock = self._gpm_clock()
+
+        with patch.object(self.provider, "_shutdown"):
+            first = self.provider.get_gpu_utilization()[0]
+            clock["now"] += 5.0
+            second = self.provider.get_gpu_utilization()[0]
+
+        self.assertIsNone(first["sm_active_percent"])
+        self.assertIsNone(first["sm_active_seconds"])
+        self.assertEqual(second["sm_active_percent"], 25.0)
+        self.assertAlmostEqual(second["sm_active_seconds"], 1.25)  # 25 % of 5 s
+        self.assertEqual(second["graphics_engine_active_percent"], 40.0)
+        self.assertEqual(mock_pynvml.nvmlGpmSampleAlloc.call_count, 2)
+        # The two polls filled different buffers.
+        buffers = [c.args[1] for c in mock_pynvml.nvmlGpmSampleGet.call_args_list]
+        self.assertIsNot(buffers[0], buffers[1])
+        self.assertEqual(self.provider.drain_collection_errors(), {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_unsupported_device_reports_nothing(self, mock_pynvml):
+        """Pre-Hopper devices (or bindings without GPM) get no GPM metrics or errors."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            result = self.provider.get_gpu_utilization()[0]
+
+        self.assertIsNone(result["sm_active_percent"])
+        self.assertIsNone(result["graphics_engine_active_percent"])
+        mock_pynvml.nvmlGpmQueryDeviceSupport.assert_called_once()
+        mock_pynvml.nvmlGpmSampleGet.assert_not_called()
+        self.assertEqual(self.provider.drain_collection_errors(), {})
+
+        mock_pynvml.nvmlGpmQueryDeviceSupport.side_effect = AttributeError("no GPM")
+        self.provider._gpm_state.clear()
+        with patch.object(self.provider, "_shutdown"):
+            result = self.provider.get_gpu_utilization()[0]
+        self.assertIsNone(result["sm_active_percent"])
+        mock_pynvml.nvmlGpmSampleGet.assert_not_called()
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_support_check_retried_after_transient_error(self, mock_pynvml):
+        """A failed support check is counted and retried instead of disabling GPM."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [{2: (25.0, 0), 1: (40.0, 0)}])
+        clock = self._gpm_clock()
+        mock_pynvml.nvmlGpmQueryDeviceSupport.side_effect = mock_pynvml.NVMLError(
+            "Unknown Error"
+        )
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.assertEqual(
+                self.provider.drain_collection_errors(),
+                {("gpm", "MockNVMLError"): 1},
+            )
+            mock_pynvml.nvmlGpmQueryDeviceSupport.side_effect = None
+            self.provider.get_gpu_utilization()
+            clock["now"] += 5.0
+            result = self.provider.get_gpu_utilization()[0]
+
+        self.assertEqual(result["sm_active_percent"], 25.0)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_invalid_values_are_dropped_and_counted(self, mock_pynvml):
+        """A failed or out-of-range metric is not reported; SM time is not credited."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(
+            mock_pynvml,
+            [
+                {2: (150.0, 0), 1: (30.0, 0)},  # SM out of range
+                {2: (20.0, 0), 1: (0.0, 3)},  # graphics not supported by NVML
+                {2: (10.0, 0), 1: (12.0, 0)},
+            ],
+        )
+        clock = self._gpm_clock()
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            results = []
+            for _ in range(3):
+                clock["now"] += 5.0
+                results.append(self.provider.get_gpu_utilization()[0])
+
+        self.assertIsNone(results[0]["sm_active_percent"])
+        self.assertEqual(results[0]["graphics_engine_active_percent"], 30.0)
+        # The window restarted after the bad SM value, so 20 % covers only 5 s.
+        self.assertEqual(results[1]["sm_active_percent"], 20.0)
+        self.assertAlmostEqual(results[1]["sm_active_seconds"], 1.0)
+        self.assertIsNone(results[1]["graphics_engine_active_percent"])
+        self.assertAlmostEqual(results[2]["sm_active_seconds"], 0.5)
+        self.assertEqual(
+            self.provider.drain_collection_errors(),
+            {("gpm", "out_of_range"): 1, ("gpm", "nvml_return_3"): 1},
+        )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_repeated_failures_back_off(self, mock_pynvml):
+        """Three failed samples in a row skip GPM for the next 10 polls."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [])
+        mock_pynvml.nvmlGpmSampleGet.side_effect = mock_pynvml.NVMLError("boom")
+        clock = self._gpm_clock()
+
+        with patch.object(self.provider, "_shutdown"):
+            for _ in range(13):
+                clock["now"] += 5.0
+                self.provider.get_gpu_utilization()
+
+        self.assertEqual(mock_pynvml.nvmlGpmSampleGet.call_count, 3)
+        self.assertEqual(
+            self.provider.drain_collection_errors(), {("gpm", "MockNVMLError"): 3}
+        )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_skips_samples_closer_than_spacing(self, mock_pynvml):
+        """A poll within 200 ms of the window start does not take a GPM sample."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [{2: (50.0, 0), 1: (60.0, 0)}])
+        clock = self._gpm_clock()
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            clock["now"] += 0.1
+            skipped = self.provider.get_gpu_utilization()[0]
+            clock["now"] += 4.9
+            reported = self.provider.get_gpu_utilization()[0]
+
+        self.assertIsNone(skipped["sm_active_percent"])
+        self.assertEqual(mock_pynvml.nvmlGpmSampleGet.call_count, 2)
+        # The reported window covers both polls.
+        self.assertAlmostEqual(reported["sm_active_seconds"], 2.5)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_disabled_makes_no_gpm_calls(self, mock_pynvml):
+        """With GPM turned off the provider never touches the GPM API."""
+        self.provider = NvidiaGpuProvider(enable_gpm=False)
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [])
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            result = self.provider.get_gpu_utilization()[0]
+
+        self.assertIsNone(result["sm_active_percent"])
+        mock_pynvml.nvmlGpmQueryDeviceSupport.assert_not_called()
+        mock_pynvml.nvmlGpmSampleGet.assert_not_called()
+
 
 class TestAmdGpuProvider(unittest.TestCase):
     """Test AmdGpuProvider class."""
@@ -1208,6 +1396,13 @@ class TestGpuMetricProvider(unittest.TestCase):
         self.assertEqual(result[0]["index"], 0)
         self.assertEqual(result[0]["name"], "Test GPU")
         mock_provider.get_gpu_utilization.assert_called_once()
+
+    def test_gpm_switch_reaches_nvidia_provider(self):
+        """enable_gpm_metrics is passed to the NVIDIA provider."""
+        self.assertTrue(GpuMetricProvider()._providers[0]._enable_gpm)
+        self.assertFalse(
+            GpuMetricProvider(enable_gpm_metrics=False)._providers[0]._enable_gpm
+        )
 
     def test_drain_collection_errors_no_provider(self):
         """Without a provider there is nothing to drain."""

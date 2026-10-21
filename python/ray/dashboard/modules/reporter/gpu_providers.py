@@ -5,14 +5,16 @@ This module provides an object-oriented interface for different GPU providers
 """
 
 import abc
+import dataclasses
 import enum
 import logging
+import math
 import os
 import re
 import subprocess
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple, TypedDict, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict, Union
 
 try:
     from typing import NotRequired
@@ -20,6 +22,7 @@ except ImportError:
     from typing_extensions import NotRequired
 
 from ray._common.utils import env_bool
+from ray.dashboard.modules.reporter.gpu_accounting import WindowAccountant
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -70,6 +73,11 @@ class GpuUtilizationInfo(TypedDict):
     # Optional: power in milliwatts, temperature in Celsius (e.g. from NVIDIA/AMD)
     power_mw: NotRequired[Optional[int]]
     temperature_c: NotRequired[Optional[int]]
+    # Optional (GPM, Hopper and newer): SM-active share of the poll window, and seconds.
+    sm_active_percent: NotRequired[Optional[float]]
+    sm_active_seconds: NotRequired[Optional[float]]
+    # Optional (GPM): graphics/compute engine active share (DCGM GR_ENGINE_ACTIVE).
+    graphics_engine_active_percent: NotRequired[Optional[float]]
 
 
 # tpu utilization for google tpu
@@ -146,12 +154,42 @@ class GpuProvider(abc.ABC):
         return b
 
 
+# GPM metrics read each poll, by pynvml constant name.
+_GPM_METRICS = ("NVML_GPM_METRIC_SM_UTIL", "NVML_GPM_METRIC_GRAPHICS_UTIL")
+# NVML wants > 100 ms between GPM samples; a closer read is skipped.
+_GPM_MIN_SPACING_S = 0.2
+# Skip GPM for _GPM_BACKOFF_POLLS polls after this many failures in a row.
+_GPM_FAILURES_BEFORE_BACKOFF = 3
+_GPM_BACKOFF_POLLS = 10
+
+
+@dataclasses.dataclass
+class _GpmState:
+    """Per-device GPM state, kept across polls and nvmlShutdown/nvmlInit.
+
+    The sample buffers are reused after nvmlShutdown/nvmlInit. NVML doesn't
+    document this, but a sample holds raw counters and nvmlGpmMetricsGet only
+    differences two of them; on driver 580, pairs spanning a re-init read the
+    same as pairs that don't (within 0.3 points). Out-of-range values are dropped.
+    """
+
+    supported: Optional[bool] = None
+    samples: List = dataclasses.field(default_factory=list)
+    # Index of the buffer holding the previous poll's sample.
+    previous: Optional[int] = None
+    accountant: WindowAccountant = dataclasses.field(default_factory=WindowAccountant)
+    consecutive_failures: int = 0
+    backoff_polls: int = 0
+
+
 class NvidiaGpuProvider(GpuProvider):
     """NVIDIA GPU provider using pynvml."""
 
-    def __init__(self):
+    def __init__(self, enable_gpm: bool = True):
         super().__init__()
         self._pynvml = None
+        self._enable_gpm = enable_gpm
+        self._gpm_state: Dict[str, _GpmState] = {}
         # Maintain per-GPU sampling timestamps when using process utilization API
         self._gpu_process_last_sample_ts: Dict[int, int] = {}
         self._force_skip_process_util_api = env_bool(RAY_SKIP_PROCESS_UTIL_API, False)
@@ -178,6 +216,114 @@ class NvidiaGpuProvider(GpuProvider):
         """Return whether `error` is an instance of pynvml's `class_name` error."""
         error_class = getattr(self._pynvml, class_name, None)
         return isinstance(error_class, type) and isinstance(error, error_class)
+
+    def _gpm_supported(self, gpu_handle: Any, uuid: str, state: _GpmState) -> bool:
+        """Check GPM support once per device and allocate its sample buffers."""
+        if state.supported is None:
+            try:
+                support = self._pynvml.nvmlGpmQueryDeviceSupport(gpu_handle)
+                if support.isSupportedDevice:
+                    state.samples = [
+                        self._pynvml.nvmlGpmSampleAlloc(),
+                        self._pynvml.nvmlGpmSampleAlloc(),
+                    ]
+                state.supported = bool(support.isSupportedDevice)
+            except Exception as e:
+                if not (
+                    isinstance(e, AttributeError)
+                    or self._is_nvml_error(e, "NVMLError_NotSupported")
+                    or self._is_nvml_error(e, "NVMLError_FunctionNotFound")
+                ):
+                    # Transient; check again next poll.
+                    self._count_collection_error("gpm", e)
+                    return False
+                # Pre-Hopper GPUs or drivers without GPM.
+                state.supported = False
+            if state.supported is False:
+                logger.info(
+                    "GPU %s does not support GPM; SM activity metrics are not "
+                    "reported for it",
+                    uuid,
+                )
+        return bool(state.supported)
+
+    def _read_gpm(self, gpu_handle: Any, uuid: str) -> Dict[str, Optional[float]]:
+        """Return GPM metrics for the window since the previous poll."""
+        out = {
+            "sm_active_percent": None,
+            "sm_active_seconds": None,
+            "graphics_engine_active_percent": None,
+        }
+        if not self._enable_gpm:
+            return out
+        state = self._gpm_state.setdefault(uuid, _GpmState())
+        if not self._gpm_supported(gpu_handle, uuid, state):
+            return out
+        if state.backoff_polls > 0:
+            state.backoff_polls -= 1
+            return out
+        window_s = state.accountant.window_seconds()
+        if window_s is not None and window_s < _GPM_MIN_SPACING_S:
+            return out
+
+        current = 0 if state.previous is None else 1 - state.previous
+        try:
+            self._pynvml.nvmlGpmSampleGet(gpu_handle, state.samples[current])
+        except Exception as e:
+            self._count_collection_error("gpm", e)
+            state.accountant.fail()
+            state.consecutive_failures += 1
+            if state.consecutive_failures >= _GPM_FAILURES_BEFORE_BACKOFF:
+                state.consecutive_failures = 0
+                state.backoff_polls = _GPM_BACKOFF_POLLS
+                if log_once(f"gpm_backoff_{uuid}"):
+                    logger.warning(
+                        "Reading GPM on GPU %s keeps failing; retrying in %d polls: %s",
+                        uuid,
+                        _GPM_BACKOFF_POLLS,
+                        e,
+                    )
+            return out
+        state.consecutive_failures = 0
+
+        previous, state.previous = state.previous, current
+        if previous is None:
+            state.accountant.credit(None)
+            return out
+        try:
+            request = self._pynvml.c_nvmlGpmMetricsGet_t()
+            request.version = self._pynvml.NVML_GPM_METRICS_GET_VERSION
+            request.numMetrics = len(_GPM_METRICS)
+            request.sample1 = state.samples[previous]
+            request.sample2 = state.samples[current]
+            for i, name in enumerate(_GPM_METRICS):
+                request.metrics[i].metricId = getattr(self._pynvml, name)
+            self._pynvml.nvmlGpmMetricsGet(request)
+            values = {}
+            for i, name in enumerate(_GPM_METRICS):
+                ret = int(request.metrics[i].nvmlReturn)
+                value = float(request.metrics[i].value)
+                if ret != 0 or math.isnan(value) or not 0.0 <= value <= 100.0:
+                    self._count_collection_error(
+                        "gpm", "out_of_range" if ret == 0 else f"nvml_return_{ret}"
+                    )
+                    continue
+                values[name] = value
+        except Exception as e:
+            self._count_collection_error("gpm", e)
+            state.accountant.credit(None)
+            return out
+        out["graphics_engine_active_percent"] = values.get(
+            "NVML_GPM_METRIC_GRAPHICS_UTIL"
+        )
+        sm = values.get("NVML_GPM_METRIC_SM_UTIL")
+        if sm is None:
+            # No valid SM value; restart the window.
+            state.accountant.credit(None)
+            return out
+        out["sm_active_percent"] = sm
+        out["sm_active_seconds"] = state.accountant.credit(sm)
+        return out
 
     def is_available(self) -> bool:
         """Check if NVIDIA GPUs are available."""
@@ -447,6 +593,7 @@ class NvidiaGpuProvider(GpuProvider):
     def _get_gpu_info(self, gpu_handle, gpu_index: int) -> Optional[GpuUtilizationInfo]:
         """Get utilization info for a regular (non-MIG) GPU."""
         try:
+            uuid = self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle))
             memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
 
             # Get GPU utilization; None if the device doesn't report it
@@ -568,16 +715,21 @@ class NvidiaGpuProvider(GpuProvider):
                 if log_once("gpu_temperature"):
                     logger.info(f"Failed to retrieve GPU temperature: {e}")
 
+            gpm = self._read_gpm(gpu_handle, uuid)
+
             return GpuUtilizationInfo(
                 index=gpu_index,
                 name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                uuid=uuid,
                 utilization_gpu=utilization,
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
                 processes_pids=processes_pids,
                 power_mw=power_mw,
                 temperature_c=temperature_c,
+                sm_active_percent=gpm["sm_active_percent"],
+                sm_active_seconds=gpm["sm_active_seconds"],
+                graphics_engine_active_percent=gpm["graphics_engine_active_percent"],
             )
 
         except Exception as e:
@@ -701,11 +853,15 @@ class AmdGpuProvider(GpuProvider):
 class GpuMetricProvider:
     """Provider class for GPU metrics collection."""
 
-    def __init__(self, enable_metric_report: bool = True):
+    def __init__(
+        self, enable_metric_report: bool = True, enable_gpm_metrics: bool = True
+    ):
         self._provider: Optional[GpuProvider] = None
         self._enable_metric_report = enable_metric_report
         self._providers = (
-            [NvidiaGpuProvider(), AmdGpuProvider()] if enable_metric_report else []
+            [NvidiaGpuProvider(enable_gpm=enable_gpm_metrics), AmdGpuProvider()]
+            if enable_metric_report
+            else []
         )
         self._initialized = False
 

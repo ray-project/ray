@@ -1537,6 +1537,10 @@ class Node:
                 "enable_gpu_metrics_collection",
                 ray_constants.env_bool("RAY_enable_gpu_metrics_collection", True),
             ),
+            enable_gpu_gpm_metrics=self._config.get(
+                "enable_gpu_gpm_metrics",
+                ray_constants.env_bool("RAY_enable_gpu_gpm_metrics", True),
+            ),
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

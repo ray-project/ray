@@ -723,6 +723,9 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// polling GPU management libraries such as NVML.
 RAY_CONFIG(bool, enable_gpu_metrics_collection, true)
 
+/// Whether the dashboard agent reads GPU activity through NVML GPM (Hopper and newer).
+RAY_CONFIG(bool, enable_gpu_gpm_metrics, true)
+
 /// Determine if the high cardinality labels such as WorkerId, task and actor Name
 /// should be used in the metrics. For the complete definition, see
 /// RAY_METRIC_CARDINALITY_LEVEL in ray_constants.py

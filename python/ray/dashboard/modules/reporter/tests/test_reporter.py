@@ -826,6 +826,81 @@ def test_report_gpu_collection_errors(tmp_path):
     ]
 
 
+def test_report_stats_gpu_gpm(tmp_path):
+    """GPM metrics are recorded when measured and absent otherwise."""
+    from ray._private.metrics_agent import Counter
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+    assert isinstance(METRICS["node_gpu_sm_active_seconds_total"], Counter)
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    base = {
+        "name": "NVIDIA H100",
+        "utilization_gpu": 100,
+        "memory_used": 1,
+        "memory_total": 80000,
+        "processes": [],
+    }
+    stats["gpus"] = [
+        {
+            **base,
+            "index": 0,
+            "uuid": "GPU-0",
+            "sm_active_percent": 24.8,
+            "sm_active_seconds": 1.24,
+            "graphics_engine_active_percent": 99.9,
+        },
+        {
+            **base,
+            "index": 1,
+            "uuid": "GPU-1",
+            "sm_active_percent": None,
+            "sm_active_seconds": None,
+            "graphics_engine_active_percent": None,
+        },
+    ]
+    stats["gpu_poll_duration_s"] = 0.012
+    records = agent._to_records(stats, {})
+
+    gpm = {
+        (r.gauge.name, r.tags["GpuIndex"]): r.value
+        for r in records
+        if r.gauge.name
+        in (
+            "node_gpu_sm_active_percent",
+            "node_gpu_sm_active_seconds_total",
+            "node_gpu_graphics_engine_active_percent",
+        )
+    }
+    assert gpm == {
+        ("node_gpu_sm_active_percent", "0"): 24.8,
+        ("node_gpu_sm_active_seconds_total", "0"): 1.24,
+        ("node_gpu_graphics_engine_active_percent", "0"): 99.9,
+    }
+    durations = [
+        r.value for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"
+    ]
+    assert durations == [0.012]
+
+    # Every read failed: the poll duration is still reported.
+    stats["gpus"] = []
+    records = agent._to_records(stats, {})
+    durations = [
+        r.value for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"
+    ]
+    assert durations == [0.012]
+
+    # No GPU provider on the node: no poll-duration record.
+    stats["gpu_poll_duration_s"] = None
+    records = agent._to_records(stats, {})
+    assert not [r for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"]
+
+
 def test_report_stats_gpu_power_and_temperature(tmp_path):
     """Test that GPU power and temperature metrics are reported when present in stats."""
     dashboard_agent = MagicMock()
