@@ -62,6 +62,7 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.core.generated import autoscaler_pb2
 from ray.dashboard.modules.metrics import install_and_start_prometheus
+from ray.exceptions import AuthenticationError
 from ray.scripts.symmetric_run import symmetric_run
 from ray.util.annotations import PublicAPI
 from ray.util.check_open_ports import check_open_ports
@@ -796,6 +797,14 @@ Windows powershell users need additional escaping:
     "you can set this option to override the server url. "
     "Ex: --proxy-server-url=http://historyserver:8080 ",
 )
+@click.option(
+    "--create-auth-token-if-missing",
+    is_flag=True,
+    default=False,
+    hidden=True,
+    help="Create the auth token if none exists. Used by drivers and test "
+    "clusters that start a throwaway cluster on this machine.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -845,6 +854,7 @@ def start(
     system_reserved_memory,
     cgroup_path,
     proxy_server_url,
+    create_auth_token_if_missing,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -1068,8 +1078,18 @@ def start(
 
         maybe_enable_token_auth_if_token_available()
 
-        # Ensure auth token is available if authentication mode is token
-        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+        try:
+            ensure_token_if_auth_enabled(
+                system_config, create_token_if_missing=create_auth_token_if_missing
+            )
+        except AuthenticationError:
+            # Worker nodes of this cluster need the same token, so a token made
+            # here could only work for a single-node cluster.
+            cli_logger.abort(
+                "Token authentication is enabled but no authentication token was "
+                "found. Run `ray get-auth-token --generate` to create one, then put "
+                "that token on every node of the cluster before starting it."
+            )
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block

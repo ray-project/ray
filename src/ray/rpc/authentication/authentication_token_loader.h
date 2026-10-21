@@ -73,7 +73,7 @@ class AuthenticationTokenLoader {
   AuthenticationTokenLoader() = default;
   ~AuthenticationTokenLoader() = default;
 
-  /// Read and trim token from file.
+  /// Read the first non-blank line of a token file, untrimmed.
   std::string ReadTokenFromFile(const std::string &file_path);
 
   /// Try to load token from environment or file, returning error instead of crashing.

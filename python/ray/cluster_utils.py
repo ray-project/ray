@@ -12,6 +12,9 @@ import yaml
 import ray
 import ray._private.services
 from ray._private import ray_constants
+from ray._private.authentication.authentication_token_setup import (
+    ensure_token_if_auth_enabled,
+)
 from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClientOptions
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
@@ -96,6 +99,7 @@ class AutoscalingCluster:
             "start",
             "--autoscaling-config={}".format(fake_config),
             "--head",
+            "--create-auth-token-if-missing",
         ]
         if "CPU" in self._head_resources:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
@@ -232,6 +236,9 @@ class Cluster:
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
+                ensure_token_if_auth_enabled(
+                    ray_params._system_config, create_token_if_missing=True
+                )
                 node = ray._private.node.Node(
                     ray_params,
                     head=True,

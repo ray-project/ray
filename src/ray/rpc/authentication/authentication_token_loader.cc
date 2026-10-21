@@ -243,18 +243,21 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
   return result;
 }
 
-// Read token from the first line of the file. trim whitespace.
-// Returns empty string if file cannot be opened or is empty.
+// Read the token from the first non-blank line of the file.
+// Returns empty string if the file cannot be opened or has no non-blank line.
 std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file_path) {
   std::ifstream token_file(file_path);
   if (!token_file.is_open()) {
     return "";
   }
 
-  std::string token;
-  std::getline(token_file, token);
-  token_file.close();
-  return token;
+  std::string line;
+  while (std::getline(token_file, line)) {
+    if (!TrimWhitespace(line).empty()) {
+      return line;
+    }
+  }
+  return "";
 }
 
 std::string AuthenticationTokenLoader::GetDefaultTokenPath() {

@@ -322,6 +322,18 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   EXPECT_TRUE(token_opt->Equals(expected));
 }
 
+TEST_F(AuthenticationTokenLoaderTest, TestLeadingBlankLinesSkipped) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "\n  \n\ttoken-after-blank-lines\n");
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
+
+  ASSERT_TRUE(token_opt != nullptr);
+  AuthenticationToken expected("token-after-blank-lines");
+  EXPECT_TRUE(token_opt->Equals(expected));
+}
+
 TEST_F(AuthenticationTokenLoaderTest, TestIgnoreAuthModeGetToken) {
   // Disable auth mode
   RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
