@@ -97,10 +97,7 @@ def combine_predicates(left: Optional[Expr], right: Optional[Expr]) -> Optional[
 
 
 def flatten_predicate_chain(predicate: Expr, op: Operation) -> List[Expr]:
-    """Operands of ``predicate``'s top level ``op`` chain (``AND`` or ``OR``),
-    left to right; ``[predicate]`` if it is not one. Iterative, so a long chain
-    cannot hit the recursion limit.
-    """
+    """Operands of ``predicate``'s top level ``op`` chain, left to right (iterative)."""
     operands: List[Expr] = []
     stack = [predicate]
     while stack:
@@ -114,8 +111,7 @@ def flatten_predicate_chain(predicate: Expr, op: Operation) -> List[Expr]:
 
 
 def combine_predicate_chain(predicates: List[Expr], op: Operation) -> Optional[Expr]:
-    """Fold ``predicates`` into one ``op`` chain, left to right; ``None`` if
-    there are none."""
+    """Fold ``predicates`` into one ``op`` chain, left to right; ``None`` if empty."""
     if not predicates:
         return None
     return functools.reduce(lambda left, right: BinaryExpr(op, left, right), predicates)
@@ -222,8 +218,7 @@ def _split_predicate_by_columns(
         elif referenced_cols <= partition_columns:
             partition.append(conjunct)
         else:
-            # An ``OR``/``NOT`` across both column kinds cannot be split; keep it
-            # so the caller leaves a Filter above the read.
+            # Straddles both kinds (e.g. an ``OR``): must stay a Filter above.
             residual.append(conjunct)
     return _SplitPredicateResult(
         data_predicate=combine_predicate_chain(data, Operation.AND),

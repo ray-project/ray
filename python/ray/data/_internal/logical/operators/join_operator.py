@@ -150,8 +150,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def which_side_to_push_predicate(
         self, predicate_expr: "Expr"
     ) -> Optional[JoinSide]:
-        """The first side (left before right) that accepts ``predicate_expr``,
-        or ``None``. See :meth:`can_push_predicate_to_side`."""
+        """The first side that accepts ``predicate_expr``, or ``None``."""
         for side in JoinSide:
             if self.can_push_predicate_to_side(predicate_expr, side):
                 return side
@@ -160,11 +159,9 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def can_push_predicate_to_side(
         self, predicate_expr: "Expr", side: JoinSide
     ) -> bool:
-        """Whether a predicate over this join's output can be applied to ``side``'s
-        input instead: the join type must allow it (INNER either side, LEFT_* the
-        left, RIGHT_* the right, FULL_OUTER neither) and every referenced column
-        must be one ``side`` produces. Rebind it through
-        :meth:`get_column_substitutions_for_side` before pushing.
+        """Whether ``predicate_expr`` (over the join's output) can be applied to
+        ``side``'s input: the join type allows it and ``side`` produces every column
+        it references. Rebind via :meth:`get_column_substitutions_for_side`.
         """
         side_columns = self._output_to_input_columns
         if side_columns is None or not self._get_pushdown_rules()[side.value]:
@@ -173,8 +170,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         return referenced.issubset(side_columns[side.value].keys())
 
     def get_column_substitutions_for_side(self, side: JoinSide) -> Dict[str, str]:
-        """Input column name -> output column name for the columns of ``side``
-        the physical join renames (a suffixed name collision); empty if none."""
+        """Input -> output column name for the columns of ``side`` the join renames."""
         side_columns = self._output_to_input_columns
         if side_columns is None:
             return {}
@@ -204,7 +200,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         return pushdown_rules.get(self.join_type, (False, False))
 
     def __copy__(self) -> "Join":
-        # Drop the cached column mapping; a copy exists to swap the inputs.
+        # A copy swaps inputs; drop the cached mapping derived from them.
         clone = object.__new__(type(self))
         clone.__dict__.update(self.__dict__)
         clone.__dict__.pop("_output_to_input_columns", None)
@@ -214,16 +210,11 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def _output_to_input_columns(
         self,
     ) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
-        """Per side, output column name -> the input column it comes from; ``None``
-        if an input schema is unknown.
-
-        Mirrors the naming in ``execution/operators/join.py``: colliding payload
-        names get the side's suffix, keys coalesce per join type, semi/anti joins
-        emit one side unchanged. Names the mirror cannot place are left out so a
-        predicate on them stays above the join. Without an inferred output schema
-        to check against (non-Arrow inputs, e.g. ``from_pandas``) only names unique
-        to one input and shared keys are mapped. Cached since ``infer_schema`` is
-        not.
+        """Per side, output column name -> the input column it comes from, mirroring
+        the naming in ``execution/operators/join.py``; ``None`` if a schema is unknown.
+        Without an output schema to check against (non-Arrow inputs) only names
+        unique to one input and shared keys are mapped. Cached: ``infer_schema``
+        is not.
         """
         left_schema = self.input_dependencies[0].infer_schema()
         right_schema = self.input_dependencies[1].infer_schema()
@@ -249,9 +240,8 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
 
         output_schema = self.infer_schema()
         if not output_schema:
-            # Coalesced-away keys are excluded, as is a right column named like
-            # a left collision after the left suffix (left ``v`` -> ``v_l``
-            # while the right has ``v_l``): Polars suffixes that one again.
+            # A right column named like a suffixed left collision (``v_l``) is
+            # suffixed again by Polars, so it is not the right's to claim.
             left_set, right_set = set(left_columns), set(right_columns)
             is_right_outer = self.join_type is JoinType.RIGHT_OUTER
             left_renamed = (
@@ -280,8 +270,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
                     )
                 },
             )
-        # Right keys are coalesced into the left ones, so only right non-key
-        # columns can collide with left columns.
+        # Right keys are coalesced away, so only right payload can collide.
         collisions = set(left_columns) & (set(right_columns) - right_keys)
         left_suffix = self.left_columns_suffix
         right_suffix = self.right_columns_suffix
@@ -313,8 +302,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             else:
                 right[c] = c
 
-        # Keep only names the join really emits, and never let both sides
-        # claim one unless it is a shared key.
+        # Only names the join emits; a non-key both sides claim goes to neither.
         output_names = set(output_schema.names)
         left = {o: i for o, i in left.items() if o in output_names}
         right = {o: i for o, i in right.items() if o in output_names}

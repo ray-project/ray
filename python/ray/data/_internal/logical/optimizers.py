@@ -68,10 +68,9 @@ class LogicalOptimizer(Optimizer):
         return [rule_cls() for rule_cls in get_logical_ruleset()]
 
     def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
-        # Derives one-sided predicates from residual filters above joins. The
-        # residual stays, so in the rule loop this would re-push every
-        # iteration. Must precede ``DeriveListFilesPushdown`` so a derived
-        # predicate reaching a ``ReadFiles`` prunes its ``ListFiles`` too.
+        # Not in the rule loop: the residual it derives from stays, so it would
+        # re-push every iteration. Before ``DeriveListFilesPushdown`` so a
+        # derived predicate reaching a ``ReadFiles`` prunes its ``ListFiles``.
         plan = DeriveJoinSidePredicates().apply(plan)
         # CommonSubExprElimination is only supposed to run once
         # isolated from the optimizer rule loop as it applies to

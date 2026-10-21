@@ -58,11 +58,8 @@ def _check_usage_record(op_names: List[str], clear_after_check: Optional[bool] =
 
 
 def assert_plans_structurally_equal(actual: LogicalPlan, expected: LogicalPlan) -> None:
-    """Assert two logical plans have the same operators in post order, with
-    structurally equal Filter predicates and read predicates.
-
-    ``dag_str`` is not enough for this: it omits the predicate a read pushed
-    into its scanner and truncates long expressions.
+    """Assert the same operators in post order with structurally equal Filter and
+    read predicates (``dag_str`` omits scanner predicates and truncates).
     """
     from ray.data._internal.logical.interfaces import (
         LogicalOperatorSupportsPredicatePushdown,

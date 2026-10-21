@@ -955,9 +955,8 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
 
 
 def _optimized_plan(ds: Dataset):
-    """Optimize ``ds``'s never-executed plan and check that optimizing the result
-    again changes nothing: execution rewires the dataset's DAG to the optimized
-    one, so every rule must be idempotent on its own output.
+    """Optimize the never-executed plan and check re-optimizing it is a no-op
+    (execution rewires the dataset's DAG to the optimized one).
     """
     from ray.data._internal.logical.optimizers import LogicalOptimizer
     from ray.data.tests.test_util import assert_plans_structurally_equal
@@ -968,8 +967,7 @@ def _optimized_plan(ds: Dataset):
 
 
 def _assert_filter_with(op, expected_predicate) -> None:
-    """Assert ``op`` is an expression ``Filter`` whose predicate is exactly
-    ``expected_predicate`` (structurally)."""
+    """Assert ``op`` is an expression Filter with exactly ``expected_predicate``."""
     from ray.data._internal.logical.operators import Filter
 
     assert isinstance(op, Filter), f"Expected a Filter, got {op}"
@@ -990,8 +988,7 @@ def _assert_num_filters(plan, expected: int) -> None:
 
 
 def _unique_key_join_inputs():
-    """Left ids 0-31, right ids 0-19: one match per left row below 20, none
-    above (so outer joins produce null right columns)."""
+    """Left ids 0-31, right ids 0-19: left rows above 19 have no match."""
     left_ds = ray.data.from_items([{"id": i, "left_val": i * 10} for i in range(32)])
     right_ds = ray.data.from_items([{"id": i, "right_val": i * 100} for i in range(20)])
     return left_ds, right_ds
@@ -1012,9 +1009,9 @@ def _duplicate_key_join_inputs():
 def test_join_predicate_pushdown_splits_conjuncts(
     ray_start_regular_shared_2_cpus, join_type, right_pushes
 ):
-    """A filter mixing one-sided and two-sided conjuncts pushes each one-sided
-    conjunct to its side (when the join type allows it) and keeps the rest as
-    a residual filter above the join (#66832)."""
+    """One-sided conjuncts go to their side (if the join type allows); the rest
+    stays as a residual filter above the join (#66832).
+    """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
     from ray.data.tests.test_util import get_operators_of_type
@@ -1062,9 +1059,9 @@ def test_join_predicate_pushdown_splits_conjuncts(
 
 
 def test_join_chained_one_sided_filters_both_push(ray_start_regular_shared_2_cpus):
-    """Consecutive one-sided filters are fused into a single two-sided ``AND``
-    before pushdown; splitting it again at the join pushes both halves and
-    leaves nothing above the join (#66832)."""
+    """Two chained one-sided filters are fused into one two-sided AND, which is
+    split again at the join so both halves push (#66832).
+    """
     from ray.data._internal.logical.operators import Join
     from ray.data.expressions import col
 
@@ -1103,10 +1100,9 @@ def test_join_chained_one_sided_filters_both_push(ray_start_regular_shared_2_cpu
 def test_join_derives_one_sided_predicates_from_disjunction(
     ray_start_regular_shared_2_cpus, join_type, right_derives
 ):
-    """TPC-H q7 shape: an ``OR`` whose branches each reference both sides can't
-    move, but each side (that the join type allows) gets the weaker predicate
-    the ``OR`` implies; the ``OR`` itself stays above the join to reject the
-    cross combinations the weaker predicates let through (#66832)."""
+    """TPC-H q7 shape: the OR stays above the join, but each allowed side gets
+    the weaker predicate it implies (#66832).
+    """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
     from ray.data.tests.test_util import get_operators_of_type
@@ -1139,8 +1135,7 @@ def test_join_derives_one_sided_predicates_from_disjunction(
     _assert_filter_with(plan.dag, predicate)
     assert plan.dag.input_dependencies[0] is join
 
-    # (1, 5) and (5, 1) both have k == 1 and so are joined; the derived
-    # one-sided filters alone would also let (1, 1) and (5, 5) through.
+    # The derived one-sided filters alone would also let (1, 1) and (5, 5) through.
     expected_pd = left_ds.to_pandas().merge(
         right_ds.to_pandas(),
         on="k",
@@ -1157,8 +1152,7 @@ def test_join_derives_one_sided_predicates_from_disjunction(
 def test_join_no_derivation_when_a_branch_is_other_sided(
     ray_start_regular_shared_2_cpus,
 ):
-    """``left_only | right_only`` implies nothing about either side on its own,
-    so nothing is pushed and the plan is left unchanged."""
+    """``left_only | right_only`` implies nothing about either side alone."""
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
 
@@ -1191,9 +1185,9 @@ def test_join_no_derivation_when_a_branch_is_other_sided(
 def test_join_derived_predicates_chain_through_nested_joins(
     ray_start_regular_shared_2_cpus,
 ):
-    """A predicate derived for the inner-join side of an outer join still
-    references both of the inner join's sides, so it is derived again there:
-    every base table ends up with its own implied filter."""
+    """A derived predicate that is still two-sided at an inner join is derived
+    again there, so every base table gets its own filter.
+    """
     from ray.data._internal.logical.operators import Join
     from ray.data.expressions import col
 
@@ -1239,10 +1233,9 @@ def test_join_derived_predicates_chain_through_nested_joins(
 def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
     ray_start_regular_shared_2_cpus,
 ):
-    """An exact one-sided conjunct is pushed in the rule loop and, unable to go
-    further, sits as a Filter on the join input. A predicate derived later for
-    the same side must fuse into that Filter instead of stacking a second one,
-    so the optimized plan re-optimizes to itself (``_optimized_plan`` checks)."""
+    """A derived predicate fuses into a Filter already on the join input instead of
+    stacking, so the optimized plan re-optimizes to itself.
+    """
     from ray.data._internal.logical.operators import Join
     from ray.data.expressions import col
 
@@ -1283,11 +1276,9 @@ def test_join_derived_predicate_fuses_with_pushed_conjunct_on_same_side(
 
 
 def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
-    """``Join.infer_schema`` only handles Arrow input schemas, so a join over
-    ``from_pandas`` inputs has no output schema. Pushdown must still route by
-    what the input schemas say: a column only one input has moves to that
-    side, while a colliding name (whose suffixed output name cannot be mapped
-    without the output schema) stays above the join."""
+    """Without an output schema (pandas inputs) unique columns still push, while a
+    colliding name stays above the join.
+    """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
 
@@ -1332,11 +1323,9 @@ def test_join_pushdown_with_pandas_inputs(ray_start_regular_shared_2_cpus):
 def test_join_pandas_inputs_right_column_named_like_left_suffixed(
     ray_start_regular_shared_2_cpus,
 ):
-    """Without an output schema the fallback cannot verify suffixed names. A
-    right column that happens to be named like a left collision after the
-    left suffix (``v_l``) is suffixed again by the join, so the output's
-    ``v_l`` is the left ``v``; claiming it for the right side would evaluate
-    the filter on the wrong column. It must stay above the join."""
+    """Without an output schema, a right column named like a suffixed left
+    collision (``v_l``) must not be claimed by the right side.
+    """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
 
@@ -1372,8 +1361,7 @@ def test_join_pandas_inputs_right_column_named_like_left_suffixed(
 def test_join_pandas_inputs_right_outer_pushes_right_key(
     ray_start_regular_shared_2_cpus,
 ):
-    """A right outer join keeps its right key under its own name, so the
-    fallback still pushes a predicate on it to the right input."""
+    """A right outer join keeps its right key, so the fallback pushes to it."""
     from ray.data._internal.logical.operators import Join
     from ray.data.expressions import col
 
@@ -1404,9 +1392,9 @@ def test_join_pandas_inputs_right_outer_pushes_right_key(
 
 
 def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_cpus):
-    """Executing a dataset rewires its logical DAG to the optimized one, so a
-    second execution re-optimizes an already derived plan. The derived filters
-    must not stack up on each re-plan."""
+    """Executing twice re-optimizes the already derived plan; the derived filters
+    must not stack up.
+    """
     from ray.data._internal.logical.operators import Filter
     from ray.data.expressions import col
     from ray.data.tests.test_util import get_operators_of_type
@@ -1442,9 +1430,7 @@ def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_c
         ("inner", "_l", None, "val_l", "left"),
         ("inner", "_l", "_r", "val_l", "left"),
         ("inner", "_l", "_r", "val_r", "right"),
-        # ``val`` is the left column and a right outer join cannot push left,
-        # so the filter stays above the join (evaluating it on the right
-        # input's ``val`` would return wrong rows).
+        # ``val`` is the left column; a right outer join cannot push left.
         ("right_outer", None, "_r", "val", None),
         ("right_outer", None, "_r", "val_r", "right"),
     ],
@@ -1457,9 +1443,9 @@ def test_join_colliding_payload_column_routes_by_suffix(
     column,
     pushed_to,
 ):
-    """``val`` exists on both inputs, so the join renames one or both sides by
-    suffix. A filter on an output name is pushed to the input that produces
-    it, rebound to the input's own column name (``val_r`` -> ``val``)."""
+    """A filter on a suffixed output name is pushed to the input that produces it,
+    rebound to the input's own column name.
+    """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
 
@@ -1475,7 +1461,6 @@ def test_join_colliding_payload_column_routes_by_suffix(
         aggregator_ray_remote_args={"num_cpus": 0.01},
     )
     # Left values are 0-3, right values 10-15; both targets select k == 1.
-    # ``val`` is the left column exactly when there is no left suffix.
     is_left_column = column == "val_l" or (column == "val" and left_suffix is None)
     target = 1 if is_left_column else 11
     predicate = col(column) == target
@@ -1515,10 +1500,7 @@ def test_join_colliding_payload_column_routes_by_suffix(
 def test_join_same_name_key_conjunct_pushes_to_every_side(
     ray_start_regular_shared_2_cpus, join_type, right_pushes
 ):
-    """A join key with the same name on both inputs is coalesced into one
-    output column that is equal on both inputs for every matched row, so a
-    conjunct on it is pushed to every side the join type allows: both for an
-    inner join, the preserved side only for an outer join."""
+    """A conjunct on a same-named key is pushed to every side the join type allows."""
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data.expressions import col
 

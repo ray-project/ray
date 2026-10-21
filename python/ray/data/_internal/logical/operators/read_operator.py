@@ -380,8 +380,7 @@ class ReadFiles(
         )
 
     def get_current_predicate(self) -> Optional[Expr]:
-        # Data-column conjuncts the scanner evaluates plus partition-column
-        # conjuncts it prunes files by: everything this read enforces.
+        # Scanner predicate plus partition pruning: all this read enforces.
         predicate = (
             self.scanner.pushed_predicate()
             if isinstance(self.scanner, SupportsFilterPushdown)

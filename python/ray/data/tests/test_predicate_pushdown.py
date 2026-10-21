@@ -1292,8 +1292,9 @@ def test_limit_over_partition_filter_without_partitioning_spec(
 
 
 def _write_q7_tables(tmp_path, partition_nation_by_name: bool):
-    """A ``nation`` table and a (supplier nation, customer nation) fact table;
-    only the FRANCE<->GERMANY pairs (volumes 10 and 20) satisfy q7's filter."""
+    """A ``nation`` table and a (supplier nation, customer nation) fact table; only
+    the FRANCE<->GERMANY pairs (volumes 10 and 20) satisfy q7's filter.
+    """
     nations = ["FRANCE", "GERMANY", "JAPAN", "BRAZIL"]
     nation_table = pa.table(
         {"n_nationkey": list(range(len(nations))), "n_name": nations}
@@ -1324,14 +1325,9 @@ def _write_q7_tables(tmp_path, partition_nation_by_name: bool):
 def test_disjunction_over_two_joined_scans_prunes_both_reads(
     ray_start_regular_shared, tmp_path, hive_partitioned
 ):
-    """TPC-H q7 shape on real Parquet reads (#66832).
-
-    ``nation`` is read twice (supplier's nation and customer's nation), each
-    read renamed so the two sides don't collide, and the final filter is an
-    ``OR`` referencing both. The ``OR`` itself can't move, but each read ends
-    up with the weaker predicate it implies, rebound through the rename back
-    to the scan's own column name. With ``nation`` hive-partitioned by
-    ``n_name`` the derived predicate prunes partitions instead of rows.
+    """TPC-H q7 on Parquet reads behind renames (#66832): the OR stays above the
+    join, each nation scan gets the derived predicate rebound to its own column
+    (into partition pruning when hive-partitioned).
     """
     from ray.data._internal.logical.interfaces import (
         LogicalOperatorSupportsPredicatePushdown,
@@ -1363,8 +1359,6 @@ def test_disjunction_over_two_joined_scans_prunes_both_reads(
     ds = ds.filter(expr=predicate)
 
     plan = LogicalOptimizer().optimize(ds._logical_plan)
-    # Re-optimizing an optimized plan (what a second execution does) must be
-    # a no-op; the derivation must not stack another predicate onto the scans.
     assert_plans_structurally_equal(LogicalOptimizer().optimize(plan), plan)
 
     assert isinstance(plan.dag, Filter)
@@ -1377,8 +1371,7 @@ def test_disjunction_over_two_joined_scans_prunes_both_reads(
         and op.supports_predicate_pushdown()
     ]
     assert len(reads) == 3, plan.dag.dag_str
-    # Each side's OR lists the branches in the order they appear in the
-    # original predicate, so the two scans get mirror images of each other.
+    # The branches come out in the original order, so the two sides are mirrored.
     derived_supp = (col("n_name") == "FRANCE") | (col("n_name") == "GERMANY")
     derived_cust = (col("n_name") == "GERMANY") | (col("n_name") == "FRANCE")
     pruned = [
