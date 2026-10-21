@@ -64,6 +64,7 @@ def _tracked_files() -> List[str]:
         ],
         cwd=REPO_ROOT,
         text=True,
+        encoding="utf-8",
     )
     # --cached still lists a tracked file deleted from the working tree.
     return sorted(p for p in out.split("\0") if p and (REPO_ROOT / p).exists())
@@ -82,7 +83,7 @@ def _resolve(page: str, target: str) -> str:
 
 
 def _page_text(path: str) -> str:
-    text = (REPO_ROOT / path).read_text(errors="replace")
+    text = (REPO_ROOT / path).read_text(encoding="utf-8", errors="replace")
     if not path.endswith(".ipynb"):
         return text
     try:
@@ -131,7 +132,9 @@ def _module_candidates(importer: str, module: str, level: int) -> List[str]:
 def _references(path: str) -> Tuple[Set[str], Set[str]]:
     """Return the files a script imports and the string literals it holds."""
     try:
-        tree = ast.parse((REPO_ROOT / path).read_text(errors="replace"))
+        tree = ast.parse(
+            (REPO_ROOT / path).read_text(encoding="utf-8", errors="replace")
+        )
     except SyntaxError:
         return set(), set()
     imports, strings = set(), set()
@@ -180,7 +183,7 @@ def _read_allowlist(path: str) -> Dict[str, str]:
     full = REPO_ROOT / path
     if not full.exists():
         return entries
-    for line in full.read_text().splitlines():
+    for line in full.read_text(encoding="utf-8").splitlines():
         entry = line.split("#", 1)[0].strip()
         if entry:
             entries[entry] = line
@@ -188,9 +191,15 @@ def _read_allowlist(path: str) -> Dict[str, str]:
 
 
 def _write_allowlist(path: str, debt: Iterable[str], header: str) -> None:
+    full = REPO_ROOT / path
+    debt = sorted(debt)
+    # A deleted list is paid off, so don't recreate it empty.
+    if not debt and not full.exists():
+        return
     old = _read_allowlist(path)
-    lines = [header.rstrip("\n"), ""] + [old.get(p, p) for p in sorted(debt)]
-    (REPO_ROOT / path).write_text("\n".join(lines) + "\n")
+    lines = [header.rstrip("\n"), ""] if header else []
+    lines += [old.get(p, p) for p in debt]
+    full.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _header(path: str) -> str:
@@ -199,7 +208,7 @@ def _header(path: str) -> str:
     if not full.exists():
         return ""
     head = []
-    for line in full.read_text().splitlines():
+    for line in full.read_text(encoding="utf-8").splitlines():
         if line.startswith("#") or not line.strip():
             head.append(line)
         else:
