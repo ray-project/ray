@@ -362,10 +362,14 @@ class _ReduceStageIterator:
         self._ray_remote_args = ray_remote_args
         self._reduce_args = reduce_args
 
-        all_merge_results = [
-            [deque(merge_results) for merge_results in merge_idx_results]
-            for merge_idx_results in all_merge_results
-        ]
+        all_merge_results_deques = []
+        for merge_idx_results in all_merge_results:
+            deque_list = []
+            for merge_results in merge_idx_results:
+                deque_list.append(deque(merge_results))
+                merge_results.clear()
+            all_merge_results_deques.append(deque_list)
+        all_merge_results = all_merge_results_deques
         reduce_arg_blocks_list: List[Tuple[int, List[ObjectRef]]] = []
         for reduce_idx in self._stage.merge_schedule.round_robin_reduce_idx_iterator():
             merge_idx = self._stage.merge_schedule.get_merge_idx_for_reducer_idx(

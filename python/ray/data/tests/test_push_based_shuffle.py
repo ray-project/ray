@@ -366,6 +366,11 @@ def test_push_based_shuffle_stage_iterators_and_map_partition():
     reduce_iter = _ReduceStageIterator(
         stage, DummyReduce(), all_merge_results, {}, ["r_arg"], None
     )
+    assert all(
+        len(merge_results) == 0
+        for merge_idx_results in all_merge_results
+        for merge_results in merge_idx_results
+    )
     reduce_metas = list(reduce_iter)
     assert len(reduce_metas) == 6
     assert len(reduce_iter.pop_reduce_results()) == 6
