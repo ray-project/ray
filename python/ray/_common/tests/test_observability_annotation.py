@@ -46,7 +46,7 @@ def reset_annotation_handler():
     yield
     with annotation_mod._handler_lock:
         if annotation_mod._handler is not None:
-            annotation_mod._handler[2].close()
+            annotation_mod._handler.close()
             annotation_mod._handler = None
 
 
@@ -218,12 +218,12 @@ def test_annotation_follows_a_new_session(monkeypatch, tmp_path):
     annotation = Annotation(source=ANNOTATION_SOURCE, base_tags={})
     monkeypatch.setattr(worker_mod, "_global_node", FakeNode(str(tmp_path / "a")))
     annotation.annotate(event="custom_event", message="from-a")
-    handler_a = annotation_mod._handler[2]
+    handler_a = annotation_mod._handler
 
     monkeypatch.setattr(worker_mod, "_global_node", FakeNode(str(tmp_path / "b")))
     annotation.annotate(event="custom_event", message="from-b")
 
-    assert annotation_mod._handler[2] is not handler_a
+    assert annotation_mod._handler is not handler_a
     assert handler_a.stream is None
     assert [r["message"] for r in read_annotations(tmp_path / "a")] == ["from-a"]
     assert [r["message"] for r in read_annotations(tmp_path / "b")] == ["from-b"]

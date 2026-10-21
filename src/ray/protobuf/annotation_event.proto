@@ -23,19 +23,13 @@ package ray.rpc;
 // Each process serializes the event as one JSON object per line to
 // `<session_dir>/logs/annotations_<pid>.log`. A log collector tails those files
 // and forwards the lines to a log backend, which Grafana queries as an
-// annotation datasource. The JSON field names are therefore a contract with the
-// generated dashboard queries: rename a field and the queries stop matching.
+// annotation datasource.
 //
 // The event is not part of the export API (`ExportEvent`), which is being
 // superseded by `RayEvent` (`src/ray/protobuf/public/events_base_event.proto`).
 // Annotations go to a file because `RayEvent` delivery is not enabled by
-// default. If they later move to `RayEvent`, `timestamp_s`, `session_name`,
-// `message` and `severity` map onto the `RayEvent` base fields and the rest
-// becomes the nested event.
+// default.
 message AnnotationEvent {
-  // How important the event is. Dashboards color annotations by severity, so a
-  // producer that has no notion of severity leaves it unspecified rather than
-  // picking one. The values mirror the Python logging levels.
   enum Severity {
     SEVERITY_UNSPECIFIED = 0;
     DEBUG = 1;
@@ -65,12 +59,9 @@ message AnnotationEvent {
   string message = 5;
   // Severity of the event.
   Severity severity = 6;
-  // Identity of the emitter, attached to every event it emits, such as the Ray
-  // Train run name, run ID and world rank. Dashboard queries filter on these to
-  // scope annotations to one run or one worker.
+  // Identity of the emitter, attached to every event it emits. Dashboard
+  // queries filter on these to scope annotations to one run or one worker.
   map<string, string> tags = 7;
-  // Payload specific to this event, such as the reported metrics of a
-  // `ray.train.report` call. Values are stringified, because a log backend
-  // represents them as string labels.
+  // Payload specific to this event
   map<string, string> fields = 8;
 }

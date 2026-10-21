@@ -55,7 +55,7 @@ ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
 # Each annotation line is an `AnnotationEvent` serialized to JSON. Every query
 # lifts the fields it filters on into a label of its own, rather than letting
 # the parser flatten the whole record: the query then carries no labels it does
-# not use, and does not depend on a collector adding no top-level fields of its
+# not use, and does not depend on a collector adding any top-level fields of its
 # own (such as Vector's `file` and `host`) that could collide with them.
 #
 # These are the fields every annotation record carries; an event-specific query

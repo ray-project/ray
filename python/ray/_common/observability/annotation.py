@@ -4,17 +4,13 @@ import logging.handlers
 import os
 import threading
 import time
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 from ray._private.protobuf_compat import message_to_dict
 from ray.core.generated.annotation_event_pb2 import AnnotationEvent
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
-
-# Each process writes `<session_dir>/logs/annotations_<pid>.log`. Log collectors
-# match on this name, so changing it breaks every deployed collector config.
-ANNOTATION_FILE_PREFIX = "annotations"
 
 # Severities mirror the Python logging levels, so a caller passes the level it
 # would log the same event at.
@@ -32,38 +28,30 @@ _SEVERITY_BY_LEVEL = {
 _MAX_FIELD_LENGTH = 4096
 
 
-def _json_default(value: Any) -> Any:
+def _summarize_arrays(value: Any) -> Any:
     """``json.dumps`` fallback that summarizes arrays and tensors by shape only,
     since formatting their data is slow and syncs a GPU tensor to the host.
 
-    A scalar, such as a 0-d loss tensor, is rendered as its value instead.
+    A scalar, such as a numpy scalar or a 0-d loss tensor, is rendered as its
+    value instead.
     """
-    # Imported here, as numpy is not a core Ray dependency.
-    try:
-        import numpy as np
-    except ImportError:
-        np = None
-
-    if np is not None and isinstance(value, np.generic):
-        return value.item()
     shape = getattr(value, "shape", None)
-    if shape is not None:
-        shape = tuple(shape)
-        if shape == () and hasattr(value, "item"):
-            return value.item()
-        is_ndarray = np is not None and isinstance(value, np.ndarray)
-        name = "Array" if is_ndarray else type(value).__name__
-        return f"{name}(shape={shape})"
-    return str(value)
+    if shape is None:
+        return str(value)
+    shape = tuple(shape)
+    if shape == () and hasattr(value, "item"):
+        return value.item()
+    name = type(value).__name__
+    return f"{'Array' if name == 'ndarray' else name}(shape={shape})"
 
 
-def _stringify(value: Any) -> str:
+def _format_field_value(value: Any) -> str:
     """Render a tag or field value as a string. Non-strings are JSON encoded, so
     a bool renders as ``"true"``, the spelling a query compares against."""
     if not isinstance(value, str):
         # `default` only applies to values, so a dict key JSON can't encode, such
         # as a tuple, is skipped rather than failing the whole event.
-        value = json.dumps(value, default=_json_default, skipkeys=True)
+        value = json.dumps(value, default=_summarize_arrays, skipkeys=True)
     if len(value) > _MAX_FIELD_LENGTH:
         value = value[:_MAX_FIELD_LENGTH] + "...(truncated)"
     return value
@@ -85,7 +73,6 @@ def parse_severity(severity: Union[str, int]) -> "AnnotationEvent.Severity":
     """
     level = severity
     if isinstance(level, str):
-        # Resolves a level name to its number, or to a non-int for an unknown one.
         level = logging.getLevelName(level.upper())
     if level not in _SEVERITY_BY_LEVEL:
         raise ValueError(
@@ -106,19 +93,12 @@ class _RaisingRotatingFileHandler(logging.handlers.RotatingFileHandler):
 
 
 _handler_lock = threading.Lock()
-# The current process's handler, with the pid and logs dir it was opened for.
-_handler: Optional[Tuple[int, str, _RaisingRotatingFileHandler]] = None
-
-
-def _reset_handler_lock_after_fork() -> None:
-    # A thread in the parent may have held the lock at fork time, and that
-    # thread does not exist in the child to release it.
-    global _handler_lock
-    _handler_lock = threading.Lock()
-
+_handler: Optional[_RaisingRotatingFileHandler] = None
 
 if hasattr(os, "register_at_fork"):
-    os.register_at_fork(after_in_child=_reset_handler_lock_after_fork)
+    # A thread in the parent may have held the lock at fork time, and that
+    # thread does not exist in the child to release it.
+    os.register_at_fork(after_in_child=_handler_lock._at_fork_reinit)
 
 
 def _write_line(line: str, logs_dir: str, max_bytes: int, backup_count: int) -> None:
@@ -134,25 +114,21 @@ def _write_line(line: str, logs_dir: str, max_bytes: int, backup_count: int) -> 
     shared file clobber one another's backups and lose lines.
     """
     global _handler
-    pid = os.getpid()
+    # Log collectors match on this file name, so changing it breaks every
+    # deployed collector config.
+    path = os.path.abspath(os.path.join(logs_dir, f"annotations_{os.getpid()}.log"))
     with _handler_lock:
-        handler = None
-        if _handler is not None:
-            cached_pid, cached_logs_dir, handler = _handler
-            if cached_pid != pid or cached_logs_dir != logs_dir:
-                handler.close()
-                handler = _handler = None
+        if _handler is not None and _handler.baseFilename != path:
+            _handler.close()
+            _handler = None
 
-        if handler is None:
+        if _handler is None:
             os.makedirs(logs_dir, exist_ok=True)
-            handler = _RaisingRotatingFileHandler(
-                os.path.join(logs_dir, f"{ANNOTATION_FILE_PREFIX}_{pid}.log"),
-                maxBytes=max_bytes,
-                backupCount=backup_count,
+            _handler = _RaisingRotatingFileHandler(
+                path, maxBytes=max_bytes, backupCount=backup_count
             )
-            _handler = (pid, logs_dir, handler)
 
-        handler.handle(logging.makeLogRecord({"msg": line}))
+        _handler.handle(logging.makeLogRecord({"msg": line}))
 
 
 class Annotation:
@@ -174,7 +150,9 @@ class Annotation:
 
     def __init__(self, source: str, base_tags: Dict[str, str]):
         self._source = source
-        self._base_tags = {key: _stringify(value) for key, value in base_tags.items()}
+        self._base_tags = {
+            key: _format_field_value(value) for key, value in base_tags.items()
+        }
 
     def annotate(
         self,
@@ -217,7 +195,9 @@ class Annotation:
                     else parse_severity(severity)
                 ),
                 tags=self._base_tags,
-                fields={key: _stringify(value) for key, value in fields.items()},
+                fields={
+                    key: _format_field_value(value) for key, value in fields.items()
+                },
             )
             line = json.dumps(
                 message_to_dict(

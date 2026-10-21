@@ -558,7 +558,7 @@ CONTROLLER_STATE_ANNOTATION = GrafanaAnnotation(
     ),
 )
 
-REPORT_CALL_ANNOTATION = GrafanaAnnotation(
+RAY_TRAIN_REPORT_ANNOTATION = GrafanaAnnotation(
     name="ray.train.report call",
     source=TRAIN_ANNOTATION_SOURCE,
     icon_color="rgba(50, 172, 45, 1)",  # green
@@ -601,7 +601,7 @@ _CUSTOM_ANNOTATION_VARIANTS = [
         "ERROR|CRITICAL",
     ),
 ]
-CUSTOM_ANNOTATIONS = [
+RAY_TRAIN_ANNOTATE_ANNOTATIONS = [
     GrafanaAnnotation(
         name=name,
         source=TRAIN_ANNOTATION_SOURCE,
@@ -611,8 +611,7 @@ CUSTOM_ANNOTATIONS = [
         expr=(
             f'| event="{TRAIN_ANNOTATION_RAY_TRAIN_ANNOTATE}" '
             f'| severity=~"{severity}" {_RUN_FILTERS} '
-            "| json ray_train_worker_world_rank="
-            '"tags.ray_train_worker_world_rank"'
+            '| json ray_train_worker_world_rank="tags.ray_train_worker_world_rank"'
             ', fields="fields.custom_fields" '
             '| ray_train_worker_world_rank=~"$TrainWorkerWorldRank" '
             "| label_format worker=`rank {{.ray_train_worker_world_rank}}` "
@@ -624,8 +623,8 @@ CUSTOM_ANNOTATIONS = [
 
 TRAIN_ANNOTATIONS = [
     CONTROLLER_STATE_ANNOTATION,
-    REPORT_CALL_ANNOTATION,
-    *CUSTOM_ANNOTATIONS,
+    RAY_TRAIN_REPORT_ANNOTATION,
+    *RAY_TRAIN_ANNOTATE_ANNOTATIONS,
 ]
 
 train_dashboard_config = DashboardConfig(
