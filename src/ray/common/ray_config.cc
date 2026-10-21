@@ -26,7 +26,9 @@ RayConfig &RayConfig::instance() {
   return config;
 }
 
-RayConfig::RayConfig() { initialize(""); }
+// Member initializers load defaults and environment values. Validate in initialize()
+// after explicit configuration overrides have been applied.
+RayConfig::RayConfig() = default;
 
 void RayConfig::initialize(const std::string &config_list) {
 #define RAY_CONFIG(type, name, default_value) \
@@ -35,7 +37,15 @@ void RayConfig::initialize(const std::string &config_list) {
 #include "ray/common/ray_config_def.h"
 #undef RAY_CONFIG
 
+  const auto validate_observability_cache_capacities = [this] {
+    RAY_CHECK_GT(maximum_gcs_dead_node_cached_count_, 0U)
+        << "maximum_gcs_dead_node_cached_count must be greater than zero.";
+    RAY_CHECK_GT(maximum_gcs_destroyed_actor_cached_count_, 0U)
+        << "maximum_gcs_destroyed_actor_cached_count must be greater than zero.";
+  };
+
   if (config_list.empty()) {
+    validate_observability_cache_capacities();
     return;
   }
 
@@ -59,6 +69,8 @@ void RayConfig::initialize(const std::string &config_list) {
       // because it contains Ray internal settings.
       RAY_LOG(FATAL) << "Received unexpected config parameter " << pair.key();
     }
+
+    validate_observability_cache_capacities();
 
 /// ---------------------------------------------------------------------
 #undef RAY_CONFIG
