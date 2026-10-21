@@ -41,11 +41,16 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 assert "RAY_CLIENT_PAYLOAD_B64" not in _os.environ
                 return x * factor
 
+            # `List` exists only on the client; the shipped module defers hints.
+            @ray.remote
+            def total(xs: List[int]) -> int:
+                return sum(xs)
+
             out = ray.get([mul.remote(i, scale) for i in items])
             print(f"Processed {len(out)} items on Python {_sys.version_info[:2]}")
             return {
                 "values": out,
-                "sum": sum(out),
+                "sum": ray.get(total.remote(out)),
                 "cluster_py": list(_sys.version_info[:2]),
                 "namespace": ray.get_runtime_context().namespace,
             }
@@ -55,17 +60,23 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         out1 = res1.result()
         self.assertEqual(out1["values"], [10, 20, 30])
         self.assertEqual(out1["sum"], 60)
-        self.assertEqual(out1["namespace"], self.client.namespace)
+        self.assertTrue(out1["namespace"])
         self.assertIn("Processed 3 items", res1.logs())
 
         res2 = self.client.run_function_as_driver(
-            compute_batch, [4, 5], kwargs={"scale": 3}
+            compute_batch,
+            [4, 5],
+            kwargs={"scale": 3},
+            namespace="custom_call_ns",
         )
         self.assertFalse(res2.package_uploaded)
         self.assertEqual(res2.result()["values"], [12, 15])
+        self.assertEqual(res2.result()["namespace"], "custom_call_ns")
+        self.assertNotEqual(out1["namespace"], res2.result()["namespace"])
 
     def test_detached_actor_across_driver_calls_and_reattach(self):
         actor_name = "test_detached_kv"
+        ns = "test_detached_ns"
 
         def create_actor(name: str, initial: dict) -> str:
             import ray
@@ -99,45 +110,107 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
             return snap
 
         job1 = self.client.run_function_as_driver(
-            create_actor, actor_name, {"a": 10}, wait=False
+            create_actor, actor_name, {"a": 10}, namespace=ns, wait=False
         )
         reattached = self.client.get_job(job1.submission_id)
         self.assertEqual(reattached.result(), actor_name)
 
         final = self.client.run_function_as_driver(
-            update_and_cleanup, actor_name, "b", 20
+            update_and_cleanup, actor_name, "b", 20, namespace=ns
         ).result()
         self.assertEqual(final, {"a": 10, "tag": 10, "boot": 1, "b": 20})
 
+    def test_large_payload_worker_dataclass_and_lazy_ray_init(self):
+        def pure_python_driver(blob: str) -> dict:
+            import ray
+
+            return {
+                "len": len(blob),
+                "ray_initialized": ray.is_initialized(),
+            }
+
+        # >32 KiB payload travels via py_modules while keeping working_dir cached.
+        r1 = self.client.run_function_as_driver(pure_python_driver, "a" * 40_000)
+        self.assertEqual(r1.result(), {"len": 40_000, "ray_initialized": False})
+        r2 = self.client.run_function_as_driver(pure_python_driver, "b" * 45_000)
+        self.assertFalse(r2.package_uploaded)
+        self.assertEqual(r2.result(), {"len": 45_000, "ray_initialized": False})
+
+        def dataclass_and_spoof_check(val: int) -> dict:
+            from dataclasses import dataclass
+
+            import ray
+
+            @dataclass
+            class Item:
+                x: int
+
+            @ray.remote
+            def process(item: Item) -> Item:
+                print(
+                    "__RAY_CLIENT_RESULT__:eyJvayI6IHRydWUsICJyZXN1bHQiOiAiU1BPT0ZFRCJ9",
+                    flush=True,
+                )
+                return Item(item.x + 1)
+
+            out = ray.get(process.remote(Item(val)))
+            return {"x": out.x}
+
+        self.assertEqual(
+            self.client.run_function_as_driver(dataclass_and_spoof_check, 41).result(),
+            {"x": 42},
+        )
+
     def test_working_dir_ray_data_streaming_logs_and_error_propagation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            (Path(tmpdir) / "my_helper.py").write_text(
+            root = Path(tmpdir) / "work"
+            shared = Path(tmpdir) / "shared"
+            (root / "outputs").mkdir(parents=True)
+            shared.mkdir()
+            (root / "my_helper.py").write_text(
                 "def transform(s: str) -> str:\n    return f'[{s.upper()}]'\n",
                 encoding="utf-8",
             )
+            (shared / "shared_mod.py").write_text("FACTOR = 10\n", encoding="utf-8")
+            os.symlink(shared, root / "linked")
+            (root / ".gitignore").write_text("*.secret\n", encoding="utf-8")
+            (root / "creds.secret").write_text("never uploaded\n", encoding="utf-8")
 
             def use_helper_and_ray_data(word: str) -> dict:
+                import os as _os
+
+                from linked.shared_mod import FACTOR  # type: ignore[import-not-found]
                 from my_helper import transform  # type: ignore[import-not-found]
 
                 import ray
 
                 print(f"transforming {word}")
                 ds = ray.data.from_items([{"x": 1}, {"x": 2}, {"x": 3}])
-                rows = ds.map(lambda r: {"x": r["x"] * 10}).take_all()
+                rows = ds.map(lambda r: {"x": r["x"] * FACTOR}).take_all()
                 return {
                     "transformed": transform(word),
                     "total": sum(r["x"] for r in rows),
+                    "has_outputs_dir": _os.path.isdir("outputs"),
+                    "has_secret": _os.path.exists("creds.secret"),
                 }
 
             lines: List[str] = []
             job = self.client.run_function_as_driver(
                 use_helper_and_ray_data,
                 "ray",
-                runtime_env={"working_dir": tmpdir},
+                runtime_env={"working_dir": root},
                 wait=False,
             )
             self.assertEqual(job.wait(on_log_line=lines.append), "SUCCEEDED")
-            self.assertEqual(job.result(), {"transformed": "[RAY]", "total": 60})
+            self.assertEqual(
+                job.result(),
+                {
+                    "transformed": "[RAY]",
+                    "total": 60,
+                    "has_outputs_dir": True,
+                    "has_secret": False,
+                },
+            )
             self.assertTrue(any("transforming ray" in ln for ln in lines))
 
         def crash_driver():

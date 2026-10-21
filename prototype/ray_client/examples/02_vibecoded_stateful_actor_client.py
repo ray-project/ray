@@ -14,9 +14,12 @@ class DetachedCounterClient:
     """Thin custom client managing a named detached Ray actor."""
 
     def __init__(
-        self, address: Optional[str] = None, actor_name: str = "shared_counter"
+        self,
+        address: Optional[str] = None,
+        actor_name: str = "shared_counter",
+        namespace: str = "counter_demo",
     ):
-        self.client = RayClient(address=address)
+        self.client = RayClient(address=address, namespace=namespace)
         self.actor_name = actor_name
 
     def start(self, initial: int = 0) -> dict:

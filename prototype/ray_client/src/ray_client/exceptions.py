@@ -9,6 +9,19 @@ if TYPE_CHECKING:
 class RayClientError(Exception):
     """Base exception for Ray Client errors."""
 
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        job: Optional["JobResult"] = None,
+        submission_id: Optional[str] = None,
+    ):
+        super().__init__(message)
+        self.job = job
+        self.submission_id = submission_id or (
+            job.submission_id if job is not None else None
+        )
+
 
 class RayClientSerializationError(RayClientError, TypeError):
     """Raised when inputs, captured variables, or outputs are not JSON-serializable."""
@@ -17,12 +30,14 @@ class RayClientSerializationError(RayClientError, TypeError):
 class RayJobTimeoutError(RayClientError, TimeoutError):
     """Raised when waiting for a driver job exceeds the timeout.
 
-    The job is still running on the cluster; `job` is the handle to it.
+    `job` is the handle to the submitted job.
     """
 
-    def __init__(self, message: str, job: "JobResult"):
-        super().__init__(message)
-        self.job = job
+    def __init__(self, message: str, job: Optional["JobResult"] = None):
+        super().__init__(message, job=job)
+
+    def __reduce__(self):
+        return (type(self), (self.args[0] if self.args else "", self.job))
 
 
 class RayJobExecutionError(RayClientError):
@@ -57,3 +72,18 @@ class RayJobExecutionError(RayClientError):
             tail = "\n".join(logs.strip().splitlines()[-20:])
             text += f"\n--- Driver Log Tail ---\n{tail}"
         super().__init__(text)
+
+    def __reduce__(self):
+        # The default reduce re-invokes __init__ with the formatted message only.
+        return (
+            type(self),
+            (
+                self.submission_id,
+                self.status,
+                self.message,
+                self.exc_type,
+                self.exc_message,
+                self.remote_traceback,
+                self.logs,
+            ),
+        )
