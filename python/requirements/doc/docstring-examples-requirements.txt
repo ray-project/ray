@@ -33,17 +33,21 @@ pytest
 
 # Ray Data imports these lazily, inside the readers, writers, and aggregations
 # whose examples call them.
-# write_tfrecords.
+# write_tfrecords. Its examples also need TensorFlow, which the image omits, so
+# no example that runs here needs crc32c.
 crc32c
-# ApproximateQuantile and ApproximateTopK.
+# ApproximateQuantile, ApproximateTopK, and Dataset.summary.
 datasketches
 # read_videos.
 decord
 # read_avro.
 fastavro
-# read_images and write_images.
+# read_images, write_images, and the other examples that read, write, or
+# encode images: Dataset.map, Dataset.iter_batches, FileShuffleConfig,
+# Partitioning, FilenameProvider, and RowBasedFileDatasink.
 pillow
-# read_iceberg and write_iceberg.
+# The example for _IcebergExpressionVisitor, in ray.data._internal. The
+# read_iceberg and write_iceberg examples skip their Iceberg calls.
 pyiceberg
 # read_audio.
 soundfile
