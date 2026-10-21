@@ -20,7 +20,7 @@ def bazel_runfile(*args):
     if the_runfiles:
         # Runfiles paths are always "/"-separated; the repo mapping (io_ray ->
         # _main under bzlmod) only applies when the repo name is split off by "/".
-        f = the_runfiles.Rlocation(REPO_NAME + "/" + p.replace(os.sep, "/"))
+        f = the_runfiles.Rlocation(os.path.join(REPO_NAME, p).replace(os.sep, "/"))
         if f:
             return f
     return os.path.join(_LEGACY_REPO_ROOT, p)
