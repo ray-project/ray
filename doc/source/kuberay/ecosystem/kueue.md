@@ -125,7 +125,7 @@ Kueue always admits workloads in “gang” mode. Kueue admits workloads on an �
 Download the RayJob YAML manifest from the KubeRay repository.
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.kueue-toy-sample.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-job.kueue-toy-sample.yaml
 ```
 
 Before creating the RayJob, modify the RayJob metadata with the following:

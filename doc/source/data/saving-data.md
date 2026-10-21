@@ -26,9 +26,7 @@ To save your {class}`~ray.data.dataset.Dataset` to a shared local filesystem, us
 Don't use the deprecated `local://` scheme. Use cloud storage or a shared filesystem path that's available on every Ray node instead.
 :::
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -52,9 +50,7 @@ To write data to formats other than Parquet, see the {ref}`Saving Data API <savi
 
 To save data to Amazon S3, specify a URI with the `s3://` scheme.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -75,9 +71,7 @@ pip install gcsfs
 
 Then, create a `GCSFileSystem` and specify a URI with the `gcs://` scheme.
 
-```{testcode}
-:skipif: True
-
+```python
 import gcsfs
 import ray
 
@@ -100,9 +94,7 @@ pip install adlfs
 
 Then, create an `AzureBlobFileSystem` and specify a URI with the `az://` scheme.
 
-```{testcode}
-:skipif: True
-
+```python
 import adlfs
 import ray
 
@@ -312,9 +304,7 @@ We skip the code snippet below because `to_dask` doesn't work with PyArrow
 14 and later. For more information, see https://github.com/ray-project/ray/issues/54837
 -->
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
@@ -327,9 +317,7 @@ df = ds.to_dask()
 
 To convert a {class}`~ray.data.dataset.Dataset` to a [Spark DataFrame](https://spark.apache.org/docs/latest/api/python/reference/pyspark.sql/dataframe.html), call {meth}`Dataset.to_spark() <ray.data.Dataset.to_spark>`.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 import raydp
 
@@ -344,12 +332,6 @@ ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 df = ds.to_spark(spark)
 ```
 
-```{testcode}
-:skipif: True
-:hide:
-
-raydp.stop_spark()
-```
 :::
 
 :::{tab-item} Modin
@@ -369,9 +351,7 @@ mdf = ds.to_modin()
 
 To convert a {class}`~ray.data.dataset.Dataset` to a Mars DataFrame, call {meth}`Dataset.to_mars() <ray.data.Dataset.to_mars>`.
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
