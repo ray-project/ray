@@ -24,11 +24,13 @@ steps:
   # changed, in every library, as plain Python with the PR's Ray
   # (ci/ray_ci/doc/run_docstring_examples.sh). It runs only modules a CPU
   # doctest() target covers, in the docstringbuild image, which leaves out
-  # torch and TensorFlow; examples that need them are reported as skipped.
-  # Their library's doctest() target covers them on builds without the label;
-  # the label skips it with the rest of the library's suites. The label's
-  # scope guard (lint: validate docstring-only scope) fails the build unless
-  # the PR changes nothing but docstrings and comments.
+  # heavy libraries such as torch, TensorFlow, and polars (OMITTED_LIBRARIES
+  # in ci/ray_ci/doc/run_docstring_examples.py); examples that need them are
+  # reported as skipped. Their library's doctest() target covers them on
+  # builds without the label; the label skips it with the rest of the
+  # library's suites. The label's scope guard (lint: validate docstring-only
+  # scope) fails the build unless the PR changes nothing but docstrings and
+  # comments.
   #
   # Tagged with every library tag a python/ray/ change can emit, so a labeled
   # PR selects it whatever it touches. The docstring-only rule in
@@ -57,9 +59,10 @@ steps:
       - ray-core-build(python=3.10)
       - ray-dashboard-build
 
-  # Runs //doc:doctest, the catch-all doctest target for documentation prose that
-  # no library owns (tagged team:none). The five per-library docs example steps
-  # each filter on their own team:<lib>, so this is the only step that reaches it.
+  # Runs the doctest targets for documentation prose that no library owns,
+  # tagged team:none: one per page, from the team:none doctest_each list in
+  # doc/BUILD.bazel. The five per-library docs example steps each filter on
+  # their own team:<lib>, so this is the only step that reaches them.
   #
   # Postmerge only. It was already postmerge-only before this comment existed, but
   # by accident rather than intent: the step carried the tag `python`, which no

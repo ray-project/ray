@@ -23,7 +23,10 @@ Usage:
   python ci/ray_ci/doc/check_docstring_only.py [--base REF]
 
 Without --base, it fetches the pull request's base branch and diffs against
-its merge-base with HEAD.
+its merge-base with HEAD. --base names the base ref instead, such as
+upstream/master in a clone where origin is a fork, and it too diffs from the
+merge base, so commits that land on the base after the branch point aren't
+counted as the PR's changes.
 """
 
 import argparse
@@ -100,12 +103,15 @@ def _git(*args: str) -> str:
     return subprocess.check_output(["git", *args], text=True)
 
 
-def _resolve_base() -> str:
-    base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH", "master")
-    # Same fetch the docs example opt-in uses: a clone with a restricted
-    # refspec may never create a local origin/<base>.
-    subprocess.check_call(["git", "fetch", "-q", "origin", base_branch])
-    return _git("merge-base", "FETCH_HEAD", "HEAD").strip()
+def _resolve_base(ref: Optional[str] = None) -> str:
+    """Return the merge base of HEAD and `ref`, or of HEAD and the PR's base."""
+    if ref is None:
+        base_branch = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH", "master")
+        # Same fetch the docs example opt-in uses: a clone with a restricted
+        # refspec may never create a local origin/<base>.
+        subprocess.check_call(["git", "fetch", "-q", "origin", base_branch])
+        ref = "FETCH_HEAD"
+    return _git("merge-base", ref, "HEAD").strip()
 
 
 def _parse_name_status(output: str) -> List[Tuple[str, str]]:
@@ -122,10 +128,12 @@ def _parse_name_status(output: str) -> List[Tuple[str, str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--base", help="Diff HEAD against this ref.")
+    parser.add_argument(
+        "--base", help="Diff HEAD against its merge base with this ref."
+    )
     args = parser.parse_args()
 
-    base = args.base or _resolve_base()
+    base = _resolve_base(args.base)
     changes = _parse_name_status(
         _git("diff", "--name-status", "--find-renames", base, "HEAD")
     )
