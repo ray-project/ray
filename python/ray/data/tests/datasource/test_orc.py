@@ -990,6 +990,7 @@ def test_read_orc_merge_schema_reuses_candidates_across_actions_and_lineage(
     )
     listing = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(listing, ListFiles)
+    assert listing.prelisted_file_infos is not None
     assert len(listing.prelisted_file_infos) == 4
     assert all(
         block.column_names == ["__path", "__file_size"]
@@ -1034,7 +1035,7 @@ def test_read_orc_merge_schema_applies_initial_filters(tmp_path, full_schema_con
 def test_read_orc_merge_schema_partition_filter_and_count(
     tmp_path, full_schema_context
 ):
-    from ray.data.datasource.partitioning import Partitioning
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
     for year, count in (("2024", 2), ("2025", 3)):
         directory = tmp_path / f"year={year}"
@@ -1043,7 +1044,7 @@ def test_read_orc_merge_schema_partition_filter_and_count(
     ds = ray.data.read_orc(
         str(tmp_path),
         merge_schema=True,
-        partitioning=Partitioning("hive", base_dir=str(tmp_path)),
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
     )
 
     assert ds.count() == 5

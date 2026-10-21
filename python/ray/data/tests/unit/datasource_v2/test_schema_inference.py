@@ -32,9 +32,9 @@ def test_schema_reads_bound_submissions_and_preserve_order(monkeypatch):
             workers.append(max_workers)
             super().__init__(max_workers=max_workers)
 
-        def map(self, function, paths):
-            batches.append(len(paths))
-            return super().map(function, paths)
+        def map(self, fn, *iterables, timeout=None, chunksize=1):
+            batches.append(len(iterables[0]))
+            return super().map(fn, *iterables, timeout=timeout, chunksize=chunksize)
 
     monkeypatch.setattr(schema_inference, "ThreadPoolExecutor", RecordingExecutor)
     paths = [f"field_{i}" for i in range(_SCHEMA_READ_BATCH_SIZE + 1)]
