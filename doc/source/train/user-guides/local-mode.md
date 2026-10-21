@@ -29,9 +29,7 @@ Local mode supports two execution modes:
 
 To enable local mode, set `num_workers=0` in your {class}`~ray.train.ScalingConfig`:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
 
@@ -70,9 +68,7 @@ In local mode, Ray Train doesn't launch worker actors. Your training code can st
 
 The following example shows how to use single-process local mode with PyTorch:
 
-```{testcode}
-:skipif: True
-
+```python
 import torch
 from torch import nn
 import ray
@@ -111,9 +107,7 @@ Local mode works with all Ray Train framework integrations, including PyTorch Li
 
 The following example shows how to write a unit test with local mode:
 
-```{testcode}
-:skipif: True
-
+```python
 import pytest
 import ray
 from ray.train import ScalingConfig
@@ -142,9 +136,7 @@ Single-process local mode works with Ray Data for data loading and preprocessing
 
 The following example shows how to use Ray Data with single-process local mode:
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
@@ -183,9 +175,7 @@ The following example shows how to use `torchrun` with local mode for multi-GPU 
 
 First, create your training script, `train_script.py`:
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import tempfile
 import torch
@@ -283,9 +273,7 @@ torchrun --nproc-per-node=4 train_script.py
 
 Ray Train automatically detects the `torchrun` environment variables and configures distributed training accordingly. To access distributed training information, use {func}`ray.train.get_context()`:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import get_context
 
 context = get_context()

@@ -119,6 +119,27 @@ def resolve_kv_event_source_endpoint(llm_config: LLMConfig) -> Optional[str]:
     return _get_node_routable_endpoint(llm_config, kv_events_config["endpoint"])
 
 
+def resolve_kv_event_block_size(vllm_config: Any) -> int:
+    """Token span of the KV blocks the engine hashes and publishes.
+
+    The KV router must register this span, or it drops the engine's KV
+    events. Under decode context parallelism (DCP) it is
+    ``block_size * decode_context_parallel_size``, not the per-rank
+    ``cache_config.block_size``.
+
+    Uses the engine-reported ``cache_config.effective_attention_block_size``
+    when available, else ``block_size * decode_context_parallel_size``.
+    """
+    cache_config = vllm_config.cache_config
+    effective_block_size = getattr(cache_config, "effective_attention_block_size", None)
+    if effective_block_size:
+        return effective_block_size
+    dcp_size = (
+        getattr(vllm_config.parallel_config, "decode_context_parallel_size", 1) or 1
+    )
+    return cache_config.block_size * dcp_size
+
+
 def get_kv_event_routing_stats(
     llm_config: LLMConfig, block_size: int, max_num_batched_tokens: int
 ) -> Dict[str, Any]:

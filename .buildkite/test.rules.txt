@@ -218,6 +218,16 @@ python/deplocks/ci/macos_depset_py*
 @ macos_wheels python_dependencies
 ;
 
+# The "docstring-only" label's examples environment, the docstringbuild image.
+# Its lock and input feed only that label-gated image: no Ray wheel or image,
+# and not the Sphinx docbuild image, so a change can't affect the API checks
+# either. Emit just `deplock_check` for the raydepsets --check job. Must precede
+# the docs rule below and the general python/requirements/ rule.
+python/deplocks/docs/docstring_examples_*.lock
+python/requirements/doc/docstring-examples-requirements.txt
+@ deplock_check
+;
+
 # Short-circuit deps handling for docs-specific. These pin the resolved Sphinx
 # and autodoc/autosummary versions the docbuild image installs, so a lock
 # change can alter stub generation and therefore what the API-consistency
@@ -585,6 +595,8 @@ doc/*.ipynb
 
 ci/docker/doctest.build.Dockerfile
 ci/docker/doctest.build.wanda.yaml
+ci/docker/docstring.build.Dockerfile
+ci/docker/docstring.build.wanda.yaml
 # pass
 ;
 

@@ -259,6 +259,14 @@ doc/source/_intersphinx/README.md:
 # rather than `python_dependencies`.
 python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api deplock_check
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api deplock_check
+# The docstring examples lock and its input feed only the label-gated
+# docstringbuild image, so they run just the lock check.
+python/deplocks/docs/docstring_examples_base_depset_py3.10.lock: deplock_check
+python/deplocks/docs/docstring_examples_depset_py3.10.lock: deplock_check
+python/requirements/doc/docstring-examples-requirements.txt: deplock_check
+# Its image definition runs nothing: only the label-gated step consumes it.
+ci/docker/docstring.build.Dockerfile:
+ci/docker/docstring.build.wanda.yaml:
 # Redirect YAML selects the dedicated lightweight check and nothing else: no
 # docbuild, no API checks, no per-team doc tests. The README beside it is prose
 # and stays unrouted, which is what the second case locks in.
