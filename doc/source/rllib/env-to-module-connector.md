@@ -239,9 +239,7 @@ To customize the default env-to-module pipeline that RLlib creates, specify a fu
 
 For example, to prepend a custom ConnectorV2 piece to the env-to-module pipeline, you can do this in your config:
 
-```{testcode}
-:skipif: True
-
+```python
 # Your builder function must accept an optional `gymnasium.Env` and an optional `spaces` dict
 # as arguments.
 config.env_runners(
@@ -251,9 +249,7 @@ config.env_runners(
 
 If you want to add multiple custom pieces to the pipeline, return them as a list:
 
-```{testcode}
-:skipif: True
-
+```python
 # Return a list of connector pieces to make RLlib add all of them to your
 # env-to-module pipeline.
 config.env_runners(
@@ -392,9 +388,7 @@ In multi-agent setups, you have two options for preprocessing your agents' indiv
 
 1. Agent-by-agent: with the same {py:class}`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor` API as in the previous examples, you can apply a single preprocessing logic across all agents. If you need one distinct preprocessing logic per `AgentID`, look up the agent information from the provided `episode` argument in the {py:meth}`~ray.rllib.connectors.env_to_module.observation_preprocessor.SingleAgentObservationPreprocessor.preprocess` method:
 
-   ```{testcode}
-   :skipif: True
-
+   ```python
    def recompute_output_observation_space(self, in_obs_space, in_act_space):
        # `in_obs_space` is a `Dict` space, mapping agent IDs to individual agents' spaces.
        # Alter this dict according to which agents you want to preprocess observations for
