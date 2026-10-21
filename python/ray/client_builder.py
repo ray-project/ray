@@ -159,7 +159,6 @@ class ClientBuilder:
         # connect to the default one is not allowed.
         # But if it has connected to the default one, connect to other clients
         # with allow_multiple=True is allowed
-        ray.util.client._disconnect_if_rejected()
         default_cli_connected = ray.util.client.ray.is_connected()
         has_cli_connected = ray.util.client.num_connected_contexts() > 0
         if (

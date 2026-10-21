@@ -385,11 +385,15 @@ class Worker:
             try:
                 return getattr(self.server, stub_name)(*args, **kwargs)
             except grpc.RpcError as e:
-                if self._can_reconnect(e):
+                # A recorded rejection ends the retry even when this call's
+                # error looks recoverable, such as UNAVAILABLE.
+                if self._rejection is None and self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
                 if e.code() == grpc.StatusCode.UNAUTHENTICATED:
                     raise self._reject(e) from e
+                if self._rejection is not None:
+                    raise self._rejection from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -435,11 +439,15 @@ class Worker:
                         return
                 return
             except grpc.RpcError as e:
-                if self._can_reconnect(e):
+                # A recorded rejection ends the retry even when this call's
+                # error looks recoverable, such as UNAVAILABLE.
+                if self._rejection is None and self._can_reconnect(e):
                     time.sleep(0.5)
                     continue
                 if e.code() == grpc.StatusCode.UNAUTHENTICATED:
                     raise self._reject(e) from e
+                if self._rejection is not None:
+                    raise self._rejection from e
                 raise
             except ValueError:
                 # Trying to use the stub on a cancelled channel will raise
@@ -966,7 +974,7 @@ class Worker:
         return False
 
     def is_connected(self) -> bool:
-        return not self._in_shutdown and self._has_connected and self._rejection is None
+        return not self._in_shutdown and self._has_connected
 
     def _server_init(
         self, job_config: JobConfig, ray_init_kwargs: Optional[Dict[str, Any]] = None

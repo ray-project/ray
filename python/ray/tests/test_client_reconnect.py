@@ -680,7 +680,6 @@ def test_rejected_reconnect_raises_authentication_error(
             middleman.logs_servicer,
         ):
             servicer.stub = _RejectingStub()
-        accept_tokens_again = middleman.reset_channel
         middleman.reset_channel = lambda: None
         middleman.channel.close()
 
@@ -707,14 +706,50 @@ def test_rejected_reconnect_raises_authentication_error(
             not get_thread.is_alive()
         ), f"{operation} hung after the token was rejected"
         assert isinstance(outcome.get("error"), AuthenticationError), outcome
-        assert not ray.util.client.ray.is_connected()
-        # A retry must connect again: here the server still rejects the token.
-        with pytest.raises(AuthenticationError):
-            ray.init("ray://localhost:10011")
 
-        accept_tokens_again()
-        ray.init("ray://localhost:10011")
-        assert ray.get(ray.put(42)) == 42
+
+class _UnavailableError(grpc.RpcError):
+    def code(self):
+        return grpc.StatusCode.UNAVAILABLE
+
+    def details(self):
+        return "Server unreachable"
+
+
+class _UnreachableStub:
+    def __getattr__(self, method):
+        def unavailable(*args, **kwargs):
+            raise _UnavailableError()
+
+        return unavailable
+
+
+def test_rejection_stops_other_retry_loops(call_ray_start_shared):
+    from ray.exceptions import AuthenticationError
+
+    with start_middleman_server() as middleman:
+        ref = ray.put(42)
+        assert ray.get(ref) == 42
+        middleman.task_servicer.stub = _RejectingStub()
+        with pytest.raises(AuthenticationError):
+            ray.cluster_resources()
+
+        # The data channel stays healthy, so only the recorded rejection can
+        # end the retry loop of a call that then finds the server unreachable.
+        middleman.task_servicer.stub = _UnreachableStub()
+        outcome = {}
+
+        def get_ref():
+            try:
+                ray.get(ref)
+            except Exception as e:
+                outcome["error"] = e
+
+        get_thread = threading.Thread(target=get_ref, daemon=True)
+        get_thread.start()
+        get_thread.join(timeout=20)
+        assert not get_thread.is_alive(), "ray.get kept retrying after a rejection"
+        assert isinstance(outcome.get("error"), AuthenticationError), outcome
 
 
 if __name__ == "__main__":

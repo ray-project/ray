@@ -8,7 +8,7 @@ from ray._private.client_mode_hook import (
 from ray._private.utils import get_ray_doc_version
 from ray.job_config import JobConfig
 from ray.util.annotations import Deprecated
-from ray.util.client import _disconnect_if_rejected, ray
+from ray.util.client import ray
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,6 @@ def connect(
     _credentials: Optional["grpc.ChannelCredentials"] = None,  # noqa: F821
     ray_init_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    _disconnect_if_rejected()
     # Check if Ray is already connected (any type of connection)
     if ray.is_connected():
         ignore_reinit_error = (
@@ -46,7 +45,7 @@ def connect(
             )
             return ray.get_context().client_worker.connection_info()
         raise RuntimeError(
-            "Ray Client is already connected. Maybe you called "
+            "Ray Client is already initialized. Maybe you called "
             'ray.init("ray://<address>") twice by accident?'
         )
 
