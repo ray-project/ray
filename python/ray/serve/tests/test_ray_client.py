@@ -48,10 +48,12 @@ def serve_with_client(request, ray_client_instance):
 
     # After a test disconnects itself, serve.shutdown() would start a new local Ray
     # instance; reconnect as a client so Serve stops before the next test.
-    if not ray.is_initialized():
-        ray.init(f"ray://{ray_client_instance}", namespace="default_test_namespace")
-    serve.shutdown()
-    ray.util.disconnect()
+    try:
+        if not ray.is_initialized():
+            ray.init(f"ray://{ray_client_instance}", namespace="default_test_namespace")
+        serve.shutdown()
+    finally:
+        ray.util.disconnect()
 
 
 @pytest.mark.skipif(
