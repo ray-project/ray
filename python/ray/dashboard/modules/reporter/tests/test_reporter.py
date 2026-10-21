@@ -785,6 +785,47 @@ def test_report_stats_gpu_without_utilization(tmp_path):
     }
 
 
+def test_report_gpu_collection_errors(tmp_path):
+    """Failed GPU reads drained from the provider become counter records."""
+    from ray._private.metrics_agent import Counter
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+    agent._gpu_metric_provider = MagicMock()
+    agent._gpu_metric_provider.drain_collection_errors.return_value = {
+        ("utilization", "NVMLError_NotSupported"): 2,
+        ("power", "NVMLError_Unknown"): 1,
+    }
+
+    assert isinstance(METRICS["node_gpu_collection_errors_total"], Counter)
+    records = agent._to_records(copy.deepcopy(STATS_TEMPLATE), {})
+    error_records = {
+        (r.tags["Api"], r.tags["Reason"]): r.value
+        for r in records
+        if r.gauge.name == "node_gpu_collection_errors_total"
+    }
+    assert error_records == {
+        ("utilization", "NVMLError_NotSupported"): 2,
+        ("power", "NVMLError_Unknown"): 1,
+    }
+    error_record = next(
+        r for r in records if r.gauge.name == "node_gpu_collection_errors_total"
+    )
+    # The node tags are carried alongside Api and Reason.
+    assert {"ip", "RayNodeType", "IsHeadNode"} <= set(error_record.tags)
+
+    # Nothing drained: no record, so the series only exists once a read failed.
+    agent._gpu_metric_provider.drain_collection_errors.return_value = {}
+    records = agent._to_records(copy.deepcopy(STATS_TEMPLATE), {})
+    assert not [
+        r for r in records if r.gauge.name == "node_gpu_collection_errors_total"
+    ]
+
+
 def test_report_stats_gpu_power_and_temperature(tmp_path):
     """Test that GPU power and temperature metrics are reported when present in stats."""
     dashboard_agent = MagicMock()

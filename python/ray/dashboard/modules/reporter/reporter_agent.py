@@ -31,7 +31,7 @@ from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private import utils
-from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.metrics_agent import Counter, Gauge, MetricsAgent, Record
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS,
     RAY_ENABLE_OPEN_TELEMETRY,
@@ -133,6 +133,14 @@ def jsonify_asdict(o) -> str:
 
 # A list of gauges to record and export metrics.
 METRICS = {
+    # GPU collection health
+    "node_gpu_collection_errors_total": Counter(
+        "node_gpu_collection_errors_total",
+        "Number of failed reads of a GPU metric source on a ray node, by the "
+        "source (Api) and the error class (Reason)",
+        "",
+        NODE_TAG_KEYS + ["Api", "Reason"],
+    ),
     # CPU metrics
     "node_cpu_utilization": Gauge(
         "node_cpu_utilization",
@@ -1868,6 +1876,19 @@ class ReporterAgent(
                             )
                         )
                     records_reported.extend(gpu_records_to_add)
+
+        # -- GPU collection health --
+        for (
+            api,
+            reason,
+        ), count in self._gpu_metric_provider.drain_collection_errors().items():
+            records_reported.append(
+                Record(
+                    gauge=METRICS["node_gpu_collection_errors_total"],
+                    value=count,
+                    tags={**node_tags, "Api": api, "Reason": reason},
+                )
+            )
 
         # -- TPU per node --
         tpus = stats["tpus"]

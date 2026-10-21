@@ -11,6 +11,7 @@ import os
 import re
 import subprocess
 import time
+from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple, TypedDict, Union
 
 try:
@@ -84,11 +85,33 @@ class TpuUtilizationInfo(TypedDict):
     memory_total: Bytes
 
 
+# NVML errors for an API the device or driver doesn't have; not counted as failures.
+_UNSUPPORTED_ERRORS = frozenset(
+    {"NVMLError_NotSupported", "NVMLError_FunctionNotFound"}
+)
+
+
 class GpuProvider(abc.ABC):
     """Abstract base class for GPU providers."""
 
     def __init__(self):
         self._initialized = False
+        # (api, reason) -> failed reads since the last drain
+        self._collection_errors: Dict[Tuple[str, str], int] = defaultdict(int)
+
+    def _count_collection_error(self, api: str, error: Union[Exception, str]) -> None:
+        """Count a failed read by source (`api`) and error class or reason."""
+        reason = error if isinstance(error, str) else type(error).__name__
+        if reason in _UNSUPPORTED_ERRORS:
+            # The device or driver doesn't have this API; it never will.
+            return
+        self._collection_errors[(api, reason)] += 1
+
+    def drain_collection_errors(self) -> Dict[Tuple[str, str], int]:
+        """Return and reset the failed reads counted since the last call."""
+        errors = dict(self._collection_errors)
+        self._collection_errors.clear()
+        return errors
 
     @abc.abstractmethod
     def get_provider_name(self) -> GpuProviderType:
@@ -181,6 +204,7 @@ class NvidiaGpuProvider(GpuProvider):
             self._initialized = True
             return True
         except Exception as e:
+            self._count_collection_error("init", e)
             logger.debug(f"Failed to initialize NVIDIA GPU provider: {e}")
             return False
 
@@ -306,6 +330,7 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu_utilizations.append(gpu_info)
 
         except Exception as e:
+            self._count_collection_error("gpu_usage", e)
             logger.warning(f"Error getting NVIDIA GPU utilization: {e}")
         finally:
             self._shutdown()
@@ -337,6 +362,7 @@ class NvidiaGpuProvider(GpuProvider):
                     continue
 
         except (self._pynvml.NVMLError, AttributeError) as e:
+            self._count_collection_error("mig_devices", e)
             logger.debug(f"Error getting MIG devices: {e}")
 
         return mig_devices
@@ -356,6 +382,7 @@ class NvidiaGpuProvider(GpuProvider):
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
+                self._count_collection_error("utilization", e)
                 logger.debug(f"Failed to retrieve MIG device utilization: {e}")
 
             # Get running processes on MIG device
@@ -413,6 +440,7 @@ class NvidiaGpuProvider(GpuProvider):
             )
 
         except Exception as e:
+            self._count_collection_error("device_info", e)
             logger.debug(f"Error getting MIG device info: {e}")
             return None
 
@@ -429,6 +457,7 @@ class NvidiaGpuProvider(GpuProvider):
                 )
                 utilization = int(utilization_info.gpu)
             except self._pynvml.NVMLError as e:
+                self._count_collection_error("utilization", e)
                 if log_once("gpu_utilization"):
                     logger.info(
                         f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
@@ -455,6 +484,7 @@ class NvidiaGpuProvider(GpuProvider):
                         gpu_utilization=None,
                     )
             except self._pynvml.NVMLError as e:
+                self._count_collection_error("process_memory", e)
                 if log_once("gpu_per_process_memory"):
                     logger.info(
                         "Failed to retrieve per-process GPU memory via `nvmlDeviceGetComputeRunningProcesses` "
@@ -510,12 +540,14 @@ class NvidiaGpuProvider(GpuProvider):
                     if self._is_nvml_error(e, "NVMLError_NotFound"):
                         # No samples since the cursor: the GPU was idle.
                         self._gpu_process_last_sample_ts[gpu_index] = now_us
-                    elif log_once("gpu_process_sm_utilization"):
-                        logger.info(
-                            "Failed to retrieve GPU process SM utilization using "
-                            "`nvmlDeviceGetProcessesUtilizationInfo`, "
-                            f"error: {e}"
-                        )
+                    else:
+                        self._count_collection_error("process_utilization", e)
+                        if log_once("gpu_process_sm_utilization"):
+                            logger.info(
+                                "Failed to retrieve GPU process SM utilization using "
+                                "`nvmlDeviceGetProcessesUtilizationInfo`, "
+                                f"error: {e}"
+                            )
 
             # Optional: power (milliwatts) and temperature (Celsius)
             power_mw = None
@@ -523,6 +555,7 @@ class NvidiaGpuProvider(GpuProvider):
             try:
                 power_mw = self._pynvml.nvmlDeviceGetPowerUsage(gpu_handle)
             except (self._pynvml.NVMLError, AttributeError) as e:
+                self._count_collection_error("power", e)
                 if log_once("gpu_power"):
                     logger.info(f"Failed to retrieve GPU power: {e}")
             try:
@@ -531,6 +564,7 @@ class NvidiaGpuProvider(GpuProvider):
                     gpu_handle, self._pynvml.NVML_TEMPERATURE_GPU
                 )
             except (self._pynvml.NVMLError, AttributeError) as e:
+                self._count_collection_error("temperature", e)
                 if log_once("gpu_temperature"):
                     logger.info(f"Failed to retrieve GPU temperature: {e}")
 
@@ -547,6 +581,7 @@ class NvidiaGpuProvider(GpuProvider):
             )
 
         except Exception as e:
+            self._count_collection_error("device_info", e)
             logger.debug(f"Error getting GPU info: {e}")
             return None
 
@@ -586,6 +621,7 @@ class AmdGpuProvider(GpuProvider):
             self._initialized = True
             return True
         except Exception as e:
+            self._count_collection_error("init", e)
             logger.debug(f"Failed to initialize AMD GPU provider: {e}")
             return False
 
@@ -614,6 +650,7 @@ class AmdGpuProvider(GpuProvider):
             for i in range(num_gpus):
                 utilization = self._pyamdsmi.smi_get_device_utilization(i)
                 if utilization == -1:
+                    self._count_collection_error("utilization", "query_failed")
                     utilization = None
 
                 # Get running processes
@@ -635,6 +672,7 @@ class AmdGpuProvider(GpuProvider):
                     if power_watts >= 0:
                         power_mw = int(power_watts * 1000)
                 except Exception as e:
+                    self._count_collection_error("power", e)
                     logger.debug(f"Failed to retrieve AMD GPU power: {e}")
 
                 info = GpuUtilizationInfo(
@@ -652,6 +690,7 @@ class AmdGpuProvider(GpuProvider):
                 gpu_utilizations.append(info)
 
         except Exception as e:
+            self._count_collection_error("gpu_usage", e)
             logger.warning(f"Error getting AMD GPU utilization: {e}")
         finally:
             self._shutdown()
@@ -745,6 +784,12 @@ class GpuMetricProvider:
     def get_provider_name(self) -> Optional[str]:
         """Get the name of the current GPU provider."""
         return self._provider.get_provider_name().value if self._provider else None
+
+    def drain_collection_errors(self) -> Dict[Tuple[str, str], int]:
+        """Return and reset the active provider's failed reads (empty if none)."""
+        if self._provider is None:
+            return {}
+        return self._provider.drain_collection_errors()
 
     def is_metric_report_enabled(self) -> bool:
         """Check if GPU metric reporting is enabled."""
