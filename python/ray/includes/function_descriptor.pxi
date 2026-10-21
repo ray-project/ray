@@ -4,10 +4,12 @@ from ray.includes.function_descriptor cimport (
     CPythonFunctionDescriptor,
     CJavaFunctionDescriptor,
     CCppFunctionDescriptor,
+    CGoFunctionDescriptor,
     EmptyFunctionDescriptorType,
     JavaFunctionDescriptorType,
     PythonFunctionDescriptorType,
     CppFunctionDescriptorType,
+    GoFunctionDescriptorType,
 )
 
 import hashlib
@@ -394,3 +396,83 @@ cdef class CppFunctionDescriptor(FunctionDescriptor):
     @property
     def repr(self):
         return f"{self.class_name}::{self.function_name}"
+
+
+FunctionDescriptor_constructor_map[<int>GoFunctionDescriptorType] = \
+    GoFunctionDescriptor.from_cpp
+
+
+@cython.auto_pickle(False)
+cdef class GoFunctionDescriptor(FunctionDescriptor):
+    cdef:
+        CGoFunctionDescriptor *typed_descriptor
+
+    def __cinit__(self,
+                  module_name,
+                  package_path,
+                  function_name,
+                  method_name=""):
+        self.descriptor = CFunctionDescriptorBuilder.BuildGo(
+            module_name, package_path, function_name, method_name)
+        self.typed_descriptor = <CGoFunctionDescriptor*>(
+            self.descriptor.get())
+
+    def __reduce__(self):
+        return GoFunctionDescriptor, (self.typed_descriptor.ModuleName(),
+                                      self.typed_descriptor.PackagePath(),
+                                      self.typed_descriptor.FunctionName(),
+                                      self.typed_descriptor.MethodName())
+
+    @staticmethod
+    cdef from_cpp(const CFunctionDescriptor &c_function_descriptor):
+        cdef CGoFunctionDescriptor *typed_descriptor = \
+            <CGoFunctionDescriptor*>(c_function_descriptor.get())
+        return GoFunctionDescriptor(typed_descriptor.ModuleName(),
+                                    typed_descriptor.PackagePath(),
+                                    typed_descriptor.FunctionName(),
+                                    typed_descriptor.MethodName())
+
+    @property
+    def module_name(self):
+        """Get the module name of the current function descriptor.
+
+        Returns:
+            The Go module path (e.g. "github.com/ray-project/ray").
+        """
+        return <str>self.typed_descriptor.ModuleName()
+
+    @property
+    def package_path(self):
+        """Get the package path of the current function descriptor.
+
+        Returns:
+            The package path within the module (e.g. "go/e2e/userfuncs").
+        """
+        return <str>self.typed_descriptor.PackagePath()
+
+    @property
+    def function_name(self):
+        """Get the function name of the current function descriptor.
+
+        Returns:
+            The exported Go function (or actor type) name.
+        """
+        return <str>self.typed_descriptor.FunctionName()
+
+    @property
+    def method_name(self):
+        """Get the actor method name of the current function descriptor.
+
+        Returns:
+            The actor method name, or an empty string for a plain function.
+        """
+        return <str>self.typed_descriptor.MethodName()
+
+    @property
+    def repr(self):
+        if self.method_name:
+            return ".".join(
+                [self.module_name, self.package_path, self.function_name,
+                 self.method_name])
+        return ".".join(
+            [self.module_name, self.package_path, self.function_name])

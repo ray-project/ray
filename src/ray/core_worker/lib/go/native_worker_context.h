@@ -95,6 +95,12 @@ CByteArray *CNativeWorkerContext_GetSerializedRuntimeEnv();
 //   This is used to distinguish between NULL (error) and empty string (valid).
 bool CNativeWorkerContext_HasLastError();
 
+// CNativeWorkerContext_SetCurrentActorShouldExit marks the current actor as
+// wanting to exit. The CoreWorker's task execution loop polls the flag and tears
+// the worker down with INTENDED_USER_EXIT, which makes the raylet mark the actor
+// dead and release its resources.
+void CNativeWorkerContext_SetCurrentActorShouldExit();
+
 // CNativeWorkerContext_GetNamespace returns the current namespace.
 //
 // Returns:

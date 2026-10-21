@@ -299,20 +299,18 @@ func (s *NativeTaskSubmitter) GetActor(name string, namespace string) (submitter
 
 // GetActorHandle retrieves an actor handle by its actor ID.
 //
-// This implementation deviates from us-design-get-actor-handle.md (AC4/Q2):
-// the C++ CoreWorker's ActorManager (core_worker.cc is frozen) is not
-// consulted; instead any non-nil actor ID resolves to a handle whose language
-// is carried on the handle itself. The returned handle always carries
-// LanguageGo.
-//
-// An unknown actor ID is still a valid handle (matching Java's
-// NativeTaskSubmitter.getActor(ActorId) -> NativeActorHandle.create): the
-// actual method call surfaces a genuine error if the actor does not exist, so
-// handles obtained by name, handles for actors created elsewhere, and
-// worker-side lookups all work.
+// The handle is resolved from the process-wide by-creation registry
+// (createdActorIDSet, populated by CreateActor) rather than the C++ ActorManager
+// (core_worker.cc is frozen), so an actor ID this process never created is
+// reported as not found. Registry entries are never removed, so a killed actor
+// still resolves, mirroring the C++ ActorManager's keep-until-process-exit
+// semantics. The returned handle always carries LanguageGo.
 func (s *NativeTaskSubmitter) GetActorHandle(actorID ids.ActorID) (submitter.ActorHandle, error) {
 	if actorID.IsNil() {
 		return nil, fmt.Errorf("get actor handle: actor ID is nil")
+	}
+	if !createdActorIDSet.contains(actorID) {
+		return nil, fmt.Errorf("get actor handle: actor %s not found", actorID.Hex())
 	}
 
 	return object.NewNativeActorHandle(actorID, object.LanguageGo), nil

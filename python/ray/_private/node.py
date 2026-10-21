@@ -266,10 +266,6 @@ class Node:
                 logger.debug(f"Setting node ID to {node_id}")
                 self._node_id = node_id
 
-        self.metrics_agent_port = self._get_cached_port(
-            "metrics_agent_port", default_port=ray_params.metrics_agent_port
-        )
-
         # Resolve node ip address
         node_ip_address = ray_params.node_ip_address
         if node_ip_address is None:
@@ -348,6 +344,14 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
+
+        # The metrics agent port is cached per node so that driver processes on
+        # the same node reuse it. _get_cached_port reads the cache from the
+        # session dir and keys it by the node unique id, so both _init_temp
+        # (session dir) and the socket names resolved above must be set first.
+        self.metrics_agent_port = self._get_cached_port(
+            "metrics_agent_port", default_port=ray_params.metrics_agent_port
+        )
 
         self._object_spilling_config = self._get_object_spilling_config()
         logger.debug(

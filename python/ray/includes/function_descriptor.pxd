@@ -28,6 +28,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         "ray::FunctionDescriptorType::kPythonFunctionDescriptor"
     cdef CFunctionDescriptorType CppFunctionDescriptorType \
         "ray::FunctionDescriptorType::kCppFunctionDescriptor"
+    cdef CFunctionDescriptorType GoFunctionDescriptorType \
+        "ray::FunctionDescriptorType::kGoFunctionDescriptor"
 
 
 cdef extern from "ray/common/function_descriptor.h" nogil:
@@ -61,6 +63,12 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
                                      const c_string &class_name)
 
         @staticmethod
+        CFunctionDescriptor BuildGo(const c_string &module_name,
+                                    const c_string &package_path,
+                                    const c_string &function_name,
+                                    const c_string &method_name)
+
+        @staticmethod
         CFunctionDescriptor Deserialize(const c_string &serialized_binary)
 
     cdef cppclass CJavaFunctionDescriptor "ray::JavaFunctionDescriptor":
@@ -78,3 +86,9 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
         c_string FunctionName()
         c_string Caller()
         c_string ClassName()
+
+    cdef cppclass CGoFunctionDescriptor "ray::GoFunctionDescriptor":
+        c_string ModuleName()
+        c_string PackagePath()
+        c_string FunctionName()
+        c_string MethodName()

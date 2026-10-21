@@ -296,6 +296,10 @@ func (r *Ray) Internal() contract.RuntimeHandle {
 // InitializeWithJobConfig initializes Ray with a JobConfig builder.
 // This is a convenience method for setting job-level configuration.
 //
+// The builder is mutated: the job-injected runtime_env and metadata (from
+// RAY_JOB_CONFIG_JSON_ENV_VAR) are merged into it before the job options are
+// built.
+//
 // Parameters:
 //   - builder: JobConfigBuilder to configure job settings
 //
@@ -320,15 +324,52 @@ func (r *Ray) Internal() contract.RuntimeHandle {
 //	    log.Fatal(err)
 //	}
 func (r *Ray) InitializeWithJobConfig(builder *options.JobConfigBuilder) error {
-	jobOpts, err := builder.BuildToJobOptions()
+	jobOpts, err := buildJobOptionsFromBuilder(builder)
 	if err != nil {
-		return fmt.Errorf("failed to build JobConfig: %w", err)
+		return err
 	}
 
 	return r.InitWithOptions(&options.InitializeOptions{
 		WorkerType: options.WorkerTypeDriver,
 		Job:        jobOpts,
 	})
+}
+
+// buildJobOptionsFromBuilder merges the job-injected configuration
+// (runtime_env and metadata from RAY_JOB_CONFIG_JSON_ENV_VAR) into a copy of the
+// caller's builder and then builds the resulting JobOptions.
+//
+// The merge mirrors the default path in InitWithOptions: when a job is
+// submitted through the job supervisor (for example, `ray job submit` or the
+// dashboard job API), the job's runtime_env - including its working_dir - is
+// delivered to the driver only through RAY_JOB_CONFIG_JSON_ENV_VAR. Ray's core
+// worker derives a driver's task and actor runtime_env from the job config, so
+// a driver that does not merge it in leaves every task and actor worker on
+// other nodes without the job's working_dir or env_vars. Merging here keeps the
+// explicit-job-config initialization path consistent with the default path.
+//
+// The merge is additive and conflict-checked by JobConfigBuilder.MergeFromEnv;
+// the caller's explicit settings win on conflicts unless
+// RAY_OVERRIDE_JOB_RUNTIME_ENV=1 is required to permit them.
+//
+// Merging into a copy rather than into the caller's builder keeps this function
+// repeatable: MergeFromEnv writes the job-injected runtime_env into the builder
+// when the caller set none, and a second call on the same builder (a retry
+// after a failed initialization, for example) would then find a runtime_env
+// already there and merge the job-injected value with itself. checkConflict
+// reports a shared key as a conflict whatever its value, matching Python's
+// _merge_runtime_env, so that retry would fail with a conflict the caller never
+// created.
+func buildJobOptionsFromBuilder(builder *options.JobConfigBuilder) (options.JobOptions, error) {
+	merged := builder.Clone()
+	if err := merged.MergeFromEnv(); err != nil {
+		return options.JobOptions{}, fmt.Errorf("failed to merge job config from environment: %w", err)
+	}
+	jobOpts, err := merged.BuildToJobOptions()
+	if err != nil {
+		return options.JobOptions{}, fmt.Errorf("failed to build JobConfig: %w", err)
+	}
+	return jobOpts, nil
 }
 
 // InitializeWithJobConfigAndNetwork initializes Ray with JobConfig and network settings.
@@ -356,9 +397,9 @@ func (r *Ray) InitializeWithJobConfigAndNetwork(
 	builder *options.JobConfigBuilder,
 	network options.NetworkOptions,
 ) error {
-	jobOpts, err := builder.BuildToJobOptions()
+	jobOpts, err := buildJobOptionsFromBuilder(builder)
 	if err != nil {
-		return fmt.Errorf("failed to build JobConfig: %w", err)
+		return err
 	}
 
 	return r.InitWithOptions(&options.InitializeOptions{

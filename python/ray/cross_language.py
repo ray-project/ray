@@ -3,13 +3,18 @@ from __future__ import absolute_import, division, print_function
 from typing import Any
 
 from ray import Language
-from ray._raylet import CppFunctionDescriptor, JavaFunctionDescriptor
+from ray._raylet import (
+    CppFunctionDescriptor,
+    GoFunctionDescriptor,
+    JavaFunctionDescriptor,
+)
 from ray.util.annotations import PublicAPI
 
 __all__ = [
     "java_function",
     "java_actor_class",
     "cpp_function",
+    "go_function",
 ]
 
 
@@ -52,6 +57,30 @@ def cpp_function(function_name: str):
         Language.CPP,
         lambda *args, **kwargs: None,
         CppFunctionDescriptor(function_name, "PYTHON"),
+        {},
+    )
+
+
+@PublicAPI(stability="beta")
+def go_function(module_name: str, package_path: str, function_name: str):
+    """Define a Go function.
+
+    Args:
+        module_name: The Go module path, e.g. ``github.com/ray-project/ray``.
+        package_path: The package path within the module, e.g.
+            ``go/e2e/userfuncs``.
+        function_name: The exported Go function name.
+
+    Returns:
+        A ``RemoteFunction`` wrapping the referenced Go function so it can be
+        invoked from Python.
+    """
+    from ray.remote_function import RemoteFunction
+
+    return RemoteFunction(
+        Language.GO,
+        lambda *args, **kwargs: None,
+        GoFunctionDescriptor(module_name, package_path, function_name),
         {},
     )
 

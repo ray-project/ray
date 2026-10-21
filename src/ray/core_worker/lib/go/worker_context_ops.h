@@ -99,6 +99,18 @@ class WorkerContextOperations {
   }
 
   /**
+   * @brief Mark the current actor as wanting to exit.
+   *
+   * The CoreWorker's task execution loop polls this flag and tears the worker
+   * down with INTENDED_USER_EXIT, which is what makes the raylet mark the actor
+   * dead and release its resources. Python does the same from
+   * ray.actor.exit_actor via set_current_actor_should_exit().
+   */
+  void SetCurrentActorShouldExit() {
+    provider_->GetCoreWorker().GetWorkerContext().SetCurrentActorShouldExit();
+  }
+
+  /**
    * @brief Get the RPC address of the current worker.
    * @return Serialized RPC address as string.
    */
@@ -127,13 +139,17 @@ class WorkerContextOperations {
 
   /**
    * @brief Get the current namespace.
+   *
+   * The namespace is the job's ray namespace, which is the namespace the
+   * worker's placement groups, actors and tasks are created in and the one
+   * namespace-scoped lookups (placement group and actor by name) resolve
+   * against. WorkerContext exposes no namespace, so the job config is the
+   * source of truth.
+   *
    * @return Namespace string.
    */
   std::string GetNamespace() {
-    // Note: GetNamespace() is not available in WorkerContext,
-    // so we return an empty string for now.
-    // TODO(daiping8): Implement proper namespace support if needed.
-    return "";
+    return provider_->GetCoreWorker().GetJobConfig().ray_namespace();
   }
 
   /**

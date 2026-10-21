@@ -79,6 +79,7 @@ go_test(
         "options_test.go",
         "parallel_actor_test.go",
         "python_call_test.go",
+        "ray_job_config_env_test.go",
         "task_return_ref_test.go",
     ],
     embed = [":api"],
@@ -86,6 +87,7 @@ go_test(
         "//go/pkg/errors",
         "//go/pkg/gcs",
         "//go/pkg/ids",
+        "//go/pkg/options",
         "//go/pkg/runtime/contract",
         "//go/pkg/runtime/function",
         "//go/pkg/runtime/object",
@@ -93,6 +95,7 @@ go_test(
         "//go/proto",
         "@com_github_stretchr_testify//assert",
         "@com_github_vmihailenco_msgpack_v5//:msgpack",
+        "@org_golang_google_protobuf//proto",
     ],
 )
 

@@ -114,6 +114,7 @@ from ray.includes.common cimport (
     CLineageReconstructionTask,
     move,
     LANGUAGE_CPP,
+    LANGUAGE_GO,
     LANGUAGE_JAVA,
     LANGUAGE_PYTHON,
     LocalMemoryBuffer,
@@ -666,6 +667,8 @@ cdef class Language:
             return "CPP"
         elif <int32_t>self.lang == <int32_t>LANGUAGE_JAVA:
             return "JAVA"
+        elif <int32_t>self.lang == <int32_t>LANGUAGE_GO:
+            return "GO"
         else:
             raise Exception("Unexpected error")
 
@@ -675,6 +678,7 @@ cdef class Language:
     PYTHON = Language.from_native(LANGUAGE_PYTHON)
     CPP = Language.from_native(LANGUAGE_CPP)
     JAVA = Language.from_native(LANGUAGE_JAVA)
+    GO = Language.from_native(LANGUAGE_GO)
 
 
 cdef CPlacementStrategy prepare_c_strategy(c_string strategy) except *:

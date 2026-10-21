@@ -156,7 +156,7 @@ func TestEncodeToBufferWithHeader(t *testing.T) {
 	buf := make([]byte, 0, 1024)
 	obj := map[string]interface{}{"key": "value", "num": int64(42)}
 
-	err := s.EncodeToBuffer(obj, &buf)
+	err := s.EncodeToBuffer(obj, &buf, isCrossLanguageValue(obj))
 	if err != nil {
 		t.Fatalf("EncodeToBuffer failed: %v", err)
 	}
@@ -268,5 +268,55 @@ func TestLargeObject(t *testing.T) {
 
 	if len(result) != len(largeData) {
 		t.Fatalf("Result length mismatch: expected %d, got %d", len(largeData), len(result))
+	}
+}
+
+// xlangStudent mirrors the C++ MSGPACK_DEFINE(name, age) struct used by the
+// Go -> C++ cross-language driver: a fully-exported struct is a cross-language
+// type, so it must be encoded positionally.
+type xlangStudent struct {
+	Name string `msgpack:"name"`
+	Age  int    `msgpack:"age"`
+}
+
+// TestEncodeCrossLanguageStructIsPositionalArray proves that a cross-language
+// struct is encoded as a msgpack array (matching the C++ MSGPACK_DEFINE
+// layout), not as a msgpack map. Before the fix the encoder used the default
+// map encoding and the C++ worker failed with "std::bad_cast" while converting
+// the argument to its MSGPACK_DEFINE type.
+func TestEncodeCrossLanguageStructIsPositionalArray(t *testing.T) {
+	s := NewMsgpackSerializer()
+
+	buf := make([]byte, 0, 1024)
+	if err := s.EncodeToBuffer(xlangStudent{Name: "tom", Age: 20}, &buf,
+		isCrossLanguageValue(xlangStudent{Name: "tom", Age: 20})); err != nil {
+		t.Fatalf("EncodeToBuffer failed: %v", err)
+	}
+	payload := buf[MessagePackOffset:]
+	if len(payload) == 0 {
+		t.Fatal("empty payload")
+	}
+	// 0x92 is the msgpack fixarray header for a 2-element array; a map would be
+	// 0x82 (fixmap of 2) or another fixmap/ map16/ map32 header.
+	if payload[0] != 0x92 {
+		t.Fatalf("cross-language struct encoded with header %#x, want 0x92 (2-element array)", payload[0])
+	}
+
+	// The array form must still decode back into the Go struct.
+	var got xlangStudent
+	if err := s.DecodeFromBuffer(buf, &got); err != nil {
+		t.Fatalf("DecodeFromBuffer failed: %v", err)
+	}
+	if got != (xlangStudent{Name: "tom", Age: 20}) {
+		t.Fatalf("round trip = %+v, want {tom 20}", got)
+	}
+
+	// The Encode (bytes.Buffer) path must agree with EncodeToBuffer.
+	encoded, err := s.Encode(xlangStudent{Name: "tom", Age: 20})
+	if err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+	if encoded[MessagePackOffset] != 0x92 {
+		t.Fatalf("Encode produced header %#x, want 0x92 (2-element array)", encoded[MessagePackOffset])
 	}
 }

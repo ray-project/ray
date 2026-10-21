@@ -241,8 +241,29 @@ func (b *JobConfigBuilder) WithDefaultActorLifetime(lifetime JobConfigActorLifet
 
 // WithMetadata sets job metadata (key-value pairs).
 func (b *JobConfigBuilder) WithMetadata(key, value string) *JobConfigBuilder {
+	// A zero-value JobConfigBuilder has a nil map, and every other With* method
+	// is usable on one (they assign a string or append to a nil slice), so this
+	// one allocates rather than panicking on the first metadata key.
+	if b.metadata == nil {
+		b.metadata = make(map[string]string)
+	}
 	b.metadata[key] = value
 	return b
+}
+
+// Clone returns a copy of the builder that can be mutated without affecting the
+// original: the slices are copied and the metadata map is duplicated. It is
+// what lets a caller merge job-injected configuration into a builder it was
+// handed and still leave that builder untouched for a retry.
+func (b *JobConfigBuilder) Clone() *JobConfigBuilder {
+	out := *b
+	out.codeSearchPath = append([]string(nil), b.codeSearchPath...)
+	out.jvmOptions = append([]string(nil), b.jvmOptions...)
+	out.metadata = make(map[string]string, len(b.metadata))
+	for k, v := range b.metadata {
+		out.metadata[k] = v
+	}
+	return &out
 }
 
 // RuntimeEnvJSON returns the current runtime_env as a JSON string.

@@ -155,6 +155,16 @@ func (c *NativeWorkerContext) GetNamespace() string {
 	return string(C.GoBytes(unsafe.Pointer(cData.data), C.int(cData.size)))
 }
 
+// SetCurrentActorShouldExit marks the current actor as wanting to exit. The
+// CoreWorker's task execution loop polls the flag and tears the worker down with
+// INTENDED_USER_EXIT, which is what makes the raylet mark the actor dead and
+// release its resources; without it an intentionally exited actor stays ALIVE
+// and keeps holding its CPUs. Python's ray.actor.exit_actor does the same via
+// set_current_actor_should_exit().
+func (c *NativeWorkerContext) SetCurrentActorShouldExit() {
+	C.CNativeWorkerContext_SetCurrentActorShouldExit()
+}
+
 // GetCurrentNodeID returns the ID of the current node.
 func (c *NativeWorkerContext) GetCurrentNodeID() ids.NodeID {
 	cData := C.CNativeWorkerContext_GetCurrentNodeID()

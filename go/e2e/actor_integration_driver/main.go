@@ -665,33 +665,30 @@ func testActorHandleKill() error {
 	defer func() { _ = releaseActor(restartable.ID()) }()
 	rtTyped := api.NewActorHandleImpl[int](restartable.ID())
 
+	// Bump the live instance's state so a restarted instance is distinguishable
+	// from the old one: the creation state is 100, so a call answering 100 can
+	// only come from a freshly constructed instance. The previous assertion
+	// instead polled for a window in which calls FAIL before checking the value;
+	// Kill() is a force kill, so the raylet SIGKILLs the worker and re-leases the
+	// actor within milliseconds and that failure window is not reliably
+	// observable, making the poll report a live old instance even though the
+	// actor did restart.
+	ref, err := rtTyped.Task((*userfuncs.Counter).Add, 5).Remote()
+	if err != nil {
+		return fmt.Errorf("pre-kill Add failed: %w", err)
+	}
+	if v, err := getWithTimeout(ref, e2eTimeout(5*time.Second)); err != nil || v != 105 {
+		return fmt.Errorf("pre-kill Value = %v (err %v), want 105", v, err)
+	}
+
 	if err := restartable.Kill(); err != nil {
 		return fmt.Errorf("handle.Kill() failed: %w", err)
 	}
 
-	// Poll until the old instance stops serving: Kill() is asynchronous
-	// (GCS -> raylet -> SIGKILL), so an immediate call can still land on the
-	// dying worker and false-positive the revival check below (the old
-	// instance would answer Value()==100 before it dies, "proving" a restart
-	// that never happened).
-	goneDeadline := time.Now().Add(e2eTimeout(10 * time.Second))
-	for {
-		ref, err := rtTyped.Task((*userfuncs.Counter).Value).Remote()
-		if err == nil {
-			_, err = getWithTimeout(ref, time.Until(goneDeadline))
-		}
-		if err != nil && !errors.Is(err, errGetTimeout) {
-			break
-		}
-		if time.Now().After(goneDeadline) {
-			return fmt.Errorf("old actor instance still serving %d s after Kill()", 10)
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	// Poll until the actor comes back (restarted) and serves calls again. The
-	// restart is asynchronous; a short window of submission failures is
-	// expected while the old worker dies and the new one is leased.
+	// Poll until the actor comes back (restarted) carrying the creation state.
+	// The restart is asynchronous; a short window of submission failures, or of
+	// the dying instance answering the bumped state, is expected while the old
+	// worker dies and the new one is leased.
 	restartDeadline := time.Now().Add(e2eTimeout(15 * time.Second))
 	for {
 		ref, err := rtTyped.Task((*userfuncs.Counter).Value).Remote()
@@ -702,11 +699,11 @@ func testActorHandleKill() error {
 			}
 		}
 		if time.Now().After(restartDeadline) {
-			return fmt.Errorf("restartable actor did not come back after Kill() within 15s")
+			return fmt.Errorf("restartable actor did not come back with the creation state after Kill() within 15s")
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
-	fmt.Println("  handle.Kill() (noRestart=false) with maxRestarts=1: actor restarted, Value() -> 100 ✓")
+	fmt.Println("  handle.Kill() (noRestart=false) with maxRestarts=1: actor restarted with the creation state ✓")
 
 	return nil
 }

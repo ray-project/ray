@@ -295,6 +295,20 @@ func TestJobConfigBuilder_WithMetadata(t *testing.T) {
 	}
 }
 
+// TestJobConfigBuilder_ZeroValueWithMetadata covers a zero-value builder, which
+// has a nil metadata map. Every other With* method is usable on one - they
+// assign a string or append to a nil slice - so setting metadata must allocate
+// the map instead of panicking on the first key. MergeFromEnv reaches this path
+// whenever the job config carries metadata.
+func TestJobConfigBuilder_ZeroValueWithMetadata(t *testing.T) {
+	builder := &JobConfigBuilder{}
+	builder.WithMetadata("version", "1.0.0")
+
+	if got := builder.metadata["version"]; got != "1.0.0" {
+		t.Fatalf("metadata[version] = %q, want 1.0.0", got)
+	}
+}
+
 func TestJobConfigActorLifetime_Values(t *testing.T) {
 	tests := []struct {
 		name     JobConfigActorLifetime

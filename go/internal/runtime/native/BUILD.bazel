@@ -33,6 +33,7 @@ go_library(
         "//go/internal/runtime/objectstore",  # Added for objectstore.NativeObjectStore
         "//go/internal/runtime/resource",
         "//go/internal/runtime/serializer",
+        "//go/pkg/errors",
         "//go/pkg/gcs",
         "//go/pkg/ids",
         "//go/pkg/log",

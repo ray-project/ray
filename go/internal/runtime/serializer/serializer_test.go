@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
 
 // compareJSON compares two values by marshaling them to JSON and comparing the strings.
@@ -81,8 +83,16 @@ func TestMsgpackSerializer_SerializeComplex(t *testing.T) {
 	s := NewMsgpackSerializer()
 
 	tests := []struct {
-		name  string
+		name string
+		// value is the value to encode.
 		value interface{}
+		// decoded is the JSON-comparable form a round trip through
+		// interface{} must produce; it defaults to value when nil. A
+		// fully-exported struct is a cross-language type and is encoded as a
+		// positional msgpack array (matching the C++ MSGPACK_DEFINE
+		// layout), so its round trip yields a positional slice rather than a
+		// map.
+		decoded interface{}
 	}{
 		{
 			"map",
@@ -91,10 +101,12 @@ func TestMsgpackSerializer_SerializeComplex(t *testing.T) {
 				"b": "string",
 				"c": []int{1, 2, 3},
 			},
+			nil,
 		},
 		{
 			"slice",
 			[]interface{}{1, "two", 3.0, true},
+			nil,
 		},
 		{
 			"struct",
@@ -102,12 +114,14 @@ func TestMsgpackSerializer_SerializeComplex(t *testing.T) {
 				A int
 				B string
 			}{42, "test"},
+			[]interface{}{int8(42), "test"},
 		},
 		{
 			"nested",
 			map[string]map[string]int{
 				"outer": {"inner": 42},
 			},
+			nil,
 		},
 	}
 
@@ -124,7 +138,11 @@ func TestMsgpackSerializer_SerializeComplex(t *testing.T) {
 				t.Fatalf("Decode() error = %v", err)
 			}
 
-			compareJSON(t, result, tt.value)
+			want := tt.value
+			if tt.decoded != nil {
+				want = tt.decoded
+			}
+			compareJSON(t, result, want)
 		})
 	}
 }
@@ -454,5 +472,56 @@ func TestSerializeUnderEstimateGrowsBuffer(t *testing.T) {
 	}
 	if afterBytes != beforeBytes {
 		t.Errorf("pool memory leaked: before=%d after=%d", beforeBytes, afterBytes)
+	}
+}
+
+// xlangErrStruct is a fully-exported struct that also implements error. It is
+// the shape that made the metadata tag and the payload layout disagree:
+// CategorizeType classifies anything implementing error as an exception, so
+// IsCrossLanguageType answers false for it, while the recursive field check
+// used for the metadata tag answers true. The struct is therefore a
+// cross-language value whose payload was written as a msgpack map.
+type xlangErrStruct struct {
+	Message string `msgpack:"message"`
+	Code    int    `msgpack:"code"`
+}
+
+func (e xlangErrStruct) Error() string { return e.Message }
+
+// TestSerializeErrorImplementingStructIsPositionalArray proves that the metadata
+// tag and the payload layout of a serialized value come from one
+// cross-language decision: a value tagged XLANG must be encoded as a positional
+// array, whatever interfaces its type implements. When they disagree the C++
+// worker is handed a msgpack map under an XLANG tag and fails with
+// "msgpack::v1::type_error: std::bad_cast" while converting the argument to its
+// MSGPACK_DEFINE type.
+func TestSerializeErrorImplementingStructIsPositionalArray(t *testing.T) {
+	s := NewSerializer()
+
+	nativeObj, err := s.Serialize(xlangErrStruct{Message: "boom", Code: 7})
+	if err != nil {
+		t.Fatalf("Serialize failed: %v", err)
+	}
+	if got := string(nativeObj.Metadata); got != object.MetadataTypeCrossLanguage {
+		t.Fatalf("metadata = %q, want %q", got, object.MetadataTypeCrossLanguage)
+	}
+	payload := nativeObj.Data[MessagePackOffset:]
+	if len(payload) == 0 {
+		t.Fatal("empty payload")
+	}
+	// 0x92 is the msgpack fixarray header for a 2-element array; a map would be
+	// 0x82 (fixmap of 2) or another fixmap/map16/map32 header.
+	if payload[0] != 0x92 {
+		t.Fatalf("value tagged %q encoded with header %#x, want 0x92 (2-element array)",
+			nativeObj.Metadata, payload[0])
+	}
+
+	// The array form must still decode back into the Go struct.
+	var got xlangErrStruct
+	if err := s.DeserializeTo(nativeObj, &got); err != nil {
+		t.Fatalf("DeserializeTo failed: %v", err)
+	}
+	if got != (xlangErrStruct{Message: "boom", Code: 7}) {
+		t.Fatalf("round trip = %+v, want {boom 7}", got)
 	}
 }

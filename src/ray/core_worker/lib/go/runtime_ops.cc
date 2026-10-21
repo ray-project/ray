@@ -309,6 +309,15 @@ void RuntimeOperations::InitializeCoreWorker(const RuntimeInitializeOptions &opt
     return RuntimeOperations::GetInstance().AllocateObject(object, object_id);
   };
 
+  // Enable the core worker's periodic signal check. That check is also what
+  // polls WorkerContext::GetCurrentActorShouldExit() and tears the worker down
+  // with INTENDED_USER_EXIT after an intentional actor exit (api.ExitActor),
+  // which is what makes the raylet mark the actor dead and release its
+  // resources. With a null check_signals the poll never runs, so an
+  // intentionally exited actor stays ALIVE and keeps holding its CPUs. The Go
+  // runtime installs no signal handler here, so the check itself is a no-op.
+  core_options.check_signals = []() -> ray::Status { return ray::Status::OK(); };
+
   ray::core::CoreWorkerProcess::Initialize(core_options);
   core_worker_ = &ray::core::CoreWorkerProcess::GetCoreWorker();
 

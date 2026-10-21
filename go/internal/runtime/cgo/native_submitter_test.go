@@ -22,6 +22,7 @@ package cgo
 */
 import "C"
 import (
+	"strings"
 	"testing"
 
 	"github.com/ray-project/ray/go/pkg/ids"
@@ -42,6 +43,35 @@ func TestNewNativeTaskSubmitter(t *testing.T) {
 
 	if submitter.functionManager != funcManager {
 		t.Error("Expected functionManager to be set")
+	}
+}
+
+// TestNativeTaskSubmitterGetActorHandleByCreationRegistry pins the contract that
+// GetActorHandle resolves only through the process-wide by-creation registry
+// (createdActorIDSet, populated by CreateActor): the C++ ActorManager is not
+// consulted, so an actor ID this process never created must not resolve. It is
+// pure Go, so it can run in this unit target without a live core worker.
+func TestNativeTaskSubmitterGetActorHandleByCreationRegistry(t *testing.T) {
+	submitter := &NativeTaskSubmitter{}
+
+	// The registry singleton is process-wide and entries are never removed, so
+	// the fixture ID must not collide with another test's.
+	unknown := newTestActorID(t, "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f")
+	if _, err := submitter.GetActorHandle(unknown); err == nil {
+		t.Fatal("GetActorHandle resolved an actor ID absent from the by-creation registry")
+	} else if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("GetActorHandle error = %v, want a not-found error", err)
+	}
+
+	// Once CreateActor has registered the ID, the same lookup resolves a handle
+	// that carries it.
+	createdActorIDSet.add(unknown)
+	handle, err := submitter.GetActorHandle(unknown)
+	if err != nil {
+		t.Fatalf("GetActorHandle for a registered actor failed: %v", err)
+	}
+	if handle == nil || !handle.ID().Equal(unknown) {
+		t.Fatalf("GetActorHandle = %v, want a handle carrying %s", handle, unknown.Hex())
 	}
 }
 

@@ -40,6 +40,7 @@ import (
 	"github.com/ray-project/ray/go/internal/runtime/objectstore"
 	"github.com/ray-project/ray/go/internal/runtime/resource"
 	"github.com/ray-project/ray/go/internal/runtime/serializer"
+	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
@@ -75,6 +76,12 @@ type NativeRuntime struct {
 	opts            base.InitializeOptions
 	handle          *cgoboundary.Handle
 	mu              sync.RWMutex
+	// shutdownLock is handed to the object store, which holds its read side
+	// around every CGO reference-count call and its write side here around the
+	// C++ teardown. It is separate from mu so that a caller already holding mu
+	// (e.g. an object-store getter) can still release a reference without a
+	// recursive read lock.
+	shutdownLock sync.RWMutex
 	gcsClient       atomic.Pointer[gcs.Client]
 	gcsInitError    atomic.Pointer[error]
 	initialized     atomic.Bool
@@ -157,7 +164,15 @@ func (nr *NativeRuntime) Start() error {
 	object.SetDefaultBufferPool(&serializer.BufferPoolWrapper{})
 
 	// Create ObjectStore during Start() for zero-overhead access in the hot path.
-	nativeStore := &objectstore.NativeObjectStore{}
+	// The shutdown lock is wired in so RemoveLocalReference -- the object-store
+	// CGO call that drops an ObjectRef's local reference from the release worker
+	// and from the submit path's pass-by-ref argument cleanup -- holds the read
+	// side while the C++ CoreWorker is alive; Shutdown takes the write side across
+	// the teardown. Constructing the store without it leaves the lock nil and
+	// RemoveLocalReference dereferences a nil pointer. RemoveLocalReference is the
+	// only object-store CGO call gated by this lock; Put/Get/Wait/Delete and
+	// AddLocalReference are not covered by it.
+	nativeStore := objectstore.NewNativeObjectStore(&nr.shutdownLock, nil)
 	nr.objectStore = nativeStore
 
 	// Register the Go task executor callback with C++.
@@ -227,7 +242,17 @@ func (nr *NativeRuntime) executeTask(
 		if err != nil {
 			return nil, fmt.Errorf("invalid function descriptor: %w", err)
 		}
-		return nr.actorManager.ExecuteActorMethod(actorID, goDesc, args)
+		results, execErr := nr.actorManager.ExecuteActorMethod(actorID, goDesc, args)
+		if execErr != nil && rayerrors.IsActorExitError(execErr) {
+			// Intentional actor exit (api.ExitActor). Tell the C++ CoreWorker the
+			// actor should exit so it tears the worker down with
+			// INTENDED_USER_EXIT; that is what makes the raylet mark the actor dead
+			// and release its resources. Python's ray.actor.exit_actor does the same
+			// via set_current_actor_should_exit(). Without it the actor stays ALIVE
+			// and keeps holding its CPUs.
+			nr.workerContext.SetCurrentActorShouldExit()
+		}
+		return results, execErr
 	default:
 		// Normal task: delegate to the executor (which also handles the case
 		// where the actor ID is nil for ordinary function calls).
@@ -252,6 +277,14 @@ func (nr *NativeRuntime) Shutdown() error {
 		logger.Info("Native runtime shutdown skipped: not initialized")
 		return ErrRuntimeNotInitialized
 	}
+
+	// Block an in-flight RemoveLocalReference for the whole teardown: it is the
+	// one object-store CGO call that takes the read side of this lock, so once the
+	// write lock is held that call cannot reach the C++ CoreWorker while the
+	// CoreWorker is being destroyed. The store's other CGO calls are not gated by
+	// this lock.
+	nr.shutdownLock.Lock()
+	defer nr.shutdownLock.Unlock()
 
 	nr.mu.Lock()
 	if nr.handle == nil {

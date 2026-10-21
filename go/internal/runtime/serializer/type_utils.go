@@ -162,6 +162,26 @@ func IsCrossLanguageType(obj interface{}) bool {
 	return isCrossLanguageTypeRecursive(t)
 }
 
+// isCrossLanguageValue reports whether obj is written on the wire as a
+// cross-language value, which decides both the payload's metadata tag and its
+// struct layout.
+//
+// It is deliberately the recursive check alone, without IsCrossLanguageType's
+// type-category short circuit. CategorizeType classifies a value that
+// implements error as an exception and IsCrossLanguageType then answers false
+// for it, while the recursive check answers from the struct's fields. A struct
+// with only exported fields that also implements error would therefore be
+// tagged XLANG by one and encoded as a msgpack map by the other, and the C++
+// worker would fail with "msgpack::v1::type_error: std::bad_cast" on the
+// argument it was told to read as a MSGPACK_DEFINE array. Both decisions must
+// come from this one predicate; it is computed once per serialization and
+// passed to the encoder, so the two can never disagree.
+func isCrossLanguageValue(obj interface{}) bool {
+	// A nil interface carries no type: reflect.TypeOf(nil) is a nil Type and the
+	// kind switch would dereference it. nil is written as a Go-only value.
+	return obj != nil && isCrossLanguageTypeRecursive(reflect.TypeOf(obj))
+}
+
 // isCrossLanguageTypeByCategory checks if a type category can be transmitted across languages.
 // This function uses the type category to make a quick decision for primitive types.
 func isCrossLanguageTypeByCategory(category TypeCategory) (bool, bool) {

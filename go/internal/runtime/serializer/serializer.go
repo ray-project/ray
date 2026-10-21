@@ -16,7 +16,6 @@ package serializer
 
 import (
 	"fmt"
-	"reflect"
 
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
@@ -74,10 +73,11 @@ func (s *Serializer) Decode(data []byte, target interface{}) error {
 // instead (see below); the result is still correct, only slightly less optimal
 // than a single fresh allocation.
 func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
-	// A nil interface carries no type: reflect.TypeOf(nil) is a nil Type and
-	// the recursive kind switch would dereference it. Treat nil as a Go-only
-	// (non-cross-language) value, matching the internal runtime.
-	crossLang := obj != nil && isCrossLanguageTypeRecursive(reflect.TypeOf(obj))
+	// The cross-language decision is made once here and used for both the
+	// metadata tag and the encoder's struct layout below. Recomputing it in the
+	// encoder with a different predicate is what let a struct that implements
+	// error be tagged XLANG and encoded as a map.
+	crossLang := isCrossLanguageValue(obj)
 	metadata := s.determineMetadata(crossLang)
 
 	// Get contained object IDs from context
@@ -104,7 +104,7 @@ func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
 		// buffer is dropped. Holding orig lets us still return the pooled
 		// buffer to the pool (slot + accounting) in that case.
 		orig := buf
-		if err := s.msgpack.EncodeToBuffer(obj, &buf); err != nil {
+		if err := s.msgpack.EncodeToBuffer(obj, &buf, crossLang); err != nil {
 			PutBuffer(orig)
 			return nil, fmt.Errorf("failed to serialize object: %w", err)
 		}
@@ -129,7 +129,7 @@ func (s *Serializer) Serialize(obj interface{}) (*NativeRayObject, error) {
 		// Kept out of the pool (fresh allocation per call, like the other
 		// runtimes); the estimate already carries 10-20% msgpack overhead.
 		buf := make([]byte, MessagePackOffset, est)
-		if err := s.msgpack.EncodeToBuffer(obj, &buf); err != nil {
+		if err := s.msgpack.EncodeToBuffer(obj, &buf, crossLang); err != nil {
 			return nil, fmt.Errorf("failed to serialize object: %w", err)
 		}
 		nativeObj.Data = buf

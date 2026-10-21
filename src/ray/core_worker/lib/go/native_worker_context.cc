@@ -122,6 +122,11 @@ extern "C" bool CNativeWorkerContext_IsCurrentTaskSet() {
   });
 }
 
+extern "C" void CNativeWorkerContext_SetCurrentActorShouldExit() {
+  CgoErrorHandler::ExecuteVoid("CNativeWorkerContext_SetCurrentActorShouldExit",
+                               []() { GetContextOps().SetCurrentActorShouldExit(); });
+}
+
 extern "C" CByteArray *CNativeWorkerContext_GetCurrentTaskID() {
   return CgoErrorHandler::Execute("CNativeWorkerContext_GetCurrentTaskID",
                                   []() -> CByteArray * {
