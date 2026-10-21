@@ -5,6 +5,7 @@ This module provides an object-oriented interface for different GPU providers
 """
 
 import abc
+import dataclasses
 import enum
 import logging
 import os
@@ -12,7 +13,7 @@ import re
 import subprocess
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple, TypedDict, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, TypedDict, Union
 
 try:
     from typing import NotRequired
@@ -20,6 +21,8 @@ except ImportError:
     from typing_extensions import NotRequired
 
 from ray._common.utils import env_bool
+from ray.dashboard.modules.reporter.gpu_accounting import WindowAccountant
+from ray.dashboard.modules.reporter.reporter_consts import REPORTER_UPDATE_INTERVAL_MS
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -35,6 +38,16 @@ _UNSAFE_PROCESS_UTIL_NAME_PATTERNS = (re.compile(r"(?<!\w)PPU", re.IGNORECASE),)
 _PROCESS_UTIL_DETECTION_LOG_INTERVAL_S = 60.0
 # A cursor further ahead than this means the wall clock stepped back.
 _PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US = 1_000_000
+# Empty sample reads in a row (while the device is busy) before resetting the cursor.
+_SAMPLES_NOT_FOUND_REBASELINE_STREAK = 3
+# The oldest new sample trails the cursor by up to one sample period (1/6-1 s);
+# a larger gap means the buffer no longer reaches back to the previous read.
+_SAMPLES_GAP_TOLERANCE_S = 1.5
+# One utilization reading stands for at most two poll intervals.
+_RATES_FALLBACK_MAX_WINDOW_S = 2 * REPORTER_UPDATE_INTERVAL_MS / 1000
+# `busy_source` values.
+BUSY_SOURCE_SAMPLES = "nvml_samples"
+BUSY_SOURCE_RATES = "nvml_rates"
 
 # Types
 Percentage = int
@@ -70,6 +83,11 @@ class GpuUtilizationInfo(TypedDict):
     # Optional: power in milliwatts, temperature in Celsius (e.g. from NVIDIA/AMD)
     power_mw: NotRequired[Optional[int]]
     temperature_c: NotRequired[Optional[int]]
+    # Optional: kernel-busy share of the poll window, the same as seconds, and the
+    # NVML API they came from.
+    busy_percent: NotRequired[Optional[float]]
+    busy_seconds: NotRequired[Optional[float]]
+    busy_source: NotRequired[str]
 
 
 # tpu utilization for google tpu
@@ -146,12 +164,26 @@ class GpuProvider(abc.ABC):
         return b
 
 
+@dataclasses.dataclass
+class _BusyState:
+    """Per-device state for the busy metrics read from the NVML sample buffer."""
+
+    accountant: WindowAccountant = dataclasses.field(default_factory=WindowAccountant)
+    # Newest sample timestamp read (CPU µs); 0 reads the whole buffer.
+    cursor_us: int = 0
+    # None until the first read shows whether nvmlDeviceGetSamples works.
+    supported: Optional[bool] = None
+    not_found_streak: int = 0
+
+
 class NvidiaGpuProvider(GpuProvider):
     """NVIDIA GPU provider using pynvml."""
 
     def __init__(self):
         super().__init__()
         self._pynvml = None
+        # Busy-metric state per device UUID.
+        self._busy_state: Dict[str, _BusyState] = {}
         # Maintain per-GPU sampling timestamps when using process utilization API
         self._gpu_process_last_sample_ts: Dict[int, int] = {}
         self._force_skip_process_util_api = env_bool(RAY_SKIP_PROCESS_UTIL_API, False)
@@ -178,6 +210,112 @@ class NvidiaGpuProvider(GpuProvider):
         """Return whether `error` is an instance of pynvml's `class_name` error."""
         error_class = getattr(self._pynvml, class_name, None)
         return isinstance(error_class, type) and isinstance(error, error_class)
+
+    def _sample_value(self, value_type, sample) -> float:
+        """Return a sample's value for the value type NVML reported."""
+        value = sample.sampleValue
+        if value_type == getattr(self._pynvml, "NVML_VALUE_TYPE_DOUBLE", 0):
+            return float(value.dVal)
+        if value_type == getattr(self._pynvml, "NVML_VALUE_TYPE_UNSIGNED_LONG", 2):
+            return float(value.ulVal)
+        if value_type == getattr(self._pynvml, "NVML_VALUE_TYPE_UNSIGNED_LONG_LONG", 3):
+            return float(value.ullVal)
+        return float(value.uiVal)
+
+    def _busy_from_rates(
+        self, state: _BusyState, rates_percent: Optional[int]
+    ) -> Tuple[Optional[float], Optional[float], str]:
+        """Credit the window from the instantaneous utilization reading."""
+        if rates_percent is None:
+            state.accountant.fail()
+            return None, None, BUSY_SOURCE_RATES
+        window_s = state.accountant.window_seconds()
+        if window_s is not None and window_s > _RATES_FALLBACK_MAX_WINDOW_S:
+            # One reading can't stand for a long gap; credit nothing and restart.
+            state.accountant.credit(None)
+            return float(rates_percent), None, BUSY_SOURCE_RATES
+        return (
+            float(rates_percent),
+            state.accountant.credit(rates_percent),
+            BUSY_SOURCE_RATES,
+        )
+
+    def _read_busy(
+        self, gpu_handle: Any, uuid: str, rates_percent: Optional[int]
+    ) -> Tuple[Optional[float], Optional[float], str]:
+        """Return (busy %, busy seconds, source) for the window since the last poll."""
+        state = self._busy_state.setdefault(uuid, _BusyState())
+        if state.supported is False:
+            return self._busy_from_rates(state, rates_percent)
+        try:
+            value_type, samples = self._pynvml.nvmlDeviceGetSamples(
+                gpu_handle, self._pynvml.NVML_GPU_UTILIZATION_SAMPLES, state.cursor_us
+            )
+            samples = [
+                sample for sample in samples if int(sample.timeStamp) > state.cursor_us
+            ]
+            if not samples:
+                raise self._pynvml.NVMLError_NotFound()
+        except Exception as e:
+            if self._is_nvml_error(e, "NVMLError_NotSupported") or self._is_nvml_error(
+                e, "NVMLError_FunctionNotFound"
+            ):
+                # Use the instantaneous reading from now on.
+                state.supported = False
+                self._count_collection_error("samples", e)
+                if log_once(f"gpu_samples_unsupported_{uuid}"):
+                    logger.info(
+                        "nvmlDeviceGetSamples is not supported on GPU %s; busy "
+                        "metrics use nvmlDeviceGetUtilizationRates instead: %s",
+                        uuid,
+                        e,
+                    )
+                return self._busy_from_rates(state, rates_percent)
+            self._count_collection_error("samples", e)
+            if self._is_nvml_error(e, "NVMLError_NotFound"):
+                # Idle devices still produce samples, so none means the cursor is off;
+                # after a few polls, read the whole buffer again.
+                state.not_found_streak += 1
+                if (
+                    state.not_found_streak >= _SAMPLES_NOT_FOUND_REBASELINE_STREAK
+                    and rates_percent is not None
+                ):
+                    state.not_found_streak = 0
+                    state.cursor_us = 0
+                    self._count_collection_error("samples", "cursor_rebaselined")
+                    return self._busy_from_rates(state, rates_percent)
+            state.accountant.fail()
+            return None, None, BUSY_SOURCE_SAMPLES
+
+        state.supported = True
+        state.not_found_streak = 0
+        timestamps = [int(sample.timeStamp) for sample in samples]
+        oldest_us, newest_us = min(timestamps), max(timestamps)
+        previous_cursor_us = state.cursor_us
+        state.cursor_us = newest_us
+        if previous_cursor_us == 0:
+            # First read: set the cursor.
+            state.accountant.credit(None)
+            return None, None, BUSY_SOURCE_SAMPLES
+        mean_percent = sum(
+            self._sample_value(value_type, sample) for sample in samples
+        ) / len(samples)
+        if (oldest_us - previous_cursor_us) / 1_000_000 > _SAMPLES_GAP_TOLERANCE_S:
+            # The buffer doesn't reach back to the previous read; credit only the
+            # span it covers and start a new window.
+            self._count_collection_error("samples", "window_truncated")
+            state.accountant.credit(None)
+            covered_s = (newest_us - oldest_us) / 1_000_000
+            return (
+                mean_percent,
+                min(max(mean_percent, 0.0), 100.0) / 100.0 * covered_s,
+                BUSY_SOURCE_SAMPLES,
+            )
+        return (
+            mean_percent,
+            state.accountant.credit(mean_percent),
+            BUSY_SOURCE_SAMPLES,
+        )
 
     def is_available(self) -> bool:
         """Check if NVIDIA GPUs are available."""
@@ -447,6 +585,7 @@ class NvidiaGpuProvider(GpuProvider):
     def _get_gpu_info(self, gpu_handle, gpu_index: int) -> Optional[GpuUtilizationInfo]:
         """Get utilization info for a regular (non-MIG) GPU."""
         try:
+            uuid = self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle))
             memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
 
             # Get GPU utilization; None if the device doesn't report it
@@ -462,6 +601,11 @@ class NvidiaGpuProvider(GpuProvider):
                     logger.info(
                         f"Failed to retrieve GPU utilization via `nvmlDeviceGetUtilizationRates`: {e}"
                     )
+
+            # Busy fraction of the window since the previous poll.
+            busy_percent, busy_seconds, busy_source = self._read_busy(
+                gpu_handle, uuid, utilization
+            )
 
             # Get running processes
             processes_pids = {}
@@ -571,13 +715,16 @@ class NvidiaGpuProvider(GpuProvider):
             return GpuUtilizationInfo(
                 index=gpu_index,
                 name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
-                uuid=self._decode(self._pynvml.nvmlDeviceGetUUID(gpu_handle)),
+                uuid=uuid,
                 utilization_gpu=utilization,
                 memory_used=int(memory_info.used) // MB,
                 memory_total=int(memory_info.total) // MB,
                 processes_pids=processes_pids,
                 power_mw=power_mw,
                 temperature_c=temperature_c,
+                busy_percent=busy_percent,
+                busy_seconds=busy_seconds,
+                busy_source=busy_source,
             )
 
         except Exception as e:

@@ -133,6 +133,23 @@ def jsonify_asdict(o) -> str:
 
 # A list of gauges to record and export metrics.
 METRICS = {
+    # GPU busy time over the poll window, as a gauge and as a counter.
+    "node_gpu_busy_percent": Gauge(
+        "node_gpu_busy_percent",
+        "Share of the time since the previous poll during which the GPU "
+        "executed a kernel, averaged over the driver's utilization samples "
+        "for that window (0-100). nvmlDeviceGetSamples on NVIDIA.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_busy_seconds_total": Counter(
+        "node_gpu_busy_seconds_total",
+        "Cumulative seconds during which the GPU executed a kernel; "
+        "rate() of this is the busy fraction at any scrape interval. "
+        "Reads 100 while a single SM is busy, like GPU utilization.",
+        "seconds",
+        GPU_TAG_KEYS,
+    ),
     # GPU collection health
     "node_gpu_collection_errors_total": Counter(
         "node_gpu_collection_errors_total",
@@ -1855,6 +1872,23 @@ class ReporterAgent(
                             Record(
                                 gauge=METRICS["node_gpus_utilization"],
                                 value=gpus_utilization,
+                                tags=gpu_tags,
+                            )
+                        )
+                    # Busy window metrics; absent while the window is unmeasured.
+                    if gpu.get("busy_percent") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpu_busy_percent"],
+                                value=gpu["busy_percent"],
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu.get("busy_seconds") is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS["node_gpu_busy_seconds_total"],
+                                value=gpu["busy_seconds"],
                                 tags=gpu_tags,
                             )
                         )

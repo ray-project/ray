@@ -826,6 +826,58 @@ def test_report_gpu_collection_errors(tmp_path):
     ]
 
 
+def test_report_stats_gpu_busy(tmp_path):
+    """Busy window metrics are recorded when measured and absent otherwise."""
+    from ray._private.metrics_agent import Counter
+
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+    assert isinstance(METRICS["node_gpu_busy_seconds_total"], Counter)
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-0",
+            "name": "NVIDIA T4",
+            "utilization_gpu": 75,
+            "memory_used": 1,
+            "memory_total": 16000,
+            "processes": [],
+            "busy_percent": 60.0,
+            "busy_seconds": 3.0,
+            "busy_source": "nvml_samples",
+        },
+        {
+            # First poll: the window is not measured yet.
+            "index": 1,
+            "uuid": "GPU-1",
+            "name": "NVIDIA T4",
+            "utilization_gpu": 75,
+            "memory_used": 1,
+            "memory_total": 16000,
+            "processes": [],
+            "busy_percent": None,
+            "busy_seconds": None,
+            "busy_source": "nvml_samples",
+        },
+    ]
+    records = agent._to_records(stats, {})
+    busy = {
+        (r.gauge.name, r.tags["GpuIndex"]): r.value
+        for r in records
+        if r.gauge.name in ("node_gpu_busy_percent", "node_gpu_busy_seconds_total")
+    }
+    assert busy == {
+        ("node_gpu_busy_percent", "0"): 60.0,
+        ("node_gpu_busy_seconds_total", "0"): 3.0,
+    }
+
+
 def test_report_stats_gpu_power_and_temperature(tmp_path):
     """Test that GPU power and temperature metrics are reported when present in stats."""
     dashboard_agent = MagicMock()

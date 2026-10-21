@@ -5,6 +5,7 @@ import time
 import unittest
 from unittest.mock import Mock, call, patch
 
+from ray.dashboard.modules.reporter.gpu_accounting import WindowAccountant
 from ray.dashboard.modules.reporter.gpu_providers import (
     MB,
     RAY_SKIP_PROCESS_UTIL_API,
@@ -156,6 +157,20 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         )
         mock_pynvml.nvmlDeviceGetPowerUsage.return_value = 100000
         mock_pynvml.nvmlDeviceGetTemperature.return_value = 50
+        # A driver sample buffer: five 60 % samples per call, the newest
+        # timestamped now and the rest 2 s apart (an 8 s deep buffer).
+        mock_pynvml.NVML_GPU_UTILIZATION_SAMPLES = 1
+        mock_pynvml.NVML_VALUE_TYPE_UNSIGNED_INT = 1
+        mock_pynvml.nvmlDeviceGetSamples.side_effect = lambda handle, kind, cursor: (
+            1,
+            [
+                Mock(
+                    timeStamp=int(time.time() * 1_000_000) - 2_000_000 * i,
+                    sampleValue=Mock(uiVal=60),
+                )
+                for i in range(5)
+            ],
+        )
 
         self.provider._pynvml = mock_pynvml
         self.provider._initialized = True
@@ -924,6 +939,185 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         errors = self.provider.drain_collection_errors()
         self.assertEqual(
             [(api, count) for (api, _), count in errors.items()], [("init", 1)]
+        )
+
+    def _busy_state_with_clock(self, mock_pynvml, depth_s=8.0, value=60):
+        """Pre-create the busy state and a 1 s sample buffer on one fake clock."""
+        from ray.dashboard.modules.reporter.gpu_providers import _BusyState
+
+        clock = {"now": 1000.0}
+        state = _BusyState(accountant=WindowAccountant(clock=lambda: clock["now"]))
+        self.provider._busy_state["GPU-0"] = state
+
+        def samples(handle, kind, cursor):
+            now_us = int(clock["now"] * 1_000_000)
+            timestamps = [now_us - i * 1_000_000 for i in range(int(depth_s) + 1)]
+            return 1, [
+                Mock(timeStamp=ts, sampleValue=Mock(uiVal=value))
+                for ts in timestamps
+                if ts > cursor
+            ]
+
+        mock_pynvml.nvmlDeviceGetSamples.side_effect = samples
+        mock_pynvml.NVMLError_NotFound = type(
+            "NVMLError_NotFound", (mock_pynvml.NVMLError,), {}
+        )
+        return state, clock
+
+    def _poll(self, clock, seconds):
+        clock["now"] += seconds
+        return self.provider.get_gpu_utilization()[0]
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_first_poll_sets_cursor_and_credits_nothing(self, mock_pynvml):
+        """The first read of the sample buffer only sets the cursor."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        state, clock = self._busy_state_with_clock(mock_pynvml)
+
+        result = self._poll(clock, 0)
+
+        self.assertIsNone(result["busy_percent"])
+        self.assertIsNone(result["busy_seconds"])
+        self.assertEqual(result["busy_source"], "nvml_samples")
+        self.assertEqual(state.cursor_us, 1000 * 1_000_000)
+        self.assertTrue(state.supported)
+        self.assertEqual(self.provider.drain_collection_errors(), {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_window_is_mean_of_samples_times_span(self, mock_pynvml):
+        """A later poll credits mean(samples)/100 x seconds since the previous poll."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        state, clock = self._busy_state_with_clock(mock_pynvml)
+
+        with patch.object(self.provider, "_shutdown"):
+            self._poll(clock, 0)
+            result = self._poll(clock, 5)
+
+        self.assertEqual(result["busy_percent"], 60.0)
+        self.assertAlmostEqual(result["busy_seconds"], 3.0)  # 60 % of 5 s
+        self.assertEqual(result["busy_source"], "nvml_samples")
+        self.assertEqual(state.cursor_us, 1005 * 1_000_000)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_window_longer_than_buffer_credits_only_covered_span(
+        self, mock_pynvml
+    ):
+        """A gap the 8 s buffer doesn't reach back over credits only those 8 s."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        _, clock = self._busy_state_with_clock(mock_pynvml)
+
+        with patch.object(self.provider, "_shutdown"):
+            self._poll(clock, 0)
+            truncated = self._poll(clock, 30)
+            following = self._poll(clock, 5)
+
+        self.assertEqual(truncated["busy_percent"], 60.0)
+        self.assertAlmostEqual(truncated["busy_seconds"], 4.8)  # 60 % of 8 s
+        self.assertEqual(truncated["busy_source"], "nvml_samples")
+        # The next window starts at the truncated read.
+        self.assertAlmostEqual(following["busy_seconds"], 3.0)
+        self.assertEqual(
+            self.provider.drain_collection_errors(),
+            {("samples", "window_truncated"): 1},
+        )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_outage_does_not_credit_the_gap(self, mock_pynvml):
+        """After a minute of failed reads, the gap isn't credited as busy."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        _, clock = self._busy_state_with_clock(mock_pynvml, value=100)
+        samples = mock_pynvml.nvmlDeviceGetSamples.side_effect
+
+        with patch.object(self.provider, "_shutdown"):
+            self._poll(clock, 0)
+            mock_pynvml.nvmlDeviceGetSamples.side_effect = mock_pynvml.NVMLError(
+                "Unknown Error"
+            )
+            for _ in range(12):
+                self.assertIsNone(self._poll(clock, 5)["busy_seconds"])
+            mock_pynvml.nvmlDeviceGetSamples.side_effect = samples
+            result = self._poll(clock, 5)
+
+        # Only the 8 s the buffer still holds, not the 65 s since the last read.
+        self.assertAlmostEqual(result["busy_seconds"], 8.0)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_unsupported_samples_uses_rates_permanently(self, mock_pynvml):
+        """NOT_SUPPORTED turns the device to the instantaneous reading for good."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        state, clock = self._busy_state_with_clock(mock_pynvml)
+        not_supported = type("NVMLError_NotSupported", (mock_pynvml.NVMLError,), {})
+        mock_pynvml.NVMLError_NotSupported = not_supported
+        mock_pynvml.nvmlDeviceGetSamples.side_effect = not_supported()
+
+        with patch.object(self.provider, "_shutdown"):
+            first = self._poll(clock, 0)
+            second = self._poll(clock, 5)
+
+        self.assertFalse(state.supported)
+        self.assertIsNone(first["busy_seconds"])  # opens the window
+        self.assertEqual(second["busy_percent"], 75.0)
+        self.assertAlmostEqual(second["busy_seconds"], 3.75)
+        self.assertEqual(second["busy_source"], "nvml_rates")
+        # An API the driver doesn't have isn't a failure.
+        self.assertEqual(self.provider.drain_collection_errors(), {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_rates_fallback_does_not_credit_a_long_gap(self, mock_pynvml):
+        """One utilization reading never stands for more than two poll intervals."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        _, clock = self._busy_state_with_clock(mock_pynvml)
+        not_supported = type("NVMLError_NotSupported", (mock_pynvml.NVMLError,), {})
+        mock_pynvml.NVMLError_NotSupported = not_supported
+        mock_pynvml.nvmlDeviceGetSamples.side_effect = not_supported()
+
+        with patch.object(self.provider, "_shutdown"):
+            self._poll(clock, 0)
+            mock_pynvml.nvmlDeviceGetUtilizationRates.side_effect = (
+                mock_pynvml.NVMLError("Unknown Error")
+            )
+            for _ in range(12):
+                self.assertIsNone(self._poll(clock, 5)["busy_seconds"])
+            mock_pynvml.nvmlDeviceGetUtilizationRates.side_effect = None
+            mock_pynvml.nvmlDeviceGetUtilizationRates.return_value = Mock(gpu=100)
+            gap = self._poll(clock, 5)
+            following = self._poll(clock, 5)
+
+        self.assertEqual(gap["busy_percent"], 100.0)
+        self.assertIsNone(gap["busy_seconds"])
+        self.assertAlmostEqual(following["busy_seconds"], 5.0)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_busy_not_found_streak_rebaselines_cursor_when_idle(self, mock_pynvml):
+        """Repeated NOT_FOUND re-reads the whole buffer, also on an idle GPU."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlDeviceGetUtilizationRates.return_value = Mock(gpu=0)
+        state, clock = self._busy_state_with_clock(mock_pynvml, value=0)
+        samples = mock_pynvml.nvmlDeviceGetSamples.side_effect
+
+        with patch.object(self.provider, "_shutdown"):
+            self._poll(clock, 0)  # baseline
+            mock_pynvml.nvmlDeviceGetSamples.side_effect = (
+                mock_pynvml.NVMLError_NotFound()
+            )
+            results = [self._poll(clock, 5) for _ in range(3)]
+            mock_pynvml.nvmlDeviceGetSamples.side_effect = samples
+            reread = self._poll(clock, 5)
+            following = self._poll(clock, 5)
+
+        # The 15 s gap is longer than two polls, so the reading credits nothing.
+        self.assertEqual([r["busy_seconds"] for r in results], [None, None, None])
+        self.assertEqual(results[2]["busy_percent"], 0.0)
+        # The re-read only sets the cursor again; the next poll credits normally.
+        self.assertIsNone(reread["busy_seconds"])
+        self.assertEqual(state.cursor_us, 1025 * 1_000_000)
+        self.assertAlmostEqual(following["busy_seconds"], 0.0)
+        self.assertEqual(
+            self.provider.drain_collection_errors(),
+            {
+                ("samples", "NVMLError_NotFound"): 3,
+                ("samples", "cursor_rebaselined"): 1,
+            },
         )
 
 
