@@ -1,6 +1,7 @@
 """Unit tests for GPU providers."""
 
 import os
+import time
 import unittest
 from unittest.mock import Mock, call, patch
 
@@ -547,6 +548,154 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["processes_pids"][1234]["pid"], 1234)
         self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 256)
         self.assertEqual(gpu_info["processes_pids"][1234]["gpu_utilization"], 35)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_is_microseconds(self, mock_pynvml):
+        """The cursor passed to NVML is the previous poll's time in microseconds."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            before_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+            between_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+
+        # The first poll reads the whole buffer the driver retains.
+        self.assertEqual(cursors[0], 0)
+        # The second poll continues from the first poll, in microseconds; a
+        # millisecond cursor would be ~1000x smaller than `before_us`.
+        self.assertGreaterEqual(cursors[1], before_us)
+        self.assertLessEqual(cursors[1], between_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_follows_newest_sample(self, mock_pynvml):
+        """The cursor continues from the newest sample NVML returned."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        newest_us = int(time.time() * 1_000_000) + 500_000
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40, timeStamp=newest_us)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+
+        self.assertEqual(cursors[1], newest_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_follows_sample_before_now(self, mock_pynvml):
+        """A sample older than the poll still sets the cursor, so none is skipped."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        newest_us = int(time.time() * 1_000_000) - 200_000
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40, timeStamp=newest_us)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+
+        self.assertEqual(cursors[1], newest_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_ignores_sample_far_ahead(self, mock_pynvml):
+        """A sample timestamped far in the future does not become the cursor."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [
+                Mock(
+                    pid=1000,
+                    smUtil=40,
+                    timeStamp=int(time.time() * 1_000_000) + 60_000_000,
+                )
+            ]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+
+        with patch.object(self.provider, "_shutdown"):
+            before_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+            between_us = int(time.time() * 1_000_000)
+            self.provider.get_gpu_utilization()
+
+        self.assertGreaterEqual(cursors[1], before_us)
+        self.assertLessEqual(cursors[1], between_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_reset_after_clock_step(self, mock_pynvml):
+        """A cursor far in the future (clock stepped backwards) restarts from now."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        cursors = []
+
+        def record_cursor(handle, last_seen_us):
+            cursors.append(last_seen_us)
+            return [Mock(pid=1000, smUtil=40)]
+
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = record_cursor
+        now_us = int(time.time() * 1_000_000)
+        self.provider._gpu_process_last_sample_ts[0] = now_us + 60_000_000
+
+        self.provider.get_gpu_utilization()
+        after_us = int(time.time() * 1_000_000)
+
+        self.assertGreaterEqual(cursors[0], now_us)
+        self.assertLessEqual(cursors[0], after_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_idle_window_advances_cursor(self, mock_pynvml):
+        """NVML_ERROR_NOT_FOUND means no sample since the cursor: an idle window."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+
+        class MockNVMLErrorNotFound(mock_pynvml.NVMLError):
+            pass
+
+        mock_pynvml.NVMLError_NotFound = MockNVMLErrorNotFound
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            MockNVMLErrorNotFound()
+        )
+
+        before_us = int(time.time() * 1_000_000)
+        result = self.provider.get_gpu_utilization()
+        after_us = int(time.time() * 1_000_000)
+
+        # The process found by the running-process API is kept, without a
+        # utilization value, and the window moves on.
+        self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
+        cursor_us = self.provider._gpu_process_last_sample_ts[0]
+        self.assertGreaterEqual(cursor_us, before_us)
+        self.assertLessEqual(cursor_us, after_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_error_keeps_cursor(self, mock_pynvml):
+        """Any other NVML error leaves the cursor so the next poll covers the gap."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            mock_pynvml.NVMLError("boom")
+        )
+        self.provider._gpu_process_last_sample_ts[0] = 1234
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertIsNone(result[0]["processes_pids"][1000]["gpu_utilization"])
+        self.assertEqual(self.provider._gpu_process_last_sample_ts[0], 1234)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_errors(self, mock_pynvml):

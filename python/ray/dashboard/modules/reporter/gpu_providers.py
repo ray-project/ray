@@ -32,6 +32,8 @@ RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES = "RAY_SKIP_PROCESS_UTIL_API_DEVICE_NAMES
 # unrelated names such as XPPU are not classified as unsafe.
 _UNSAFE_PROCESS_UTIL_NAME_PATTERNS = (re.compile(r"(?<!\w)PPU", re.IGNORECASE),)
 _PROCESS_UTIL_DETECTION_LOG_INTERVAL_S = 60.0
+# A cursor further ahead than this means the wall clock stepped back.
+_PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US = 1_000_000
 
 # Types
 Percentage = int
@@ -148,6 +150,11 @@ class NvidiaGpuProvider(GpuProvider):
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
+
+    def _is_nvml_error(self, error: Exception, class_name: str) -> bool:
+        """Return whether `error` is an instance of pynvml's `class_name` error."""
+        error_class = getattr(self._pynvml, class_name, None)
+        return isinstance(error_class, type) and isinstance(error, error_class)
 
     def is_available(self) -> bool:
         """Check if NVIDIA GPUs are available."""
@@ -463,12 +470,27 @@ class NvidiaGpuProvider(GpuProvider):
                 # Use a newer API (driver 550+) to get per-process SM utilization,
                 # but the user may not always have access to the newest API.
                 try:
-                    current_ts_ms = int(time.time() * 1000)
-                    last_ts_ms = self._gpu_process_last_sample_ts.get(gpu_index, 0)
+                    # NVML expects lastSeenTimeStamp in microseconds.
+                    now_us = int(time.time() * 1_000_000)
+                    last_seen_us = self._gpu_process_last_sample_ts.get(gpu_index, 0)
+                    if last_seen_us > now_us + _PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US:
+                        # The clock stepped back; restart the window.
+                        last_seen_us = now_us
                     nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
-                        gpu_handle, last_ts_ms
+                        gpu_handle, last_seen_us
                     )
-                    self._gpu_process_last_sample_ts[gpu_index] = current_ts_ms
+                    # Continue from the newest sample; ignore timestamps in the future.
+                    sample_ts = [
+                        int(nv_process.timeStamp)
+                        for nv_process in nv_processes
+                        if isinstance(getattr(nv_process, "timeStamp", None), int)
+                        and 0
+                        < nv_process.timeStamp
+                        <= now_us + _PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US
+                    ]
+                    self._gpu_process_last_sample_ts[gpu_index] = (
+                        max(sample_ts) if sample_ts else now_us
+                    )
 
                     for nv_process in nv_processes:
                         pid = int(nv_process.pid)
@@ -485,7 +507,10 @@ class NvidiaGpuProvider(GpuProvider):
                                 nv_process.smUtil
                             )
                 except self._pynvml.NVMLError as e:
-                    if log_once("gpu_process_sm_utilization"):
+                    if self._is_nvml_error(e, "NVMLError_NotFound"):
+                        # No samples since the cursor: the GPU was idle.
+                        self._gpu_process_last_sample_ts[gpu_index] = now_us
+                    elif log_once("gpu_process_sm_utilization"):
                         logger.info(
                             "Failed to retrieve GPU process SM utilization using "
                             "`nvmlDeviceGetProcessesUtilizationInfo`, "
