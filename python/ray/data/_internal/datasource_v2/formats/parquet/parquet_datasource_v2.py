@@ -17,6 +17,9 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_schema_from_files,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
     PathColumn,
     RowHashColumn,
@@ -62,7 +65,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     Listing is delegated to :class:`NonSamplingFileIndexer` driven by the
     ``ListFiles`` logical op; scanning and reading are delegated to
     :class:`ParquetScanner` and :class:`ParquetFileReader`. Schema
-    inference reads the first file's footer only and augments with
+    inference merges the supplied file sample's footers and augments with
     partition/path columns as configured.
     """
 
@@ -276,11 +279,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
-        from concurrent.futures import ThreadPoolExecutor
-
         import pyarrow.parquet as pq
-
-        from ray.data._internal.util import unify_schemas_with_validation
 
         # See ``resolve_partitioning``: ``None`` is reachable only for a
         # source that answers ``schema_needs_file_sample`` False.
@@ -321,12 +320,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 with filesystem.open_input_file(path) as handle:
                     return pq.read_schema(handle)
 
-            with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-                per_file_schemas = list(executor.map(_read_schema, sample_paths))
-            schema = (
-                unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
+            schema = infer_schema_from_files(
+                sample_paths, _read_schema, format_name="Parquet"
             )
-            assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:

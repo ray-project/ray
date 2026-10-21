@@ -700,21 +700,20 @@ class SerializablePreprocessorBase(Preprocessor, abc.ABC):
         If the serialized version differs from the current ``VERSION``,
         implement migration logic to handle schema changes:
 
-        .. testcode::
-
-            def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
-                # Handle version migration
-                if version == 1 and self.VERSION == 2:
-                    # Migrate from version 1 to 2
-                    if "old_field" in fields:
-                        fields["new_field"] = migrate_old_field(fields.pop("old_field"))
-
-                # Set all fields
-                for key, value in fields.items():
-                    setattr(self, key, value)
-
-                # Reinitialize derived state
-                self._stat_computation_plan = StatComputationPlan()
+        >>> from typing import Any, Dict
+        >>> def _set_serializable_fields(self, fields: Dict[str, Any], version: int):
+        ...     # Handle version migration
+        ...     if version == 1 and self.VERSION == 2:
+        ...         # Migrate from version 1 to 2
+        ...         if "old_field" in fields:
+        ...             fields["new_field"] = migrate_old_field(fields.pop("old_field"))
+        ...
+        ...     # Set all fields
+        ...     for key, value in fields.items():
+        ...         setattr(self, key, value)
+        ...
+        ...     # Reinitialize derived state
+        ...     self._stat_computation_plan = StatComputationPlan()
 
         Args:
             fields: Dictionary of field names to values

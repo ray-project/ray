@@ -1,0 +1,46 @@
+{#- Override of pydata-sphinx-theme 0.18.0 sections/sidebar-primary.html. Re-sync on theme upgrades.
+    Change: the mobile copy of the navbar items is a labeled <nav>, not a <div>.
+    Why: Read the Docs serves docs.ray.io through Cloudflare, which converts pages to Markdown for clients
+    that send `Accept: text/markdown`, such as coding agents. The converter drops <header>, <footer>, and <nav>
+    but keeps <div> and <aside>, so site chrome in a <div> leaks into the Markdown as page content. -#}
+{% block docs_sidebar %}
+{% if theme_navbar_center or theme_navbar_end or sidebars or theme_primary_sidebar_end %}
+  {# Header items that will be displayed in the sidebar on mobile #}
+  <nav class="sidebar-header-items sidebar-primary__section" aria-label="{{ _('Site controls') }}">
+    {# The header center items #}
+    {% if theme_navbar_center %}
+      <div class="sidebar-header-items__center">
+        {% for navbar_item in theme_navbar_center %}
+          {#
+            In the mobile sidebar we do not want a dropdown, so set a large cutoff (999).
+          #}
+          {% with theme_header_links_before_dropdown=999 %}
+            <div class="navbar-item">{% include navbar_item %}</div>
+          {% endwith %}
+        {% endfor %}
+      </div>
+    {% endif %}
+    {# The header end items #}
+    {% if theme_navbar_end %}
+      <div class="sidebar-header-items__end">
+        {% for navbar_item in theme_navbar_end %}
+          <div class="navbar-item">{% include navbar_item %}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </nav>
+  {% if sidebars %}
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+      {%- for sidebartemplate in sidebars %}
+        <div class="sidebar-primary-item{% if sidebartemplate == 'sidebar-collapse.html' %} pst-sidebar-collapse{% endif %}">{%- include sidebartemplate %}</div>
+      {%- endfor %}
+    </div>
+  {% endif %}
+  {# Items that will snap to the bottom of the screen #}
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+    {%- for sidebartemplate in theme_primary_sidebar_end %}
+      <div class="sidebar-primary-item">{%- include sidebartemplate %}</div>
+    {%- endfor %}
+  </div>
+{% endif %}
+{% endblock docs_sidebar %}
