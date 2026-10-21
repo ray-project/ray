@@ -137,6 +137,7 @@ ray_cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )

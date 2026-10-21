@@ -173,6 +173,9 @@ class LocalResourceManager : public syncer::ReporterInterface {
     return GetResourceIdleTime() != absl::nullopt;
   }
 
+  /// Returns when the local node became idle, or nullopt if it is busy.
+  std::optional<absl::Time> GetResourceIdleTime() const;
+
   /// Returns whether the local node is idle for an idle-termination drain decision.
   ///
   /// Refreshes the object store memory usage. This is needed since pinning/unpinning
@@ -241,8 +244,6 @@ class LocalResourceManager : public syncer::ReporterInterface {
   void SetResourceIdle(const scheduling::ResourceID &resource_id);
 
   void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
-
-  std::optional<absl::Time> GetResourceIdleTime() const;
 
   /// Get the draining deadline if node is in draining state.
   ///

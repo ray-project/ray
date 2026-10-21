@@ -134,7 +134,9 @@ class RayletClientInterface {
       const std::vector<rpc::Bundle> &bundles_in_use,
       const rpc::ClientCallback<rpc::ReleaseUnusedBundlesReply> &callback) = 0;
 
+  /// \param last_seen_version The report version the caller last applied, or 0.
   virtual void GetResourceLoad(
+      int64_t last_seen_version,
       const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) = 0;
   /// Registers a mutable object on this node so that it can be read. Writes are performed
   /// on a remote node. This local node creates a mapping from `object_id` ->

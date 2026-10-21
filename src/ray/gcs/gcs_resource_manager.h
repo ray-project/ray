@@ -149,7 +149,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoGcsServiceHandler,
   /// Update the resource loads.
   ///
   /// \param data The resource loads reported by raylet.
-  void UpdateResourceLoads(const rpc::ResourcesData &data);
+  /// \return Whether the node is known and the loads were applied.
+  bool UpdateResourceLoads(const rpc::ResourcesData &data);
 
  private:
   /// io context. This is to ensure thread safety. Ideally, all public
