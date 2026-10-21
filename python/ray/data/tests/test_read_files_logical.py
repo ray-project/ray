@@ -288,6 +288,7 @@ def test_block_udf_keeps_predicates_referencing_modified_columns_above_read(
 
     assert op.supports_predicate_pushdown() is True
     assert op.apply_predicate(predicate) is op
+    assert isinstance(op.scanner, ParquetScanner)
     assert op.scanner.predicate is None
     assert op.scanner.partition_predicate is None
 

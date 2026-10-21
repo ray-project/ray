@@ -21,6 +21,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import TensorColumnSchema
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
 )
@@ -94,17 +95,21 @@ def test_read_parquet_tracks_tensor_columns_for_predicate_pushdown(
         ),
     )
     restore_ctx.use_datasource_v2 = True
-    tensor_column_schema = {"tensor": (np.dtype(np.int64), (1,))}
+    tensor_column_schema: TensorColumnSchema = {"tensor": (np.dtype(np.int64), (1,))}
 
     ds = ray.data.read_parquet(str(f), tensor_column_schema=tensor_column_schema)
-    assert ds._logical_plan.dag.block_udf_modified_columns == {"tensor"}
+    read_op = ds._logical_plan.dag
+    assert isinstance(read_op, ReadFiles)
+    assert read_op.block_udf_modified_columns == {"tensor"}
 
     ds_with_custom_udf = ray.data.read_parquet(
         str(f),
         tensor_column_schema=tensor_column_schema,
         _block_udf=lambda table: table,
     )
-    assert ds_with_custom_udf._logical_plan.dag.block_udf_modified_columns is None
+    read_op_with_custom_udf = ds_with_custom_udf._logical_plan.dag
+    assert isinstance(read_op_with_custom_udf, ReadFiles)
+    assert read_op_with_custom_udf.block_udf_modified_columns is None
 
 
 def test_read_parquet_v2_hive_partitioned(tmp_path, restore_ctx):
