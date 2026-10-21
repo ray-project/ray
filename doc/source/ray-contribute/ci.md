@@ -146,9 +146,11 @@ The guard fails on every other file type, such as C++ under `src/`, and on any a
 To check a branch before you push, run the guard and the examples locally, with Ray installed:
 
 ```bash
-python ci/ray_ci/doc/check_docstring_only.py --base "$(git merge-base upstream/master HEAD)"
+python ci/ray_ci/doc/check_docstring_only.py --base upstream/master
 python ci/ray_ci/doc/run_docstring_examples.py python/ray/data/aggregate.py
 ```
+
+Both scripts diff from the merge base of `--base` and your branch, so commits that land on master after you branch don't count as your changes.
 
 Every other test step is skipped under the label, in every library, including `ml: data integration tests`. The rule that does this lives in `.buildkite/docs.labels.yaml`, and the pipeline upload log names it, next to the selected tags. As with `docs-example-test`, adding or removing the label takes effect on the next commit you push.
 
