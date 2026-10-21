@@ -1365,6 +1365,10 @@ class TuneController:
             )
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
+        # The trial actor is going away, so any decision queued from buffered
+        # results (e.g. CONTINUE) must not be executed on it anymore.
+        self._queued_trial_decisions.pop(trial.trial_id, None)
+
         if trial.status == Trial.ERROR:
             logger.debug(f"Not requesting trial STOP as it is ERROR already: {trial}")
             return
@@ -1551,8 +1555,11 @@ class TuneController:
                                 f"training by setting the env variable "
                                 f"`TUNE_RESULT_BUFFER_LENGTH=1`."
                             )
-                elif decision == TrialScheduler.STOP:
-                    # If the decision is to stop the trial,
+                elif (
+                    decision == TrialScheduler.STOP or trial not in self._trial_to_actor
+                ):
+                    # If the decision is to stop the trial, or the scheduler
+                    # already stopped or paused it (e.g. PBT exploit),
                     # ignore all results that came after that.
                     break
 

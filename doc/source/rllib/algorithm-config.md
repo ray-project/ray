@@ -95,7 +95,7 @@ another_impala = config.build_algo()
 another_impala.stop()
 ```
 
-If you are working with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html), pass your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance into the constructor of the {py:class}`~ray.tune.tuner.Tuner`:
+If you are working with [Ray Tune](../tune/index.md), pass your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance into the constructor of the {py:class}`~ray.tune.tuner.Tuner`:
 
 ```python
 from ray import tune
