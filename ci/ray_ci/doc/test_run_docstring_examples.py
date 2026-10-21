@@ -374,6 +374,13 @@ def test_missing_library_from_a_bare_import_error_message(nothing_installed):
         "Install it by running `pip install polars`."
     )
     assert missing_library(error) == "polars"
+    # Dataset.write_lance raises this from _check_import, which names the
+    # module, not the pylance distribution.
+    error = ImportError(
+        "`LanceDatasink` depends on 'lance', but Ray Data couldn't import it. "
+        "Install 'lance' by running `pip install pylance`."
+    )
+    assert missing_library(error) == "lance"
 
 
 def test_missing_library_ignores_libraries_the_image_keeps(nothing_installed):
