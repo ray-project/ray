@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import ray
 from ray import serve
@@ -42,21 +42,81 @@ def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
         }
     )
 
+    _enable_storage_tier_kv_events(llm_config)
     _configure_runtime_env_for_kv_routing(llm_config)
 
 
+def _secondary_tiers(engine_kwargs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    kv_transfer_config = engine_kwargs.get("kv_transfer_config")
+    if not isinstance(kv_transfer_config, dict):
+        return []
+    extra_config = kv_transfer_config.get("kv_connector_extra_config") or {}
+    # Leave malformed entries for vLLM's own validation to report.
+    return [t for t in extra_config.get("secondary_tiers") or [] if isinstance(t, dict)]
+
+
+def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
+    """Publish KV events from local filesystem offload tiers.
+
+    vLLM's tiering offload spec emits ``STORAGE`` events from a filesystem tier
+    only when the tier sets ``enable_kv_events``. Default it on so the router
+    tracks disk-resident prefixes the same way it tracks CPU-offloaded ones. An
+    explicit value is kept. Object-store tiers are left alone: their storage is
+    usually not local to the replica, and the router indexes a tier's events as
+    local unless the tier sets ``locality="REMOTE"``.
+    """
+
+    def needs_default(tier: Any) -> bool:
+        return (
+            isinstance(tier, dict)
+            and tier.get("type") == "fs"
+            and "enable_kv_events" not in tier
+        )
+
+    kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config")
+    if not isinstance(kv_transfer_config, dict):
+        return
+    extra_config = kv_transfer_config.get("kv_connector_extra_config") or {}
+    tiers = list(extra_config.get("secondary_tiers") or [])
+    if not any(needs_default(tier) for tier in tiers):
+        return
+    tiers = [
+        {**tier, "enable_kv_events": True} if needs_default(tier) else tier
+        for tier in tiers
+    ]
+    llm_config.update_engine_kwargs(
+        kv_transfer_config={
+            **kv_transfer_config,
+            "kv_connector_extra_config": {**extra_config, "secondary_tiers": tiers},
+        }
+    )
+
+
+def publishes_storage_tier_kv_events(llm_config: LLMConfig) -> bool:
+    """Whether a KV-aware deployment publishes ``STORAGE`` events from an
+    offload tier, applying the same filesystem-tier default as
+    ``configure_kv_events_for_kv_routing``."""
+    return any(
+        tier.get("enable_kv_events", tier.get("type") == "fs")
+        for tier in _secondary_tiers(llm_config.engine_kwargs)
+    )
+
+
 def enable_native_kv_offload_events(vllm_config: Any) -> None:
-    """Make vLLM's native CPU-offload events usable by the KV router."""
-    cache_config = vllm_config.cache_config
+    """Make vLLM's native offload events usable by the KV router.
+
+    Applies whenever the engine runs vLLM's ``OffloadingConnector``, whether it
+    was enabled through ``kv_offloading_size`` or configured directly in
+    ``kv_transfer_config``.
+    """
+    kv_transfer_config = vllm_config.kv_transfer_config
     if (
-        cache_config.kv_offloading_size is None
-        or cache_config.kv_offloading_backend != "native"
+        kv_transfer_config is None
+        or kv_transfer_config.kv_connector != "OffloadingConnector"
     ):
         return
 
-    vllm_config.kv_transfer_config.kv_connector_extra_config[
-        "self_describing_kv_events"
-    ] = True
+    kv_transfer_config.kv_connector_extra_config["self_describing_kv_events"] = True
 
 
 def _configure_runtime_env_for_kv_routing(llm_config: LLMConfig) -> None:
