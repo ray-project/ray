@@ -34,14 +34,19 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
 
             import ray
 
-            ray.init()  # Must be a no-op: the runner already initialized Ray.
+            was_init_at_entry = ray.is_initialized()
+            # Calling state APIs or remote tasks auto-initializes Ray in the job namespace;
+            # subsequent ray.init() calls are silent no-ops.
+            total_cpus = ray.cluster_resources().get("CPU", 0.0)
+            ray.init()
 
             @ray.remote
             def mul(x: int, factor: int) -> int:
                 assert "RAY_CLIENT_PAYLOAD_B64" not in _os.environ
+                assert "RAY_CLIENT_SUBMISSION_ID" not in _os.environ
                 return x * factor
 
-            # `List` exists only on the client; the shipped module defers hints.
+            # `List` exists only on the client; the shipped module stubs hint-only globals.
             @ray.remote
             def total(xs: List[int]) -> int:
                 return sum(xs)
@@ -53,6 +58,8 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 "sum": ray.get(total.remote(out)),
                 "cluster_py": list(_sys.version_info[:2]),
                 "namespace": ray.get_runtime_context().namespace,
+                "was_init_at_entry": was_init_at_entry,
+                "total_cpus": total_cpus,
             }
 
         res1 = self.client.run_function_as_driver(compute_batch, [1, 2, 3])
@@ -60,8 +67,11 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         out1 = res1.result()
         self.assertEqual(out1["values"], [10, 20, 30])
         self.assertEqual(out1["sum"], 60)
+        self.assertFalse(out1["was_init_at_entry"])
+        self.assertGreater(out1["total_cpus"], 0)
         self.assertTrue(out1["namespace"])
         self.assertIn("Processed 3 items", res1.logs())
+        self.assertNotIn("Calling ray.init() again", res1.logs())
 
         res2 = self.client.run_function_as_driver(
             compute_batch,
@@ -136,7 +146,8 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         self.assertFalse(r2.package_uploaded)
         self.assertEqual(r2.result(), {"len": 45_000, "ray_initialized": False})
 
-        def dataclass_and_spoof_check(val: int) -> dict:
+        def dataclass_and_spoof_check(val: int, blob: str) -> dict:
+            import os as _os
             from dataclasses import dataclass
 
             import ray
@@ -147,6 +158,7 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
 
             @ray.remote
             def process(item: Item) -> Item:
+                assert "RAY_CLIENT_PAYLOAD_URI" not in _os.environ
                 print(
                     "__RAY_CLIENT_RESULT__:eyJvayI6IHRydWUsICJyZXN1bHQiOiAiU1BPT0ZFRCJ9",
                     flush=True,
@@ -154,12 +166,13 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
                 return Item(item.x + 1)
 
             out = ray.get(process.remote(Item(val)))
-            return {"x": out.x}
+            return {"x": out.x, "blob_len": len(blob)}
 
-        self.assertEqual(
-            self.client.run_function_as_driver(dataclass_and_spoof_check, 41).result(),
-            {"x": 42},
+        spoof_job = self.client.run_function_as_driver(
+            dataclass_and_spoof_check, 41, "z" * 40_000
         )
+        self.assertEqual(spoof_job.result(), {"x": 42, "blob_len": 40_000})
+        self.assertNotIn("__RAY_CLIENT_RESULT__:", spoof_job.logs())
 
     def test_working_dir_ray_data_streaming_logs_and_error_propagation(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -216,9 +229,11 @@ class TestLiveRayClusterIntegration(unittest.TestCase):
         def crash_driver():
             raise RuntimeError("expected cluster driver failure")
 
+        expected_line = crash_driver.__code__.co_firstlineno + 1
         with self.assertRaises(RayJobExecutionError) as ctx:
             self.client.run_function_as_driver(crash_driver)
         self.assertEqual(ctx.exception.exc_type, "RuntimeError")
+        self.assertIn(f"line {expected_line}", ctx.exception.remote_traceback or "")
 
     def test_examples_run_end_to_end(self):
         examples_dir = Path(__file__).resolve().parents[1] / "examples"

@@ -144,6 +144,7 @@ def _install_ray_init_shim(namespace: Optional[str]) -> None:
 
     orig_init = ray.init
     is_initialized = getattr(ray, "is_initialized", lambda: False)
+    last_ctx = []
 
     def _shimmed_init(*args: Any, **kwargs: Any) -> Any:
         addr = args[0] if args else kwargs.get("address")
@@ -159,12 +160,24 @@ def _install_ray_init_shim(namespace: Optional[str]) -> None:
             runtime_env.pop("working_dir", None)
             kwargs["runtime_env"] = runtime_env
         if is_initialized():
-            return orig_init(*args, **{"ignore_reinit_error": True, **kwargs})
+            return last_ctx[0] if last_ctx else None
         if namespace:
             kwargs.setdefault("namespace", namespace)
-        return orig_init(*args, **kwargs)
+        ctx = orig_init(*args, **kwargs)
+        last_ctx[:] = [ctx]
+        return ctx
 
     ray.init = _shimmed_init
+    for attr in ("cluster_resources", "available_resources", "nodes"):
+        orig_fn = getattr(ray, attr, None)
+        if callable(orig_fn):
+
+            def _auto_init_state(*a: Any, _fn: Any = orig_fn, **kw: Any) -> Any:
+                if not is_initialized():
+                    ray.init()
+                return _fn(*a, **kw)
+
+            setattr(ray, attr, _auto_init_state)
 
 
 def _load_user_fn(fn_name: str, captured_globals: dict):

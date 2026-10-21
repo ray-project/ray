@@ -110,7 +110,7 @@ all_jobs = client.list_jobs()
 | `metadata` | `None` | Job metadata dictionary merged with `{"ray_client_fn": fn.__qualname__}`. |
 | `entrypoint_*` | `None` | Resource options for the driver process: `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_memory`, `entrypoint_resources`, and `entrypoint_label_selector`. |
 
-The top-level `run_function_as_driver` function also accepts `headers`, `verify`, `default_runtime_env`, `python_executable`, and `http_timeout` and forwards them to `RayClient`. Unless `RAY_AUTH_MODE` is set to `disabled` or `headers` already includes an `Authorization` header, `RayClient` reads a token from `RAY_AUTH_TOKEN`, `RAY_AUTH_TOKEN_PATH`, or `~/.ray/auth_token` and sends it as a Bearer token.
+The top-level `run_function_as_driver` function also accepts `headers`, `verify`, `default_runtime_env`, `python_executable`, and `request_timeout` and forwards them to `RayClient`. Unless `RAY_AUTH_MODE` is set to `disabled` or `headers` already includes an `Authorization` header, `RayClient` reads a token from `RAY_AUTH_TOKEN`, `RAY_AUTH_TOKEN_PATH`, or `~/.ray/auth_token` and sends it as a Bearer token.
 
 ### Working directory packaging
 
