@@ -292,8 +292,13 @@ class OnlineBinPacker(FilePartitioner):
     :meth:`has_partition` / :meth:`next_partition` as they become available;
     call :meth:`finalize` once all input is added to flush the still-open bins.
 
-    Packs globally -- one pool of open bins keyed by file -- so it needs every
-    listing row, hence ``requires_global_input``.
+    By default it packs globally, with one pool of open bins keyed by file, so
+    it needs every listing row (``requires_global_input=True``). With
+    ``requires_global_input=False`` each listing task packs only its own shard
+    of files, and ``partition_files`` flushes the open bins when the task ends.
+    Listing then runs as parallel tasks, at the cost of at most one under-filled
+    bin per shard. A file's rows never cross shards, because shards split the
+    path list.
     """
 
     def __init__(
@@ -302,9 +307,13 @@ class OnlineBinPacker(FilePartitioner):
         *,
         max_shared_open_bins: int = 16,
         split_coalesced: bool = False,
+        requires_global_input: bool = True,
     ):
         # ``max_bin_bytes`` doubles as the "file turns heavy" isolate threshold.
         self._cap = max_bin_bytes
+        # Whether the planner must feed every listing row to one instance
+        # (global packing) or may run one instance per listing shard.
+        self._requires_global_input = requires_global_input
         # When True, a multi-unit run that does not fit whole is split at unit
         # boundaries to fill residual bin space instead of opening a fresh bin.
         # Single units stay atomic, so with coalescing off (every run is one
@@ -321,7 +330,7 @@ class OnlineBinPacker(FilePartitioner):
 
     @property
     def requires_global_input(self) -> bool:
-        return True
+        return self._requires_global_input
 
     # === Feeding ===
 
