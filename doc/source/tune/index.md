@@ -13,7 +13,7 @@ myst:
 
 Getting Started <getting-started>
 Key Concepts <key-concepts>
-tutorials/overview
+tutorials/index
 examples/index
 faq
 ```
@@ -23,7 +23,7 @@ faq
 :align: center
 ```
 
-Tune is a Python library for experiment execution and hyperparameter tuning at any scale. You can tune your favorite machine learning framework ({ref}`PyTorch <tune-pytorch-cifar-ref>`, {ref}`XGBoost <tune-xgboost-ref>`, {doc}`TensorFlow and Keras <examples/tune_mnist_keras>`, and {doc}`more <examples/index>`) by running state of the art algorithms such as {ref}`Population Based Training (PBT) <tune-scheduler-pbt>` and {ref}`HyperBand/ASHA <tune-scheduler-hyperband>`. Tune further integrates with a wide range of additional hyperparameter optimization tools, including {doc}`Ax <examples/ax_example>`, {doc}`BayesOpt <examples/bayesopt_example>`, {doc}`BOHB <examples/bohb_example>`, {doc}`Nevergrad <examples/nevergrad_example>`, and {doc}`Optuna <examples/optuna_example>`.
+Tune is a Python library for experiment execution and hyperparameter tuning at any scale. You can tune your favorite machine learning framework ({ref}`PyTorch <tune-pytorch-cifar-ref>`, {ref}`XGBoost <tune-xgboost-ref>`, {doc}`TensorFlow and Keras <examples/tune-mnist-keras>`, and {doc}`more <examples/index>`) by running state of the art algorithms such as {ref}`Population Based Training (PBT) <tune-scheduler-pbt>` and {ref}`HyperBand/ASHA <tune-scheduler-hyperband>`. Tune further integrates with a wide range of additional hyperparameter optimization tools, including {doc}`Ax <examples/ax-example>`, {doc}`BayesOpt <examples/bayesopt-example>`, {doc}`BOHB <examples/bohb-example>`, {doc}`Nevergrad <examples/nevergrad-example>`, and {doc}`Optuna <examples/optuna-example>`.
 
 **Click on the following tabs to see code examples for various machine learning frameworks**:
 

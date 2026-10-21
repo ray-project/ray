@@ -26,6 +26,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.utils import _callable_uses_multiplexing, get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
@@ -296,7 +297,9 @@ class ServeControllerClient:
 
     @_ensure_connected
     def wait_for_proxies_serving(
-        self, wait_for_applications_running: bool = True
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
     ) -> None:
         """Wait for the proxies to be ready to serve requests."""
         proxy_handles = cast(
@@ -308,7 +311,8 @@ class ServeControllerClient:
 
         serving_refs = [
             handle.serving.remote(
-                wait_for_applications_running=wait_for_applications_running
+                wait_for_applications_running=wait_for_applications_running,
+                expected_routing_config_version=expected_routing_config_version,
             )
             for handle in proxy_handles.values()
         ]
@@ -369,6 +373,7 @@ class ServeControllerClient:
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=is_ingress and app.is_router_application,
                 )
 
                 deployment_args_proto = DeploymentArgs()
@@ -392,6 +397,9 @@ class ServeControllerClient:
                 ]
                 deployment_args_proto.uses_multiplexing = deployment_args[
                     "uses_multiplexing"
+                ]
+                deployment_args_proto.router_application = deployment_args[
+                    "router_application"
                 ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
@@ -435,8 +443,15 @@ class ServeControllerClient:
         # Wait for the proxies to be serving before declaring the applications
         # ready, so the "is ready" log line only prints once requests can
         # actually be routed to the applications.
+        expected_routing_config_version = None
+        if wait_for_applications_running:
+            expected_routing_config_version = ray.get(
+                self._controller.get_routing_config_version.remote()
+            )
+
         self.wait_for_proxies_serving(
-            wait_for_applications_running=wait_for_applications_running
+            wait_for_applications_running=wait_for_applications_running,
+            expected_routing_config_version=expected_routing_config_version,
         )
 
         for app in ready_apps:
@@ -495,7 +510,13 @@ class ServeControllerClient:
                     f"Serve application isn't running after {timeout_s}s."
                 )
 
-            self.wait_for_proxies_serving(wait_for_applications_running=True)
+            expected_routing_config_version = ray.get(
+                self._controller.get_routing_config_version.remote()
+            )
+            self.wait_for_proxies_serving(
+                wait_for_applications_running=True,
+                expected_routing_config_version=expected_routing_config_version,
+            )
 
     def _check_ingress_deployments(
         self, built_apps: Sequence[BuiltApplication]
@@ -507,6 +528,7 @@ class ServeControllerClient:
         """
         for app in built_apps:
             app.validate_single_fastapi_ingress()
+            app.validate_router_application()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):
