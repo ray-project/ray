@@ -249,7 +249,7 @@ def test_nil_node(enable_test_module, disable_aiohttp_cache, ray_start_with_dash
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     class InfeasibleActor:
         pass
 
@@ -299,7 +299,7 @@ def test_actor_cleanup(
         def do_task(self):
             return self.num
 
-    @ray.remote(num_gpus=1)
+    @ray.remote(resources={"nonexistent_resource": 1})
     class InfeasibleActor:
         pass
 

@@ -279,8 +279,12 @@ def _join_tables_iter(
         left_table, right_table, left_on, right_on, join_type
     )
 
-    left_df = pl.from_arrow(preprocess_result_l.supported_projection).lazy()
-    right_df = pl.from_arrow(preprocess_result_r.supported_projection).lazy()
+    left_df = pl.from_arrow(
+        preprocess_result_l.supported_projection, rechunk=False
+    ).lazy()
+    right_df = pl.from_arrow(
+        preprocess_result_r.supported_projection, rechunk=False
+    ).lazy()
 
     target_join_type = join_type
     left_cols_suffix = left_columns_suffix

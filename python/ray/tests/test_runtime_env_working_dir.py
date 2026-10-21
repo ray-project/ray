@@ -11,6 +11,7 @@ from unittest import mock
 import pytest
 
 import ray
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     get_uri_for_directory,
@@ -726,16 +727,38 @@ def _expected_cd_prefix(local_dir) -> list:
     return ["cd", shlex.quote(str(local_dir)), "&&"]
 
 
+@pytest.fixture
+def undeletable_working_dir(tmp_path):
+    """A working_dir laid out like `tmp_working_dir`, but never deleted.
+
+    A `local://` working_dir becomes the worker's cwd, and Windows refuses to
+    remove a directory a live process sits in. Cluster teardown does not wait
+    for workers: `Node.all_processes` has no worker entry, so `kill_all_processes`
+    never waits on one. Build the directory under `tmp_path`, which pytest leaves
+    on disk, so teardown never has to remove it.
+    """
+    path = tmp_path / "working_dir"
+    module_path = path / "test_module"
+    module_path.mkdir(parents=True)
+
+    (path / "hello").write_text("world")
+    (path / "file_module.py").write_text("def hello():\n    return 'hello'\n")
+    (module_path / "test.py").write_text("def one():\n    return 1\n")
+    (module_path / "__init__.py").write_text("from test_module.test import one\n")
+
+    return str(path)
+
+
 class TestLocalWorkingDir:
     """`local://` working_dirs: already on the node, used in place."""
 
     @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
     def test_used_in_place_without_upload(
-        self, start_cluster, tmp_working_dir, option: str
+        self, start_cluster, undeletable_working_dir, option: str
     ):
         """cwd, imports and relative file IO all resolve against the directory."""
         _, address = start_cluster
-        uri = _local_uri(tmp_working_dir)
+        uri = _local_uri(undeletable_working_dir)
         if option == "working_dir":
             runtime_env = {"working_dir": uri}
         else:
@@ -752,7 +775,7 @@ class TestLocalWorkingDir:
         assert imported == 1
         if option == "working_dir":
             # working_dir also sets the process cwd, so relative reads work.
-            assert Path(cwd).resolve() == Path(tmp_working_dir).resolve()
+            assert Path(cwd).resolve() == Path(undeletable_working_dir).resolve()
 
             @ray.remote
             def read_relative_file():
@@ -774,8 +797,19 @@ class TestLocalWorkingDir:
 
     def test_relative_path_rejected_on_the_client(self, start_cluster):
         _, address = start_cluster
-        with pytest.raises(ValueError, match="the path must be absolute"):
-            ray.init(address, runtime_env={"working_dir": "local://relative/path"})
+        try:
+            with pytest.raises(ValueError, match="the path must be absolute"):
+                ray.init(address, runtime_env={"working_dir": "local://relative/path"})
+        finally:
+            # `connect` sets the driver's node before it validates the runtime_env,
+            # so the failed `ray.init` leaves the driver attached to the head node
+            # and `Cluster.remove_node` then refuses to tear that node down. Detach
+            # it here. Under RAY_CLIENT_MODE the fixture's own `ray.shutdown` is
+            # redirected to the Ray Client and never clears `worker.node`, so bypass
+            # the hook to reach the real one. This runs in a `finally` so that a
+            # real assertion failure is not masked by the teardown error.
+            with disable_client_hook():
+                ray.shutdown()
 
     @pytest.mark.asyncio
     async def test_directory_is_never_deleted(self, tmpdir, tmp_working_dir):

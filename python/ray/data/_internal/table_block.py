@@ -550,7 +550,7 @@ class TableBlockAccessor(BlockAccessor):
                     has_nulls=has_nulls,
                     # NOTE: Search for next insertion index could be started off the
                     #       last one, rather than 0
-                    _start_from_idx=(0 if idx == 0 else insertion_indices[idx - 1]),
+                    start_from_idx=(0 if idx == 0 else insertion_indices[idx - 1]),
                 )
 
         last_idx = 0

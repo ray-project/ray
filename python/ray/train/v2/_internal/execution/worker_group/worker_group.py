@@ -3,7 +3,7 @@ import copy
 import logging
 import os
 import traceback
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -83,6 +83,10 @@ from ray.util.tpu import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Interval in seconds between checks that the nodes a worker group is pinned
+# to are still alive, while waiting for its placement group.
+PINNED_NODE_CHECK_INTERVAL_S = 1.0
 
 
 _SERIALIZATION_FAILURE_MARKERS = (
@@ -248,6 +252,57 @@ class WorkerGroup(ExecutionGroup):
                 )
                 raise InsufficientClusterResourcesError(error_msg)
 
+    def _wait_for_placement_group(
+        self,
+        pg_handle: PlacementGroupHandle,
+        label_selector: Optional[List[Dict[str, str]]],
+    ) -> bool:
+        """Wait for the placement group, giving up early if a pinned node dies.
+
+        A bundle pinned to a dead node can never be placed, so waiting out the
+        full start timeout would only stall the retry. This happens when the
+        pins were built from a view of the cluster that still listed the node
+        as alive.
+
+        Args:
+            pg_handle: The placement group to wait for.
+            label_selector: Per-worker label selectors the placement group was
+                created with. Node-id pins among them are checked for liveness.
+
+        Returns:
+            Whether the placement group became ready.
+        """
+        pinned_node_ids = {
+            selector[ray._raylet.RAY_NODE_ID_KEY]
+            for selector in label_selector or []
+            if ray._raylet.RAY_NODE_ID_KEY in selector
+        }
+        if not pinned_node_ids:
+            return pg_handle.wait(self._worker_group_start_timeout_s)
+
+        deadline = time_monotonic() + self._worker_group_start_timeout_s
+        while True:
+            remaining_s = max(deadline - time_monotonic(), 0)
+            if pg_handle.wait(min(PINNED_NODE_CHECK_INTERVAL_S, remaining_s)):
+                return True
+            if time_monotonic() >= deadline:
+                return False
+            try:
+                nodes = ray.nodes()
+            except Exception:
+                # A failed liveness check must not abort the wait
+                logger.debug("Failed to check liveness of pinned nodes.", exc_info=True)
+                continue
+
+            alive_node_ids = {node["NodeID"] for node in nodes if node["Alive"]}
+            dead_node_ids = pinned_node_ids - alive_node_ids
+            if dead_node_ids:
+                logger.info(
+                    "Giving up on the placement group early: the worker group is "
+                    f"pinned to nodes that are no longer alive: {sorted(dead_node_ids)}."
+                )
+                return False
+
     def _start_impl(
         self,
         worker_group_state_builder: WorkerGroupStateBuilder,
@@ -298,7 +353,9 @@ class WorkerGroup(ExecutionGroup):
             # For example, the controller may try to set a worker group size
             # based on stale information about cluster resources.
             pg_wait_start = time_monotonic()
-            if not pg_handle.wait(self._worker_group_start_timeout_s):
+            if not self._wait_for_placement_group(
+                pg_handle, worker_group_context.label_selector
+            ):
                 pg_handle.shutdown()
                 raise WorkerGroupStartupTimeoutError(
                     num_workers=worker_group_context.num_workers
@@ -679,6 +736,22 @@ class WorkerGroup(ExecutionGroup):
 
         for callback in self._callbacks:
             callback.after_worker_group_abort(self._worker_group_context)
+
+    def set_required_barrier_ranks(self, ranks: Optional[Collection[int]]) -> bool:
+        """Release the synchronization barrier once `ranks` have joined.
+
+        Used during a node preemption so healthy workers are not stranded
+        waiting on a rank that has already been reclaimed. Pass None to restore
+        the default, where every rank must join.
+
+        Args:
+            ranks: The ranks the barrier should wait for, or None for all.
+
+        Returns:
+            True if the barrier accepted the set.
+        """
+        sync_actor = self._worker_group_state.sync_actor
+        return ray.get(sync_actor.set_required_ranks.remote(ranks))
 
     #####################################################################################
     # Polling Worker Group

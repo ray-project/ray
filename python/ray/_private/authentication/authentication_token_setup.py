@@ -39,17 +39,20 @@ def generate_and_save_token() -> None:
     token = generate_new_authentication_token()
 
     token_path = _get_default_token_path()
-    try:
-        # Create directory if it doesn't exist
-        token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 
-        # Write token to file with explicit flush and fsync
-        with open(token_path, "w") as f:
-            f.write(token)
+    # The token is the cluster credential, so keep it owner-only. The mode passed
+    # to os.open only applies when the file is created; fchmod covers a
+    # pre-existing (e.g. empty) file before the token is written into it.
+    # Windows has no os.fchmod before Python 3.13, and its chmod can't restrict
+    # reads anyway.
+    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        f.write(token)
 
-        logger.info(f"Generated new authentication token and saved to {token_path}")
-    except Exception:
-        raise
+    logger.info(f"Generated new authentication token and saved to {token_path}")
 
 
 def _get_default_token_path() -> Path:
@@ -89,15 +92,16 @@ def _warn_token_auth_enabled() -> None:
     )
 
 
-def maybe_enable_token_auth_if_token_available() -> bool:
-    """Enable token auth for ``ray start --head`` if a token already exists."""
+def maybe_enable_token_auth_if_token_available(warn_if_disabled: bool = True) -> bool:
+    """Enable token auth if RAY_AUTH_MODE is unset and a token already exists."""
     auth_mode_env = os.environ.get(AUTH_MODE_ENV_VAR)
     if auth_mode_env is not None:
         # Mode set explicitly; respect it without warning.
         return auth_mode_env.lower() == "token"
 
     if not AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True):
-        _warn_token_auth_disabled()
+        if warn_if_disabled:
+            _warn_token_auth_disabled()
         return False
 
     _enable_token_auth()

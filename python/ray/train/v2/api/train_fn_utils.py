@@ -30,10 +30,19 @@ def report(
     checkpoint_upload_fn: Optional[Callable[["Checkpoint", str], "Checkpoint"]] = None,
     validation: Union[bool, ValidationTaskConfig] = False,
 ):
-    """Report metrics and optionally save a checkpoint.
+    """Save a checkpoint of the training state so that training can recover from failures.
 
-    If a checkpoint is provided, it will be
-    :ref:`persisted to storage <persistent-storage-guide>`.
+    The checkpoint is :ref:`persisted to storage <persistent-storage-guide>`.
+    If workers fail and Ray Train restarts them, the training function can load
+    the latest reported checkpoint with :func:`ray.train.get_checkpoint` and
+    resume from it. See the :ref:`fault tolerance guide <train-fault-tolerance>`.
+
+    Ray Train attaches the ``metrics`` to the checkpoint, uses them to decide
+    which checkpoints to keep, and returns them in :class:`~ray.train.Result`.
+    See :class:`~ray.train.CheckpointConfig`. Ray Train doesn't persist metrics
+    reported without a checkpoint. To track metrics over the course of training,
+    log them from the workers to an experiment tracking tool instead. See
+    :ref:`train-experiment-tracking-native`.
 
     If this is called in multiple distributed training workers:
 
@@ -67,6 +76,14 @@ def report(
             def train_func(config):
                 start_epoch = 0
 
+                # Resume from the latest reported checkpoint after a failure.
+                checkpoint = ray.train.get_checkpoint()
+                if checkpoint:
+                    with checkpoint.as_directory() as checkpoint_dir:
+                        # Load the model and optimizer state...
+                        # start_epoch = ... + 1
+                        pass
+
                 for epoch in range(start_epoch, config.get("num_epochs", 10)):
                     # Do training...
 
@@ -89,8 +106,11 @@ def report(
             )
 
     Args:
-        metrics: The metrics you want to report.
-        checkpoint: The optional checkpoint you want to report.
+        metrics: The metrics to attach to the checkpoint, such as the
+            validation loss. Ray Train uses them to rank checkpoints.
+        checkpoint: The checkpoint to persist. Workers that don't hold any
+            checkpoint data, such as non-zero ranks in data-parallel training,
+            pass ``None``.
         checkpoint_dir_name: Custom name for the checkpoint directory.
             If not provided, a unique directory name will be automatically generated.
             If provided, it must be unique across all checkpoints per worker to avoid

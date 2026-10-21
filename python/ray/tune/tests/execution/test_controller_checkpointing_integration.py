@@ -70,6 +70,29 @@ def num_checkpoints(trial):
     )
 
 
+@pytest.mark.parametrize("status", [Trial.PENDING, Trial.PAUSED])
+def test_checkpoint_stopped_actorless_trial(
+    ray_start_4_cpus_2_gpus_extra, tmp_path, status
+):
+    """Stopped trials must not resume from stale experiment checkpoint state."""
+    storage = mock_storage_context(storage_path=str(tmp_path))
+    runner = TuneController(storage=storage)
+    trial = Trial(MOCK_TRAINABLE_NAME, storage=storage)
+    runner.add_trial(trial)
+    runner._set_trial_status(trial, status)
+
+    # Persist the unfinished state before stopping a trial without a live actor.
+    runner.checkpoint(force=True, wait=True)
+    assert trial not in runner._trial_to_actor
+    runner.stop_trial(trial)
+    assert trial.status == Trial.TERMINATED
+    runner.checkpoint(force=True, wait=True)
+
+    restored_runner = TuneController(storage=storage, resume_config=ResumeConfig())
+    restored_trial = restored_runner.get_trial(trial.trial_id)
+    assert restored_trial.status == Trial.TERMINATED
+
+
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )

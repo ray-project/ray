@@ -79,9 +79,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED,
     SERVE_CONTROLLER_NAME,
     SERVE_INGRESS_ROUTER_HEADER_PREFIX,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
-    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy_templates import (
     HAPROXY_CONFIG_TEMPLATE,
@@ -93,6 +94,10 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy import (
     ProxyActorInterface,
     apply_per_node_port_overrides,
+)
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
 )
 from ray.serve._private.utils import get_head_node_id, is_grpc_enabled
 from ray.serve.config import HTTPOptions, gRPCOptions
@@ -141,7 +146,7 @@ def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
     local_host: "Optional[str]" = None,
 ) -> "Tuple[Dict[str, List[ServerConfig]], Dict[str, List[Tuple[str, str]]]]":
-    """Per-backend router pool and replica map, restricted to backends with both.
+    """Router pools and replica maps for routed or fallback-enabled backends.
 
     Prefers routers co-located with this HAProxy so the /internal/route hop
     stays on-node. Falls back to the lexicographically smallest router when none
@@ -150,7 +155,10 @@ def _routers_and_targets_by_backend(
     routers: Dict[str, List[ServerConfig]] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
-        if not backend.ingress_request_router_servers:
+        if (
+            not backend.ingress_request_router_servers
+            and not backend.ingress_router_fallback
+        ):
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
@@ -159,7 +167,9 @@ def _routers_and_targets_by_backend(
             continue
         candidates = backend.ingress_request_router_servers
         colocated = [s for s in candidates if s.host == local_host]
-        if colocated:
+        if not candidates:
+            pool = []
+        elif colocated:
             pool = sorted(colocated, key=lambda s: (s.host, s.port))
         else:
             pool = [min(candidates, key=lambda s: (s.host, s.port))]
@@ -518,6 +528,8 @@ class BackendConfig:
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
     ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
+    # Stays true when a configured router has no running replicas.
+    ingress_router_fallback: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -763,14 +775,6 @@ class HAProxyConfig:
     @property
     def grpc_frontend_port(self) -> int:
         return self.grpc_options.port
-
-    @property
-    def root_path(self) -> str:
-        """Global root_path prefix, normalized without a trailing slash.
-
-        Empty when unset so the config template omits root_path handling.
-        """
-        return (self.http_options.root_path or "").rstrip("/")
 
     @property
     def timeout_http_keep_alive_s(self) -> int:
@@ -1271,10 +1275,7 @@ class HAProxyApi(ProxyApi):
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             FORWARD_BODY=str(RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY).lower(),
-            # HAProxy's req_get_headers() returns lowercase header keys,
-            # so lowercase here for the Lua lookup. Empty string disables
-            # forwarding entirely.
-            SESSION_HEADER=SERVE_SESSION_ID.lower(),
+            REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
             METRICS_PRE_CALL_ROUTER=metrics_pre,
@@ -1316,7 +1317,7 @@ class HAProxyApi(ProxyApi):
             grpc_backends = [b for b in backends if b.protocol == RequestProtocol.GRPC]
 
             # Derive from the write result: returns None when no backend has
-            # both routers and replicas with IDs (transient during scaling).
+            # replica IDs plus routers or an enabled fallback policy.
             # The ingress request router is HTTP-only.
             ingress_request_router_lua_path = self._write_ingress_request_router_lua(
                 http_backends
@@ -1405,6 +1406,10 @@ class HAProxyApi(ProxyApi):
                     ),
                     "ingress_request_router_header_prefix": (
                         SERVE_INGRESS_ROUTER_HEADER_PREFIX
+                    ),
+                    "multiplexed_model_id_headers": (
+                        SERVE_MULTIPLEXED_MODEL_ID,
+                        SERVE_MULTIPLEXED_MODEL_ID.replace("_", "-"),
                     ),
                     "ingress_request_router_metrics_enabled": self.cfg.ingress_request_router_metrics_enabled,
                     "metrics_enabled": self.cfg.metrics_enabled,
@@ -1736,7 +1741,11 @@ class HAProxyManager(ProxyActorInterface):
         self.event_loop = get_or_create_event_loop()
 
         self._target_groups: List[TargetGroup] = []
+        self._target_groups_version: Optional[RoutingConfigVersion] = None
         self._received_target_groups_broadcast = False
+        # Last target groups installed by a successful HAProxy reload.
+        self._applied_target_groups: Optional[List[TargetGroup]] = None
+        self._applied_target_groups_version: Optional[RoutingConfigVersion] = None
 
         # Fallback targets.
         self._http_fallback_target: Optional[Target] = None
@@ -1899,7 +1908,11 @@ class HAProxyManager(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the HAProxy process to be ready to serve requests."""
         if not wait_for_applications_running:
             return
@@ -1916,6 +1929,22 @@ class HAProxyManager(ProxyActorInterface):
                 await asyncio.sleep(0.2)
                 continue
 
+            # Desired target groups may have a pending HAProxy reload.
+            target_groups = self._applied_target_groups
+            if target_groups is None:
+                await asyncio.sleep(0.2)
+                continue
+
+            if expected_routing_config_version is not None:
+                if (
+                    self._applied_target_groups_version is None
+                    or not self._applied_target_groups_version.is_at_least(
+                        expected_routing_config_version
+                    )
+                ):
+                    await asyncio.sleep(0.2)
+                    continue
+
             # When gRPC is used, haproxy relies on the fallback serve proxy to
             # handle ListApplications requests, so we block until HAProxy reprots
             # an UP server in grpc_fallback_backend.
@@ -1930,7 +1959,7 @@ class HAProxyManager(ProxyActorInterface):
                 self._generate_backend_name(tg): {
                     self._generate_server_name(target) for target in tg.targets
                 }
-                for tg in self._target_groups
+                for tg in target_groups
             }
             fallback_servers = {
                 self._generate_server_name(target)
@@ -2096,6 +2125,7 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             ingress_request_router_servers=ingress_request_router_servers,
+            ingress_router_fallback=target_group.ingress_router_fallback,
             app_name=target_group.app_name,
             ingress_deployment_name=target_group.ingress_deployment_name,
             fallback_server=fallback_server,
@@ -2111,8 +2141,11 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy.reload()
 
     async def _update_haproxy_backends(self) -> None:
+        # Preserve the exact target groups installed by this reload.
+        target_groups = self._target_groups
+        target_groups_version = self._target_groups_version
         backend_configs = []
-        for target_group in self._target_groups:
+        for target_group in target_groups:
             fallback_target = None
             if target_group.protocol == RequestProtocol.HTTP:
                 fallback_target = self._http_fallback_target
@@ -2141,9 +2174,12 @@ class HAProxyManager(ProxyActorInterface):
         self._haproxy.set_grpc_fallback_server(grpc_fallback_server)
 
         await self._reload_haproxy()
+        self._applied_target_groups = target_groups
+        self._applied_target_groups_version = target_groups_version
 
-    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
-        self._target_groups = target_groups
+    def update_target_groups(self, routing_config: RoutingConfigSnapshot) -> None:
+        self._target_groups = routing_config.target_groups
+        self._target_groups_version = routing_config.version
         self._received_target_groups_broadcast = True
         self._schedule_haproxy_update()
 
