@@ -356,6 +356,12 @@ def test_consumer_node_death_after_move(two_worker_nodes, max_task_retries):
     copies_a = _num_primary_copies(node_a.node_id)
     assert ray.get(consumer.consume.remote(ref)) == MiB
     wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a - 1)
+    # The producer's raylet unpins the freed copy at once but deletes it in a later
+    # batch. Until then the owner can still fetch it, so wait for the delete.
+    wait_for_condition(
+        lambda: ray.experimental.get_object_locations([ref])[ref]["node_ids"]
+        == [node_b.node_id]
+    )
 
     cluster.remove_node(node_b, allow_graceful=False)
     if max_task_retries == 0:
