@@ -268,6 +268,22 @@ def _skip_reason(exc: BaseException) -> str:
     return "access denied"
 
 
+def _store_failure_reason(exc: BaseException) -> str:
+    """Label for a store that could not be built for one URI's store URL.
+
+    obstore reports an unrecognised scheme or host as ``GenericError``
+    ("Unable to recognise URL"); a malformed store URL or an option the
+    scheme rejects comes back as ``ValueError`` / ``InvalidPathError``.
+    """
+    if isinstance(exc, (ValueError, TypeError)):
+        return "invalid uri"
+    if _obstore_exceptions is not None and isinstance(
+        exc, getattr(_obstore_exceptions, "InvalidPathError", ())
+    ):
+        return "invalid uri"
+    return "unsupported"
+
+
 def _is_usable_uri(uri: Any) -> bool:
     """A non-empty string. ``None``, NaN, ``pd.NA`` and ``""`` are not."""
     return isinstance(uri, str) and uri.strip() != ""
@@ -1245,6 +1261,20 @@ async def _download_uris_with_obstore(
         else:
             skipped["invalid uri"] += 1
 
+    # Build the block's first store up front. Every store in the block shares
+    # ``fs_kwargs``, so a failure here is a configuration bug (an option the
+    # store rejects, bad credential settings) or a scheme the whole block
+    # uses that obstore cannot serve; it must surface as the real error
+    # rather than turn the column into nulls. Per-URI store failures after
+    # this point are row-local (see ``_fetch_whole``).
+    for index in pending:
+        try:
+            first_store_url, _ = _split_obstore_uri(uris[index])
+        except Exception:
+            continue  # Classified as "invalid uri" by ``_fetch_whole``.
+        registry.get(first_store_url)
+        break
+
     # Permanent failures (missing object, access denied, invalid URI) become
     # ``None``. Transient failures are re-fetched a bounded number of times,
     # re-using the bytes already downloaded; if any still fail, raise.
@@ -1304,11 +1334,13 @@ async def _fetch_whole(
     """Download a single URI as a whole-file GET.
 
     Returns the bytes, or a :class:`_DownloadFailure` saying why not. A
-    permanent failure (missing object, access denied, invalid URI) becomes
-    ``None`` for the row; a transient one is re-fetched by the caller and
-    raises ``DownloadError`` once the attempts are used up. Store
-    construction errors (bad credentials or client options) are configuration
-    bugs rather than download failures and propagate unchanged.
+    permanent failure (missing object, access denied, invalid URI,
+    unrecognised store URL) becomes ``None`` for the row; a transient one is
+    re-fetched by the caller and raises ``DownloadError`` once the attempts
+    are used up. The caller builds the block's first store before calling
+    this, so a store that fails to build here is specific to this URI (an
+    unrecognised or malformed store URL, or a scheme the block's shared
+    options don't fit) rather than a configuration bug.
     """
     import obstore as obs
 
@@ -1316,7 +1348,10 @@ async def _fetch_whole(
         store_url, path = _split_obstore_uri(uri)
     except Exception as e:
         return _DownloadFailure(uri, "invalid uri", e, permanent=True)
-    store = registry.get(store_url)
+    try:
+        store = registry.get(store_url)
+    except Exception as e:
+        return _DownloadFailure(uri, _store_failure_reason(e), e, permanent=True)
     try:
         if semaphore is not None:
             async with semaphore:

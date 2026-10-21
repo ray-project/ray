@@ -2158,6 +2158,22 @@ class TestDownloadErrorClassification:
             )
         assert not isinstance(exc_info.value, DownloadError)
 
+    def test_unrecognised_store_url_is_row_local(self, tmp_path):
+        pytest.importorskip("obstore")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        # The block's first store builds fine, so a later URI whose store
+        # obstore cannot recognise is a per-row failure: null plus a count,
+        # not a failed block. (obstore raises GenericError for these, which
+        # would otherwise read as transient.)
+        uris = [f"file://{tmp_path}/f.bin", "ftp://host/x.bin", "s3:///no-bucket"]
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            results = asyncio.run(_download_uris_with_obstore(uris, "uri"))
+        assert results == [b"data", None, None]
+        summaries = [m for m in _logged_warnings(mock_logger) if "Skipped" in m]
+        assert len(summaries) == 1 and "Skipped 2 of 3 URIs" in summaries[0]
+
     def test_non_string_uris_yield_none(self, tmp_path):
         pytest.importorskip("obstore")
         (tmp_path / "f.bin").write_bytes(b"data")
