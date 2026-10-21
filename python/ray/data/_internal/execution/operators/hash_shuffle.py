@@ -1343,6 +1343,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     def min_scheduling_resources(self) -> ExecutionResources:
         return self.incremental_resource_usage()
 
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        return ExecutionResources.zero(), ExecutionResources.for_limits(gpu=0)
+
     def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
         return self._is_finalized() and super().has_completed()
