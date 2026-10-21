@@ -618,7 +618,7 @@ def test_lance_filtered_task_counts(
     actual_ids = []
     for task in tasks:
         rows = [row for block in task() for row in block.to_pylist()]
-        assert task.metadata.num_rows == len(rows)
+        assert task.metadata.num_rows is None
         actual_ids.extend(row["id"] for row in rows)
     expected_ids = set(range(21, 27 if filter_kind == "combined" else 28))
     if deleted:
@@ -630,11 +630,17 @@ def test_lance_filtered_task_counts(
 @pytest.mark.parametrize(
     "predicate,expected", [("id > 100", 0), ("id >= 0", 28), ("nullable IS NULL", 7)]
 )
-def test_lance_filtered_count_boundaries(lance_count_dataset, predicate, expected):
+def test_lance_filtered_count_boundaries(
+    lance_count_dataset, ray_start_regular_shared, predicate, expected
+):
     source = LanceDatasource(lance_count_dataset.uri, filter=predicate)
     tasks = source.get_read_tasks(3)
-    assert sum(task.metadata.num_rows for task in tasks) == expected
+    assert all(task.metadata.num_rows is None for task in tasks)
     assert sum(len(block) for task in tasks for block in task()) == expected
+    assert (
+        ray.data.read_lance(lance_count_dataset.uri, filter=predicate).count()
+        == expected
+    )
 
 
 @pytest.mark.parametrize("filter_kind", ["argument", "scanner", "pushdown"])
@@ -676,7 +682,7 @@ def test_lance_unfiltered_count_uses_fragment_metadata(
     scanner.assert_not_called()
 
 
-def test_lance_count_scan_isolates_options(lance_count_dataset, monkeypatch):
+def test_lance_filtered_planning_preserves_options(lance_count_dataset, monkeypatch):
     callback = Mock()
     options = {
         "filter": "id >= 21",
@@ -698,21 +704,16 @@ def test_lance_count_scan_isolates_options(lance_count_dataset, monkeypatch):
 
     monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
     tasks = source.get_read_tasks(3)
-    assert sum(task.metadata.num_rows for task in tasks) == 7
+    assert all(task.metadata.num_rows is None for task in tasks)
     callback.assert_not_called()
-    assert len(scanner_calls) == 3
-    for kwargs in scanner_calls:
-        assert kwargs["columns"] == []
-        assert kwargs["with_row_id"] is True
-        assert kwargs["use_stats"] is False
-        assert kwargs["use_scalar_index"] is False
-        assert "order_by" not in kwargs
-        assert "scan_stats_callback" not in kwargs
+    assert scanner_calls == []
     assert source.scanner_options == original_options
     assert sum(len(block) for task in tasks for block in task()) == 7
     assert callback.called
-    assert all(call["columns"] == ["payload"] for call in scanner_calls[3:])
-    assert all(call["order_by"] == ["id"] for call in scanner_calls[3:])
+    assert len(scanner_calls) == len(tasks)
+    for kwargs in scanner_calls:
+        for key, value in original_options.items():
+            assert kwargs[key] == value
     assert source.scanner_options == original_options
 
 
@@ -792,9 +793,9 @@ def test_lance_filtered_count_scope(lance_count_dataset, tmp_path, parallelism):
     lance.write_dataset(table.slice(21), dataset.uri, mode="append")
 
     def count(source):
-        return sum(
-            task.metadata.num_rows for task in source.get_read_tasks(parallelism)
-        )
+        tasks = source.get_read_tasks(parallelism)
+        assert all(task.metadata.num_rows is None for task in tasks)
+        return sum(len(block) for task in tasks for block in task())
 
     assert (
         count(LanceDatasource(dataset.uri, version=initial_version, filter="id >= 21"))
@@ -815,40 +816,45 @@ def test_lance_filtered_count_scope(lance_count_dataset, tmp_path, parallelism):
     )
 
 
-@pytest.mark.parametrize("retryable", [False, True])
-@pytest.mark.parametrize("failure_stage", ["scanner", "count"])
-def test_lance_filtered_count_retry_and_errors(
-    lance_count_dataset, monkeypatch, retryable, failure_stage
+@pytest.mark.parametrize(
+    "filter_kind", ["argument", "arrow", "pushdown", "combined", "random"]
+)
+def test_lance_filtered_planning_does_not_scan(
+    lance_count_dataset, monkeypatch, filter_kind
 ):
-    source = LanceDatasource(lance_count_dataset.uri, filter="id >= 21")
-    source._retry_params.update(match=["temporary"], max_attempts=2, max_backoff_s=0)
-    original = lance.LanceDataset.scanner
-    calls = 0
-
-    def scanner(dataset, **kwargs):
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            error = OSError("temporary" if retryable else "permanent")
-            if failure_stage == "scanner":
-                raise error
-            return Mock(count_rows=Mock(side_effect=error))
-        return original(dataset, **kwargs)
-
-    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
-    if retryable:
-        assert source.get_read_tasks(1)[0].metadata.num_rows == 7
-        assert calls == 2
+    if filter_kind == "arrow":
+        source = LanceDatasource(
+            lance_count_dataset.uri,
+            scanner_options={"filter": pa.compute.field("id") >= 21},
+        )
     else:
-        with pytest.raises(OSError, match="permanent"):
-            source.get_read_tasks(1)
-        assert calls == 1
+        source = LanceDatasource(
+            lance_count_dataset.uri,
+            filter={"pushdown": None, "random": "random() < 0.5"}.get(
+                filter_kind, "id >= 21"
+            ),
+        )
+    if filter_kind in {"pushdown", "combined"}:
+        source = source.apply_predicate(col("id") < 27)
+    scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+    fragment_count = Mock(side_effect=AssertionError("Filtered count must be unknown"))
+    monkeypatch.setattr(
+        type(lance_count_dataset.get_fragments()[0]), "count_rows", fragment_count
+    )
+    for parallelism in (1, 3, 1):
+        assert all(
+            task.metadata.num_rows is None
+            for task in source.get_read_tasks(parallelism)
+        )
+    scanner.assert_not_called()
+    fragment_count.assert_not_called()
 
 
 def test_lance_filtered_count_preserves_ray_task_limit(lance_count_dataset):
     source = LanceDatasource(lance_count_dataset.uri, filter="id >= 21")
     task = source.get_read_tasks(1, per_task_row_limit=3)[0]
-    assert task.metadata.num_rows == 7
+    assert task.metadata.num_rows is None
     assert task.per_task_row_limit == 3
     assert sum(len(block) for block in task()) == 3
 
@@ -863,6 +869,63 @@ def test_lance_filtered_read_with_ray_limit(
     rows = ds.take_all()
     assert len(rows) == 3
     assert all(row["id"] >= 21 for row in rows)
+
+
+@pytest.mark.parametrize("filter_kind", ["argument", "scanner", "pushdown"])
+@pytest.mark.parametrize("action", ["take", "limit"])
+def test_lance_filtered_early_read(
+    lance_count_dataset, ray_start_regular_shared, monkeypatch, filter_kind, action
+):
+    planning_scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", planning_scanner)
+    kwargs = {"override_num_blocks": 4, "scanner_options": {"batch_size": 1}}
+    if filter_kind == "argument":
+        kwargs["filter"] = "id >= 21"
+    elif filter_kind == "scanner":
+        kwargs["scanner_options"]["filter"] = "id >= 21"
+    ds = ray.data.read_lance(lance_count_dataset.uri, **kwargs)
+    if filter_kind == "pushdown":
+        ds = ds.filter(expr=col("id") >= 21)
+    assert ds._meta_count() is None
+    planning_scanner.assert_not_called()
+
+    # Worker processes use the real scanner; a driver-side scan during optimized
+    # planning still raises. Keep the patch active through take/limit execution.
+    rows = ds.take(1) if action == "take" else ds.limit(1).take_all()
+    assert len(rows) == 1
+    assert rows[0]["id"] >= 21
+    planning_scanner.assert_not_called()
+
+
+@pytest.mark.parametrize("test_size", [0.2, 2])
+def test_lance_random_filter_split_uses_materialized_rows(
+    tmp_path, ray_start_regular_shared, monkeypatch, test_size
+):
+    path = str(tmp_path / "random.lance")
+    lance.write_dataset(pa.table({"id": range(1000)}), path)
+    ds = ray.data.read_lance(path, filter="random() < 0.5", override_num_blocks=1)
+    assert ds._meta_count() is None
+    original = ray.data.Dataset.materialize
+    materialized_ids = []
+
+    def materialize(dataset):
+        result = original(dataset)
+        materialized_ids.append({row["id"] for row in result.take_all()})
+        return result
+
+    monkeypatch.setattr(ray.data.Dataset, "materialize", materialize)
+    train, test = ds.train_test_split(test_size=test_size)
+    assert len(materialized_ids) == 1
+    train_ids = {row["id"] for row in train.take_all()}
+    test_ids = {row["id"] for row in test.take_all()}
+    expected = materialized_ids[0]
+    expected_train = int(len(expected) * 0.8) if test_size == 0.2 else len(expected) - 2
+    assert (train.count(), test.count()) == (
+        expected_train,
+        len(expected) - expected_train,
+    )
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == expected
 
 
 if __name__ == "__main__":

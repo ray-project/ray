@@ -5939,15 +5939,12 @@ def read_lance(
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
 
     .. note::
-        Filtered reads may scan predicate columns during planning to compute row
-        counts, adding I/O and planning latency. Predicates over large payloads,
-        such as image or video bytes, can be more expensive.
-
-        Accurate row-count metadata assumes deterministic filters. Filters may
-        be evaluated separately for counting and reading. Non-deterministic
-        expressions such as ``random() < 0.5`` are not detected, so metadata can
-        differ from the actual rows read. This can give incorrect results for
-        ``count()`` and incorrect split sizes for ``train_test_split()``.
+        Filtered reads leave row-count metadata unknown without scanning the
+        data during planning. ``count()`` executes the read. Non-stratified
+        ``train_test_split()`` uses materialized rows to determine split sizes.
+        Count-only reads may still read payload columns because this reader
+        does not support automatic projection pushdown. Use ``columns`` to
+        explicitly limit the columns read when appropriate.
 
     Examples:
         >>> import ray
