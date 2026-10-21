@@ -519,6 +519,30 @@ def test_lookup_reads_auths_entries(docker_config):
     assert lookup("other.example") is None
 
 
+@pytest.mark.parametrize("key", ["docker.io", "https://registry-1.docker.io"])
+def test_lookup_takes_docker_hub_auths_under_its_other_hostnames(docker_config, key):
+    """A Kubernetes Secret may key Docker Hub's entry by docker.io, which
+    kubelet accepts. The Docker CLI's own key still comes first."""
+    k8s_entry = {"auth": _b64("k8s-user:k8s-secret")}
+    docker_config({"auths": {key: k8s_entry}})
+    assert registry_credentials(
+        "registry-1.docker.io", timeout=10
+    ) == RegistryCredentials("k8s-user", "k8s-secret")
+    assert registry_credentials("a.example", timeout=10) is None
+
+    docker_config(
+        {
+            "auths": {
+                key: k8s_entry,
+                "https://index.docker.io/v1/": {"auth": _b64("hub-user:hub-secret")},
+            }
+        }
+    )
+    assert registry_credentials(
+        "registry-1.docker.io", timeout=10
+    ) == RegistryCredentials("hub-user", "hub-secret")
+
+
 def test_lookup_without_a_config_file_and_with_a_broken_one(docker_config):
     assert registry_credentials("a.example", timeout=10) is None
     path = docker_config({})

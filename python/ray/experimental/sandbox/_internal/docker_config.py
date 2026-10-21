@@ -26,6 +26,8 @@ from ray.experimental.sandbox.exceptions import SandboxCreationError
 
 # The key the Docker CLI files Docker Hub's credentials under.
 _DOCKER_HUB_KEY = "https://index.docker.io/v1/"
+# Docker Hub's hostnames, any of which may key its auths entry.
+_DOCKER_HUB_HOSTS = ("index.docker.io", "docker.io", "registry-1.docker.io")
 # What a credential helper prints, exiting non-zero, when it has nothing
 # stored for the server it was asked about.
 _HELPER_NOT_FOUND = "credentials not found in native keychain"
@@ -115,11 +117,10 @@ def registry_credentials(
         auths = config.get("auths") or {}
         entry = auths.get(key)
         if entry is None:
-            # Older ``docker login`` versions keyed entries by URL.
-            entry = next(
-                (v for k, v in auths.items() if _hostname(k) == _hostname(key)),
-                None,
-            )
+            # Older ``docker login`` versions keyed entries by URL, and a
+            # Kubernetes Secret may key Docker Hub's by any of its hostnames.
+            hosts = _DOCKER_HUB_HOSTS if key == _DOCKER_HUB_KEY else (key,)
+            entry = next((v for k, v in auths.items() if _hostname(k) in hosts), None)
         return _auths_credentials(entry, key, path) if entry else None
     except (AttributeError, TypeError) as err:
         # A field of the wrong type. The message names types, not values, so
