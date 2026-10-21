@@ -742,7 +742,8 @@ class TestNvidiaGpuProvider(unittest.TestCase):
 
         self.assertEqual(gpu_info["index"], 0)
         self.assertEqual(gpu_info["name"], "NVIDIA Tesla V100")
-        self.assertEqual(gpu_info["utilization_gpu"], -1)  # Should be -1 due to error
+        # No utilization sample when the query fails; never a -1 sentinel.
+        self.assertIsNone(gpu_info["utilization_gpu"])
         self.assertEqual(
             gpu_info["processes_pids"], {}
         )  # Should be empty dict due to error
@@ -810,6 +811,46 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["memory_used"], 2 * 1024)  # 2GB in MB
         self.assertEqual(gpu_info["memory_total"], 4 * 1024)  # 4GB in MB
         self.assertEqual(gpu_info["processes_pids"], {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_get_gpu_utilization_with_mig_unsupported_utilization(self, mock_pynvml):
+        """A MIG slice whose utilization query is unsupported reports None."""
+        mock_gpu_handle = Mock()
+        mock_mig_handle = Mock()
+        mock_mig_memory_info = Mock()
+        mock_mig_memory_info.used = 2 * MB * 1024
+        mock_mig_memory_info.total = 4 * MB * 1024
+
+        class MockNVMLError(Exception):
+            pass
+
+        mock_pynvml.NVMLError = MockNVMLError
+        mock_pynvml.nvmlInit.return_value = None
+        mock_pynvml.nvmlDeviceGetCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetHandleByIndex.return_value = mock_gpu_handle
+        mock_pynvml.nvmlDeviceGetMigMode.return_value = (True, True)
+        mock_pynvml.nvmlDeviceGetMaxMigDeviceCount.return_value = 1
+        mock_pynvml.nvmlDeviceGetMigDeviceHandleByIndex.return_value = mock_mig_handle
+        mock_pynvml.nvmlDeviceGetMemoryInfo.return_value = mock_mig_memory_info
+        # NVML does not support nvmlDeviceGetUtilizationRates on MIG devices.
+        mock_pynvml.nvmlDeviceGetUtilizationRates.side_effect = MockNVMLError(
+            "Not Supported"
+        )
+        mock_pynvml.nvmlDeviceGetComputeRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetGraphicsRunningProcesses.return_value = []
+        mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA A100-SXM4-40GB MIG 1g.5gb"
+        mock_pynvml.nvmlDeviceGetUUID.return_value = (
+            b"MIG-12345678-1234-1234-1234-123456789abc"
+        )
+        mock_pynvml.nvmlShutdown.return_value = None
+        self.provider._pynvml = mock_pynvml
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["utilization_gpu"])
+        self.assertEqual(result[0]["memory_used"], 2 * 1024)
 
 
 class TestAmdGpuProvider(unittest.TestCase):
@@ -891,6 +932,31 @@ class TestAmdGpuProvider(unittest.TestCase):
         self.assertEqual(len(gpu_info["processes_pids"]), 1)
         self.assertEqual(gpu_info["processes_pids"][5678]["pid"], 5678)
         self.assertEqual(gpu_info["processes_pids"][5678]["gpu_memory_usage"], 512)
+
+    @patch("ray._private.thirdparty.pyamdsmi", create=True)
+    def test_get_gpu_utilization_failure_reports_none(self, mock_pyamdsmi):
+        """The shim's -1 (query failed) becomes None, not a utilization value."""
+        mock_pyamdsmi.smi_initialize.return_value = None
+        mock_pyamdsmi.smi_get_device_count.return_value = 1
+        mock_pyamdsmi.smi_get_device_id.return_value = "device_0"
+        mock_pyamdsmi.smi_get_device_utilization.return_value = -1
+        mock_pyamdsmi.smi_get_device_compute_process.return_value = []
+        mock_pyamdsmi.smi_get_compute_process_info_by_device.return_value = []
+        mock_pyamdsmi.smi_get_device_name.return_value = b"AMD Instinct MI300X"
+        mock_pyamdsmi.smi_get_device_unique_id.return_value = (
+            "GPU-13579bdf-9abc-def0-0000-000000000001"
+        )
+        mock_pyamdsmi.smi_get_device_memory_used.return_value = 6 * MB * 1024
+        mock_pyamdsmi.smi_get_device_memory_total.return_value = 16 * MB * 1024
+        mock_pyamdsmi.smi_shutdown.return_value = None
+        self.provider._pyamdsmi = mock_pyamdsmi
+        self.provider._initialized = True
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertEqual(len(result), 1)
+        self.assertIsNone(result[0]["utilization_gpu"])
+        self.assertEqual(result[0]["memory_used"], 6 * 1024)
 
 
 class TestGpuMetricProvider(unittest.TestCase):

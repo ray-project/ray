@@ -348,8 +348,8 @@ class NvidiaGpuProvider(GpuProvider):
         try:
             memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(mig_handle)
 
-            # Get MIG device utilization
-            utilization = -1
+            # Get MIG device utilization (NVML doesn't support it on MIG devices)
+            utilization = None
             try:
                 utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
                     mig_handle
@@ -421,8 +421,8 @@ class NvidiaGpuProvider(GpuProvider):
         try:
             memory_info = self._pynvml.nvmlDeviceGetMemoryInfo(gpu_handle)
 
-            # Get GPU utilization
-            utilization = -1
+            # Get GPU utilization; None if the device doesn't report it
+            utilization = None
             try:
                 utilization_info = self._pynvml.nvmlDeviceGetUtilizationRates(
                     gpu_handle
@@ -614,7 +614,7 @@ class AmdGpuProvider(GpuProvider):
             for i in range(num_gpus):
                 utilization = self._pyamdsmi.smi_get_device_utilization(i)
                 if utilization == -1:
-                    utilization = -1
+                    utilization = None
 
                 # Get running processes
                 processes_pids = {}
