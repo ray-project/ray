@@ -287,20 +287,17 @@ class Dataset:
     via the ``write_*()`` APIs.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            # Create dataset from synthetic data.
-            ds = ray.data.range(1000)
-            # Create dataset from in-memory data.
-            ds = ray.data.from_items(
-                [{"col1": i, "col2": i * 2} for i in range(1000)]
-            )
-            # Create dataset from external storage system.
-            ds = ray.data.read_parquet("s3://bucket/path")
-            # Save dataset back to external storage system.
-            ds.write_csv("s3://bucket/output")
+        >>> import ray
+        >>> # Create dataset from synthetic data.
+        >>> ds = ray.data.range(1000)
+        >>> # Create dataset from in-memory data.
+        >>> ds = ray.data.from_items(
+        ...     [{"col1": i, "col2": i * 2} for i in range(1000)]
+        ... )
+        >>> # Create dataset from external storage system.
+        >>> ds = ray.data.read_parquet("s3://bucket/path")  # doctest: +SKIP
+        >>> # Save dataset back to external storage system.
+        >>> ds.write_csv("s3://bucket/output")  # doctest: +SKIP
 
     Dataset has two kinds of operations: transformation, which takes in Dataset
     and outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption,
@@ -5166,46 +5163,40 @@ class Dataset:
             - URI: https://py.iceberg.apache.org/
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-                from ray.data.expressions import col
-
-                # Basic append (default behavior)
-                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-
-                # Schema evolution is automatic - new columns are added automatically
-                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
-                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
-                ds_enriched.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-                 # Upsert mode - update existing rows or insert new ones
-                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
-                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
-                ds_updates.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"},
-                    mode=SaveMode.UPSERT,
-                    upsert_kwargs={"join_cols": ["id"]},
-                )
-
-                # Partial overwrite with Ray Data expressions
-                ds.write_iceberg(
-                    table_identifier="events.user_activity",
-                    catalog_kwargs={"name": "default", "type": "rest"},
-                    mode=SaveMode.OVERWRITE,
-                    overwrite_filter=col("date") >= "2024-10-28"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> from ray.data import SaveMode
+            >>> from ray.data.expressions import col
+            >>> # Basic append (default behavior)
+            >>> docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"}
+            ... )
+            >>> # Schema evolution is automatic - new columns are added automatically
+            >>> enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+            >>> ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+            >>> ds_enriched.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"}
+            ... )
+            >>> # Upsert mode - update existing rows or insert new ones
+            >>> updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+            >>> ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+            >>> ds_updates.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"},
+            ...     mode=SaveMode.UPSERT,
+            ...     upsert_kwargs={"join_cols": ["id"]},
+            ... )
+            >>> # Partial overwrite with Ray Data expressions
+            >>> ds.write_iceberg(
+            ...     table_identifier="events.user_activity",
+            ...     catalog_kwargs={"name": "default", "type": "rest"},
+            ...     mode=SaveMode.OVERWRITE,
+            ...     overwrite_filter=col("date") >= "2024-10-28"
+            ... )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
@@ -5310,37 +5301,28 @@ class Dataset:
             ``deltalake`` Python library.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-
-                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-
-                # Append (default) - creates the table if it doesn't exist.
-                ds.write_delta("/tmp/my_delta_table")
-
-                # Overwrite the table contents.
-                ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
-
-                # Partitioned write.
-                ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
-
-                # A later append with an extra column adds it to the table
-                # automatically (the default schema_mode="merge") -- existing
-                # rows read back with None for it.
-                more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
-                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
-                    "/tmp/my_delta_table"
-                )
-
-                # Reject that same write instead, leaving the table untouched.
-                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
-                    "/tmp/my_delta_table", schema_mode="error"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> from ray.data import SaveMode
+            >>> docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> # Append (default) - creates the table if it doesn't exist.
+            >>> ds.write_delta("/tmp/my_delta_table")
+            >>> # Overwrite the table contents.
+            >>> ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
+            >>> # Partitioned write.
+            >>> ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
+            >>> # A later append with an extra column adds it to the table
+            >>> # automatically (the default schema_mode="merge") -- existing
+            >>> # rows read back with None for it.
+            >>> more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
+            >>> ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+            ...     "/tmp/my_delta_table"
+            ... )
+            >>> # Reject that same write instead, leaving the table untouched.
+            >>> ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+            ...     "/tmp/my_delta_table", schema_mode="error"
+            ... )
 
         Args:
             path: URI of the Delta table (e.g. ``/tmp/my_table`` or
@@ -5566,7 +5548,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.write_csv("s3://bucket/folder/)  # doctest: +SKIP
+            >>> ds.write_csv("s3://bucket/folder/")  # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -5911,18 +5893,14 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.from_items(
-                    [
-                        {"__key__": f"{i:06d}", "txt": str(i)}
-                        for i in range(100)
-                    ]
-                )
-                ds.write_webdataset("s3://bucket/folder/")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.from_items(
+            ...     [
+            ...         {"__key__": f"{i:06d}", "txt": str(i)}
+            ...         for i in range(100)
+            ...     ]
+            ... )
+            >>> ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -6165,20 +6143,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                connection_parameters = dict(
-                    user=...,
-                    account="ABCDEFG-ABC12345",
-                    password=...,
-                    database="SNOWFLAKE_SAMPLE_DATA",
-                    schema="TPCDS_SF100TCL"
-                )
-                ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-                ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> connection_parameters = dict(
+            ...     user=...,
+            ...     account="ABCDEFG-ABC12345",
+            ...     password=...,
+            ...     database="SNOWFLAKE_SAMPLE_DATA",
+            ...     schema="TPCDS_SF100TCL"
+            ... )
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
 
         Args:
             table: The name of the table to write to.
@@ -6244,17 +6218,13 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_mongo(
-                    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-                    database="my_db",
-                    collection="my_collection"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds.write_mongo(
+            ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+            ...     database="my_db",
+            ...     collection="my_collection"
+            ... )
 
         Args:
             uri: The URI to the destination MongoDB where the dataset is
@@ -6302,19 +6272,15 @@ class Dataset:
         before calling this method.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-
-                docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_bigquery(
-                    project_id="my_project_id",
-                    dataset="my_dataset_table",
-                    overwrite_table=True
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_bigquery(
+            ...     project_id="my_project_id",
+            ...     dataset="my_dataset_table",
+            ...     overwrite_table=True
+            ... )
 
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
@@ -6381,31 +6347,27 @@ class Dataset:
         before calling this method.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pyarrow as pa
-                import pandas as pd
-
-                docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                user_schema = pa.schema(
-                    [
-                        ("id", pa.int64()),
-                        ("title", pa.string()),
-                    ]
-                )
-                ds.write_clickhouse(
-                    table="default.my_table",
-                    dsn="clickhouse+http://user:pass@localhost:8123/default",
-                    mode=ray.data.SinkMode.OVERWRITE,
-                    schema=user_schema,
-                    table_settings=ray.data.ClickHouseTableSettings(
-                        engine="ReplacingMergeTree()",
-                        order_by="id",
-                    ),
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pyarrow as pa
+            >>> import pandas as pd
+            >>> docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> user_schema = pa.schema(
+            ...     [
+            ...         ("id", pa.int64()),
+            ...         ("title", pa.string()),
+            ...     ]
+            ... )
+            >>> ds.write_clickhouse(
+            ...     table="default.my_table",
+            ...     dsn="clickhouse+http://user:pass@localhost:8123/default",
+            ...     mode=ray.data.SinkMode.OVERWRITE,
+            ...     schema=user_schema,
+            ...     table_settings=ray.data.ClickHouseTableSettings(
+            ...         engine="ReplacingMergeTree()",
+            ...         order_by="id",
+            ...     ),
+            ... )
 
         Args:
             table: Fully qualified table identifier (e.g., "default.my_table").
@@ -6529,35 +6491,27 @@ class Dataset:
 
             Write to a single namespace:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds = ds.map_batches(
-                    lambda batch: {
-                        "id": batch["id"],
-                        "vector": ...,
-                    }
-                )
-
-                ds.write_turbopuffer(
-                    namespace="my-namespace",
-                    api_key="<YOUR_API_KEY>",
-                    region="gcp-us-central1",
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds = ds.map_batches(
+            ...     lambda batch: {
+            ...         "id": batch["id"],
+            ...         "vector": ...,
+            ...     }
+            ... )
+            >>> ds.write_turbopuffer(
+            ...     namespace="my-namespace",
+            ...     api_key="<YOUR_API_KEY>",
+            ...     region="gcp-us-central1",
+            ... )
 
             Write to multiple namespaces driven by a column:
 
-            .. testcode::
-                :skipif: True
-
-                ds.write_turbopuffer(
-                    namespace_column="tenant",
-                    api_key="<YOUR_API_KEY>",
-                    region="gcp-us-central1",
-                )
+            >>> ds.write_turbopuffer(
+            ...     namespace_column="tenant",
+            ...     api_key="<YOUR_API_KEY>",
+            ...     region="gcp-us-central1",
+            ... )
 
         Args:
             namespace: Name of the Turbopuffer namespace to write into.
@@ -6709,13 +6663,9 @@ class Dataset:
         Convenience method to write Ray Dataset to Kafka.
 
         Examples:
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_kafka("my-topic", "localhost:9092")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds.write_kafka("my-topic", "localhost:9092")
 
         Args:
             topic: Kafka topic name
