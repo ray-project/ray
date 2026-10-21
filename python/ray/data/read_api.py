@@ -4206,9 +4206,11 @@ def read_hive(
         table: The Hive table to read, optionally qualified as
             ``database.table``. Specify exactly one of ``table`` and ``query``.
         connection_factory: A serializable function that takes no arguments and
-            returns a new Impyla HiveServer2 connection on each call. Ray calls
-            it on the driver for table metadata and on the read worker for data.
-            Query reads with an explicit schema only call it on the read worker.
+            returns a new Impyla HiveServer2 connection on each call. In HS2
+            mode, Ray calls it on the driver for table metadata and on the read
+            worker for data. Query reads with an explicit schema only call it
+            on the read worker. In direct mode, Ray calls it only on the driver
+            for table metadata; workers read the filesystem directly.
             Ray closes each returned connection. Configure authentication, TLS
             verification, and client retries in the factory. Read credentials
             inside the factory to avoid capturing them in its serialized state.

@@ -193,6 +193,67 @@ def test_direct_api_reuses_project_for_column_name_case(monkeypatch, tmp_path):
     assert calls == [{"ID": "id"}]
 
 
+def test_direct_parquet_converts_values_before_filter_projection_and_limit(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from datetime import datetime, timedelta
+
+    import pyarrow.parquet as pq
+
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+    from ray.data.expressions import col
+
+    pq.write_table(
+        pa.table(
+            {
+                "id": [0, 1, 2, 3],
+                "code": [None, "ab", "ab", "ab"],
+                "tag": [None, "abcdef", "abcdef", "abcdef"],
+                "ts": pa.array([None, 1001, 1001, 1001], type=pa.timestamp("ns")),
+            }
+        ),
+        tmp_path / "000000_0",
+    )
+    hive_schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            pa.field("code", pa.string(), metadata={b"hive_type": b"char(4)"}),
+            pa.field("tag", pa.string(), metadata={b"hive_type": b"varchar(3)"}),
+            ("ts", pa.timestamp("us")),
+        ]
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(str(tmp_path), "parquet", hive_schema),
+    )
+    converted_time = datetime(1970, 1, 1) + timedelta(microseconds=1)
+    dataset = (
+        read_hive(
+            "events",
+            connection_factory=lambda: pytest.fail(
+                "Native workers must not connect to HS2"
+            ),
+            read_mode="direct",
+        )
+        .filter(
+            expr=(col("code") == "ab  ")
+            & (col("tag") == "abc")
+            & (col("ts") == converted_time)
+        )
+        .select_columns(["id", "tag", "ts"])
+        .limit(2)
+    )
+    assert dataset.schema().base_schema == pa.schema(
+        [("id", pa.int64()), ("tag", pa.string()), ("ts", pa.timestamp("us"))]
+    )
+    rows = dataset.take_all()
+    assert len(rows) == 2
+    ids = {row["id"] for row in rows}
+    assert len(ids) == 2 and ids <= {1, 2, 3}
+    assert all(row["tag"] == "abc" and row["ts"] == converted_time for row in rows)
+
+
 @pytest.mark.parametrize("positional", [False, True])
 @pytest.mark.parametrize("unsampled", [False, True])
 @pytest.mark.parametrize("operation", ["projection", "filter_only"])
