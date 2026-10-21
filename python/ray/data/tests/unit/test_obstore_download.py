@@ -1716,7 +1716,7 @@ _RETRY_ENV_VARS = (
 
 
 class TestObstoreRetryConfig:
-    """DATA-3604: obstore download clients get a real, env-tunable retry budget.
+    """obstore download clients get a real, env-tunable retry budget.
 
     obstore's own defaults let 10 retries finish in ~2 s, so a transient S3
     503 burst exhausted them and the object silently became ``None``.
@@ -1782,6 +1782,67 @@ class TestObstoreRetryConfig:
         assert _obstore_client_options_from_env() == {}
         monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
         assert _obstore_client_options_from_env() == {"timeout": timedelta(seconds=90)}
+
+    @pytest.mark.parametrize(
+        "var, path, default",
+        [
+            ("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", ("max_retries",), 10),
+            (
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+                ("retry_timeout",),
+                timedelta(seconds=120),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                ("backoff", "init_backoff"),
+                timedelta(milliseconds=1000),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                ("backoff", "max_backoff"),
+                timedelta(milliseconds=20_000),
+            ),
+        ],
+    )
+    def test_negative_env_falls_back(self, monkeypatch, var, path, default):
+        # Rust durations are unsigned, so a negative value must never reach
+        # obstore; it is treated like a malformed value.
+        monkeypatch.setenv(var, "-1")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            config = _obstore_retry_config_from_env()
+        for key in path:
+            config = config[key]
+        assert config == default
+        mock_logger.warning.assert_called_once()
+
+    def test_negative_request_timeout_falls_back(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "-5")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            assert _obstore_client_options_from_env() == {}
+        mock_logger.warning.assert_called_once()
+
+    def test_store_registry_tolerates_none_client_options(self, monkeypatch):
+        # A caller may pass ``client_options=None`` explicitly; both merge
+        # sites (env timeout and the http:// allow_http injection) must cope.
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(client_options=None)
+        reg._from_url = fake_from_url
+        with patch("ray.data._internal.planner._obstore_download.logger"):
+            reg.get("http://127.0.0.1:1")
+        assert captured["kwargs"]["client_options"] == {
+            "timeout": timedelta(seconds=90),
+            "allow_http": True,
+        }
 
     def test_store_registry_defaults_to_env_config(self, monkeypatch):
         monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "250")
