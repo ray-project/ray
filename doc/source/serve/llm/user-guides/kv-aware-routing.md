@@ -150,7 +150,7 @@ How a request flows through a KV-aware deployment.
 
 Token load estimates how much work remains on each engine replica. It captures the two main phases of LLM inference: compute-bound prefill and memory-bound decode. For each candidate replica, the selection service estimates token load in KV blocks, and the router sends the request to the replica with the lowest estimated load.
 
-- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded blocks receive less because they must first be loaded back to the GPU.
+- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded and disk-offloaded blocks receive less because they must first be loaded back to the GPU.
 - **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache accumulated by active requests. This term captures the KV blocks associated with ongoing decode work, weighted by the estimated remaining output based on `max_tokens`.
 
 ### Tune the scoring weights
@@ -170,6 +170,8 @@ llm_config = LLMConfig(
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT` | 1.0 | Controls how much GPU-resident KV cache overlap reduces the prefill cost. Increase it when KV cache reuse is more important, or set it to 0.0 to ignore KV cache overlap and route based on load alone. |
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Reduces the benefit of KV cache overlap as a replica’s prefill backlog grows relative to the least-loaded candidate. Increase it when cache affinity repeatedly favors a busy replica while others remain underutilized. |
 | `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Adds a cost for each request a replica is already serving. Increase it when many small requests tend to concentrate on the same replica. |
+| `DYN_ROUTER_HOST_CACHE_HIT_WEIGHT` | 0.75 | Cache credit for each matched block held in CPU memory, relative to 1.0 for a block in GPU memory. Applies with {ref}`native KV cache offloading <native-kv-cache-offloading>`. |
+| `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` | 0.25 | Cache credit for each matched block held in a local disk tier, relative to 1.0 for a block in GPU memory. Applies with a {ref}`local disk tier <native-kv-cache-disk-tier>`. |
 
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
 
@@ -203,7 +205,7 @@ If the ingress router fails to route a request, Ray Serve LLM can send it to an 
 ## See also
 
 - {doc}`Direct streaming <direct-streaming>` - The ingress path KV-aware routing runs on
-- {doc}`KV cache offloading <kv-cache-offloading>` - Extend the cache to host memory and let the router route to it
+- {doc}`KV cache offloading <kv-cache-offloading>` - Extend the cache to host memory and local disk and let the router route to it
 - {doc}`Prefix-aware routing <prefix-aware-routing>` - Text-based cache affinity without the extra dependency
 - {ref}`routing-policies-guide` - Request routing concepts and available policies
 - [Dynamo standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) - The selection service that scores replicas, and its full settings
