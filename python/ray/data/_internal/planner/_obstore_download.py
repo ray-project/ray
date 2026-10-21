@@ -1151,7 +1151,7 @@ def download_bytes_async(
 
 # Core async download logic
 async def _download_uris_with_obstore(
-    uris: List[str],
+    uris: List[Any],
     uri_column_name: str,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     file_sizes: Optional[List[Optional[int]]] = None,
@@ -1170,7 +1170,9 @@ async def _download_uris_with_obstore(
     GET, which avoids a full-batch HEAD pass for large URI lists.
 
     Args:
-        uris: URIs to download.
+        uris: URIs to download. ``None`` entries stay ``None``; other
+            non-string entries (NaN, ``pd.NA``, ``""``) yield ``None`` and are
+            counted as invalid in the per-block warning.
         uri_column_name: Column name (used only for error logging).
         filesystem: Optional PyArrow filesystem whose credentials are
             forwarded to the obstore store. Ignored when *fs_kwargs* is given.
@@ -1278,11 +1280,13 @@ async def _download_uris_with_obstore(
         # than one URI, and it must surface as the real error instead of a
         # column of nulls. A store failing for some URIs is row-local. This
         # does not depend on URI order, unlike probing the first URI would.
-        if pending and all(
-            isinstance(outcome, _DownloadFailure) and outcome.store_failure
+        store_failures = [
+            outcome
             for outcome in outcomes
-        ):
-            raise outcomes[0].error
+            if isinstance(outcome, _DownloadFailure) and outcome.store_failure
+        ]
+        if pending and len(store_failures) == len(outcomes):
+            raise store_failures[0].error
         transient: List[Tuple[int, _DownloadFailure]] = []
         for index, outcome in zip(pending, outcomes):
             if not isinstance(outcome, _DownloadFailure):
