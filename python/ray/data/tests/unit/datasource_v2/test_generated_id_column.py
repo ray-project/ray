@@ -9,6 +9,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+import ray
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
 )
@@ -22,6 +23,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
+from ray.data.checkpoint import CheckpointConfig
 from ray.data.checkpoint.generated_id import (
     GENERATED_ID_COLUMN_TYPE,
     GeneratedIdColumn,
@@ -188,6 +190,23 @@ def test_infer_schema_raises_on_name_clash(tmp_path):
 
     with pytest.raises(ValueError, match="already exists"):
         datasource.infer_schema(_manifest([(path, None)]))
+
+
+def test_read_parquet_rejects_generated_id_path_collision(
+    restore_data_context,
+    tmp_path,
+):
+    ctx = ray.data.DataContext.get_current()
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=(tmp_path / "checkpoint").as_uri(),
+        generated_id_column="path",
+    )
+
+    with pytest.raises(ValueError, match="Duplicate synthesized column name"):
+        ray.data.read_parquet(
+            "dummy.parquet",
+            include_paths=True,
+        )
 
 
 @pytest.mark.parametrize(
