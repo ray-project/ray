@@ -133,3 +133,6 @@ EOF
 # introduces longer adds a large one-time engine initialization cost. To avoid performance
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
+
+# Precompile packages installed at runtime (e.g. via runtime_env).
+ENV UV_COMPILE_BYTECODE=1
