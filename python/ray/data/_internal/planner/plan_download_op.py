@@ -1,6 +1,8 @@
 import logging
+import time
+from collections import Counter
 from functools import partial
-from typing import Iterator, List, Optional
+from typing import Any, Callable, Iterator, List, Optional
 
 import pyarrow as pa
 
@@ -19,10 +21,16 @@ from ray.data._internal.logical.operators import Download
 from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
+    _download_attempt_settings,
     _download_error,
+    _DownloadFailure,
     _is_permanent_download_error,
+    _is_usable_uri,
     _log_fallback_warning,
+    _log_skipped_uris,
     _plan_obstore_routing,
+    _retry_backoff_s,
+    _skip_reason,
     download_bytes_async,
 )
 from ray.data._internal.planner.download_partition_actor import (
@@ -225,6 +233,77 @@ def plan_download_op(
     return download_map_operator
 
 
+def _resolve_threaded_outcomes(
+    uris: List[Any],
+    outcomes: List[Any],
+    uri_column_name: str,
+    load_uri_bytes: Callable[[Iterator[Any]], Iterator[Any]],
+) -> List[Optional[bytes]]:
+    """Turn per-URI outcomes into bytes, re-fetching transient failures.
+
+    Mirrors the obstore path: permanent failures become ``None`` and are
+    counted in one warning per block; transient ones are re-fetched up to
+    ``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS`` times in total, keeping the bytes
+    already read, and raise ``DownloadError`` if any still fail.
+    """
+    results: List[Any] = list(outcomes)
+    skipped: "Counter[str]" = Counter()
+    max_attempts, backoff_ms = _download_attempt_settings()
+    attempt = 1
+    while True:
+        transient: List[int] = []
+        for index, outcome in enumerate(results):
+            if not isinstance(outcome, _DownloadFailure):
+                continue
+            if outcome.permanent:
+                skipped[outcome.reason] += 1
+                logger.debug(
+                    "Skipping uri %r for column %r: %s",
+                    outcome.uri,
+                    uri_column_name,
+                    outcome.error,
+                )
+                results[index] = None
+            else:
+                transient.append(index)
+        if not transient:
+            break
+        first = results[transient[0]]
+        if attempt >= max_attempts:
+            _log_skipped_uris(uri_column_name, skipped, len(uris))
+            raise _download_error(
+                first.uri, uri_column_name, first.error, attempts=attempt
+            ) from first.error
+        delay = _retry_backoff_s(attempt, backoff_ms)
+        logger.warning(
+            "Re-fetching %d of %d URIs for column %r after transient download "
+            "failures (attempt %d of %d, waiting %.1fs). First failure: %r: %s",
+            len(transient),
+            len(uris),
+            uri_column_name,
+            attempt,
+            max_attempts,
+            delay,
+            first.uri,
+            first.error,
+        )
+        if delay > 0:
+            time.sleep(delay)
+        retried = list(
+            make_async_gen(
+                base_iterator=iter([uris[index] for index in transient]),
+                fn=load_uri_bytes,
+                preserve_ordering=True,
+                num_workers=URI_DOWNLOAD_MAX_WORKERS,
+            )
+        )
+        for index, outcome in zip(transient, retried):
+            results[index] = outcome
+        attempt += 1
+    _log_skipped_uris(uri_column_name, skipped, len(uris))
+    return results
+
+
 def download_bytes_threaded(
     block: pa.Table,
     uri_column_names: List[str],
@@ -306,12 +385,23 @@ def download_bytes_threaded(
             resolved_fs=resolved_fs,
             uri_column_name=uri_column_name,
         ):
-            """Download bytes for each URI using the pre-resolved filesystem."""
+            """Yield bytes, ``None`` or a ``_DownloadFailure`` per URI.
+
+            Uses the pre-resolved filesystem. Classification of failures and
+            the bounded re-fetch of transient ones happen afterwards in
+            ``_resolve_threaded_outcomes``.
+            """
             for uri in uri_iterator:
+                if uri is None:
+                    # A null input is a legitimate "no value"; it stays null.
+                    yield None
+                    continue
+                if not _is_usable_uri(uri):
+                    yield _DownloadFailure(
+                        uri, "invalid uri", TypeError("not a uri"), permanent=True
+                    )
+                    continue
                 try:
-                    if uri is None:
-                        yield None
-                        continue
                     # Normalize the path only; FS is supplied so no network I/O.
                     resolved_paths, _ = _resolve_paths_and_filesystem(
                         uri, filesystem=resolved_fs
@@ -321,20 +411,18 @@ def download_bytes_threaded(
                         yield None
                         continue
                     with wrapped_fs.open_input_stream(resolved_path) as f:
-                        read_bytes = f.read()
+                        yield f.read()
                 except Exception as e:
                     # A URI that can never be read (missing file, invalid uri
-                    # like `foo://bar`) yields None. Anything else survived the
-                    # RetryingPyFileSystem retries and must fail the task
-                    # rather than silently drop the row.
-                    if _is_permanent_download_error(e):
-                        logger.debug(
-                            "Skipping uri %r for column %r: %s", uri, uri_column_name, e
-                        )
-                        yield None
-                        continue
-                    raise _download_error(uri, uri_column_name, e) from e
-                yield read_bytes
+                    # like `foo://bar`, access denied) yields None. Anything
+                    # else survived the RetryingPyFileSystem retries and must
+                    # fail the task rather than silently drop the row.
+                    yield _DownloadFailure(
+                        uri,
+                        _skip_reason(e),
+                        e,
+                        permanent=_is_permanent_download_error(e),
+                    )
 
         # Use make_async_gen to resolve and download URI bytes concurrently
         # preserve_ordering=True ensures results are returned in the same order as input URIs
@@ -345,6 +433,10 @@ def download_bytes_threaded(
                 preserve_ordering=True,
                 num_workers=URI_DOWNLOAD_MAX_WORKERS,
             )
+        )
+
+        uri_bytes = _resolve_threaded_outcomes(
+            uris, uri_bytes, uri_column_name, load_uri_bytes
         )
 
         # Add the new column to the PyArrow table

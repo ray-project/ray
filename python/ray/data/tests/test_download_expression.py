@@ -567,6 +567,8 @@ _TINY_RETRY_BUDGET = {
     "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS": "1",
     "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS": "2",
     "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S": "5",
+    # Keep the block-level re-fetch (default 2 attempts) but don't wait.
+    "RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS": "0",
 }
 
 
@@ -637,6 +639,18 @@ class TestDownloadTransientFailures:
         ds = ds.with_column("bytes", download("uri"))
         assert [row["bytes"] for row in ds.take_all()] == [b"image bytes"]
         assert served == [503, 503, 200]
+
+    def test_transient_failure_recovers_without_settings(
+        self, tiny_retry_cluster, flaky_server
+    ):
+        # One transient failure is re-fetched inside the task by default; no
+        # DataContext retry settings are needed.
+        pytest.importorskip("obstore")
+        port, served = flaky_server([503, 200])
+        ds = ray.data.from_items([{"uri": f"http://127.0.0.1:{port}/a.bin"}])
+        ds = ds.with_column("bytes", download("uri"))
+        assert [row["bytes"] for row in ds.take_all()] == [b"image bytes"]
+        assert served == [503, 200]
 
 
 if __name__ == "__main__":

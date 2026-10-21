@@ -2392,14 +2392,18 @@ def download(
     a specified column. When evaluated, it will fetch the content from each URI
     and return the downloaded bytes.
 
-    A missing object, a permission-denied object or an invalid URI yields
-    ``None`` for that row. Transient failures (5xx, throttling, timeouts,
-    dropped connections, bad credentials) are retried with exponential
-    backoff; once the retries are exhausted the task raises ``DownloadError``
-    instead of yielding ``None``, so no row is silently lost. Tune the retry
-    budget with the ``RAY_DATA_OBSTORE_RETRY_*`` environment variables, retry
-    the task with ``DataContext.retried_map_errors`` and ``max_map_retries``,
-    or tolerate the failure with ``DataContext.max_errored_blocks``.
+    A missing object (404), an access-denied object (403) or an invalid URI
+    yields ``None`` for that row, and each block logs one warning counting
+    such rows. Transient failures (5xx, throttling, timeouts, dropped
+    connections) are retried with backoff inside the storage client and then
+    re-fetched up to ``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS`` times per task
+    (default 2); if they still fail, the task raises ``DownloadError`` instead
+    of yielding ``None``, so no row is silently lost. A 403 whose S3 error
+    code says the credentials are bad (for example ``InvalidAccessKeyId`` or
+    ``SignatureDoesNotMatch``) also raises. Tune the client retry budget with
+    the ``RAY_DATA_OBSTORE_RETRY_*`` environment variables, retry the task
+    with ``DataContext.retried_map_errors`` and ``max_map_retries``, or
+    tolerate the failure with ``DataContext.max_errored_blocks``.
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
