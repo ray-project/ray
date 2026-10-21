@@ -19,10 +19,12 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
     hash_partition,
     shuffle,
+    to_numpy,
     try_combine_chunked_columns,
     unify_schemas,
 )
 from ray.data._internal.tensor_extensions.arrow import (
+    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowTensorTypeV2,
     _extension_array_concat_supported,
     create_arrow_fixed_shape_tensor_type,
@@ -1447,6 +1449,57 @@ def test_struct_with_null_tensor_values(
             # Check that the tensor field is null by checking its validity
             tensor_field = struct_column[i]["tensor"]
             assert tensor_field.is_valid is False
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorArray",
+)
+@pytest.mark.parametrize("dtype", [np.float64, np.int64])
+@pytest.mark.parametrize(
+    "make_array,source_rows",
+    [
+        (lambda a: a.take(pa.array([0, None, 1])), [0, None, 1]),
+        (lambda a: a.take(pa.array([1, None, 0, 1])).slice(1), [None, 0, 1]),
+        (
+            lambda a: pa.chunked_array([a, a.take(pa.array([0, None]))]),
+            [0, 1, 0, None],
+        ),
+    ],
+    ids=["array", "sliced", "chunked"],
+)
+def test_to_numpy_native_tensor_null_rows(dtype, make_array, source_rows):
+    source = np.array([[10, 11], [20, 21]], dtype=dtype)
+    array = make_array(pa.FixedShapeTensorArray.from_numpy_ndarray(source))
+
+    result = to_numpy(array)
+
+    assert result.dtype == object
+    assert result.shape == (len(source_rows),)
+    for row, source_row in zip(result, source_rows):
+        if source_row is None:
+            assert row is None
+        else:
+            assert row.dtype == dtype
+            np.testing.assert_array_equal(row, source[source_row])
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
+    reason="Requires pyarrow>=16 for native FixedShapeTensorArray",
+)
+@pytest.mark.parametrize("chunked", [False, True])
+def test_to_numpy_native_tensor_no_nulls(chunked):
+    source = np.arange(12, dtype=np.float64).reshape(3, 2, 2)
+    array = pa.FixedShapeTensorArray.from_numpy_ndarray(source)
+    if chunked:
+        array = pa.chunked_array([array.slice(0, 1), array.slice(1)])
+
+    result = to_numpy(array)
+
+    assert result.dtype == np.float64
+    assert result.shape == (3, 2, 2)
+    np.testing.assert_array_equal(result, source)
 
 
 # Test fixtures for _align_struct_fields tests
