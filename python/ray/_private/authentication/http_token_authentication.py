@@ -1,4 +1,3 @@
-import logging
 import socket
 import threading
 from http.cookies import CookieError, SimpleCookie
@@ -11,8 +10,6 @@ from ray._private.authentication import (
     authentication_constants,
     authentication_utils as auth_utils,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def get_token_auth_middleware(
@@ -182,10 +179,10 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
     auth_headers = token_loader.get_token_for_http_header()
 
     if not auth_headers:
-        # Token auth enabled but no token found
-        logger.warning(
-            "Token authentication is enabled but no token was found. "
-            "Requests to authenticated clusters will fail."
+        from ray.exceptions import AuthenticationError
+
+        raise AuthenticationError(
+            authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
         )
 
     return auth_headers

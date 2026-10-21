@@ -139,7 +139,7 @@ class AutoscalerMonitor:
                 logger.exception(
                     "An exception occurred while starting the metrics server."
                 )
-        elif not prometheus_client:
+        elif monitor_ip and not prometheus_client:
             logger.warning(
                 "`prometheus_client` not found, so metrics will not be exported."
             )

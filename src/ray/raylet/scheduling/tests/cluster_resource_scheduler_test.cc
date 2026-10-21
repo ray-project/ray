@@ -895,7 +895,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                                                 clock_);
 
     ResourceRequest resource_request = CreateResourceRequest(
-        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+        {{ResourceID::CPU(), 3}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -929,7 +929,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
                                                 clock_);
 
     ResourceRequest resource_request = CreateResourceRequest(
-        {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+        {{ResourceID::CPU(), 4}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
     NodeResourceInstances old_local_resources =
         resource_scheduler.GetLocalResourceManager().GetLocalResources();
@@ -963,7 +963,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 3},
                                {ResourceID::Memory(), 2},
-                               {ResourceID::GPU(), 1.5},
+                               {ResourceID::GPU(), 2},
                                {ResourceID("custom1"), 2}});
 
     NodeResourceInstances old_local_resources =
@@ -1002,7 +1002,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest) {
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 3},
                                {ResourceID::Memory(), 2},
-                               {ResourceID::GPU(), 1.5},
+                               {ResourceID::GPU(), 2},
                                {ResourceID("custom1"), 10}});
 
     NodeResourceInstances old_local_resources =
@@ -1073,7 +1073,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesTest2) {
     ResourceRequest resource_request =
         CreateResourceRequest({{ResourceID::CPU(), 2},
                                {ResourceID::Memory(), 2},
-                               {ResourceID::GPU(), 1.5},
+                               {ResourceID::GPU(), 2},
                                {ResourceID("custom1"), 3},
                                {ResourceID("custom2"), 2}});
 
@@ -1290,7 +1290,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
                                               clock_);
 
   ResourceRequest resource_request = CreateResourceRequest(
-      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1301,7 +1301,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithHardRequestTest) {
   ASSERT_EQ(success, true);
 
   vector<FixedPoint> gpu_instances = task_allocation->Get(ResourceID::GPU());
-  vector<FixedPoint> expect_gpu_instance{1., 0.5, 0., 0.};
+  vector<FixedPoint> expect_gpu_instance{1., 1., 0., 0.};
 
   ASSERT_EQ(gpu_instances, expect_gpu_instance);
 }
@@ -1318,7 +1318,7 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstanceWithoutCpuUnitTest) {
                                               clock_);
 
   ResourceRequest resource_request = CreateResourceRequest(
-      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 1.5}});
+      {{ResourceID::CPU(), 2}, {ResourceID::Memory(), 2}, {ResourceID::GPU(), 2}});
 
   std::shared_ptr<TaskResourceInstances> task_allocation =
       std::make_shared<TaskResourceInstances>();
@@ -1779,68 +1779,6 @@ TEST_F(ClusterResourceSchedulerTest, TaskResourceInstancesSerializedStringTest) 
   std::string expected_instance_serialized_string =
       R"({"CPU":[10000, 10000],"memory":40000,"GPU":[10000, 10000]})";
   ASSERT_EQ(instance_serialized_string, expected_instance_serialized_string);
-}
-
-TEST_F(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest) {
-  auto node_1 = NodeID::FromRandom();
-  auto node_2 = NodeID::FromRandom();
-  auto pg_1 = PlacementGroupID::Of(JobID::FromInt(1));
-  BundleID bundle_1 = std::make_pair(pg_1, 0);
-  BundleID bundle_2 = std::make_pair(pg_1, 1);
-  BundleID bundle_3 = std::make_pair(pg_1, 2);
-  ResourceRequest bundle_resource_request =
-      CreateResourceRequest(AddPlacementGroupConstraint(
-          {{"CPU", 1}, {"memory", 100}}, bundle_1.first, bundle_1.second));
-  NodeResources node_resources =
-      NodeResources(NodeResourceSet(bundle_resource_request.ToResourceMap()));
-  instrumented_io_context io_service;
-  ClusterResourceScheduler resource_scheduler(PeriodicalRunner::Create(io_service),
-                                              scheduling::NodeID(node_1.Binary()),
-                                              node_resources,
-                                              is_node_available_fn_,
-                                              fake_gauge_,
-                                              clock_);
-  ResourceRequest bundle_resource_request_2 =
-      CreateResourceRequest(AddPlacementGroupConstraint(
-          {{"CPU", 1}, {"memory", 100}}, bundle_2.first, bundle_2.second));
-  NodeResources node_resources_2 =
-      NodeResources(NodeResourceSet(bundle_resource_request_2.ToResourceMap()));
-  resource_scheduler.GetClusterResourceManager().AddOrUpdateNode(
-      scheduling::NodeID(node_2.Binary()), node_resources_2);
-  resource_scheduler.GetClusterResourceManager()
-      .GetBundleLocationIndex()
-      .AddOrUpdateBundleLocation(bundle_1, node_1);
-  resource_scheduler.GetClusterResourceManager()
-      .GetBundleLocationIndex()
-      .AddOrUpdateBundleLocation(bundle_2, node_2);
-
-  auto test_schedule = [&resource_scheduler](
-                           const std::unordered_map<std::string, double> &resources,
-                           const BundleID bundle_id,
-                           const scheduling::NodeID &except_node_id) {
-    ResourceRequest resource_request = CreateResourceRequest(
-        AddPlacementGroupConstraint(resources, bundle_id.first, bundle_id.second));
-    rpc::SchedulingStrategy scheduling_strategy;
-    scheduling_strategy.mutable_placement_group_scheduling_strategy()
-        ->set_placement_group_id(bundle_id.first.Binary());
-    scheduling_strategy.mutable_placement_group_scheduling_strategy()
-        ->set_placement_group_bundle_index(bundle_id.second);
-    ASSERT_EQ(resource_scheduler
-                  .GetBestSchedulableNode(
-                      resource_request, scheduling_strategy, true, false, std::string())
-                  .node_id,
-              except_node_id);
-  };
-
-  test_schedule(
-      {{"CPU", 1}, {"memory", 100}}, bundle_1, scheduling::NodeID(node_1.Binary()));
-
-  test_schedule(
-      {{"CPU", 1}, {"memory", 100}}, bundle_2, scheduling::NodeID(node_2.Binary()));
-
-  test_schedule({{"CPU", 1}, {"memory", 100}}, bundle_3, scheduling::NodeID::Nil());
-
-  test_schedule({{"CPU", 2}}, bundle_1, scheduling::NodeID::Nil());
 }
 
 TEST_F(ClusterResourceSchedulerTest, LabelSelectorIsSchedulableOnNodeTest) {

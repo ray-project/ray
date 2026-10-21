@@ -20,9 +20,7 @@ Ray Train works with your existing DeepSpeed code and handles all the distribute
 
 Use your existing DeepSpeed training code with the Ray Train `TorchTrainer`. The integration is minimal and preserves your DeepSpeed workflow:
 
-```{testcode}
-:skipif: True
-
+```python
 import tempfile
 
 import deepspeed

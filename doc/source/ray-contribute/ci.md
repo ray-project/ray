@@ -78,13 +78,13 @@ An edit to a doc asset, such as a `.py`, `.ipynb`, or `.yaml` file under `doc/so
 
 ### What a prose-only change runs
 
-Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for pages that have their own test target: every Ray Data page, and the Core, RLlib, Serve, and Train pages with a runnable example. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the post-merge build covers them.
+Narrative documentation and images don't block premerge. A PR that changes only `.md`, `.rst`, or image files under `doc/` runs no library test steps at all. A prose change under `doc/source/` does build the images that the `docs-example-test` step needs, from cache, even when the label isn't applied. Prose can still carry doctests. The post-merge build covers them, and the `docs-example-test` label runs them for any page with a runnable example, because each such page has its own test target. API reference pages under a library's `api/` directory are the exception. They trigger the API consistency checks instead, so the label doesn't run their doctests, and the post-merge build covers them.
 
 A prose-only change also skips most of the lint group. The following lint steps still run:
 
 * `doc_no_new_rst`, which rejects newly added `.rst` files, because new pages must be MyST Markdown.
 * `ray_repo_links`, which checks that links to files on Ray's master branch resolve. Renaming or deleting a page breaks links to it.
-* `doc_prose_doctest_targets`, which checks that every Core, RLlib, Serve, Train, and Tune page with a runnable example has its own doctest target.
+* `doc_prose_doctest_targets`, which checks that every page with a runnable example has its own doctest target.
 * The API parameter coverage check, which runs on every PR and doesn't block.
 
 The Vale documentation style check is temporarily off. The PyPI README check runs only when `README.rst` or `python/setup.py` changes.
@@ -105,12 +105,11 @@ With the label, the `doc: docs example tests (opt-in)` step runs only the Bazel 
 | --- | --- |
 | `doc_code/*.py` | The `py_test` built from that file |
 | `.ipynb` | The notebook test whose `--path` argument names it |
-| Ray Data page, or a Core, RLlib, Serve, or Train page with a runnable example | That page's doctest target |
+| A page with a runnable example | That page's doctest target |
 | `.yaml` or another data file | Any test that lists the file in its `data` |
 
 The step never falls back to the library's whole docs example suite. Instead, its log lists each changed file that ran nothing, and why:
 
-* **The file feeds only a shared doctest target.** Prose pages outside the library directories share one doctest target, `//doc:doctest`, so the label doesn't run them.
 * **The test carries a tag the step excludes.** The step skips tests tagged `post_wheel_build`, `highly_parallel`, or `timeseries_libs`, and its log names the tag.
 * **The test needs a GPU.** Docs examples never run GPU tests in premerge or microcheck. Every Ray LLM docs example needs a GPU, so changes under `doc/source/llm/` don't start the opt-in step. The post-merge build runs the GPU examples.
 * **No test names the file directly.** A file a test reaches only through a filegroup doesn't count.
