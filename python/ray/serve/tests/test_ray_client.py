@@ -1,4 +1,3 @@
-import random
 import subprocess
 import sys
 import time
@@ -8,17 +7,17 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver
 from ray.serve._private.utils import inside_ray_client_context
 
-# https://tools.ietf.org/html/rfc6335#section-6
-MIN_DYNAMIC_PORT = 49152
-MAX_DYNAMIC_PORT = 65535
 
-
-@pytest.fixture
-def ray_client_instance(scope="module"):
-    port = random.randint(MIN_DYNAMIC_PORT, MAX_DYNAMIC_PORT)
+@pytest.fixture(scope="module")
+def ray_client_instance():
+    # A run killed before teardown can leave its cluster up, and `ray start --head` then
+    # fails against that stale GCS; conftest.py's ray_start_stop clears it the same way.
+    subprocess.check_output(["ray", "stop", "--force"])
+    port = find_free_port()
     subprocess.check_output(
         [
             "ray",
@@ -37,18 +36,20 @@ def ray_client_instance(scope="module"):
 
 
 @pytest.fixture
-def serve_with_client(ray_client_instance, ray_init_kwargs=None):
-    if ray_init_kwargs is None:
-        ray_init_kwargs = dict()
+def serve_with_client(request, ray_client_instance):
     ray.init(
         f"ray://{ray_client_instance}",
         namespace="default_test_namespace",
-        **ray_init_kwargs,
+        **getattr(request, "param", {}),
     )
     assert inside_ray_client_context()
 
     yield
 
+    # After a test disconnects itself, serve.shutdown() would start a new local Ray
+    # instance; reconnect as a client so Serve stops before the next test.
+    if not ray.is_initialized():
+        ray.init(f"ray://{ray_client_instance}", namespace="default_test_namespace")
     serve.shutdown()
     ray.util.disconnect()
 
