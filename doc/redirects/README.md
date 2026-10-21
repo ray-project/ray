@@ -80,7 +80,7 @@ Leave `force` unset for all of these. [How redirects apply across versions](#how
 
 ## What CI checks on your PR
 
-A PR that changes `doc/redirects/*.yaml` runs the `doc: validate redirects` Buildkite step. A PR that changes only redirect YAML runs no other doc or test steps. The step uses no Read the Docs token, so it runs the same way on PRs from forks. It does the following:
+A PR that changes `doc/redirects/*.yaml` runs the `doc: validate redirects` Buildkite step. A PR that changes only redirect YAML also runs the pre-commit lint step, and no doc build or tests. The step uses no Read the Docs token, so it runs the same way on PRs from forks. It does the following:
 
 - Fails if `doc/redirects/` contains any `.yaml` file other than `current.yaml`. Add rules to `current.yaml` instead of creating a new file.
 - Runs `rtd-redirects validate`, the same check you run locally. Errors fail the step. Warnings and info-level notes don't.
