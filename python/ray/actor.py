@@ -1125,12 +1125,6 @@ class ActorMethod:
                 f"_consume_once must be a bool, got {type(_consume_once).__name__}."
             )
         if _consume_once:
-            # TODO(karticam): Support streaming generators in a follow-up PR.
-            if num_returns == "streaming":
-                raise ValueError(
-                    "_consume_once=True is not supported yet for streaming generator "
-                    "actor methods. Support will be added in a future release."
-                )
             if num_returns == "dynamic":
                 raise ValueError(
                     "_consume_once=True is not supported with num_returns='dynamic'."
@@ -2559,7 +2553,8 @@ class ActorHandle(Generic[T]):
                 on another node, the value is moved there: once the consumer's node
                 has its copy, the copy in the object store on the producing actor's
                 node is freed. If the consumer runs on the same node, it uses that
-                copy, and nothing is copied.
+                copy, and nothing is copied. For a streaming generator method, this
+                applies to each yielded object.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
