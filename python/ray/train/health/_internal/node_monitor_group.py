@@ -157,7 +157,11 @@ class NodeMonitorGroup:
 
     def _get_poll_tasks(self) -> Dict[ObjectRef, NodeIdStr]:
         """Get a poll task for each monitor: the one still waiting from an
-        earlier round, or a new one."""
+        earlier round, or a new one.
+
+        Returns:
+            ``{poll task: node ID}`` for every monitor.
+        """
         poll_task_to_node: Dict[ObjectRef, NodeIdStr] = {}
         for node_id, monitor in self._monitors.items():
             ongoing_poll = self._ongoing_polls.get(node_id)
@@ -203,7 +207,7 @@ class NodeMonitorGroup:
 
         Returns:
             ``{probe name: {node ID: ProbeResult}}``, or ``None`` while a node
-            has yet to answer.
+            has yet to answer and the timeout has not passed.
         """
         polls = list(self._on_demand_polls.values())
         done = (
@@ -227,7 +231,16 @@ class NodeMonitorGroup:
     ) -> Dict[str, ProbeResult]:
         """Return a node's on-demand probe results. If the node did not answer
         in time, or its monitor failed, each probe's result carries that
-        error."""
+        error.
+
+        Args:
+            node_id: The node.
+            poll: The ``ObjectRef`` of the node's ``NodeMonitorStatus``.
+            answered: Whether the node answered in time.
+
+        Returns:
+            ``{probe name: ProbeResult}`` for the node.
+        """
         if not answered:
             error: Exception = TimeoutError(
                 f"The NodeMonitor on node {node_id} did not answer in time."

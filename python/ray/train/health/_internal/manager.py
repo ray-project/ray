@@ -40,24 +40,30 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
             diagnoses.append(decision)
 
     if evicts:
-        nodes = dict.fromkeys(n for d in evicts for n in d.target_nodes)
-        return Evict(reason=_join_reasons(evicts), target_nodes=list(nodes))
+        nodes = sorted({node for evict in evicts for node in evict.target_nodes})
+        return Evict(reason=_join_reasons(evicts), target_nodes=nodes)
     if reattempts:
         return Reattempt(reason=_join_reasons(reattempts))
     if diagnoses:
-        checks = [check for d in diagnoses for check in d.checks]
+        checks = [check for diagnose in diagnoses for check in diagnose.checks]
         return Diagnose(reason=_join_reasons(diagnoses), checks=checks)
     return Noop()
 
 
 class HealthManager:
-    """Runs a training run's probes, and evaluates their results into health
-    decisions.
+    """Runs a training run's health checks, and evaluates their results into
+    health decisions.
 
-    In-flight checks run continuously, and each ``poll()`` evaluates their
-    latest results. On-demand checks, such as pre-flight checks and the checks
-    of a ``Diagnose``, run once: ``diagnose()`` starts them, and
-    ``poll_diagnosis()`` evaluates their results.
+    It runs two kinds of checks on the nodes of the attempt that ``reset()``
+    starts:
+
+    - In-flight checks run throughout training. Their probes are sampled
+      continuously, and each ``evaluate_inflight_checks()`` evaluates their
+      latest results.
+    - On-demand checks, such as pre-flight checks and the checks of a
+      ``Diagnose``, run once. ``start_on_demand_checks()`` starts them, and
+      ``evaluate_on_demand_checks()`` evaluates their results once they are
+      back. In-flight checks keep running meanwhile.
 
     Args:
         inflight_checks: The in-flight health checks.
@@ -78,8 +84,8 @@ class HealthManager:
         )
         # {probe name: {key: the latest ProbeResult}}
         self._latest_results: Dict[str, Dict[Any, ProbeResult]] = {}
-        # The evaluators of the checks that diagnose() started.
-        self._diagnosis_evaluators: List[Evaluator] = []
+        # The evaluators of the on-demand checks that are running.
+        self._on_demand_evaluators: List[Evaluator] = []
         # The IDs of the evaluators whose failure was logged.
         self._failed_evaluators: Set[int] = set()
         # The nodes evicted so far. reset() keeps them.
@@ -90,13 +96,15 @@ class HealthManager:
         return sorted(self._evicted)
 
     def reset(self, node_ids: List[NodeIdStr]) -> None:
-        """Start monitoring a new attempt of the training run.
+        """Start monitoring a new attempt of the training run, and stop
+        monitoring the previous one. Called at the start of each attempt, before
+        its pre-flight checks and training.
 
         Args:
             node_ids: The nodes the attempt's workers run on.
         """
         self._latest_results.clear()
-        self._diagnosis_evaluators = []
+        self._on_demand_evaluators = []
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start(node_ids)
         for evaluator in self._evaluators:
@@ -113,7 +121,7 @@ class HealthManager:
         """Stop monitoring."""
         self._node_monitor_group.shutdown()
 
-    def poll(
+    def evaluate_inflight_checks(
         self, timeout: float = DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
     ) -> HealthDecision:
         """Evaluate the in-flight checks' latest results.
@@ -131,9 +139,11 @@ class HealthManager:
         )
         return self._decide(self._evaluators, state)
 
-    def diagnose(self, checks: Sequence[HealthCheck], timeout: float) -> None:
-        """Start running health checks once on the nodes of the last
-        ``reset()``. ``poll_diagnosis()`` evaluates their results.
+    def start_on_demand_checks(
+        self, checks: Sequence[HealthCheck], timeout: float
+    ) -> None:
+        """Start running on-demand checks once on the monitored nodes.
+        ``evaluate_on_demand_checks()`` evaluates their results.
 
         Args:
             checks: The checks, such as pre-flight checks or the checks of a
@@ -144,13 +154,13 @@ class HealthManager:
         self._node_monitor_group.poll_probes_async(
             [p for p in probes.values() if isinstance(p, NodeProbe)], timeout_s=timeout
         )
-        self._diagnosis_evaluators = [
+        self._on_demand_evaluators = [
             evaluator for check in checks for evaluator in check.evaluator_creator()
         ]
 
-    def poll_diagnosis(self) -> Optional[HealthDecision]:
-        """Evaluate the results of the checks that ``diagnose()`` started, once
-        they are back.
+    def evaluate_on_demand_checks(self) -> Optional[HealthDecision]:
+        """Evaluate the results of the on-demand checks that
+        ``start_on_demand_checks()`` started, once they are back.
 
         Returns:
             The health decision to carry out, or ``None`` while the checks run.
@@ -158,12 +168,16 @@ class HealthManager:
         results = self._node_monitor_group.poll_probe_results()
         if results is None:
             return None
-        evaluators, self._diagnosis_evaluators = self._diagnosis_evaluators, []
+        evaluators, self._on_demand_evaluators = self._on_demand_evaluators, []
         return self._decide(evaluators, HealthState(probe_results=results))
 
     def _poll_latest_results(self, timeout: float) -> None:
         """Poll the latest probe results. A ``NodeMonitor`` that failed stops,
-        with its results, until the next ``reset()``."""
+        with its results, until the next ``reset()``.
+
+        Args:
+            timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s.
+        """
         status = self._node_monitor_group.poll_status(timeout)
         for node_id, node_monitor_status in status.node_monitor_statuses.items():
             if node_monitor_status.monitor_error is None:
@@ -182,8 +196,17 @@ class HealthManager:
     def _decide(
         self, evaluators: List[Evaluator], state: HealthState
     ) -> HealthDecision:
-        """Evaluate the state, and merge the decisions into the health decision
-        to carry out. A node is evicted once."""
+        """Run the evaluators, and merge their decisions into the health
+        decision to carry out. A node is evicted once.
+
+        Args:
+            evaluators: The evaluators to run.
+            state: The results they evaluate.
+
+        Returns:
+            The health decision to carry out. ``Noop()`` if there is nothing to
+            do.
+        """
         decisions = []
         for evaluator in evaluators:
             decision = self._evaluate(evaluator, state)
@@ -198,7 +221,15 @@ class HealthManager:
 
     def _evaluate(self, evaluator: Evaluator, state: HealthState) -> HealthDecision:
         """Run one evaluator. One that raises, or returns something other than a
-        ``HealthDecision``, decides ``Noop()``, with a warning the first time."""
+        ``HealthDecision``, decides ``Noop()``, with a warning the first time.
+
+        Args:
+            evaluator: The evaluator to run.
+            state: The results it evaluates.
+
+        Returns:
+            The evaluator's decision, or ``Noop()`` if it failed.
+        """
         try:
             decision = evaluator.evaluate(state)
             error = None

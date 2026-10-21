@@ -32,8 +32,8 @@ def merge_probes(checks: Sequence[PeriodicHealthCheck]) -> List[ScheduledProbe]:
             existing = probes.setdefault(name, probe)
             if type(existing) is not type(probe):
                 raise ValueError(
-                    f"Two different probes are named {name!r}: "
-                    f"{type(existing).__name__} and {type(probe).__name__}."
+                    f"Two probes have the same name ({name!r}) but different "
+                    f"types ({type(existing).__name__} and {type(probe).__name__})."
                 )
             intervals_s[name] = min(
                 intervals_s.get(name, check.poll_interval_s), check.poll_interval_s

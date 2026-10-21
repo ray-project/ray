@@ -74,7 +74,11 @@ class NodeMonitor:
 
     def _sample(self, scheduled_probe: ScheduledProbe) -> None:
         """Poll the probe every ``poll_interval_s`` until the monitor is
-        killed."""
+        killed.
+
+        Args:
+            scheduled_probe: The probe and its interval.
+        """
         probe = scheduled_probe.probe
         while True:
             result = self._poll(probe)
@@ -86,7 +90,14 @@ class NodeMonitor:
     def _poll(probe: NodeProbe) -> ProbeResult:
         """Poll a probe. A result without a ``timestamp_s`` is stamped with the
         time the probe returned, and a poll that raises returns a result with
-        the ``error``."""
+        the ``error``.
+
+        Args:
+            probe: The probe to poll.
+
+        Returns:
+            The probe's result.
+        """
         try:
             result = probe.poll()
         except Exception as e:

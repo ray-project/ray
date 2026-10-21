@@ -166,37 +166,50 @@ def test_merge_probes_rejects_two_different_probes_with_the_same_name():
         merge_probes([_check(probes=[Temp()]), _check(probes=[Other()])])
 
 
-def test_every_evaluator_decides_on_every_poll():
+def test_every_inflight_evaluator_decides_on_every_evaluation():
     fast, slow = Always(Noop()), Always(Noop())
     manager = HealthManager(
         [_check(2.0, evaluators=[fast]), _check(10.0, evaluators=[slow])]
     )
     _fake_temps(manager, [ProbeResult(timestamp_s=1.0), ProbeResult(timestamp_s=2.0)])
-    manager.poll(timeout=0)
-    manager.poll(timeout=0)
+    manager.evaluate_inflight_checks(timeout=0)
+    manager.evaluate_inflight_checks(timeout=0)
     for evaluator in (fast, slow):
         assert [seen["Temp"]["n1"].timestamp_s for seen in evaluator.seen] == [1.0, 2.0]
 
 
 def test_an_evaluator_decides_on_the_history_it_keeps():
-    manager = HealthManager([_check(evaluators=[EvictHotGpu(samples=3)])])
-    # The probe samples at 1s, 2s and 3s; the 1s sample is the latest for 3 polls.
-    timestamps = [1.0, 1.0, 1.0, 2.0, 3.0]
+    evaluator = EvictHotGpu(samples=3)
+    manager = HealthManager([_check(evaluators=[evaluator])])
+    # The probe samples at 1s, 2s, 3s and 4s; the 1s sample stays the latest for
+    # 3 evaluations, and the 4s sample is cool.
+    samples = [(1.0, 95.0)] * 3 + [(2.0, 95.0), (3.0, 95.0), (4.0, 60.0)]
     _fake_temps(
         manager,
-        [ProbeResult(metrics={"temp_c": 95.0}, timestamp_s=t) for t in timestamps],
+        [ProbeResult(metrics={"temp_c": t}, timestamp_s=ts) for ts, t in samples],
     )
-    decisions = [manager.poll(timeout=0) for _ in timestamps]
-    assert decisions == [Noop()] * 4 + [
-        Evict(reason="GPU over 90C", target_nodes=["n1"])
-    ]
+
+    def evaluate():
+        decision = manager.evaluate_inflight_checks(timeout=0)
+        return decision, [r.timestamp_s for r in evaluator.history["n1"]]
+
+    assert evaluate() == (Noop(), [1.0])
+    assert evaluate() == (Noop(), [1.0])
+    assert evaluate() == (Noop(), [1.0])
+    assert evaluate() == (Noop(), [1.0, 2.0])
+    hot = Evict(reason="GPU over 90C", target_nodes=["n1"])
+    assert evaluate() == (hot, [1.0, 2.0, 3.0])
+    assert evaluate() == (Noop(), [2.0, 3.0, 4.0])
+
+    manager.reset([])
+    assert evaluator.history == {}
 
 
 def test_reset_drops_the_results_and_resets_the_evaluators():
     evaluator = Always(Noop())
     manager = HealthManager([_check(evaluators=[evaluator])])
     _fake_temps(manager, [ProbeResult(timestamp_s=1.0)])
-    manager.poll(timeout=0)
+    manager.evaluate_inflight_checks(timeout=0)
     assert manager._latest_results
 
     manager.reset([])
@@ -207,30 +220,38 @@ def test_reset_drops_the_results_and_resets_the_evaluators():
 def test_an_evicted_node_is_not_evicted_again():
     evaluator = Always(Evict(reason="hot", target_nodes=["n1"]))
     manager = HealthManager([_check(evaluators=[evaluator])])
-    assert manager.poll(timeout=0) == Evict(reason="hot", target_nodes=["n1"])
-    assert manager.poll(timeout=0) == Noop()
+    assert manager.evaluate_inflight_checks(timeout=0) == Evict(
+        reason="hot", target_nodes=["n1"]
+    )
+    assert manager.evaluate_inflight_checks(timeout=0) == Noop()
 
     manager.reset([])
     evaluator.decision = Evict(reason="hot", target_nodes=["n1", "n2"])
-    assert manager.poll(timeout=0) == Evict(reason="hot", target_nodes=["n2"])
+    assert manager.evaluate_inflight_checks(timeout=0) == Evict(
+        reason="hot", target_nodes=["n2"]
+    )
     assert manager.evicted_nodes == ["n1", "n2"]
 
 
 @pytest.mark.parametrize("broken", [Raises(), Always(None)], ids=["raises", "none"])
 def test_a_failing_evaluator_is_skipped_and_logged_once(broken, caplog, propagate_logs):
     manager = HealthManager([_check(evaluators=[broken, Always(Reattempt())])])
-    assert manager.poll(timeout=0) == Reattempt()
-    assert manager.poll(timeout=0) == Reattempt()
+    assert manager.evaluate_inflight_checks(timeout=0) == Reattempt()
+    assert manager.evaluate_inflight_checks(timeout=0) == Reattempt()
     assert len([r for r in caplog.records if "failed" in r.getMessage()]) == 1
 
 
-def test_diagnose_runs_apart_from_the_inflight_checks():
+def test_on_demand_checks_run_apart_from_the_inflight_checks():
     manager = HealthManager([_check(evaluators=[Always(Reattempt(reason="hang"))])])
     diagnosis = Always(Evict(reason="diagnosed", target_nodes=["n1"]))
-    manager.diagnose([HealthCheck(evaluator_creator=lambda: [diagnosis])], timeout=10)
+    manager.start_on_demand_checks(
+        [HealthCheck(evaluator_creator=lambda: [diagnosis])], timeout=10
+    )
 
-    assert manager.poll(timeout=0) == Reattempt(reason="hang")
-    assert manager.poll_diagnosis() == Evict(reason="diagnosed", target_nodes=["n1"])
+    assert manager.evaluate_inflight_checks(timeout=0) == Reattempt(reason="hang")
+    assert manager.evaluate_on_demand_checks() == Evict(
+        reason="diagnosed", target_nodes=["n1"]
+    )
 
 
 def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
@@ -239,7 +260,7 @@ def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
     manager.reset([node_id])
 
     def latest_temp():
-        manager.poll(timeout=10)
+        manager.evaluate_inflight_checks(timeout=10)
         return manager._latest_results.get("Temp", {}).get(node_id)
 
     try:
@@ -256,7 +277,7 @@ def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
         manager.shutdown()
 
 
-def test_diagnose_polls_its_probes_once_on_each_node(ray_start_4_cpus):
+def test_on_demand_checks_poll_their_probes_once_on_each_node(ray_start_4_cpus):
     node_id = ray.get_runtime_context().get_node_id()
     manager = HealthManager([])
     manager.reset([node_id])
@@ -265,8 +286,10 @@ def test_diagnose_polls_its_probes_once_on_each_node(ray_start_4_cpus):
         probe_creator=lambda: [Pid()], evaluator_creator=lambda: [evaluator]
     )
     try:
-        manager.diagnose([check], timeout=30)
-        assert _wait_for(manager.poll_diagnosis) == Reattempt(reason="diagnosed")
+        manager.start_on_demand_checks([check], timeout=30)
+        assert _wait_for(manager.evaluate_on_demand_checks) == Reattempt(
+            reason="diagnosed"
+        )
         assert evaluator.seen[0]["Pid"][node_id].metrics["pid"] != os.getpid()
     finally:
         manager.shutdown()
