@@ -230,6 +230,9 @@ class ReferenceCounterInterface {
    * @param[in] tensor_transport The transport used for the object.
    * @param[in] move_state The initial move state. MOVABLE for the returns of an actor
    * task submitted with `consume_once=True`, NOT_MOVABLE otherwise.
+   * @param[in] yields_consume_once Whether the objects a streaming generator yields are
+   * created MOVABLE. Only set on the generator object of a streaming generator task
+   * submitted with `consume_once=True`.
    */
   virtual void AddOwnedObject(
       const ObjectID &object_id,
@@ -241,7 +244,8 @@ class ReferenceCounterInterface {
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
       const std::optional<std::string> &tensor_transport = std::nullopt,
-      MoveState move_state = MoveState::NOT_MOVABLE) = 0;
+      MoveState move_state = MoveState::NOT_MOVABLE,
+      bool yields_consume_once = false) = 0;
 
   /**
    * @brief Add an owned object that was dynamically created.

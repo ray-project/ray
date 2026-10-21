@@ -20,6 +20,10 @@ class ArrayProducer:
     def produce(self, n, as_bytes=False):
         return bytes(n) if as_bytes else np.ones(n, dtype=np.uint8)
 
+    def produce_stream(self, n, count):
+        for _ in range(count):
+            yield np.ones(n, dtype=np.uint8)
+
 
 def _total(arrays):
     return sum(len(a) if isinstance(a, bytes) else int(a.sum()) for a in arrays)
@@ -338,6 +342,46 @@ def test_move_frees_producer_memory(two_worker_nodes):
         lambda: _store_stats(node_a.node_id).object_store_bytes_used
         <= used_a - count * 20 * MiB
     )
+
+
+@pytest.mark.parametrize("backpressure_num_objects", [None, 1])
+def test_cross_node_move_of_streaming_generator_yields(
+    two_worker_nodes, backpressure_num_objects
+):
+    """Each object a consume_once streaming generator yields moves to the
+    consumer's node, and the producer's node gets its memory back."""
+    _, node_a, node_b = two_worker_nodes
+    producer = ArrayProducer.options(resources={"node_a": 1}).remote()
+    consumer = ArrayConsumer.options(resources={"node_b": 1}).remote()
+    options = {"_consume_once": True}
+    if backpressure_num_objects is not None:
+        options["_generator_backpressure_num_objects"] = backpressure_num_objects
+    copies_a = _num_primary_copies(node_a.node_id)
+    copies_b = _num_primary_copies(node_b.node_id)
+    used_a = _store_stats(node_a.node_id).object_store_bytes_used
+
+    count = 4
+    refs = []
+    results = []
+    for ref in producer.produce_stream.options(**options).remote(20 * MiB, count):
+        refs.append(ref)
+        results.append(consumer.consume.remote(ref))
+    assert ray.get(results) == [20 * MiB] * count
+
+    wait_for_condition(lambda: _num_primary_copies(node_b.node_id) == copies_b + count)
+    wait_for_condition(lambda: _num_primary_copies(node_a.node_id) == copies_a)
+    wait_for_condition(
+        lambda: _store_stats(node_a.node_id).object_store_bytes_used <= used_a
+    )
+    wait_for_condition(
+        lambda: all(
+            ray.experimental.get_object_locations([ref])[ref]["node_ids"]
+            == [node_b.node_id]
+            for ref in refs
+        )
+    )
+    # The owner can still read the objects after the move.
+    assert _total(ray.get(refs)) == count * 20 * MiB
 
 
 @pytest.mark.parametrize("max_task_retries", [0, -1])
