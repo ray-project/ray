@@ -249,6 +249,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId() const
         CWorkerID GetWorkerID()
+        void SetProducerFreedCallback(c_bool enabled, c_string concurrency_group)
+        c_bool ProducerFreedCallbackEnabled() const
+        const c_string &ProducerFreedCallbackConcurrencyGroup() const
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         CActorID GetActorId() const
         const c_string GetActorName()
