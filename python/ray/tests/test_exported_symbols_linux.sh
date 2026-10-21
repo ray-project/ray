@@ -9,11 +9,11 @@ fi
 os="$(uname -s)"
 case "${os}" in
   Linux)
-    golden="${TEST_SRCDIR}/io_ray/python/ray/tests/raylet_exported_symbols_linux.txt"
+    golden="${TEST_SRCDIR}/${TEST_WORKSPACE}/python/ray/tests/raylet_exported_symbols_linux.txt"
     nm_args=(-D --defined-only -g)
     ;;
   Darwin)
-    golden="${TEST_SRCDIR}/io_ray/python/ray/tests/raylet_exported_symbols_macos.txt"
+    golden="${TEST_SRCDIR}/${TEST_WORKSPACE}/python/ray/tests/raylet_exported_symbols_macos.txt"
     nm_args=(-gUj)
     ;;
   *)
@@ -21,7 +21,7 @@ case "${os}" in
     ;;
 esac
 
-raylet_so="${TEST_SRCDIR}/io_ray/python/ray/_raylet.so"
+raylet_so="${TEST_SRCDIR}/${TEST_WORKSPACE}/python/ray/_raylet.so"
 if [[ ! -f "${raylet_so}" ]]; then
   echo "Cannot find _raylet.so in runfiles"
   exit 1
