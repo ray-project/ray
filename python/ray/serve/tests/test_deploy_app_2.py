@@ -1175,27 +1175,18 @@ def test_flapping_rolling_update_stops_consuming_old_replicas(serve_instance):
     ]
     client.deploy_apps(ServeDeploySchema(**{"applications": [failing_config]}))
 
-    def check_deploy_failed():
-        status = serve.status().applications["default"]
-        assert status.status == ApplicationStatus.DEPLOY_FAILED
-        assert status.deployments["FailOnFlag"].status == "DEPLOY_FAILED"
-        return True
-
-    wait_for_condition(check_deploy_failed, timeout=60)
+    wait_for_condition(_check_terminal_rolling_update, client=client, timeout=60)
 
     # Let pending replacements settle. A replica of the flapping version passes
     # its first health check, so it is RUNNING until the next ones fail and it
     # is stopped; the rollout is terminal, so it is never replaced. Wait until
     # only old replicas remain rather than sampling mid-flap.
     def check_settled():
-        replica_states = (
-            serve.status()
-            .applications["default"]
-            .deployments["FailOnFlag"]
-            .replica_states
-        )
-        assert set(replica_states) == {"RUNNING"}, replica_states
-        running = _running_replica_pids(client)
+        # Check states and PIDs from the same replica details. Separate queries
+        # can miss a replica that transitions from RUNNING to STOPPING.
+        replicas = _deployment_details(client).replicas
+        assert {r.state for r in replicas} == {"RUNNING"}, replicas
+        running = sorted(r.pid for r in replicas)
         assert set(running) <= set(initial_pids), (running, initial_pids)
         return True
 

@@ -50,7 +50,7 @@ steps:
     tags:
       - llm
       - gpu
-    instance_type: g6-large
+    instance_type: gpu-large-flex
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
         --python-version 3.12 --build-name llmgpubuild --only-tags gpu
@@ -77,7 +77,7 @@ steps:
     tags:
       - llm
       - gpu
-    instance_type: g6-large
+    instance_type: gpu-large-flex
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
         --python-version 3.12 --build-name custom-vllm-plugin-gpubuild

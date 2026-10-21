@@ -194,9 +194,7 @@ predictions.show(limit=1)
 :sync: vLLM
 Ray Data offers native integration with vLLM, a high-performance inference engine for large language models (LLMs).
 
-```{testcode}
-:skipif: True
-
+```python
 import ray
 from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 import numpy as np
@@ -234,9 +232,7 @@ ds = processor(ds)
 ds.show(limit=1)
 ```
 
-```{testoutput}
-:options: +MOCK
-
+```text
 {'answer': 'Snowflakes gently fall\nBlanketing the winter scene\nFrozen peaceful hush'}
 ```
 :::
@@ -451,9 +447,7 @@ If you run out of CPU RAM, you likely have too many model replicas that are runn
 
 Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most 3 of these actors per node, you can override the CPU or memory:
 
-```{testcode}
-:skipif: True
-
+```python
 from typing import Dict
 import numpy as np
 
