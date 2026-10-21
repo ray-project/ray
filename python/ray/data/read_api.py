@@ -4153,48 +4153,40 @@ def read_hive(
         HiveServer2 returns ``events.id`` and ``events.name`` as result labels.
         Match the labels returned by your HiveServer2 instance.
 
-        .. testcode::
-            :skipif: True
-
-            import os
-
-            import pyarrow as pa
-            import ray
-
-            def create_connection():
-                from impala.dbapi import connect
-
-                return connect(
-                    host="hive.example.com",
-                    port=10000,
-                    auth_mechanism="PLAIN",
-                    user="reader",
-                    password=os.environ["HIVE_NONE_PLACEHOLDER"],
-                    retries=1,
-                )
-
-            table_ds = ray.data.read_hive(
-                "analytics.events", connection_factory=create_connection
-            )
-            query_ds = ray.data.read_hive(
-                query="SELECT * FROM analytics.events",
-                schema=pa.schema(
-                    [("events.id", pa.int64()), ("events.name", pa.string())]
-                ),
-                connection_factory=create_connection,
-            )
-
-            # Use explicit SQL aliases to choose unqualified result labels.
-            aliased_query_ds = ray.data.read_hive(
-                query=(
-                    "SELECT id AS event_id, name AS event_name "
-                    "FROM analytics.events"
-                ),
-                schema=pa.schema(
-                    [("event_id", pa.int64()), ("event_name", pa.string())]
-                ),
-                connection_factory=create_connection,
-            )
+        >>> import os  # doctest: +SKIP_EXAMPLE
+        >>> import pyarrow as pa
+        >>> import ray
+        >>> def create_connection():
+        ...     from impala.dbapi import connect
+        ...     return connect(
+        ...         host="hive.example.com",
+        ...         port=10000,
+        ...         auth_mechanism="PLAIN",
+        ...         user="reader",
+        ...         password=os.environ["HIVE_NONE_PLACEHOLDER"],
+        ...         retries=1,
+        ...     )
+        >>> table_ds = ray.data.read_hive(
+        ...     "analytics.events", connection_factory=create_connection
+        ... )
+        >>> query_ds = ray.data.read_hive(
+        ...     query="SELECT * FROM analytics.events",
+        ...     schema=pa.schema(
+        ...         [("events.id", pa.int64()), ("events.name", pa.string())]
+        ...     ),
+        ...     connection_factory=create_connection,
+        ... )
+        >>> # Use explicit SQL aliases to choose unqualified result labels.
+        >>> aliased_query_ds = ray.data.read_hive(
+        ...     query=(
+        ...         "SELECT id AS event_id, name AS event_name "
+        ...         "FROM analytics.events"
+        ...     ),
+        ...     schema=pa.schema(
+        ...         [("event_id", pa.int64()), ("event_name", pa.string())]
+        ...     ),
+        ...     connection_factory=create_connection,
+        ... )
 
     Args:
         table: The Hive table to read, optionally qualified as
