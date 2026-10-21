@@ -116,7 +116,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version v1.7.0 \
 
 7. Create a RayService with incremental upgrade enabled.
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.incremental-upgrade.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-service.incremental-upgrade.yaml
 ```
 
 8. Update one of the fields under `rayClusterConfig` and re-apply the RayService to trigger a zero-downtime upgrade.

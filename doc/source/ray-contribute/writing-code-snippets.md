@@ -10,7 +10,7 @@ myst:
 
 Users learn from example. So, whether you're writing a docstring or a user guide, include examples that illustrate the relevant APIs. Your examples should run out-of-the-box so that users can copy them and adapt them to their own needs.
 
-This page describes how to write code snippets so that they're tested in CI.
+This page describes how to write code snippets so that they're tested in CI, and how to show code that CI can't run.
 
 :::{note}
 The examples in this guide use reStructuredText. If you're writing Markdown, use MyST syntax. To learn more, read the [MyST documentation](https://myst-parser.readthedocs.io/en/latest/syntax/roles-and-directives.html#directives-a-block-level-extension-point).
@@ -81,7 +81,7 @@ Example:
 
 They're rendered like this:
 
-```{testcode}
+```python
 def is_even(x):
     return (x % 2) == 0
 
@@ -89,7 +89,7 @@ print(is_even(0))
 print(is_even(1))
 ```
 
-```{testoutput}
+```text
 True
 False
 ```
@@ -198,6 +198,8 @@ If you're writing an end-to-end example and your example doesn't contain outputs
 
 You don't need to test examples that depend on external systems such as Weights and Biases.
 
+A `testcode` block tells readers and maintainers that CI runs the code. Use it only for blocks that CI executes. Show any code that CI doesn't run as a plain code block.
+
 ### Skipping *doctest-style* examples
 
 To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code.
@@ -209,13 +211,12 @@ To skip a *doctest-style* example, append `# doctest: +SKIP` to your Python code
     >>> ray.data.read_images("s3://private-bucket")  # doctest: +SKIP
 ```
 
-### Skipping *code-output-style* examples
+### Showing *code-output-style* examples that CI doesn't run
 
-To skip a *code-output-style* example, add `:skipif: True` to the `testcode` block.
+To show a *code-output-style* example that CI doesn't run, write a plain `code-block` instead of a `testcode` block. Don't add `:skipif: True` to a `testcode` block. The block never runs, but it reads as tested code.
 
 ```
-.. testcode::
-    :skipif: True
+.. code-block:: python
 
     from ray.air.integrations.wandb import WandbLoggerCallback
     callback = WandbLoggerCallback(
@@ -224,6 +225,8 @@ To skip a *code-output-style* example, add `:skipif: True` to the `testcode` blo
         log_config=True
     )
 ```
+
+In MyST Markdown, use a fenced block with a language, such as `` ```python ``. To show sample output, add a second plain block with the `text` language in place of a `testoutput` block.
 
 ## How to handle long or non-deterministic outputs
 
@@ -368,6 +371,6 @@ A failing example is a signal, but the right response depends on what the exampl
 
 The same example can fail different ways at different times. An `IndentationError` introduced by a bad merge is an example-validator failure, so fix the snippet. An `ImportError` from an upstream API change to that same example is a breaking-change signal, so fix the code or communicate the break. The failure text tells you which case you're in.
 
-Let the intent guide whether to skip. Skipping with `# doctest: +SKIP` or `:skipif: True` is right for an example that depends on an external system, but it's the wrong response to a breaking-change detector. Skipping there hides a real break from users.
+Let the intent guide whether to skip. Skipping with `# doctest: +SKIP`, or moving the example to a plain code block, is right for an example that depends on an external system, but it's the wrong response to a breaking-change detector. Skipping there hides a real break from users.
 
 Doc edits don't run example tests by default, so a green PR isn't evidence that a changed example still runs. When you change an example, add the [`docs-example-test` label](ci.md#running-the-tests-for-your-doc-changes) to run its tests before you merge.
