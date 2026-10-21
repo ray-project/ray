@@ -78,6 +78,10 @@ class GpuUtilizationInfo(TypedDict):
     sm_active_seconds: NotRequired[Optional[float]]
     # Optional (GPM): graphics/compute engine active share (DCGM GR_ENGINE_ACTIVE).
     graphics_engine_active_percent: NotRequired[Optional[float]]
+    # Optional (GPM): SM occupancy, tensor-core and DRAM-bandwidth active shares.
+    sm_occupancy_percent: NotRequired[Optional[float]]
+    tensor_active_percent: NotRequired[Optional[float]]
+    dram_active_percent: NotRequired[Optional[float]]
 
 
 # tpu utilization for google tpu
@@ -155,7 +159,20 @@ class GpuProvider(abc.ABC):
 
 
 # GPM metrics read each poll, by pynvml constant name.
-_GPM_METRICS = ("NVML_GPM_METRIC_SM_UTIL", "NVML_GPM_METRIC_GRAPHICS_UTIL")
+_GPM_METRICS = (
+    "NVML_GPM_METRIC_SM_UTIL",
+    "NVML_GPM_METRIC_GRAPHICS_UTIL",
+    "NVML_GPM_METRIC_SM_OCCUPANCY",
+    "NVML_GPM_METRIC_ANY_TENSOR_UTIL",
+    "NVML_GPM_METRIC_DRAM_BW_UTIL",
+)
+# GpuUtilizationInfo field -> GPM metric, for the plain gauges.
+_GPM_GAUGE_FIELDS = {
+    "graphics_engine_active_percent": "NVML_GPM_METRIC_GRAPHICS_UTIL",
+    "sm_occupancy_percent": "NVML_GPM_METRIC_SM_OCCUPANCY",
+    "tensor_active_percent": "NVML_GPM_METRIC_ANY_TENSOR_UTIL",
+    "dram_active_percent": "NVML_GPM_METRIC_DRAM_BW_UTIL",
+}
 # NVML wants > 100 ms between GPM samples; a closer read is skipped.
 _GPM_MIN_SPACING_S = 0.2
 # Skip GPM for _GPM_BACKOFF_POLLS polls after this many failures in a row.
@@ -249,11 +266,8 @@ class NvidiaGpuProvider(GpuProvider):
 
     def _read_gpm(self, gpu_handle: Any, uuid: str) -> Dict[str, Optional[float]]:
         """Return GPM metrics for the window since the previous poll."""
-        out = {
-            "sm_active_percent": None,
-            "sm_active_seconds": None,
-            "graphics_engine_active_percent": None,
-        }
+        out = {"sm_active_percent": None, "sm_active_seconds": None}
+        out.update({field: None for field in _GPM_GAUGE_FIELDS})
         if not self._enable_gpm:
             return out
         state = self._gpm_state.setdefault(uuid, _GpmState())
@@ -313,9 +327,8 @@ class NvidiaGpuProvider(GpuProvider):
             self._count_collection_error("gpm", e)
             state.accountant.credit(None)
             return out
-        out["graphics_engine_active_percent"] = values.get(
-            "NVML_GPM_METRIC_GRAPHICS_UTIL"
-        )
+        for field, name in _GPM_GAUGE_FIELDS.items():
+            out[field] = values.get(name)
         sm = values.get("NVML_GPM_METRIC_SM_UTIL")
         if sm is None:
             # No valid SM value; restart the window.
@@ -730,6 +743,9 @@ class NvidiaGpuProvider(GpuProvider):
                 sm_active_percent=gpm["sm_active_percent"],
                 sm_active_seconds=gpm["sm_active_seconds"],
                 graphics_engine_active_percent=gpm["graphics_engine_active_percent"],
+                sm_occupancy_percent=gpm["sm_occupancy_percent"],
+                tensor_active_percent=gpm["tensor_active_percent"],
+                dram_active_percent=gpm["dram_active_percent"],
             )
 
         except Exception as e:

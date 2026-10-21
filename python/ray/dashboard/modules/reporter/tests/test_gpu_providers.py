@@ -171,15 +171,18 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         mock_pynvml.NVML_GPM_METRICS_GET_VERSION = 1
         mock_pynvml.NVML_GPM_METRIC_GRAPHICS_UTIL = 1
         mock_pynvml.NVML_GPM_METRIC_SM_UTIL = 2
+        mock_pynvml.NVML_GPM_METRIC_SM_OCCUPANCY = 3
+        mock_pynvml.NVML_GPM_METRIC_ANY_TENSOR_UTIL = 5
+        mock_pynvml.NVML_GPM_METRIC_DRAM_BW_UTIL = 10
         mock_pynvml.c_nvmlGpmMetricsGet_t.side_effect = lambda: Mock(
-            metrics=[Mock(metricId=0, value=0.0, nvmlReturn=0) for _ in range(4)]
+            metrics=[Mock(metricId=0, value=0.0, nvmlReturn=0) for _ in range(8)]
         )
         queue = list(readings)
 
         def metrics_get(request):
             reading = queue.pop(0)
             for i in range(request.numMetrics):
-                value, ret = reading[request.metrics[i].metricId]
+                value, ret = reading.get(request.metrics[i].metricId, (0.0, 0))
                 request.metrics[i].value = value
                 request.metrics[i].nvmlReturn = ret
             return request
@@ -983,6 +986,33 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         buffers = [c.args[1] for c in mock_pynvml.nvmlGpmSampleGet.call_args_list]
         self.assertIsNot(buffers[0], buffers[1])
         self.assertEqual(self.provider.drain_collection_errors(), {})
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_occupancy_tensor_dram(self, mock_pynvml):
+        """Occupancy, tensor and DRAM activity come from the same GPM read."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(
+            mock_pynvml,
+            [{2: (25.0, 0), 1: (40.0, 0), 3: (12.5, 0), 5: (8.0, 0), 10: (55.0, 0)}],
+        )
+        clock = self._gpm_clock()
+
+        with patch.object(self.provider, "_shutdown"):
+            self.provider.get_gpu_utilization()
+            clock["now"] += 5.0
+            result = self.provider.get_gpu_utilization()[0]
+
+        self.assertEqual(result["sm_active_percent"], 25.0)
+        self.assertEqual(result["graphics_engine_active_percent"], 40.0)
+        self.assertEqual(result["sm_occupancy_percent"], 12.5)
+        self.assertEqual(result["tensor_active_percent"], 8.0)
+        self.assertEqual(result["dram_active_percent"], 55.0)
+        self.assertEqual(mock_pynvml.nvmlGpmMetricsGet.call_count, 1)
+        requested = [
+            m.metricId
+            for m in mock_pynvml.nvmlGpmMetricsGet.call_args.args[0].metrics[:5]
+        ]
+        self.assertEqual(sorted(requested), [1, 2, 3, 5, 10])
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_gpm_unsupported_device_reports_nothing(self, mock_pynvml):

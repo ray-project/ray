@@ -160,6 +160,30 @@ METRICS = {
         "percentage",
         GPU_TAG_KEYS,
     ),
+    "node_gpu_sm_occupancy_percent": Gauge(
+        "node_gpu_sm_occupancy_percent",
+        "Resident warps as a share of the maximum the GPU's SMs can hold, averaged "
+        "over the time since the previous poll (0-100). NVML GPM SM_OCCUPANCY, the "
+        "same quantity as DCGM_FI_PROF_SM_OCCUPANCY; Hopper and newer only.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_tensor_active_percent": Gauge(
+        "node_gpu_tensor_active_percent",
+        "Share of time any tensor core pipe was active, averaged over the time "
+        "since the previous poll (0-100). NVML GPM ANY_TENSOR_UTIL, the same "
+        "quantity as DCGM_FI_PROF_PIPE_TENSOR_ACTIVE; Hopper and newer only.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
+    "node_gpu_dram_active_percent": Gauge(
+        "node_gpu_dram_active_percent",
+        "Share of the GPU memory bandwidth in use, averaged over the time since "
+        "the previous poll (0-100). NVML GPM DRAM_BW_UTIL, the same quantity as "
+        "DCGM_FI_PROF_DRAM_ACTIVE; Hopper and newer only.",
+        "percentage",
+        GPU_TAG_KEYS,
+    ),
     "node_gpu_poll_duration_seconds": Gauge(
         "node_gpu_poll_duration_seconds",
         "Time the dashboard agent spent reading GPU metrics in its last poll",
@@ -1925,16 +1949,21 @@ class ReporterAgent(
                                 tags=gpu_tags,
                             )
                         )
-                    if gpu.get("graphics_engine_active_percent") is not None:
-                        gpu_records_to_add.append(
-                            Record(
-                                gauge=METRICS[
-                                    "node_gpu_graphics_engine_active_percent"
-                                ],
-                                value=gpu["graphics_engine_active_percent"],
-                                tags=gpu_tags,
+                    # Gauges read straight from GPM; absent when not measured.
+                    for field in (
+                        "graphics_engine_active_percent",
+                        "sm_occupancy_percent",
+                        "tensor_active_percent",
+                        "dram_active_percent",
+                    ):
+                        if gpu.get(field) is not None:
+                            gpu_records_to_add.append(
+                                Record(
+                                    gauge=METRICS[f"node_gpu_{field}"],
+                                    value=gpu[field],
+                                    tags=gpu_tags,
+                                )
                             )
-                        )
                     if gpu.get("sm_active_seconds") is not None:
                         gpu_records_to_add.append(
                             Record(

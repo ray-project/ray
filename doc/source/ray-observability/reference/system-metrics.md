@@ -93,6 +93,15 @@ These variables must be set in the Ray node and Dashboard Reporter process envir
 * - `ray_node_gpu_graphics_engine_active_percent`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
   - The share of time the GPU's graphics/compute engine was active, averaged over the time since the previous reporter poll (0.\.100). The same quantity as DCGM's `DCGM_FI_PROF_GR_ENGINE_ACTIVE`, read through NVML GPM, so only reported on NVIDIA Hopper and newer GPUs. Like `ray_node_gpus_utilization`, it reads 100 while a single SM is busy. NVML computes it as engine-active cycles over elapsed engine cycles, so on GPUs that gate the engine clock while idle (observed on the RTX PRO 6000 Blackwell) idle time is under-counted and bursty workloads read high, for example 47 for a GPU busy 20 % of the time; on H100 it matched kernel time. For time-based activity use `ray_node_gpu_sm_active_percent`.
+* - `ray_node_gpu_sm_occupancy_percent`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - Resident warps as a share of the maximum the GPU's SMs can hold, averaged over the time since the previous reporter poll (0.\.100). The same quantity as DCGM's `DCGM_FI_PROF_SM_OCCUPANCY`, read through NVML GPM, so only reported on NVIDIA Hopper and newer GPUs. Low occupancy with high SM activity usually means small kernels or launch-bound work.
+* - `ray_node_gpu_tensor_active_percent`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - The share of time any tensor core pipe was active, averaged over the time since the previous reporter poll (0.\.100). The same quantity as DCGM's `DCGM_FI_PROF_PIPE_TENSOR_ACTIVE`; Hopper and newer only.
+* - `ray_node_gpu_dram_active_percent`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - The share of the GPU's memory bandwidth in use, averaged over the time since the previous reporter poll (0.\.100). The same quantity as DCGM's `DCGM_FI_PROF_DRAM_ACTIVE`; Hopper and newer only.
 * - `ray_node_gpu_poll_duration_seconds`
   - `instance`
   - How long the dashboard agent spent reading GPU metrics in its last poll, in seconds. Only reported on nodes with GPUs.

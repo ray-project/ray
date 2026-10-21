@@ -882,6 +882,25 @@ def test_report_stats_gpu_gpm(tmp_path):
         ("node_gpu_sm_active_seconds_total", "0"): 1.24,
         ("node_gpu_graphics_engine_active_percent", "0"): 99.9,
     }
+    stats["gpus"][0].update(
+        sm_occupancy_percent=12.5, tensor_active_percent=8.0, dram_active_percent=55.0
+    )
+    records = agent._to_records(stats, {})
+    pipes = {
+        r.gauge.name: r.value
+        for r in records
+        if r.gauge.name
+        in (
+            "node_gpu_sm_occupancy_percent",
+            "node_gpu_tensor_active_percent",
+            "node_gpu_dram_active_percent",
+        )
+    }
+    assert pipes == {
+        "node_gpu_sm_occupancy_percent": 12.5,
+        "node_gpu_tensor_active_percent": 8.0,
+        "node_gpu_dram_active_percent": 55.0,
+    }
     durations = [
         r.value for r in records if r.gauge.name == "node_gpu_poll_duration_seconds"
     ]
