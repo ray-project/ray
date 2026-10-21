@@ -634,8 +634,8 @@ def _read_datasource_v2(
         ):
             logger.warning(
                 "Full schema inference discovered %d candidate files, exceeding "
-                "the %d-file warning threshold. Reading every footer before "
-                "read_parquet returns may make planning slow.",
+                "the %d-file warning threshold. Reading every file's schema "
+                "before returning the Dataset may make planning slow.",
                 len(sample),
                 _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
             )
@@ -667,8 +667,9 @@ def _read_datasource_v2(
             prelisted_file_infos.append(file_infos.take(indices))
         assert listing_elapsed is not None and schema_elapsed is not None
         logger.info(
-            "Full Parquet schema inference: %d candidate files, %.2fs listing, "
-            "%.2fs footer merge, %d retained Arrow file-info bytes",
+            "Full schema inference for %s: %d candidate files, %.2fs listing, "
+            "%.2fs schema merge, %d retained Arrow file-info bytes",
+            datasource.name,
             len(sample),
             listing_elapsed,
             schema_elapsed,
@@ -2973,6 +2974,7 @@ def read_orc(
     file_extensions: Optional[List[str]] = ORCDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    merge_schema: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -2987,7 +2989,8 @@ def read_orc(
     Note:
         The DataSourceV2 reader is selected through the ``use_datasource_v2``
         setting of :class:`~ray.data.context.DataContext`.
-        It samples file schemas and may omit columns absent from the sample.
+        By default, it samples file schemas and may omit columns absent from the
+        sample. Use ``merge_schema=True`` to infer from all eligible files.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -3041,6 +3044,10 @@ def read_orc(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        merge_schema: If ``True``, infer the schema from every eligible ORC file
+            before returning the Dataset. Defaults to ``False``, which infers from
+            up to 16 files. Requires the V2 datasource. See the notes below for cost
+            and file-discovery behavior.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -3055,9 +3062,37 @@ def read_orc(
             named remote parameters instead.
     Returns:
         :class:`~ray.data.Dataset` holding records from the ORC files.
+
+    .. note::
+
+        ``merge_schema=True`` lists all eligible files and reads their schemas
+        on the driver during planning, which can be expensive for large or remote
+        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
+        ORC metadata from schema inference for reuse during execution.
+        With more than 10,000 candidate files, Ray warns before schema merging.
+        Retained path and size metadata adds O(files) data to serialized lineage.
+
+        Follow-up work for distributed planning-time schema reads and metadata
+        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+
+        The Dataset retains those candidate paths across actions. Files appended
+        after discovery aren't included. Concurrent directory traversal isn't an
+        atomic snapshot, and replacing a file at the same path is outside this
+        guarantee. This option uses the existing schema unifier and reader; it
+        doesn't add support for otherwise unsupported schema changes. In particular,
+        evolved nested struct fields can fail at read time on PyArrow 17 (see
+        https://github.com/ray-project/ray/issues/67064).
     """
 
-    if DataContext.get_current().use_datasource_v2:
+    ctx = DataContext.get_current()
+    if merge_schema and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`merge_schema=True` on `read_orc` requires the V2 datasource. "
+            "Enable it with `ray.data.DataContext.get_current().use_datasource_v2 = True` "
+            "(or set RAY_DATA_USE_DATASOURCE_V2=1)."
+        )
+
+    if ctx.use_datasource_v2:
         from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
             OrcDatasourceV2,
         )
@@ -3086,6 +3121,7 @@ def read_orc(
             runtime_env=runtime_env,
             concurrency=concurrency,
             partition_filter=partition_filter,
+            sample_all_files_for_schema=merge_schema,
         )
 
     datasource = ORCDatasource(
