@@ -2,7 +2,6 @@ import asyncio
 import pickle
 import sys
 from types import SimpleNamespace
-from typing import Union
 
 import pytest
 
@@ -111,7 +110,7 @@ class FakeReplicaActor:
 
     async def handle_request(
         self,
-        request_metadata: Union[bytes, RequestMetadata],
+        request_metadata: bytes | RequestMetadata,
         message: str,
         *,
         is_streaming: bool,
@@ -124,7 +123,7 @@ class FakeReplicaActor:
 
     async def handle_request_streaming(
         self,
-        request_metadata: Union[bytes, RequestMetadata],
+        request_metadata: bytes | RequestMetadata,
         message: str,
         *,
         is_streaming: bool,
@@ -241,7 +240,7 @@ async def test_send_request_without_rejection(setup_fake_replica, is_streaming: 
             is_streaming=is_streaming,
         ),
     )
-    replica_result = replica.try_send_request(pr, with_rejection=False)
+    replica_result = await replica.try_send_request(pr, with_rejection=False)
     if is_streaming:
         assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
@@ -275,7 +274,7 @@ async def test_send_request_with_rejection(
             is_streaming=is_streaming,
         ),
     )
-    replica_result = replica.try_send_request(pr, with_rejection=True)
+    replica_result = await replica.try_send_request(pr, with_rejection=True)
     info = await replica_result.get_rejection_response()
     assert info.accepted == accepted
     assert info.num_ongoing_requests == 10
@@ -319,7 +318,7 @@ async def test_rejection_does_not_wait_async_until_accepted(
             is_streaming=is_streaming,
         ),
     )
-    replica_result = replica.try_send_request(pr, with_rejection=True)
+    replica_result = await replica.try_send_request(pr, with_rejection=True)
     assert replica_result._cancel_consume_wait is None
 
     info = await replica_result.get_rejection_response()
@@ -362,7 +361,7 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
 
     # Send request should hang because the downstream actor method call blocks
     # before sending the system message.
-    replica_result = replica.try_send_request(pr, with_rejection=True)
+    replica_result = await replica.try_send_request(pr, with_rejection=True)
     request_task = get_or_create_event_loop().create_task(
         replica_result.get_rejection_response()
     )
@@ -410,7 +409,7 @@ async def test_send_request_with_rejection_task_cancelled_error(setup_fake_repli
     )
 
     # The TaskCancelledError should be caught and converted to asyncio.CancelledError
-    replica_result = replica.try_send_request(pr, with_rejection=True)
+    replica_result = await replica.try_send_request(pr, with_rejection=True)
     with pytest.raises(asyncio.CancelledError):
         await replica_result.get_rejection_response()
 

@@ -1,7 +1,10 @@
+import asyncio
 import json
+import threading
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Awaitable, Callable, Dict, List, Optional
+from typing import Any, ClassVar
 
 from starlette.types import Scope
 
@@ -178,7 +181,7 @@ class EndpointInfo:
 
     route: str
     app_is_cross_language: bool = False
-    route_patterns: Optional[List["RoutePattern"]] = None
+    route_patterns: list["RoutePattern"] | None = None
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -291,7 +294,7 @@ class DeploymentStatusInfo:
     @property
     # Implicitly returns None when neither (status,) nor
     # (status, status_trigger) is in DEPLOYMENT_STATUS_RANKING_ORDER.
-    def rank(self) -> Optional[int]:  # type: ignore[return]
+    def rank(self) -> int | None:  # type: ignore[return]
         """Get priority of state based on ranking_order().
 
         The ranked order indicates what the status should be of a
@@ -309,8 +312,8 @@ class DeploymentStatusInfo:
 
     def _updated_copy(
         self,
-        status: Optional[DeploymentStatus] = None,
-        status_trigger: Optional[DeploymentStatusTrigger] = None,
+        status: DeploymentStatus | None = None,
+        status_trigger: DeploymentStatusTrigger | None = None,
         message: str = "",
     ):
         """Returns a copy of the current object with the passed in kwargs updated."""
@@ -664,17 +667,30 @@ class DeploymentStatusInfo:
 @dataclass(frozen=True)
 class RunningReplicaInfo:
     replica_id: ReplicaID
-    node_id: Optional[str]
-    node_ip: Optional[str]
-    availability_zone: Optional[str]
+    node_id: str | None
+    node_ip: str | None
+    availability_zone: str | None
     actor_name: str
     max_ongoing_requests: int
     is_cross_language: bool = False
-    multiplexed_model_ids: List[str] = field(default_factory=list)
-    routing_stats: Dict[str, Any] = field(default_factory=dict)
-    replica_metadata: Dict[str, Any] = field(default_factory=dict)
-    port: Optional[int] = None
-    backend_http_port: Optional[int] = None
+    multiplexed_model_ids: list[str] = field(default_factory=list)
+    routing_stats: dict[str, Any] = field(default_factory=dict)
+    replica_metadata: dict[str, Any] = field(default_factory=dict)
+    port: int | None = None
+    backend_http_port: int | None = None
+
+    # ------------------------------------------------------------------
+    # Process-level actor handle cache
+    # ------------------------------------------------------------------
+    # All RunningReplica / Router instances in the same Python worker process
+    # share this cache so we never call ray.get_actor() twice for the same
+    # named actor.  The cache is keyed by (actor_name, namespace).
+    _actor_handle_cache: ClassVar[dict[tuple[str, str], ActorHandle]] = {}
+    # Guards both the cache dict and the in-flight coroutine map below.
+    _cache_lock: ClassVar[threading.Lock] = threading.Lock()
+    # Single-flight: track async resolution tasks per key so multiple
+    # coroutines awaiting the same handle share one GCS round-trip.
+    _inflight_resolutions: ClassVar[dict[tuple[str, str], asyncio.Future]] = {}
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -717,15 +733,125 @@ class RunningReplicaInfo:
             ]
         )
 
+    # -- actor handle resolution -----------------------------------------
+
+    def _cache_key(self) -> tuple[str, str]:
+        return (self.actor_name, SERVE_NAMESPACE)
+
     def get_actor_handle(self) -> ActorHandle:
-        actor_handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
-        return actor_handle
+        """Synchronous actor-handle lookup with process-level caching.
+
+        First checks the per-process cache; on miss performs one blocking
+        ``ray.get_actor()`` (off the caller's event loop) and stores the
+        result so subsequent lookups in the same worker are free.
+        """
+        key = self._cache_key()
+        with self._cache_lock:
+            cached = self._actor_handle_cache.get(key)
+            if cached is not None:
+                return cached
+
+        handle = ray.get_actor(self.actor_name, namespace=SERVE_NAMESPACE)
+
+        with self._cache_lock:
+            # Re-check: another thread may have populated the cache while
+            # we were blocked in ray.get_actor().
+            cached = self._actor_handle_cache.get(key)
+            if cached is not None:
+                return cached
+            self._actor_handle_cache[key] = handle
+
+        return handle
+
+    async def get_actor_handle_async(self) -> ActorHandle:
+        """Async actor-handle lookup with process-level caching and
+        single-flight coalescing.
+
+        If a cached handle exists it is returned immediately.  Otherwise
+        this coroutine joins any in-flight resolution task for the same
+        key (single-flight) or spawns a new one that runs ``ray.get_actor``
+        in a thread-pool executor so it does not block the event loop.
+
+        The critical rule: we MUST NOT ``await`` while holding
+        ``_cache_lock`` (a ``threading.Lock``).  Doing so would cause a
+        deadlock because the executor thread running ``get_actor_handle``
+        needs that same lock to store its result.  All ``await`` calls
+        therefore happen after the lock has been released.
+        """
+        key = self._cache_key()
+
+        with self._cache_lock:
+            cached = self._actor_handle_cache.get(key)
+            if cached is not None:
+                return cached
+
+            inflight = self._inflight_resolutions.get(key)
+            if inflight is None or inflight.done():
+                # Either no resolution is in flight, or a previous one
+                # already finished (its result should now be in the
+                # cache; if it isn't, we start a fresh one below).
+                loop = asyncio.get_running_loop()
+                inflight = loop.run_in_executor(None, self.get_actor_handle)
+                self._inflight_resolutions[key] = inflight
+
+        # Lock is now released.  Await outside the lock so other
+        # coroutines / executor threads can make progress.
+        #
+        # ``asyncio.shield`` protects the shared in-flight future from
+        # being cancelled when a single waiter is cancelled.  Without
+        # it, cancelling one waiter would cancel the whole
+        # ``run_in_executor`` task and make every other waiter for the
+        # same actor fail with ``CancelledError`` (see Cursor Bugbot
+        # report on commit ee713d6).  ``shield`` preserves the
+        # single-flight coalescing while still letting cancelled
+        # waiters propagate ``CancelledError`` back to their own caller.
+        try:
+            return await asyncio.shield(inflight)
+        finally:
+            # Clean up the in-flight map.  We intentionally keep the
+            # cache entry (populated by the thread in get_actor_handle)
+            # so subsequent lookups hit the fast path.
+            #
+            # Only remove if inflight is actually done — a waiter may
+            # have been cancelled while inflight itself (shielded above)
+            # is still running.  We don't want to orphan the shared
+            # future; let it stay in the map so other waiters can still
+            # join it.  When inflight eventually finishes the next
+            # waiter's finally will clean it up.
+            if inflight.done():
+                with self._cache_lock:
+                    existing = self._inflight_resolutions.get(key)
+                    if existing is inflight:
+                        del self._inflight_resolutions[key]
+
+    @classmethod
+    def invalidate_actor_handle(cls, actor_name: str) -> None:
+        """Remove a cached actor handle (e.g. when the replica dies).
+
+        Safe to call from any thread.
+        """
+        key = (actor_name, SERVE_NAMESPACE)
+        with cls._cache_lock:
+            cls._actor_handle_cache.pop(key, None)
+
+    @classmethod
+    def clear_actor_handle_cache(cls) -> None:
+        """Clear the entire process-level cache.  Used in tests and on
+        controller restart / shutdown to drop stale handles."""
+        with cls._cache_lock:
+            cls._actor_handle_cache.clear()
+            # Cancel any in-flight resolutions; their results will be
+            # discarded since the cache is now empty.
+            for task in list(cls._inflight_resolutions.values()):
+                if not task.done():
+                    task.cancel()
+            cls._inflight_resolutions.clear()
 
 
 @dataclass(frozen=True)
 class DeploymentTargetInfo:
     is_available: bool
-    running_replicas: List[RunningReplicaInfo]
+    running_replicas: list[RunningReplicaInfo]
 
 
 class ServeComponentType(str, Enum):
@@ -741,8 +867,8 @@ class RequestRoutingInfo:
     """
 
     replica_id: ReplicaID
-    multiplexed_model_ids: Optional[List[str]] = None
-    routing_stats: Optional[Dict[str, Any]] = None
+    multiplexed_model_ids: list[str] | None = None
+    routing_stats: dict[str, Any] | None = None
 
 
 @dataclass
@@ -820,10 +946,10 @@ class RequestMetadata:
     _request_protocol: RequestProtocol = RequestProtocol.UNDEFINED
 
     # Serve's gRPC context associated with this request for getting and setting metadata
-    grpc_context: Optional[RayServegRPCContext] = None
+    grpc_context: RayServegRPCContext | None = None
 
     # Tracing context
-    tracing_context: Optional[Dict[str, str]] = None
+    tracing_context: dict[str, str] | None = None
 
     # Whether it is a direct ingress request
     is_direct_ingress: bool = False
@@ -837,7 +963,7 @@ class RequestMetadata:
     response_serialization: str = "cloudpickle"
 
     # Token for a replica-side slot reserved by choose_replica().
-    _reserved_slot_token: Optional[str] = None
+    _reserved_slot_token: str | None = None
 
     @property
     def is_http_request(self) -> bool:
@@ -859,10 +985,9 @@ class StreamingHTTPRequest:
         self,
         asgi_scope: Scope,
         *,
-        proxy_actor_name: Optional[str] = None,
-        receive_asgi_messages: Optional[
-            Callable[[RequestMetadata], Awaitable[bytes]]
-        ] = None,
+        proxy_actor_name: str | None = None,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
+        | None = None,
     ):
         self._asgi_scope: Scope = asgi_scope
 
@@ -874,12 +999,12 @@ class StreamingHTTPRequest:
         # If receive_asgi_messages is passed, it'll be called directly.
         # If proxy_actor_name is passed, the actor will be fetched and its
         # `receive_asgi_messages` method will be called.
-        self._proxy_actor_name: Optional[str] = proxy_actor_name
+        self._proxy_actor_name: str | None = proxy_actor_name
         # Need to keep the actor handle cached to avoid "lost reference to actor" error.
-        self._cached_proxy_actor: Optional[ActorHandle] = None
-        self._receive_asgi_messages: Optional[
-            Callable[[RequestMetadata], Awaitable[bytes]]
-        ] = receive_asgi_messages
+        self._cached_proxy_actor: ActorHandle | None = None
+        self._receive_asgi_messages: (
+            Callable[[RequestMetadata], Awaitable[bytes]] | None
+        ) = receive_asgi_messages
 
     @property
     def asgi_scope(self) -> Scope:
@@ -918,13 +1043,13 @@ class ReplicaQueueLengthInfo:
 
 @dataclass(frozen=True)
 class CreatePlacementGroupRequest:
-    bundles: List[Dict[str, float]]
+    bundles: list[dict[str, float]]
     strategy: str
-    target_node_id: Optional[str]
+    target_node_id: str | None
     name: str
-    runtime_env: Optional[Dict[str, Any]] = None
-    bundle_label_selector: Optional[List[Dict[str, str]]] = None
-    fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    runtime_env: dict[str, Any] | None = None
+    bundle_label_selector: list[dict[str, str]] | None = None
+    fallback_strategy: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -935,21 +1060,21 @@ class GangPlacementGroupRequest:
     gang_size: int
     gang_placement_strategy: str
     num_replicas_to_add: int
-    replica_resource_dict: Dict[str, float]
+    replica_resource_dict: dict[str, float]
     """Actor-level resource requirements derived from ray_actor_options.
     Used as the bundle template for every bundle in the gang placement group
     when per-replica placement group bundle is not set.
     Example: {"CPU": 4, "GPU": 1}."""
 
-    replica_placement_group_bundles: Optional[List[Dict[str, float]]] = None
+    replica_placement_group_bundles: list[dict[str, float]] | None = None
     """Per-replica placement group bundles.  When set, each replica occupies
     len(bundles) consecutive bundles in the gang placement group instead
     of a single flat bundle derived from replica_resource_dict."""
 
-    replica_pg_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    replica_pg_bundle_label_selector: list[dict[str, str]] | None = None
     """Label selector for per-replica placement group bundles."""
 
-    replica_pg_fallback_strategy: Optional[List[Dict[str, Any]]] = None
+    replica_pg_fallback_strategy: list[dict[str, Any]] | None = None
     """Fallback strategy for per-replica placement group bundles."""
 
 
@@ -959,10 +1084,10 @@ class GangReservationResult:
 
     success: bool
     """True when all gang PGs were created successfully."""
-    error_message: Optional[str] = None
-    gang_pgs: Optional[List[PlacementGroup]] = None
-    gang_ids: Optional[List[str]] = None
-    gang_pg_names: Optional[List[str]] = None
+    error_message: str | None = None
+    gang_pgs: list[PlacementGroup] | None = None
+    gang_ids: list[str] | None = None
+    gang_pg_names: list[str] | None = None
 
 
 # This error is used to raise when a by-value DeploymentResponse is converted to an
@@ -984,7 +1109,7 @@ class TimeStampedValue:
 
 
 # Type alias for time series data
-TimeSeries = List[TimeStampedValue]
+TimeSeries = list[TimeStampedValue]
 
 
 @dataclass
@@ -1013,8 +1138,8 @@ class HandleMetricReport:
     actor_id: str
     handle_source: DeploymentHandleSource
     queued_requests: TimeSeries
-    metrics: Dict[
-        str, Dict[str, TimeSeries]
+    metrics: dict[
+        str, dict[str, TimeSeries]
     ]  # replica key = ReplicaID.to_full_id_str()
     timestamp: float
 
@@ -1055,5 +1180,5 @@ class ReplicaMetricReport:
     """
 
     replica_id: ReplicaID
-    metrics: Dict[str, TimeSeries]
+    metrics: dict[str, TimeSeries]
     timestamp: float
