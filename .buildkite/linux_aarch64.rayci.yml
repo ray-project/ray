@@ -9,8 +9,17 @@ steps:
     wanda: ci/docker/forge.aarch64.wanda.yaml
     instance_type: builder-arm64
 
+  - name: bazel-glibc217-aarch64
+    label: "wanda: bazel for manylinux2014 (aarch64)"
+    wanda: ci/docker/bazel-glibc217.wanda.yaml
+    env_file: rayci.env
+    env:
+      HOSTTYPE: "aarch64"
+    instance_type: builder-arm64
+
   - name: manylinux-aarch64
     wanda: ci/docker/manylinux.wanda.yaml
+    depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     env:
       HOSTTYPE: "aarch64"
@@ -19,6 +28,7 @@ steps:
   - name: ray-java-build-aarch64
     label: "wanda: java build (aarch64)"
     wanda: ci/docker/ray-java.wanda.yaml
+    depends_on: bazel-glibc217-aarch64
     tags:
       - release_wheels
       - java
@@ -183,6 +193,7 @@ steps:
   - name: ray-core-build-aarch64
     label: "wanda: core binary parts py{{array.python}} (aarch64)"
     wanda: ci/docker/ray-core.wanda.yaml
+    depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     array:
       python:
@@ -254,6 +265,7 @@ steps:
   - name: ray-cpp-core-build-aarch64
     label: "wanda: cpp core (aarch64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     env:
       ARCH_SUFFIX: "-aarch64"

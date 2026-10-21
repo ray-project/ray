@@ -8,7 +8,18 @@
 
 ARG MANYLINUX_VERSION
 ARG HOSTTYPE
+FROM cr.ray.io/rayproject/bazel-glibc217-${HOSTTYPE} AS bazel
+
 FROM rayproject/manylinux2014:${MANYLINUX_VERSION}-jdk-${HOSTTYPE}
+
+# Bazel's own Linux releases need glibc >= 2.25 since Bazel 8, and this image is
+# glibc 2.17. Run the copy built for it (ci/docker/bazel-glibc217.Dockerfile)
+# instead. The build calls bazelisk, and /usr/local/bin/bazel links to it.
+COPY --from=bazel /bazel /usr/local/bin/bazel-glibc217
+RUN sudo mv /usr/local/bin/bazelisk /usr/local/bin/bazelisk.real \
+  && printf '#!/bin/sh\nexec /usr/local/bin/bazel-glibc217 "$@"\n' \
+    | sudo tee /usr/local/bin/bazelisk >/dev/null \
+  && sudo chmod 0755 /usr/local/bin/bazelisk
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 ENV BUILDKITE_BAZEL_CACHE_URL=${BUILDKITE_BAZEL_CACHE_URL}

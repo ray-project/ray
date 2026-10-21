@@ -28,6 +28,7 @@ steps:
   - name: ray-cpp-core-build
     label: "wanda: cpp core (x86_64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    depends_on: bazel-glibc217-x86_64
     env_file: rayci.env
     env:
       ARCH_SUFFIX: ""
