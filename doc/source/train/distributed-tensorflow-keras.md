@@ -43,9 +43,7 @@ Ray doesn't automatically set any environment variables or configuration related
 
 [`MultiWorkerMirroredStrategy`](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/MultiWorkerMirroredStrategy) provides synchronous distributed training. You must build and compile the `Model` inside the strategy's scope.
 
-```{testcode}
-:skipif: True
-
+```python
 with tf.distribute.MultiWorkerMirroredStrategy().scope():
     model = ... # build model
     model.compile()
@@ -83,9 +81,7 @@ trainer = TensorflowTrainer(
 
 To customize the backend setup, pass a {class}`~ray.train.tensorflow.TensorflowConfig`:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train import ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer, TensorflowConfig
 
@@ -104,9 +100,7 @@ For more configuration options, see the {py:class}`~ray.train.data_parallel_trai
 
 With a distributed training function and a Ray Train trainer in place, call `fit()` to start training:
 
-```{testcode}
-:skipif: True
-
+```python
 trainer.fit()
 ```
 

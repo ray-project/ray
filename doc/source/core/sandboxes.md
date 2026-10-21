@@ -257,6 +257,8 @@ print(result.stdout)
 ray.get(sandbox_actor.delete.remote())
 ```
 
+When a command runs past its `timeout`, Ray kills it and every process it started, and `exec` raises `SandboxTimeoutError`. Only a daemon keeps running: a process that left the command's session with `setsid` and whose parent has exited. Output bytes that aren't valid UTF-8 come back as U+FFFD replacement characters.
+
 ### Manage sandboxes inside custom actors with SandboxRuntime
 
 If you're building custom RL environment actors or specialized rollout workers, embed `SandboxRuntime` directly inside your custom actors for fine-grained sandbox lifecycle control:
@@ -287,6 +289,8 @@ result = ray.get(pool.run_command.remote(0, "python3 -c 'print(\"Hello from pool
 print(result.stdout)
 ray.get(pool.close.remote())
 ```
+
+A sandbox doesn't outlive the Ray worker that creates it. When the worker exits or crashes, Ray stops the processes the worker started, and the sandbox with them, so an actor that dies without deleting its sandboxes doesn't leak their CPU and memory. Sandbox creation on the node then deletes what they left on disk, in the background and at most once a minute per process: runsc's state, the writable overlay, and the image cache's record that the sandbox uses the image. A sandbox created outside a Ray worker, such as by a driver script, keeps running after its creator exits until that cleanup stops it, so delete those explicitly.
 
 ### Pass custom OCI configurations to gVisor
 
