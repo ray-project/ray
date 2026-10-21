@@ -41,8 +41,8 @@ from ray.serve.llm.request_router import PrefixCacheAffinityRouter
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "qwen-0.5b",
-        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+        "model_id": "qwen3.5-0.8b",
+        "model_source": "Qwen/Qwen3.5-0.8B",
     },
     deployment_config={
         "autoscaling_config": {

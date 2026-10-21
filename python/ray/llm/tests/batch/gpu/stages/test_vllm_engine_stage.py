@@ -69,10 +69,10 @@ def mock_vllm_wrapper():
         yield mock_wrapper
 
 
-def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
+def test_vllm_engine_stage_post_init(gpu_type):
     stage = vLLMEngineStage(
         fn_constructor_kwargs=dict(
-            model=model_llama_3_2_216M,
+            model="Qwen/Qwen3.5-0.8B",
             engine_kwargs=dict(
                 tensor_parallel_size=2,
                 pipeline_parallel_size=2,
@@ -90,7 +90,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
     )
 
     assert stage.fn_constructor_kwargs == {
-        "model": model_llama_3_2_216M,
+        "model": "Qwen/Qwen3.5-0.8B",
         "task_type": vLLMTaskType.GENERATE,
         "max_pending_requests": 10,
         "engine_kwargs": {
@@ -123,7 +123,7 @@ def test_vllm_engine_stage_post_init(gpu_type, model_llama_3_2_216M):
 
 
 @pytest.mark.asyncio
-async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
+async def test_vllm_engine_udf_basic(mock_vllm_wrapper):
     # Simulate vLLM's resolved state when the user sets `max_num_seqs=100`:
     # the wrapper owns the resolution of `max_pending_requests`, and the UDF
     # reads the resolved value back.
@@ -134,7 +134,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     udf = vLLMEngineStageUDF(
         data_column="__data",
         expected_input_keys=["prompt", "sampling_params"],
-        model=model_llama_3_2_216M,
+        model="Qwen/Qwen3.5-0.8B",
         task_type=vLLMTaskType.GENERATE,
         batch_size=32,
         max_concurrent_batches=4,
@@ -149,7 +149,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         },
     )
 
-    assert udf.model == model_llama_3_2_216M
+    assert udf.model == "Qwen/Qwen3.5-0.8B"
     assert udf.task_type == vLLMTaskType.GENERATE
     assert udf.engine_kwargs["task_type"] == vLLMTaskType.EMBED
     assert udf.engine_kwargs["max_num_seqs"] == 100
@@ -180,8 +180,8 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
     # doesn't supply it; the wrapper resolves the default from vLLM's
     # resolved engine config.
     mock_vllm_wrapper.assert_called_once_with(
-        model=model_llama_3_2_216M,
-        model_source=model_llama_3_2_216M,
+        model="Qwen/Qwen3.5-0.8B",
+        model_source="Qwen/Qwen3.5-0.8B",
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=False,
         max_pending_requests=None,
@@ -194,7 +194,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
+async def test_vllm_wrapper_semaphore():
     from vllm.outputs import CompletionOutput, RequestOutput
 
     max_pending_requests = 2
@@ -243,8 +243,8 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
 
         # Create wrapper with max 2 pending requests
         wrapper = vLLMEngineWrapper(
-            model=model_llama_3_2_216M,
-            model_source=model_llama_3_2_216M,
+            model="Qwen/Qwen3.5-0.8B",
+            model_source="Qwen/Qwen3.5-0.8B",
             idx_in_batch_column="__idx_in_batch",
             disable_log_stats=True,
             max_pending_requests=max_pending_requests,
@@ -351,13 +351,13 @@ async def test_vllm_wrapper_uses_explicit_multimodal_data():
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_generate(model_llama_3_2_216M):
+async def test_vllm_wrapper_generate():
     # TODO: Test v1 engine. The issue is once vLLM is imported with v0,
     # we cannot configure it to use v1, so we need a separate test for v1.
 
     wrapper = vLLMEngineWrapper(
-        model=model_llama_3_2_216M,
-        model_source=model_llama_3_2_216M,
+        model="Qwen/Qwen3.5-0.8B",
+        model_source="Qwen/Qwen3.5-0.8B",
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,
@@ -591,7 +591,7 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
+async def test_vllm_wrapper_json():
     """Test JSON output with the structured_outputs sampling param."""
 
     class AnswerModel(BaseModel):
@@ -601,8 +601,8 @@ async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct):
     json_schema = AnswerModel.model_json_schema()
 
     wrapper = vLLMEngineWrapper(
-        model=model_llama_3_2_1B_instruct,
-        model_source=model_llama_3_2_1B_instruct,
+        model="Qwen/Qwen3.5-0.8B",
+        model_source="Qwen/Qwen3.5-0.8B",
         idx_in_batch_column="__idx_in_batch",
         disable_log_stats=True,
         max_pending_requests=10,

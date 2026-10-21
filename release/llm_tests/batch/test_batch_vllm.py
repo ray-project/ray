@@ -169,7 +169,7 @@ def test_chat_template_with_vllm():
     """Test vLLM with explicit chat template."""
 
     processor_config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.2-1B-Instruct",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             max_model_len=16384,
             enable_chunked_prefill=True,
@@ -216,8 +216,9 @@ def test_chat_template_with_vllm():
         (1, 2, 2),  # PP=2, concurrency=2
     ],
 )
-def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
-    """Test vLLM with Llama model using different parallelism configurations."""
+@pytest.mark.requires_4GPU
+def test_vllm_qwen_parallel(tp_size, pp_size, concurrency):
+    """Test vLLM with Qwen model using different parallelism configurations."""
 
     # vLLM v1 does not support decoupled tokenizer,
     # but since the tokenizer is in a separate process,
@@ -226,7 +227,7 @@ def test_vllm_llama_parallel(tp_size, pp_size, concurrency):
     detokenize = False
 
     processor_config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.2-1B-Instruct",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             tensor_parallel_size=tp_size,
             pipeline_parallel_size=pp_size,
@@ -337,10 +338,6 @@ def test_vllm_llama_lora():
     # residual non-determinism we can't eliminate from the test, but in
     # practice the regime separation (base/LoRA divergence signal vs noise)
     # is very wide (~30/30 vs ~5/30), so half-of-num_pairs is a robust threshold.
-    # Note for future: VLLM_BATCH_INVARIANT=1 with attention_backend=FLASH_ATTN
-    # eliminates the remaining non-determinism entirely for perfect separation,
-    # but it requires a GPU compute capability (>=9.0) the CI runners don't meet, so
-    # we rely on the median threshold instead. Recommended if CI hardware is upgraded.
     seed = 42
 
     processor_config = vLLMEngineProcessorConfig(
@@ -414,7 +411,16 @@ def test_vllm_llama_lora():
         # LLaVA model with TP=1, PP=1, concurrency=1
         ("llava-hf/llava-1.5-7b-hf", 1, 1, 1, 60, "openai", False),
         # Pixtral model with TP=2, PP=1, concurrency=2
-        ("mistral-community/pixtral-12b", 2, 1, 2, 60, "openai", True),
+        pytest.param(
+            "mistral-community/pixtral-12b",
+            2,
+            1,
+            2,
+            60,
+            "openai",
+            True,
+            marks=pytest.mark.requires_4GPU,
+        ),
     ],
 )
 def test_vllm_vision_language_models(
@@ -508,6 +514,7 @@ def test_vllm_vision_language_models(
         },
     ],
 )
+@pytest.mark.requires_2GPU
 def test_vllm_qwen_vl_multimodal(multimodal_content):
     model_source = "Qwen/Qwen2.5-VL-3B-Instruct"
 
@@ -587,7 +594,9 @@ def test_vllm_qwen_vl_multimodal(multimodal_content):
     assert all("resp" in out for out in outs)
 
 
-@pytest.mark.parametrize("concurrency", [1, 4])
+@pytest.mark.parametrize(
+    "concurrency", [1, pytest.param(4, marks=pytest.mark.requires_4GPU)]
+)
 def test_async_udf_queue_capped(concurrency):
     """
     Test that the large object in input/output rows
@@ -595,7 +604,7 @@ def test_async_udf_queue_capped(concurrency):
     """
 
     processor_config = vLLMEngineProcessorConfig(
-        model_source="unsloth/Llama-3.2-1B-Instruct",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             max_model_len=16384,
             enable_chunked_prefill=True,
@@ -674,11 +683,12 @@ def test_async_udf_queue_capped(concurrency):
         ),
     ],
 )
+@pytest.mark.requires_4GPU
 def test_vllm_placement_group(backend, placement_group_config):
     """Test vLLM with different placement group configurations."""
 
     config = vLLMEngineProcessorConfig(
-        model_source="facebook/opt-1.3b",
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             enable_prefix_caching=True,
             enable_chunked_prefill=True,
@@ -719,12 +729,13 @@ def test_vllm_placement_group(backend, placement_group_config):
     assert all("resp" in out for out in outs)
 
 
+@pytest.mark.requires_4GPU
 def test_vllm_autoscaling_no_starvation():
     """Test that chained vLLMEngineProcessor instances with autoscaling
     concurrency can run without starving each other.
     """
     processor_config_1 = vLLMEngineProcessorConfig(
-        model_source="facebook/opt-1.3b",
+        model_source="Qwen/Qwen3.5-0.8B",
         chat_template_stage=False,
         tokenize_stage=False,
         detokenize_stage=False,
@@ -733,7 +744,7 @@ def test_vllm_autoscaling_no_starvation():
     )
 
     processor_config_2 = vLLMEngineProcessorConfig(
-        model_source="facebook/opt-1.3b",
+        model_source="Qwen/Qwen3.5-0.8B",
         chat_template_stage=False,
         tokenize_stage=False,
         detokenize_stage=False,

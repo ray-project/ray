@@ -152,8 +152,8 @@ def test_serve_deployment_continue_on_error(serve_cleanup):
         assert s.get("resp") is not None, f"Missing resp in success row: {s}"
 
 
-def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
-    deployment_name, app_name = create_model_opt_125m_deployment
+def test_completion_model(create_model_qwen3_5_0_8b_deployment):
+    deployment_name, app_name = create_model_qwen3_5_0_8b_deployment
     config = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
         app_name=app_name,
@@ -170,7 +170,7 @@ def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
             method="completions",
             dtype="CompletionRequest",
             request_kwargs=dict(
-                model=model_opt_125m,
+                model="Qwen/Qwen3.5-0.8B",
                 prompt=row["prompt"],
                 stream=False,
             ),
@@ -189,8 +189,8 @@ def test_completion_model(model_opt_125m, create_model_opt_125m_deployment):
     assert all("resp" in out for out in outs)
 
 
-def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deployment):
-    deployment_name, app_name = create_model_opt_125m_deployment
+def test_multi_turn_completion_model(create_model_qwen3_5_0_8b_deployment):
+    deployment_name, app_name = create_model_qwen3_5_0_8b_deployment
 
     config1 = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
@@ -209,7 +209,7 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
             dtype="CompletionRequest",
             method="completions",
             request_kwargs=dict(
-                model=model_opt_125m,
+                model="Qwen/Qwen3.5-0.8B",
                 prompt=row["prompt"],
                 stream=False,
             ),
@@ -235,7 +235,7 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
             dtype="CompletionRequest",
             method="completions",
             request_kwargs=dict(
-                model=model_opt_125m,
+                model="Qwen/Qwen3.5-0.8B",
                 prompt=row["prompt"],
                 stream=False,
             ),
@@ -256,8 +256,8 @@ def test_multi_turn_completion_model(model_opt_125m, create_model_opt_125m_deplo
     assert all("resp" in out for out in outs)
 
 
-def test_chat_model(model_opt_125m, create_model_opt_125m_deployment):
-    deployment_name, app_name = create_model_opt_125m_deployment
+def test_chat_model(create_model_qwen3_5_0_8b_deployment):
+    deployment_name, app_name = create_model_qwen3_5_0_8b_deployment
     config = ServeDeploymentProcessorConfig(
         deployment_name=deployment_name,
         app_name=app_name,
@@ -274,7 +274,7 @@ def test_chat_model(model_opt_125m, create_model_opt_125m_deployment):
             dtype="ChatCompletionRequest",
             method="chat",
             request_kwargs=dict(
-                model=model_opt_125m,
+                model="Qwen/Qwen3.5-0.8B",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant"},
                     {"role": "user", "content": f"Hello {row['id']}"},

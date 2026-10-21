@@ -23,7 +23,7 @@ ds = ray.data.from_items([
 
 # Minimal vLLM configuration
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     concurrency=1,  # 1 vLLM engine replica
     batch_size=32,  # 32 samples per batch
     engine_kwargs={

@@ -59,6 +59,12 @@ py_test(
 
 test_srcs = glob(["**/*.py"])
 
+filegroup(
+    name = "llm_h100_compute_configs",
+    srcs = glob(["llm_tests/cluster_compute/*.yaml"]),
+    visibility = ["//ci/ray_ci:__pkg__"],
+)
+
 ####
 # SERVE smoke tests
 ####

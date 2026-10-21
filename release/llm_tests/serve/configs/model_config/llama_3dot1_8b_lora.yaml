@@ -2,7 +2,7 @@ model_loading_config:
   model_id: meta-llama/Meta-Llama-3.1-8B-Instruct-Fine-Tuned
   model_source: meta-llama/Llama-3.1-8B-Instruct
 
-accelerator_type: A10G
+accelerator_type: H100
 
 engine_kwargs:
   max_model_len: 2048

@@ -24,7 +24,7 @@ from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util import remove_placement_group
 from ray.util.placement_group import placement_group_table
 
-TEST_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+TEST_MODEL = "Qwen/Qwen3.5-0.8B"
 TEST_MAX_MODEL_LEN = 10500
 TEST_TENSOR_PARALLEL_SIZE = 1
 TEST_GPU_MEMORY_UTILIZATION = 0.95

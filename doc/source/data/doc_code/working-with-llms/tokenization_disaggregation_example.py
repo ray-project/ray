@@ -8,7 +8,7 @@ from ray.data.llm import vLLMEngineProcessorConfig, build_processor
 
 # __disaggregated_tokenization_start__
 config = vLLMEngineProcessorConfig(
-    model_source="unsloth/Llama-3.1-8B-Instruct",
+    model_source="Qwen/Qwen3.5-0.8B",
     engine_kwargs={"max_model_len": 4096},
     concurrency=1,
     batch_size=64,

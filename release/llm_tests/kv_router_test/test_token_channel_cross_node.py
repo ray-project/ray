@@ -89,6 +89,7 @@ def _send_batch(host, round_index):
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_2x_1GPU
 async def test_router_connects_to_remote_token_receiver(deployed_app):
     replica_ips = deployed_app
     host = sorted(replica_ips)[0]

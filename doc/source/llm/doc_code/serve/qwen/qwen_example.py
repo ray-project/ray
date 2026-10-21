@@ -46,8 +46,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config={
-        "model_id": "qwen-0.5b",
-        "model_source": "Qwen/Qwen2.5-0.5B-Instruct",
+        "model_id": "qwen3.5-0.8b",
+        "model_source": "Qwen/Qwen3.5-0.8B",
     },
     deployment_config={
         "autoscaling_config": {
@@ -56,7 +56,7 @@ llm_config = LLMConfig(
         }
     },
     # Pass the desired accelerator type (e.g. A10G, L4, etc.)
-    accelerator_type="A10G",
+    accelerator_type="H100",
     # You can customize the engine arguments (e.g. vLLM engine kwargs)
     engine_kwargs={
         "tensor_parallel_size": 2,

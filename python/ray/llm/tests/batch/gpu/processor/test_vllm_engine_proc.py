@@ -22,12 +22,11 @@ from ray.llm._internal.batch.stages.configs import (
 )
 def test_vllm_engine_processor(
     gpu_type,
-    model_opt_125m,
     tensor_parallel_size,
     expected_distributed_executor_backend,
 ):
     config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             max_model_len=8192,
             tensor_parallel_size=tensor_parallel_size,
@@ -57,7 +56,7 @@ def test_vllm_engine_processor(
 
     stage = processor.get_stage_by_name("vLLMEngineStage")
     assert stage.fn_constructor_kwargs == {
-        "model": model_opt_125m,
+        "model": "Qwen/Qwen3.5-0.8B",
         "engine_kwargs": {
             "max_model_len": 8192,
             "distributed_executor_backend": expected_distributed_executor_backend,
@@ -98,9 +97,9 @@ def test_vllm_engine_processor(
         }
 
 
-def test_vllm_engine_processor_task_override(model_opt_125m):
+def test_vllm_engine_processor_task_override():
     config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             task_type=vLLMTaskType.EMBED,
         ),
@@ -122,12 +121,12 @@ def test_vllm_engine_processor_task_override(model_opt_125m):
     )
 
 
-def test_vllm_engine_processor_invalid_task(model_opt_125m):
+def test_vllm_engine_processor_invalid_task():
     with pytest.raises(
         pydantic.ValidationError, match="Invalid task type: invalid_task"
     ):
         vLLMEngineProcessorConfig(
-            model_source=model_opt_125m,
+            model_source="Qwen/Qwen3.5-0.8B",
             engine_kwargs=dict(
                 task_type=vLLMTaskType.EMBED,
             ),
@@ -141,9 +140,9 @@ def test_vllm_engine_processor_invalid_task(model_opt_125m):
         )
 
 
-def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
+def test_vllm_engine_processor_placement_group(gpu_type):
     config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             max_model_len=8192,
         ),
@@ -181,13 +180,13 @@ def test_vllm_engine_processor_placement_group(gpu_type, model_opt_125m):
     ],
 )
 def test_vllm_engine_processor_bundle_per_worker(
-    gpu_type, model_opt_125m, engine_kwargs_extra, expected_num_bundles
+    gpu_type, engine_kwargs_extra, expected_num_bundles
 ):
     """Test bundle_per_worker auto-expands based on tp*pp."""
     engine_kwargs = dict(max_model_len=8192)
     engine_kwargs.update(engine_kwargs_extra)
     config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=engine_kwargs,
         accelerator_type=gpu_type,
         concurrency=4,
@@ -225,11 +224,11 @@ def test_vllm_engine_processor_bundle_per_worker(
     assert stage.map_batches_kwargs == expected_kwargs
 
 
-def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type, model_opt_125m):
+def test_vllm_engine_processor_bundle_per_worker_conflict(gpu_type):
     """Test that specifying both bundle_per_worker and bundles raises error."""
     with pytest.raises(ValueError, match="Cannot specify both"):
         vLLMEngineProcessorConfig(
-            model_source=model_opt_125m,
+            model_source="Qwen/Qwen3.5-0.8B",
             engine_kwargs=dict(max_model_len=8192),
             accelerator_type=gpu_type,
             placement_group_config={
@@ -268,9 +267,7 @@ def test_prepare_multimodal_stage_vllm_engine_processor(gpu_type, model_smolvlm_
 
 
 @pytest.mark.parametrize("backend", ["uni", "mp", "ray"])
-def test_generation_model(gpu_type, model_opt_125m, backend):
-    # OPT models don't have chat template, so we use ChatML template
-    # here to demonstrate the usage of custom chat template.
+def test_generation_model(gpu_type, backend):
     chat_template = """
 {% if messages[0]['role'] == 'system' %}
     {% set offset = 1 %}
@@ -293,7 +290,7 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
     """
 
     processor_config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             enable_prefix_caching=False,
             enable_chunked_prefill=True,
@@ -340,11 +337,13 @@ def test_generation_model(gpu_type, model_opt_125m, backend):
     assert all("resp" in out for out in outs)
 
 
-def test_generation_model_tokenized_prompt(gpu_type, model_opt_125m):
-    tokenizer = AutoTokenizer.from_pretrained(model_opt_125m, trust_remote_code=True)
+def test_generation_model_tokenized_prompt(gpu_type):
+    tokenizer = AutoTokenizer.from_pretrained(
+        "Qwen/Qwen3.5-0.8B", trust_remote_code=True
+    )
 
     processor_config = vLLMEngineProcessorConfig(
-        model_source=model_opt_125m,
+        model_source="Qwen/Qwen3.5-0.8B",
         engine_kwargs=dict(
             enable_prefix_caching=False,
             enable_chunked_prefill=True,
@@ -453,9 +452,11 @@ def test_classification_model(gpu_type):
             tokenization_kwargs={"truncation": True, "max_length": 512},
         ),
         postprocess=lambda row: {
-            "probs": float(row["embeddings"][0])
-            if row.get("embeddings") is not None and len(row["embeddings"]) > 0
-            else None,
+            "probs": (
+                float(row["embeddings"][0])
+                if row.get("embeddings") is not None and len(row["embeddings"]) > 0
+                else None
+            ),
         },
     )
 
@@ -506,17 +507,19 @@ def test_vision_model(
                             "type": "text",
                             "text": f"Say {row['val']} words about this image.",
                         },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_url},
-                            "uuid": "image-1-id",  # UUID will not be included in the output as it's only used for internal caching
-                        }
-                        if input_raw_image_data
-                        else {
-                            "type": "image_pil",
-                            "image_pil": image_pil,
-                            "uuid": "image-2-id",
-                        },
+                        (
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": image_url},
+                                "uuid": "image-1-id",  # UUID will not be included in the output as it's only used for internal caching
+                            }
+                            if input_raw_image_data
+                            else {
+                                "type": "image_pil",
+                                "image_pil": image_pil,
+                                "uuid": "image-2-id",
+                            }
+                        ),
                     ],
                 },
             ],
@@ -576,15 +579,17 @@ def test_audio_model(
                             "type": "text",
                             "text": f"Describe this audio in {row['val']} words.",
                         },
-                        {
-                            "type": "input_audio",
-                            "input_audio": {"data": audio_data, "format": "wav"},
-                        }
-                        if input_raw_audio_data
-                        else {
-                            "type": "audio_url",
-                            "audio_url": {"url": audio_url},
-                        },
+                        (
+                            {
+                                "type": "input_audio",
+                                "input_audio": {"data": audio_data, "format": "wav"},
+                            }
+                            if input_raw_audio_data
+                            else {
+                                "type": "audio_url",
+                                "audio_url": {"url": audio_url},
+                            }
+                        ),
                     ],
                 },
             ],

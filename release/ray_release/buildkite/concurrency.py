@@ -101,6 +101,9 @@ def parse_condition(cond: int, limit: float = float("inf")) -> float:
 
 
 def get_concurrency_group(test: Test) -> Tuple[str, int]:
+    if test.get("working_dir", "").startswith("llm_tests/"):
+        return "llm-h100", 4
+
     if test.get("env", None) == "gce":
         concurrent_group = gce_gpu_cpu_to_concurrent_groups
     else:

@@ -51,7 +51,7 @@ llm_config = LLMConfig(
             "max_replicas": 4,
         }
     },
-    accelerator_type="A10G",
+    accelerator_type="H100",
     log_engine_metrics=True,
 )
 

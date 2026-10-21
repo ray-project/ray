@@ -215,7 +215,7 @@ def serve_cleanup():
 
 
 @pytest.fixture
-def create_model_opt_125m_deployment(gpu_type, model_opt_125m, serve_cleanup):
+def create_model_qwen3_5_0_8b_deployment(gpu_type, serve_cleanup):
     """Create a serve deployment for testing."""
     app_name = "test_serve_deployment_processor_app"
     deployment_name = "test_deployment_name"
@@ -244,8 +244,8 @@ def create_model_opt_125m_deployment(gpu_type, model_opt_125m, serve_cleanup):
     # Create a vLLM serve deployment
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
-            model_id=model_opt_125m,
-            model_source=model_opt_125m,
+            model_id="Qwen/Qwen3.5-0.8B",
+            model_source="Qwen/Qwen3.5-0.8B",
         ),
         accelerator_type=gpu_type,
         deployment_config=dict(
@@ -259,7 +259,7 @@ def create_model_opt_125m_deployment(gpu_type, model_opt_125m, serve_cleanup):
             enable_prefix_caching=True,
             enable_chunked_prefill=True,
             max_num_batched_tokens=4096,
-            # Add chat template for OPT model to enable chat API
+            max_model_len=2048,
             chat_template=chat_template,
         ),
     )

@@ -44,8 +44,8 @@ from ray.serve.llm import LLMConfig, build_openai_app
 # Ray automatically replicates this bundle based on tp * pp (2 bundles total)
 llm_config = LLMConfig(
     model_loading_config=dict(
-        model_id="qwen-0.5b",
-        model_source="Qwen/Qwen2.5-0.5B-Instruct",
+        model_id="qwen3.5-0.8b",
+        model_source="Qwen/Qwen3.5-0.8B",
     ),
     deployment_config=dict(
         autoscaling_config=dict(

@@ -50,24 +50,29 @@ steps:
     tags:
       - llm
       - gpu
-    instance_type: gpu-large-flex
+    instance_type: medium
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
-        --python-version 3.12 --build-name llmgpubuild --only-tags gpu
-        --except-tags multi_gpu_4,custom_vllm_plugin
+      - bazel run //ci/ray_ci:llm_tests_h100 -- --gpus 1
     depends_on: llmgpubuild
 
-  - label: "llm gpu tests (4 GPUs)"
+  - label: "llm gpu tests (2 H100s)"
+    key: "llm-gpu-tests-2gpu"
+    tags:
+      - llm
+      - gpu
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:llm_tests_h100 -- --gpus 2
+    depends_on: llmgpubuild
+
+  - label: "llm gpu tests (4 H100s)"
     key: "llm-gpu-tests-4gpu"
     tags:
       - llm
       - gpu
-    instance_type: gpu-large
+    instance_type: medium
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
-        --python-version 3.12 --build-name llmgpubuild
-        --only-tags multi_gpu_4
-        --gpus 4
+      - bazel run //ci/ray_ci:llm_tests_h100 -- --gpus 4
     depends_on: llmgpubuild
 
   # Custom vLLM model docs example: runs on the dedicated image that has the
@@ -77,9 +82,7 @@ steps:
     tags:
       - llm
       - gpu
-    instance_type: gpu-large-flex
+    instance_type: medium
     commands:
-      - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
-        --python-version 3.12 --build-name custom-vllm-plugin-gpubuild
-        --only-tags custom_vllm_plugin
+      - bazel run //ci/ray_ci:llm_tests_h100 -- --custom-plugin
     depends_on: custom-vllm-plugin-gpubuild
