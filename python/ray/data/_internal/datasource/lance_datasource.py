@@ -13,6 +13,32 @@ if TYPE_CHECKING:
     import pyarrow
 
 
+# Only these options are known to preserve the rows selected by an ordinary
+# filter. Unknown options must not produce a potentially incorrect exact count.
+_ROW_COUNT_PRESERVING_SCANNER_OPTIONS = {
+    "columns",
+    "filter",
+    "fragments",
+    "batch_size",
+    "batch_size_bytes",
+    "batch_readahead",
+    "fragment_readahead",
+    "scan_in_order",
+    "prefilter",
+    "with_row_id",
+    "with_row_address",
+    "use_stats",
+    "io_buffer_size",
+    "late_materialization",
+    "blob_handling",
+    "use_scalar_index",
+    "scan_stats_callback",
+    "strict_batch_size",
+    "order_by",
+    "disable_scoring_autoprojection",
+}
+
+
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
 
@@ -82,8 +108,7 @@ class LanceDatasource(Datasource):
     ) -> List[ReadTask]:
         read_tasks = []
 
-        # Lance scanner's filter attr accepts only a string (SQL).
-        # See: https://github.com/lance-format/lance/blob/aac74b441cdb6df7d78700dbba33c521e6379ca5/python/python/lance/lance/__init__.pyi#L230
+        # Use the same combined predicate for task counts and data scans.
         filter_expr = (
             str(self._predicate_expr.to_pyarrow())
             if self._predicate_expr is not None
@@ -148,7 +173,9 @@ class LanceDatasource(Datasource):
             if current_lance_ds is not None:
                 dataset_fragment_groups.append((current_lance_ds, current_fragment_ids))
 
-            num_rows = sum(fragment.count_rows() for fragment in chunk_fragments)
+            num_rows = self._get_read_task_num_rows(
+                dataset_fragment_groups, chunk_fragments, filter_expr
+            )
             input_files = [
                 data_file.path()
                 for fragment in chunk_fragments
@@ -181,6 +208,52 @@ class LanceDatasource(Datasource):
             )
             read_tasks.append(read_task)
         return read_tasks
+
+    def _get_read_task_num_rows(
+        self,
+        dataset_fragment_groups: List[Tuple[Any, List[int]]],
+        fragments: List[Any],
+        filter_expr: Any,
+    ) -> Optional[int]:
+        for key, value in self.scanner_options.items():
+            if key in {"fast_search", "include_deleted_rows"} and value is False:
+                continue
+            if value is not None and key not in _ROW_COUNT_PRESERVING_SCANNER_OPTIONS:
+                # Search, limits, offsets, and other row-set modifiers cannot use
+                # fragment live-row counts or a plain filtered COUNT(*). Ray will
+                # determine the count from the executed read instead.
+                return None
+
+        if filter_expr is None:
+            return sum(fragment.count_rows() for fragment in fragments)
+
+        from pyarrow.compute import Expression
+
+        if not isinstance(filter_expr, (str, Expression)):
+            # Newer Lance versions also accept search filters here.
+            return None
+
+        # Count the same snapshot and fragments as the data scan, without reading
+        # projected payload columns. Do not copy ordering (incompatible with Lance
+        # aggregation), callbacks, or projection-specific options into this scan.
+        count_options: Dict[str, Any] = {
+            "columns": [],
+            "with_row_id": True,
+            "filter": filter_expr,
+        }
+        for key in ("use_stats", "use_scalar_index"):
+            if key in self.scanner_options:
+                count_options[key] = self.scanner_options[key]
+
+        num_rows = 0
+        for lance_ds, fragment_ids in dataset_fragment_groups:
+            num_rows += call_with_retry(
+                lambda ds=lance_ds, ids=fragment_ids: ds.scanner(
+                    fragments=[ds.get_fragment(id) for id in ids], **count_options
+                ).count_rows(),
+                **self._retry_params,
+            )
+        return num_rows
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
