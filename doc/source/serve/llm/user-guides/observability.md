@@ -109,6 +109,50 @@ applications:
 
 ::::
 
+## Experimental GenAI workflow tracing
+
+The typed OpenAI request pipeline can emit workflow spans for the ingress,
+prefill/decode orchestration, and each inference replica. To enable this feature,
+install the optional exporter on every replica:
+
+```shell
+pip install opentelemetry-exporter-otlp-proto-grpc
+```
+
+Set these environment variables in the ingress and worker runtime environments:
+
+```shell
+OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://collector:4317
+OTEL_EXPORTER_OTLP_TRACES_INSECURE=true
+OTEL_SERVICE_NAME=ray-llm
+```
+
+Use an endpoint and TLS settings appropriate for your collector. Set
+`OTEL_RESOURCE_ATTRIBUTES` on each replica to identify its actual process or pod,
+for example `k8s.pod.uid`, `k8s.pod.name`, and `k8s.namespace.name`. In Kubernetes,
+populate these values with the Downward API. These attributes identify the
+replica that emits the span, including separate prefill and decode pods.
+
+The ingress extracts W3C `traceparent` and `tracestate` headers. A private request
+field carries the context through Ray deployment calls and request copies without
+adding it to the public OpenAI JSON schema. Streaming spans remain open until
+completion, cancellation, or failure. Context is detached between stream yields
+to keep concurrent requests separate. Sampling follows the parent decision;
+configure root sampling with `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`.
+
+Spans use `gen_ai.operation.name=invoke_workflow`. They do not record prompts,
+responses, or token counts. A separate OpenTelemetry provider exports these
+workflow spans, without adding an exporter to the provider used by other Ray
+instrumentation. The GenAI conventions are experimental and can change.
+
+This opt-in currently covers `/v1/chat/completions` and `/v1/completions` through
+`OpenAiIngress`, including the typed prefill/decode orchestration path. It does
+not instrument the engine-native ASGI direct-streaming path
+(`RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1`) or other endpoints. Without the
+opt-in, no new spans or exporters are created. Restart replicas after changing
+exporter settings.
+
 ## Usage data collection
 
 The Ray Team collects usage data to improve Ray Serve LLM. The team collects data about the following features and attributes:

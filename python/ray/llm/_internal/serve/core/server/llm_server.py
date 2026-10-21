@@ -39,6 +39,7 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import LLMServerProtocol, RawRequestInfo
+from ray.llm._internal.serve.observability.genai_tracing import trace_stream
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.observability.usage_telemetry.usage import (
     push_telemetry_report_for_all_models,
@@ -410,7 +411,7 @@ class LLMServer(LLMServerProtocol):
         else:
             stream = engine_stream
 
-        return stream
+        return trace_stream(stream, request, "ray.llm.inference")
 
     async def chat(
         self,

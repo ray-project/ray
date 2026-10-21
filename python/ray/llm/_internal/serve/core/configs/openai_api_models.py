@@ -8,7 +8,7 @@ installed, an ImportError is raised at import time.
 import uuid
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from ray.llm._internal.common.utils.import_utils import raise_llm_engine_import_error
 
@@ -116,6 +116,7 @@ if TYPE_CHECKING:
 
 
 class ChatCompletionRequest(_ChatCompletionRequest):
+    _otel_trace_headers: Dict[str, str] = PrivateAttr(default_factory=dict)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
@@ -137,6 +138,7 @@ class ErrorResponse(_ErrorResponse):
 
 # TODO (Kourosh): Upstream
 class CompletionRequest(_CompletionRequest):
+    _otel_trace_headers: Dict[str, str] = PrivateAttr(default_factory=dict)
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
