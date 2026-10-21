@@ -4,7 +4,7 @@ set -euo pipefail
 
 service="ray-hive-${BUILDKITE_JOB_ID:-$$}"
 network="${service}-network"
-log_dir="${RAY_HIVE_LOG_DIR:-/tmp/artifacts/hive}"
+log_dir="${RAY_HIVE_LOG_DIR:-/artifact-mount/hive}"
 mkdir -p "${log_dir}"
 
 # Listing resources distinguishes an absent resource from a Docker daemon error.

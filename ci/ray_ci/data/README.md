@@ -13,7 +13,8 @@ limits, scalar types, and timestamps. The TLS-specific test remains skipped
 because this fixture does not configure TLS.
 
 The script preserves a failing test command's exit status, saves server and readiness
-logs under `/tmp/artifacts/hive`, and removes the container, its anonymous
+logs under `/artifact-mount/hive` (the RayCI artifact mount, so a failing run's
+files are retained as downloadable build artifacts), and removes the container, its anonymous
 volumes, and network on success or failure. If the container or network remains,
 or cleanup cannot be verified, an otherwise successful run fails. Resources
 already absent count as clean. Startup defaults to a 300-second
