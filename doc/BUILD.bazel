@@ -575,33 +575,23 @@ py_test(
 # Tests code snippets in user guides.
 # --------------------------------------------------------------------
 
-doctest(
+# Prose that no library owns. Its targets are tagged team:none, which only the
+# postmerge "doc: doctest" step in .buildkite/others.rayci.yml selects.
+# Not listed: ray-contribute/getting-involved.md and
+# ray-contribute/writing-code-snippets.md, whose `>>>` samples teach doctest
+# syntax rather than run.
+doctest_each(
     size = "large",
-    files = glob(
-        include = [
-            "source/**/*.md",
-            "source/**/*.rst",
-        ],
-        exclude = [
-            "source/ray-contribute/getting-involved.md",
-            "source/ray-contribute/testing-tips.md",
-            "source/ray-contribute/writing-code-snippets.md",
-            "source/ray-observability/user-guides/ray-tracing.md",
-            "source/ray-observability/user-guides/cli-sdk.md",
-            "source/core/**/*.md",
-            "source/core/**/*.rst",
-            "source/data/**/*.md",
-            "source/data/**/*.rst",
-            "source/rllib/**/*.md",
-            "source/rllib/**/*.rst",
-            "source/serve/**/*.md",
-            "source/serve/**/*.rst",
-            "source/train/**/*.md",
-            "source/train/**/*.rst",
-            "source/tune/**/*.md",
-            "source/tune/**/*.rst",
-        ],
-    ),
+    files = [
+        "source/cluster/configure-manage-dashboard.md",
+        "source/ray-observability/getting-started.md",
+        "source/ray-observability/key-concepts.md",
+        "source/ray-observability/user-guides/debug-apps/debug-failures.md",
+        "source/ray-observability/user-guides/debug-apps/general-debugging.md",
+        "source/ray-observability/user-guides/debug-apps/optimize-performance.md",
+        "source/ray-overview/getting-started.md",
+        "source/ray-references/glossary.md",
+    ],
     # NOTE(edoakes): the global glossary and some tutorials use Ray Data,
     # so we use its pytest plugin file (which is a superset of the default).
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
@@ -617,8 +607,8 @@ doctest(
 # needs no edit.
 doctest_each(
     size = "large",
-    # Not listed: handling-dependencies.md, and tasks/nested-tasks.md, whose
-    # `doc_code/` snippet is tested instead.
+    # Not listed: tasks/nested-tasks.md, whose `doc_code/` snippet is tested
+    # instead.
     files = [
         "source/core/actors/async-api.md",
         "source/core/actors/concurrency-group-api.md",
@@ -643,19 +633,28 @@ doctest_each(
 doctest_each(
     # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
     env = {"TF_USE_LEGACY_KERAS": "1"},
-    files = glob(
-        include = [
-            "source/data/**/*.md",
-            "source/data/**/*.rst",
-        ],
-        exclude = [
-            # These tests run on GPU (see below).
-            "source/data/batch-inference.md",
-            "source/data/transforming-data.md",
-            # These don't contain code snippets.
-            "source/data/api/**/*.rst",
-        ],
-    ),
+    # Not listed: the GPU pages in doctest[data-gpu] below.
+    files = [
+        "source/data/aggregating-data.md",
+        "source/data/execution-configurations.md",
+        "source/data/index.md",
+        "source/data/inspecting-data.md",
+        "source/data/internals.md",
+        "source/data/iterating-over-data.md",
+        "source/data/joining-data.md",
+        "source/data/key-concepts.md",
+        "source/data/loading-data.md",
+        "source/data/mixing-data.md",
+        "source/data/monitoring-your-workload.md",
+        "source/data/performance-tips.md",
+        "source/data/quickstart.md",
+        "source/data/saving-data.md",
+        "source/data/shuffling-data.md",
+        "source/data/working-with-images.md",
+        "source/data/working-with-pytorch.md",
+        "source/data/working-with-tensors.md",
+        "source/data/working-with-text.md",
+    ],
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
 )
@@ -713,8 +712,7 @@ doctest_each(
         "RAY_TRAIN_V2_ENABLED": "0",
         "TF_USE_LEGACY_KERAS": "1",
     },
-    # Not listed: horovod.md, because CI does not have Horovod installed, and the
-    # GPU pages in doctest[train-gpu] below.
+    # Not listed: the GPU pages in doctest[train-gpu] below.
     files = [
         "source/train/common/torch-configure-run.md",
         "source/train/distributed-tensorflow-keras.md",

@@ -1759,8 +1759,12 @@ class ActorReplicaWrapper:
 
         return self.graceful_shutdown_timeout_s
 
-    def check_stopped(self) -> bool:
-        """Check if the actor has exited."""
+    def check_stopped(self, *, kill_actor: bool = True) -> bool:
+        """Check if shutdown completed or the actor has exited.
+
+        Set kill_actor=False to poll graceful shutdown without killing the actor
+        or releasing its placement group, so gangs can wait for every member.
+        """
         stopped = False
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
@@ -1771,7 +1775,7 @@ class ActorReplicaWrapper:
                 stopped = False
             else:
                 stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)  # type: ignore[arg-type]
-            if stopped:
+            if stopped and kill_actor:
                 try:
                     # `stopped` is only True here when the shutdown ref was set.
                     ray.get(self._graceful_shutdown_ref)  # type: ignore[arg-type]
@@ -1791,6 +1795,7 @@ class ActorReplicaWrapper:
             # deployment frees that one once the whole gang is gone.
             if (
                 stopped
+                and kill_actor
                 and self._placement_group is not None
                 and self._gang_context is None
             ):
@@ -2385,6 +2390,13 @@ class DeploymentReplica:
             # load balancers (e.g., ALB) time to deregister the replica.
             timeout_s = max(timeout_s, RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S)
         self._shutdown_deadline = time.time() + timeout_s
+
+    def check_ready_to_stop(self) -> bool:
+        """Whether graceful shutdown completed or its deadline expired, without killing."""
+        return (
+            self._actor.check_stopped(kill_actor=False)
+            or time.time() >= self._shutdown_deadline
+        )
 
     def check_stopped(self) -> bool:
         """Check if the replica has finished stopping."""
@@ -4320,10 +4332,16 @@ class DeploymentState:
                     for replica in gang_replicas:
                         self._replicas.add(replica.actor_details.state, replica)
                 elif code_version_changes + len(gang_replicas) <= max_to_stop:
+                    # Drain serving members gracefully. STARTING members skip
+                    # the grace period but still wait at the gang's kill barrier.
                     for replica in gang_replicas:
                         code_version_changes += 1
-                        # Forcefully stop siblings to avoid partial gangs
-                        self._stop_replica(replica, graceful_stop=False)
+                        self._stop_replica(
+                            replica,
+                            graceful_stop=(
+                                replica.actor_details.state != ReplicaState.STARTING
+                            ),
+                        )
                         replicas_changed = True
                 else:
                     # Not enough budget for this gang; put replicas back
@@ -4529,10 +4547,7 @@ class DeploymentState:
             return
         self._replicas.remove([replica.replica_id for replica in replicas])
         for replica in replicas:
-            graceful_stop = (
-                not self._is_gang_deployment
-                and replica.actor_details.state == ReplicaState.RUNNING
-            )
+            graceful_stop = replica.actor_details.state == ReplicaState.RUNNING
             self._stop_replica(replica, graceful_stop=graceful_stop)
         logger.info(
             f"Stopping {len(replicas)} replicas of {self._id} with outdated versions."
@@ -5939,7 +5954,23 @@ class DeploymentState:
 
             self._prev_startup_warning = time.time()
 
-        for replica in self._replicas.pop(states=[ReplicaState.STOPPING]):
+        stopping_replicas = self._replicas.pop(states=[ReplicaState.STOPPING])
+        if self._is_gang_deployment:
+            # Failed recovery can leave a replica without gang metadata. Let its
+            # existing force-stop path clean it up independently.
+            ready_to_stop = [r for r in stopping_replicas if r.gang_context is None]
+            gang_replicas = [r for r in stopping_replicas if r.gang_context is not None]
+            for gang in self._group_replicas_by_gang_id(gang_replicas).values():
+                # Keep every actor alive until all stopping members have drained
+                # or exhausted their grace periods. Kill them in the same tick.
+                if all(replica.check_ready_to_stop() for replica in gang):
+                    ready_to_stop.extend(gang)
+                else:
+                    for replica in gang:
+                        self._replicas.add(ReplicaState.STOPPING, replica)
+            stopping_replicas = ready_to_stop
+
+        for replica in stopping_replicas:
             stopped = replica.check_stopped()
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
@@ -6230,13 +6261,18 @@ class DeploymentState:
             ]
         )
 
+        partly_started_gang_members: Set[ReplicaID] = set()
         if self._is_gang_deployment:
             # For gangs, if ANY member is on a draining node the entire gang migrates.
             gangs_to_migrate: Set[str] = set()
-            for replica in all_replicas:
-                if replica.actor_node_id in draining_nodes:
-                    # pyrefly: ignore[missing-attribute]
-                    gangs_to_migrate.add(replica.gang_context.gang_id)  # type: ignore[union-attr]
+            for gang_id, gang in self._group_replicas_by_gang_id(all_replicas).items():
+                if any(replica.actor_node_id in draining_nodes for replica in gang):
+                    gangs_to_migrate.add(gang_id)
+                if any(
+                    replica.actor_details.state != ReplicaState.RUNNING
+                    for replica in gang
+                ):
+                    partly_started_gang_members.update(r.replica_id for r in gang)
 
             def needs_migration(r):
                 return r.gang_context.gang_id in gangs_to_migrate
@@ -6249,6 +6285,15 @@ class DeploymentState:
         for replica in all_replicas:
             if not needs_migration(replica):
                 self._replicas.add(replica.actor_details.state, replica)
+            elif replica.replica_id in partly_started_gang_members:
+                # Stop partly started gangs together so a STARTING/UPDATING
+                # member cannot be killed while a RUNNING sibling still serves.
+                self._stop_replica(
+                    replica,
+                    graceful_stop=(
+                        replica.actor_details.state != ReplicaState.STARTING
+                    ),
+                )
             # For RUNNING replicas, migrate them safely by starting
             # a replacement replica first.
             elif replica.actor_details.state == ReplicaState.RUNNING:
@@ -6272,11 +6317,7 @@ class DeploymentState:
             # replicas to start. Otherwise we need to wait for them
             # to transition to RUNNING before starting migration.
             else:
-                self._stop_replica(
-                    replica,
-                    # Always force-stop gang members to avoid leaving partial gangs.
-                    graceful_stop=not self._is_gang_deployment,
-                )
+                self._stop_replica(replica)
 
         num_running = self._replicas.count(states=[ReplicaState.RUNNING])
         num_draining = self._replicas.count(states=[ReplicaState.PENDING_MIGRATION])
