@@ -25,6 +25,9 @@ import ray._private.services as services
 from ray._common.network_utils import build_address, get_localhost_ip, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+)
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
     maybe_enable_token_auth_if_token_available,
@@ -1082,7 +1085,11 @@ def start(
             ensure_token_if_auth_enabled(
                 system_config, create_token_if_missing=create_auth_token_if_missing
             )
-        except AuthenticationError:
+        except AuthenticationError as e:
+            # Other auth errors, such as RAY_AUTH_TOKEN_PATH naming a missing file,
+            # surface unchanged.
+            if e.message != TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE:
+                raise
             # Worker nodes of this cluster need the same token, so a token made
             # here could only work for a single-node cluster.
             cli_logger.abort(

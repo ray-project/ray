@@ -8,7 +8,6 @@ handled by the C++ AuthenticationTokenLoader.
 import contextlib
 import logging
 import os
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -32,43 +31,30 @@ logger = logging.getLogger(__name__)
 
 
 def generate_and_save_token() -> None:
-    """Generate a random token and save it at the default token path, unless
-    another process already saved a token there."""
+    """Generate a random token and save it at the default token path, unless the
+    file there already holds a token."""
     # Generate a UUID-based token
     token = generate_new_authentication_token()
 
     token_path = _get_default_token_path()
     token_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
 
-    # The token is the cluster credential, so it must stay owner-only: mkstemp
-    # creates the file with mode 0600. The file is written in full before it is
-    # linked into place, so a process starting at the same moment never reads a
-    # partial token, and the link fails rather than overwrite a token another
-    # process already uses.
-    fd, tmp_path = tempfile.mkstemp(dir=token_path.parent, prefix=".auth_token.")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(token)
-        try:
-            os.link(tmp_path, token_path)
-        except OSError:
-            # Another process saved the token first, a leftover token file holds
-            # no token, or the filesystem has no hard links (FUSE mounts such as
-            # gcsfuse, exFAT). The token loader takes the first non-blank line, so
-            # any non-blank content is a token. Overwriting a leftover file in
-            # place races with other creators; that race is accepted.
-            with contextlib.suppress(FileNotFoundError):
-                if token_path.read_text().strip():
-                    return
-            # The mode passed to os.open applies only to a new file; fchmod covers
-            # an existing one. Windows has no os.fchmod before Python 3.13.
-            fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w") as f:
-                if hasattr(os, "fchmod"):
-                    os.fchmod(fd, 0o600)
-                f.write(token)
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+    # Same rule as the C++ token loader: the token is the first non-blank line,
+    # and bytes.strip() trims the same " \t\n\r\f\v" set as its TrimWhitespace.
+    with contextlib.suppress(FileNotFoundError):
+        if token_path.read_bytes().strip():
+            return
+
+    # The token is the cluster credential, so keep it owner-only. The mode passed
+    # to os.open only applies when the file is created; fchmod covers a
+    # pre-existing (e.g. empty) file before the token is written into it.
+    # Windows has no os.fchmod before Python 3.13, and its chmod can't restrict
+    # reads anyway.
+    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        f.write(token)
 
     logger.info(f"Generated new authentication token and saved to {token_path}")
 

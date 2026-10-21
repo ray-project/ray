@@ -159,9 +159,9 @@ done
 
 echo "Running a driver that starts its own cluster with token auth on and no token."
 token_auth_home="$(mktemp -d)"
+trap 'rm -rf "$token_auth_home"' EXIT
 HOME="$token_auth_home" RAY_AUTH_MODE=token java -cp bazel-bin/java/all_tests_shaded.jar io.ray.docdemo.RayDemo
 test -s "$token_auth_home/.ray/auth_token"
-rm -rf "$token_auth_home"
 popd
 
 pushd "$ROOT_DIR"
