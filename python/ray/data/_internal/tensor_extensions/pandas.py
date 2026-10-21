@@ -801,7 +801,9 @@ class TensorArray(
                         if not (
                             v is None
                             or (
-                                isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                                isinstance(
+                                    v, (np.ndarray, TensorArrayElement, Sequence)
+                                )
                                 and not isinstance(v, str)
                             )
                         )
