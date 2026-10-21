@@ -28,8 +28,8 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.token_tracking impor
     enable_token_tracking,
 )
 from ray.llm.tests.serve.mocks.mock_vllm_engine import MockAsyncLLM
-from ray.serve.llm.request_router import KVAwareRouter
 from ray.serve._private.constants import SERVE_ROUTER_APPLICATION_NAME_HEADER
+from ray.serve.llm.request_router import KVAwareRouter
 
 # The @ray.remote actors below are pickled by reference, so a worker must import
 # this module -- but pytest imports it under a bare name the worker cannot import

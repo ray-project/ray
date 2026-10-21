@@ -247,18 +247,21 @@ def test_scale_from_zero(applications):
     }
     model_id = "zero-model"
     model_apps = {model_id: "llm-model-zero"}
+    llm_config = _llm_config(model_id, autoscaling)
     with patch.object(
         VLLMEngineConfig,
         "placement_bundles",
         new_callable=lambda: property(lambda self: []),
     ):
         serve.run(
-            build_openai_app({"llm_configs": [_llm_config(model_id, autoscaling)]}),
+            build_openai_app({"llm_configs": [llm_config]}),
             name=model_apps[model_id],
             route_prefix="/models/zero-model",
         )
     serve.run(
-        build_openai_router_app({"model_applications": model_apps}),
+        build_openai_router_app(
+            {"model_applications": model_apps, "llm_configs": [llm_config]}
+        ),
         name="llm",
         route_prefix="/",
     )
