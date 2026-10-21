@@ -134,6 +134,8 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
         url = "http://localhost:8265"
 ```
 
+Ray reports the head node's own dashboard address by default, which users behind the proxy might not be able to reach. To report the proxied URL instead, set the ``RAY_OVERRIDE_DASHBOARD_URL`` environment variable in the process that connects to Ray, for example ``RAY_OVERRIDE_DASHBOARD_URL=www.my-website.com/ray/dashboard/``. Ray then uses that URL when it reports the dashboard address to users, such as in the message it logs when a driver connects. The variable changes only the reported URL. It doesn't change the address the dashboard listens on.
+
 ```{admonition} Warning
 :class: warning
 The Ray dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
