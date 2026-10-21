@@ -151,9 +151,10 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        if self._schema is None:
+        schema = self._schema
+        if schema is None:
             return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+        if any(isinstance(f.type, pa.ExtensionType) for f in schema):
             return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])
@@ -163,7 +164,7 @@ class FileReader(Reader[FileManifest]):
         synthesized = {c.name for c in self._synthesized_columns}
         fields = [
             f
-            for f in self._schema
+            for f in schema
             if f.name not in partition_keys and f.name not in synthesized
         ]
         return pa.schema(fields) if fields else None
