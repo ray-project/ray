@@ -1022,6 +1022,15 @@ class ArrowTensorArray(pa.ExtensionArray):
             A single ndarray representing the entire array of tensors.
         """
 
+        if self.null_count > 0:
+            # Null rows reserve no bytes in the data buffer, so a single dense
+            # view over the whole buffer reads past its end or into another
+            # row's bytes. Fall back to one array per row with None for nulls
+            # (matching take()/take_all() and list columns).
+            return create_ragged_ndarray(
+                [fixed_shape_extension_scalar_to_ndarray(scalar) for scalar in self]
+            )
+
         # Buffers layout: [None, offset_buffer, None, data_buffer]
         buffers = self.buffers()
         data_buffer = buffers[3]
@@ -1416,7 +1425,12 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
 
         return create_ragged_ndarray(
             [
-                _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
+                # A null row has no shape or backing data: reading it returns
+                # another row's bytes or passes shape=None to np.ndarray
+                # (TypeError on NumPy >= 2.3).
+                None
+                if shape is None
+                else _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
                 for shape, offset in zip(shapes, offsets)
             ]
         )

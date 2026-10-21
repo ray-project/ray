@@ -455,7 +455,13 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
         # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
         # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata
-        if self.element_shape and all(s is not None for s in self.element_shape):
+        # Null rows have no data to stack into a dense array; keep the per-row
+        # object array so isna() reports those rows missing (<NA> in pandas).
+        if (
+            self.element_shape
+            and all(s is not None for s in self.element_shape)
+            and array.null_count == 0
+        ):
             # Reshape with the explicit row count rather than -1: an empty column
             # (num_rows == 0), or per-row tensors with a zero-size dimension (e.g.
             # element_shape (0,)), make the flat array size 0, and numpy cannot
@@ -768,11 +774,16 @@ class TensorArray(
                     # Tensor is empty, pass through to create empty TensorArray.
                     pass
                 elif all(
-                    isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
-                    and not isinstance(v, str)
+                    v is None
+                    or (
+                        isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                        and not isinstance(v, str)
+                    )
                     for v in values
                 ):
-                    values = [np.asarray(v) for v in values]
+                    # None marks a null row (e.g. from an outer join); keep it as
+                    # None so isna() reports it missing.
+                    values = [None if v is None else np.asarray(v) for v in values]
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
                     values = _create_possibly_ragged_ndarray(values)
@@ -782,8 +793,11 @@ class TensorArray(
                         v
                         for v in values
                         if not (
-                            isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
-                            and not isinstance(v, str)
+                            v is None
+                            or (
+                                isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                                and not isinstance(v, str)
+                            )
                         )
                     )
                     # Raise an error with the type and value of the offending element
@@ -870,6 +884,9 @@ class TensorArray(
         # single array element, or TensorArray for slice.
         if isinstance(item, int):
             value = self._tensor[item]
+            if value is None:
+                # Null row: surface as missing, matching take_all()/list columns.
+                return None
             if np.isscalar(value):
                 return value
             else:
