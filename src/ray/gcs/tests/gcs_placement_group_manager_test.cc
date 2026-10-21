@@ -113,6 +113,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         gcs_table_storage_.get(),
         *gcs_resource_manager_,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; },
+        [](const PlacementGroupID &) {},
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
