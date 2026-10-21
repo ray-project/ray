@@ -36,7 +36,7 @@ from ray._private.test_utils import (
 )
 from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import (
-    METRICS_GAUGES,
+    METRICS,
     ReporterAgent,
     TpuUtilizationInfo,
 )
@@ -1714,7 +1714,7 @@ _AUTOSCALER_TEST_IP_FAILED = "10.0.0.4"
 
 
 def _find_metric_value(records, metric_key: str, node_type: str):
-    g = METRICS_GAUGES[metric_key]
+    g = METRICS[metric_key]
     for r in records:
         if r.gauge is g and r.tags == {"node_type": node_type}:
             return r.value
