@@ -1,0 +1,21 @@
+extends: substitution
+message: "Consider '%s' instead of '%s'."
+link: 'https://docs.ray.io/en/latest/ray-contribute/writing-style.html#ray-serve-docs-style'
+level: warning
+ignorecase: false
+# Ray Serve wording that's usually wrong but needs a person to rewrite the sentence.
+# No `action: replace`, for the same reason as Serve/Capitalization.yml.
+#
+# - "Deployment graph" names the composition API that `.bind()` used to return. `bind`
+#   now returns an `Application`, so most uses mean "application". Some sentences need
+#   a different rewrite, such as "the deployments in your application".
+# - "KV-cache" keeps its hyphen as a compound modifier before a noun, as in
+#   "KV-cache-limited workloads". Elsewhere it's two words.
+#
+# `vocab: false` for the same reason as Serve/Terms.yml.
+vocab: false
+swap:
+  'deployment graphs': applications
+  'deployment graph': application
+  'Deployment Graph': application
+  'KV-cache': KV cache
