@@ -46,13 +46,34 @@ def configure_kv_events_for_kv_routing(llm_config: LLMConfig) -> None:
     _configure_runtime_env_for_kv_routing(llm_config)
 
 
-def _secondary_tiers(engine_kwargs: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _tiering_extra_config(engine_kwargs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The extra config of a top-level ``OffloadingConnector`` running
+    ``TieringOffloadingSpec``, the only spec that reads ``secondary_tiers``.
+
+    Returns None for any other connector or spec, and for malformed configs,
+    which are left for vLLM's own validation to report.
+    """
     kv_transfer_config = engine_kwargs.get("kv_transfer_config")
-    if not isinstance(kv_transfer_config, dict):
+    if (
+        not isinstance(kv_transfer_config, dict)
+        or kv_transfer_config.get("kv_connector") != "OffloadingConnector"
+    ):
+        return None
+    extra_config = kv_transfer_config.get("kv_connector_extra_config")
+    if (
+        not isinstance(extra_config, dict)
+        or extra_config.get("spec_name") != "TieringOffloadingSpec"
+        or not isinstance(extra_config.get("secondary_tiers"), list)
+    ):
+        return None
+    return extra_config
+
+
+def _secondary_tiers(engine_kwargs: Dict[str, Any]) -> List[Dict[str, Any]]:
+    extra_config = _tiering_extra_config(engine_kwargs)
+    if extra_config is None:
         return []
-    extra_config = kv_transfer_config.get("kv_connector_extra_config") or {}
-    # Leave malformed entries for vLLM's own validation to report.
-    return [t for t in extra_config.get("secondary_tiers") or [] if isinstance(t, dict)]
+    return [t for t in extra_config["secondary_tiers"] if isinstance(t, dict)]
 
 
 def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
@@ -73,11 +94,10 @@ def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
             and "enable_kv_events" not in tier
         )
 
-    kv_transfer_config = llm_config.engine_kwargs.get("kv_transfer_config")
-    if not isinstance(kv_transfer_config, dict):
+    extra_config = _tiering_extra_config(llm_config.engine_kwargs)
+    if extra_config is None:
         return
-    extra_config = kv_transfer_config.get("kv_connector_extra_config") or {}
-    tiers = list(extra_config.get("secondary_tiers") or [])
+    tiers = extra_config["secondary_tiers"]
     if not any(needs_default(tier) for tier in tiers):
         return
     tiers = [
@@ -86,7 +106,7 @@ def _enable_storage_tier_kv_events(llm_config: LLMConfig) -> None:
     ]
     llm_config.update_engine_kwargs(
         kv_transfer_config={
-            **kv_transfer_config,
+            **llm_config.engine_kwargs["kv_transfer_config"],
             "kv_connector_extra_config": {**extra_config, "secondary_tiers": tiers},
         }
     )

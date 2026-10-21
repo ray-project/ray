@@ -153,7 +153,8 @@ def test_storage_tier_version_check_reads_runtime(monkeypatch, installed, raises
     llm_config.engine_kwargs["kv_transfer_config"] = {
         "kv_connector": "OffloadingConnector",
         "kv_connector_extra_config": {
-            "secondary_tiers": [{"type": "fs", "root_dir": "/tmp/kv"}]
+            "spec_name": "TieringOffloadingSpec",
+            "secondary_tiers": [{"type": "fs", "root_dir": "/tmp/kv"}],
         },
     }
     if raises:

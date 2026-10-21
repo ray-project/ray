@@ -1,3 +1,4 @@
+import copy
 import sys
 from types import SimpleNamespace
 from unittest import mock
@@ -36,6 +37,22 @@ def make_kv_aware_llm_config(**kwargs) -> LLMConfig:
         },
         **kwargs,
     )
+
+
+def _tiering_kwargs(
+    secondary_tiers,
+    spec_name="TieringOffloadingSpec",
+    kv_connector="OffloadingConnector",
+):
+    extra_config = {"secondary_tiers": secondary_tiers}
+    if spec_name is not None:
+        extra_config["spec_name"] = spec_name
+    return {
+        "kv_transfer_config": {
+            "kv_connector": kv_connector,
+            "kv_connector_extra_config": extra_config,
+        }
+    }
 
 
 @pytest.fixture(scope="module")
@@ -166,7 +183,10 @@ class TestConfigureKvEvents:
             engine_kwargs={
                 "kv_transfer_config": {
                     "kv_connector": "OffloadingConnector",
-                    "kv_connector_extra_config": {"secondary_tiers": tiers},
+                    "kv_connector_extra_config": {
+                        "spec_name": "TieringOffloadingSpec",
+                        "secondary_tiers": tiers,
+                    },
                 }
             }
         )
@@ -187,7 +207,8 @@ class TestConfigureKvEvents:
                 "kv_transfer_config": {
                     "kv_connector": "OffloadingConnector",
                     "kv_connector_extra_config": {
-                        "secondary_tiers": ["fs", {"type": "fs", "root_dir": "/a"}]
+                        "spec_name": "TieringOffloadingSpec",
+                        "secondary_tiers": ["fs", {"type": "fs", "root_dir": "/a"}],
                     },
                 }
             }
@@ -202,32 +223,56 @@ class TestConfigureKvEvents:
         assert publishes_storage_tier_kv_events(llm_config)
 
     @pytest.mark.parametrize(
+        "engine_kwargs",
+        [
+            _tiering_kwargs([{"type": "fs"}], spec_name=None),
+            _tiering_kwargs([{"type": "fs"}], kv_connector="LMCacheConnectorV1"),
+            _tiering_kwargs({"type": "fs"}),
+            {
+                "kv_transfer_config": {
+                    "kv_connector": "OffloadingConnector",
+                    "kv_connector_extra_config": "{}",
+                }
+            },
+        ],
+    )
+    def test_storage_tier_defaults_skip_non_tiering_configs(self, engine_kwargs):
+        """Tiers are only defaulted for TieringOffloadingSpec; other connectors,
+        specs, and malformed configs are left as given."""
+        llm_config = make_kv_aware_llm_config(
+            engine_kwargs=copy.deepcopy(engine_kwargs)
+        )
+        configure_kv_events_for_kv_routing(llm_config)
+        assert (
+            llm_config.engine_kwargs["kv_transfer_config"]
+            == engine_kwargs["kv_transfer_config"]
+        )
+
+    @pytest.mark.parametrize(
         "engine_kwargs, expected",
         [
             ({}, False),
             ({"kv_offloading_backend": "native", "kv_offloading_size": 2.0}, False),
+            (_tiering_kwargs([{"type": "fs", "root_dir": "/a"}]), True),
+            (_tiering_kwargs([{"type": "obj", "bucket": "c"}]), False),
+            # Only TieringOffloadingSpec on OffloadingConnector reads tiers.
+            (_tiering_kwargs([{"type": "fs"}], spec_name="CPUOffloadingSpec"), False),
+            (_tiering_kwargs([{"type": "fs"}], spec_name=None), False),
             (
-                {
-                    "kv_transfer_config": {
-                        "kv_connector": "OffloadingConnector",
-                        "kv_connector_extra_config": {
-                            "secondary_tiers": [{"type": "fs", "root_dir": "/a"}]
-                        },
-                    }
-                },
-                True,
+                _tiering_kwargs([{"type": "fs"}], kv_connector="LMCacheConnectorV1"),
+                False,
             ),
+            # Malformed configs are left for vLLM's validation to report.
             (
                 {
                     "kv_transfer_config": {
                         "kv_connector": "OffloadingConnector",
-                        "kv_connector_extra_config": {
-                            "secondary_tiers": [{"type": "obj", "bucket": "c"}]
-                        },
+                        "kv_connector_extra_config": "{}",
                     }
                 },
                 False,
             ),
+            (_tiering_kwargs({"type": "fs", "root_dir": "/a"}), False),
         ],
     )
     def test_publishes_storage_tier_kv_events(self, engine_kwargs, expected):
