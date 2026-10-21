@@ -471,29 +471,22 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import os
-                from typing import Any, Dict
-                import ray
-
-                def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
-                    row["filename"] = os.path.basename(row["path"])
-                    return row
-
-                ds = (
-                    ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
-                    .map(parse_filename)
-                )
-                print(ds.schema())
-
-            .. testoutput::
-
-                Column    Type
-                ------    ----
-                image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
-                path      string
-                filename  string
+            >>> import os
+            >>> from typing import Any, Dict
+            >>> import ray
+            >>> def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
+            ...     row["filename"] = os.path.basename(row["path"])
+            ...     return row
+            >>> ds = (
+            ...     ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
+            ...     .map(parse_filename)
+            ... )
+            >>> print(ds.schema())
+            Column    Type
+            ------    ----
+            image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+            path      string
+            filename  string
 
         Time complexity: O(dataset size / parallelism)
 
@@ -704,82 +697,67 @@ class Dataset:
 
             Call :meth:`~Dataset.map_batches` to transform your data.
 
-            .. testcode::
-
-                from typing import Dict
-                import numpy as np
-                import ray
-
-                def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    batch["age_in_dog_years"] = 7 * batch["age"]
-                    return batch
-
-                ds = (
-                    ray.data.from_items([
-                        {"name": "Luna", "age": 4},
-                        {"name": "Rory", "age": 14},
-                        {"name": "Scout", "age": 9},
-                    ])
-                    .map_batches(add_dog_years, batch_size="auto")
-                )
-                ds.show()
-
-            .. testoutput::
-
-                {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
-                {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
-                {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import ray
+            >>> def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...     batch["age_in_dog_years"] = 7 * batch["age"]
+            ...     return batch
+            >>> ds = (
+            ...     ray.data.from_items([
+            ...         {"name": "Luna", "age": 4},
+            ...         {"name": "Rory", "age": 14},
+            ...         {"name": "Scout", "age": 9},
+            ...     ])
+            ...     .map_batches(add_dog_years, batch_size="auto")
+            ... )
+            >>> ds.show()
+            {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
+            {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
+            {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
 
             If your function returns large objects, yield outputs in chunks.
 
-            .. testcode::
-
-                from typing import Dict
-                import ray
-                import numpy as np
-
-                def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    for i in range(3):
-                        yield {"large_output": np.ones((100, 1000))}
-
-                ds = (
-                    ray.data.from_items([1])
-                    .map_batches(map_fn_with_large_output, batch_size="auto")
-                )
+            >>> from typing import Dict
+            >>> import ray
+            >>> import numpy as np
+            >>> def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...     for i in range(3):
+            ...         yield {"large_output": np.ones((100, 1000))}
+            >>> ds = (
+            ...     ray.data.from_items([1])
+            ...     .map_batches(map_fn_with_large_output, batch_size="auto")
+            ... )
 
             If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
-            .. testcode::
-
-                from typing import Dict
-                import numpy as np
-                import torch
-                import ray
-
-                class TorchPredictor:
-
-                    def __init__(self):
-                        self.model = torch.nn.Identity().cuda()
-                        self.model.eval()
-
-                    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                        inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
-                        with torch.inference_mode():
-                            batch["output"] = self.model(inputs).detach().cpu().numpy()
-                        return batch
-
-                ds = (
-                    ray.data.from_numpy(np.ones((32, 100)))
-                    .map_batches(
-                        TorchPredictor,
-                        # Two workers with one GPU each
-                        compute=ray.data.ActorPoolStrategy(size=2),
-                        # Batch size is required if you're using GPUs.
-                        batch_size=4,
-                        num_gpus=1
-                    )
-                )
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import torch
+            >>> import ray
+            >>> class TorchPredictor:
+            ...
+            ...     def __init__(self):
+            ...         self.model = torch.nn.Identity().cuda()
+            ...         self.model.eval()
+            ...
+            ...     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...         inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
+            ...         with torch.inference_mode():
+            ...             batch["output"] = self.model(inputs).detach().cpu().numpy()
+            ...         return batch
+            >>> ds = (
+            ...     ray.data.from_numpy(np.ones((32, 100)))
+            ...     .map_batches(
+            ...         TorchPredictor,
+            ...         # Two workers with one GPU each
+            ...         compute=ray.data.ActorPoolStrategy(size=2),
+            ...         # Batch size is required if you're using GPUs.
+            ...         batch_size=4,
+            ...         num_gpus=1
+            ...     )
+            ... )
 
             To learn more, see
             :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
@@ -1947,23 +1925,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                from typing import Any, Dict, List
-                import ray
-
-                def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
-                    return [row] * 2
-
-                print(
-                    ray.data.range(3)
-                    .flat_map(duplicate_row)
-                    .take_all()
-                )
-
-            .. testoutput::
-
-                [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
+            >>> from typing import Any, Dict, List
+            >>> import ray
+            >>> def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+            ...     return [row] * 2
+            >>> print(
+            ...     ray.data.range(3)
+            ...     .flat_map(duplicate_row)
+            ...     .take_all()
+            ... )
+            [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3672,85 +3643,56 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            :skipif: True
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> doubles_ds = ray.data.range(4).map(
+            ...     lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+            ... )
+            >>> squares_ds = ray.data.range(4).map(
+            ...     lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+            ... )
+            >>> # Inner join example
+            >>> joined_ds = doubles_ds.join(
+            ...     squares_ds,
+            ...     join_type="inner",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0, 'square': 0}
+            {'id': 1, 'double': 2, 'square': 1}
+            {'id': 2, 'double': 4, 'square': 4}
+            {'id': 3, 'double': 6, 'square': 9}
 
-            doubles_ds = ray.data.range(4).map(
-                lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
-            )
+            >>> # Left anti-join example: find rows in doubles_ds that don't match squares_ds
+            >>> partial_squares_ds = ray.data.range(2).map(
+            ...     lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
+            ... )
+            >>> anti_joined_ds = doubles_ds.join(
+            ...     partial_squares_ds,
+            ...     join_type="left_anti",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0}
+            {'id': 1, 'double': 2}
 
-            squares_ds = ray.data.range(4).map(
-                lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
-            )
-
-            # Inner join example
-            joined_ds = doubles_ds.join(
-                squares_ds,
-                join_type="inner",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0, 'square': 0},
-                {'id': 1, 'double': 2, 'square': 1},
-                {'id': 2, 'double': 4, 'square': 4},
-                {'id': 3, 'double': 6, 'square': 9}
-            ]
-
-        .. testcode::
-            :skipif: True
-
-            # Left anti-join example: find rows in doubles_ds that don't match squares_ds
-            partial_squares_ds = ray.data.range(2).map(
-                lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
-            )
-
-            anti_joined_ds = doubles_ds.join(
-                partial_squares_ds,
-                join_type="left_anti",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0},
-                {'id': 1, 'double': 2}
-            ]
-
-        .. testcode::
-            :skipif: True
-
-            # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
-            # (only returns columns from left dataset)
-            semi_joined_ds = doubles_ds.join(
-                squares_ds,
-                join_type="left_semi",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0},
-                {'id': 1, 'double': 2},
-                {'id': 2, 'double': 4},
-                {'id': 3, 'double': 6}
-            ]
+            >>> # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
+            >>> # (only returns columns from left dataset)
+            >>> semi_joined_ds = doubles_ds.join(
+            ...     squares_ds,
+            ...     join_type="left_semi",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0}
+            {'id': 1, 'double': 2}
+            {'id': 2, 'double': 4}
+            {'id': 3, 'double': 6}
         """
 
         if not isinstance(on, (tuple, list)):
@@ -3822,21 +3764,17 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import pandas as pd
-                import ray
-
-                def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    for feature in group.drop(columns=["variety"]).columns:
-                        group[feature] = group[feature] / group[feature].abs().max()
-                    return group
-
-                ds = (
-                    ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-                    .groupby("variety")
-                    .map_groups(normalize_variety, batch_format="pandas")
-                )
+            >>> import pandas as pd
+            >>> import ray
+            >>> def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
+            ...     for feature in group.drop(columns=["variety"]).columns:
+            ...         group[feature] = group[feature] / group[feature].abs().max()
+            ...     return group
+            >>> ds = (
+            ...     ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            ...     .groupby("variety")
+            ...     .map_groups(normalize_variety, batch_format="pandas")
+            ... )
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -3925,25 +3863,19 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-                from ray.data.aggregate import AggregateFn
-
-                ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
-                aggregation = AggregateFn(
-                    init=lambda column: 1,
-                    # Apply this to each row to produce a partial aggregate result
-                    accumulate_row=lambda a, row: a * row["number"],
-                    # Apply this to merge partial aggregate results into a final result
-                    merge=lambda a1, a2: a1 * a2,
-                    name="prod"
-                )
-                print(ds.aggregate(aggregation))
-
-            .. testoutput::
-
-                {'prod': 362880}
+            >>> import ray
+            >>> from ray.data.aggregate import AggregateFn
+            >>> ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
+            >>> aggregation = AggregateFn(
+            ...     init=lambda column: 1,
+            ...     # Apply this to each row to produce a partial aggregate result
+            ...     accumulate_row=lambda a, row: a * row["number"],
+            ...     # Apply this to merge partial aggregate results into a final result
+            ...     merge=lambda a1, a2: a1 * a2,
+            ...     name="prod"
+            ... )
+            >>> print(ds.aggregate(aggregation))
+            {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 
