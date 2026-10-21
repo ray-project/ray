@@ -15,8 +15,8 @@ from datetime import timedelta
 from typing import List, Optional
 
 import torch
-import torch.distributed as dist
 import torch._C._distributed_c10d as c10d
+import torch.distributed as dist
 
 import ray
 import ray.experimental.internal_kv as internal_kv
@@ -48,11 +48,23 @@ _CONNECT_TIMEOUT_S = 5
 
 
 def _store_key(group_name: str) -> str:
-    return f"xccl_collective_store_{group_name}"
+    """Internal-KV key for a group's rendezvous address.
+
+    The internal KV is shared by the whole cluster, so the Ray namespace is part
+    of the key: same-named groups in different namespaces must not see (or
+    delete) each other's address.
+    """
+    namespace = ray.get_runtime_context().namespace
+    return f"xccl_collective_store:{namespace}:{group_name}"
 
 
 def _xpu_available() -> bool:
     return hasattr(torch, "xpu") and torch.xpu.is_available()
+
+
+def _xccl_compiled() -> bool:
+    """Whether this torch build ships ``ProcessGroupXCCL``."""
+    return dist.is_available() and hasattr(c10d, "ProcessGroupXCCL")
 
 
 def _unwrap(tensor: List[torch.Tensor]) -> torch.Tensor:
@@ -75,6 +87,11 @@ class XCCLGroup(BaseGroup):
 
     def __init__(self, world_size: int, rank: int, group_name: str):
         super().__init__(world_size, rank, group_name)
+        if self._device_type == "xpu" and not _xpu_available():
+            raise RuntimeError(
+                f"XCCL group '{group_name}' needs an XPU on this worker, but "
+                "torch.xpu.is_available() is False."
+            )
         self._timeout = timedelta(seconds=_DEFAULT_TIMEOUT_S)
         self._store = self._rendezvous(group_name, rank, world_size)
         self._pg = self._build_process_group(self._store, rank, world_size)
@@ -126,14 +143,18 @@ class XCCLGroup(BaseGroup):
                     store.set_timeout(self._timeout)
                     return store
             time.sleep(0.1)
-        raise TimeoutError(f"XCCL rendezvous timed out for group '{group_name}': {last_err}")
+        raise TimeoutError(
+            f"XCCL rendezvous timed out for group '{group_name}': {last_err}"
+        )
 
     def _build_process_group(self, store, rank: int, world_size: int):
         prefix_store = dist.PrefixStore(f"ray_xccl_{self.group_name}", store)
         pg = dist.ProcessGroup(prefix_store, rank, world_size)
         from torch._C._distributed_c10d import ProcessGroupXCCL
 
-        backend = ProcessGroupXCCL(prefix_store, rank, world_size, ProcessGroupXCCL.Options())
+        backend = ProcessGroupXCCL(
+            prefix_store, rank, world_size, ProcessGroupXCCL.Options()
+        )
         pg._set_default_backend(dist.ProcessGroup.BackendType.XCCL)
         pg._register_backend(
             torch.device(self._device_type), dist.ProcessGroup.BackendType.XCCL, backend
@@ -160,7 +181,10 @@ class XCCLGroup(BaseGroup):
 
     @classmethod
     def check_backend_availability(cls) -> bool:
-        return dist.is_available() and _xpu_available()
+        # Only whether this torch build can run XCCL. The driver that creates a
+        # declarative group may have no XPU of its own; each worker checks for
+        # its XPU when it joins the group.
+        return _xccl_compiled()
 
     # ------------------------------------------------------- collectives
 
@@ -194,12 +218,16 @@ class XCCLGroup(BaseGroup):
         opts.rootRank = (broadcast_options or BroadcastOptions).root_rank
         self._pg.broadcast([_unwrap(tensor)], opts).wait()
 
-    def allgather(self, tensor_list, tensor, allgather_options: Optional[AllGatherOptions] = None):
+    def allgather(
+        self, tensor_list, tensor, allgather_options: Optional[AllGatherOptions] = None
+    ):
         t = _unwrap(tensor)
         outs = _unwrap_list(tensor_list)
         self._check_gather_scatter(outs, t, "allgather")
         # c10d allgather takes a list of output lists, one per input tensor.
-        self._pg.allgather([_unwrap_list(tensor_list)], [_unwrap(tensor)], c10d.AllgatherOptions()).wait()
+        self._pg.allgather(
+            [_unwrap_list(tensor_list)], [_unwrap(tensor)], c10d.AllgatherOptions()
+        ).wait()
 
     def reducescatter(
         self,
@@ -211,15 +239,25 @@ class XCCLGroup(BaseGroup):
         ins = _unwrap_list(tensor_list)
         self._check_gather_scatter(ins, out, "reducescatter")
         opts = c10d.ReduceScatterOptions()
-        opts.reduceOp = _REDUCE_OP[(reducescatter_options or ReduceScatterOptions).reduceOp]
+        opts.reduceOp = _REDUCE_OP[
+            (reducescatter_options or ReduceScatterOptions).reduceOp
+        ]
         self._pg.reduce_scatter([out], [ins], opts).wait()
 
-    def _check_gather_scatter(self, tensors: List[torch.Tensor], single: torch.Tensor, op: str):
+    def _check_gather_scatter(
+        self, tensors: List[torch.Tensor], single: torch.Tensor, op: str
+    ):
         """Same contract as NCCLGroup: world_size-long list, matching shape/dtype/device."""
         if len(tensors) != self._world_size:
-            raise RuntimeError(f"{op}: tensor list has {len(tensors)} entries, expected world_size={self._world_size}")
+            raise RuntimeError(
+                f"{op}: tensor list has {len(tensors)} entries, expected world_size={self._world_size}"
+            )
         for x in tensors:
-            if x.shape != single.shape or x.dtype != single.dtype or x.device != single.device:
+            if (
+                x.shape != single.shape
+                or x.dtype != single.dtype
+                or x.device != single.device
+            ):
                 raise RuntimeError(
                     f"{op}: tensor mismatch, list item {tuple(x.shape)}/{x.dtype}/{x.device} "
                     f"vs {tuple(single.shape)}/{single.dtype}/{single.device}"
@@ -230,4 +268,3 @@ class XCCLGroup(BaseGroup):
 
     def recv(self, tensor, recv_options: RecvOptions):
         self._pg.recv([_unwrap(tensor)], recv_options.src_rank, 0).wait()
-

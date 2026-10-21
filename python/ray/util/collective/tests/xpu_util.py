@@ -20,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 BACKEND = "XCCL"
 DEVICE = "xpu"
-KV_KEY_PREFIX = "xccl_collective_store_"  # mirrors xccl_collective_group._store_key
-
 
 
 def _env_int_list(name, default):
@@ -175,9 +173,7 @@ class ScaleWorker:
 
         outs = [self._t(-1) for _ in range(ws)]
         col.allgather(outs, self._t(r), g)
-        out["allgather"] = all(
-            bool((_cpu(o) == j).all()) for j, o in enumerate(outs)
-        )
+        out["allgather"] = all(bool((_cpu(o) == j).all()) for j, o in enumerate(outs))
 
         # rank s contributes (s + 1 + i) as chunk i; rank r receives sum_s(s+1+r)
         ins = [self._t(r + 1 + i) for i in range(ws)]
