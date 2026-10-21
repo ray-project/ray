@@ -1256,9 +1256,9 @@ class _ActorMethodOptionsWrapper:
         return self._actor_method._bind(args=args, kwargs=kwargs, **self._options)
 
 
-# Called by Ray with the ID of an object the actor created once that object is freed.
+# Called by Ray with the ID of an object the actor created when that object is freed.
 # `__on_object_freed__` is a private, experimental hook right now. It is not part of
-# the public API and may change or be removed.
+# the public API.
 _ON_OBJECT_FREED_HOOK = "__on_object_freed__"
 
 
@@ -1289,7 +1289,7 @@ def _validate_on_object_freed_hook(modified_class: type) -> None:
     except TypeError:
         raise TypeError(
             f"{_ON_OBJECT_FREED_HOOK} on actor class {modified_class.__name__} must "
-            "take exactly one argument, the freed object's ID as a hex string, got "
+            "be callable with one argument, the freed object's ID as a hex string, got "
             f"{_ON_OBJECT_FREED_HOOK}{hook_signature}."
         ) from None
 

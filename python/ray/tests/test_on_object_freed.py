@@ -159,10 +159,10 @@ class NotAMethod:
 @pytest.mark.parametrize(
     "cls, match",
     [
-        (NoArg, "exactly one argument"),
-        (TwoArgs, "exactly one argument"),
-        (KeywordOnlyArg, "exactly one argument"),
-        (StaticNoArg, "exactly one argument"),
+        (NoArg, "callable with one argument"),
+        (TwoArgs, "callable with one argument"),
+        (KeywordOnlyArg, "callable with one argument"),
+        (StaticNoArg, "callable with one argument"),
         (Generator, "can't be a generator"),
         (AsyncGenerator, "can't be a generator"),
         (NotAMethod, "must be a method"),
