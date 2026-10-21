@@ -75,6 +75,34 @@ inline ray::stats::Gauge GetTotalLineageBytesGaugeMetric() {
   };
 }
 
+inline ray::stats::Count GetObjectRecoveryAttemptsCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"object_recovery_attempts",
+      /*description=*/
+      "Total number of recovery attempts for lost objects owned by this worker. A lost "
+      "object can contribute one Pin attempt per known secondary copy, followed by a "
+      "Reconstruct attempt if no copy could be pinned.",
+      /*unit=*/"",
+      // Expected tags:
+      // - Type: "Pin" (promote a secondary copy to primary) or "Reconstruct"
+      //   (resubmit the task that created the object).
+      /*tag_keys=*/{"Type"},
+  };
+}
+
+inline ray::stats::Count GetTaskSubmissionsCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"task_submissions",
+      /*description=*/
+      "Total number of normal and actor tasks submitted by this worker. Each retry "
+      "counts as a separate submission.",
+      /*unit=*/"",
+      // Expected tags:
+      // - IsRetry: "true" if the submission retries a previously submitted task.
+      /*tag_keys=*/{"IsRetry"},
+  };
+}
+
 inline std::unique_ptr<ray::stats::PercentileMetric>
 GetSchedulerPlacementTimePercentileMsMetric() {
   return std::make_unique<ray::stats::PercentileMetric>(

@@ -26,7 +26,7 @@ except ImportError:
     prometheus_client = None
 
 
-_TO_TEST_METRICS = ["tasks", "actors", "running_jobs"]
+_TO_TEST_METRICS = ["tasks", "actors", "running_jobs", "task_submissions"]
 _COMPONENT_TAG_KEY = "Component"
 
 
@@ -87,7 +87,10 @@ def _cardinality_level_test(_setup_cluster_for_test, cardinality_level, metric):
     def _validate():
         timeseries = PrometheusTimeseries()
         metric_samples = fetch_prometheus_metric_timeseries(prom_addresses, timeseries)
-        samples = metric_samples.get(f"ray_{metric}")
+        # Counters are exported with a _total suffix.
+        samples = metric_samples.get(f"ray_{metric}") or metric_samples.get(
+            f"ray_{metric}_total"
+        )
         assert samples, f"Metric {metric} not found in samples"
         for sample in samples:
             if (
