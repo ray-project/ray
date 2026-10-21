@@ -226,7 +226,6 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
-    bool cluster_id_auth_failed = false;
 
     // Token authentication
     Status token_auth_status = ValidateAuthenticationToken();
@@ -244,7 +243,6 @@ class ServerCallImpl : public ServerCall {
           RAY_LOG(WARNING) << "Wrong cluster ID token in request! Expected: "
                            << cluster_id_.Hex() << ", but got: " << it->second;
           auth_success = false;
-          cluster_id_auth_failed = true;
         }
       } else if constexpr (EnableAuth == ClusterIdAuthType::EMPTY_AUTH) {
         RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
@@ -254,7 +252,6 @@ class ServerCallImpl : public ServerCall {
           RAY_LOG(WARNING) << "Cluster ID token in request! Expected Nil, "
                            << "but got: " << it->second;
           auth_success = false;
-          cluster_id_auth_failed = true;
         }
       }
     }
@@ -265,8 +262,8 @@ class ServerCallImpl : public ServerCall {
     }
     if (!io_service_.stopped()) {
       io_service_.post(
-          [this, auth_success, token_auth_status, cluster_id_auth_failed] {
-            HandleRequestImpl(auth_success, token_auth_status, cluster_id_auth_failed);
+          [this, auth_success, token_auth_status] {
+            HandleRequestImpl(auth_success, token_auth_status);
           },
           call_name_ + ".HandleRequestImpl",
           // Implement the delay of the rpc server call as the
@@ -286,9 +283,7 @@ class ServerCallImpl : public ServerCall {
     }
   }
 
-  void HandleRequestImpl(bool auth_success,
-                         const Status &token_auth_status,
-                         bool cluster_id_auth_failed) {
+  void HandleRequestImpl(bool auth_success, const Status &token_auth_status) {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
       if (!service_handler_initialized_) {
         service_handler_.WaitUntilInitialized();
