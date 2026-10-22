@@ -54,6 +54,29 @@ def test_sandbox_actor_wrapper():
     ray.kill(actor)
 
 
+def test_netns_sandbox_actor_changes_its_egress_allowlist(ensure_slirp4netns):
+    """A sandbox actor, as create() returns, replaces its egress allowlist
+    while it runs."""
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    actor = Sandbox.remote(
+        image="python:3.10-slim", network="public", cidr_allowlist=[]
+    )
+    connect = (
+        'python3 -c "import socket; '
+        "socket.create_connection(('1.1.1.1', 443), timeout=5).close()\""
+    )
+    try:
+        assert ray.get(actor.exec.remote(connect, timeout=60)).exit_code != 0
+        ray.get(actor.set_egress_allowlist.remote(["1.1.1.1:443"]))
+        result = ray.get(actor.exec.remote(connect, timeout=60))
+        assert result.exit_code == 0, result.stderr
+    finally:
+        ray.get(actor.delete.remote())
+        ray.kill(actor)
+
+
 def test_custom_sandbox_actor_with_sandbox_runtime():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)

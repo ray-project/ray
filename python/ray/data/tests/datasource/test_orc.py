@@ -960,6 +960,179 @@ def test_read_orc_v1_fallback_preserves_columns_outside_v2_sample(
     assert rows[-1] == {"id": 19, "extra": "late"}
 
 
+@pytest.fixture
+def full_schema_context(ray_start_regular_shared, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+
+
+@pytest.mark.parametrize("file_count", [1, 3, 17])
+def test_read_orc_merge_schema_discovers_and_reads_all_columns(
+    tmp_path, full_schema_context, file_count
+):
+    for i in range(file_count):
+        table = (
+            pa.table({"id": [i], "late": ["value"]})
+            if i == file_count - 1
+            else pa.table({"id": [i]})
+        )
+        _write_orc(str(tmp_path / f"f{i:02d}.orc"), table)
+
+    bounded = ray.data.read_orc(str(tmp_path))
+    merged = ray.data.read_orc(str(tmp_path), merge_schema=True, include_paths=True)
+
+    assert ("late" in bounded.schema().names) is (file_count <= 16)
+    assert merged.schema().names == ["id", "late", "path"]
+    rows = sorted(merged.take_all(), key=lambda row: row["id"])
+    assert len(rows) == file_count
+    assert all(row["late"] is None for row in rows[:-1])
+    assert rows[-1]["late"] == "value"
+    assert all(row["path"].endswith(f"f{row['id']:02d}.orc") for row in rows)
+    assert merged.filter(expr=col("late") == "value").select_columns(
+        ["id", "late"]
+    ).take_all() == [{"id": file_count - 1, "late": "value"}]
+
+
+def test_read_orc_merge_schema_fails_on_conflict_outside_sample(
+    tmp_path, full_schema_context
+):
+    for i in range(17):
+        values = ["incompatible"] if i == 16 else [i]
+        _write_orc(str(tmp_path / f"f{i:02d}.orc"), pa.table({"id": values}))
+
+    assert ray.data.read_orc(str(tmp_path)).schema().names == ["id"]
+    with pytest.raises((pa.ArrowTypeError, pa.ArrowInvalid), match="f16.orc"):
+        ray.data.read_orc(str(tmp_path), merge_schema=True)
+
+
+def test_read_orc_merge_schema_reuses_candidates_across_actions_and_lineage(
+    tmp_path, full_schema_context, monkeypatch
+):
+    from ray.data._internal.datasource_v2.common import listing_utils
+    from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+        NonSamplingFileIndexer,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.logical.operators import ListFiles
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    class NoRelistingIndexer(NonSamplingFileIndexer):
+        listed = False
+
+        def list_file_infos(self, *args, **kwargs):
+            assert not self.listed, "Execution must reuse planning-time candidates"
+            self.listed = True
+            yield from super().list_file_infos(*args, **kwargs)
+
+    monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
+    monkeypatch.setattr(
+        OrcDatasourceV2,
+        "_get_file_indexer",
+        lambda _: NoRelistingIndexer(ignore_missing_paths=False),
+    )
+    for i in range(4):
+        _write_orc(str(tmp_path / f"f{i}.orc"), pa.table({"id": [i]}))
+    ds = ray.data.read_orc(
+        str(tmp_path), merge_schema=True, shuffle=FileShuffleConfig(seed=13)
+    )
+    listing = ds._logical_plan.dag.input_dependencies[0]
+    assert isinstance(listing, ListFiles)
+    assert listing.prelisted_file_infos is not None
+    assert len(listing.prelisted_file_infos) == 4
+    assert all(
+        block.column_names == ["__path", "__file_size"]
+        for block in listing.prelisted_file_infos
+    )
+    restored = ray.data.Dataset.deserialize_lineage(ds.serialize_lineage())
+    _write_orc(str(tmp_path / "new.orc"), pa.table({"id": [99], "new": ["excluded"]}))
+
+    assert ds.schema().names == ["id"]
+    assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2, 3]
+    assert ds.count() == 4
+    assert sorted(row["id"] for row in ds.take_all()) == [0, 1, 2, 3]
+    assert sorted(row["id"] for row in restored.take_all()) == [0, 1, 2, 3]
+
+
+def test_read_orc_merge_schema_applies_initial_filters(tmp_path, full_schema_context):
+    from ray.data.datasource.partitioning import PathPartitionFilter
+
+    keep = tmp_path / "group=keep"
+    skip = tmp_path / "group=skip"
+    keep.mkdir()
+    skip.mkdir()
+    _write_orc(str(keep / "data.orc"), pa.table({"id": [1]}))
+    _write_orc(str(skip / "data.orc"), pa.table({"id": [2], "excluded": [3]}))
+    _write_orc(str(keep / "ignored.other"), pa.table({"excluded": [4]}))
+    _write_orc(str(tmp_path / ".hidden.orc"), pa.table({"excluded": [5]}))
+    (keep / "empty.orc").touch()
+    partition_filter = PathPartitionFilter.of(
+        lambda parts: parts["group"] == "keep", base_dir=str(tmp_path)
+    )
+    ds = ray.data.read_orc(
+        [str(tmp_path), str(tmp_path / "missing.orc")],
+        merge_schema=True,
+        partition_filter=partition_filter,
+        ignore_missing_paths=True,
+    )
+
+    assert ds.schema().names == ["id"]
+    assert ds.take_all() == [{"id": 1}]
+
+
+def test_read_orc_merge_schema_partition_filter_and_count(
+    tmp_path, full_schema_context
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    for year, count in (("2024", 2), ("2025", 3)):
+        directory = tmp_path / f"year={year}"
+        directory.mkdir()
+        _write_orc(str(directory / "data.orc"), pa.table({"id": list(range(count))}))
+    ds = ray.data.read_orc(
+        str(tmp_path),
+        merge_schema=True,
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+    )
+
+    assert ds.count() == 5
+    assert ds.filter(expr=col("year") == "2025").count() == 3
+
+
+def test_read_orc_merge_schema_warns_for_large_candidate_set(
+    tmp_path, full_schema_context, monkeypatch, caplog
+):
+    import logging
+
+    import ray.data.read_api as read_api
+
+    for i in range(2):
+        _write_orc(str(tmp_path / f"f{i}.orc"), pa.table({"id": [i]}))
+    monkeypatch.setattr(read_api, "_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT", 1)
+    monkeypatch.setattr(read_api.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(read_api.logger, "propagate", False)
+
+    with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
+        ray.data.read_orc(str(tmp_path), merge_schema=True)
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if "candidate files" in record.getMessage()
+    ]
+    assert len(messages) == 1
+    assert "2 candidate files" in messages[0]
+    assert "read_parquet" not in messages[0]
+
+
+def test_read_orc_merge_schema_rejects_empty_candidates(tmp_path, full_schema_context):
+    _write_orc(str(tmp_path / "ignored.other"), pa.table({"id": [1]}))
+    with pytest.raises(ValueError, match="no files found"):
+        ray.data.read_orc(str(tmp_path), merge_schema=True)
+
+
 if __name__ == "__main__":
     import sys
 
