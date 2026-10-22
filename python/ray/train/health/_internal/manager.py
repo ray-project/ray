@@ -30,6 +30,8 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
     Returns:
         The health decision to carry out. ``Noop()`` if there is nothing to do.
     """
+    # TODO: Add a field to Diagnose for checks that need the workers stopped,
+    # such as an all-reduce test, and rank those above Reattempt.
     evicts, reattempts, diagnoses = [], [], []
     for decision in decisions:
         if isinstance(decision, Evict):
@@ -82,7 +84,8 @@ class HealthManager:
         self._node_monitor_group = NodeMonitorGroup(
             [p for p in probes if isinstance(p.probe, NodeProbe)]
         )
-        # {probe name: {key: the latest ProbeResult}}
+        # {probe name: {node ID, world rank or ControllerProbe key: the latest
+        # ProbeResult}}
         self._latest_results: Dict[str, Dict[Any, ProbeResult]] = {}
         # The evaluators of the on-demand checks that are running.
         self._on_demand_evaluators: List[Evaluator] = []
