@@ -1,40 +1,47 @@
 import logging
 import threading
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
 import ray
+from ray.actor import ActorHandle
 from ray.train.v2._internal.constants import DEFAULT_PREEMPTION_POLL_INTERVAL_S
+from ray.train.v2.api.preemption import PreemptionInfo
 from ray.util.tpu import get_tpu_slice_name_from_node
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.worker import RayTrainWorker
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class PreemptionInfo:
-    """Information about an imminent preemption event.
+def merge_preemption_info(old: PreemptionInfo, new: PreemptionInfo) -> PreemptionInfo:
+    """Combine two preemption signals into one."""
+    ranks_by_node: Dict[str, Set[int]] = defaultdict(set)
+    for info in (old, new):
+        for node, ranks in info.preempted_node_to_ranks.items():
+            ranks_by_node[node].update(ranks)
 
-    Attributes:
-        deadline_ms: Earliest preemption deadline (UNIX time in milliseconds)
-            across all preempted nodes. ``None`` if no deadline was reported.
-        preempted_node_to_ranks: Map of preempted ``node_id`` to the worker ``world_rank``s affected when that node
-            is preempted.
+    deadlines = [d for d in (old.deadline_ms, new.deadline_ms) if d is not None]
+    return PreemptionInfo(
+        deadline_ms=min(deadlines, default=None),
+        preempted_node_to_ranks={
+            node: sorted(ranks) for node, ranks in ranks_by_node.items()
+        },
+    )
+
+
+@dataclass
+class PreemptionContext:
+    """The preemption info for one worker actor, or ``None`` if not preempted.
+
+    Written by the worker actor's main thread (``mark_preempt``) and read from
+    the training thread (``ray.train.get_preemption_info``) and the status
+    poll.
     """
 
-    deadline_ms: Optional[int]
-    preempted_node_to_ranks: Dict[str, List[int]]
-
-    @property
-    def preempted_node_ids(self) -> List[str]:
-        """Preempted node IDs, sorted lexicographically."""
-        return sorted(self.preempted_node_to_ranks)
-
-    @property
-    def preempted_ranks(self) -> List[int]:
-        """All affected ranks across the preempted nodes, sorted ascending."""
-        return sorted(
-            {r for ranks in self.preempted_node_to_ranks.values() for r in ranks}
-        )
+    preemption_info: Optional[PreemptionInfo] = None
 
 
 def _get_draining_nodes() -> Dict[str, int]:
@@ -59,17 +66,25 @@ class PreemptionWatcher:
             as the set of nodes we care about (drains elsewhere are ignored)
             and as the seed for failure-domain expansion.
         poll_interval_s: Seconds between drain-state polls.
+        worker_actors_by_rank: Map ``world_rank -> worker actor handle``. On a
+            detected preemption, ``mark_preempt`` is called on every worker.
     """
 
     def __init__(
         self,
         node_to_ranks: Dict[str, List[int]],
         poll_interval_s: float = DEFAULT_PREEMPTION_POLL_INTERVAL_S,
+        worker_actors_by_rank: Optional[
+            Dict[int, ActorHandle["RayTrainWorker"]]
+        ] = None,
     ):
         self._node_to_ranks: Dict[str, List[int]] = {
             nid: sorted(ranks) for nid, ranks in node_to_ranks.items()
         }
         self._poll_interval_s = poll_interval_s
+        self._worker_actors_by_rank: Dict[int, ActorHandle["RayTrainWorker"]] = (
+            worker_actors_by_rank or {}
+        )
         self._failure_domain_map: Dict[str, List[int]] = self._build_failure_domain_map(
             self._node_to_ranks
         )
@@ -206,8 +221,9 @@ class PreemptionWatcher:
             info.preempted_ranks,
             deadline_ms,
         )
-        # TODO(lehui): forward the detected preemption to the workers so the
-        # training loop can react to it.
+
+        for rank, actor in self._worker_actors_by_rank.items():
+            actor.mark_preempt.remote(info)
         # TODO(lehui): coalesce preemptions seen within one window into a single
         # worker-group restart, so a staggered drain (node A at t, node B at
         # t+60s) doesn't cause back-to-back restarts.

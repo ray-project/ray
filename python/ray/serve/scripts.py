@@ -21,6 +21,7 @@ from ray._common.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.exceptions import AuthenticationError
 from ray.serve._private import api as _private_api
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
@@ -131,15 +132,6 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-def warn_if_agent_address_set():
-    if "RAY_AGENT_ADDRESS" in os.environ:
-        cli_logger.warning(
-            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
-            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
-            "ignored."
-        )
-
-
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
     context_settings=dict(help_option_names=["--help", "-h"]),
@@ -193,6 +185,13 @@ def cli():
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+@click.option(
+    "--grpc-enable-reflection/--grpc-disable-reflection",
+    default=True,
+    required=False,
+    help="Enable the gRPC server reflection protocol on the gRPC server. "
+    "Defaults to enabled.",
+)
 def start(
     address,
     http_host,
@@ -200,6 +199,7 @@ def start(
     proxy_location,
     grpc_port,
     grpc_servicer_functions,
+    grpc_enable_reflection,
 ):
     ray.init(
         address=address,
@@ -214,6 +214,7 @@ def start(
         grpc_options=gRPCOptions(
             port=grpc_port,
             grpc_servicer_functions=grpc_servicer_functions,
+            enable_reflection=grpc_enable_reflection,
         ),
     )
 
@@ -521,20 +522,21 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"location": "EveryNode"}
+    http_options = {}
+    proxy_location = ProxyLocation.EveryNode
     grpc_options = gRPCOptions()
     controller_options = None
     # Merge http_options, grpc_options, and controller_options with the ones on
     # ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
-        http_options["location"] = config.proxy_location.value
-        config_http_options = config.http_options.model_dump()
-        http_options = {**config_http_options, **http_options}
+        proxy_location = config.proxy_location
+        http_options = config.http_options.model_dump()
         grpc_options = gRPCOptions(**config.grpc_options.model_dump())
         controller_options = config.controller_options
 
     client = _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
         controller_options=controller_options,
     )
@@ -621,8 +623,6 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
-    warn_if_agent_address_set()
-
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -695,8 +695,6 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
-    warn_if_agent_address_set()
-
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
@@ -743,8 +741,6 @@ def status(address: str, name: Optional[str]):
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
-    warn_if_agent_address_set()
-
     # check if the address is a valid Ray address
     try:
         # see what applications are deployed on the cluster
@@ -810,6 +806,9 @@ def controller_health(address: str, output_json: bool):
                 address=address,
                 namespace=SERVE_NAMESPACE,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of "not running".
+            raise
         except ConnectionError:
             cli_logger.error(
                 f"Could not connect to Ray cluster at address '{address}'. "
@@ -881,11 +880,19 @@ def controller_health(address: str, output_json: bool):
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
+@click.option(
+    "--grpc-enable-reflection/--grpc-disable-reflection",
+    default=True,
+    required=False,
+    help="Enable the gRPC server reflection protocol on the gRPC server. "
+    "Defaults to enabled.",
+)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
     output_path: Optional[str],
     grpc_servicer_functions: List[str],
+    grpc_enable_reflection: bool,
 ):
     sys.path.insert(0, app_dir)
 
@@ -925,6 +932,7 @@ def build(
         "grpc_options": {
             "port": DEFAULT_GRPC_PORT,
             "grpc_servicer_functions": grpc_servicer_functions,
+            "enable_reflection": grpc_enable_reflection,
         },
         "logging_config": LoggingConfig().model_dump(),
         "applications": app_configs,

@@ -32,6 +32,8 @@ import "src/ray/protobuf/public/events_placement_group_lifecycle_event.proto";
 import "src/ray/protobuf/public/events_submission_job_definition_event.proto";
 import "src/ray/protobuf/public/events_submission_job_lifecycle_event.proto";
 import "src/ray/protobuf/public/platform_event.proto";
+import "src/ray/protobuf/public/events_worker_lifecycle_event.proto";
+import "src/ray/protobuf/public/events_worker_definition_event.proto";
 
 // This is the base message for all ray events.
 message RayEvent {
@@ -68,6 +70,8 @@ message RayEvent {
     SUBMISSION_JOB_DEFINITION_EVENT = 13;
     SUBMISSION_JOB_LIFECYCLE_EVENT = 14;
     PLATFORM_EVENT = 15;
+    WORKER_LIFECYCLE_EVENT = 16;
+    WORKER_DEFINITION_EVENT = 17;
   }
 
   // The severities of events that can be generated.
@@ -122,4 +126,6 @@ message RayEvent {
   SubmissionJobDefinitionEvent submission_job_definition_event = 21;
   SubmissionJobLifecycleEvent submission_job_lifecycle_event = 22;
   PlatformEvent platform_event = 23;
+  WorkerLifecycleEvent worker_lifecycle_event = 24;
+  WorkerDefinitionEvent worker_definition_event = 25;
 }

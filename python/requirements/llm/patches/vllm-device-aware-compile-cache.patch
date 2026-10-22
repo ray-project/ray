@@ -1,0 +1,30 @@
+diff --git a/vllm/compilation/backends.py b/vllm/compilation/backends.py
+index dee7cdde744d..472d1f1a7588 100644
+--- a/vllm/compilation/backends.py
++++ b/vllm/compilation/backends.py
+@@ -1031,7 +1031,9 @@ def __call__(self, graph: fx.GraphModule, example_inputs: Sequence[Any]) -> Any:
+         self.compilation_config.cache_dir = cache_dir
+         rank = vllm_config.parallel_config.rank
+         dp_rank = vllm_config.parallel_config.data_parallel_index
+-        local_cache_dir = os.path.join(cache_dir, f"rank_{rank}_{dp_rank}", self.prefix)
++        dev = torch.accelerator.current_device_index()
++        local_cache_dir = os.path.join(
++            cache_dir, f"rank_{rank}_{dp_rank}_dev{dev}", self.prefix)
+         os.makedirs(local_cache_dir, exist_ok=True)
+         self.compilation_config.local_cache_dir = local_cache_dir
+ 
+diff --git a/vllm/compilation/decorators.py b/vllm/compilation/decorators.py
+index 9c55a42a4924..753b429a041d 100644
+--- a/vllm/compilation/decorators.py
++++ b/vllm/compilation/decorators.py
+@@ -509,7 +509,9 @@ def __call__(self: type[_T], *args: Any, **kwargs: Any) -> Any:
+ 
+             rank = self.vllm_config.parallel_config.rank
+             dp_rank = self.vllm_config.parallel_config.data_parallel_index
+-            cache_dir = os.path.join(cache_dir, f"rank_{rank}_{dp_rank}")
++            dev = torch.accelerator.current_device_index()
++            cache_dir = os.path.join(cache_dir,
++                                     f"rank_{rank}_{dp_rank}_dev{dev}")
+             aot_compilation_path = os.path.join(cache_dir, "model")
+             if not envs.VLLM_DISABLE_COMPILE_CACHE:
+                 loaded_fn = _try_load_aot_compiled_fn(self, aot_compilation_path)

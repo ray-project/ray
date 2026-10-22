@@ -40,4 +40,4 @@ outside the PR scope untouched.
 
 - Hook config: .pre-commit-config.yaml
 - Ruff config: pyproject.toml (`[tool.ruff]` section)
-- Docs: doc/source/ray-contribute/development.rst ("Development tooling")
+- Docs: doc/source/ray-contribute/development.md ("Development tooling")

@@ -97,7 +97,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   std::optional<pid_t> GetSavedProcessGroupId() const override;
   void SetSavedProcessGroupId(pid_t pgid) override;
 
-  void ActorCallArgWaitComplete(int64_t tag) override;
+  void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override;
 
   const BundleID &GetBundleId() const override;
   void SetBundleId(const BundleID &bundle_id) override;

@@ -21,6 +21,7 @@ build_arg_sets:
     # nixl meta-package (pure Python) is still required so that examples like
     # dp_pd_example can `import nixl` to gate optional features.
     - --unsafe-package nixl-cu12
+    - --override python/requirements/llm/nccl_overrides.txt
     - --python-platform=x86_64-manylinux_2_31
     - --index https://download.pytorch.org/whl/${CUDA_CODE}
   build_arg_sets:

@@ -1065,8 +1065,8 @@ def test_execution_options_to_model_defaults_and_custom():
 
 def test_construct_data_config_defaults_and_split_variants():
     """Test construct_data_config with default config and different split options."""
-    # Default: data_execution_options.default mirrors the library default ingest
-    # options and per_dataset_execution_options is empty.
+    # Default: data_execution_options.default mirrors Ray Data defaults and
+    # per_dataset_execution_options is empty.
     default = construct_data_config(DataConfig())
     assert isinstance(default, DataConfigSchema)
     assert default.datasets_to_split == "all"
@@ -1138,7 +1138,7 @@ def test_construct_data_config_per_dataset_execution_options():
     assert result.datasets_to_split == ["ds1", "ds2", "ds3"]
     assert result.enable_shard_locality is False
 
-    # default reflects the library default ingest options.
+    # default reflects Ray Data execution options defaults.
     assert result.data_execution_options.default == execution_options_to_model(
         DataConfig.default_ingest_options()
     )

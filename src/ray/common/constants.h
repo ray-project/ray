@@ -44,6 +44,11 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 constexpr char kClusterIdKey[] = "ray_cluster_id";
 constexpr char kAuthTokenKey[] = "authorization";
 constexpr char kBearerPrefix[] = "Bearer ";
+// Python matches this text to detect the error; keep in sync with
+// AUTH_MODE_MISMATCH_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py.
+constexpr char kAuthModeMismatchErrorMessage[] =
+    "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client too";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
@@ -148,14 +153,7 @@ constexpr char kLabelKeyTpuWorkerId[] = RAY_LABEL_KEY_PREFIX "tpu-worker-id";
 // A string representing the current TPU pod type, e.g. v6e-32.
 constexpr char kLabelKeyTpuPodType[] = RAY_LABEL_KEY_PREFIX "tpu-pod-type";
 
-// The GPU domain label key used for rack-aware placement group scheduling.
-constexpr char kGpuDomainLabelKey[] = RAY_LABEL_KEY_PREFIX "gpu-domain";
-
 #undef RAY_LABEL_KEY_PREFIX
-
-/// GPU accelerator type identifiers for rack-aware scheduling.
-constexpr char kGB200[] = "GB200";
-constexpr char kGB300[] = "GB300";
 
 /// All nodes implicitly have resources with this prefix and the quantity is 1.
 /// NOTE: DON'T CHANGE THIS since autoscaler depends on it.

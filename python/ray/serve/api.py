@@ -16,7 +16,6 @@ from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
-    prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
@@ -32,6 +31,8 @@ from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
+    MULTIPLEXED_FUNCTION_MARKER_ATTR,
+    ROUTER_APPLICATION_MARKER_ATTR,
     Default,
     copy_class_metadata,
     ensure_serialization_context,
@@ -41,6 +42,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -53,17 +55,22 @@ from ray.serve.context import (
     DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
+    _disconnect,
     _get_deployment_actor,
     _get_global_client,
     _get_internal_deployment_actor_context,
     _get_internal_replica_context,
-    _set_global_client,
 )
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.schema import (
+    LoggingConfig,
+    ServeInstanceDetails,
+    ServeStatus,
+    TracingConfig,
+)
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
@@ -78,6 +85,7 @@ def start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     logging_config: Union[None, dict, LoggingConfig] = None,
+    tracing_config: Union[None, dict, TracingConfig] = None,
     controller_options: Union[None, dict, ControllerOptions] = None,
     **kwargs,
 ):
@@ -104,6 +112,9 @@ def start(
           class See `gRPCOptions` for supported options.
         logging_config: logging config options for the serve component (
             controller & proxy).
+        tracing_config: Tracing config for distributed tracing. Can be passed as
+            a dictionary or a ``TracingConfig`` instance. See ``TracingConfig``
+            for supported options.
         controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
           Currently scoped to a strictly-validated ``runtime_env.env_vars``
           (other ``runtime_env`` keys are rejected). See
@@ -113,11 +124,12 @@ def start(
         **kwargs: Reserved for forward-compatibility; passed through to the
             internal Serve start helper.
     """
-    http_options = prepare_imperative_http_options(proxy_location, http_options)
     _private_api.serve_start(
         http_options=http_options,
+        proxy_location=proxy_location,
         grpc_options=grpc_options,
         global_logging_config=logging_config,
+        global_tracing_config=tracing_config,
         controller_options=controller_options,
         **kwargs,
     )
@@ -152,7 +164,7 @@ def shutdown():
             return
 
     client.shutdown()
-    _set_global_client(None)
+    _disconnect()
 
 
 @PublicAPI(stability="alpha")
@@ -180,7 +192,7 @@ async def shutdown_async():
             return
 
     await client.shutdown_async()
-    _set_global_client(None)
+    _disconnect()
 
 
 @DeveloperAPI
@@ -507,6 +519,24 @@ def ingress(app: Optional[Union[ASGIApp, Callable]] = None) -> Callable:
     return decorator
 
 
+def _router_application(cls: Type[Any]) -> Type[Any]:
+    """Mark a deployment class as an application-level router.
+
+    HAProxy asks the ingress of an application whose class carries this marker for
+    ``{"application", "replica_id"}`` and sends the request to that replica.
+    Routing decisions must be returned as non-streaming JSON responses.
+
+    Internal-only, unstable hook for Serve LLM direct streaming.
+    """
+    if not isinstance(cls, type):
+        raise TypeError(
+            "@serve._router_application can only decorate a class, got "
+            f"{type(cls).__name__}."
+        )
+    setattr(cls, ROUTER_APPLICATION_MARKER_ATTR, True)
+    return cls
+
+
 @PublicAPI(stability="stable")
 def deployment(
     _func_or_class: Optional[Callable] = None,
@@ -523,6 +553,7 @@ def deployment(
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
+    backpressure_config: Default[Union[Dict, BackpressureConfig, None]] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
     graceful_shutdown_wait_loop_s: Default[float] = DEFAULT.VALUE,
     graceful_shutdown_timeout_s: Default[float] = DEFAULT.VALUE,
@@ -540,6 +571,7 @@ def deployment(
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
+    max_surge_percent: Default[int] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -558,7 +590,9 @@ def deployment(
     Args:
         _func_or_class: The class or function to be decorated.
         name: Name uniquely identifying this deployment within the application.
-            If not provided, the name of the class or function is used.
+            If not provided, the name of the class or function is used. The name
+            must not contain the `#` character, which Serve reserves as the
+            replica ID delimiter; passing one raises a ValueError.
         version: Removed. Specifying this argument raises a ValueError.
         num_replicas: Number of replicas to run that handle requests to
             this deployment. Defaults to 1.
@@ -590,8 +624,15 @@ def deployment(
         max_queued_requests: Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
-            BackPressureError (for handles) or return an HTTP 503 status code (for HTTP
-            requests). Defaults to -1 (no limit).
+            BackPressureError (for handles) or return an HTTP 503 status code by
+            default (configurable via `backpressure_config.status_code`) for HTTP
+            requests. Defaults to -1 (no limit).
+        backpressure_config: Configuration of the HTTP response returned for
+            requests rejected due to backpressure (`max_queued_requests`
+            exceeded): the status code (503 by default, or 429) and an optional
+            `Retry-After` header. Requests rejected because the deployment is
+            unavailable (e.g., it failed to deploy) always return 503. See
+            `BackpressureConfig` for options.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` should be "auto" or not set.
         graceful_shutdown_wait_loop_s: Duration that replicas wait until there is
@@ -620,6 +661,17 @@ def deployment(
         rolling_update_percentage: The fraction of replicas to update at a
             time during a rolling update. Must be in ``(0.0, 1.0]``.
             Defaults to ``0.2`` (20%).
+        max_surge_percent: Extra replicas allowed during a rolling restart,
+            as a percentage of the target count. Must be in ``[0, 100]``;
+            rounds up to whole replicas or gangs. With a positive value, old
+            replicas keep serving until replacements are ready. Stopping
+            replicas do not count toward the limit, so live actors and resource
+            usage can exceed the target plus surge while old replicas drain.
+            Lightweight configuration changes to replicas on the new code wait
+            until restarts finish. During a surge, replacement ranks may be at
+            or above ``world_size``. Ranks are reassigned after the deployment
+            becomes healthy. Defaults to ``0``, which stops old replicas before
+            starting replacements.
 
     Returns:
         `Deployment`
@@ -691,6 +743,7 @@ def deployment(
         user_config=user_config,
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
+        backpressure_config=backpressure_config,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,
@@ -702,6 +755,7 @@ def deployment(
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
         rolling_update_percentage=rolling_update_percentage,
+        max_surge_percent=max_surge_percent,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 
@@ -827,7 +881,7 @@ def _run_many(
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
         client = _private_api.serve_start(
-            http_options={"location": "EveryNode"},
+            proxy_location=ProxyLocation.EveryNode,
             global_logging_config=None,
             controller_options=controller_options,
         )
@@ -1137,6 +1191,11 @@ def multiplexed(
             else:
                 model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
             return await model_multiplex_wrapper.load_model(model_id)
+
+        # Mark the wrapper so that multiplexing can be detected statically (e.g. at
+        # replica startup) without invoking user code, since the
+        # `__serve_multiplex_wrapper` is only created lazily on the first call.
+        setattr(_multiplex_wrapper, MULTIPLEXED_FUNCTION_MARKER_ATTR, True)
 
         return _multiplex_wrapper
 

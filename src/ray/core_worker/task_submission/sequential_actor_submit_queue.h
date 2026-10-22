@@ -22,16 +22,15 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/optional.h"
 #include "ray/common/id.h"
-#include "ray/core_worker/task_submission/actor_submit_queue.h"
-
+#include "ray/core_worker/task_submission/actor_submit_queue_interface.h"
 namespace ray {
 namespace core {
 
 /**
- * SequentialActorSumitQueue extends IActorSubmitQueue and ensures tasks are send
+ * SequentialActorSubmitQueue extends ActorSubmitQueueInterface and ensures tasks are send
  * in the sequential order defined by the sequence no.
  */
-class SequentialActorSubmitQueue : public IActorSubmitQueue {
+class SequentialActorSubmitQueue : public ActorSubmitQueueInterface {
  public:
   /// Add a task into the queue.
   void Emplace(const std::string &concurrency_group,

@@ -188,6 +188,7 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] cluster_id The cluster ID for authentication.
   /// \param[in] auth_token The authentication token for token-based authentication.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] server_metrics The server's metric objects.
   /// \param[in] preprocess_function If not nullptr, it will be called before handling
   /// request.
   ServerCallImpl(const ServerCallFactory &factory,
@@ -198,6 +199,7 @@ class ServerCallImpl : public ServerCall {
                  const ClusterID &cluster_id,
                  std::shared_ptr<const AuthenticationToken> auth_token,
                  bool record_metrics,
+                 GrpcServerMetrics &server_metrics,
                  std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -209,12 +211,13 @@ class ServerCallImpl : public ServerCall {
         cluster_id_(cluster_id),
         auth_token_(auth_token),
         start_time_(0),
-        record_metrics_(record_metrics) {
+        record_metrics_(record_metrics),
+        server_metrics_(server_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
     // TODO(Yi Cheng) call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
-      grpc_server_req_new_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_new.Record(1.0, {{"Method", call_name_}});
     }
   }
 
@@ -223,13 +226,11 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     stats_handle_ = io_service_.stats()->RecordStart(call_name_);
     bool auth_success = true;
-    bool token_auth_failed = false;
-    bool cluster_id_auth_failed = false;
 
     // Token authentication
-    if (!ValidateAuthenticationToken()) {
+    Status token_auth_status = ValidateAuthenticationToken();
+    if (!token_auth_status.ok()) {
       auth_success = false;
-      token_auth_failed = true;
     }
 
     // Cluster ID authentication
@@ -242,7 +243,6 @@ class ServerCallImpl : public ServerCall {
           RAY_LOG(WARNING) << "Wrong cluster ID token in request! Expected: "
                            << cluster_id_.Hex() << ", but got: " << it->second;
           auth_success = false;
-          cluster_id_auth_failed = true;
         }
       } else if constexpr (EnableAuth == ClusterIdAuthType::EMPTY_AUTH) {
         RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
@@ -252,19 +252,18 @@ class ServerCallImpl : public ServerCall {
           RAY_LOG(WARNING) << "Cluster ID token in request! Expected Nil, "
                            << "but got: " << it->second;
           auth_success = false;
-          cluster_id_auth_failed = true;
         }
       }
     }
 
     start_time_ = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      grpc_server_req_handling_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_handling.Record(1.0, {{"Method", call_name_}});
     }
     if (!io_service_.stopped()) {
       io_service_.post(
-          [this, auth_success, token_auth_failed, cluster_id_auth_failed] {
-            HandleRequestImpl(auth_success, token_auth_failed, cluster_id_auth_failed);
+          [this, auth_success, token_auth_status] {
+            HandleRequestImpl(auth_success, token_auth_status);
           },
           call_name_ + ".HandleRequestImpl",
           // Implement the delay of the rpc server call as the
@@ -276,18 +275,15 @@ class ServerCallImpl : public ServerCall {
       RAY_LOG(DEBUG) << "Handle service has been closed.";
       if (auth_success) {
         SendReply(Status::Invalid("HandleServiceClosed"));
-      } else if (token_auth_failed) {
-        SendReply(Status::Unauthenticated(
-            "InvalidAuthToken: Authentication token is missing or incorrect"));
+      } else if (!token_auth_status.ok()) {
+        SendReply(token_auth_status);
       } else {
         SendReply(Status::Unauthenticated("WrongClusterID"));
       }
     }
   }
 
-  void HandleRequestImpl(bool auth_success,
-                         bool token_auth_failed,
-                         bool cluster_id_auth_failed) {
+  void HandleRequestImpl(bool auth_success, const Status &token_auth_status) {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
       if (!service_handler_initialized_) {
         service_handler_.WaitUntilInitialized();
@@ -303,10 +299,9 @@ class ServerCallImpl : public ServerCall {
       factory_.CreateCall();
     }
     if (!auth_success) {
-      boost::asio::post(GetServerCallExecutor(), [this, token_auth_failed]() {
-        if (token_auth_failed) {
-          SendReply(Status::Unauthenticated(
-              "InvalidAuthToken: Authentication token is missing or incorrect"));
+      boost::asio::post(GetServerCallExecutor(), [this, token_auth_status]() {
+        if (!token_auth_status.ok()) {
+          SendReply(token_auth_status);
         } else {
           SendReply(Status::Unauthenticated(
               "WrongClusterID: Perhaps the client is accessing GCS "
@@ -336,8 +331,8 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() override {
     if (record_metrics_) {
-      grpc_server_req_finished_counter_.Record(1.0, {{"Method", call_name_}});
-      grpc_server_req_succeeded_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_finished.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_succeeded.Record(1.0, {{"Method", call_name_}});
     }
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -349,8 +344,8 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplyFailed() override {
     if (record_metrics_) {
-      grpc_server_req_finished_counter_.Record(1.0, {{"Method", call_name_}});
-      grpc_server_req_failed_counter_.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_finished.Record(1.0, {{"Method", call_name_}});
+      server_metrics_.req_failed.Record(1.0, {{"Method", call_name_}});
     }
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       io_service_.post(
@@ -364,27 +359,32 @@ class ServerCallImpl : public ServerCall {
 
  private:
   /// Validates token-based authentication.
-  /// Returns true if authentication succeeds or is not required.
-  /// Returns false if authentication is required but fails.
-  bool ValidateAuthenticationToken() {
-    // If auth token is empty, we assume auth is not required.
-    // The only exception is when ENABLE_K8S_TOKEN_AUTH is true where the server
-    // auth token can be empty.
-    if ((!auth_token_ || auth_token_->empty()) &&
-        !::RayConfig::instance().ENABLE_K8S_TOKEN_AUTH()) {
-      return true;
-    }
-
+  /// Returns OK if authentication succeeds, or Unauthenticated with the reason.
+  Status ValidateAuthenticationToken() {
     const auto &metadata = context_.client_metadata();
     auto it = metadata.find(kAuthTokenKey);
-    if (it == metadata.end()) {
-      RAY_LOG(WARNING) << "Missing authorization header in request!";
-      return false;
+    // If auth token is empty, we assume auth is disabled, and reject clients that
+    // send a token so that they opt out too. The only exception is when
+    // ENABLE_K8S_TOKEN_AUTH is true where the server auth token can be empty.
+    if ((!auth_token_ || auth_token_->empty()) &&
+        !::RayConfig::instance().ENABLE_K8S_TOKEN_AUTH()) {
+      if (it == metadata.end()) {
+        return Status::OK();
+      }
+      RAY_LOG(DEBUG) << "Rejecting " << call_name_
+                     << " with a token because auth is disabled";
+      return Status::Unauthenticated(kAuthModeMismatchErrorMessage);
     }
 
-    const std::string_view header(it->second.data(), it->second.length());
-    return ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(auth_token_,
-                                                                            header);
+    if (it == metadata.end()) {
+      RAY_LOG(WARNING) << "Missing authorization header in request!";
+    } else if (ray::rpc::AuthenticationTokenValidator::instance().ValidateToken(
+                   auth_token_,
+                   std::string_view(it->second.data(), it->second.length()))) {
+      return Status::OK();
+    }
+    return Status::Unauthenticated(
+        "InvalidAuthToken: Authentication token is missing or incorrect");
   }
 
   /// Log the duration this query used
@@ -392,8 +392,8 @@ class ServerCallImpl : public ServerCall {
     io_service_.stats()->RecordEnd(std::move(stats_handle_));
     auto end_time = absl::GetCurrentTimeNanos();
     if (record_metrics_) {
-      grpc_server_req_process_time_ms_histogram_.Record(
-          (end_time - start_time_) / 1000000.0, {{"Method", call_name_}});
+      server_metrics_.req_process_time_ms.Record((end_time - start_time_) / 1000000.0,
+                                                 {{"Method", call_name_}});
     }
   }
 
@@ -469,17 +469,7 @@ class ServerCallImpl : public ServerCall {
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
 
-  ray::stats::Histogram grpc_server_req_process_time_ms_histogram_{
-      GetGrpcServerReqProcessTimeMsHistogramMetric()};
-  ray::stats::Count grpc_server_req_new_counter_{GetGrpcServerReqNewCounterMetric()};
-  ray::stats::Count grpc_server_req_handling_counter_{
-      GetGrpcServerReqHandlingCounterMetric()};
-  ray::stats::Count grpc_server_req_finished_counter_{
-      GetGrpcServerReqFinishedCounterMetric()};
-  ray::stats::Count grpc_server_req_succeeded_counter_{
-      GetGrpcServerReqSucceededCounterMetric()};
-  ray::stats::Count grpc_server_req_failed_counter_{
-      GetGrpcServerReqFailedCounterMetric()};
+  GrpcServerMetrics &server_metrics_;
 
   template <class T1, class T2, class T3, class T4, ClusterIdAuthType T5, bool T6>
   friend class ServerCallFactoryImpl;
@@ -534,6 +524,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] max_active_rpcs Maximum request number to handle at the same time. -1
   /// means no limit.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] server_metrics The server's metric objects.
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
@@ -545,7 +536,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const ClusterID &cluster_id,
       std::shared_ptr<const AuthenticationToken> auth_token,
       int64_t max_active_rpcs,
-      bool record_metrics)
+      bool record_metrics,
+      GrpcServerMetrics &server_metrics)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -556,7 +548,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cluster_id_(cluster_id),
         auth_token_(auth_token),
         max_active_rpcs_(max_active_rpcs),
-        record_metrics_(record_metrics) {}
+        record_metrics_(record_metrics),
+        server_metrics_(server_metrics) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
@@ -570,7 +563,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
             call_name_,
             cluster_id_,
             auth_token_,
-            record_metrics_);
+            record_metrics_,
+            server_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_,
@@ -618,6 +612,8 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// If true, the server call will generate gRPC server metrics.
   bool record_metrics_;
+
+  GrpcServerMetrics &server_metrics_;
 };
 
 }  // namespace rpc

@@ -367,8 +367,8 @@ spec:
               resourceFieldRef:
                 resource: requests.cpu
           # The resource requests and limits in this config are too small for production!
-          # It is better to use a few large Ray pods than many small ones.
-          # For production, it is ideal to size each Ray pod to take up the
+          # It is better to use a few large Pods than many small ones.
+          # For production, it is ideal to size each Pod to take up the
           # entire Kubernetes node on which it is scheduled.
         resources:
           limits:

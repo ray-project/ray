@@ -1,3 +1,7 @@
+import os
+
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+
 import os.path
 import sys
 import tempfile
@@ -10,6 +14,8 @@ from numpy import ndarray
 from ray import train
 from ray.data import Preprocessor
 from ray.train import ScalingConfig
+
+pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
 if sys.version_info >= (3, 12):
     # Tensorflow is not installed for Python 3.12 because of keras compatibility.

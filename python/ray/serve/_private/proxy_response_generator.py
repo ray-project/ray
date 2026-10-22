@@ -129,7 +129,9 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         return result
 
     async def _await_response_anext(self) -> Any:
-        return await self._response.__anext__()
+        # Only called when `self._response` is a `DeploymentResponseGenerator`
+        # (checked via `isinstance` in `__anext__`).
+        return await self._response.__anext__()  # type: ignore[union-attr]
 
     async def _get_next_streaming_result(self) -> Any:
         next_result_task = asyncio.create_task(self._await_response_anext())

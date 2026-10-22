@@ -1,1 +1,1 @@
-../python/deplocks/docs/docbuild_depset_py3.10.lock
+../python/deplocks/docs/docbuild_depset_py3.11.lock

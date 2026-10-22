@@ -25,6 +25,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/asio/instrumented_io_context.h"
+#include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/gcs/grpc_service_interfaces.h"
 #include "ray/gcs/usage_stats_client.h"
@@ -33,9 +35,6 @@
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-
-// Forward declaration.
-class PeriodicalRunner;
 
 namespace gcs {
 
@@ -99,11 +98,12 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
  public:
   /// Create a GcsTaskManager.
   explicit GcsTaskManager(instrumented_io_context &io_service,
+                          std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
                           ray::observability::MetricInterface &task_events_reported_gauge,
                           ray::observability::MetricInterface &task_events_dropped_gauge,
                           ray::observability::MetricInterface &task_events_stored_gauge);
 
-  /// Handles a AddTaskEventData request.
+  /// Handles an AddTaskEventData request.
   ///
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.
@@ -112,7 +112,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
                               rpc::AddTaskEventDataReply *reply,
                               rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handles a AddEvents request.
+  /// Handles an AddEvents request.
   ///
   /// \param request gRPC Request.
   /// \param reply gRPC Reply.
@@ -530,7 +530,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
   /// The runner to run function periodically.
-  std::shared_ptr<PeriodicalRunner> periodical_runner_;
+  std::shared_ptr<PeriodicalRunnerInterface> periodical_runner_;
 
   /// Metric interfaces for task manager metrics
   ray::observability::MetricInterface &task_events_reported_gauge_;

@@ -23,10 +23,25 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/observability/windowed_max.h"
 #include "ray/util/clock.h"
 
 namespace ray {
+
+/// A single io_context to be monitored.
+struct MonitoredIOContext {
+  /// Human-readable name, used as the "Name" metric tag and in logs.
+  std::string name;
+  /// The io_context to probe. Must outlive the IOContextMonitor.
+  instrumented_io_context *io_context;
+  /// If true, this io_context's health contributes to the aggregate health
+  /// returned by Tick(). If false, the io_context is still probed and its
+  /// metrics are still recorded, but it does not affect the aggregate health.
+  /// Callers use this to exclude non-critical event loops from the health check.
+  bool include_in_health_check = true;
+};
 
 /// The probe state machine. Tracks registered io_contexts, posts probes, and
 /// evaluates health based on the latency to execute the probes.
@@ -35,39 +50,45 @@ namespace ray {
 /// by calling Tick() directly with a FakeClock.
 class IOContextMonitor {
  public:
-  /// @param component_name Human-readable name for logging (e.g. "gcs", "raylet").
-  /// @param io_contexts Named io_contexts to monitor. Must outlive the monitor.
-  /// @param latency_gauge Gauge metric for the most recent probe latency (ms),
-  ///   tagged by "Name".
-  /// @param health_gauge Gauge metric for the current health status (1 if
-  ///   healthy, 0 otherwise), tagged by "Name".
+  /// @param io_contexts io_contexts to monitor. Must outlive the monitor.
+  /// @param latency_gauge Gauge metric for the max probe latency (ms) observed over
+  ///   the latency window, tagged by "Name".
+  /// @param unhealthy_counter Counter metric incremented by 1 each time a probe
+  ///   misses the healthy deadline, tagged by "Name".
   /// @param healthy_deadline If a probe has been outstanding longer than this, the
   ///   io_context is considered unhealthy.
+  /// @param latency_window Sliding window over which the max probe latency is
+  ///   tracked and exported.
   /// @param clock Clock to use for time. Defaults to a real clock. Inject a
   ///   FakeClock in tests for deterministic behavior.
-  IOContextMonitor(
-      std::string component_name,
-      std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
-      observability::MetricInterface &latency_gauge,
-      observability::MetricInterface &health_gauge,
-      absl::Duration healthy_deadline,
-      std::shared_ptr<ClockInterface> clock = std::make_shared<Clock>());
+  IOContextMonitor(std::vector<MonitoredIOContext> io_contexts,
+                   observability::MetricInterface &latency_gauge,
+                   observability::MetricInterface &unhealthy_counter,
+                   absl::Duration healthy_deadline,
+                   absl::Duration latency_window = absl::Milliseconds(
+                       RayConfig::instance().io_context_monitor_latency_window_ms()),
+                   std::shared_ptr<ClockInterface> clock = std::make_shared<Clock>());
 
   /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.
-  /// Returns true iff all registered io_contexts are healthy.
+  /// Returns true iff all io_contexts with include_in_health_check set are healthy.
   bool Tick();
 
  private:
   struct ProbeState {
     ProbeState(std::string name_val,
                instrumented_io_context &io_context_val,
-               std::shared_ptr<ClockInterface> clock_val)
+               bool include_in_health_check_val,
+               std::shared_ptr<ClockInterface> clock_val,
+               absl::Duration latency_window_duration)
         : name(std::move(name_val)),
           io_context(io_context_val),
-          clock(std::move(clock_val)) {}
+          include_in_health_check(include_in_health_check_val),
+          clock(std::move(clock_val)),
+          latency_window(latency_window_duration) {}
 
     const std::string name;
     instrumented_io_context &io_context;
+    const bool include_in_health_check;
     const std::shared_ptr<ClockInterface> clock;
 
     // Mutex protecting fields written by the probe callback (on the io_context
@@ -81,17 +102,18 @@ class IOContextMonitor {
     absl::Time probe_post_time = absl::InfinitePast();
     bool healthy = true;
     bool deadline_warning_logged = false;
+    // Sliding window of recent probe latencies; only accessed from the monitor.
+    observability::WindowedMax latency_window;
   };
 
   bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);
   static void ExecuteProbeOnIOContext(const std::shared_ptr<ProbeState> &probe)
       ABSL_LOCKS_EXCLUDED(probe->mu);
 
-  const std::string component_name_;
   const absl::Duration healthy_deadline_;
   const std::shared_ptr<ClockInterface> clock_;
   observability::MetricInterface &latency_gauge_;
-  observability::MetricInterface &health_gauge_;
+  observability::MetricInterface &unhealthy_counter_;
   std::vector<std::shared_ptr<ProbeState>> probe_states_;
 };
 
@@ -102,7 +124,7 @@ class IOContextMonitorThread {
   /// @param monitor The monitor to call into.
   /// @param probe_interval How often to call monitor->Tick().
   /// @param health_callback Called from the monitor thread after each tick with the
-  ///   health status (true means healthy).
+  ///   aggregate health status (true means healthy).
   IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
                          absl::Duration probe_interval,
                          std::function<void(bool healthy)> health_callback);

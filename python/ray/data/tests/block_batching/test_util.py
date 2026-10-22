@@ -13,7 +13,12 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
+from ray.data._internal.block_batching.interfaces import (
+    Batch,
+    BatchMetadata,
+    FinalizedData,
+    ResolvedBlock,
+)
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
     blocks_to_batches,
@@ -23,6 +28,7 @@ from ray.data._internal.block_batching.util import (
     iter_threaded,
     resolve_block_refs,
 )
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import make_async_gen
 
 logger = logging.getLogger(__file__)
@@ -37,7 +43,45 @@ def test_resolve_block_refs(ray_start_regular_shared):
     block_refs = [ray.put(0), ray.put(1), ray.put(2)]
 
     resolved_iter = resolve_block_refs(iter(block_refs))
-    assert list(resolved_iter) == [0, 1, 2]
+    resolved = list(resolved_iter)
+    assert all(isinstance(b, ResolvedBlock) for b in resolved)
+    assert [b.block for b in resolved] == [0, 1, 2]
+
+
+def test_resolve_block_refs_accumulates_data_transfer_timer(
+    ray_start_regular_shared,
+):
+    """resolve_block_refs accumulates ray.get() time into iter_get_s and
+    captures a per-block data_transfer TimeSpan."""
+    block_refs = [ray.put(i) for i in range(3)]
+
+    stats = DatasetStats(metadata={}, parent=None)
+    resolved = list(resolve_block_refs(iter(block_refs), stats=stats))
+
+    assert len(resolved) == 3
+
+    # data_transfer TimeSpan captured per block.
+    for r in resolved:
+        assert r.stage_timings is not None
+        assert r.stage_timings.data_transfer is not None
+        assert r.stage_timings.data_transfer.duration >= 0.0
+
+
+def test_resolve_block_refs_captures_production_wait_span(
+    ray_start_regular_shared,
+):
+    """resolve_block_refs captures a per-block production_wait TimeSpan
+    around ``next(block_ref_iter)`` (manual capture, no Timer accumulation)."""
+    block_refs = [ray.put(i) for i in range(3)]
+
+    stats = DatasetStats(metadata={}, parent=None)
+    resolved = list(resolve_block_refs(iter(block_refs), stats=stats))
+
+    assert len(resolved) == 3
+    for r in resolved:
+        assert r.stage_timings is not None
+        assert r.stage_timings.production_wait is not None
+        assert r.stage_timings.production_wait.duration >= 0.0
 
 
 @pytest.mark.parametrize("block_size", [1, 10])
@@ -45,10 +89,12 @@ def test_resolve_block_refs(ray_start_regular_shared):
 def test_blocks_to_batches(block_size, drop_last):
     num_blocks = 5
     block_iter = block_generator(num_rows=block_size, num_blocks=num_blocks)
+    # Wrap raw blocks in ResolvedBlock (stage_timings=None) as blocks_to_batches now expects
+    wrapped_blocks = (ResolvedBlock(block=b) for b in block_iter)
 
     batch_size = 3
     batch_iter = list(
-        blocks_to_batches(block_iter, batch_size=batch_size, drop_last=drop_last)
+        blocks_to_batches(wrapped_blocks, batch_size=batch_size, drop_last=drop_last)
     )
 
     if drop_last:
@@ -112,7 +158,7 @@ def test_collate():
 
 def test_finalize():
     def finalize_fn(batch):
-        return pa.table({"bar": [1] * 2})
+        return FinalizedData(data=pa.table({"bar": [1] * 2}))
 
     batches = [
         Batch(BatchMetadata(batch_idx=i), data)
@@ -511,6 +557,22 @@ class TestIterThreaded:
             list(it)
 
     @pytest.mark.parametrize("num_workers", [1, 4])
+    def test_non_generator_fn_construction_raises(self, num_workers: int):
+        """When ``fn`` is a non-generator function that raises during
+        construction (e.g., setup code before returning the iterator), the
+        exception must surface to the consumer rather than hang. Regression
+        for the case where ``fn(_locked_iter())`` was called outside the
+        worker's try/finally."""
+
+        def fn(it: Iterator[int]) -> Iterator[int]:
+            # Body runs eagerly at call time (not a generator function).
+            raise ValueError("boom in fn construction")
+
+        it = iter_threaded(iter(range(100)), fn, num_workers=num_workers)
+        with pytest.raises(ValueError, match="boom in fn construction"):
+            list(it)
+
+    @pytest.mark.parametrize("num_workers", [1, 4])
     def test_consumer_break_stops_workers(self, num_workers: int):
         """When the consumer breaks early and the iterator is no longer
         referenced, CPython GCs the generator immediately, which runs the
@@ -545,12 +607,52 @@ class TestIterThreaded:
             )
 
     def test_num_workers_validation(self):
-        with pytest.raises(ValueError, match="at least 1"):
+        with pytest.raises(ValueError, match="num_workers must be at least 1"):
             list(iter_threaded(iter([1]), _identity, num_workers=0))
+
+    def test_output_buffer_size_validation(self):
+        with pytest.raises(ValueError, match="output_buffer_size must be at least 1"):
+            list(iter_threaded(iter([1]), _identity, output_buffer_size=0))
 
     def test_empty_base_iterator(self):
         output = list(iter_threaded(iter([]), _identity, num_workers=4))
         assert output == []
+
+    @pytest.mark.parametrize("num_workers,output_buffer_size", [(1, 1), (2, 2), (4, 2)])
+    def test_in_flight_items_bounded_by_output_buffer_size(
+        self, num_workers: int, output_buffer_size: int
+    ):
+        """Without consumption, workers must not pull more than
+        ``output_buffer_size`` items from the base iterator. Pulled-but-not-
+        consumed items are 'in flight', and the bound caps them."""
+        pulled = 0
+        pulled_lock = threading.Lock()
+
+        def counting_iter() -> Iterator[int]:
+            nonlocal pulled
+            for i in range(1_000_000):
+                with pulled_lock:
+                    pulled += 1
+                yield i
+
+        it = iter_threaded(
+            counting_iter(),
+            _identity,
+            num_workers=num_workers,
+            output_buffer_size=output_buffer_size,
+        )
+
+        # Trigger the generator body (which starts the workers), then stop
+        # consuming. Workers fill in-flight up to the bound and then block
+        # on _acquire_slot.
+        next(it)
+        time.sleep(0.3)
+
+        with pulled_lock:
+            # Consumer took 1 → in-flight ≤ K. Plus the 1 already consumed.
+            assert (
+                pulled <= 1 + output_buffer_size
+            ), f"Pulled {pulled}, expected <= {1 + output_buffer_size}"
 
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ LocalResourceManager::LocalResourceManager(
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
       resource_change_subscriber_(resource_change_subscriber),
       resource_usage_gauge_(resource_usage_gauge) {
-  RAY_CHECK(node_resources.total == node_resources.available);
+  RAY_CHECK(node_resources.total == node_resources.GetAvailable());
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
@@ -79,7 +79,7 @@ std::string LocalResourceManager::DebugString(void) const {
   std::stringstream buffer;
   buffer << local_resources_.DebugString();
   buffer << " is_draining: " << IsLocalNodeDraining();
-  buffer << " is_idle: " << IsLocalNodeIdle();
+  buffer << " is_idle: " << WasLastRecordedNodeStateIdle();
   return buffer.str();
 }
 
@@ -310,7 +310,7 @@ void LocalResourceManager::ReleaseWorkerResources(
 
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
-  node_resources.available = local_resources_.available.ToNodeResourceSet();
+  node_resources.SetAvailable(local_resources_.available.ToNodeResourceSet());
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = IsLocalNodeDraining();
@@ -367,7 +367,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
 
-  for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
+  for (const auto &[resource_name, available] : resources.GetAvailableResourceMap()) {
     // Resource availability can be negative locally but treat it as 0
     // when we broadcast to others since other parts of the
     // system assume resource availability cannot be negative and
@@ -445,7 +445,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
 }
 
 void LocalResourceManager::OnResourceOrStateChanged() {
-  if (IsLocalNodeDraining() && IsLocalNodeIdle()) {
+  if (IsLocalNodeDraining() && WasLastRecordedNodeStateIdle()) {
     RAY_LOG(INFO) << "The node is drained, continue to shut down raylet...";
     rpc::NodeDeathInfo node_death_info = DeathInfoFromDrainRequest();
     shutdown_raylet_gracefully_(std::move(node_death_info));

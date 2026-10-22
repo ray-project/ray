@@ -1,8 +1,11 @@
 import logging
+import warnings
+from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray._common.retry import call_with_retry
+from ray._private.utils import INT32_MAX
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     reorder_columns_by_schema,
 )
@@ -101,6 +104,72 @@ def choose_row_group_limits(
         return clamped_group_size, clamped_group_size, max_rows_per_file
 
 
+def _widen_offset_overflowing_columns(
+    tables: List["pyarrow.Table"], schema: "pyarrow.Schema"
+) -> "pyarrow.Schema":
+    """Promote `string`/`binary` columns to 64-bit-offset variants when needed.
+
+    Arrow addresses the data of `string` and `binary` columns with int32
+    offsets, so a single contiguous array can hold at most `INT32_MAX` bytes.
+    When the writer coalesces blocks into a large row group (e.g. because
+    `min_rows_per_file` set `min_rows_per_group`), pyarrow must materialize each
+    column of that row group as one contiguous array. If a `string`/`binary`
+    column's combined size across the blocks in this write exceeds the int32
+    limit, `write_dataset` fails with an offset-overflow error that surfaces as
+    a column-length mismatch (the column is truncated to what fits).
+
+    Promoting such columns to `large_string`/`large_binary` (int64 offsets)
+    removes the ceiling. The promotion is invisible on disk -- parquet stores
+    both as `BYTE_ARRAY` -- so only the in-memory Arrow type changes.
+
+    Only top-level `string`/`binary` columns are promoted. Other int32-offset
+    types are not handled: `string`/`binary` nested inside `list`/`struct`/`map`
+    (whose inner offsets carry the same byte ceiling) and `list`/`map` columns
+    themselves (which overflow on cumulative child-element count rather than
+    bytes). These require recursive type rewriting and are far rarer in practice.
+
+    Args:
+        tables: The blocks about to be written together in one task.
+        schema: The unified output schema for those blocks.
+
+    Returns:
+        ``schema`` unchanged when no column overflows, otherwise a copy with the
+        overflowing variable-width columns promoted to their ``large_*`` type.
+    """
+    import pyarrow as pa
+
+    candidate_types = {}
+    for field in schema:
+        if pa.types.is_string(field.type):
+            candidate_types[field.name] = pa.large_string()
+        elif pa.types.is_binary(field.type):
+            candidate_types[field.name] = pa.large_binary()
+    if not candidate_types:
+        return schema
+
+    # `.nbytes` is O(1) buffer metadata, so summing across blocks is cheap.
+    overflowing: set = set()
+    combined_nbytes: Dict[str, int] = defaultdict(int)
+    for table in tables:
+        for name in candidate_types:
+            idx = table.schema.get_field_index(name)
+            if idx != -1:
+                combined_nbytes[name] += table.column(idx).nbytes
+                if combined_nbytes[name] > INT32_MAX:
+                    overflowing.add(name)
+
+    if not overflowing:
+        return schema
+
+    new_fields = [
+        field.with_type(candidate_types[field.name])
+        if field.name in overflowing
+        else field
+        for field in schema
+    ]
+    return pa.schema(new_fields, metadata=schema.metadata)
+
+
 class ParquetDatasink(_FileDatasink):
     def __init__(
         self,
@@ -111,6 +180,7 @@ class ParquetDatasink(_FileDatasink):
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
+        min_bytes_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
@@ -128,7 +198,30 @@ class ParquetDatasink(_FileDatasink):
         self.arrow_parquet_args = arrow_parquet_args
         self.min_rows_per_file = min_rows_per_file
         self.max_rows_per_file = max_rows_per_file
+        self.min_bytes_per_file = min_bytes_per_file
         self.partition_cols = partition_cols
+
+        if self.partition_cols and self.min_rows_per_file is not None:
+            warnings.warn(
+                "Using `min_rows_per_file` with non-empty `partition_cols` is "
+                "deprecated and will no longer be supported after February 2027. "
+                "Use `repartition(num_blocks=..., keys=partition_cols)` and "
+                "`max_rows_per_file` instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+
+        if self.min_bytes_per_file is not None and self.min_bytes_per_file <= 0:
+            raise ValueError("min_bytes_per_file must be a positive integer")
+
+        if self.min_bytes_per_file is not None and any(
+            value is not None
+            for value in (self.min_rows_per_file, self.max_rows_per_file)
+        ):
+            raise ValueError(
+                "min_bytes_per_file cannot be used with min_rows_per_file or "
+                "max_rows_per_file"
+            )
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
             if self.min_rows_per_file > self.max_rows_per_file:
@@ -205,6 +298,11 @@ class ParquetDatasink(_FileDatasink):
             tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
             if user_schema is None:
                 output_schema = pa.unify_schemas([table.schema for table in tables])
+                # Coalescing many blocks into one row group can push a
+                # `string`/`binary` column past Arrow's 2 GiB int32-offset
+                # limit; promote such columns to their `large_*` variant so the
+                # contiguous row-group array can address all of its bytes.
+                output_schema = _widen_offset_overflowing_columns(tables, output_schema)
             else:
                 output_schema = user_schema
 
@@ -315,3 +413,7 @@ class ParquetDatasink(_FileDatasink):
     @property
     def min_rows_per_write(self) -> Optional[int]:
         return self.min_rows_per_file
+
+    @property
+    def min_bytes_per_write(self) -> Optional[int]:
+        return self.min_bytes_per_file

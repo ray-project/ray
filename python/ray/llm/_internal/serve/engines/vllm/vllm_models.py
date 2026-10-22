@@ -4,11 +4,11 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.openai.cli_args import FrontendArgs
+from vllm.entrypoints.launchers.cli_args import FrontendArgs
 
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.placement import PlacementGroupConfig
-from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig
+from ray.llm._internal.common.utils.cloud_utils import CloudMirrorConfig, is_remote_path
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.constants import (
     ALLOW_NEW_PLACEMENT_GROUPS_IN_DEPLOYMENT,
@@ -101,6 +101,12 @@ class VLLMEngineConfig(BaseModelExtended):
         """Instantiates the accelerator backend based on the resolved config."""
         cfg = self.accelerator_config
 
+        if self.accelerator_type and isinstance(cfg, CPUConfig):
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "CPU-only configurations. Either remove accelerator_type, or provide an accelerator_config."
+            )
+
         # LLMConfig has already resolved and validated accelerator_config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
@@ -109,7 +115,6 @@ class VLLMEngineConfig(BaseModelExtended):
         else:
             # Default to GPU if it's GPUConfig or isn't set
             self._accelerator = GPUAccelerator()
-
         return self
 
     @property
@@ -162,9 +167,12 @@ class VLLMEngineConfig(BaseModelExtended):
         return engine_kwargs
 
     def get_runtime_env_with_local_env_vars(self) -> dict:
-        runtime_env = self.runtime_env or {}
-        runtime_env.setdefault("env_vars", {})
-        env_vars = runtime_env["env_vars"]
+        # Build a fresh runtime_env (and env_vars dict) so this is a pure read
+        # of self. Callers fold the result into the replica runtime_env and must
+        # not mutate self.runtime_env as a side effect. The ``or {}`` also keeps
+        # an explicit ``env_vars: None`` from raising.
+        runtime_env = dict(self.runtime_env or {})
+        env_vars = dict(runtime_env.get("env_vars") or {})
 
         # Propagate env vars to the runtime env
         for env_var in ENV_VARS_TO_PROPAGATE:
@@ -177,6 +185,8 @@ class VLLMEngineConfig(BaseModelExtended):
             )
             if fractional_gpu is not None:
                 env_vars["VLLM_RAY_PER_WORKER_GPUS"] = str(fractional_gpu)
+
+        runtime_env["env_vars"] = env_vars
         return runtime_env
 
     @classmethod
@@ -187,7 +197,18 @@ class VLLMEngineConfig(BaseModelExtended):
         if llm_config.model_loading_config.model_source is None:
             hf_model_id = llm_config.model_id
         elif isinstance(llm_config.model_loading_config.model_source, str):
-            hf_model_id = llm_config.model_loading_config.model_source
+            model_source = llm_config.model_loading_config.model_source
+            if is_remote_path(model_source):
+                # Remote URIs (s3://, gs://, …) are download addresses,
+                # not HuggingFace IDs.  Using the URI verbatim as
+                # hf_model_id propagates the scheme and slashes into the
+                # cache directory name (``models--s3:----bucket--…``).
+                # Use the user-supplied model_id as the identifier and
+                # treat the URI as a bucket mirror instead.
+                hf_model_id = llm_config.model_id
+                mirror_config = CloudMirrorConfig(bucket_uri=model_source)
+            else:
+                hf_model_id = model_source
         else:
             # If it's a CloudMirrorConfig (or subtype)
             mirror_config = llm_config.model_loading_config.model_source

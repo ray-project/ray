@@ -88,10 +88,11 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
             self._run_name, self._run_id, world_rank, worker_actor_id
         )
 
-    def before_shutdown(self):
+    def before_worker_shutdown(self):
         """Shutdown metrics before shutdown."""
-        for metric in self._metrics.values():
-            metric.reset()
+        if self._metrics:
+            for metric in self._metrics.values():
+                metric.reset()
 
     @contextmanager
     def on_report(self):

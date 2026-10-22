@@ -31,14 +31,7 @@
 #endif
 
 #ifdef _WIN32
-#ifndef _WINDOWS_
-#ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
-                             // headers you need manually.
-                             // (https://stackoverflow.com/a/8294669)
-#define WIN32_LEAN_AND_MEAN  // Prevent inclusion of WinSock2.h
-#endif
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
-#endif
 #include <direct.h>   // For _mkdir on Windows
 #include <process.h>  // For _getpid on Windows
 #endif
@@ -292,8 +285,8 @@ TEST_F(AuthenticationTokenLoaderTest, TestErrorWhenAuthEnabledButNoToken) {
         auto &loader = AuthenticationTokenLoader::instance();
         loader.GetToken();
       },
-      "Token authentication is enabled but Ray couldn't find an "
-      "authentication token.");
+      "no authentication token was found.*run `ray get-auth-token` on the head "
+      "node.*set RAY_AUTH_MODE=disabled");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestCaching) {
@@ -326,6 +319,18 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   // Whitespace should be trimmed
   ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("token-with-spaces");
+  EXPECT_TRUE(token_opt->Equals(expected));
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestFirstNonBlankLine) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, "\n  \n token-after-blank-lines \nsecond-line\n");
+
+  auto &loader = AuthenticationTokenLoader::instance();
+  auto token_opt = loader.GetToken();
+
+  ASSERT_TRUE(token_opt != nullptr);
+  AuthenticationToken expected("token-after-blank-lines");
   EXPECT_TRUE(token_opt->Equals(expected));
 }
 

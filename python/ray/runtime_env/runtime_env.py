@@ -218,7 +218,7 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
+            "run_options": ["--cap-drop=SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
         RuntimeEnv(env_vars={"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"})
@@ -236,13 +236,15 @@ class RuntimeEnv(dict):
         py_modules: List of local paths or remote URIs (either in the GCS or external
             storage), each of which is an archive that Ray unpacks and
             inserts into the PYTHONPATH of the workers. Supported formats for
-            remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, and ``.tgz``.
+            remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, ``.tgz``, and
+            ``.tar.xz``.
         py_executable: Path or command to the Python executable that Ray uses to
             launch worker processes. By default, Ray uses the same interpreter
             that is running the driver.
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
-            Supported formats for remote URIs: ``.zip``, ``.tar.gz``, and ``.tgz``.
+            Supported formats for local paths and remote URIs: ``.zip``,
+            ``.tar.gz``, ``.tgz``, and ``.tar.xz``.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
@@ -268,6 +270,13 @@ class RuntimeEnv(dict):
             ``env_vars`` parameters.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
+            Each `run_options` item is passed as exactly one argument, so
+            write a flag and its value as `--flag=value` or as two items.
+            `$NAME` and `${NAME}` in an item are expanded from the node's
+            whole environment, the job's `env_vars` as written, and the values
+            Ray sets for the container, such as the mounted
+            `RAY_AUTH_TOKEN_PATH`; `$$` is a literal `$`. Expanded values, like the rest of `run_options`, appear on
+            podman's command line.
         env_vars: Environment variables to set.
         worker_process_setup_hook: Experimental. The setup hook that's
             called after workers start and before Tasks and Actors are scheduled.

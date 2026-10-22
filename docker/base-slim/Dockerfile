@@ -4,7 +4,7 @@
 # Mainly for use on Anyscale.
 
 ARG BASE_IMAGE
-FROM ${BASE_IMAGE} AS main-build
+FROM ${BASE_IMAGE}
 ARG PYTHON_VERSION="3.10"
 ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
 ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
@@ -31,9 +31,6 @@ APT_PKGS=(
     gdb
     vim-tiny
     less
-
-    # For HAProxy
-    liblua5.3-0
 )
 
 apt-get update
@@ -46,7 +43,7 @@ usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
 # Install uv
-curl -sSL -o- https://astral.sh/uv/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -sSL -o- https://astral.sh/uv/0.13.4/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Determine the architecture of the host
 if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
@@ -123,8 +120,23 @@ rm /tmp/miniforge.sh
 /home/ray/anaconda3/bin/conda init bash
 
 eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+# conda-forge certifi builds from 2026 on require python>=3.11. Downgrading the
+# Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
+# requests and conda itself, and the transaction fails with RemoveError.
+# conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
+# 3.10 installs it from PyPI after the conda step.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_PYTHON_EXTRA_SPECS=("certifi<2026")
+fi
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
 /home/ray/anaconda3/bin/conda clean -a
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+fi
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock
@@ -136,70 +148,5 @@ mkdir -p /tmp/supervisord
 EOF
 
 ENV PATH="/home/ray/.local/bin:/home/ray/anaconda3/bin:$PATH"
-
-# --- HAProxy Build Stage ---
-FROM $BASE_IMAGE AS haproxy-builder
-
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-export DEBIAN_FRONTEND=noninteractive
-
-apt-get update -y
-apt-get upgrade -y
-apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    curl \
-    libc6-dev \
-    liblua5.3-dev \
-    libpcre3-dev \
-    libssl-dev \
-    zlib1g-dev
-rm -rf /var/lib/apt/lists/*
-
-# Install HAProxy from source.
-# Fetched from ray-project/haproxy-release (a GitHub release mirror) because
-# www.haproxy.org's wildcard TLS cert expired 2026-04-17 and the release tarball
-# disappeared from the upstream download site. Integrity is enforced by sha256
-# verification. Drop this mirror and switch back to www.haproxy.org once the
-# cert is renewed and the tarball is republished.
-HAPROXY_VERSION="2.8.20"
-HAPROXY_SHA256="c8301de11dabfbf049db07080e43b9570a63f99e41d4b0754760656bf7ea00b7"
-BUILD_DIR=$(mktemp -d)
-curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
-     -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" \
-     "https://github.com/ray-project/haproxy-release/releases/download/${HAPROXY_VERSION}/haproxy-${HAPROXY_VERSION}.tar.gz"
-echo "${HAPROXY_SHA256}  ${BUILD_DIR}/haproxy.tar.gz" | sha256sum -c -
-tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
-make -C "${BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
-make -C "${BUILD_DIR}" install SBINDIR=/usr/local/bin
-rm -rf "${BUILD_DIR}"
-
-EOF
-
-# --- Return to main image ---
-FROM main-build AS main
-
-# Switch to root for system-level HAProxy setup
-USER root
-
-# Copy HAProxy binary from builder stage
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
-ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
-
-# Install HAProxy runtime dependency and setup
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
-chown -R ray:"$(id -gn ray)" /run/haproxy
-
-EOF
-
-USER ray
-WORKDIR /home/ray
 
 CMD ["bash"]

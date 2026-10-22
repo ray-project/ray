@@ -38,13 +38,6 @@ class ObjectManagerClientInterface {
   /// \param callback The callback function that handles reply from server
   virtual void Pull(const PullRequest &request,
                     const ClientCallback<PullReply> &callback) = 0;
-
-  /// Tell remote object manager to free objects
-  ///
-  /// \param request The request message
-  /// \param callback The callback function that handles reply
-  virtual void FreeObjects(const FreeObjectsRequest &request,
-                           const ClientCallback<FreeObjectsReply> &callback) = 0;
 };
 
 }  // namespace rpc

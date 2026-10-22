@@ -358,22 +358,55 @@ class Benchmarker:
 # See https://github.com/ray-project/ray/issues/60680 for more details.
 
 CONTROLLER_BENCH_CONFIG = {
-    "checkpoints": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 3072, 4096],
+    "checkpoints": [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024,
+        2048,
+        3072,
+        4096,
+        8192,
+    ],
     "marination_period_s": 180,
     "sample_interval_s": 5,
 }
 
 _CONTROLLER_AUTOSCALING_CONFIG = {
     "min_replicas": 1,
-    "max_replicas": 4096,
+    "max_replicas": 8192,
     "target_ongoing_requests": 1,
     "upscale_delay_s": 1,
 }
 
-_CONTROLLER_WAITER_TIMEOUT_S = 1200
+_CONTROLLER_WAITER_TIMEOUT_S = 2400
+# Halve the CPU reservation as the target doubles past 4096; these replicas are
+# idle waiters, so the lighter reservation only packs them more densely. Node
+# count above the threshold is governed by the per-node replica cap below.
+_CONTROLLER_REPLICA_NUM_CPUS = 0.4
+_CONTROLLER_DENSE_PACK_ABOVE = 4096
+# Dense packing is memory-bound, not CPU-bound: each replica process has ~600MB
+# RSS however small its CPU reservation, and 40/node OOMs a 32GB worker (#65847).
+# 34/node keeps nodes at ~85% of the memory-monitor kill threshold (~241 nodes
+# at 8192). At or below the threshold the cap is inert: CPU packs 20/node.
+_CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE = 34
+
+
+def _controller_replica_num_cpus(target_replicas: int) -> float:
+    if target_replicas <= _CONTROLLER_DENSE_PACK_ABOVE:
+        return _CONTROLLER_REPLICA_NUM_CPUS
+    return _CONTROLLER_REPLICA_NUM_CPUS * _CONTROLLER_DENSE_PACK_ABOVE / target_replicas
+
 
 # SignalActor from ray._common.test_utils; use high max_concurrency for many
-# concurrent waiters (up to 4096 in controller benchmark).
+# concurrent waiters (up to 8192 in controller benchmark).
 _SignalActorForController = _SignalActor.options(max_concurrency=100000)
 
 
@@ -401,7 +434,8 @@ class ControllerBenchHelloWorld:
     autoscaling_config=_CONTROLLER_AUTOSCALING_CONFIG,
     max_ongoing_requests=2,
     graceful_shutdown_timeout_s=1,
-    ray_actor_options={"num_cpus": 0.4},
+    ray_actor_options={"num_cpus": _CONTROLLER_REPLICA_NUM_CPUS},
+    max_replicas_per_node=_CONTROLLER_DENSE_PACK_MAX_REPLICAS_PER_NODE,
 )
 class ControllerBenchMetricsGenerator:
     """Autoscaling deployment that generates handle metrics to stress the controller."""
@@ -669,7 +703,12 @@ async def run_controller_benchmark(
     try:
         for checkpoint_idx, target_replicas in enumerate(checkpoints):
             hello_world = ControllerBenchHelloWorld.bind(signal_actor)
-            app = ControllerBenchMetricsGenerator.bind(hello_world)
+            app = ControllerBenchMetricsGenerator.options(
+                ray_actor_options={
+                    **(ControllerBenchMetricsGenerator.ray_actor_options or {}),
+                    "num_cpus": _controller_replica_num_cpus(target_replicas),
+                },
+            ).bind(hello_world)
             handle = serve.run(app, name="default", route_prefix=None)
 
             samples = await _controller_run_checkpoint(

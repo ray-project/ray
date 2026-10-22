@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from ray.util import log_once
+
 if TYPE_CHECKING:
     import s3fs  # noqa: F401
 
@@ -41,7 +43,7 @@ def _parse_obstore_int_env(var_name: str, default: int) -> int:
     if raw is None or not str(raw).strip():
         return default
     try:
-        return int(str(raw).strip(), 10)
+        value = int(str(raw).strip(), 10)
     except ValueError:
         logger.warning(
             "Ignoring invalid integer for %s=%r — using default %s",
@@ -50,6 +52,83 @@ def _parse_obstore_int_env(var_name: str, default: int) -> int:
             default,
         )
         return default
+    if value < 0:
+        # A negative count or duration can't be handed to obstore (Rust
+        # durations are unsigned); treat it like a malformed value.
+        logger.warning(
+            "Ignoring negative value for %s=%r — using default %s",
+            var_name,
+            raw,
+            default,
+        )
+        return default
+    return value
+
+
+# Retry budget for the obstore GET/HEAD clients. obstore retries 5xx, 429 and
+# connection errors itself and sleeps between attempts using decorrelated
+# jitter: each sleep is drawn from ``[init_backoff, base * previous)`` and
+# capped at ``max_backoff``, so in expectation the sleep grows by about
+# ``init_backoff / 2`` per retry (near-linear, not exponential). ``init_backoff``
+# is therefore the lever that decides how long a sustained S3 SlowDown burst
+# can be ridden out: with obstore's 100 ms default, 10 retries completed in
+# ~2 s and a transient 503 in the read_from_uris release test became a failed
+# download. These are read at call time, not import time, so a job can
+# override them through ``runtime_env`` env vars.
+_DEFAULT_RETRY_MAX_RETRIES_INT = 10
+_DEFAULT_RETRY_INIT_BACKOFF_MS_INT = 1000
+_DEFAULT_RETRY_MAX_BACKOFF_MS_INT = 20_000
+_DEFAULT_RETRY_TIMEOUT_S_INT = 120
+
+
+def _obstore_retry_config_from_env() -> Dict[str, Any]:
+    """Build the obstore ``retry_config`` for download GET/HEAD clients.
+
+    With the defaults the expected sleeps are 1.0, 1.5, 2.0, ... 5.5 s, about
+    30 s in total over 10 retries and never more than ``retry_timeout``,
+    instead of the ~2 s that obstore's own defaults allow. Backoff sleeps are
+    async inside obstore, so a throttled object only holds its concurrency
+    slot; other URIs keep downloading.
+    """
+    return {
+        "max_retries": _parse_obstore_int_env(
+            "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", _DEFAULT_RETRY_MAX_RETRIES_INT
+        ),
+        "retry_timeout": timedelta(
+            seconds=_parse_obstore_int_env(
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", _DEFAULT_RETRY_TIMEOUT_S_INT
+            )
+        ),
+        "backoff": {
+            "init_backoff": timedelta(
+                milliseconds=_parse_obstore_int_env(
+                    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                    _DEFAULT_RETRY_INIT_BACKOFF_MS_INT,
+                )
+            ),
+            "max_backoff": timedelta(
+                milliseconds=_parse_obstore_int_env(
+                    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                    _DEFAULT_RETRY_MAX_BACKOFF_MS_INT,
+                )
+            ),
+            "base": 2,
+        },
+    }
+
+
+def _obstore_client_options_from_env() -> Dict[str, Any]:
+    """Optional obstore ``client_options`` overrides from the environment.
+
+    ``RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S`` sets the per-request timeout
+    (obstore's default is 30 s). Large whole-file GETs can legitimately take
+    longer than that, and a timed-out request consumes the same retry budget
+    as a 5xx. Unset or ``0`` keeps obstore's default.
+    """
+    timeout_s = _parse_obstore_int_env("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", 0)
+    if timeout_s <= 0:
+        return {}
+    return {"timeout": timedelta(seconds=timeout_s)}
 
 
 # Constants & configuration
@@ -253,6 +332,67 @@ class _S3FSSessionCredentialProvider:
         return True
 
 
+def _native_s3_obstore_kwargs(
+    filesystem: "pyarrow.fs.S3FileSystem",
+) -> Optional[Dict[str, Any]]:
+    """Translate a native PyArrow ``S3FileSystem`` into ``obstore.store.from_url``
+    kwargs, or ``None`` to route to the threaded path.
+
+    PyArrow exposes only ``region`` as a Python attribute, but the full
+    construction config (credential kind, keys, region, endpoint) is preserved in
+    the filesystem's pickle state -- PyArrow round-trips it to ship filesystems to
+    worker processes. Read it from there so obstore can be configured to match,
+    keeping the fast obstore download path instead of falling back to the slower
+    threaded one.
+
+    Returns ``None`` (caller uses the threaded path, applying the filesystem
+    verbatim) when the config can't be represented as *static* obstore options:
+    assume-role credentials, which PyArrow refreshes but a one-time obstore
+    snapshot would let go stale; or an unrecognized pickle shape (e.g. a future
+    PyArrow), which is caught and treated conservatively.
+    """
+    try:
+        # __reduce__() -> (reconstruct_fn, (state_dict,)); the state dict holds
+        # every constructor argument. PyArrow derives ``anonymous`` and the keys
+        # from the underlying credentials kind, so this is the authoritative view.
+        state = filesystem.__reduce__()[1][0]
+    except Exception as e:
+        if log_once("ray-data-obstore-filesystem-reduce-error"):
+            logger.warning(
+                "Unable to fetch PyArrow filesystem state from %s. Ray Data is unable to use obstore for this filesystem for faster downloads.",
+                filesystem,
+                exc_info=e,
+            )
+        return None
+
+    kwargs: Dict[str, Any] = {}
+    if state.get("region"):
+        kwargs["region"] = state["region"]
+    if state.get("endpoint_override"):
+        kwargs["endpoint"] = state["endpoint_override"]
+
+    if state.get("anonymous"):
+        kwargs["skip_signature"] = True
+        return kwargs
+
+    if state.get("role_arn"):
+        # Assume-role creds are refreshed periodically by PyArrow; a static
+        # obstore snapshot would go stale. Let the threaded path use the FS.
+        return None
+
+    if state.get("access_key"):
+        kwargs["access_key_id"] = state["access_key"]
+        if state.get("secret_key"):
+            kwargs["secret_access_key"] = state["secret_key"]
+        if state.get("session_token"):
+            kwargs["session_token"] = state["session_token"]
+        return kwargs
+
+    # Default credential chain: obstore resolves ambient credentials itself,
+    # matching the filesystem's default chain. Region (if any) is enough.
+    return kwargs
+
+
 def _extract_credentials_from_filesystem(
     filesystem: Optional["pyarrow.fs.FileSystem"],
 ) -> Optional[Dict[str, Any]]:
@@ -261,13 +401,13 @@ def _extract_credentials_from_filesystem(
     Maps PyArrow filesystem configuration to obstore keyword arguments.
     See obstore docs for available options per store type.
 
-    **Native S3 (``S3FileSystem``):** PyArrow's implementation is backed by the
-    AWS C++ SDK; Python only exposes a subset of options. ``region`` is typically
-    readable, while ``access_key``, ``secret_key``, ``session_token``, and
-    ``anonymous`` may not appear as Python attributes even when configured at
-    construction. Unavailable attributes are skipped silently, so forwarding to
-    obstore can degrade to the default AWS credential chain (env, IMDS, etc.)
-    without raising.
+    **Native S3 (``S3FileSystem``):** PyArrow exposes only ``region`` on the
+    Python object, but the full credential config is recoverable from the
+    filesystem's pickle state, so :func:`_native_s3_obstore_kwargs` translates it
+    into obstore options (``skip_signature`` for anonymous, static keys, region,
+    endpoint) to keep the fast obstore path. Configs that can't be represented as
+    static options -- assume-role (rotating creds) or an unrecognized pickle
+    shape -- return ``None`` there and route to the threaded path instead.
 
     **fsspec S3 (``PyFileSystem`` + ``FSSpecHandler``):** For ``s3`` / ``s3a``
     (e.g. ``s3fs`` with STS/Okta/custom endpoints), credentials are read from
@@ -305,21 +445,7 @@ def _extract_credentials_from_filesystem(
     FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
 
     if S3FileSystem is not None and isinstance(filesystem, S3FileSystem):
-        # NOTE: See docstring — many credential fields are not exposed on the
-        # Python S3FileSystem object; hasattr/getattr only forwards what exists.
-        for pa_attr, ob_key in [
-            ("region", "region"),
-            ("access_key", "access_key_id"),
-            ("secret_key", "secret_access_key"),
-            ("session_token", "session_token"),
-            ("endpoint_override", "endpoint"),
-        ]:
-            val = getattr(filesystem, pa_attr, None)
-            if val:
-                kwargs[ob_key] = val
-        if getattr(filesystem, "anonymous", False):
-            kwargs["skip_signature"] = True
-        return kwargs
+        return _native_s3_obstore_kwargs(filesystem)
 
     if GcsFileSystem is not None and isinstance(filesystem, GcsFileSystem):
         # obstore GCSConfig does not have a project_id field. The only useful
@@ -570,7 +696,7 @@ def _discover_aws_bucket_region(bucket: str) -> Optional[str]:
         if cached is not None:
             return cached
         _BUCKET_REGION_CACHE[bucket] = region
-        return region
+    return region
 
 
 class StoreRegistry:
@@ -585,10 +711,23 @@ class StoreRegistry:
         retry_config: Optional[Dict[str, Any]] = None,
         **filesystem_kwargs: Any,
     ):
+        """Create the registry.
+
+        Args:
+            retry_config: obstore ``RetryConfig`` for every store created by
+                this registry. ``None`` (the default) uses the env-configurable
+                budget from ``_obstore_retry_config_from_env``; pass an explicit
+                dict to override it.
+            **filesystem_kwargs: Forwarded to ``obstore.store.from_url``.
+        """
         from obstore.store import from_url
 
         self._from_url = from_url
-        self._retry_config = retry_config or {}
+        self._retry_config = (
+            retry_config
+            if retry_config is not None
+            else _obstore_retry_config_from_env()
+        )
         self._filesystem_kwargs = filesystem_kwargs
         self._cache: Dict[str, Any] = {}
 
@@ -612,12 +751,20 @@ class StoreRegistry:
                     region = _discover_aws_bucket_region(bucket)
                     if region:
                         kwargs["region"] = region
+            env_client_options = _obstore_client_options_from_env()
+            if env_client_options:
+                # Caller-supplied options (e.g. from a user filesystem) win
+                # over the environment defaults.
+                kwargs["client_options"] = {
+                    **env_client_options,
+                    **(kwargs.get("client_options") or {}),
+                }
             if store_url.startswith("http://"):
                 # obstore's reqwest client rejects http:// by default. Auto-enable it
                 # to maintain parity with PyArrow (which accepts http:// via fsspec),
                 # but warn about unencrypted traffic.
                 client_options = {
-                    **kwargs.get("client_options", {}),
+                    **(kwargs.get("client_options") or {}),
                     "allow_http": True,
                 }
                 kwargs["client_options"] = client_options
@@ -789,10 +936,9 @@ async def _download_uris_with_obstore(
     and forwarded to obstore's store construction.
 
     When ``RAY_DATA_OBSTORE_RANGE_THRESHOLD`` is set to a positive value,
-    files larger than the threshold are downloaded as parallel range chunks
-    via ``get_range_async``.  The *file_sizes* list, when provided by the
-    upstream ``AsyncPartitionActor``, lets the function skip the HEAD request
-    for files whose size is already known.
+    files with a known size larger than the threshold are downloaded as
+    parallel range chunks via ``get_range_async``. Unknown sizes use a simple
+    GET, which avoids a full-batch HEAD pass for large URI lists.
 
     Args:
         uris: URIs to download.
@@ -800,8 +946,8 @@ async def _download_uris_with_obstore(
         filesystem: Optional PyArrow filesystem whose credentials are
             forwarded to the obstore store. Ignored when *fs_kwargs* is given.
         file_sizes: Optional per-URI file sizes from AsyncPartitionActor.
-            ``0`` or ``None`` entries trigger a HEAD request when range
-            splitting is enabled.
+            ``0`` or ``None`` entries mean "unknown size" and are downloaded
+            with a simple GET when range splitting is enabled.
         fs_kwargs: Pre-extracted obstore kwargs from the planner. Preferred
             over *filesystem* because it sidesteps re-extracting credentials
             from inside the event loop (aiobotocore sessions need ``asyncio.run``).
@@ -852,7 +998,7 @@ async def _download_uris_with_obstore(
             range_threshold = 0
     sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
 
-    registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
+    registry = StoreRegistry(**fs_kwargs)
 
     if range_threshold <= 0:
         logger.debug(
@@ -865,19 +1011,12 @@ async def _download_uris_with_obstore(
 
     # --- Range-split path ---
     assert sem is not None
-    # 0 = unknown size; these will be resolved via HEAD below.
-    sizes = list(file_sizes) if file_sizes is not None else [0] * len(uris)
-
-    # Resolve unknown file sizes via HEAD. The cost is one concurrent RTT
-    # regardless of batch size, which is negligible compared to the speedup
-    # from correctly routing large files to ranged download.
-    unknown_indices = [i for i, s in enumerate(sizes) if not s or s <= 0]
-    if unknown_indices:
-        resolved = await asyncio.gather(
-            *[_resolve_size(uris[i], registry, sem) for i in unknown_indices]
-        )
-        for i, sz in zip(unknown_indices, resolved):
-            sizes[i] = sz
+    # 0 = unknown size. Unknown entries intentionally stay unknown so large
+    # batches do not pay one HEAD request per URI before downloading.
+    sizes = [0] * len(uris)
+    if file_sizes is not None:
+        for i, size in enumerate(file_sizes[: len(uris)]):
+            sizes[i] = size if size is not None and size > 0 else 0
 
     tasks = []
     for uri, size in zip(uris, sizes):
@@ -893,28 +1032,6 @@ async def _download_uris_with_obstore(
 
 
 # Async helpers
-async def _resolve_size(
-    uri: str,
-    registry: StoreRegistry,
-    semaphore: asyncio.Semaphore,
-) -> int:
-    """Return the file size in bytes via a HEAD request, or 0 on failure.
-
-    Returning 0 on failure is intentional: callers treat 0 as "unknown size",
-    which routes the file to a simple GET instead of ranged download.
-    """
-    import obstore as obs
-
-    try:
-        store_url, path = _split_obstore_uri(uri)
-        store = registry.get(store_url)
-        async with semaphore:
-            meta = await obs.head_async(store, path)
-        return meta["size"]
-    except Exception:
-        return 0
-
-
 async def _fetch_whole(
     uri: str,
     registry: StoreRegistry,

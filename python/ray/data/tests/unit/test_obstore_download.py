@@ -1,13 +1,14 @@
 import asyncio
 import os
-import time
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, cast
 from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pyarrow.fs as pafs
 import pytest
+from freezegun import freeze_time
+from freezegun.api import FrozenDateTimeFactory
 
 from ray.data._internal.planner._obstore_download import (
     _BUCKET_REGION_CACHE,
@@ -17,9 +18,11 @@ from ray.data._internal.planner._obstore_download import (
     _download_uris_with_obstore,
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
+    _native_s3_obstore_kwargs,
+    _obstore_client_options_from_env,
     _obstore_filesystem_requires_threaded_download,
+    _obstore_retry_config_from_env,
     _plan_obstore_routing,
-    _resolve_size,
     _S3FSSessionCredentialProvider,
     _split_obstore_uri,
     download_bytes_async,
@@ -280,6 +283,10 @@ class TestStoreRegistryRegionInjection:
 # wrongly skips ranged downloads even when a whole-file GET would succeed.
 class TestResolveSizeRewrite:
     def test_resolve_size_rewrites_path_style_uri(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            _ObstoreFileSizeProvider,
+        )
+
         _BUCKET_REGION_CACHE.clear()
         captured = {}
 
@@ -294,20 +301,17 @@ class TestResolveSizeRewrite:
             captured["path"] = path
             return {"size": 4096}
 
+        provider = _ObstoreFileSizeProvider(registry, MagicMock())
         with patch(
             "ray.data._internal.planner._obstore_download._discover_aws_bucket_region",
             return_value="us-west-2",
         ), patch("obstore.head_async", side_effect=fake_head_async):
-            size = asyncio.run(
-                _resolve_size(
-                    "https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin",
-                    registry,
-                    asyncio.Semaphore(),
-                )
+            sizes = provider.get_file_sizes(
+                ["https://s3.us-east-1.amazonaws.com/cross-region-bucket/key.bin"]
             )
 
         # Rewritten to s3://<bucket> so region discovery applies; HEAD succeeds.
-        assert size == 4096
+        assert sizes == [4096]
         assert captured["store_url"] == "s3://cross-region-bucket"
         assert captured["path"] == "key.bin"
 
@@ -335,72 +339,80 @@ class TestDownloadHelpers:
         retrying = RetryingPyFileSystem.wrap(inner, retryable_errors=[])
         assert _extract_credentials_from_filesystem(retrying) is None
 
-    def test_extract_credentials_unwraps_retrying_fs_over_s3(self):
-        # Even when an S3FileSystem is wrapped, credentials must still be
-        # extracted from the inner filesystem after unwrapping.
-        mock_fs = MagicMock()
-        mock_fs.region = "eu-west-1"
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.anonymous = False
-
-        mock_retrying = MagicMock(spec=RetryingPyFileSystem)
-        mock_retrying.unwrap.return_value = mock_fs
-
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_retrying)
-
-        assert result is not None
-        assert result.get("region") == "eu-west-1"
-
-    # _extract_credentials_from_filesystem with S3
-    def test_extract_credentials_s3_region_real(self):
-        # PyArrow's S3FileSystem C extension only exposes `region` as a Python
-        # attribute; credential fields are not accessible. This test documents
-        # that boundary with a real filesystem object.
+    # Native S3FileSystem is translated to obstore kwargs from its pickle state
+    # so the fast obstore path is kept. Anonymous, explicit static keys, and the
+    # default credential chain are all statically representable.
+    @pytest.mark.parametrize(
+        "kwargs, expected",
+        [
+            (
+                {"anonymous": True, "region": "us-west-2"},
+                {"region": "us-west-2", "skip_signature": True},
+            ),
+            (
+                {"region": "us-west-2"},
+                {"region": "us-west-2"},
+            ),
+            (
+                {"access_key": "AKID", "secret_key": "SECRET", "region": "us-west-2"},
+                {
+                    "region": "us-west-2",
+                    "access_key_id": "AKID",
+                    "secret_access_key": "SECRET",
+                },
+            ),
+        ],
+    )
+    def test_native_s3_translates_to_obstore(self, kwargs, expected):
         try:
-            fs = pafs.S3FileSystem(region="us-west-2")
+            fs = pafs.S3FileSystem(**kwargs)
         except Exception:
             pytest.skip("Cannot instantiate S3FileSystem in this environment")
-        result = _extract_credentials_from_filesystem(fs)
-        assert result is not None
-        assert result.get("region") == "us-west-2"
-        assert "access_key_id" not in result
-        assert "skip_signature" not in result
+        assert _extract_credentials_from_filesystem(fs) == expected
+        assert _plan_obstore_routing(fs) == (True, expected)
 
-    def test_extract_credentials_s3_anonymous_mock(self):
-        # We patch pyarrow.fs.S3FileSystem so isinstance() recognises the mock.
-        mock_fs = MagicMock()
-        mock_fs.anonymous = True
-        mock_fs.access_key = None
-        mock_fs.secret_key = None
-        mock_fs.session_token = None
-        mock_fs.endpoint_override = None
-        mock_fs.region = None
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result.get("skip_signature") is True
-        assert "access_key_id" not in result
+    def test_native_s3_unwrapped_from_retrying_wrapper(self):
+        # RetryingPyFileSystem is unwrapped before the S3 check, so a wrapped
+        # native S3FileSystem is translated to obstore kwargs just the same.
+        try:
+            fs = pafs.S3FileSystem(anonymous=True, region="us-west-2")
+        except Exception:
+            pytest.skip("Cannot instantiate S3FileSystem in this environment")
+        retrying = RetryingPyFileSystem.wrap(fs, retryable_errors=[])
+        assert _extract_credentials_from_filesystem(retrying) == {
+            "region": "us-west-2",
+            "skip_signature": True,
+        }
 
-    def test_extract_credentials_s3_with_keys_mock(self):
-        mock_fs = MagicMock()
-        mock_fs.anonymous = False
-        mock_fs.access_key = "AKID"
-        mock_fs.secret_key = "SECRET"
-        mock_fs.session_token = "TOKEN"
-        mock_fs.endpoint_override = "https://custom-endpoint.com"
-        mock_fs.region = "us-west-2"
-        with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
-            result = _extract_credentials_from_filesystem(mock_fs)
-        assert result is not None
-        assert result["access_key_id"] == "AKID"
-        assert result["secret_access_key"] == "SECRET"
-        assert result["session_token"] == "TOKEN"
-        assert result["endpoint"] == "https://custom-endpoint.com"
-        assert result["region"] == "us-west-2"
+    def test_native_s3_assume_role_falls_back_to_threaded(self):
+        # Assume-role creds rotate; a static obstore snapshot would go stale, so
+        # the translation declines (None) and the caller uses the threaded path.
+        # Driven through the pickle state to avoid constructing a real
+        # assume-role filesystem (which may attempt STS).
+        class _Stub:
+            def __reduce__(self):
+                return (
+                    object,
+                    (
+                        {
+                            "role_arn": "arn:aws:iam::123456789012:role/test",
+                            "anonymous": False,
+                            "access_key": None,
+                            "region": "us-west-2",
+                        },
+                    ),
+                )
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
+
+    def test_native_s3_unreadable_pickle_state_falls_back_to_threaded(self):
+        # If the pickle state can't be introspected (e.g. a future PyArrow
+        # changes its serialization), fail safe to the threaded path.
+        class _Stub:
+            def __reduce__(self):
+                raise RuntimeError("unexpected serialization")
+
+        assert _native_s3_obstore_kwargs(_Stub()) is None
 
     # _extract_credentials_from_filesystem with GCS
     @pytest.mark.parametrize(
@@ -611,14 +623,13 @@ class TestS3FSSessionCredentialProvider:
 
     def test_refreshes_after_expiry(self):
         # Once expires_at passes, the next call must re-enter the session so
-        # rotated keys propagate to obstore. Use a tiny TTL to test quickly.
+        # rotated keys propagate to obstore.
         session = _sync_session("AKIA")
-        provider = _S3FSSessionCredentialProvider(
-            session, ttl=timedelta(microseconds=1)
-        )
-        asyncio.run(provider())
-        time.sleep(0.005)
-        asyncio.run(provider())
+        provider = _S3FSSessionCredentialProvider(session, ttl=timedelta(minutes=30))
+        with freeze_time() as frozen:
+            asyncio.run(provider())
+            cast(FrozenDateTimeFactory, frozen).tick(timedelta(minutes=31))
+            asyncio.run(provider())
         assert session.get_credentials.call_count == 2
 
     def test_uses_session_expiry_time(self):
@@ -793,6 +804,107 @@ class TestPlanObstoreRouting:
                     ["file:///tmp/x.bin"], "uri", filesystem=pafs.LocalFileSystem()
                 )
             )
+
+
+class TestAsyncPartitionActorExactPartitioning:
+    def test_exact_size_columns_mark_every_row(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        block = pa.table({"uri": ["s3://bucket/a", "s3://bucket/b", "s3://bucket/c"]})
+
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = actor._annotate_file_size_columns(block, {"uri": [10, 20, 30]})
+
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        assert out.column(size_col).to_pylist() == [10, 20, 30]
+
+    def test_exact_partition_fetches_metadata_for_all_uris_in_block(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+            _ExactDownloadPartitioner,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        actor._size_provider = MagicMock()
+        actor._size_provider.get_file_sizes.side_effect = lambda uris: [10] * len(uris)
+        actor._partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            10_000,
+            actor._size_provider,
+            annotate_sizes=actor._annotate_file_size_columns,
+        )
+
+        block = pa.table({"uri": [f"s3://bucket/{i}" for i in range(100)]})
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = next(actor(block))
+
+        headed_uris = actor._size_provider.get_file_sizes.call_args.args[0]
+        assert len(headed_uris) == 100
+
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        sizes = out.column(size_col).to_pylist()
+        assert sizes == [10] * 100
+
+    def test_target_none_keeps_block_and_attaches_exact_sizes(self):
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+            _ExactDownloadPartitioner,
+        )
+
+        actor = AsyncPartitionActor.__new__(AsyncPartitionActor)
+        actor._uri_column_names = ["uri"]
+        actor._size_provider = MagicMock()
+        actor._size_provider.get_file_sizes.return_value = [10, 20, 30]
+        actor._partitioner = _ExactDownloadPartitioner(
+            ["uri"],
+            None,
+            actor._size_provider,
+            annotate_sizes=actor._annotate_file_size_columns,
+            fetch_metadata_without_target=actor._should_annotate_file_size_columns,
+        )
+
+        block = pa.table({"uri": ["s3://bucket/a", "s3://bucket/b", "s3://bucket/c"]})
+        with (
+            patch(
+                "ray.data._internal.planner.download_partition_actor."
+                "RAY_DATA_OBSTORE_RANGE_THRESHOLD",
+                1,
+            ),
+            patch(
+                "ray.data._internal.planner.download_partition_actor._is_obstore_supported_url",
+                return_value=True,
+            ),
+        ):
+            out = list(actor(block))
+
+        assert [partition.num_rows for partition in out] == [3]
+        size_col = f"{_FILE_SIZE_COLUMN_PREFIX}uri"
+        assert out[0].column(size_col).to_pylist() == [10, 20, 30]
 
 
 # TestThreadedDownloadPreResolve
@@ -1151,8 +1263,9 @@ class TestObstoreRangeSplitDownload:
             )
         assert results == [content]
 
-    def test_range_split_with_unknown_size_falls_back_to_head(self, tmp_path):
-        # file_sizes=None → should HEAD to discover size, then range-split.
+    def test_range_split_with_unknown_size_uses_whole_file_get(self, tmp_path):
+        # file_sizes=None means unknown size. The downloader should avoid a
+        # full HEAD pass and use a simple GET.
         chunk_size = 512
         content = os.urandom(chunk_size * 4)
         (tmp_path / "big2.bin").write_bytes(content)
@@ -1168,9 +1281,21 @@ class TestObstoreRangeSplitDownload:
                 chunk_size,
             ),
         ):
-            results = asyncio.run(
-                _download_uris_with_obstore([uri], "uri", file_sizes=None)
-            )
+            import obstore as obs
+
+            async def _unexpected_head(*args, **kwargs):
+                raise AssertionError("HEAD should not be called for unknown sizes")
+
+            async def _unexpected_range(*args, **kwargs):
+                raise AssertionError("range GET requires a known size")
+
+            with (
+                patch.object(obs, "head_async", side_effect=_unexpected_head),
+                patch.object(obs, "get_range_async", side_effect=_unexpected_range),
+            ):
+                results = asyncio.run(
+                    _download_uris_with_obstore([uri], "uri", file_sizes=None)
+                )
         assert results == [content]
 
     def test_range_split_disabled_uses_whole_file_get(self, tmp_path):
@@ -1378,9 +1503,9 @@ class TestObstoreRangeSplitDownload:
         # Explicitly verify ranged path was NOT taken.
         assert len(range_calls) == 0
 
-    def test_partial_unknown_sizes_head_only_for_unknowns(self, tmp_path):
-        # In a batch where some sizes are known and others are 0,
-        # HEAD should only be issued for the unknowns.
+    def test_partial_unknown_sizes_do_not_trigger_head(self, tmp_path):
+        # Known large sizes can still use range GET, but unknown entries should
+        # not trigger another metadata pass over the batch.
         chunk_size = 256
         large_content = os.urandom(chunk_size * 5)
         small_content = b"small"
@@ -1409,20 +1534,18 @@ class TestObstoreRangeSplitDownload:
         ):
             import obstore as obs
 
-            original_head = obs.head_async
             head_calls = []
 
             async def _tracking_head(*args, **kwargs):
                 head_calls.append(args)
-                return await original_head(*args, **kwargs)
+                raise AssertionError("HEAD should not be called for unknown sizes")
 
             with patch.object(obs, "head_async", side_effect=_tracking_head):
                 results = asyncio.run(
                     _download_uris_with_obstore(uris, "uri", file_sizes=file_sizes)
                 )
 
-        # Only the unknown (index 2) should trigger a HEAD request.
-        assert len(head_calls) == 1
+        assert len(head_calls) == 0
         assert results == [large_content, small_content, unknown_content]
 
     def test_file_size_at_exact_threshold_uses_simple_get(self, tmp_path):
@@ -1544,6 +1667,276 @@ class TestObstoreRangeSplitDownload:
             "socket exhaustion. Disabling range splitting.",
             0,
         )
+
+
+def _start_status_sequence_server(statuses, content=b"ok"):
+    """Serve ``content`` over loopback HTTP, answering one status per request.
+
+    Statuses are consumed in order; once the sequence is exhausted the last
+    one repeats. Returns ``(server, port, served)`` where ``served`` records
+    every status actually sent. Call ``server.shutdown()`` when done.
+    """
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from threading import Thread
+
+    served = []
+
+    class _Handler(BaseHTTPRequestHandler):
+        def _respond(self, with_body: bool):
+            status = statuses[min(len(served), len(statuses) - 1)]
+            served.append(status)
+            body = content if status == 200 else b""
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if with_body:
+                self.wfile.write(body)
+
+        def do_GET(self):
+            self._respond(with_body=True)
+
+        def do_HEAD(self):
+            self._respond(with_body=False)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    Thread(target=server.serve_forever, daemon=True).start()
+    return server, server.server_address[1], served
+
+
+_RETRY_ENV_VARS = (
+    "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES",
+    "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+    "RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S",
+)
+
+
+class TestObstoreRetryConfig:
+    """obstore download clients get a real, env-tunable retry budget.
+
+    obstore's own defaults let 10 retries finish in ~2 s, so a transient S3
+    503 burst exhausted them and the object silently became ``None``.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear_retry_env(self, monkeypatch):
+        for var in _RETRY_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+    def test_defaults(self):
+        assert _obstore_retry_config_from_env() == {
+            "max_retries": 10,
+            "retry_timeout": timedelta(seconds=120),
+            "backoff": {
+                "init_backoff": timedelta(milliseconds=1000),
+                "max_backoff": timedelta(milliseconds=20_000),
+                "base": 2,
+            },
+        }
+
+    @pytest.mark.parametrize(
+        "var, value, path, expected",
+        [
+            ("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "3", ("max_retries",), 3),
+            (
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+                "7",
+                ("retry_timeout",),
+                timedelta(seconds=7),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                "5",
+                ("backoff", "init_backoff"),
+                timedelta(milliseconds=5),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                "50",
+                ("backoff", "max_backoff"),
+                timedelta(milliseconds=50),
+            ),
+        ],
+    )
+    def test_env_overrides(self, monkeypatch, var, value, path, expected):
+        monkeypatch.setenv(var, value)
+        config = _obstore_retry_config_from_env()
+        for key in path:
+            config = config[key]
+        assert config == expected
+
+    def test_invalid_env_falls_back(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "fast")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            config = _obstore_retry_config_from_env()
+        assert config["backoff"]["init_backoff"] == timedelta(milliseconds=1000)
+        mock_logger.warning.assert_called_once()
+
+    def test_request_timeout_env(self, monkeypatch):
+        assert _obstore_client_options_from_env() == {}
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        assert _obstore_client_options_from_env() == {"timeout": timedelta(seconds=90)}
+
+    @pytest.mark.parametrize(
+        "var, path, default",
+        [
+            ("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", ("max_retries",), 10),
+            (
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S",
+                ("retry_timeout",),
+                timedelta(seconds=120),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                ("backoff", "init_backoff"),
+                timedelta(milliseconds=1000),
+            ),
+            (
+                "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                ("backoff", "max_backoff"),
+                timedelta(milliseconds=20_000),
+            ),
+        ],
+    )
+    def test_negative_env_falls_back(self, monkeypatch, var, path, default):
+        # Rust durations are unsigned, so a negative value must never reach
+        # obstore; it is treated like a malformed value.
+        monkeypatch.setenv(var, "-1")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            config = _obstore_retry_config_from_env()
+        for key in path:
+            config = config[key]
+        assert config == default
+        mock_logger.warning.assert_called_once()
+
+    def test_negative_request_timeout_falls_back(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "-5")
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            assert _obstore_client_options_from_env() == {}
+        mock_logger.warning.assert_called_once()
+
+    def test_store_registry_tolerates_none_client_options(self, monkeypatch):
+        # A caller may pass ``client_options=None`` explicitly; both merge
+        # sites (env timeout and the http:// allow_http injection) must cope.
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(client_options=None)
+        reg._from_url = fake_from_url
+        with patch("ray.data._internal.planner._obstore_download.logger"):
+            reg.get("http://127.0.0.1:1")
+        assert captured["kwargs"]["client_options"] == {
+            "timeout": timedelta(seconds=90),
+            "allow_http": True,
+        }
+
+    def test_store_registry_defaults_to_env_config(self, monkeypatch):
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "250")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", "90")
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(client_options={"user_agent": "ray-test"})
+        reg._from_url = fake_from_url
+        reg.get("file://")
+
+        retry_config = captured["kwargs"]["retry_config"]
+        assert retry_config["max_retries"] == 10
+        assert retry_config["backoff"]["init_backoff"] == timedelta(milliseconds=250)
+        # The env request timeout is merged beneath the caller's own options.
+        assert captured["kwargs"]["client_options"] == {
+            "timeout": timedelta(seconds=90),
+            "user_agent": "ray-test",
+        }
+
+    def test_explicit_retry_config_wins(self):
+        captured = {}
+
+        def fake_from_url(url, **kwargs):
+            captured["kwargs"] = kwargs
+            return MagicMock()
+
+        reg = StoreRegistry(retry_config={"max_retries": 1})
+        reg._from_url = fake_from_url
+        reg.get("file://")
+        assert captured["kwargs"]["retry_config"] == {"max_retries": 1}
+        assert "client_options" not in captured["kwargs"]
+
+    def test_download_path_passes_retry_config(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "4")
+        (tmp_path / "f.bin").write_bytes(b"data")
+        uri = f"file://{tmp_path}/f.bin"
+
+        with patch(
+            "obstore.store.from_url",
+            wraps=__import__("obstore.store", fromlist=["from_url"]).from_url,
+        ) as spy:
+            results = asyncio.run(_download_uris_with_obstore([uri], "uri"))
+
+        assert results == [b"data"]
+        retry_config = spy.call_args.kwargs["retry_config"]
+        assert retry_config["max_retries"] == 4
+        assert retry_config["backoff"]["init_backoff"] == timedelta(milliseconds=1000)
+
+    def test_partition_actor_passes_retry_config(self, tmp_path, monkeypatch):
+        pytest.importorskip("obstore")
+        from ray.data._internal.planner.download_partition_actor import (
+            AsyncPartitionActor,
+        )
+
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", "9")
+        (tmp_path / "f.bin").write_bytes(b"data")
+
+        with patch(
+            "obstore.store.from_url",
+            wraps=__import__("obstore.store", fromlist=["from_url"]).from_url,
+        ) as spy:
+            actor = AsyncPartitionActor(["uri"], DataContext.get_current())
+            sizes = actor._size_provider.get_file_sizes([f"file://{tmp_path}/f.bin"])
+
+        assert sizes == [4]
+        retry_config = spy.call_args.kwargs["retry_config"]
+        assert retry_config["retry_timeout"] == timedelta(seconds=9)
+
+    def test_503_then_200_is_retried(self, monkeypatch):
+        pytest.importorskip("obstore")
+        # Tiny budget so the test stays fast; obstore sleeps in Rust, so the
+        # unit-test ban on ``time.sleep`` is not involved.
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", "3")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS", "1")
+        monkeypatch.setenv("RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS", "5")
+        content = b"eventually available"
+        server, port, served = _start_status_sequence_server([503, 503, 200], content)
+        try:
+            with patch("ray.data._internal.planner._obstore_download.logger"):
+                results = asyncio.run(
+                    _download_uris_with_obstore(
+                        [f"http://127.0.0.1:{port}/f.bin"], "uri"
+                    )
+                )
+        finally:
+            server.shutdown()
+
+        assert results == [content]
+        assert served == [503, 503, 200]
 
 
 if __name__ == "__main__":

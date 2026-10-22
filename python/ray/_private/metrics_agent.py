@@ -441,7 +441,6 @@ class OpenCensusProxyCollector:
             return
 
         elif isinstance(agg_data, DistributionAggregationData):
-
             assert agg_data.bounds == sorted(agg_data.bounds)
             # buckets are a list of buckets. Each bucket is another list with
             # a pair of bucket name and value, or a triple of bucket name,
@@ -770,9 +769,13 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         gcs_address: Gcs address for this cluster.
         temp_dir: Temporary directory used by
             Ray to store logs and metadata.
+        session_dir: Session-specific directory for this Ray session.
+            If provided, the discovery file is written here instead of
+            temp_dir, and a backward-compatible symlink is created at
+            the old temp_dir location.
     """
 
-    def __init__(self, gcs_address: str, temp_dir: str):
+    def __init__(self, gcs_address: str, temp_dir: str, session_dir: str = None):
         gcs_client_options = ray._raylet.GcsClientOptions.create(
             gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
         )
@@ -780,6 +783,15 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
         ray._private.state.state._initialize_global_state(gcs_client_options)
         self.temp_dir = temp_dir
+        self.session_dir = session_dir if session_dir else temp_dir
+        # Tracks whether the backward-compatible symlink has been successfully created.
+        # This prevents recreating the symlink on every periodic write, avoiding
+        # unnecessary disk I/O, race conditions, and log flooding.
+        self._symlink_created = False
+        # If symlink creation fails (e.g., due to lack of permissions on Windows
+        # without developer mode, or restricted filesystems), this fallback flag is set
+        # to True. When True, the writer copies the file directly instead of symlinking.
+        self._use_fallback_copy = False
         self.default_service_discovery_flush_period = 5
 
         # The last service discovery content that PrometheusServiceDiscoveryWriter has seen
@@ -825,15 +837,59 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         # NOTE: os.replace is atomic on both Linux and Windows, so we won't
         # have race condition reading this file.
         os.replace(temp_file_name, self.get_target_file_name())
+        # Create a backward-compatible symlink at the old temp_dir location
+        # so that existing Prometheus configurations that reference the old
+        # path continue to work. Verify if the symlink is still valid and
+        # pointing to the correct target, repairing it if it has been deleted or modified.
+        if self.session_dir != self.temp_dir:
+            legacy_path = os.path.join(
+                self.temp_dir,
+                ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE,
+            )
+            if self._symlink_created and not self._use_fallback_copy:
+                try:
+                    if not (
+                        os.path.islink(legacy_path)
+                        and os.readlink(legacy_path) == self.get_target_file_name()
+                    ):
+                        self._symlink_created = False
+                except OSError:
+                    self._symlink_created = False
+
+            if not self._symlink_created and not self._use_fallback_copy:
+                try:
+                    if os.path.islink(legacy_path) or os.path.exists(legacy_path):
+                        os.remove(legacy_path)
+                    os.symlink(self.get_target_file_name(), legacy_path)
+                    self._symlink_created = True
+                except OSError:
+                    logger.warning(
+                        f"Failed to create backward-compatible symlink at "
+                        f"{legacy_path}. Falling back to copying the service discovery file."
+                    )
+                    self._use_fallback_copy = True
+
+            if self._use_fallback_copy:
+                try:
+                    import shutil
+
+                    temp_legacy_path = legacy_path + ".tmp"
+                    shutil.copy(self.get_target_file_name(), temp_legacy_path)
+                    os.replace(temp_legacy_path, legacy_path)
+                except OSError as e:
+                    logger.warning(
+                        f"Failed to copy service discovery file to legacy path {legacy_path}: {e}"
+                    )
 
     def get_target_file_name(self):
         return os.path.join(
-            self.temp_dir, ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self.session_dir,
+            ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE,
         )
 
     def get_temp_file_name(self):
         return os.path.join(
-            self.temp_dir,
+            self.session_dir,
             "{}_{}".format(
                 "tmp", ray._private.ray_constants.PROMETHEUS_SERVICE_DISCOVERY_FILE
             ),
@@ -846,8 +902,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
                 self.write()
             except Exception as e:
                 logger.warning(
-                    "Writing a service discovery file, {},"
-                    "failed.".format(self.get_target_file_name())
+                    "Writing a service discovery file, {},failed.".format(
+                        self.get_target_file_name()
+                    )
                 )
                 logger.warning(traceback.format_exc())
                 logger.warning(f"Error message: {e}")

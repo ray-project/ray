@@ -135,10 +135,11 @@ def plan_project_op(
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
 
-    # Extract op.exprs before defining the closure to prevent cloudpickle from
+    # Extract expressions before defining the closure to prevent cloudpickle from
     # serializing the entire op object (which may contain references to non-serializable
     # datasources with weak references, e.g., PyIceberg tables)
     projection_exprs = op.exprs
+    common_sub_exprs = op.get_common_sub_exprs()
 
     compute = get_compute(op.compute)
 
@@ -147,7 +148,7 @@ def plan_project_op(
         _create_callable_class_udf_init_fn,
     )
 
-    init_fn = _create_callable_class_udf_init_fn(projection_exprs)
+    init_fn = _create_callable_class_udf_init_fn(op.get_all_exprs())
 
     def _project_block(block: Block) -> Block:
         try:
@@ -155,7 +156,11 @@ def plan_project_op(
                 eval_projection,
             )
 
-            return eval_projection(projection_exprs, block)
+            return eval_projection(
+                projection_exprs,
+                block,
+                common_sub_exprs=common_sub_exprs,
+            )
         except Exception as e:
             _try_wrap_udf_exception(e)
 
@@ -241,7 +246,6 @@ def plan_filter_op(
         init_fn = None
         transform_fn = BlockMapTransformFn(
             filter_block_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
     else:
@@ -255,9 +259,28 @@ def plan_filter_op(
             compute=compute,
         )
 
-        transform_fn = RowMapTransformFn(
-            _generate_transform_fn_for_filter(filter_fn),
-            is_udf=True,
+        def filter_udf_block_fn(
+            blocks: Iterable[Block], ctx: TaskContext
+        ) -> Iterable[Block]:
+            for block in blocks:
+                block_accessor = BlockAccessor.for_block(block)
+                rows = block_accessor.iter_rows(public_row_format=True)
+                matching_indices = [i for i, row in enumerate(rows) if filter_fn(row)]
+                # Select the matching rows directly from the original block so
+                # column types (e.g. Arrow dictionary encoding) are preserved,
+                # rather than rebuilding a block from row values, which loses them.
+                if len(matching_indices) == block_accessor.num_rows():
+                    yield block
+                elif matching_indices:
+                    yield block_accessor.take(matching_indices)
+                else:
+                    # `take([])` breaks because indices with no elements are
+                    # inferred as an untyped Arrow array; slicing keeps the
+                    # schema without hitting that path.
+                    yield block_accessor.slice(0, 0)
+
+        transform_fn = BlockMapTransformFn(
+            filter_udf_block_fn,
             output_block_size_option=output_block_size_option,
         )
 
@@ -308,7 +331,6 @@ def plan_udf_map_op(
             batch_size=op.batch_size,
             batch_format=op.batch_format,
             zero_copy_batch=op.zero_copy_batch,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -322,7 +344,6 @@ def plan_udf_map_op(
 
         transform_fn = RowMapTransformFn(
             udf_fn,
-            is_udf=True,
             output_block_size_option=output_block_size_option,
         )
 
@@ -738,17 +759,6 @@ def _generate_transform_fn_for_flat_map(
                 for out_row in fn(row):
                     _validate_row_output(out_row)
                     yield out_row
-
-    return transform_fn
-
-
-def _generate_transform_fn_for_filter(
-    fn: UserDefinedFunction,
-) -> MapTransformCallable[Row, Row]:
-    def transform_fn(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
-        for row in rows:
-            if fn(row):
-                yield row
 
     return transform_fn
 

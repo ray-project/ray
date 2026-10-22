@@ -21,10 +21,13 @@ logger = logging.getLogger(__name__)
 _MAX_PROMPT_LENGTH_IN_ERROR = 200
 
 # Request-level errors safe to catch. Unknown errors are treated as fatal.
+# TimeoutError is included so a single stuck request (see request_timeout_s)
+# is dropped as an error row rather than blocking the batch forever.
 _SERVE_RECOVERABLE_ERRORS = (
     ValueError,
     TypeError,
     ValidationError,
+    TimeoutError,
 )
 
 
@@ -38,6 +41,7 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
         app_name: str,
         dtype_mapping: Dict[str, Type[Any]],
         should_continue_on_error: bool = False,
+        request_timeout_s: Optional[float] = None,
     ):
         """
         Initialize the ServeDeploymentStageUDF.
@@ -51,10 +55,16 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
             should_continue_on_error: If True, continue processing when inference
                 fails for a row instead of raising. Failed rows will have
                 '__inference_error__' set to the error message.
+            request_timeout_s: Optional per-request timeout in seconds. When set,
+                a request that does not return within this many seconds raises
+                TimeoutError instead of awaiting indefinitely. TimeoutError is
+                recoverable, so with should_continue_on_error=True the row is
+                emitted as an error row rather than crashing the batch.
         """
         super().__init__(data_column, expected_input_keys)
         self._dtype_mapping = dtype_mapping
         self.should_continue_on_error = should_continue_on_error
+        self.request_timeout_s = request_timeout_s
 
         # Using stream=True as LLM serve deployments return async generators.
         # TODO (Kourosh): Generalize this to support non-streaming deployments.
@@ -119,7 +129,19 @@ class ServeDeploymentStageUDF(StatefulStageUDF):
 
         t = time.perf_counter()
         # Directly using anext() requires python3.10 and above
-        output_data = await getattr(self._dh, method).remote(request_obj).__anext__()
+        response_gen = getattr(self._dh, method).remote(request_obj)
+        if self.request_timeout_s is not None:
+            try:
+                output_data = await asyncio.wait_for(
+                    response_gen.__anext__(), timeout=self.request_timeout_s
+                )
+            except asyncio.TimeoutError as e:
+                raise TimeoutError(
+                    f"Request timed out after {self.request_timeout_s}s waiting "
+                    f"for deployment '{method}' to return a response."
+                ) from e
+        else:
+            output_data = await response_gen.__anext__()
         time_taken = time.perf_counter() - t
 
         # Convert the output data to a dict if it is a Pydantic model.

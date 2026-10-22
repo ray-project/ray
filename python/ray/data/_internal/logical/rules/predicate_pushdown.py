@@ -56,7 +56,7 @@ class PredicatePushdown(Rule):
 
     Eligibility is determined by the LogicalOperatorSupportsPredicatePassThrough trait, which operators
     implement to declare their pushdown behavior:
-    - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle, Limit)
+    - PASSTHROUGH: Filter passes through unchanged (Sort, Repartition, Shuffle)
     - PASSTHROUGH_WITH_SUBSTITUTION: Filter passes through with column rebinding (Project)
     - PUSH_INTO_BRANCHES: Filter is pushed into each branch (Union)
     - CONDITIONAL: Filter may be pushed based on analysis (Join - analyzes which side
@@ -82,6 +82,15 @@ class PredicatePushdown(Rule):
 
         input_op = op.input_dependencies[0]
         if not cls._is_valid_filter_operator(input_op):
+            return op
+
+        # Do not fuse across a non-idempotent predicate (random/uuid/
+        # monotonically_increasing_id): combining moves where a predicate is
+        # evaluated (and thus which rows it sees), changing results.
+        if (
+            not op.predicate_expr.is_idempotent()
+            or not input_op.predicate_expr.is_idempotent()
+        ):
             return op
 
         # Combine predicates
@@ -114,6 +123,13 @@ class PredicatePushdown(Rule):
             _ColumnReferenceCollector,
         )
         from ray.data.expressions import AliasExpr, is_rename_expr
+
+        # Do not push a filter below a projection that produces a non-idempotent
+        # column (random/uuid/monotonically_increasing_id): reordering changes the row
+        # set / position the expression is evaluated over (e.g.
+        # monotonically_increasing_id reassigned over the filtered subset).
+        if not projection_op.is_idempotent():
+            return False
 
         collector = _ColumnReferenceCollector()
         collector.visit(filter_op.predicate_expr)
@@ -276,6 +292,14 @@ class PredicatePushdown(Rule):
                 return result_op
             return Filter(predicate_expr=split.residual, input_dependencies=[result_op])
 
+        # Datasource pushdown (Case 1) only lowers PyArrow-convertible (hence
+        # idempotent) conjuncts. Beyond that, do not relocate a filter whose predicate
+        # is non-idempotent (random/uuid/monotonically_increasing_id): pushing it
+        # through a pass-through operator, into Union branches, or to a Join side
+        # changes the row set / position the expression is evaluated over.
+        if not predicate_expr.is_idempotent():
+            return filter_op
+
         # Case 2: Check if operator allows predicates to pass through
         if isinstance(input_op, LogicalOperatorSupportsPredicatePassThrough):
             behavior = input_op.predicate_passthrough_behavior()
@@ -416,7 +440,7 @@ class PredicatePushdown(Rule):
                 aggregator_ray_remote_args=op.aggregator_ray_remote_args,
             )
         if isinstance(op, Union) and is_dataclass(op):
-            return Union(*new_inputs)
+            return Union(new_inputs)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op

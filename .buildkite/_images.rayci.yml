@@ -13,6 +13,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -26,6 +27,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
@@ -44,6 +46,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -60,8 +63,8 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -85,8 +88,8 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
-        - "11.7.1-cudnn8"
         - "11.8.0-cudnn8"
         - "12.1.1-cudnn8"
         - "12.3.2-cudnn9"
@@ -118,6 +121,7 @@ steps:
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: ""
 
   - name: ray-llmbaseextra
     label: "wanda: ray-llm-py{{array.python}}-cu{{array.cuda}}-base-extra"
@@ -207,6 +211,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
@@ -224,8 +229,8 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
       cuda:
-        - "11.7.1"
         - "11.8.0"
         - "12.1.1"
         - "12.3.2"

@@ -46,6 +46,7 @@ DATASET_METRICS = {
     "ray_data_current_bytes": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
     "ray_data_cpu_usage_cores": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
     "ray_data_gpu_usage_cores": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
+    "ray_data_memory_usage_bytes": (PrometheusQuery.VALUE, PrometheusQuery.MAX),
 }
 
 

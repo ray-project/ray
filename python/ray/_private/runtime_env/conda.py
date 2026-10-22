@@ -13,6 +13,7 @@ import yaml
 from filelock import FileLock
 
 import ray
+from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import (
     get_or_create_event_loop,
     try_to_create_directory,
@@ -25,8 +26,9 @@ from ray._private.runtime_env.conda_utils import (
     get_conda_info_json,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.protocol import Protocol
+from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
@@ -352,14 +354,17 @@ class CondaPlugin(RuntimeEnvPlugin):
                 return 0
 
             logger.debug(
-                "Setting up conda for runtime_env: " f"{runtime_env.serialize()}"
+                "Setting up conda for runtime_env: "
+                f"{redact_runtime_env(runtime_env)}"
             )
             protocol, hash = parse_uri(uri)
             conda_env_name = self._get_path_from_hash(hash)
 
             conda_dict = _get_conda_dict_with_ray_inserted(runtime_env, logger=logger)
 
-            logger.info(f"Setting up conda environment with {runtime_env}")
+            logger.info(
+                f"Setting up conda environment with {redact_runtime_env(runtime_env)}"
+            )
             with FileLock(self._installs_and_deletions_file_lock):
                 try:
                     conda_yaml_file = os.path.join(

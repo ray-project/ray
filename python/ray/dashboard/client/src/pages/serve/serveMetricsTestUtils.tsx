@@ -26,6 +26,7 @@ export const defaultServeMetricsGlobalContext: GlobalContextType = {
   themeMode: "light",
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   toggleTheme: () => {},
+  showAcceleratorColumns: true,
 };
 
 /**

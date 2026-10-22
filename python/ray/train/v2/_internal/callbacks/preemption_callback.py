@@ -44,16 +44,24 @@ class PreemptionCallback(WorkerGroupCallback):
         # this also prevents leaking an orphaned watcher across a reschedule.
         self._stop_watcher()
 
+        # These handles are captured once per worker-group start. With the
+        # standard backend, any worker replacement goes through a full worker
+        # group restart (this hook runs again with fresh handles), so they
+        # never go stale.
+        # TODO(lehui): refresh worker handles on in-place replica replacement
+        # when adding preemption support for replica groups (TorchFT).
         node_to_ranks: Dict[str, List[int]] = {}
+        worker_actors_by_rank: Dict[int, ActorHandle] = {}
         for w in worker_group.get_workers():
-            node_to_ranks.setdefault(w.metadata.node_id, []).append(
-                w.distributed_context.world_rank
-            )
+            rank = w.distributed_context.world_rank
+            node_to_ranks.setdefault(w.metadata.node_id, []).append(rank)
+            worker_actors_by_rank[rank] = w.actor
 
         watcher_cls = ray.remote(num_cpus=0, max_restarts=-1)(PreemptionWatcher)
         self._watcher = watcher_cls.remote(
             node_to_ranks=node_to_ranks,
             poll_interval_s=self._poll_interval_s,
+            worker_actors_by_rank=worker_actors_by_rank,
         )
 
         logger.debug(

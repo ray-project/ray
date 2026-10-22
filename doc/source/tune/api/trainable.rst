@@ -1,3 +1,6 @@
+.. meta::
+   :description: Reference for Tune's function and class Trainable APIs, tune.report, actor reuse across trials, and per-trial resource allocation.
+
 .. _trainable-docs:
 
 .. TODO: these "basic" sections before the actual API docs start don't really belong here. Then again, the function
@@ -261,7 +264,6 @@ Trainable Methods to Implement
 
 .. autosummary::
     :nosignatures:
-    :toctree: doc/
 
     ~tune.Trainable.setup
     ~tune.Trainable.save_checkpoint

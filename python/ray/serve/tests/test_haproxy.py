@@ -10,6 +10,8 @@ from tempfile import NamedTemporaryFile
 import httpx
 import pytest
 import requests
+from fastapi import FastAPI
+from starlette.requests import Request
 
 import ray
 from ray import serve
@@ -20,18 +22,28 @@ from ray._common.test_utils import (
 )
 from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
+from ray.serve._private.build_app import CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
-from ray.serve._private.test_utils import get_application_url
-from ray.serve.config import HTTPOptions
+from ray.serve._private.test_utils import (
+    alive_actor_counts,
+    expected_proxy_actors,
+    get_application_url,
+)
+from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.experimental.round_robin_router import RoundRobinRouter
+from ray.serve.request_router import RequestRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -51,6 +63,35 @@ pytestmark = pytest.mark.skipif(
     not RAY_SERVE_ENABLE_HA_PROXY,
     reason="RAY_SERVE_ENABLE_HA_PROXY not set.",
 )
+
+
+class _DelayedMultiplexedMetadataRouter(RoundRobinRouter):
+    def _update_multiplexed_model_ids_with_replicas(self, replicas):
+        # Hold the location index empty to deterministically exercise requests
+        # arriving before multiplexed model metadata propagates.
+        pass
+
+
+class _AlternatingRouter(RequestRouter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_routed_replica_id = None
+
+    async def choose_replicas(self, candidate_replicas, pending_request=None):
+        # Rank the replica from the last on_request_routed call last. If the
+        # callback never runs, every request goes to the same replica.
+        return [
+            sorted(
+                candidate_replicas,
+                key=lambda r: (
+                    r.replica_id == self._last_routed_replica_id,
+                    r.replica_id.unique_id,
+                ),
+            )
+        ]
+
+    def on_request_routed(self, pending_request, replica_id, result):
+        self._last_routed_replica_id = replica_id
 
 
 @pytest.fixture(autouse=True)
@@ -120,8 +161,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -162,8 +202,7 @@ async def test_single_app_shutdown_actors_async(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HAProxyManager",
-        "ProxyActor",
+        *expected_proxy_actors(),
         "ServeReplica:app:f",
     }
 
@@ -264,7 +303,7 @@ class TestTimeoutKeepAliveConfig:
         ],
         indirect=True,
     )
-    def test_set_keep_alive_timeout_in_env(self, ray_instance, ray_shutdown):
+    def test_set_keep_alive_timeout_in_env(self, ray_instance):
         """Test when keep_alive_timeout_s is in env.
 
         When the keep_alive_timeout_s is set in env, the uvicorn keep alive
@@ -283,9 +322,7 @@ class TestTimeoutKeepAliveConfig:
         ],
         indirect=True,
     )
-    def test_set_timeout_keep_alive_in_both_config_and_env(
-        self, ray_instance, ray_shutdown
-    ):
+    def test_set_timeout_keep_alive_in_both_config_and_env(self, ray_instance):
         """Test when keep_alive_timeout_s is in both http configs and env.
 
         When the keep_alive_timeout_s is set in env, the uvicorn keep alive
@@ -307,12 +344,29 @@ async def test_drain_and_undrain_haproxy_manager(
     HEALTHY, DRAINING and DRAINED
     """
     monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "10")
-    monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
+    # No SO_REUSEPORT. Each node's HAProxy binds its own port. The head keeps the
+    # default 8000. Each worker gets a distinct HTTP port via
+    # RAY_SERVE_WORKER_PROXY_HTTP_PORT and distinct stats/metrics ports so the
+    # three co-located HAProxies don't collide.
     cluster = Cluster()
     head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8001",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8405",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9102",
+        },
+    )
+    cluster.add_node(
+        num_cpus=1,
+        env_vars={
+            "RAY_SERVE_WORKER_PROXY_HTTP_PORT": "8002",
+            "RAY_SERVE_HAPROXY_STATS_PORT": "8406",
+            "RAY_SERVE_HAPROXY_METRICS_PORT": "9103",
+        },
+    )
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -327,8 +381,13 @@ async def test_drain_and_undrain_haproxy_manager(
 
     serve.run(HelloModel.options(num_replicas=2).bind())
 
-    # 3 haproxies, 1 controller, 2 replicas, 1 signal actor, 1 fallback proxy
-    wait_for_condition(lambda: len(list_actors()) == 8)
+    expected_actors = {
+        "ServeController": 1,
+        **expected_proxy_actors(num_proxy_nodes=3),
+        "ServeReplica:default:HelloModel": 2,
+        "SignalActor": 1,
+    }
+    wait_for_condition(lambda: alive_actor_counts() == expected_actors)
     assert len(ray.nodes()) == 3
 
     client = _get_global_client()
@@ -339,14 +398,14 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
-    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
-    # very likely each shard has served at least one request and converged.
+    # Each HAProxy binds its own port (head 8000, workers 8001/8002); wait until
+    # all three answer health checks.
     def all_haproxies_ready():
         try:
             return all(
-                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                httpx.get(f"http://localhost:{port}/-/healthz", timeout=2).status_code
                 == 200
-                for _ in range(20)
+                for port in (8000, 8001, 8002)
             )
         except Exception:
             return False
@@ -977,6 +1036,11 @@ def test_haproxy_empty_backends_for_scaled_down_apps(ray_shutdown):
     r = httpx.get("http://localhost:8000/test")
     assert r.status_code == 404
 
+    # Healthz stays 200 with no app backends instead of hitting the 404 default backend.
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200
+    )
+
     serve.shutdown()
 
 
@@ -1135,6 +1199,280 @@ def test_default_host_is_all_interfaces(ray_shutdown):
             f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
             f"expected {expected!r}"
         )
+
+
+def test_multiplexed_routing_retry(shutdown_ray):
+    """Retry a model selection while HAProxy routes through an ingress router."""
+    ray.init(num_cpus=4)
+    serve.start(http_options={"host": "0.0.0.0"})
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=_DelayedMultiplexedMetadataRouter,
+        ),
+    )
+    class ModelServer:
+        async def __call__(self, request: Request):
+            if request.url.path == "/ready":
+                return request.headers.get("x-routed", "")
+            return request.headers["x-model-id"]
+
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class IngressRouter:
+        def __init__(self, server):
+            self.server = server
+            self.model_id = ""
+
+        def enable_multiplexing(self):
+            self.model_id = "model"
+
+        @app.post("/internal/route")
+        async def route(self):
+            handle = self.server.options(multiplexed_model_id=self.model_id)
+            async with handle.choose_replica(_reserve=False) as selection:
+                replica = selection._replica
+                host, port = replica.backend_http_endpoint
+                return {
+                    "host": host,
+                    "port": port,
+                    "replica_id": replica.replica_id.to_full_id_str(),
+                    "request_headers": {
+                        "x-model-id": self.model_id,
+                        "x-routed": "ready",
+                    },
+                }
+
+    server = ModelServer.bind()
+    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
+    # Blocking serve.run() guarantees that the ingress request router is installed.
+    response = httpx.post("http://localhost:8000/ready")
+    assert response.status_code == 200, response.text
+    assert response.text == "ready"
+    serve.get_deployment_handle(
+        "IngressRouter", app_name="default"
+    ).enable_multiplexing.remote().result()
+
+    with httpx.Client(timeout=30) as client:
+        # The first request records a cold-model fallback. With the location
+        # index still empty, the next request initially gets no candidates.
+        # Selection must retry internally; neither HTTP request may fail.
+        for _ in range(2):
+            response = client.post("http://localhost:8000/")
+            assert response.status_code == 200, response.text
+            assert response.text == "model"
+
+
+def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
+    """Pick-only selections must reach on_request_routed, or a stateful policy
+    sends every request to the same replica."""
+    ray.init(num_cpus=4)
+    serve.start(http_options={"host": "0.0.0.0"})
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=_AlternatingRouter,
+        ),
+    )
+    class Server:
+        async def __call__(self, request: Request):
+            if request.url.path == "/ready":
+                return request.headers.get("x-routed", "")
+            return serve.get_replica_context().replica_id.unique_id
+
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class IngressRouter:
+        def __init__(self, server):
+            self.server = server
+
+        @app.post("/internal/route")
+        async def route(self):
+            async with self.server.choose_replica(_reserve=False) as selection:
+                replica = selection._replica
+                host, port = replica.backend_http_endpoint
+                return {
+                    "host": host,
+                    "port": port,
+                    "replica_id": replica.replica_id.to_full_id_str(),
+                    "request_headers": {"x-routed": "ready"},
+                }
+
+    server = Server.bind()
+    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
+    wait_for_condition(
+        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
+        timeout=30,
+    )
+
+    with httpx.Client(timeout=30) as client:
+        replica_ids = []
+        for _ in range(4):
+            response = client.post("http://localhost:8000/")
+            assert response.status_code == 200, response.text
+            replica_ids.append(response.text)
+    assert len(set(replica_ids)) == 2, replica_ids
+
+
+def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+
+    @serve.deployment(
+        request_router_config=RequestRouterConfig(request_router_class=RoundRobinRouter)
+    )
+    class Ingress:
+        async def __call__(self):
+            return "hi"
+
+    with pytest.raises(
+        RayServeException, match=CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR
+    ):
+        serve.run(Ingress.bind())
+
+
+def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
+    """A config override cannot silently bypass the ingress request router."""
+    ray.init(num_cpus=8)
+    serve.start(http_options=dict(port=8003))
+    client = _get_global_client()
+
+    module = "ray.serve.tests.test_config_files.use_custom_request_router"
+    config = ServeDeploySchema.model_validate(
+        {
+            "applications": [
+                {
+                    "name": "app",
+                    "import_path": f"{module}.app",
+                    "deployments": [
+                        {
+                            "name": "UniformRequestRouterApp",
+                            "request_router_config": {
+                                "request_router_class": f"{module}.UniformRequestRouter"
+                            },
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+    client.deploy_apps(config)
+
+    def deploy_failed():
+        status = serve.status().applications["app"]
+        assert status.status == "DEPLOY_FAILED"
+        assert CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR in status.message
+        return True
+
+    wait_for_condition(deploy_failed)
+
+
+def test_router_application_dispatches_across_applications(ray_shutdown):
+    """A router app picks sibling-app replicas; HAProxy sends requests there."""
+    from fastapi.responses import JSONResponse
+
+    ray.init(num_cpus=8)
+    serve.start()
+
+    def make_backend_app():
+        api = FastAPI()
+
+        @serve.deployment(num_replicas=2)
+        @serve.ingress(api)
+        class Backend:
+            @api.api_route("/{path:path}", methods=["GET", "POST"])
+            async def handle(self, path: str, request: Request):
+                return {
+                    "replica_id": serve.get_replica_context().replica_id.to_full_id_str(),
+                    "request_id": request.headers.get("x-request-id"),
+                    "path": request.url.path,
+                }
+
+        return Backend.bind()
+
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve._router_application
+    @serve.ingress(router_api)
+    class Router:
+        def __init__(self):
+            self._decisions = {}
+
+        async def _decide(self, app_name: str, request: Request):
+            handle = serve.get_deployment_handle("Backend", app_name=app_name)
+            async with handle.choose_replica(_reserve=False) as selection:
+                replica_id = selection._replica.replica_id.to_full_id_str()
+            self._decisions[request.headers["x-request-id"]] = replica_id
+            return {"application": app_name, "replica_id": replica_id}
+
+        @router_api.post("/internal/route")
+        async def route(self, request: Request):
+            method = request.headers[SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
+            request_target = request.headers[SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+            path = request_target.partition("?")[0]
+            if method == "GET" and path == "/v1/models":
+                return await self._decide("control", request)
+
+            model = (await request.json()).get("model")
+            if model not in ("model-a", "model-b"):
+                return JSONResponse({"error": "unknown model"}, status_code=404)
+            return await self._decide(model, request)
+
+        def get_decisions(self):
+            return self._decisions
+
+    serve.run(make_backend_app(), name="model-a", route_prefix="/v1/model-a")
+    serve.run(make_backend_app(), name="model-b", route_prefix="/v1/model-b")
+    serve.run(make_backend_app(), name="control", route_prefix="/v1/control")
+    router_handle = serve.run(Router.bind(), name="router", route_prefix="/llm")
+
+    def chat(model, request_id):
+        return httpx.post(
+            "http://localhost:8000/llm/v1/chat/completions",
+            json={"model": model},
+            headers={"x-request-id": request_id},
+            timeout=10,
+        )
+
+    wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
+
+    served = {}
+    for i in range(8):
+        model = ["model-a", "model-b"][i % 2]
+        resp = chat(model, f"req-{i}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["request_id"] == f"req-{i}"
+        assert body["path"] == f"/v1/{model}/v1/chat/completions"
+        assert f"::{model}#Backend#" in body["replica_id"]
+        served[f"req-{i}"] = body["replica_id"]
+    resp = httpx.get(
+        "http://localhost:8000/llm/v1/models", headers={"x-request-id": "models"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["path"] == "/v1/control/v1/models"
+    assert "::control#Backend#" in resp.json()["replica_id"]
+
+    # Each response came from the replica the router chose.
+    decisions = router_handle.get_decisions.remote().result()
+    assert {k: decisions[k] for k in served} == served
+
+    resp = chat("model-c", "req-unknown")
+    assert resp.status_code == 404
+    assert resp.json() == {"error": "unknown model"}
+
+    # Direct application routes are unchanged.
+    resp = httpx.post("http://localhost:8000/v1/model-a/v1/chat/completions")
+    assert "::model-a#Backend#" in resp.json()["replica_id"]
+
+    serve.shutdown()
 
 
 if __name__ == "__main__":

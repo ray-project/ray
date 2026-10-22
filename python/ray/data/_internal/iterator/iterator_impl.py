@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, Optional, Tuple
 
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
@@ -26,7 +26,6 @@ class DataIteratorImpl(DataIterator):
     ) -> Tuple[
         Iterator[RefBundle],
         Optional[DatasetStats],
-        bool,
         Optional["StreamingExecutor"],
     ]:
         (
@@ -34,7 +33,7 @@ class DataIteratorImpl(DataIterator):
             stats,
             executor,
         ) = self._base_dataset._execute_to_iterator()
-        return ref_bundles_iterator, stats, False, executor
+        return ref_bundles_iterator, stats, executor
 
     def stats(self) -> str:
         return self._base_dataset.stats()
@@ -45,5 +44,12 @@ class DataIteratorImpl(DataIterator):
     def get_context(self) -> DataContext:
         return self._base_dataset.context
 
-    def _get_dataset_tag(self):
-        return self._base_dataset.get_dataset_id()
+    def _get_dataset_tag(self) -> Dict[str, Optional[str]]:
+        """Metrics tags for the dataset.
+
+        Plain iterators have no split dimension, so ``split_index`` is ``None``.
+        """
+        return {
+            "dataset": self._base_dataset.get_dataset_id(),
+            "split_index": None,
+        }

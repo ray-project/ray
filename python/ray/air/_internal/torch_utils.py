@@ -45,8 +45,18 @@ def load_torch_model(
         )
 
 
-def contains_tensor(obj):
+def contains_tensor(obj: Any) -> bool:
+    """Check if the obj contains a torch tensor.
+
+    Args:
+        obj: The object to check
+
+    Returns:
+        If the object contains a torch tensor
+    """
     if isinstance(obj, torch.Tensor):
+        return True
+    elif isinstance(obj, torch.nn.Module):
         return True
     elif isinstance(obj, dict):
         for k, v in obj.items():

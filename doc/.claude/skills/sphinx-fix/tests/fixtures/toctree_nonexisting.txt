@@ -1,0 +1,8 @@
+Build: 4099001   State: Finished   Success: False   Duration: 412s
+Failing command: python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en . $READTHEDOCS_OUTPUT/html
+Exit code: 1
+
+Sphinx warnings (1):
+  /home/docs/checkouts/readthedocs.org/user_builds/anyscale-ray/checkouts/64200/doc/source/index.md:12: WARNING: toctree contains reference to nonexisting document 'ray-contribute/old-name' [toc.not_readable]
+
+Summary line: build finished with problems, 1 warning.
