@@ -29,6 +29,7 @@ from ray.data._internal.planner._obstore_download import (
     _log_fallback_warning,
     _log_skipped_uris,
     _plan_obstore_routing,
+    _raise_if_all_denied,
     _retry_backoff_s,
     _skip_reason,
     download_bytes_async,
@@ -248,6 +249,7 @@ def _resolve_threaded_outcomes(
     """
     results: List[Any] = list(outcomes)
     skipped: "Counter[str]" = Counter()
+    denied: List[_DownloadFailure] = []
     max_attempts, backoff_ms = _download_attempt_settings()
     attempt = 1
     while True:
@@ -257,6 +259,8 @@ def _resolve_threaded_outcomes(
                 continue
             if outcome.permanent:
                 skipped[outcome.reason] += 1
+                if outcome.reason == "access denied":
+                    denied.append(outcome)
                 logger.debug(
                     "Skipping uri %r for column %r: %s",
                     outcome.uri,
@@ -300,6 +304,7 @@ def _resolve_threaded_outcomes(
         for index, outcome in zip(transient, retried):
             results[index] = outcome
         attempt += 1
+    _raise_if_all_denied(uri_column_name, uris, denied)
     _log_skipped_uris(uri_column_name, skipped, len(uris))
     return results
 
@@ -401,6 +406,7 @@ def download_bytes_threaded(
                         uri, "invalid uri", TypeError("not a uri"), permanent=True
                     )
                     continue
+                outcome: Any
                 try:
                     # Normalize the path only; FS is supplied so no network I/O.
                     resolved_paths, _ = _resolve_paths_and_filesystem(
@@ -408,21 +414,25 @@ def download_bytes_threaded(
                     )
                     resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
-                        yield None
-                        continue
-                    with wrapped_fs.open_input_stream(resolved_path) as f:
-                        yield f.read()
+                        outcome = None
+                    else:
+                        with wrapped_fs.open_input_stream(resolved_path) as f:
+                            outcome = f.read()
                 except Exception as e:
                     # A URI that can never be read (missing file, invalid uri
                     # like `foo://bar`, access denied) yields None. Anything
                     # else survived the RetryingPyFileSystem retries and must
                     # fail the task rather than silently drop the row.
-                    yield _DownloadFailure(
+                    outcome = _DownloadFailure(
                         uri,
                         _skip_reason(e),
                         e,
                         permanent=_is_permanent_download_error(e),
                     )
+                # Exactly one outcome per URI. Yielding inside the ``try``
+                # would add a second one when closing the stream raised after
+                # the bytes were already handed out, shifting every later row.
+                yield outcome
 
         # Use make_async_gen to resolve and download URI bytes concurrently
         # preserve_ordering=True ensures results are returned in the same order as input URIs

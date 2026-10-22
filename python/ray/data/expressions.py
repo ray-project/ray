@@ -2398,12 +2398,21 @@ def download(
     connections) are retried with backoff inside the storage client and then
     re-fetched up to ``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS`` times per task
     (default 2); if they still fail, the task raises ``DownloadError`` instead
-    of yielding ``None``, so no row is silently lost. A 403 whose S3 error
-    code says the credentials are bad (for example ``InvalidAccessKeyId`` or
-    ``SignatureDoesNotMatch``) also raises. Tune the client retry budget with
-    the ``RAY_DATA_OBSTORE_RETRY_*`` environment variables, retry the task
-    with ``DataContext.retried_map_errors`` and ``max_map_retries``, or
-    tolerate the failure with ``DataContext.max_errored_blocks``.
+    of yielding ``None``, so no row is silently lost. With the default
+    settings a URI that never recovers holds its task for about four minutes
+    before the error is raised: each attempt spends up to
+    ``RAY_DATA_OBSTORE_RETRY_TIMEOUT_S`` (120 seconds) in client retries,
+    plus the ``RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS`` pause between attempts,
+    and ``DataContext.max_map_retries`` multiplies that again. Bad
+    credentials raise too rather than producing a column of nulls: a 403
+    whose S3 error code says so (for example ``InvalidAccessKeyId`` or
+    ``SignatureDoesNotMatch``) on the obstore backend, and on either backend
+    a block in which every URI is denied, which is the only signal available
+    to the PyArrow backend because its HEAD requests carry no error code.
+    Tune the client retry budget with the ``RAY_DATA_OBSTORE_RETRY_*``
+    environment variables, retry the task with
+    ``DataContext.retried_map_errors`` and ``max_map_retries``, or tolerate
+    the failure with ``DataContext.max_errored_blocks``.
 
     Args:
         uri_column_name: The name of the column containing URIs to download from
