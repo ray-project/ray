@@ -58,13 +58,14 @@ def parse_rocprof_sys_config(
 class RocProfSysPlugin(RuntimeEnvPlugin):
     name = "_rocprof_sys"
 
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, logs_dir: Optional[str] = None):
         self.rocprof_sys_cmd = []
         self.rocprof_sys_env = {}
 
-        # replace this with better way to get logs dir
-        session_dir, runtime_dir = os.path.split(resources_dir)
-        self._rocprof_sys_dir = Path(session_dir) / "logs" / "rocprof_sys"
+        if logs_dir is None:
+            session_dir, _ = os.path.split(resources_dir)
+            logs_dir = os.path.join(session_dir, "logs")
+        self._rocprof_sys_dir = Path(logs_dir) / "rocprof_sys"
         try_to_create_directory(self._rocprof_sys_dir)
 
     async def _check_rocprof_sys_script(

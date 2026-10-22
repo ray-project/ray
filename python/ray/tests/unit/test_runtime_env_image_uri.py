@@ -8,11 +8,29 @@ from unittest import mock
 import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
+from ray._private.runtime_env.agent.runtime_env_agent import (
+    _create_image_uri_plugin,
+)
 from ray._private.runtime_env.context import RuntimeEnvContext, expand_run_option
-from ray._private.runtime_env.image_uri import _modify_context_impl
+from ray._private.runtime_env.image_uri import ImageURIPlugin, _modify_context_impl
 from ray.core.generated.common_pb2 import Language
 
 TOKEN = "secret-token-value"
+
+
+class LegacyImageURIPlugin(ImageURIPlugin):
+    def __init__(self, ray_tmp_dir: str):
+        super().__init__(ray_tmp_dir)
+
+
+class KwargsImageURIPlugin(ImageURIPlugin):
+    def __init__(self, ray_tmp_dir: str, **kwargs):
+        super().__init__(ray_tmp_dir, **kwargs)
+
+
+class FailingImageURIPlugin(ImageURIPlugin):
+    def __init__(self, ray_tmp_dir: str, logs_dir: str):
+        raise TypeError("plugin constructor failed")
 
 
 @pytest.fixture
@@ -42,6 +60,7 @@ def _launch(
     context: Optional[RuntimeEnvContext] = None,
     run_options: Optional[List[str]] = None,
     ray_tmp_dir: str = "/tmp/ray",
+    logs_dir: Optional[str] = None,
 ) -> Tuple[List[str], Dict[str, str]]:
     """Returns the argv and env the worker launcher would be exec'd with."""
     context = context or RuntimeEnvContext()
@@ -52,6 +71,7 @@ def _launch(
         context,
         logging.getLogger(__name__),
         ray_tmp_dir,
+        logs_dir,
     )
 
     # The worker launcher gets the context through serialize()/deserialize().
@@ -74,21 +94,27 @@ def _launch(
 
 
 def _container_command(
-    context: Optional[RuntimeEnvContext] = None, ray_tmp_dir: str = "/tmp/ray"
+    context: Optional[RuntimeEnvContext] = None,
+    ray_tmp_dir: str = "/tmp/ray",
+    logs_dir: Optional[str] = None,
 ) -> str:
-    return " ".join(_launch(context, ray_tmp_dir=ray_tmp_dir)[0])
+    return " ".join(_launch(context, ray_tmp_dir=ray_tmp_dir, logs_dir=logs_dir)[0])
 
 
-def test_mounts_default_token_file(auth_env, tmp_path):
+@pytest.mark.parametrize("external_logs", [False, True])
+def test_mounts_default_token_file(auth_env, tmp_path, external_logs):
     token_path = _write_default_token(tmp_path)
     auth_env.setenv("RAY_AUTH_MODE", "token")
     reset_auth_token_state()
 
-    command = _container_command()
+    logs_dir = str(tmp_path.resolve() / "logs") if external_logs else None
+    command = _container_command(logs_dir=logs_dir)
 
     assert f"-v {token_path}:{token_path}:ro" in command
     assert f"--env RAY_AUTH_TOKEN_PATH={token_path}" in command
     assert TOKEN not in command
+    if logs_dir is not None:
+        assert f"-v {logs_dir}:{logs_dir}" in command
 
 
 @pytest.mark.parametrize("relative", [False, True])
@@ -177,14 +203,17 @@ def test_no_mount_when_auth_disabled(auth_env, tmp_path):
     assert "RAY_AUTH_TOKEN_PATH" not in command
 
 
-def test_log_omits_env_var_values(auth_env, caplog):
+def test_log_omits_env_var_values(auth_env, caplog, tmp_path):
     auth_env.setenv("RAY_SECRET_FROM_HOST", "host-secret")
     context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
+    logs_dir = str(tmp_path.resolve() / "logs")
 
     with caplog.at_level(logging.INFO):
-        _launch(context, run_options=["--label=x=$HOME"])
+        _launch(context, run_options=["--label=x=$HOME"], logs_dir=logs_dir)
 
     assert "podman run" in caplog.text
+    # Volume mounts are not secret, so the log keeps the logs mount.
+    assert f"{logs_dir}:{logs_dir}" in caplog.text
     assert "--label=x=$HOME" in caplog.text
     assert "fake-image" in caplog.text
     assert "user-secret" not in caplog.text
@@ -328,6 +357,126 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
         "fake-image",
         "/fake/default_worker.py",
     ]
+
+
+def test_custom_logs_dir_is_mounted_in_container(auth_env, tmp_path):
+    temp_dir = str(tmp_path.resolve() / "ray")
+    logs_dir = str(tmp_path.resolve() / "logs")
+
+    argv, _ = _launch(ray_tmp_dir=temp_dir, logs_dir=logs_dir)
+
+    assert argv[argv.index(f"{temp_dir}:{temp_dir}") - 1] == "-v"
+    assert argv[argv.index(f"{logs_dir}:{logs_dir}") - 1] == "-v"
+
+
+def test_logs_dir_under_temp_dir_is_not_mounted_twice(auth_env, tmp_path):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    temp_dir = str(tmp_path.resolve() / "ray")
+
+    argv, _ = _launch(
+        ray_tmp_dir=temp_dir, logs_dir=os.path.join(temp_dir, "session", "logs")
+    )
+
+    assert argv.count("-v") == 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Requires directory symlinks")
+@pytest.mark.parametrize("relative_link", [False, True])
+def test_logs_symlink_target_is_mounted_in_container(auth_env, tmp_path, relative_link):
+    temp_dir = tmp_path.resolve() / "ray"
+    temp_dir.mkdir()
+    logs_dir = tmp_path.resolve() / "logs"
+    logs_dir.mkdir()
+    intermediate = tmp_path.resolve() / "intermediate"
+    intermediate.symlink_to(logs_dir, target_is_directory=True)
+    alias = temp_dir / "logs-alias"
+    alias.symlink_to(
+        "../intermediate" if relative_link else intermediate,
+        target_is_directory=True,
+    )
+
+    argv, _ = _launch(ray_tmp_dir=str(temp_dir), logs_dir=str(alias))
+
+    assert f"{logs_dir}:{logs_dir}" in argv
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Requires directory symlinks")
+def test_temp_dir_alias_does_not_hide_required_logs_mount(auth_env, tmp_path):
+    physical_dir = tmp_path.resolve() / "physical"
+    logs_dir = physical_dir / "session" / "logs"
+    logs_dir.mkdir(parents=True)
+    temp_dir = tmp_path.resolve() / "alias"
+    temp_dir.symlink_to(physical_dir, target_is_directory=True)
+
+    argv, _ = _launch(ray_tmp_dir=str(temp_dir), logs_dir=str(logs_dir))
+
+    assert f"{temp_dir}:{temp_dir}" in argv
+    assert f"{logs_dir}:{logs_dir}" in argv
+
+
+@pytest.mark.parametrize(
+    "directory_name", ["logs with spaces", "logs'quotes", "logs$RAY_JOB_ID"]
+)
+def test_container_volume_paths_are_literal_arguments(
+    auth_env, tmp_path, directory_name
+):
+    auth_env.setenv("RAY_JOB_ID", "worker-job")
+    temp_dir = str(tmp_path.resolve() / "ray tmp")
+    logs_dir = str(tmp_path.resolve() / directory_name)
+
+    argv, _ = _launch(ray_tmp_dir=temp_dir, logs_dir=logs_dir)
+
+    # Workers are exec'd without a shell, so each mount is one argument that
+    # podman receives verbatim: no quoting and no expansion.
+    assert argv[argv.index(f"{temp_dir}:{temp_dir}") - 1] == "-v"
+    assert argv[argv.index(f"{logs_dir}:{logs_dir}") - 1] == "-v"
+
+
+def test_image_uri_plugin_receives_logs_dir():
+    plugin = _create_image_uri_plugin(
+        ImageURIPlugin,
+        "/tmp/ray",
+        "/var/log/ray",
+        logging.getLogger(__name__),
+    )
+
+    assert plugin._logs_dir == "/var/log/ray"
+
+
+def test_image_uri_plugin_accepting_kwargs_receives_logs_dir():
+    plugin = _create_image_uri_plugin(
+        KwargsImageURIPlugin,
+        "/tmp/ray",
+        "/var/log/ray",
+        logging.getLogger(__name__),
+    )
+
+    assert plugin._logs_dir == "/var/log/ray"
+
+
+def test_legacy_image_uri_plugin_remains_compatible(caplog):
+    with caplog.at_level(logging.WARNING):
+        plugin = _create_image_uri_plugin(
+            LegacyImageURIPlugin,
+            "/tmp/ray",
+            "/var/log/ray",
+            logging.getLogger(__name__),
+        )
+
+    assert plugin._ray_tmp_dir == "/tmp/ray"
+    assert plugin._logs_dir is None
+    assert "does not accept the logs_dir keyword" in caplog.text
+
+
+def test_image_uri_plugin_constructor_type_error_is_not_hidden():
+    with pytest.raises(TypeError, match="plugin constructor failed"):
+        _create_image_uri_plugin(
+            FailingImageURIPlugin,
+            "/tmp/ray",
+            "/var/log/ray",
+            logging.getLogger(__name__),
+        )
 
 
 if __name__ == "__main__":

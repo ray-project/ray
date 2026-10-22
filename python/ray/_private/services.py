@@ -7,6 +7,7 @@ import logging
 import mmap
 import multiprocessing
 import os
+import shlex
 import shutil
 import signal
 import socket
@@ -1607,6 +1608,13 @@ def start_gcs_server(
     return process_info
 
 
+def _serialize_command(command: List[str]) -> str:
+    """Encode argv for the raylet's platform-specific ParseCommandLine."""
+    if sys.platform == "win32":
+        return subprocess.list2cmdline(command)
+    return shlex.join(command)
+
+
 def start_raylet(
     redis_address: str,
     gcs_address: str,
@@ -1786,6 +1794,7 @@ def start_raylet(
             redis_username,
             redis_password,
             session_dir,
+            log_dir,
             node_ip_address,
             setup_worker_path,
         )
@@ -1831,6 +1840,7 @@ def start_raylet(
             f"--gcs-address={gcs_address}",
             f"--session-name={session_name}",
             f"--temp-dir={temp_dir}",
+            f"--logs-dir={log_dir}",
             f"--webui={webui}",
             f"--cluster-id={cluster_id}",
         ]
@@ -1969,9 +1979,9 @@ def start_raylet(
         f"--node_ip_address={node_ip_address}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
-        f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
-        f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
-        f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--python_worker_command={_serialize_command(start_worker_command)}",
+        f"--java_worker_command={_serialize_command(java_worker_command)}",
+        f"--cpp_worker_command={_serialize_command(cpp_worker_command)}",
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -2021,12 +2031,12 @@ def start_raylet(
     )
     command.append(
         "--dashboard_agent_command={}".format(
-            subprocess.list2cmdline(dashboard_agent_command)
+            _serialize_command(dashboard_agent_command)
         )
     )
     command.append(
         "--runtime_env_agent_command={}".format(
-            subprocess.list2cmdline(runtime_env_agent_command)
+            _serialize_command(runtime_env_agent_command)
         )
     )
     if huge_pages:
@@ -2077,6 +2087,7 @@ def build_java_worker_command(
     redis_username: str,
     redis_password: str,
     session_dir: str,
+    log_dir: str,
     node_ip_address: str,
     setup_worker_path: str,
 ):
@@ -2090,6 +2101,7 @@ def build_java_worker_command(
         redis_username: The username to connect to Redis.
         redis_password: The password to connect to Redis.
         session_dir: The path of this session.
+        log_dir: The path of the directory used for Ray log files.
         node_ip_address: The IP address for this node.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
@@ -2117,7 +2129,7 @@ def build_java_worker_command(
         pairs.append(("ray.node-ip", node_ip_address))
 
     pairs.append(("ray.home", RAY_HOME))
-    pairs.append(("ray.logging.dir", os.path.join(session_dir, "logs")))
+    pairs.append(("ray.logging.dir", log_dir))
     pairs.append(("ray.session-dir", session_dir))
     command = (
         [sys.executable]

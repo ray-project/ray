@@ -5,6 +5,7 @@ import shlex
 import tempfile
 from typing import List, Optional
 
+from ray._common.utils import is_path_within_lexically
 from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
 )
@@ -78,6 +79,7 @@ def _modify_context_impl(
     context: RuntimeEnvContext,
     logger: logging.Logger,
     ray_tmp_dir: str,
+    logs_dir: Optional[str] = None,
 ):
     context.override_worker_entrypoint = worker_path
 
@@ -102,6 +104,15 @@ def _modify_context_impl(
         # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
         "--userns=keep-id",
     ]
+
+    if logs_dir is not None:
+        # Workers receive the physical log path from Node. A symlink below the
+        # temp directory can point outside the mounted tree, so mount its target.
+        logs_dir = os.path.realpath(logs_dir)
+        # Keep the temp mount's literal destination: its host-side realpath may
+        # not be exposed at the same path inside the container.
+        if not is_path_within_lexically(logs_dir, ray_tmp_dir):
+            container_command.extend(["-v", f"{logs_dir}:{logs_dir}"])
 
     # Ray-owned values for the container. The job's env_vars and the host's
     # RAY_* vars are added when the worker is exec'd; see
@@ -160,8 +171,9 @@ class ImageURIPlugin(RuntimeEnvPlugin):
     def get_compatible_keys():
         return {"image_uri", "config", "env_vars"}
 
-    def __init__(self, ray_tmp_dir: str):
+    def __init__(self, ray_tmp_dir: str, logs_dir: Optional[str] = None):
         self._ray_tmp_dir = ray_tmp_dir
+        self._logs_dir = logs_dir
 
     async def create(
         self,
@@ -192,6 +204,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self._logs_dir,
         )
 
 
@@ -200,8 +213,9 @@ class ContainerPlugin(RuntimeEnvPlugin):
 
     name = "container"
 
-    def __init__(self, ray_tmp_dir: str):
+    def __init__(self, ray_tmp_dir: str, logs_dir: Optional[str] = None):
         self._ray_tmp_dir = ray_tmp_dir
+        self._logs_dir = logs_dir
 
     async def create(
         self,
@@ -240,4 +254,5 @@ class ContainerPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self._logs_dir,
         )

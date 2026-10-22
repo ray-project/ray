@@ -113,6 +113,8 @@ For each session, Ray places all its temporary files under the *session director
 
 To change the *root temporary directory*, pass `--temp-dir={your temp path}` to `ray start`.
 
+To place logs on a different filesystem without moving sockets, runtime environment resources, or other session data, pass `--logs-dir={your log path}` to `ray start`. You can set this option independently on each node. On platforms that support symlinks, Ray tries to create `<session_dir>/logs` as a compatibility symlink to the configured directory. Ray skips the symlink if the configured logs directory is the session directory or one of its ancestors, because the symlink would then form a cycle.
+
 There currently isn't a stable way to change the root temporary directory when you call `ray.init()`. If you need to, pass the `_temp_dir` argument to `ray.init()`.
 
 For more details, see {ref}`logging directory structure <logging-directory-structure>`.

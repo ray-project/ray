@@ -922,7 +922,7 @@ def try_to_symlink(symlink_path: str, target_path: str):
     symlink_path = os.path.expanduser(symlink_path)
     target_path = os.path.expanduser(target_path)
 
-    if os.path.exists(symlink_path):
+    if os.path.lexists(symlink_path):
         if os.path.islink(symlink_path):
             # Try to remove existing symlink.
             try:
