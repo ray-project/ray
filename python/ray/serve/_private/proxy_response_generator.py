@@ -170,7 +170,7 @@ class ProxyResponseGenerator(_ProxyResponseGeneratorBase):
         result_task.cancel()
         # `gather` (unlike a bare `await`) still propagates cancellation of the
         # caller; exceptions from the task itself are returned instead.
-        (result,) = await asyncio.gather(result_task, return_exceptions=True)
+        result = (await asyncio.gather(result_task, return_exceptions=True))[0]
         if isinstance(result, Exception) and not isinstance(
             result, RequestCancelledError
         ):
