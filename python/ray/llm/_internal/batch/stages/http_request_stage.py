@@ -121,6 +121,64 @@ class HttpRequestUDF(StatefulStageUDF):
             return self._build_form_data(payload), self.multipart_headers
         return json.dumps(payload, cls=NumpyEncoder), self.json_headers
 
+    async def _send_with_retries(
+        self, session: aiohttp.ClientSession, payload: Any
+    ) -> Any:
+        """
+        Send the request for one row, retrying retryable failures.
+
+        Args:
+            session: The client session to send the request with.
+            payload: The payload of the row.
+
+        Returns:
+            The JSON body of the response.
+        """
+        resp_json = None
+        last_exception = None
+        last_exception_traceback = None
+        for retry_count in range(self.max_retries + 1):
+            # FormData is consumed by a request, so every attempt builds a new body.
+            body, headers = self._build_request(payload)
+            try:
+                async with await session.post(
+                    self.url,
+                    headers=headers,
+                    data=body,
+                ) as response:
+                    status_code = response.status
+                    # check status and see if it's retry worthy
+                    if status_code in self.RETRYABLE_STATUS_CODES:
+                        last_exception = aiohttp.web_exceptions.HTTPException(
+                            reason=response.reason
+                        )
+                        last_exception.status_code = status_code
+                        wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
+                        await asyncio.sleep(wait_time)
+                        continue
+                    resp_json = await response.json()
+                    if self.IDX_IN_BATCH_COLUMN in resp_json:
+                        raise ValueError(
+                            "The response of the HTTP request must not contain "
+                            f"the column {self.IDX_IN_BATCH_COLUMN}."
+                        )
+                break
+            except (
+                asyncio.TimeoutError,
+                aiohttp.ClientConnectionError,
+                ClientPayloadError,
+            ) as e:
+                last_exception_traceback = traceback.format_exc()
+                last_exception = type(e).__name__
+                wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
+                await asyncio.sleep(wait_time)
+                continue
+        if not resp_json:
+            raise RuntimeError(
+                f"Reached maximum retries of {self.max_retries} for input row {payload}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
+            )
+        return resp_json
+
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
         Send HTTP requests to the given URL.
@@ -140,83 +198,41 @@ class HttpRequestUDF(StatefulStageUDF):
             start_time = time.time()
             request_count = 0
             pending_requests = []
+            try:
+                # Start each request as soon as the QPS allows. aiohttp only sends
+                # a request once it is awaited, so each request runs in its own
+                # task, which keeps them spaced by the QPS and lets them overlap.
+                for row in batch:
+                    # Rate limit based on qps if specified
+                    if self.qps is not None:
+                        request_count += 1
+                        expected_time = request_count / self.qps
+                        elapsed = time.time() - start_time
+                        if elapsed < expected_time:
+                            await asyncio.sleep(expected_time - elapsed)
 
-            # First send all requests based on QPS
-            for row in batch:
-                # Rate limit based on qps if specified
-                if self.qps is not None:
-                    request_count += 1
-                    expected_time = request_count / self.qps
-                    elapsed = time.time() - start_time
-                    if elapsed < expected_time:
-                        await asyncio.sleep(expected_time - elapsed)
-
-                # self.IDX_IN_BATCH_COLUMN is the index of row in the batch
-                body, headers = self._build_request(
-                    payloads[row[self.IDX_IN_BATCH_COLUMN]]
-                )
-                # Create request but don't await it yet
-                request = session.post(
-                    self.url,
-                    headers=headers,
-                    data=body,
-                )
-                pending_requests.append((row[self.IDX_IN_BATCH_COLUMN], request))
-
-            # Now receive all responses
-            for idx_in_batch_column, request in pending_requests:
-                resp_json = None
-                last_exception = None
-                last_exception_traceback = None
-                for retry_count in range(self.max_retries + 1):
-                    if retry_count > 0:
-                        body, headers = self._build_request(
-                            payloads[idx_in_batch_column]
-                        )
-                        request = session.post(
-                            self.url,
-                            headers=headers,
-                            data=body,
-                        )
-                    try:
-                        async with await request as response:
-                            status_code = response.status
-                            # check status and see if it's retry worthy
-                            if status_code in self.RETRYABLE_STATUS_CODES:
-                                last_exception = aiohttp.web_exceptions.HTTPException(
-                                    reason=response.reason
-                                )
-                                last_exception.status_code = status_code
-                                wait_time = self.base_retry_wait_time_in_s * (
-                                    2**retry_count
-                                )
-                                await asyncio.sleep(wait_time)
-                                continue
-                            resp_json = await response.json()
-                            if self.IDX_IN_BATCH_COLUMN in resp_json:
-                                raise ValueError(
-                                    "The response of the HTTP request must not contain "
-                                    f"the column {self.IDX_IN_BATCH_COLUMN}."
-                                )
-                        break
-                    except (
-                        asyncio.TimeoutError,
-                        aiohttp.ClientConnectionError,
-                        ClientPayloadError,
-                    ) as e:
-                        last_exception_traceback = traceback.format_exc()
-                        last_exception = type(e).__name__
-                        wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
-                        await asyncio.sleep(wait_time)
-                        continue
-                if not resp_json:
-                    raise RuntimeError(
-                        f"Reached maximum retries of {self.max_retries} for input row {payloads[idx_in_batch_column]}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
+                    # self.IDX_IN_BATCH_COLUMN is the index of row in the batch
+                    idx_in_batch_column = row[self.IDX_IN_BATCH_COLUMN]
+                    request = asyncio.create_task(
+                        self._send_with_retries(session, payloads[idx_in_batch_column])
                     )
-                yield {
-                    self.IDX_IN_BATCH_COLUMN: idx_in_batch_column,
-                    "http_response": resp_json,
-                }
+                    pending_requests.append((idx_in_batch_column, request))
+
+                # Now receive all responses
+                for idx_in_batch_column, request in pending_requests:
+                    yield {
+                        self.IDX_IN_BATCH_COLUMN: idx_in_batch_column,
+                        "http_response": await request,
+                    }
+            finally:
+                # Don't leave requests running after the session closes, for
+                # example when a row runs out of retries.
+                for _, request in pending_requests:
+                    request.cancel()
+                await asyncio.gather(
+                    *(request for _, request in pending_requests),
+                    return_exceptions=True,
+                )
 
 
 class HttpRequestStage(StatefulStage):
