@@ -200,17 +200,18 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
       << "Request should fail when client doesn't provide required token";
 }
 
-TEST_F(TestGrpcServerClientTokenAuthFixture,
-       TestClientProvidesTokenServerDoesNotRequire) {
-  // Client provides token, but server doesn't require one (should succeed)
+TEST_F(TestGrpcServerClientTokenAuthFixture, TestServerWithAuthDisabledRejectsToken) {
   SetUpServerAndClient("", "client_token");
 
   auto result = ExecutePingAndWait();
 
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  // Server should accept request even though client sent unnecessary token
-  ASSERT_TRUE(result.success)
-      << "Request should succeed when server doesn't require token";
+  ASSERT_FALSE(result.success)
+      << "A server with auth disabled should reject a request that carries a token";
+  ASSERT_TRUE(result.error_msg.find("AuthModeMismatch: cluster has "
+                                    "RAY_AUTH_MODE=disabled; set it on the client "
+                                    "too") != std::string::npos)
+      << "Got: " << result.error_msg;
 }
 
 }  // namespace rpc
