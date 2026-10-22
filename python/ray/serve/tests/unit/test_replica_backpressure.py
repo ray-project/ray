@@ -40,6 +40,7 @@ def _make_fake_replica(max_ongoing_requests: int):
         "_get_backpressure_drain_counter_for_testing",
         "_direct_ingress_asgi",
         "_prepare_direct_ingress_grpc_request",
+        "_has_pending_drain_work",
     ):
         setattr(fake, name, getattr(Replica, name).__get__(fake, Replica))
     return fake
@@ -228,9 +229,9 @@ class TestDirectIngressRejection:
             decision,
         ) = await _send_direct_ingress_http_request(fake)
         assert status == 429
-        # rand=0.0 is the low end of the +/-20% jitter window.
-        assert decision.post_jitter_s == 8
-        assert retry_after == b"8"
+        # rand=0.0 is the low end of the +/-10% jitter window.
+        assert decision.post_jitter_s == 9
+        assert retry_after == b"9"
         assert decision.fallback_rung == "static"
         # The exact queue depth (above the cap of 2) is used and logged.
         assert decision.observed_queue_depth == 3
@@ -240,7 +241,7 @@ class TestDirectIngressRejection:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "retry_after_s,expected_rung,expected_header",
-        [(5, "static_fallback", b"4"), (None, "none", None)],
+        [(5, "static_fallback", b"5"), (None, "none", None)],
     )
     async def test_cold_estimator_falls_back(
         self, retry_after_s, expected_rung, expected_header
@@ -263,9 +264,7 @@ class TestDirectIngressRejection:
             num_queued_requests=20,
         )
         now_s = [0.0]
-        estimator = DrainRateEstimator(
-            alpha=1.0, warmup_samples=1, clock=lambda: now_s[0]
-        )
+        estimator = DrainRateEstimator(warmup_samples=1, clock=lambda: now_s[0])
         fake._drain_rate_tracker = DrainRateTracker(
             has_pending_work=lambda: True, estimator=estimator
         )
@@ -276,11 +275,13 @@ class TestDirectIngressRejection:
         estimator.sample(has_pending_work=True)
 
         _, retry_after, _, decision = await _send_direct_ingress_http_request(fake)
-        # 20 queued / 4 per second = 5s, then the low end of the jitter window.
+        # 20 queued * 0.25 s per completion = 5s, then the low end of the
+        # jitter window: ceil(4.5).
         assert decision.fallback_rung == "computed"
+        assert decision.seconds_per_drain == pytest.approx(0.25)
         assert decision.pre_jitter_s == pytest.approx(5.0)
-        assert decision.post_jitter_s == 4
-        assert retry_after == b"4"
+        assert decision.post_jitter_s == 5
+        assert retry_after == b"5"
         assert decision.drain_counter == 4
 
     @pytest.mark.asyncio
@@ -332,35 +333,46 @@ class TestDirectIngressRejection:
         assert dict(messages[0]["headers"])[b"retry-after"] == b"10"
 
     @pytest.mark.asyncio
-    async def test_warm_zero_drain_rate_computes_max(self):
-        """Queued work that never drains is a real observation: the computed
-        value is the 60s cap, not the static fallback."""
+    async def test_stall_computes_growing_retry_after(self):
+        """Queued work that never completes is a real stall: the computed
+        value is the busy time so far per (at least one) drain, not the static
+        fallback."""
         fake = _make_rejecting_replica(
             BackpressureConfig(retry_after_policy="queue_drain_rate", retry_after_s=5),
             num_queued_requests=2,
         )
         now_s = [0.0]
-        estimator = DrainRateEstimator(
-            alpha=0.3, warmup_samples=3, clock=lambda: now_s[0]
-        )
+        estimator = DrainRateEstimator(warmup_samples=3, clock=lambda: now_s[0])
         fake._drain_rate_tracker = DrainRateTracker(
-            has_pending_work=lambda: fake._num_queued_requests > 0,
-            estimator=estimator,
+            has_pending_work=fake._has_pending_drain_work, estimator=estimator
         )
         fake._drain_rate_tracker._sample()
         for _ in range(3):
             now_s[0] += 1
             fake._drain_rate_tracker._sample()
         assert estimator.warm
-        assert estimator.rate == 0
 
         _, retry_after, _, decision = await _send_direct_ingress_http_request(fake)
         assert decision.fallback_rung == "computed"
         assert decision.estimator_num_samples == 3
-        assert decision.pre_jitter_s == 60
-        # rand=0.0 is the low end of the jitter window: ceil(60 * 0.8).
-        assert decision.post_jitter_s == 48
-        assert retry_after == b"48"
+        assert decision.drains_in_window == 0
+        # 2 queued * 3 busy seconds = 6s; rand=0.0 gives ceil(6 * 0.9).
+        assert decision.pre_jitter_s == 6
+        assert retry_after == b"6"
+
+    def test_pending_work_is_queued_or_running(self):
+        """A replica's drains are completions, so a running request is pending
+        work even with nothing queued."""
+        fake = _make_fake_replica(max_ongoing_requests=1)
+        fake._metrics_manager.get_num_ongoing_requests.return_value = 0
+        assert not fake._has_pending_drain_work()
+
+        fake._num_queued_requests = 1
+        assert fake._has_pending_drain_work()
+
+        fake._num_queued_requests = 0
+        fake._metrics_manager.get_num_ongoing_requests.return_value = 1
+        assert fake._has_pending_drain_work()
 
 
 class TestDirectIngressRejectionRequestId:

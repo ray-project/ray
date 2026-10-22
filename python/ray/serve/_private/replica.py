@@ -1245,10 +1245,7 @@ class Replica:
         # for the `queue_drain_rate` Retry-After policy. All accesses happen
         # on the replica's main event loop.
         self._drain_rate_tracker = DrainRateTracker(
-            has_pending_work=lambda: (
-                self._num_queued_requests > 0
-                or self._metrics_manager.get_num_ongoing_requests() > 0
-            )
+            has_pending_work=self._has_pending_drain_work
         )
 
     @property
@@ -2359,6 +2356,14 @@ class Replica:
         ).message
         log_backpressure_rejection(message, decision)
         return decision
+
+    def _has_pending_drain_work(self) -> bool:
+        """Whether a request is queued or running: both will produce a drain
+        (a slot release) eventually, so the busy clock keeps running."""
+        return (
+            self._num_queued_requests > 0
+            or self._metrics_manager.get_num_ongoing_requests() > 0
+        )
 
     def _get_backpressure_drain_counter_for_testing(self) -> int:
         """Monotonic count of requests that released their execution slot."""

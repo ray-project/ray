@@ -95,10 +95,10 @@ assert len(pending) == 2
 
 # Additional requests are rejected with the configured status code and a
 # "Retry-After" header telling clients when to try again. The value is
-# jittered by up to +/-20% so rejected clients don't all retry at once.
+# jittered by up to +/-10% so rejected clients don't all retry at once.
 for status_code, retry_after in ray.get([r.do_request.remote() for _ in range(5)]):
     assert status_code == 429
-    assert retry_after in {"4", "5", "6"}
+    assert retry_after in {"5", "6"}
 # __custom_response_test_end__
 
 # __queue_drain_rate_deployment_start__

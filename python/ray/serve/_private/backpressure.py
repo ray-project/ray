@@ -3,9 +3,10 @@
 A backpressure rejection is raised either by a router (proxy and handle
 paths) or by a replica (direct ingress). Both use the same pieces:
 
-- `DrainRateEstimator` turns a monotonic count of drain events into a
-  smoothed drain rate. The router counts successful assignments to replicas;
-  the replica counts requests releasing their execution slot.
+- `DrainRateEstimator` keeps a monotonic count of drain events and a busy
+  clock, and estimates the busy seconds per drain over a recent window. The
+  router counts successful assignments to replicas; the replica counts
+  requests releasing their execution slot.
 - `DrainRateTracker` owns an estimator and the background timer that samples
   it while the `queue_drain_rate` policy is active.
 - `compute_retry_after_decision` turns the config, the queue depth observed at
@@ -18,11 +19,13 @@ import logging
 import math
 import random
 import time
+from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Deque, Dict, Optional, Tuple
 
 from ray.serve._private.constants import (
-    RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA,
+    RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_BUSY_S,
+    RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_DRAINS,
     RAY_SERVE_BACKPRESSURE_DRAIN_RATE_SAMPLE_INTERVAL_S,
     RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES,
     RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION,
@@ -45,18 +48,32 @@ FALLBACK_RUNG_STATIC_FALLBACK = "static_fallback"
 FALLBACK_RUNG_STATIC = "static"
 FALLBACK_RUNG_NONE = "none"
 
-# Computed values are clamped to this range. Common client SDKs ignore
-# Retry-After values above 60s.
+# Computed values are never below this, before or after jitter. There is no
+# upper bound: the busy clock stays proportional to the real wait even for long
+# backlogs, so the header tells clients the expected wait.
 COMPUTED_RETRY_AFTER_MIN_S = 1
-COMPUTED_RETRY_AFTER_MAX_S = 60
 
 
 class DrainRateEstimator:
-    """EWMA of how fast a queue drains, from a monotonic drain-event counter.
+    """Busy clock: how long the component takes per drain while it's working.
 
-    `record_drain` is called on the hot path for every drain event and only
-    increments an integer. `sample` runs periodically and folds the counter
-    delta since the previous sample into the EWMA.
+    Two running totals feed it: drains (the monotonic drain counter) and busy
+    seconds. `record_drain` is called on the hot path for every drain event and
+    only increments an integer. `sample` runs periodically; an interval counts
+    as busy if work was pending at the sample or at least one drain happened
+    during it, and only busy intervals add to the busy clock. Idle time is
+    ignored, so it can't look like slow draining.
+
+    After every busy sample the pair (busy clock B, drain counter N) is a
+    checkpoint. The window runs from the most recent checkpoint that is at
+    least `min_window_drains` drains and at least `min_window_busy_s` busy
+    seconds behind the newest one (or from the oldest checkpoint, until one
+    qualifies) to now. Then `seconds_per_drain = window busy seconds /
+    max(window drains, 1)` and the time to drain a backlog of D requests is
+    `D * seconds_per_drain`. The drain minimum keeps sparse completions from
+    resting on one or two gaps; the busy-time minimum keeps fast bursts from
+    swinging it. History is kept by drains, not by time, so even a drain every
+    15 minutes is measured.
 
     Not thread-safe: all methods must be called from the owning component's
     event loop. Reading `drain_counter` from another thread is safe (a single
@@ -66,24 +83,43 @@ class DrainRateEstimator:
     def __init__(
         self,
         *,
-        alpha: float = RAY_SERVE_BACKPRESSURE_DRAIN_RATE_EWMA_ALPHA,
         warmup_samples: int = RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES,
+        min_window_drains: int = RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_DRAINS,
+        min_window_busy_s: float = RAY_SERVE_BACKPRESSURE_BUSY_CLOCK_MIN_WINDOW_BUSY_S,
         clock: Callable[[], float] = time.monotonic,
     ):
-        if not 0 < alpha <= 1:
-            raise ValueError(f"alpha must be in (0, 1], got {alpha}.")
         if warmup_samples < 1:
             raise ValueError(f"warmup_samples must be >= 1, got {warmup_samples}.")
+        if min_window_drains < 1:
+            raise ValueError(
+                f"min_window_drains must be >= 1, got {min_window_drains}."
+            )
+        if min_window_busy_s <= 0:
+            raise ValueError(
+                f"min_window_busy_s must be positive, got {min_window_busy_s}."
+            )
 
-        self._alpha = alpha
         self._warmup_samples = warmup_samples
+        self._min_window_drains = min_window_drains
+        self._min_window_busy_s = min_window_busy_s
         self._clock = clock
 
         # Monotonic total; never reset, so the acceptance harness can measure
         # ground-truth drain time as "time until the counter advances by D".
         self._drain_counter = 0
 
-        self._rate: Optional[float] = None
+        # Cumulative busy seconds since the last reset; only busy intervals
+        # advance it.
+        self._busy_clock_s = 0.0
+        # Checkpoints `(busy clock, drain counter)` at sample boundaries, oldest
+        # first; the first one is the window start. Only checkpoints that can
+        # still become a window start are kept (see `_update_window`).
+        self._checkpoints: Deque[Tuple[float, int]] = deque([(0.0, 0)])
+        # The current window's totals, recomputed at each busy sample so
+        # rejections only read them.
+        self._window_busy_s = 0.0
+        self._window_drains = 0
+
         self._num_samples = 0
         self._last_sample_time: Optional[float] = None
         self._last_sample_counter = 0
@@ -93,40 +129,69 @@ class DrainRateEstimator:
         return self._drain_counter
 
     @property
-    def rate(self) -> Optional[float]:
-        """Smoothed drain rate in events per second, or None before any sample."""
-        return self._rate
-
-    @property
     def num_samples(self) -> int:
-        """Number of counted (non-idle) sample intervals since the last reset."""
+        """Number of counted (busy) sample intervals since the last reset."""
         return self._num_samples
 
     @property
     def warm(self) -> bool:
         return self._num_samples >= self._warmup_samples
 
+    @property
+    def busy_clock_s(self) -> float:
+        """Cumulative busy seconds since the last reset."""
+        return self._busy_clock_s
+
+    @property
+    def busy_seconds(self) -> float:
+        """Busy seconds in the current window."""
+        return self._window_busy_s
+
+    @property
+    def drains_in_window(self) -> int:
+        return self._window_drains
+
+    @property
+    def seconds_per_drain(self) -> Optional[float]:
+        """Busy seconds per drain over the window, or None before any busy
+        interval. A window without drains counts as one drain, so a stall
+        keeps growing the value instead of making it undefined."""
+        if self._num_samples == 0:
+            return None
+        return self._window_busy_s / max(self._window_drains, 1)
+
+    @property
+    def drain_rate(self) -> Optional[float]:
+        """Drains per busy second over the window, or None before any busy
+        interval."""
+        if self._num_samples == 0:
+            return None
+        return self._window_drains / self._window_busy_s
+
     def record_drain(self) -> None:
         self._drain_counter += 1
 
-    def reset_rate(self) -> None:
-        """Forget the learned rate and restart sampling from the current counter.
+    def reset(self) -> None:
+        """Forget the busy history and restart sampling from the current counter.
 
         The drain counter itself is left untouched.
         """
-        self._rate = None
+        self._busy_clock_s = 0.0
+        self._checkpoints = deque([(0.0, self._drain_counter)])
+        self._window_busy_s = 0.0
+        self._window_drains = 0
         self._num_samples = 0
         self._last_sample_time = None
         self._last_sample_counter = self._drain_counter
 
     def sample(self, has_pending_work: bool) -> None:
-        """Fold the drain events since the previous call into the EWMA.
+        """Add the interval since the previous call to the busy clock if busy.
 
         `has_pending_work` tells whether the component currently has work that
-        could drain. An interval with no drain events while work is pending
-        is a real (slow-drain) observation of rate 0. An interval with no
-        drain events and no pending work is idle and is skipped, so the rate
-        doesn't decay just because traffic stopped.
+        could drain. The interval is busy if work is pending (a stall still
+        adds busy time, so the estimate grows with it) or if anything drained
+        during it (so the last drains of a burst aren't lost when the queue
+        has just emptied). Otherwise it is idle and skipped.
         """
         now = self._clock()
         counter = self._drain_counter
@@ -134,39 +199,80 @@ class DrainRateEstimator:
             # First call only establishes the baseline.
             self._last_sample_time = now
             self._last_sample_counter = counter
+            self._checkpoints = deque([(self._busy_clock_s, counter)])
             return
 
         elapsed_s = now - self._last_sample_time
-        delta = counter - self._last_sample_counter
+        drains = counter - self._last_sample_counter
         if elapsed_s <= 0:
             return
 
         self._last_sample_time = now
         self._last_sample_counter = counter
-        if delta == 0 and not has_pending_work:
+        if drains == 0 and not has_pending_work:
             return
 
-        interval_rate = delta / elapsed_s
-        if self._rate is None:
-            self._rate = interval_rate
-        else:
-            self._rate = self._alpha * interval_rate + (1 - self._alpha) * self._rate
+        self._busy_clock_s += elapsed_s
         self._num_samples += 1
+        self._checkpoints.append((self._busy_clock_s, counter))
+        self._update_window()
+
+    def _update_window(self) -> None:
+        """Pick the window start and prune checkpoints that can't be one.
+
+        The checkpoints far enough behind the newest one form a prefix for
+        each minimum (B and N only grow), so the most recent checkpoint
+        meeting both is the earlier of `drain_cut` (the latest one at least
+        `min_window_drains` behind) and `busy_cut` (the latest one at least
+        `min_window_busy_s` behind). As B and N grow, both only move forward.
+        So a checkpoint can be a future window start only if it is at or after
+        today's `busy_cut`, or it is the last one before the drain counter
+        rises (the only kind `drain_cut` lands on). Anything else, and anything
+        before today's start, is dropped. Since the values are cumulative,
+        dropping a checkpoint never changes a window's busy time or drains.
+        """
+        checkpoints = self._checkpoints
+        busy_now, drains_now = checkpoints[-1]
+        busy_cut = drain_cut = None
+        for i in range(len(checkpoints) - 1, -1, -1):
+            busy_s, drains = checkpoints[i]
+            if busy_cut is None and busy_now - busy_s >= self._min_window_busy_s:
+                busy_cut = i
+            if drain_cut is None and drains_now - drains >= self._min_window_drains:
+                drain_cut = i
+            if busy_cut is not None and drain_cut is not None:
+                break
+        # Until a checkpoint meets both minimums, the window is all history.
+        start = (
+            min(busy_cut, drain_cut)
+            if busy_cut is not None and drain_cut is not None
+            else 0
+        )
+        keep_from = busy_cut if busy_cut is not None else 0
+
+        kept: Deque[Tuple[float, int]] = deque()
+        for i in range(start, len(checkpoints)):
+            is_last_before_drains = (
+                i + 1 < len(checkpoints) and checkpoints[i + 1][1] > checkpoints[i][1]
+            )
+            if i == start or i >= keep_from or is_last_before_drains:
+                kept.append(checkpoints[i])
+        self._checkpoints = kept
+
+        start_busy_s, start_drains = kept[0]
+        self._window_busy_s = busy_now - start_busy_s
+        self._window_drains = drains_now - start_drains
 
     def estimate_s(self, queue_depth: int) -> Optional[float]:
-        """Seconds to drain `queue_depth` requests at the current rate.
+        """Seconds to drain `queue_depth` requests at the window's pace.
 
-        Returns None when no usable estimate exists (not warm yet, or the rate
-        is missing, negative or not finite); callers then fall back to the
-        static value. A warm rate of 0 is a real observation (work was pending
-        but nothing drained), so it returns `math.inf` and callers clamp it.
+        Returns None until the estimator is warm; callers then fall back to the
+        static value.
         """
-        rate = self._rate
-        if not self.warm or rate is None or not math.isfinite(rate) or rate < 0:
+        seconds_per_drain = self.seconds_per_drain
+        if not self.warm or seconds_per_drain is None:
             return None
-        if rate == 0:
-            return math.inf
-        return queue_depth / rate
+        return queue_depth * seconds_per_drain
 
 
 class DrainRateTracker:
@@ -224,8 +330,8 @@ class DrainRateTracker:
             return
 
         if should_sample:
-            # Don't carry over a rate learned before sampling was last stopped.
-            self._estimator.reset_rate()
+            # Don't carry over busy history from before sampling last stopped.
+            self._estimator.reset()
             # A stopped pusher can't be restarted safely: `start()` clears the
             # stop event, which a sampler task that hasn't run yet would then
             # never see. A new pusher per lifetime keeps old samplers stopped.
@@ -280,7 +386,10 @@ class RetryAfterDecision:
 
     `post_jitter_s` is the integer header value sent to the client (None means
     no header). `pre_jitter_s` is the post-clamp, pre-jitter value that
-    acceptance scoring uses.
+    acceptance scoring uses. `busy_seconds`, `drains_in_window`,
+    `seconds_per_drain` and `drain_rate` describe the estimator's window
+    (`drain_rate` is drains per busy second); they're None before the first
+    busy interval.
     """
 
     request_id: str
@@ -289,6 +398,9 @@ class RetryAfterDecision:
     observed_queue_depth: int
     drain_counter: int
     drain_rate: Optional[float]
+    busy_seconds: Optional[float]
+    drains_in_window: Optional[int]
+    seconds_per_drain: Optional[float]
     estimator_warm: bool
     estimator_num_samples: int
     pre_jitter_s: Optional[float]
@@ -301,6 +413,9 @@ class RetryAfterDecision:
             "backpressure_retry_after_fallback_rung": self.fallback_rung,
             "backpressure_observed_queue_depth": self.observed_queue_depth,
             "backpressure_drain_rate": self.drain_rate,
+            "backpressure_busy_seconds": self.busy_seconds,
+            "backpressure_drains_in_window": self.drains_in_window,
+            "backpressure_seconds_per_drain": self.seconds_per_drain,
             "backpressure_estimator_warm": self.estimator_warm,
             "backpressure_estimator_num_samples": self.estimator_num_samples,
             "backpressure_retry_after_pre_jitter_s": self.pre_jitter_s,
@@ -337,6 +452,8 @@ def compute_retry_after_decision(
 
     Fallback ladder for `queue_drain_rate`: the computed value if the
     estimator is warm, else the static `retry_after_s` if set, else no header.
+    The computed value estimates when the backlog seen at rejection will have
+    drained; it's a hint, not a reservation.
     Never raises because of the estimator; a failure downgrades to the next
     rung.
 
@@ -347,9 +464,13 @@ def compute_retry_after_decision(
     static_s = backpressure_config.retry_after_s
 
     drain_counter = estimator.drain_counter
-    drain_rate = estimator.rate
     warm = estimator.warm
     num_samples = estimator.num_samples
+    seconds_per_drain = estimator.seconds_per_drain
+    has_window = seconds_per_drain is not None
+    drain_rate = estimator.drain_rate if has_window else None
+    busy_seconds = estimator.busy_seconds if has_window else None
+    drains_in_window = estimator.drains_in_window if has_window else None
 
     pre_jitter_s: Optional[float] = None
     if policy == RETRY_AFTER_POLICY_QUEUE_DRAIN_RATE:
@@ -361,9 +482,7 @@ def compute_retry_after_decision(
 
         if computed_s is not None:
             fallback_rung = FALLBACK_RUNG_COMPUTED
-            pre_jitter_s = min(
-                max(computed_s, COMPUTED_RETRY_AFTER_MIN_S), COMPUTED_RETRY_AFTER_MAX_S
-            )
+            pre_jitter_s = max(computed_s, COMPUTED_RETRY_AFTER_MIN_S)
         elif static_s is not None:
             fallback_rung = FALLBACK_RUNG_STATIC_FALLBACK
             pre_jitter_s = static_s
@@ -385,10 +504,7 @@ def compute_retry_after_decision(
             jittered_s = pre_jitter_s
         post_jitter_s = max(0, math.ceil(jittered_s))
         if fallback_rung == FALLBACK_RUNG_COMPUTED:
-            post_jitter_s = min(
-                max(post_jitter_s, COMPUTED_RETRY_AFTER_MIN_S),
-                COMPUTED_RETRY_AFTER_MAX_S,
-            )
+            post_jitter_s = max(post_jitter_s, COMPUTED_RETRY_AFTER_MIN_S)
 
     return RetryAfterDecision(
         request_id=request_id,
@@ -397,6 +513,9 @@ def compute_retry_after_decision(
         observed_queue_depth=observed_queue_depth,
         drain_counter=drain_counter,
         drain_rate=drain_rate,
+        busy_seconds=busy_seconds,
+        drains_in_window=drains_in_window,
+        seconds_per_drain=seconds_per_drain,
         estimator_warm=warm,
         estimator_num_samples=num_samples,
         pre_jitter_s=pre_jitter_s,

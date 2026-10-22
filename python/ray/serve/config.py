@@ -579,15 +579,15 @@ class BackpressureConfig(BaseModel):
         status_code: HTTP status code returned for requests rejected due to
             backpressure. Must be 503 (default) or 429.
         retry_after_s: If set, rejected HTTP responses include a
-            `Retry-After` header with this value, jittered by up to +/-20%
+            `Retry-After` header with this value, jittered by up to +/-10%
             and rounded up to an integer number of seconds. With the
             `"queue_drain_rate"` policy, this is the fallback used until a
             computed value is available. Defaults to None (no header).
         retry_after_policy: How the `Retry-After` value is chosen.
             `"static"` (default) uses `retry_after_s`. `"queue_drain_rate"`
             estimates how long the rejecting component's queue takes to
-            drain, from the queue depth at rejection and the recently
-            observed drain rate, clamped to [1, 60] seconds and jittered.
+            drain: the queue depth at rejection times the recently observed
+            busy time per drain, at least 1 second, then jittered.
             It falls back to `retry_after_s` (or no header if unset) until
             enough traffic has been observed. The value is a hint, not a
             guarantee that a retry at that time will be admitted.

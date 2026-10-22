@@ -2164,10 +2164,6 @@ COLD_ESTIMATOR_RUNTIME_ENV = {
     "env_vars": {"RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES": str(10**9)}
 }
 
-# Every value a computed 60s (the cap) can produce: jittered by +/-20%, rounded
-# up, and capped at 60s again.
-JITTERED_COMPUTED_MAX_RETRY_AFTER = {str(v) for v in range(48, 61)}
-
 
 def _get_replica_actor_handle(deployment_name: str, app_name: str) -> ActorHandle:
     """Return the actor handle for the (single) replica of a deployment."""
@@ -2228,8 +2224,8 @@ def test_backpressure_retry_after_and_drain_counter(
         rejected = done.pop().result()
         assert rejected.status_code == 429
         assert rejected.text.startswith("Request dropped due to backpressure")
-        # 7s jittered by +/-20%, rounded up.
-        assert rejected.headers["retry-after"] in {"6", "7", "8", "9"}
+        # 7s jittered by +/-10%, rounded up.
+        assert rejected.headers["retry-after"] in {"7", "8"}
         assert drain_counter() == initial_drain_counter
 
         ray.get(signal.send.remote())
@@ -2239,13 +2235,14 @@ def test_backpressure_retry_after_and_drain_counter(
     wait_for_condition(lambda: drain_counter() == initial_drain_counter + 2)
 
 
-def test_backpressure_retry_after_warm_zero_drain_rate(
+def test_backpressure_retry_after_stall_without_completions(
     _skip_if_ff_not_enabled, serve_instance
 ):
-    """A replica that has had work pending but completed nothing is warm with a
-    drain rate of 0: it computes the maximum (60s) rather than using the
-    static fallback."""
-    name = "retry-after-zero-drain-rate"
+    """A replica with work pending but nothing completing is stalled: once
+    warm it computes the busy time so far per (at least one) completion
+    instead of using the static fallback, and the value grows with the
+    stall."""
+    name = "retry-after-stall"
     signal = SignalActor.remote()
     serve.run(
         Hybrid.options(
@@ -2255,15 +2252,15 @@ def test_backpressure_retry_after_warm_zero_drain_rate(
             backpressure_config={
                 "status_code": 429,
                 "retry_after_policy": "queue_drain_rate",
-                "retry_after_s": 5,
+                "retry_after_s": 100,
             },
         ).bind(message="done", wait_signal=signal),
         name=name,
     )
     http_url = get_application_url("HTTP", app_name=name)
     replica = _get_replica_actor_handle(name, name)
-    # 5s jittered by +/-20%, rounded up.
-    fallback_values = {"4", "5", "6"}
+    # 100s jittered by +/-10%, rounded up.
+    fallback_values = set(range(90, 111))
 
     with ThreadPoolExecutor(max_workers=3) as executor:
         running = executor.submit(httpx.get, http_url, timeout=30)
@@ -2277,18 +2274,22 @@ def test_backpressure_retry_after_warm_zero_drain_rate(
         assert first_rejection.status_code == 429
         [queued] = not_done
 
-        # Every rejection is one of the two rungs; keep rejecting until the
-        # estimator has warmed up on the blocked work.
-        observed = {first_rejection.headers["retry-after"]}
+        computed = []
 
-        def rejected_with_zero_rate_value() -> bool:
+        def reject_once() -> int:
             r = httpx.get(http_url, timeout=30)
             assert r.status_code == 429
-            observed.add(r.headers["retry-after"])
-            return r.headers["retry-after"] in JITTERED_COMPUTED_MAX_RETRY_AFTER
+            value = int(r.headers["retry-after"])
+            if value not in fallback_values:
+                computed.append(value)
+            return value
 
-        wait_for_condition(rejected_with_zero_rate_value, timeout=60)
-        assert observed <= fallback_values | JITTERED_COMPUTED_MAX_RETRY_AFTER
+        # Keep rejecting until the estimator has warmed up on the blocked work
+        # (the fallback until then), and then until the computed value has
+        # grown with the stall.
+        wait_for_condition(lambda: reject_once() not in fallback_values, timeout=60)
+        first_computed = computed[0]
+        wait_for_condition(lambda: reject_once() > first_computed, timeout=60)
         assert (
             ray.get(replica._get_backpressure_drain_counter_for_testing.remote()) == 0
         )
@@ -2329,18 +2330,14 @@ def test_backpressure_retry_after_warms_up_to_computed_value(
     def drain_counter() -> int:
         return ray.get(replica._get_backpressure_drain_counter_for_testing.remote())
 
-    # 30s jittered by +/-20%, rounded up.
-    fallback_values = {str(v) for v in range(24, 37)}
-    # A warm estimator that has seen pending work but no completions computes
-    # 60s (clamped), jittered.
-    zero_rate_values = JITTERED_COMPUTED_MAX_RETRY_AFTER
-    # These requests drain in ~10ms, so the estimate is clamped to 1s and
-    # jittered to at most 2s.
+    # These requests drain in ~10ms, so the estimate is raised to the 1s
+    # floor and jittered to at most 2s.
     computed_values = {"1", "2"}
 
-    # Before any completion there is no positive drain rate, so the value is
-    # either the fallback (still warming up) or the zero-rate maximum (warmed
-    # up while blocked). Which one depends on how long this step takes; the
+    # Before any completion, the value is either the 30s fallback (still
+    # warming up) or a stall value of at least 1 queued * 3 busy seconds
+    # (warmed up while blocked); either way at least 3s, never the 1-2s that
+    # completions produce. Which one depends on how long this step takes; the
     # fallback itself is covered by test_backpressure_retry_after_and_drain_counter.
     with ThreadPoolExecutor(max_workers=3) as executor:
         running = executor.submit(httpx.get, http_url, timeout=30)
@@ -2351,9 +2348,7 @@ def test_backpressure_retry_after_warms_up_to_computed_value(
         assert len(done) == 1 and len(not_done) == 1
         cold_rejection = done.pop().result()
         assert cold_rejection.status_code == 429
-        assert cold_rejection.headers["retry-after"] in (
-            fallback_values | zero_rate_values
-        )
+        assert int(cold_rejection.headers["retry-after"]) >= 3
         assert drain_counter() == 0
 
         # Unblock all requests from now on.
@@ -2387,8 +2382,8 @@ def test_backpressure_retry_after_warms_up_to_computed_value(
             t.join()
 
     assert {status for status, _ in responses} <= {200, 429}
-    rejections = {retry_after for status, retry_after in responses if status == 429}
-    assert rejections <= fallback_values | zero_rate_values | computed_values
+    rejections = [retry_after for status, retry_after in responses if status == 429]
+    assert all(int(retry_after) >= 1 for retry_after in rejections)
 
     # The estimator was warmed by the same completions the drain counter counts.
     num_completed = 2 + sum(1 for status, _ in responses if status == 200)

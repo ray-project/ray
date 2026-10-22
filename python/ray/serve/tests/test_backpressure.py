@@ -16,8 +16,8 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
 from ray.serve.exceptions import BackPressureError
 
-# Every value `retry_after_s=7` can produce: jittered by +/-20%, rounded up.
-JITTERED_RETRY_AFTER_7 = {"6", "7", "8", "9"}
+# Every value `retry_after_s=7` can produce: jittered by +/-10%, rounded up.
+JITTERED_RETRY_AFTER_7 = {"7", "8"}
 
 # (deployment options, expected rejection status, expected Retry-After values).
 STATIC_BACKPRESSURE_RESPONSE_CASES = [
@@ -158,7 +158,7 @@ def test_handle_backpressure_computed_retry_after(serve_instance):
         t.start()
     try:
         wait_for_condition(
-            lambda: tracker.estimator.warm and (tracker.estimator.rate or 0) > 0,
+            lambda: tracker.estimator.warm and (tracker.estimator.drain_rate or 0) > 0,
             timeout=30,
         )
         retry_after_values = set()
@@ -174,7 +174,7 @@ def test_handle_backpressure_computed_retry_after(serve_instance):
 
     assert retry_after_values
     # The queue drains in well under a second, so the estimate is clamped to
-    # 1s and jittered to at most 2s; the 30s fallback would be 24-36s.
+    # 1s and jittered to at most 2s; the 30s fallback would be 27-33s.
     assert retry_after_values <= {1, 2}
     # The counter is monotonic and readable immediately from the handle.
     assert metrics_manager._get_drain_counter() > 0

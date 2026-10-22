@@ -3745,7 +3745,7 @@ class TestRouterDrainCounter:
         metrics_manager = router._metrics_manager
         # Drive the estimator with a fake clock: 2 assignments in 1s.
         clock = _FakeClock()
-        estimator = DrainRateEstimator(alpha=1.0, warmup_samples=1, clock=clock)
+        estimator = DrainRateEstimator(warmup_samples=1, clock=clock)
         metrics_manager._drain_rate_tracker._estimator = estimator
         estimator.sample(has_pending_work=True)
         metrics_manager.inc_num_assigned_requests()
@@ -3758,16 +3758,19 @@ class TestRouterDrainCounter:
 
         error, decision = await self._reject(router)
         assert decision.fallback_rung == "computed"
-        assert decision.drain_rate == pytest.approx(2.0)
+        assert decision.busy_seconds == 1
+        assert decision.drains_in_window == 2
+        assert decision.seconds_per_drain == pytest.approx(0.5)
+        # 4 queued * 0.5 s per assignment.
         assert decision.pre_jitter_s == pytest.approx(2.0)
         assert decision.drain_counter == 2
         assert error.retry_after_s == 2
 
-    async def test_warm_zero_drain_rate_computes_max(
+    async def test_stall_computes_growing_retry_after(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        """Queued work that never drains is a real observation: the computed
-        value is the 60s cap, not the static fallback."""
+        """Queued work that never gets assigned is a real stall: the computed
+        value grows with the busy time, and the static fallback isn't used."""
         router, _ = setup_router
         router.update_deployment_config(
             DeploymentConfig(
@@ -3779,7 +3782,7 @@ class TestRouterDrainCounter:
         )
         metrics_manager = router._metrics_manager
         clock = _FakeClock()
-        estimator = DrainRateEstimator(alpha=0.3, warmup_samples=3, clock=clock)
+        estimator = DrainRateEstimator(warmup_samples=3, clock=clock)
         tracker = metrics_manager._drain_rate_tracker
         tracker._estimator = estimator
 
@@ -3789,16 +3792,60 @@ class TestRouterDrainCounter:
             clock.now_s += 1
             tracker._sample()
         assert estimator.warm
-        assert estimator.rate == 0
 
         error, decision = await self._reject(router)
         assert decision.fallback_rung == "computed"
-        assert decision.estimator_warm
         assert decision.estimator_num_samples == 3
-        assert decision.drain_rate == 0
-        assert decision.pre_jitter_s == 60
-        # rand=0.5 means no jitter.
-        assert error.retry_after_s == 60
+        assert decision.drains_in_window == 0
+        assert decision.busy_seconds == 3
+        # 1 queued * 3 busy seconds (no drain counts as one); rand=0.5 is no
+        # jitter.
+        assert decision.pre_jitter_s == 3
+        assert error.retry_after_s == 3
+
+        clock.now_s += 1
+        tracker._sample()
+        error, decision = await self._reject(router)
+        assert decision.pre_jitter_s == 4
+        assert error.retry_after_s == 4
+
+    async def test_pending_work_is_the_router_queue_only(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """The router counts an interval as busy only while its own queue has
+        requests: requests already running on replicas can't be drained by
+        it any further."""
+        router, fake_request_router = setup_router
+        fake_request_router.set_replica_to_return(_fake_replica())
+        router.update_deployment_config(
+            DeploymentConfig(
+                backpressure_config=BackpressureConfig(
+                    retry_after_policy="queue_drain_rate"
+                )
+            )
+        )
+        metrics_manager = router._metrics_manager
+        clock = _FakeClock()
+        estimator = DrainRateEstimator(warmup_samples=1, clock=clock)
+        tracker = metrics_manager._drain_rate_tracker
+        tracker._estimator = estimator
+        tracker._sample()
+
+        # A request running on a replica, nothing queued: idle.
+        await router.assign_request(dummy_request_metadata())
+        clock.now_s += 1
+        tracker._sample()
+        # The assignment itself was a drain in that interval, so it counted.
+        assert estimator.num_samples == 1
+        clock.now_s += 1
+        tracker._sample()
+        assert estimator.num_samples == 1
+
+        # Something queued: busy.
+        metrics_manager.inc_num_queued_requests()
+        clock.now_s += 1
+        tracker._sample()
+        assert estimator.num_samples == 2
 
     async def test_ground_truth_reached_after_depth_assignments(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
