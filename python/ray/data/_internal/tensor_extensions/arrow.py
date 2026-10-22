@@ -1423,13 +1423,27 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         shapes = shapes_array.to_pylist()
         offsets = data_array.offsets.to_pylist()
 
-        if self.null_count > 0:
-            # A null element is tracked by the extension array's own validity
-            # bitmap, which the "shape" child field does not necessarily inherit:
-            # a struct-level null (common after take()/join) can leave a non-null
-            # shape child, so `shape is None` alone misses it and would read
-            # another row's bytes. Use the authoritative null mask.
-            nulls = self.is_null().to_pylist()
+        if (
+            self.null_count > 0
+            or data_array.null_count > 0
+            or shapes_array.null_count > 0
+        ):
+            # A row is missing if it is null at the struct level or in either
+            # child. Neither child inherits the struct's validity bitmap, so a
+            # struct-level null (common after take()/join) leaves a non-null
+            # shape child, and a child-only null leaves a valid-looking shape
+            # whose offsets address another row's bytes. Checking any single
+            # level silently returns that other row's data.
+            #
+            # A null shape child already reads as None out of `shapes`, so only
+            # the struct and data masks are worth materializing here.
+            nulls = [
+                struct_null or data_null
+                for struct_null, data_null in zip(
+                    self.is_null().to_pylist(),
+                    data_array.is_null().to_pylist(),
+                )
+            ]
             return create_ragged_ndarray(
                 [
                     None
