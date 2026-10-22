@@ -441,10 +441,15 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
                 chunks = [chunk for chunk in array.iterchunks() if len(chunk) > 0]
                 chunks = chunks or [array.chunk(0)]
                 values = [tensor_array_to_numpy(chunk) for chunk in chunks]
-                if len({chunk_values.shape[1:] for chunk_values in values}) > 1:
-                    # A chunk that took the dense fast path can't be joined
-                    # with a ragged chunk, or with a dense chunk of another row
-                    # shape, so convert those back to one ndarray per row.
+                if len({chunk_values.shape[1:] for chunk_values in values}) > 1 or any(
+                    chunk_values.dtype == object for chunk_values in values
+                ):
+                    # A chunk that took the dense fast path can only be joined
+                    # with dense chunks of the same row shape. Next to a ragged
+                    # chunk, or a dense chunk of another row shape, convert it
+                    # back to one ndarray per row. Comparing row shapes alone
+                    # isn't enough: with 0-d rows a dense chunk and a per-row
+                    # chunk are both 1-d.
                     # iterchunks() yields pa.Array (not pa.ChunkedArray), so
                     # to_numpy() defaults to zero_copy_only=True and raises if a
                     # copy is needed (e.g. nulls).

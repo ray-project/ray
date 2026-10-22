@@ -1748,6 +1748,37 @@ def test_variable_shaped_mixed_chunks_to_pandas(chunk_rows):
         np.testing.assert_array_equal(actual_row, expected_row)
 
 
+def test_variable_shaped_zero_dim_mixed_chunks_to_pandas():
+    """0-d rows next to a null row still fall back to one ndarray per row.
+
+    A dense chunk of 0-d rows is 1-d, like a chunk of per-row ndarrays, so the
+    row shapes alone can't tell them apart.
+    """
+    # from_numpy can't build 0-d rows, so build the storage directly.
+    zero_dim = pa.ExtensionArray.from_storage(
+        ArrowVariableShapedTensorType(pa.float32(), 0),
+        pa.StructArray.from_arrays(
+            [
+                pa.array([[1.0], [2.0], [3.0]], pa.large_list(pa.float32())),
+                pa.array([[], [], []], pa.list_(pa.int64())),
+            ],
+            names=["data", "shape"],
+        ),
+    )
+    with_null = _with_null_row(zero_dim, "struct")
+    assert zero_dim._to_dense_numpy_or_none() is not None
+
+    tensor_array = _to_pandas_chunked([zero_dim, with_null])
+
+    expected = list(zero_dim.to_numpy()) + list(
+        with_null.to_numpy(zero_copy_only=False)
+    )
+    actual = tensor_array.to_numpy()
+    assert len(actual) == len(expected)
+    for actual_row, expected_row in zip(actual, expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
+
+
 def test_variable_shaped_multi_chunk_with_empty_chunks_to_pandas_is_zero_copy():
     """Empty chunks are skipped, so one remaining chunk is still a view."""
     data = np.arange(12, dtype=np.float32).reshape(3, 4)
