@@ -307,7 +307,8 @@ std::string AuthenticationTokenLoader::CreateTokenIfMissing() {
   // cluster credential, so the file is owner-only; fchmod covers a file that existed
   // before with a wider mode. Windows has no POSIX modes.
 #ifdef _WIN32
-  std::ofstream token_file(token_path, std::ios::out | std::ios::trunc);
+  std::ofstream token_file(std::filesystem::path(token_path),
+                           std::ios::out | std::ios::trunc);
   token_file << token;
   token_file.close();
   if (!token_file) {
