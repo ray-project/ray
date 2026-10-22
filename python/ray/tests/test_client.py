@@ -861,6 +861,12 @@ def test_ignore_reinit(call_ray_start_shared, shutdown_only):
     assert ctx1 == ctx2
 
 
+def test_reinit_error_says_already_initialized(call_ray_start_shared, shutdown_only):
+    ray.init(SHARED_CLIENT_SERVER_ADDRESS)
+    with pytest.raises(RuntimeError, match="Ray Client is already initialized"):
+        ray.init(SHARED_CLIENT_SERVER_ADDRESS)
+
+
 def test_client_actor_missing_field(call_ray_start_shared):
     """
     Tests that trying to access methods that don't exist for an actor
