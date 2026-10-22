@@ -1356,6 +1356,29 @@
     wait_for_nodes:
       num_nodes: 2
 
+- name: "jobs_check_cuda_version_torch_cu133_py{{python}}"
+  python: "{{python}}"
+  group: Jobs tests
+  team: reef
+  frequency: nightly
+  working_dir: jobs_tests
+  matrix:
+    setup:
+      python: ["3.11", "3.14"]
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      # 'type: torch-cu133' means: use the cu133 'ray-torch' image.
+      type: torch-cu133
+    cluster_compute: compute_tpl_gpu_node_cu130.yaml
+  run:
+    timeout: 600
+    # torch comes from the cu130 index (no cu133 wheels), so torch.version.cuda
+    # is 13.0 on the 13.3 image; check the major only.
+    script: python workloads/jobs_check_cuda_version.py --expected-cuda-version 13
+    wait_for_nodes:
+      num_nodes: 2
+
 - name: jobs_specify_num_gpus
   python: "3.10"
   group: Jobs tests
@@ -2940,6 +2963,46 @@
     byod:
       type: gpu-cu133
       python_depset: gpu_cu130_py3.12.lock
+    cluster_compute: experimental/compute_t4_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/rdt_single_node_microbenchmark.py
+    wait_for_nodes:
+      num_nodes: 2
+
+# Same as rdt_single_node_T4_microbenchmark_cu133, but on the cu133 ray-torch
+# image, so it checks that image's cupy-cuda13x swap.
+- name: rdt_single_node_T4_microbenchmark_torch_cu133
+  python: "3.11"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu133
+    cluster_compute: experimental/compute_t4_gpu.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/rdt_single_node_microbenchmark.py
+
+# Cross-node copy of rdt_single_node_T4_microbenchmark_torch_cu133: two 1-GPU
+# nodes, so every NCCL transfer goes over the network between nodes.
+- name: rdt_T4_2x1_microbenchmark_torch_cu133
+  python: "3.11"
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: torch-cu133
     cluster_compute: experimental/compute_t4_gpu_2x1_aws.yaml
 
   run:
