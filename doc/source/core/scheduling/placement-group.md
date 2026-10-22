@@ -33,9 +33,7 @@ A *placement group* reserves resources from the cluster. To use the reserved res
 
 Create a placement group with {func}`ray.util.placement_group`. Placement groups take a list of bundles and a {ref}`placement strategy <pgroup-strategy>`.
 
-Bundles are specified by a list of resource dictionaries, e.g., `[{"CPU": 1}, {"CPU": 1, "GPU": 1}]`.
-For details on how resource dictionary keys correspond to task and actor options such as `num_cpus`
-and `num_gpus`, see {ref}`resource-dict-remote-options`.
+Specify bundles as a list of resource dictionaries, for example, `[{"CPU": 1}, {"CPU": 1, "GPU": 1}]`. For how resource dictionary keys map to task and actor options such as `num_cpus` and `num_gpus`, see {ref}`resource-dict-remote-options`.
 
 Placement group scheduling is asynchronous. `ray.util.placement_group` returns immediately.
 
