@@ -104,9 +104,7 @@ Unlike `line_profiler` above, this detailed list of profiled function calls **in
 
 However, similar to `line_profiler`, cProfile can be enabled with minimal changes to your application code (given that each section of the code you want to profile is defined as its own function). To use cProfile, add an import statement, then replace calls to the loop functions as follows:
 
-```{testcode}
-:skipif: True
-
+```python
 import cProfile  # Added import statement
 
 def ex1():
@@ -186,9 +184,7 @@ def ex4():
 
 We enable cProfile on this example as follows:
 
-```{testcode}
-:skipif: True
-
+```python
 def main():
     ray.init()
     cProfile.run('ex4()')

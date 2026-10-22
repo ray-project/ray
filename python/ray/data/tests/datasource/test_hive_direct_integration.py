@@ -250,6 +250,58 @@ def test_orc_rename_matches_real_hs2_mapping_boundary(direct_runtime, positional
         assert _metadata_lookup_count(statements) == 1
 
 
+@pytest.mark.parametrize("positional", [False, True])
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_orc_column_name_whitespace_matches_real_hs2(
+    direct_runtime, positional, merge_schema
+):
+    from ray.data.expressions import col
+
+    names = ["id", "value", " value", "trailing ", " both "]
+    expected = [
+        dict(zip(names, (1, 10, 11, 12, 13))),
+        dict(zip(names, (2, 20, None, 22, None))),
+    ]
+    schema = pa.schema([(name, pa.int64()) for name in names])
+    with _schema_evolution_table(
+        ", ".join(f"`{name}` BIGINT" for name in names), "orc", positional
+    ) as (filesystem, path, table, cursor, factory):
+        cursor.execute(
+            f"INSERT INTO {table} VALUES (1,10,11,12,13),(2,20,NULL,22,NULL)"
+        )
+        reference = _reference_rows(cursor, table)
+        assert reference == expected
+        hs2 = ray.data.read_hive(table, connection_factory=factory).materialize()
+        assert sorted(hs2.take_all(), key=lambda row: row["id"]) == reference
+        assert hs2.schema().base_schema == schema
+
+        statements = []
+        dataset = ray.data.read_hive(
+            table,
+            connection_factory=_metadata_only_factory(factory, statements),
+            read_mode="direct",
+            filesystem=filesystem,
+            merge_schema=merge_schema,
+        )
+        assert sorted(dataset.take_all(), key=lambda row: row["id"]) == reference
+        assert dataset.schema().base_schema == hs2.schema().base_schema
+        projected = dataset.select_columns(["id", " both "])
+        assert sorted(projected.take_all(), key=lambda row: row["id"]) == [
+            {"id": row["id"], " both ": row[" both "]} for row in reference
+        ]
+        assert projected.schema().base_schema == pa.schema(
+            [("id", pa.int64()), (" both ", pa.int64())]
+        )
+        filtered = dataset.filter(expr=col(" value") > 10).select_columns(
+            ["id", "trailing "]
+        )
+        assert filtered.take_all() == [{"id": 1, "trailing ": 12}]
+        assert filtered.schema().base_schema == pa.schema(
+            [("id", pa.int64()), ("trailing ", pa.int64())]
+        )
+        assert _metadata_lookup_count(statements) == 1
+
+
 @pytest.mark.parametrize("required", ["all", "projection", "filter_only"])
 def test_unsampled_orc_rename_matches_hs2_with_projection_and_filter(
     direct_runtime, monkeypatch, required
@@ -1361,6 +1413,52 @@ def test_default_hs2_table_and_explicit_query_still_read(direct_runtime):
         cursor.close()
         connection.close()
         filesystem.delete_dir(path)
+
+
+@pytest.mark.parametrize("positional", [False, True])
+def test_orc_merge_schema_matches_hs2_and_retains_files(direct_runtime, positional):
+    from ray.data.expressions import col
+
+    with _schema_evolution_table(
+        "id BIGINT, late STRING",
+        "orc",
+        positional,
+        {"orc.schema.evolution.case.sensitive": "false"},
+    ) as (filesystem, path, table, cursor, factory):
+        for index in range(17):
+            values = {"old_id" if positional else "id": [index]}
+            if index == 16:
+                values = {
+                    "new_id" if positional else "ID": [index],
+                    "new_late" if positional else "late": ["present"],
+                }
+            with filesystem.open_output_stream(f"{path}/{index:06d}_0") as stream:
+                orc.write_table(pa.table(values), stream)
+        reference = _reference_rows(cursor, table)
+        assert reference == [
+            {"id": index, "late": "present" if index == 16 else None}
+            for index in range(17)
+        ]
+        statements = []
+        dataset = ray.data.read_hive(
+            table,
+            connection_factory=_metadata_only_factory(factory, statements),
+            read_mode="direct",
+            filesystem=filesystem,
+            merge_schema=True,
+        )
+        assert dataset.schema().base_schema == pa.schema(
+            [("id", pa.int64()), ("late", pa.string())]
+        )
+        with filesystem.open_output_stream(path + "/published_later") as stream:
+            orc.write_table(pa.table({"id": [99], "late": ["not planned"]}), stream)
+        assert sorted(dataset.take_all(), key=lambda row: row["id"]) == reference
+        restored = ray.data.Dataset.deserialize_lineage(dataset.serialize_lineage())
+        projected = (
+            restored.filter(expr=col("id") >= 16).select_columns(["late"]).limit(2)
+        )
+        assert projected.take_all() == [{"late": "present"}]
+        assert _metadata_lookup_count(statements) == 1
 
 
 def test_parquet_merge_schema_retains_nonempty_file_set(direct_runtime):

@@ -64,6 +64,22 @@ def test_metadata_accepts_supported_file_tables(file_format, table_type):
     assert pa.types.is_struct(table.schema.field("payload").type)
 
 
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_metadata_preserves_column_name_whitespace(file_format):
+    names = ["id", " id", "id ", " id "]
+    rows = _metadata(file_format, properties={" transactional ": " false "})
+    rows[1:3] = [(name, " bigint ", None) for name in names]
+    rows[0] = (" # col_name ", " data_type ", "comment")
+    rows = [
+        (key, value, comment) if key in names else (f" {key} ", value, comment)
+        for key, value, comment in rows
+    ]
+    table = _parse_file_table(rows)
+    assert table.schema.names == names
+    assert all(field.type == pa.int64() for field in table.schema)
+    assert all(field.metadata == {b"hive_type": b"bigint"} for field in table.schema)
+
+
 @pytest.mark.parametrize(
     "properties",
     [
@@ -756,6 +772,30 @@ def test_native_reader_keeps_schema_nested_values_and_null_fill(tmp_path, file_f
         result.column("payload").to_pylist() == expected.column("payload").to_pylist()
     )
     assert result.column("missing").to_pylist() == [None, None]
+
+
+def test_native_parquet_preserves_metadata_column_name_whitespace(tmp_path):
+    expected = pa.table(
+        {"id": [1, 2], " id": [11, None], "id ": [12, 22], " id ": [13, None]}
+    )
+    path = tmp_path / "000000_0"
+    pq.write_table(expected, path)
+    rows = _metadata()
+    rows[1:3] = [(name, "bigint", None) for name in expected.column_names]
+    rows = [
+        (key, str(tmp_path) if key == "Location:" else value, comment)
+        for key, value, comment in rows
+    ]
+    source = HiveDirectDatasource(_parse_file_table(rows))
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths([path]))
+        )
+    )
+    assert result.schema.equals(expected.schema, check_metadata=False)
+    assert result.to_pylist() == expected.to_pylist()
 
 
 def _write_column_file(path, file_format, name, value):
@@ -1669,26 +1709,126 @@ def test_empty_table_keeps_declared_schema(tmp_path, file_format):
     assert source.infer_schema(None) == declared
 
 
-def test_orc_merge_option_rejected_before_file_access(tmp_path):
-    with pytest.raises(ValueError, match="only supported for Parquet"):
-        HiveDirectDatasource(
-            HiveFileTable(
-                str(tmp_path / "absent"), "orc", pa.schema([("id", pa.int64())])
+@pytest.mark.parametrize("mapping", ["name", "position", "legacy"])
+def test_orc_full_schema_normalizes_before_shared_merge(tmp_path, monkeypatch, mapping):
+    declared = pa.schema(
+        [
+            ("id", pa.int64()),
+            ("payload", pa.struct([("values", pa.list_(pa.int64()))])),
+            ("late", pa.string()),
+        ]
+    )
+    paths = []
+    for index in range(17):
+        if mapping == "name":
+            names = ["id", "payload", "late"]
+        elif mapping == "legacy":
+            names = [f"_col{i}" for i in range(3)]
+        else:
+            prefix = "new" if index == 16 else "old"
+            names = [f"{prefix}_{i}" for i in range(3)]
+        values = {
+            names[0]: pa.array([index], type=pa.int32()),
+            names[1]: pa.array(
+                [{"values": [index, None]}],
+                type=pa.struct([("values", pa.list_(pa.int32()))]),
             ),
-            merge_schema=True,
+        }
+        if index == 16:
+            values[names[2]] = pa.array(["present"])
+            if mapping == "name":
+                values = {
+                    "late": values["late"],
+                    "payload": values["payload"],
+                    "ID": values["id"],
+                }
+        paths.append(
+            _write_table_file(tmp_path / f"part-{index:02d}", "orc", pa.table(values))
         )
 
+    calls = []
+    original_infer = hive_direct.infer_schema_from_files
 
-def test_parquet_full_schema_mode_retains_the_hive_file_set(tmp_path):
+    def infer(paths, read_schema, **kwargs):
+        calls.append(len(paths))
+
+        def read_normalized(path):
+            schema = read_schema(path)
+            assert schema == declared
+            return schema
+
+        return original_infer(paths, read_normalized, **kwargs)
+
+    monkeypatch.setattr(hive_direct, "infer_schema_from_files", infer)
+    table = HiveFileTable(
+        str(tmp_path), "orc", declared, force_positional_evolution=mapping == "position"
+    )
+    HiveDirectDatasource(table)
+    source = HiveDirectDatasource(table, merge_schema=True)
+    assert calls == [16, 17]
+    assert source.infer_schema(None) == declared
+    result = pa.concat_tables(
+        list(
+            source.create_scanner(source.infer_schema(None))
+            .create_reader()
+            .read(_manifest_for_paths(paths))
+        )
+    )
+    assert result.schema == declared
+    assert result.to_pylist() == [
+        {
+            "id": i,
+            "payload": {"values": [i, None]},
+            "late": "present" if i == 16 else None,
+        }
+        for i in range(17)
+    ]
+
+
+def test_orc_full_schema_validates_late_types_during_planning(tmp_path):
+    declared = pa.schema([("id", pa.int32())])
+    for index in range(17):
+        _write_table_file(
+            tmp_path / f"part-{index:02d}",
+            "orc",
+            pa.table(
+                {
+                    "id": pa.array(
+                        [index], type=pa.int64() if index == 16 else pa.int32()
+                    )
+                }
+            ),
+        )
+    table = HiveFileTable(str(tmp_path), "orc", declared)
+    assert HiveDirectDatasource(table).infer_schema(None) == declared
+    with pytest.raises(ValueError, match="type mismatch"):
+        HiveDirectDatasource(table, merge_schema=True)
+
+
+def test_orc_full_schema_empty_table_keeps_hive_declaration(tmp_path):
+    declared = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(
+        HiveFileTable(str(tmp_path), "orc", declared), merge_schema=True
+    )
+    assert source.infer_schema(None) == declared
+    assert (
+        list(source._get_file_indexer().list_file_infos(pa.array(source.paths))) == []
+    )
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_full_schema_mode_retains_the_hive_file_set(tmp_path, file_format):
     schema = pa.schema([("id", pa.int64())])
     for index in range(17):
-        pq.write_table(pa.table({"id": [index]}), tmp_path / f"{index:06d}_0")
-    table = HiveFileTable(str(tmp_path), "parquet", schema)
+        _write_table_file(
+            tmp_path / f"{index:06d}_0", file_format, pa.table({"id": [index]})
+        )
+    table = HiveFileTable(str(tmp_path), file_format, schema)
     sampled = HiveDirectDatasource(table)
     assert sampled._retained is None
     full = HiveDirectDatasource(table, merge_schema=True)
     assert len(full._retained) == 17
-    pq.write_table(pa.table({"id": [99]}), tmp_path / "published_later")
+    _write_table_file(tmp_path / "published_later", file_format, pa.table({"id": [99]}))
     infos = list(full._get_file_indexer().list_file_infos(pa.array(full.paths)))
     assert len(infos) == 17
     assert not any(info.path.endswith("published_later") for info in infos)

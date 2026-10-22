@@ -1,7 +1,6 @@
 """Hive metadata planning composed with native Parquet and ORC datasources."""
 
 import re
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import (
     dataclass,
@@ -20,6 +19,9 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     FileFormat,
 )
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_schema_from_files,
+)
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import _connect
 from ray.data._internal.datasource_v2.formats.hive.hive_schema import hive_type_to_arrow
@@ -43,7 +45,7 @@ from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     SupportsMetadata,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import iterate_with_retry, unify_schemas_with_validation
+from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
 
 _FORMATS = {
@@ -178,7 +180,8 @@ def _parse_file_table(rows) -> HiveFileTable:
                 raise ValueError("Hive direct-read requires complete column metadata")
             columns.append(
                 pa.field(
-                    key,
+                    # DESCRIBE preserves literal column names, including spaces.
+                    str(row[0]),
                     hive_type_to_arrow(value),
                     metadata={b"hive_type": value.encode()},
                 )
@@ -623,21 +626,13 @@ def _orc_column_indices(
 
 def _infer_orc_read_schema(table, sample, filesystem):
     """Normalize each sampled file before native schema unification."""
-    if not len(sample):
-        return table.schema, {field.name: field.name for field in table.schema}
-    retryable = DataContext.get_current().retried_io_errors
-    with ThreadPoolExecutor(max_workers=min(len(sample), 16)) as executor:
-        schemas = list(
-            executor.map(
-                lambda path: _read_physical_schema_with_retry(
-                    str(path), "orc", filesystem, retryable
-                ),
-                sample.paths,
-            )
-        )
     sampled_names = {field.name: field.name for field in table.schema}
-    normalized = []
-    for schema in schemas:
+    if not len(sample):
+        return table.schema, sampled_names
+    retryable = DataContext.get_current().retried_io_errors
+
+    def read_schema(path: str) -> pa.Schema:
+        schema = _read_physical_schema_with_retry(path, "orc", filesystem, retryable)
         indices = _orc_column_indices(
             table.schema,
             schema,
@@ -645,20 +640,22 @@ def _infer_orc_read_schema(table, sample, filesystem):
             table.tolerate_missing_schema,
             table.schema_evolution_case_sensitive,
         )
-        normalized.append(
-            pa.schema(
-                [
-                    pa.field(
-                        field.name,
-                        _compatible_read_type(field.type, schema[index].type)
-                        if index >= 0
-                        else field.type,
-                    )
-                    for field, index in zip(table.schema, indices)
-                ]
-            )
+        return pa.schema(
+            [
+                pa.field(
+                    field.name,
+                    _compatible_read_type(field.type, schema[index].type)
+                    if index >= 0
+                    else field.type,
+                )
+                for field, index in zip(table.schema, indices)
+            ]
         )
-    return unify_schemas_with_validation(normalized), sampled_names
+
+    schema = infer_schema_from_files(
+        sample.paths.tolist(), read_schema, format_name="ORC"
+    )
+    return schema, sampled_names
 
 
 class _HiveOrcFileReader(OrcFileReader):
@@ -862,8 +859,6 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
 
     def __init__(self, table: HiveFileTable, filesystem=None, merge_schema=False):
         super().__init__("HiveDirect", DatasourceCategory.DATABASE)
-        if merge_schema and table.file_format != "parquet":
-            raise ValueError("merge_schema is only supported for Parquet direct reads")
         # Hadoop table locations commonly use s3a; Arrow's native client uses s3.
         location = table.location
         if location.startswith("s3a://"):

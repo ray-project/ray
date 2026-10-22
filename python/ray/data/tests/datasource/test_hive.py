@@ -255,6 +255,55 @@ def test_direct_parquet_converts_values_before_filter_projection_and_limit(
 
 
 @pytest.mark.parametrize("positional", [False, True])
+def test_direct_orc_full_schema_retains_candidates_and_lineage(
+    ray_start_regular_shared, tmp_path, monkeypatch, positional
+):
+    from pyarrow import orc
+
+    import ray
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+    from ray.data.expressions import col
+
+    for index in range(17):
+        name = "old_id" if positional else "id"
+        values = {name: [index]}
+        if index == 16:
+            values = {
+                "new_id" if positional else "ID": [index],
+                "new_late" if positional else "late": ["present"],
+            }
+        orc.write_table(pa.table(values), tmp_path / f"{index:06d}_0")
+    declared = pa.schema([("id", pa.int64()), ("late", pa.string())])
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(
+            str(tmp_path), "orc", declared, force_positional_evolution=positional
+        ),
+    )
+    dataset = read_hive(
+        "events",
+        connection_factory=lambda: pytest.fail(
+            "Native workers must not connect to HS2"
+        ),
+        read_mode="direct",
+        merge_schema=True,
+    )
+    assert dataset.schema().base_schema == declared
+    orc.write_table(
+        pa.table({"id": [99], "late": ["not planned"]}),
+        tmp_path / "published_later",
+    )
+    assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [
+        {"id": index, "late": "present" if index == 16 else None} for index in range(17)
+    ]
+    restored = ray.data.Dataset.deserialize_lineage(dataset.serialize_lineage())
+    projected = restored.filter(expr=col("id") >= 16).select_columns(["late"]).limit(2)
+    assert projected.schema().base_schema == pa.schema([("late", pa.string())])
+    assert projected.take_all() == [{"late": "present"}]
+
+
+@pytest.mark.parametrize("positional", [False, True])
 @pytest.mark.parametrize("unsampled", [False, True])
 @pytest.mark.parametrize("operation", ["projection", "filter_only"])
 def test_direct_orc_scan_requests_prune_unused_columns(

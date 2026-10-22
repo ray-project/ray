@@ -1871,9 +1871,12 @@ py_test(
     ],
 )
 
+# Several distributed sorts plus hundreds of serial ray.get calls. Passing
+# runs land at 36-59s, so the small-test default of 60s times out under load.
 py_test(
     name = "test_random_access",
     size = "small",
+    timeout = "moderate",
     srcs = ["tests/test_random_access.py"],
     tags = [
         "exclusive",

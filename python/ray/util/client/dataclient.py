@@ -13,6 +13,7 @@ import grpc
 
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
+from ray.exceptions import AuthenticationError
 from ray.util.client.common import (
     INT32_MAX,
     OBJECT_TRANSFER_CHUNK_SIZE,
@@ -275,7 +276,10 @@ class DataClient:
                 except grpc.RpcError as e:
                     reconnecting = self._can_reconnect(e)
                     if not reconnecting:
-                        self._last_exception = e
+                        if e.code() == grpc.StatusCode.UNAUTHENTICATED:
+                            self._last_exception = self.client_worker._reject(e)
+                        else:
+                            self._last_exception = e
                         return
                     self._reconnect_channel()
         except Exception as e:
@@ -344,7 +348,9 @@ class DataClient:
             callbacks = self.asyncio_waiting_data.values()
             self.asyncio_waiting_data = {}
 
-        if self._last_exception:
+        if isinstance(self._last_exception, AuthenticationError):
+            err = self._last_exception
+        elif self._last_exception:
             # Abort async requests with the error.
             err = ConnectionError(
                 "Failed during this or a previous request. Exception that "
@@ -495,6 +501,8 @@ class DataClient:
 
         self.lock.acquire()
 
+        if isinstance(self._last_exception, AuthenticationError):
+            raise self._last_exception
         if self._last_exception is not None:
             msg = (
                 "Request can't be sent because the Ray client has already "
