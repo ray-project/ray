@@ -178,10 +178,13 @@ def _orc_session_factory(factory, positional, settings=None):
 
 
 @contextmanager
-def _schema_evolution_table(columns, file_format, positional=None, settings=None):
+def _schema_evolution_table(
+    columns, file_format, positional=None, settings=None, *, backend=None
+):
     # A shared local directory also permits real HS2 semantic tests without
     # requiring the independent HDFS/S3 infrastructure matrix.
-    backend = "local" if os.environ.get("RAY_HIVE_DIRECT_LOCAL_URI") else "hdfs"
+    if backend is None:
+        backend = "local" if os.environ.get("RAY_HIVE_DIRECT_LOCAL_URI") else "hdfs"
     filesystem, path, location = _storage(backend)
     factory = _orc_session_factory(_native_connection_factory(), positional, settings)
     connection = factory()
@@ -1163,11 +1166,6 @@ def test_orc_renamed_complex_columns_match_real_hs2(direct_runtime):
 @pytest.mark.parametrize("backend", ["hdfs", "s3"])
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_nonpartitioned_native_read(direct_runtime, backend, file_format):
-    filesystem, path, location = _storage(backend)
-    connection_factory = _native_connection_factory()
-    connection = connection_factory()
-    cursor = connection.cursor()
-    table_name = "ray_direct_" + uuid.uuid4().hex[:12]
     columns = (
         "id BIGINT, flag BOOLEAN, tiny TINYINT, small SMALLINT, n INT, "
         "ratio FLOAT, score DOUBLE, name STRING, payload BINARY, d DATE, "
@@ -1238,133 +1236,126 @@ def test_nonpartitioned_native_read(direct_runtime, backend, file_format):
             pa.array(["tag", "tag", "abcdefghijkl"] + ["tag"] * 29),
         )
     )
-    created = False
     observer = None
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table_name} ({columns}) "
-            f"STORED AS {file_format.upper()} LOCATION '{location}'"
-        )
-        created = True
-        for index in range(4):
-            with filesystem.open_output_stream(f"{path}/{index:06d}_0") as stream:
-                batch = physical.slice(index * 8, 8)
-                if file_format == "parquet":
-                    pq.write_table(batch, stream, use_deprecated_int96_timestamps=True)
-                else:
-                    orc.write_table(batch, stream)
+    with _schema_evolution_table(columns, file_format, backend=backend) as (
+        filesystem,
+        path,
+        table_name,
+        cursor,
+        connection_factory,
+    ):
+        try:
+            for index in range(4):
+                with filesystem.open_output_stream(f"{path}/{index:06d}_0") as stream:
+                    batch = physical.slice(index * 8, 8)
+                    if file_format == "parquet":
+                        pq.write_table(
+                            batch, stream, use_deprecated_int96_timestamps=True
+                        )
+                    else:
+                        orc.write_table(batch, stream)
 
-        driver_pid = os.getpid()
+            driver_pid = os.getpid()
 
-        statements = []
-        metadata_only_factory = _metadata_only_factory(connection_factory, statements)
-
-        @ray.remote(num_cpus=0)
-        class ReadObserver:
-            def __init__(self):
-                self.pids = set()
-
-            def record(self, pid):
-                self.pids.add(pid)
-                return len(self.pids)
-
-        observer = ReadObserver.remote()
-
-        def _tag_read_worker(batch):
-            # Defined locally so worker deserialization doesn't depend on
-            # pytest's bare test-module import name. It must fuse with ReadFiles.
-            deadline = time.monotonic() + 20
-            while ray.get(observer.record.remote(os.getpid())) < 2:
-                if time.monotonic() >= deadline:
-                    raise AssertionError(
-                        "Two native reading workers did not participate"
-                    )
-                time.sleep(0.05)
-            return batch.append_column(
-                "_read_pid",
-                pa.repeat(pa.scalar(os.getpid(), type=pa.int64()), len(batch)),
+            statements = []
+            metadata_only_factory = _metadata_only_factory(
+                connection_factory, statements
             )
 
-        dataset = ray.data.read_hive(
-            table_name,
-            connection_factory=metadata_only_factory,
-            read_mode="direct",
-            filesystem=filesystem,
-            override_num_blocks=4,
-        )
-        materialized = dataset.map_batches(
-            _tag_read_worker, batch_format="pyarrow"
-        ).materialize()
-        result = materialized.take_all()
-        pids = {row.pop("_read_pid") for row in result}
-        print(materialized.stats())
-        assert len(pids) >= 2
-        assert driver_pid not in pids
-        assert re.search(
-            r"ReadFilesHiveDirect(?:->[^\n:]*)?->MapBatches", materialized.stats()
-        )
-        assert sorted(result, key=lambda row: row["id"]) == expected.to_pylist()
-        assert dataset.schema().base_schema == schema
+            @ray.remote(num_cpus=0)
+            class ReadObserver:
+                def __init__(self):
+                    self.pids = set()
 
-        limited = ray.data.read_hive(
-            table_name,
-            connection_factory=metadata_only_factory,
-            read_mode="direct",
-            filesystem=filesystem,
-            limit=3,
-        )
-        assert len(limited.take_all()) == 3
-        zero = ray.data.read_hive(
-            table_name,
-            connection_factory=metadata_only_factory,
-            read_mode="direct",
-            filesystem=filesystem,
-            limit=0,
-        )
-        assert zero.take_all() == []
-        assert zero.schema().base_schema == schema
+                def record(self, pid):
+                    self.pids.add(pid)
+                    return len(self.pids)
 
-        normalized = sorted(result, key=lambda row: row["id"])
-        for row in normalized:
-            row["labels"] = dict(row["labels"]) if row["labels"] is not None else None
-        assert normalized == _reference_rows(
-            cursor, table_name, ("items", "labels", "nested")
-        )
-        assert _metadata_lookup_count(statements) == 3
+            observer = ReadObserver.remote()
 
-        from ray.data.expressions import col
+            def _tag_read_worker(batch):
+                # Defined locally so worker deserialization doesn't depend on
+                # pytest's bare test-module import name. It must fuse with ReadFiles.
+                deadline = time.monotonic() + 20
+                while ray.get(observer.record.remote(os.getpid())) < 2:
+                    if time.monotonic() >= deadline:
+                        raise AssertionError(
+                            "Two native reading workers did not participate"
+                        )
+                    time.sleep(0.05)
+                return batch.append_column(
+                    "_read_pid",
+                    pa.repeat(pa.scalar(os.getpid(), type=pa.int64()), len(batch)),
+                )
 
-        converted_filter = dataset.filter(
-            expr=(col("code") == "ab  ")
-            & (col("ts") == datetime(2026, 1, 2, 3, 4, 5, 123456))
-        ).select_columns(["id"])
-        assert sorted(row["id"] for row in converted_filter.take_all()) == list(
-            range(3, 32)
-        )
-    finally:
-        if observer is not None:
-            ray.kill(observer)
-        if created:
-            cursor.execute(f"DROP TABLE {table_name}")
-        cursor.close()
-        connection.close()
-        filesystem.delete_dir(path)
+            dataset = ray.data.read_hive(
+                table_name,
+                connection_factory=metadata_only_factory,
+                read_mode="direct",
+                filesystem=filesystem,
+                override_num_blocks=4,
+            )
+            materialized = dataset.map_batches(
+                _tag_read_worker, batch_format="pyarrow"
+            ).materialize()
+            result = materialized.take_all()
+            pids = {row.pop("_read_pid") for row in result}
+            print(materialized.stats())
+            assert len(pids) >= 2
+            assert driver_pid not in pids
+            assert re.search(
+                r"ReadFilesHiveDirect(?:->[^\n:]*)?->MapBatches", materialized.stats()
+            )
+            assert sorted(result, key=lambda row: row["id"]) == expected.to_pylist()
+            assert dataset.schema().base_schema == schema
+
+            limited = ray.data.read_hive(
+                table_name,
+                connection_factory=metadata_only_factory,
+                read_mode="direct",
+                filesystem=filesystem,
+                limit=3,
+            )
+            assert len(limited.take_all()) == 3
+            zero = ray.data.read_hive(
+                table_name,
+                connection_factory=metadata_only_factory,
+                read_mode="direct",
+                filesystem=filesystem,
+                limit=0,
+            )
+            assert zero.take_all() == []
+            assert zero.schema().base_schema == schema
+
+            normalized = sorted(result, key=lambda row: row["id"])
+            for row in normalized:
+                row["labels"] = (
+                    dict(row["labels"]) if row["labels"] is not None else None
+                )
+            assert normalized == _reference_rows(
+                cursor, table_name, ("items", "labels", "nested")
+            )
+            assert _metadata_lookup_count(statements) == 3
+
+            from ray.data.expressions import col
+
+            converted_filter = dataset.filter(
+                expr=(col("code") == "ab  ")
+                & (col("ts") == datetime(2026, 1, 2, 3, 4, 5, 123456))
+            ).select_columns(["id"])
+            assert sorted(row["id"] for row in converted_filter.take_all()) == list(
+                range(3, 32)
+            )
+        finally:
+            if observer is not None:
+                ray.kill(observer)
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_empty_native_table(direct_runtime, file_format):
-    filesystem, path, location = _storage("s3")
-    factory = _native_connection_factory()
-    connection = factory()
-    cursor = connection.cursor()
-    table = "ray_empty_" + uuid.uuid4().hex[:12]
-    created = False
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table} (id BIGINT, name STRING) "
-            f"STORED AS {file_format.upper()} LOCATION '{location}'"
-        )
-        created = True
+    with _schema_evolution_table(
+        "id BIGINT, name STRING", file_format, backend="s3"
+    ) as (filesystem, path, table, cursor, factory):
         dataset = ray.data.read_hive(
             table,
             connection_factory=factory,
@@ -1376,29 +1367,18 @@ def test_empty_native_table(direct_runtime, file_format):
         assert dataset.schema().base_schema == pa.schema(
             [("id", pa.int64()), ("name", pa.string())]
         )
-    finally:
-        if created:
-            cursor.execute(f"DROP TABLE {table}")
-        cursor.close()
-        connection.close()
-        filesystem.delete_dir(path)
 
 
 def test_default_hs2_table_and_explicit_query_still_read(direct_runtime):
-    filesystem, path, location = _storage("s3")
-    with filesystem.open_output_stream(path + "/000000_0") as stream:
-        pq.write_table(pa.table({"id": [1, 2], "name": ["a", "b"]}), stream)
-    factory = _native_connection_factory()
-    connection = factory()
-    cursor = connection.cursor()
-    table = "ray_hs2_" + uuid.uuid4().hex[:12]
-    created = False
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table} (id BIGINT, name STRING) "
-            f"STORED AS PARQUET LOCATION '{location}'"
-        )
-        created = True
+    with _schema_evolution_table("id BIGINT, name STRING", "parquet", backend="s3") as (
+        filesystem,
+        path,
+        table,
+        cursor,
+        factory,
+    ):
+        with filesystem.open_output_stream(path + "/000000_0") as stream:
+            pq.write_table(pa.table({"id": [1, 2], "name": ["a", "b"]}), stream)
         result = ray.data.read_hive(table, connection_factory=factory).take_all()
         assert sorted(row["id"] for row in result) == [1, 2]
         result = ray.data.read_hive(
@@ -1407,12 +1387,6 @@ def test_default_hs2_table_and_explicit_query_still_read(direct_runtime):
             connection_factory=factory,
         ).take_all()
         assert sorted(row["event_id"] for row in result) == [1, 2]
-    finally:
-        if created:
-            cursor.execute(f"DROP TABLE {table}")
-        cursor.close()
-        connection.close()
-        filesystem.delete_dir(path)
 
 
 @pytest.mark.parametrize("positional", [False, True])
@@ -1462,18 +1436,13 @@ def test_orc_merge_schema_matches_hs2_and_retains_files(direct_runtime, position
 
 
 def test_parquet_merge_schema_retains_nonempty_file_set(direct_runtime):
-    filesystem, path, location = _storage("s3")
-    factory = _native_connection_factory()
-    connection = factory()
-    cursor = connection.cursor()
-    table = "ray_merge_" + uuid.uuid4().hex[:12]
-    created = False
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table} (id BIGINT, late STRING) "
-            f"STORED AS PARQUET LOCATION '{location}'"
-        )
-        created = True
+    with _schema_evolution_table("id BIGINT, late STRING", "parquet", backend="s3") as (
+        filesystem,
+        path,
+        table,
+        cursor,
+        factory,
+    ):
         for index in range(17):
             values = {"id": [index]}
             if index == 16:
@@ -1496,30 +1465,17 @@ def test_parquet_merge_schema_retains_nonempty_file_set(direct_runtime):
             {"id": index, "late": "present" if index == 16 else None}
             for index in range(17)
         ]
-    finally:
-        if created:
-            cursor.execute(f"DROP TABLE {table}")
-        cursor.close()
-        connection.close()
-        filesystem.delete_dir(path)
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_hive_written_file_values(direct_runtime, file_format):
-    filesystem, path, location = _storage("hdfs")
-    factory = _native_connection_factory()
-    connection = factory()
-    cursor = connection.cursor()
-    table = "ray_written_" + uuid.uuid4().hex[:12]
-    created = False
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table} (id BIGINT, code CHAR(4), tag VARCHAR(3), "
-            "ts TIMESTAMP, items ARRAY<INT>, labels MAP<STRING,STRING>, "
-            "nested STRUCT<name:STRING,value:INT>) "
-            f"STORED AS {file_format.upper()} LOCATION '{location}'"
-        )
-        created = True
+    with _schema_evolution_table(
+        "id BIGINT, code CHAR(4), tag VARCHAR(3), "
+        "ts TIMESTAMP, items ARRAY<INT>, labels MAP<STRING,STRING>, "
+        "nested STRUCT<name:STRING,value:INT>",
+        file_format,
+        backend="hdfs",
+    ) as (filesystem, path, table, cursor, factory):
         cursor.execute(
             f"INSERT INTO {table} SELECT CAST(1 AS BIGINT), CAST('ab' AS CHAR(4)), "
             "CAST('abcdef' AS VARCHAR(3)), CAST('2026-01-02 03:04:05.123456789' AS TIMESTAMP), "
@@ -1541,25 +1497,12 @@ def test_hive_written_file_values(direct_runtime, file_format):
         assert result[0]["tag"] == "abc"
         assert result[0]["ts"] == datetime(2026, 1, 2, 3, 4, 5, 123456)
         assert _metadata_lookup_count(statements) == 1
-    finally:
-        try:
-            if created:
-                cursor.execute(f"DROP TABLE {table}")
-        finally:
-            cursor.close()
-            connection.close()
-            filesystem.delete_dir(path)
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_hive_written_epoch_timestamps(direct_runtime, file_format):
     from ray.data.expressions import col
 
-    filesystem, path, location = _storage("hdfs")
-    factory = _native_connection_factory()
-    connection = factory()
-    cursor = connection.cursor()
-    table = "ray_epoch_" + uuid.uuid4().hex[:12]
     literals = [
         "1969-12-31 23:59:59.999998999",
         "1969-12-31 23:59:59.999999000",
@@ -1585,15 +1528,12 @@ def test_hive_written_epoch_timestamps(direct_runtime, file_format):
             value - 1_000_000 if value is not None and value < 0 else value
             for value in micros
         ]
-    created = False
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table} (id INT, ts TIMESTAMP, "
-            "nested STRUCT<ts:TIMESTAMP>, items ARRAY<TIMESTAMP>, "
-            f"labels MAP<STRING,TIMESTAMP>) STORED AS {file_format.upper()} "
-            f"LOCATION '{location}'"
-        )
-        created = True
+    with _schema_evolution_table(
+        "id INT, ts TIMESTAMP, nested STRUCT<ts:TIMESTAMP>, "
+        "items ARRAY<TIMESTAMP>, labels MAP<STRING,TIMESTAMP>",
+        file_format,
+        backend="hdfs",
+    ) as (filesystem, path, table, cursor, factory):
         selects = []
         for index, literal in enumerate(literals):
             timestamp = (
@@ -1654,30 +1594,17 @@ def test_hive_written_epoch_timestamps(direct_runtime, file_format):
             .take_all()
         ) == [4, 5, 6]
         assert _metadata_lookup_count(statements) == 1
-    finally:
-        try:
-            if created:
-                cursor.execute(f"DROP TABLE {table}")
-        finally:
-            cursor.close()
-            connection.close()
-            filesystem.delete_dir(path)
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_late_file_schema_failure_does_not_replay_hs2(direct_runtime, file_format):
-    filesystem, path, location = _storage("s3")
-    factory = _native_connection_factory()
-    connection = factory()
-    cursor = connection.cursor()
-    table = "ray_failure_" + uuid.uuid4().hex[:12]
-    created = False
-    try:
-        cursor.execute(
-            f"CREATE EXTERNAL TABLE {table} (id BIGINT) STORED AS {file_format.upper()} "
-            f"LOCATION '{location}'"
-        )
-        created = True
+    with _schema_evolution_table("id BIGINT", file_format, backend="s3") as (
+        filesystem,
+        path,
+        table,
+        cursor,
+        factory,
+    ):
         for index in range(17):
             data = (
                 pa.table({"id": [index]})
@@ -1713,14 +1640,6 @@ def test_late_file_schema_failure_does_not_replay_hs2(direct_runtime, file_forma
                     merge_schema=True,
                 )
             assert _metadata_lookup_count(statements) == 2
-    finally:
-        try:
-            if created:
-                cursor.execute(f"DROP TABLE {table}")
-        finally:
-            cursor.close()
-            connection.close()
-            filesystem.delete_dir(path)
 
 
 def test_native_factory_accepts_existing_password_alias(monkeypatch):
