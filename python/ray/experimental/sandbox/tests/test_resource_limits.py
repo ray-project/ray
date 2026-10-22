@@ -2,7 +2,6 @@
 
 import json
 import os
-import signal
 import subprocess
 import sys
 import time
@@ -10,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.runtime import SandboxRuntime
 
 pytestmark = pytest.mark.skipif(
@@ -143,47 +143,11 @@ def test_fractional_cpu_quota_is_exact():
         runtime.delete(sid)
 
 
-def test_worker_crash_kills_sandbox_and_releases_cgroup():
-    # Abrupt exit bypasses every Python destructor and runtime cleanup path.
-    code = """
-import os
-from ray.experimental.sandbox.runtime import SandboxRuntime
-runtime = SandboxRuntime()
-sid = runtime.create(os.environ.get('RAY_SANDBOX_TEST_IMAGE', 'python:3.12-slim'),
-                     cpu=1, memory='512Mi', timeout_seconds=300,
-                     env={'PATH':'/usr/local/bin:/usr/bin:/bin'})
-print(sid, flush=True)
-os._exit(0)
-"""
-    result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=300
-    )
-    assert result.returncode == 0, result.stderr
-    sid = result.stdout.strip()
-    path = Path(os.environ["RAY_SANDBOX_CGROUP_PATH"]) / sid
-    deadline = time.monotonic() + 10
-    while path.exists() and time.monotonic() < deadline:
-        time.sleep(0.1)
-    assert not path.exists(), f"Orphaned running sandbox cgroup: {path}"
-
-
-def _stop_reapers() -> None:
-    for entry in Path("/proc").iterdir():
-        try:
-            argv = (entry / "cmdline").read_bytes().split(b"\0")
-        except OSError:
-            continue
-        if b"--reap" in argv and entry.name.isdigit():
-            os.kill(int(entry.name), signal.SIGKILL)
-
-
-def test_worker_exit_that_kills_its_children_still_reaps_the_sandbox():
-    """Ray kills a worker's child processes when it exits. The reaper must
-    survive that, kill the sandbox, and delete its runsc state and bundle."""
-    # Only a reaper that this worker starts can then do the cleanup.
-    _stop_reapers()
-    code = """
-import os, signal
+# Creates a sandbox with limits, prints its ID, and exits without deleting
+# it. With "kill-children", it first kills its child processes, as Ray's
+# CoreWorker::KillChildProcs does when a worker exits.
+_OWNER = """
+import os, signal, sys
 from pathlib import Path
 from ray.experimental.sandbox.runtime import SandboxRuntime
 runtime = SandboxRuntime()
@@ -191,28 +155,48 @@ sid = runtime.create(os.environ.get('RAY_SANDBOX_TEST_IMAGE', 'python:3.12-slim'
                      cpu=1, memory='512Mi', timeout_seconds=300,
                      env={'PATH':'/usr/local/bin:/usr/bin:/bin'})
 print(sid, flush=True)
-# What Ray's CoreWorker::KillChildProcs does as the worker exits.
-for entry in Path('/proc').iterdir():
-    try:
-        stat = (entry / 'stat').read_text()
-    except OSError:
-        continue
-    if entry.name.isdigit() and int(stat.rsplit(')', 1)[1].split()[1]) == os.getpid():
-        os.kill(int(entry.name), signal.SIGKILL)
+if sys.argv[1] == 'kill-children':
+    for entry in Path('/proc').iterdir():
+        try:
+            stat = (entry / 'stat').read_text()
+        except OSError:
+            continue
+        if entry.name.isdigit() and int(stat.rsplit(')', 1)[1].split()[1]) == os.getpid():
+            os.kill(int(entry.name), signal.SIGKILL)
 os._exit(0)
 """
+
+
+def _populated(cgroup: Path) -> bool:
+    return "populated 1" in (cgroup / "cgroup.events").read_text()
+
+
+@pytest.mark.parametrize("exit_mode", ["kill-children", "exit"])
+def test_reclaim_removes_a_dead_owners_cgroup(exit_mode):
+    """A Ray worker's sandbox stops when the worker's children are killed, so
+    its cgroup empties at once. A driver's sandbox keeps running in its cgroup
+    after the driver exits. Either way the next reclaim pass removes the
+    cgroup with the sandbox's runsc state and bundle."""
     result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, timeout=300
+        [sys.executable, "-c", _OWNER, exit_mode],
+        capture_output=True,
+        text=True,
+        timeout=300,
     )
     assert result.returncode == 0, result.stderr
     sid = result.stdout.strip()
     cgroup_path = Path(os.environ["RAY_SANDBOX_CGROUP_PATH"]) / sid
-    bundle = Path("/tmp/ray/sandbox") / sid
-    deadline = time.monotonic() + 15
-    while (cgroup_path.exists() or bundle.exists()) and time.monotonic() < deadline:
-        time.sleep(0.1)
-    assert not cgroup_path.exists(), f"Orphaned running sandbox cgroup: {cgroup_path}"
-    assert not bundle.exists(), f"Orphaned sandbox bundle: {bundle}"
+    if exit_mode == "kill-children":
+        deadline = time.monotonic() + 10
+        while _populated(cgroup_path) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not _populated(cgroup_path), "The sandbox outlived its worker"
+    else:
+        assert _populated(cgroup_path)
+
+    assert sid in GVisorSandboxBackend()._reclaim_unowned_bundles()
+    assert not cgroup_path.exists(), f"Orphaned sandbox cgroup: {cgroup_path}"
+    assert not (Path("/tmp/ray/sandbox") / sid).exists()
     state = subprocess.run(
         ["runsc", "--root", "/tmp/runsc", "state", sid], capture_output=True
     )

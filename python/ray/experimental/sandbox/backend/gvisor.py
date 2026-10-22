@@ -20,7 +20,6 @@ from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
 )
-from ray.experimental.sandbox._internal.image_utils import image_use_marker
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -65,6 +64,10 @@ _BUNDLE_NAME = re.compile(r"ray-sandbox-[0-9a-f]{12}")
 _RECLAIM_INTERVAL_SECONDS = 60.0
 _reclaim_lock = threading.Lock()
 _last_reclaim = float("-inf")
+# A backend holds this lock in _RAY_SANDBOX_DIR while it picks the CPUs of a
+# sandbox with a CPU limit and records them in the sandbox's owner file, so
+# that sandboxes created at the same time spread over the node's CPUs too.
+_CPUS_LOCK_FILE = "cpus.lock"
 
 # Directory for sandbox bundles, cached container images, and per-sandbox
 # overlay state.
@@ -441,6 +444,27 @@ def _exec_processes(procfs_dump: str, root_pid: int) -> List[int]:
     return sorted(found)
 
 
+def _release_cgroup(sandbox_id: str, cgroup: Optional[SandboxCgroup]) -> bool:
+    """Remove a sandbox's cgroup, if it has one, and return whether that worked.
+
+    A cgroup that can't be removed may still hold processes. Then the caller
+    leaves the bundle, owner file and image pin included, to the reclaim
+    pass, which removes the cgroup before it deletes the rest.
+    """
+    if cgroup is None:
+        return True
+    try:
+        cgroup.release()
+    except Exception as err:
+        logger.warning(
+            "Couldn't remove the cgroup of sandbox %s, so a reclaim pass will: %s",
+            sandbox_id,
+            err,
+        )
+        return False
+    return True
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -471,6 +495,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "build from github.com/rootless-containers/slirp4netns), "
                     "util-linux, and nftables on the node image."
                 )
+        memory = parse_memory_bytes(config.memory) or 0
+        cgroups = None
+        if config.cpu > 0 or memory > 0:
+            cgroups = SandboxCgroupManager()
+            try:
+                cgroups.check(config.cpu, memory)
+            except Exception as err:
+                raise SandboxCreationError(
+                    f"Cannot enforce sandbox resources: {err}"
+                ) from err
 
         self._maybe_reclaim_unowned_bundles()
         sandbox_uuid = uuid.uuid4().hex[:12]
@@ -485,40 +519,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         cgroup = None
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            owner_file = self._own_bundle(config, root_dir)
-            memory = parse_memory_bytes(config.memory) or 0
-            if config.cpu > 0 or memory > 0:
-                # If this worker dies, the node's reaper kills the sandbox and
-                # then deletes its runsc state, bundle, and image pin.
-                remove = [root_dir]
-                image_dir = self._image_manager.get_image_dir(config.image)
-                if isinstance(image_dir, str):
-                    remove.append(image_use_marker(image_dir, sandbox_id))
-                cgroup = SandboxCgroupManager().allocate(
-                    sandbox_id,
-                    config.cpu,
-                    memory,
-                    cleanup={
-                        "runsc_root": _RUNSC_ROOT,
-                        "rootless": config.rootless,
-                        "remove": remove,
-                    },
-                )
+            if cgroups is None:
+                owner_file = self._own_bundle(config, root_dir)
+            else:
+                lock_path = os.path.join(_RAY_SANDBOX_DIR, _CPUS_LOCK_FILE)
+                with open(lock_path, "a", encoding="utf-8") as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX)
+                    cpus = cgroups.choose_cpus(config.cpu, self._cpus_in_use())
+                    owner_file = self._own_bundle(config, root_dir, cpus)
+                # After the owner file, so that a reclaim removes the cgroup
+                # of an owner that dies before it starts the sandbox.
+                cgroup = cgroups.allocate(sandbox_id, config.cpu, memory, cpus)
             self._start_sandbox(config, sandbox_id, root_dir, owner_file, cgroup)
         except Exception as err:
-            if cgroup is not None:
-                try:
-                    cgroup.release()
-                except Exception as release_err:
-                    # Report the creation error instead. The lease stays
-                    # held until this worker exits and the reaper frees it.
-                    logger.warning(
-                        "Failed to release sandbox %s's cgroup: %s",
-                        sandbox_id,
-                        release_err,
-                    )
-            self._image_manager.release_image(config.image, sandbox_id)
-            shutil.rmtree(root_dir, ignore_errors=True)
+            if _release_cgroup(sandbox_id, cgroup):
+                self._image_manager.release_image(config.image, sandbox_id)
+                shutil.rmtree(root_dir, ignore_errors=True)
             if owner_file is not None:
                 owner_file.close()
             if isinstance(err, SandboxError):
@@ -741,7 +757,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
-        meta = self._sandbox_metadata.get(sandbox_id)
+        meta = self._sandbox_metadata.pop(sandbox_id, None)
         if meta:
             root_dir = meta["root_dir"]
             config: SandboxConfig = meta["config"]
@@ -762,29 +778,22 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             if proc:
                 self._terminate_tree(proc)
 
-            cgroup = meta.get("cgroup")
-            try:
-                if cgroup is not None:
-                    # A detached Sentry needn't remain in runsc's process group.
-                    # Keep metadata and its core lease until every process dies.
-                    cgroup.release()
-            finally:
-                # Free the files and the image pin even if release fails. The
-                # caller may never retry, and the reaper reclaims only cgroups.
-                if stderr_file:
-                    try:
-                        stderr_file.close()
-                    except Exception:
-                        pass
+            if stderr_file:
+                try:
+                    stderr_file.close()
+                except Exception:
+                    pass
 
+            # The cgroup holds every process the sandbox ran, including any
+            # that outlived the launch process, and removing it kills them.
+            if _release_cgroup(sandbox_id, meta.get("cgroup")):
                 shutil.rmtree(root_dir, ignore_errors=True)
                 # Only now is the cached image unused.
                 self._image_manager.release_image(config.image, sandbox_id)
-                # Last, so no other backend reclaims the bundle while it's
-                # being deleted.
-                if meta.get("owner_file"):
-                    meta["owner_file"].close()
-            self._sandbox_metadata.pop(sandbox_id, None)
+            # Last, so no other backend reclaims the bundle while it's
+            # being deleted.
+            if meta.get("owner_file"):
+                meta["owner_file"].close()
 
     def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
         """Replace the egress allowlist of a running network="public" sandbox.
@@ -1371,13 +1380,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except (subprocess.TimeoutExpired, ValueError):
             pass
 
-    def _own_bundle(self, config: SandboxConfig, root_dir: str) -> IO[str]:
+    def _own_bundle(
+        self, config: SandboxConfig, root_dir: str, cpus: Optional[List[int]] = None
+    ) -> IO[str]:
         """Lock a new bundle's owner file for this backend and return it open.
 
         The backend keeps the file, and so its lock, until it deletes the
         sandbox. The file is locked before it takes its name, so a backend
         looking for unowned bundles never takes one that's being created. It
-        also records what reclaiming the bundle takes.
+        also records what reclaiming the bundle takes, and the CPUs that the
+        sandbox runs on, for ``_cpus_in_use``.
         """
         path = os.path.join(root_dir, _OWNER_FILE)
         runsc_args = self._runsc_base_args(config)
@@ -1392,6 +1404,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "image": config.image,
                     "rootless": "--rootless" in runsc_args,
                     "ignore_cgroups": "--ignore-cgroups" in runsc_args,
+                    "cpus": cpus or [],
                 },
                 owner_file,
             )
@@ -1401,6 +1414,31 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             owner_file.close()
             raise
         return owner_file
+
+    def _cpus_in_use(self) -> List[List[int]]:
+        """The CPUs that each sandbox on this node with a live owner runs on.
+
+        A bundle counts while its owner holds the owner file's lock, so a
+        sandbox stops counting as soon as its owner dies.
+        """
+        used = []
+        for root_dir in glob.glob(os.path.join(_RAY_SANDBOX_DIR, "ray-sandbox-*")):
+            if not _BUNDLE_NAME.fullmatch(os.path.basename(root_dir)):
+                continue
+            try:
+                with open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8") as f:
+                    try:
+                        fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        owner = json.load(f)  # Its owner holds the lock.
+                    else:
+                        continue  # Nobody owns it.
+            except (OSError, ValueError):
+                continue
+            cpus = owner.get("cpus") if isinstance(owner, dict) else None
+            if isinstance(cpus, list):
+                used.append([c for c in cpus if type(c) is int])
+        return used
 
     def _maybe_reclaim_unowned_bundles(self) -> None:
         """Start ``_reclaim_unowned_bundles`` in the background, at most once a
@@ -1487,6 +1525,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 except (OSError, subprocess.TimeoutExpired):
                     pass
+            # A sandbox with limits ran in a cgroup of its own. One that
+            # can't be removed raises, which leaves the bundle to a later pass.
+            SandboxCgroupManager().remove(sandbox_id)
             # The owner file goes last: a pass that's cut short, say with the
             # process that runs it, leaves it, and a later pass finishes.
             with os.scandir(root_dir) as entries:
