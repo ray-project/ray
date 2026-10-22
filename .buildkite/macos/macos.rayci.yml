@@ -10,6 +10,7 @@ steps:
     instance_type: macos-arm64
     commands:
       - ./ci/ray_ci/macos/macos_ci.sh run_smoke_test
+    depends_on: block-macos-tests
 
   # block full test suite on premerge and microcheck
   - block: "run macos tests"

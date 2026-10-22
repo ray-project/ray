@@ -135,7 +135,7 @@ def _deduce_default_shuffle_compression() -> str:
             "RAY_DATA_SHUFFLE_COMPRESSION instead"
         )
 
-    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "lz4")
 
 
 DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
@@ -885,7 +885,7 @@ class DataContext:
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         shuffle_compression: Codec used to compress shuffle intermediate
-            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            shards: "none", "lz4", or "zstd" (default "lz4"). Deprecated
             alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
@@ -1353,21 +1353,16 @@ class DataContext:
         Changes to `DataContext.get_current()` will not impact existing Datasets.
 
         Examples:
-
-            .. testcode::
-                import ray
-
-                context = ray.data.DataContext.get_current()
-
-                context.target_max_block_size = 100 * 1024 ** 2
-                ds1 = ray.data.range(1)
-                context.target_max_block_size = 1 * 1024 ** 2
-                ds2 = ray.data.range(1)
-
-                # ds1's target_max_block_size will be 100MB
-                ds1.take_all()
-                # ds2's target_max_block_size will be 1MB
-                ds2.take_all()
+            >>> import ray
+            >>> context = ray.data.DataContext.get_current()
+            >>> context.target_max_block_size = 100 * 1024 ** 2
+            >>> ds1 = ray.data.range(1)
+            >>> context.target_max_block_size = 1 * 1024 ** 2
+            >>> ds2 = ray.data.range(1)
+            >>> # ds1's target_max_block_size will be 100MB
+            >>> _ = ds1.take_all()
+            >>> # ds2's target_max_block_size will be 1MB
+            >>> _ = ds2.take_all()
 
         Developer notes: Avoid using `DataContext.get_current()` in data
         internal components, use the DataContext object captured in the

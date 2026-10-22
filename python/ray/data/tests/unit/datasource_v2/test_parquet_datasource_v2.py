@@ -17,6 +17,9 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 from ray.data._internal.datasource_v2.common.online_bin_packer import (
     OnlineBinPacker,
 )
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    _SCHEMA_READ_BATCH_SIZE,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import RowHashColumn
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     ChunkedFile,
@@ -26,7 +29,6 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     FooterReader,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
-    _SCHEMA_READ_BATCH_SIZE,
     ParquetDatasourceV2,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (

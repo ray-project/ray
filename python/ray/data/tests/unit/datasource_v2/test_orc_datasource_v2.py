@@ -174,7 +174,10 @@ def test_orc_partition_pruning_uses_logical_schema(tmp_path, root_first):
     ]
 
 
-def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_read_orc_routes_to_v2_and_forwards_read_options(
+    monkeypatch, tmp_path, merge_schema
+):
     result = object()
     captured = {}
 
@@ -194,6 +197,7 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
         concurrency=4,
         parallelism=2,
         override_num_blocks=3,
+        merge_schema=merge_schema,
     )
 
     datasource = captured["datasource"]
@@ -205,6 +209,39 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
     assert captured["kwargs"]["parallelism"] == 2
     assert captured["kwargs"]["concurrency"] == 4
     assert captured["kwargs"]["partition_filter"] is partition_filter
+    assert captured["kwargs"]["sample_all_files_for_schema"] is merge_schema
+
+
+def test_read_orc_rejects_full_schema_on_v1(monkeypatch, tmp_path):
+    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", False)
+    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
+        read_api.read_orc(str(tmp_path), merge_schema=True)
+
+
+def test_infer_schema_empty_sample(tmp_path):
+    sample = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
+    assert OrcDatasourceV2([str(tmp_path)]).infer_schema(sample) == pa.schema([])
+
+
+def test_infer_schema_unifies_across_batches(tmp_path):
+    from ray.data._internal.datasource_v2.common.schema_inference import (
+        _SCHEMA_READ_BATCH_SIZE,
+    )
+
+    paths = []
+    for i in range(_SCHEMA_READ_BATCH_SIZE + 1):
+        path = tmp_path / f"f{i:03d}.orc"
+        table = (
+            pa.table({"id": [i], "late": ["value"]})
+            if i == _SCHEMA_READ_BATCH_SIZE
+            else pa.table({"id": [i]})
+        )
+        _write_orc(path, table)
+        paths.append(path)
+
+    schema = OrcDatasourceV2([str(tmp_path)]).infer_schema(_manifest_of(paths))
+
+    assert schema.names == ["id", "late"]
 
 
 def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):

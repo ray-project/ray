@@ -221,7 +221,13 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
         "GCSServer.redis_health_check");
 
-    store_client = redis_store_client;
+    // The health check above keeps its own pointer, so its PINGs are not
+    // counted as storage operations.
+    store_client = MaybeObserve(std::move(redis_store_client),
+                                RayConfig::instance().gcs_redis_storage_metrics_enabled(),
+                                metrics_.storage_operation_latency_in_ms_histogram,
+                                metrics_.storage_operation_count_counter,
+                                clock_);
     break;
   }
 #if defined(__linux__)
@@ -1004,10 +1010,20 @@ void GcsServer::InitKVManager() {
   auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
-  case (StorageType::REDIS_PERSIST):
-    store_client = std::make_unique<RedisStoreClient>(
+  case (StorageType::REDIS_PERSIST): {
+    auto redis_store_client = std::make_unique<RedisStoreClient>(
         io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
+    if (RayConfig::instance().gcs_redis_storage_metrics_enabled()) {
+      store_client = std::make_unique<ObservableStoreClient>(
+          std::move(redis_store_client),
+          metrics_.storage_operation_latency_in_ms_histogram,
+          metrics_.storage_operation_count_counter,
+          clock_);
+    } else {
+      store_client = std::move(redis_store_client);
+    }
     break;
+  }
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),

@@ -146,7 +146,7 @@ You must install code dependencies for a given Ray task or actor on each Ray nod
 For `kuberay-operator` versions 1.1.0 and later, the Ray container image must have `wget` installed in it.
 
 #### metadata.name and metadata.generateName
-The KubeRay operator will ignore the values of `metadata.name` and `metadata.generateName` set by users. The KubeRay operator will generate a `generateName` automatically to avoid name conflicts. See [KubeRay issue #587](https://github.com/ray-project/kuberay/pull/587) for more details.
+The KubeRay operator will ignore the values of `metadata.name` and `metadata.generateName` set by users. The KubeRay operator will generate a `generateName` automatically to avoid name conflicts. See [KubeRay issue #587](https://github.com/kuberay-project/kuberay/pull/587) for more details.
 
 (rayStartParams)=
 ## Ray Start Parameters
