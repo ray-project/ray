@@ -124,6 +124,7 @@ class TestIMPALA(unittest.TestCase):
         learner_group = config.build_learner_group(
             spaces={DEFAULT_MODULE_ID: (env.observation_space, env.action_space)}
         )
+        self.addCleanup(learner_group.shutdown)
         learner = learner_group._learner
         # Replace the gradient update in the learner thread with a stub.
         num_updates = []
@@ -149,7 +150,6 @@ class TestIMPALA(unittest.TestCase):
 
         self.assertEqual(len(num_updates), num_calls)
         barrier.assert_not_called()
-        learner_group.shutdown()
 
 
 if __name__ == "__main__":
