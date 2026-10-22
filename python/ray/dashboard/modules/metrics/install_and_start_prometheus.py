@@ -305,7 +305,7 @@ def main():
     try:
         process = start_prometheus(
             # remove the .tar.gz extension
-            prometheus_dir=file_name.rstrip(".tar.gz"),
+            prometheus_dir=file_name.removesuffix(".tar.gz"),
             authorization_config=authorization_config,
         )
     except OSError as e:
