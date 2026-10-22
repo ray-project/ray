@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
 #include <list>
 #include <memory>
@@ -2761,23 +2762,78 @@ TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
 #if !defined(_WIN32)
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallback) {
   RayConfig::instance().enable_worker_fork_server() = true;
+  std::string temp_dir = "/tmp/ray_wp_test_dir_" + std::to_string(getpid());
+  std::string session_name = "session_test";
+  std::string sockets_dir = temp_dir + "/" + session_name + "/sockets";
+  std::filesystem::create_directories(sockets_dir);
+  std::string default_sock_path = sockets_dir + "/fork_server_default.sock";
+  unlink(default_sock_path.c_str());
+
   SetWorkerCommands(
       {{Language::PYTHON,
         {"python",
          "ray/workers/setup_worker.py",
          "ray/workers/default_worker.py",
+         "--temp-dir=" + temp_dir,
+         "--session-name=" + session_name,
          "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
          "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"}},
        {Language::JAVA, {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
   RegisterDriver(Language::PYTHON, JOB_ID, rpc::JobConfig());
 
+  // 1. Default fork server resolution via --temp-dir and --session-name when
+  // runtime_env is empty.
+  int default_listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  ASSERT_GE(default_listen_fd, 0);
+  struct sockaddr_un default_addr = {};
+  default_addr.sun_family = AF_UNIX;
+  std::strncpy(default_addr.sun_path,
+               default_sock_path.c_str(),
+               sizeof(default_addr.sun_path) - 1);
+  ASSERT_EQ(bind(default_listen_fd,
+                 reinterpret_cast<struct sockaddr *>(&default_addr),
+                 sizeof(default_addr)),
+            0);
+  ASSERT_EQ(listen(default_listen_fd, 4), 0);
+
+  const pid_t expected_default_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 888);
+  std::thread default_server_thread([default_listen_fd, expected_default_pid]() {
+    int conn_fd = accept(default_listen_fd, nullptr, nullptr);
+    if (conn_fd >= 0) {
+      std::string req;
+      char buf[1024];
+      while (req.find('\n') == std::string::npos) {
+        ssize_t n = read(conn_fd, buf, sizeof(buf));
+        if (n <= 0) {
+          break;
+        }
+        req.append(buf, static_cast<size_t>(n));
+      }
+      std::string reply = "{\"pid\": " + std::to_string(expected_default_pid) + "}\n";
+      ssize_t written = write(conn_fd, reply.data(), reply.size());
+      EXPECT_EQ(written, static_cast<ssize_t>(reply.size()));
+      close(conn_fd);
+    }
+  });
+
+  PopWorkerStatus status = PopWorkerStatus::OK;
+  auto [default_proc, default_wid] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+  default_server_thread.join();
+  close(default_listen_fd);
+  unlink(default_sock_path.c_str());
+
+  ASSERT_EQ(default_proc.GetId(), expected_default_pid);
+  ASSERT_FALSE(default_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  // 2. Per-runtime_env fork server resolution via serialized_runtime_env_context.
   std::string sock_path = "/tmp/ray_wp_test_fs_" + std::to_string(getpid()) + ".sock";
   unlink(sock_path.c_str());
 
   int listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
   ASSERT_GE(listen_fd, 0);
-  struct sockaddr_un addr;
-  std::memset(&addr, 0, sizeof(addr));
+  struct sockaddr_un addr = {};
   addr.sun_family = AF_UNIX;
   std::strncpy(addr.sun_path, sock_path.c_str(), sizeof(addr.sun_path) - 1);
   ASSERT_EQ(bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)), 0);
@@ -2808,7 +2864,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   rpc::RuntimeEnvInfo env_info;
   env_info.set_serialized_runtime_env(R"({"preload_modules":["torch"]})");
 
-  PopWorkerStatus status = PopWorkerStatus::OK;
   auto [proc, worker_id] =
       worker_pool_->StartWorkerProcess(Language::PYTHON,
                                        rpc::WorkerType::WORKER,
@@ -2837,9 +2892,9 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   }
   ASSERT_EQ(req_json["env"]["RAY_JOB_ID"].get<std::string>(), JOB_ID.Hex());
 
-  // When the listening socket accepts the connection in the kernel backlog but the
-  // server never replies, StartWorkerProcess must time out after ~500ms (SO_RCVTIMEO)
-  // and fall back to StartProcess rather than stalling for 5 seconds.
+  // 3. When the listening socket accepts the connection in the kernel backlog but the
+  // server never replies, StartWorkerProcess must time out after ~500ms (SO_RCVTIMEO),
+  // mark the socket unhealthy, and fall back to StartProcess.
   auto t_start = std::chrono::steady_clock::now();
   auto [timeout_proc, timeout_wid] =
       worker_pool_->StartWorkerProcess(Language::PYTHON,
@@ -2859,11 +2914,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
   EXPECT_GE(elapsed_ms, 400);
   EXPECT_LT(elapsed_ms, 2500);
 
-  close(listen_fd);
-  unlink(sock_path.c_str());
-
-  // When the socket no longer exists, StartWorkerProcess must fall back to StartProcess.
-  auto [fallback_proc, fallback_wid] =
+  // 4. Subsequent spawns on the same unhealthy socket must bypass it immediately
+  // without stalling for another 500ms.
+  auto t_start_2 = std::chrono::steady_clock::now();
+  auto [bypass_proc, bypass_wid] =
       worker_pool_->StartWorkerProcess(Language::PYTHON,
                                        rpc::WorkerType::WORKER,
                                        JOB_ID,
@@ -2872,11 +2926,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallbac
                                        /*runtime_env_hash=*/123,
                                        /*serialized_runtime_env_context=*/ctx_json.dump(),
                                        env_info);
-  ASSERT_NE(fallback_proc.GetId(), expected_fork_pid);
-  ASSERT_FALSE(fallback_wid.IsNil());
+  auto elapsed_ms_2 = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - t_start_2)
+                          .count();
+  ASSERT_NE(bypass_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(bypass_wid.IsNil());
   ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+  EXPECT_LT(elapsed_ms_2, 200);
 
-  // When dynamic_options is non-empty, StartWorkerProcess must bypass ForkServer.
+  close(listen_fd);
+  unlink(sock_path.c_str());
+  std::filesystem::remove_all(temp_dir);
+
+  // 5. When dynamic_options is non-empty, StartWorkerProcess must bypass ForkServer.
   auto [dyn_proc, dyn_wid] =
       worker_pool_->StartWorkerProcess(Language::PYTHON,
                                        rpc::WorkerType::WORKER,

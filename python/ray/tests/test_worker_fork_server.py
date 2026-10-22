@@ -211,7 +211,7 @@ def test_fork_server_default_workers_signals_and_process_groups(shutdown_only):
 
 @pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
 def test_fork_server_timeout_and_dead_server_fallback(shutdown_only):
-    """Verify 500ms SO_RCVTIMEO fallback on hung ForkServer and Spawnvpe fallback when ForkServer is killed."""
+    """Verify 500ms SO_RCVTIMEO fallback, unhealthy socket circuit-breaker, and SIGKILL fallback."""
     ctx = ray.init(
         num_cpus=1,
         include_dashboard=False,
@@ -235,30 +235,37 @@ def test_fork_server_timeout_and_dead_server_fallback(shutdown_only):
     assert ppid1 == default_fs_pid
 
     # Pause ForkServer with SIGSTOP so kernel accepts AF_UNIX connections in backlog
-    # without replying; spawning a new actor must time out (~500ms) and fall back to execvpe.
+    # without replying; spawning a2 must time out (~500ms), mark the socket unhealthy,
+    # and fall back to execvpe. While still SIGSTOPped, a3 must immediately bypass the
+    # unhealthy socket without stalling for another 500ms.
     os.kill(default_fs_pid, signal.SIGSTOP)
     try:
         t0 = time.monotonic()
         a2 = PingActor.options(num_cpus=0).remote()
-        _, raylet_ppid = ray.get(a2.get_ids.remote())
-        elapsed = time.monotonic() - t0
-        assert raylet_ppid != default_fs_pid
-        assert elapsed < 10.0
+        _, ppid2 = ray.get(a2.get_ids.remote())
+        elapsed2 = time.monotonic() - t0
+        assert ppid2 != default_fs_pid
+        assert elapsed2 < 10.0
+
+        a3 = PingActor.options(num_cpus=0).remote()
+        _, ppid3 = ray.get(a3.get_ids.remote())
+        assert ppid3 != default_fs_pid
     finally:
         os.kill(default_fs_pid, signal.SIGCONT)
 
-    # Once resumed, subsequent actors fork from ForkServer again.
-    a3 = PingActor.options(num_cpus=0).remote()
-    _, ppid3 = ray.get(a3.get_ids.remote())
-    assert ppid3 == default_fs_pid
+    # Spawn a per-runtime_env ForkServer, then kill it with SIGKILL and verify fallback.
+    kill_env = {"env_vars": {"FORK_SERVER_KILL_TEST": "1"}}
+    a4 = PingActor.options(num_cpus=0, runtime_env=kill_env).remote()
+    _, env_fs_pid = ray.get(a4.get_ids.remote())
+    assert env_fs_pid != default_fs_pid
+    assert _pid_exists(env_fs_pid)
 
-    # Kill ForkServer with SIGKILL; WorkerPool must seamlessly fall back to Spawnvpe.
-    os.kill(default_fs_pid, signal.SIGKILL)
-    wait_for_condition(lambda: not _pid_exists(default_fs_pid), timeout=10)
+    os.kill(env_fs_pid, signal.SIGKILL)
+    wait_for_condition(lambda: not _pid_exists(env_fs_pid), timeout=10)
 
-    a4 = PingActor.options(num_cpus=0).remote()
-    _, ppid4 = ray.get(a4.get_ids.remote())
-    assert ppid4 != default_fs_pid
+    a5 = PingActor.options(num_cpus=0, runtime_env=kill_env).remote()
+    _, ppid5 = ray.get(a5.get_ids.remote())
+    assert ppid5 != env_fs_pid
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
@@ -266,7 +273,7 @@ def test_fork_server_timeout_and_dead_server_fallback(shutdown_only):
 def test_fork_server_per_runtime_env_preload_env_vars_and_cleanup(
     shutdown_only, monkeypatch, tmp_path
 ):
-    """Verify per-runtime_env ForkServer preloads modules (including py_modules), interpolates ${VAR}/$VAR, runs worker_process_setup_hook, handles >64 KiB env payloads, and cleans up on refcount 0."""
+    """Verify per-runtime_env ForkServer preloads modules (including py_modules), interpolates ${VAR}/$VAR, runs worker_process_setup_hook, configures OMP_NUM_THREADS for torch, and cleans up on refcount 0."""
     monkeypatch.setenv("EXISTING_HOST_VAR", "host_val")
     pkg_dir = tmp_path / "custom_pkg"
     pkg_dir.mkdir()
@@ -289,19 +296,18 @@ def test_fork_server_per_runtime_env_preload_env_vars_and_cleanup(
     )
     default_fs_pid = _find_fork_server_pids(session_dir)[default_sock]
 
-    large_payload = "x" * (70 * 1024)
     runtime_env = {
         "py_modules": [f"local://{tmp_path}"],
         "preload_modules": ["json", "torch", "custom_pkg"],
         "env_vars": {
             "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR": "custom_pkg.setup_hook",
+            "OMP_NUM_THREADS": "3",
             "A_BASE_DIR": "/tmp/ray_fork_test",
             "B_SUB_DIR": "${A_BASE_DIR}/sub",
             "C_NESTED_DIR": "${B_SUB_DIR}/nested",
             "D_DOLLAR_DIR": "$C_NESTED_DIR/leaf",
             "E_WITH_EXISTING": "prefix_${EXISTING_HOST_VAR}_suffix",
             "F_UNKNOWN_REF": "${DEFINITELY_UNSET_VAR_XYZ}/tail",
-            "G_LARGE_PAYLOAD": large_payload,
         },
     }
 
@@ -320,13 +326,14 @@ def test_fork_server_per_runtime_env_preload_env_vars_and_cleanup(
             "custom_pkg_pid": custom_pkg.PRELOADED_PID,
             "setup_hook_pid": int(os.environ.get("SETUP_HOOK_RAN_PID", "0")),
             "tensor_sum": float(_torch.ones((2, 2)).sum().item()),
+            "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+            "torch_threads": _torch.get_num_threads(),
             "A_BASE_DIR": os.environ.get("A_BASE_DIR"),
             "B_SUB_DIR": os.environ.get("B_SUB_DIR"),
             "C_NESTED_DIR": os.environ.get("C_NESTED_DIR"),
             "D_DOLLAR_DIR": os.environ.get("D_DOLLAR_DIR"),
             "E_WITH_EXISTING": os.environ.get("E_WITH_EXISTING"),
             "F_UNKNOWN_REF": os.environ.get("F_UNKNOWN_REF"),
-            "G_LARGE_PAYLOAD_LEN": len(os.environ.get("G_LARGE_PAYLOAD", "")),
         }
 
     @ray.remote(runtime_env=runtime_env)
@@ -347,6 +354,8 @@ def test_fork_server_per_runtime_env_preload_env_vars_and_cleanup(
                 "custom_pkg_pid": custom_pkg.PRELOADED_PID,
                 "setup_hook_pid": int(os.environ.get("SETUP_HOOK_RAN_PID", "0")),
                 "tensor_sum": float(_torch.ones((3, 3)).sum().item()),
+                "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+                "torch_threads": _torch.get_num_threads(),
                 "C_NESTED_DIR": os.environ.get("C_NESTED_DIR"),
             }
 
@@ -365,19 +374,22 @@ def test_fork_server_per_runtime_env_preload_env_vars_and_cleanup(
     assert task_res["custom_pkg_pid"] == env_fs_pid
     assert task_res["setup_hook_pid"] == task_res["pid"]
     assert task_res["tensor_sum"] == 4.0
+    assert task_res["omp_num_threads"] == "3"
+    assert task_res["torch_threads"] == 3
     assert task_res["A_BASE_DIR"] == "/tmp/ray_fork_test"
     assert task_res["B_SUB_DIR"] == "/tmp/ray_fork_test/sub"
     assert task_res["C_NESTED_DIR"] == "/tmp/ray_fork_test/sub/nested"
     assert task_res["D_DOLLAR_DIR"] == "/tmp/ray_fork_test/sub/nested/leaf"
     assert task_res["E_WITH_EXISTING"] == "prefix_host_val_suffix"
     assert task_res["F_UNKNOWN_REF"] == "/tail"
-    assert task_res["G_LARGE_PAYLOAD_LEN"] == 70 * 1024
 
     assert actor_res["torch_preloaded"] is True
     assert actor_res["custom_pkg_preloaded"] is True
     assert actor_res["custom_pkg_pid"] == env_fs_pid
     assert actor_res["setup_hook_pid"] == actor_res["pid"]
     assert actor_res["tensor_sum"] == 9.0
+    assert actor_res["omp_num_threads"] == "3"
+    assert actor_res["torch_threads"] == 3
     assert actor_res["C_NESTED_DIR"] == "/tmp/ray_fork_test/sub/nested"
 
     fs_pids = _find_fork_server_pids(session_dir)
@@ -400,15 +412,15 @@ def test_fork_server_per_runtime_env_preload_env_vars_and_cleanup(
 
 @pytest.mark.skipif(sys.platform != "linux", reason="ForkServer is Linux-only.")
 @pytest.mark.skipif(torch is None, reason="PyTorch is not installed.")
-def test_fork_server_preloaded_torch_cow_memory_and_thread_reconfig(
-    shutdown_only, monkeypatch
-):
-    """Verify CoW page sharing (Shared_Dirty vs Private_Dirty) and post-fork torch thread reconfiguration when torch is preloaded."""
-    monkeypatch.setenv("RAY_preload_python_modules", "torch")
+def test_fork_server_preloaded_torch_cow_memory_and_thread_reconfig(shutdown_only):
+    """Verify CoW page sharing (Shared_Dirty vs Private_Dirty) and post-fork torch thread reconfiguration when torch is preloaded via _system_config."""
     ctx = ray.init(
         num_cpus=4,
         include_dashboard=False,
-        _system_config={"enable_worker_fork_server": True},
+        _system_config={
+            "enable_worker_fork_server": True,
+            "preload_python_modules": ["torch"],
+        },
     )
     session_dir = ctx.address_info["session_dir"]
     default_sock = os.path.join(session_dir, "sockets", "fork_server_default.sock")

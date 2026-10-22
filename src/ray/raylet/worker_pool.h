@@ -769,6 +769,9 @@ class WorkerPool : public WorkerPoolInterface {
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
 
+  /// Set of fork server socket paths that failed or timed out and should be bypassed.
+  absl::flat_hash_set<std::string> unhealthy_fork_server_sockets_;
+
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
       pending_exit_idle_workers_;

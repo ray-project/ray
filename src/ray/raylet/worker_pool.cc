@@ -791,7 +791,8 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
         temp_dir + "/" + session_name + "/sockets/fork_server_default.sock";
   }
 
-  if (fork_server_socket_path.empty()) {
+  if (fork_server_socket_path.empty() ||
+      unhealthy_fork_server_sockets_.contains(fork_server_socket_path)) {
     return nullptr;
   }
 
@@ -801,6 +802,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     RAY_LOG(WARNING).WithField(worker_id)
         << "Fork server socket path exceeds sun_path limit: " << fork_server_socket_path
         << "; falling back to execvpe.";
+    unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
     return nullptr;
   }
   std::strncpy(addr.sun_path, fork_server_socket_path.c_str(), sizeof(addr.sun_path) - 1);
@@ -814,6 +816,9 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
   if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
+    if (errno != ENOENT) {
+      unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
+    }
     RAY_LOG(WARNING).WithField(worker_id)
         << "Failed to connect to fork server at " << fork_server_socket_path << ": "
         << strerror(errno) << "; falling back to execvpe.";
@@ -832,6 +837,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       if (errno == EINTR) {
         continue;
       }
+      unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
       close(sock_fd);
       return nullptr;
     }
@@ -861,6 +867,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     RAY_LOG(WARNING).WithField(worker_id)
         << "Invalid response from fork server at " << fork_server_socket_path << ": "
         << response << "; falling back to execvpe.";
+    unhealthy_fork_server_sockets_.insert(fork_server_socket_path);
     return nullptr;
   }
 

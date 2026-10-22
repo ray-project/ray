@@ -127,6 +127,14 @@ def _prepare_child_environment(
     if "RAY_JOB_ID" not in child_env:
         os.environ.pop("RAY_JOB_ID", None)
     os.environ.update(child_env)
+    importlib.invalidate_caches()
+
+    omp_threads_str = os.environ.get("OMP_NUM_THREADS")
+    if omp_threads_str and "torch" in sys.modules:
+        with suppress(ValueError, RuntimeError):
+            omp_threads = int(omp_threads_str)
+            if omp_threads > 0:
+                sys.modules["torch"].set_num_threads(omp_threads)
 
     # Refresh C++ RayConfig and authentication token cache from updated os.environ.
     ray._raylet.Config.initialize("")
