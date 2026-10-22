@@ -182,12 +182,11 @@ _GPM_BACKOFF_POLLS = 10
 
 @dataclasses.dataclass
 class _GpmState:
-    """Per-device GPM state, kept across polls and nvmlShutdown/nvmlInit.
+    """Per-device GPM state, kept across polls.
 
-    The sample buffers are reused after nvmlShutdown/nvmlInit. NVML doesn't
-    document this, but a sample holds raw counters and nvmlGpmMetricsGet only
-    differences two of them; on driver 580, pairs spanning a re-init read the
-    same as pairs that don't (within 0.3 points). Out-of-range values are dropped.
+    NVML doesn't document whether nvmlShutdown frees GPM samples, so NVML stays
+    initialized while a device has samples, and the samples are freed before any
+    shutdown.
     """
 
     supported: Optional[bool] = None
@@ -233,6 +232,23 @@ class NvidiaGpuProvider(GpuProvider):
         """Return whether `error` is an instance of pynvml's `class_name` error."""
         error_class = getattr(self._pynvml, class_name, None)
         return isinstance(error_class, type) and isinstance(error, error_class)
+
+    def _keep_nvml_open(self) -> bool:
+        """Whether NVML stays initialized between polls to keep GPM samples valid."""
+        return any(state.samples for state in self._gpm_state.values())
+
+    def _free_gpm_samples(self) -> None:
+        """Free all GPM samples; devices are checked and allocated again after init."""
+        for state in self._gpm_state.values():
+            for sample in state.samples:
+                try:
+                    self._pynvml.nvmlGpmSampleFree(sample)
+                except Exception as e:
+                    logger.debug(f"Error freeing GPM sample: {e}")
+            state.samples = []
+            state.supported = None
+            state.previous = None
+            state.accountant.credit(None)
 
     def _gpm_supported(self, gpu_handle: Any, uuid: str, state: _GpmState) -> bool:
         """Check GPM support once per device and allocate its sample buffers."""
@@ -370,6 +386,7 @@ class NvidiaGpuProvider(GpuProvider):
     def _shutdown(self):
         """Shutdown the NVIDIA GPU provider."""
         if self._initialized and self._pynvml:
+            self._free_gpm_samples()
             try:
                 self._pynvml.nvmlShutdown()
             except Exception as e:
@@ -491,8 +508,11 @@ class NvidiaGpuProvider(GpuProvider):
         except Exception as e:
             self._count_collection_error("gpu_usage", e)
             logger.warning(f"Error getting NVIDIA GPU utilization: {e}")
-        finally:
+            # Start NVML over on the next poll.
             self._shutdown()
+        else:
+            if not self._keep_nvml_open():
+                self._shutdown()
 
         return gpu_utilizations
 
