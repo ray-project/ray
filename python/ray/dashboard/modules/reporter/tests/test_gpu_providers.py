@@ -698,6 +698,23 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertLessEqual(cursors[0], after_us)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_process_utilization_cursor_reset_kept_when_query_fails(self, mock_pynvml):
+        """After a clock step back, a failed query doesn't leave the cursor ahead."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.side_effect = (
+            mock_pynvml.NVMLError("Unknown Error")
+        )
+        now_us = int(time.time() * 1_000_000)
+        self.provider._gpu_process_last_sample_ts[0] = now_us + 60_000_000
+
+        self.provider.get_gpu_utilization()
+        after_us = int(time.time() * 1_000_000)
+
+        cursor_us = self.provider._gpu_process_last_sample_ts[0]
+        self.assertGreaterEqual(cursor_us, now_us)
+        self.assertLessEqual(cursor_us, after_us)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
     def test_process_utilization_idle_window_advances_cursor(self, mock_pynvml):
         """NVML_ERROR_NOT_FOUND means no sample since the cursor: an idle window."""
         self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
