@@ -36,65 +36,42 @@ COMPILE_PIP_SOURCES=(
   python/requirements/security-requirements.txt
 )
 
+# Compiles python/requirements_compiled.txt, the constraints file every depset
+# reads, with one universal uv resolution over every supported Python version
+# (3.10+). Where a pin must differ by version or platform, uv writes one line per
+# range with a marker. uv prefers the pins already in the output file, so a
+# recompile only moves what the sources force.
 compile_pip_dependencies() {
-  # Compile boundaries
-  TARGET="${1-requirements_compiled.txt}"
-
-  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
-    # Resolution currently does not work on aarch64 as some pinned packages
-    # are not available. Once they are reasonably upgraded we should be able
-    # to enable this here.p
-    echo "Skipping for aarch64"
-    return 0
-  fi
+  local target="python/requirements_compiled.txt"
 
   (
-    # shellcheck disable=SC2262
-    alias pip="python -m pip"
-
     cd "${WORKSPACE_DIR}"
+    # Match the uv that raydepsets pins (uv_x86_64-linux in WORKSPACE).
+    pip install "uv==0.9.26"
 
-    echo "Target file: $TARGET"
-    pip install "pip-tools==7.4.1" "wheel==0.45.1"
-
-    # Required packages to lookup e.g. dragonfly-opt
-    HAS_TORCH=0
-    python -c "import torch" 2>/dev/null && HAS_TORCH=1
-    pip install --no-cache-dir numpy torch
-
-    # pip-compile writes whatever index it used into the lockfile. Keep CI's temporary
+    # uv writes whatever index it used into the lockfile. Keep CI's temporary
     # mirror URL out, or the regenerated file stops matching the committed one.
     env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
       -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
-      pip-compile --verbose --resolver=backtracking \
-      --pip-args --no-deps --strip-extras --no-header \
+      uv pip compile --universal --python-version 3.10 \
+      --no-header --strip-extras --emit-index-url --emit-find-links \
+      --index-strategy unsafe-best-match \
       --unsafe-package ray \
       --unsafe-package pip \
       --unsafe-package setuptools \
-      -o "python/$TARGET" \
+      -o "${target}" \
       "${COMPILE_PIP_SOURCES[@]}"
 
-    # Delete local installation
-    sed -i "/@ file/d" "python/$TARGET"
+    sed -i -e "/^--index-url /d" -e "/@ file/d" "${target}"
 
-    # Remove +cpu and +pt20cpu suffixes e.g. for torch dependencies
-    # This is needed because we specify the requirements as torch==version, but
-    # the resolver adds the device-specific version tag. If this is not removed,
-    # pip install will complain about irresolvable constraints.
-    # Strip the whole local segment whenever it names cpu: +cpu, +pt29cpu, and
-    # Astral's +cpu.torch.2.9. The result has to be the bare public version --
-    # this file is also the constraint for the GPU depsets, and only a bare
-    # torch-scatter==2.1.2 lets their +cu.12.8.torch.2.9 pin satisfy it. The old
-    # pattern stopped at the first "cpu" and left 2.1.2.torch.2.9 behind. The
+    # Strip the local version segment from CPU builds (+cpu, +pt210cpu,
+    # +cpu.torch.2.10). The GPU depsets also read this file, and only a bare
+    # torch-scatter==2.1.2 lets their +cu.12.8.torch.2.10 pin satisfy it. The
     # public version may carry a pre/post/dev suffix (2.10.0rc1, 2.10.0.post0),
     # hence letters in the first class.
-    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "python/$TARGET"
+    sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "${target}"
 
-    cat "python/$TARGET"
-
-    if [[ "$HAS_TORCH" == "0" ]]; then
-      pip uninstall -y torch
-    fi
+    cat "${target}"
   )
 }
 

@@ -57,7 +57,11 @@ opentelemetry-semantic-conventions==0.60b0
 pexpect==4.8.0
 Pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
-pydantic>=2.10.0
+# Hold pydantic below 3.14. Without this, the universal compile moves every
+# Python onto the newer version that 3.14 needs (pydantic>=2.13 in
+# python/requirements.txt).
+pydantic==2.12.3; python_version < '3.14'
+pydantic>=2.10.0; python_version >= '3.14'
 pydot==1.4.2
 pygame==2.5.2; python_version < '3.14'
 Pygments==2.18.0
@@ -74,7 +78,7 @@ pytest-sugar==0.9.5
 pytest-lazy-fixtures==1.1.2
 pytest-timeout==2.1.0
 pytest-virtualenv==1.8.1; python_version < "3.12"
-pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx
+pytest-sphinx @ git+https://github.com/ray-project/pytest-sphinx@c1ab2b33c784d04fa467211a15f89edf631107a1
 pytest-mock==3.14.0
 redis==4.5.4
 scikit-learn>=1.5.2

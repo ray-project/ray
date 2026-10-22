@@ -1175,7 +1175,9 @@ grpcio==1.75.0 \
 grpcio-reflection==1.75.0 \
     --hash=sha256:60bb9865f5411ad589420eadcdd7e0c338c0aabedf5d4cd07363d5bf7da9c972 \
     --hash=sha256:cef02b79eea9a1a5e379e13e503a5eaa32a4bc1ad2f1c24d3a6e28a95db5569f
-    # via -r python/requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements.txt
 grpcio-tools==1.75.0 \
     --hash=sha256:05087b1879b3f32a2182f1365e34233236c22e1a1e8cc448b5d29ea58d661846 \
     --hash=sha256:08cc1b8a1364a5b8f975e6a7273684d13630caab76c209a201464ad05f826eb9 \
@@ -1228,7 +1230,9 @@ grpcio-tools==1.75.0 \
     --hash=sha256:ebdac7cc820459874f3b19eddddae19c0c7e7cdf228aee8e7567cec1fddb2ae3 \
     --hash=sha256:edefbb90bb7ddc4eadac3463d5f7084e1d43b1d713254f668dd55c25db5b5ef2 \
     --hash=sha256:fd038847974aeb883ee0f3b5b535d85618ad32789c15c9bf24af6c12a44f67f1
-    # via -r python/requirements/cloud-requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/cloud-requirements.txt
 gymnasium==1.2.2 \
     --hash=sha256:46d927328f8518bb5a689dbe270d228c1da2b08bcb71ae0152c10aa66f48d530 \
     --hash=sha256:f04ec362b1fdf73a8b327db5ef89384a3f2ba411e05d3521513414fbbb2199c8
@@ -2058,6 +2062,7 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements.txt
     #   cupy-cuda12x
     #   dm-tree
@@ -2462,6 +2467,7 @@ protobuf==6.33.6 \
     --hash=sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593 \
     --hash=sha256:f443a394af5ed23672bc6c486be138628fbe5c651ccbc536873d7da23d1868cf
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements.txt
     #   google-api-core
     #   googleapis-common-protos
@@ -2512,7 +2518,9 @@ py-spy==0.4.2 \
     --hash=sha256:90e600b27bb6bb40479637baca5a5b4bc2ba3395c93d889e672315d93042c4ae \
     --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
     --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
-    # via -r python/requirements.txt
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements.txt
 pyarrow==23.0.1 \
     --hash=sha256:00be9576d970c31defb5c32eb72ef585bf600ef6d0a82d5eccaae96639cf9d07 \
     --hash=sha256:07deae7783782ac7250989a7b2ecde9b3c343a643f82e8a4df03d93b633006f0 \
@@ -3435,9 +3443,9 @@ typer==0.24.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements.txt
-typing-extensions==4.15.0 \
-    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
-    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
+    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
@@ -3459,9 +3467,9 @@ typing-extensions==4.15.0 \
     #   starlette
     #   textual
     #   typing-inspection
-typing-inspection==0.4.2 \
-    --hash=sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7 \
-    --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
+typing-inspection==0.4.4 \
+    --hash=sha256:547274fa6b0a561ccf549cc9524b999a578e737d015d8709d021f9d0d13bea47 \
+    --hash=sha256:65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fastapi
