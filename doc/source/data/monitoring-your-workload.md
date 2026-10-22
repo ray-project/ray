@@ -292,11 +292,11 @@ These metrics track task execution and scheduling.
 * - `average_task_completion_excl_backpressure_time_s`
   - Average task completion time in seconds excluding throttling.
 * - `max_uss_bytes`
-  - Distribution of estimated peak unique set size (USS) across tasks, in bytes. USS is memory unique to a worker process. Ray Data logs this distribution as `max_uss_bytes` and exports its mean and maximum as the `data_max_uss_bytes_mean` and `data_max_uss_bytes_max` gauges.
+  - Distribution of estimated peak Unique Set Size (USS) across tasks, in bytes. USS is memory unique to a worker process. Ray Data logs this distribution as `max_uss_bytes` and exports its mean and maximum as the `data_max_uss_bytes_mean` and `data_max_uss_bytes_max` gauges.
 ```
 
 :::{note}
-Ray Data estimates task unique set size only on Linux by subtracting shared memory from resident set size. This estimate can underestimate some allocations, such as PyTorch tensors. These samples aren't available on macOS or Windows.
+Ray Data estimates task USS on Linux by subtracting shared memory from Resident Set Size (RSS). Ray Data doesn't collect these samples on macOS or Windows.
 
 In Ray Data logs, a `max_uss_bytes.num_samples` value of `0` means no measurements are available. Treat the empty distribution's `mean` of `0.0` as unavailable memory usage.
 :::
