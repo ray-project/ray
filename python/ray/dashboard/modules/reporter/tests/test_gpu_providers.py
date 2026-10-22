@@ -1002,9 +1002,17 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
         mock_pynvml.nvmlGpmQueryDeviceSupport.return_value = Mock(isSupportedDevice=0)
 
-        self.provider.get_gpu_utilization()
+        def initialize():
+            self.provider._initialized = True
+            return True
 
-        mock_pynvml.nvmlShutdown.assert_called_once()
+        with patch.object(self.provider, "_initialize", side_effect=initialize):
+            self.provider.get_gpu_utilization()
+            self.provider.get_gpu_utilization()
+
+        self.assertEqual(mock_pynvml.nvmlShutdown.call_count, 2)
+        # The unsupported result survives the per-poll shutdown.
+        mock_pynvml.nvmlGpmQueryDeviceSupport.assert_called_once()
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_gpm_samples_freed_before_shutdown_after_error(self, mock_pynvml):
