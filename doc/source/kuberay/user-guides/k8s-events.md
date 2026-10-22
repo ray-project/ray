@@ -78,12 +78,12 @@ Deploy complete working examples from the KubeRay repository:
 
 ### RayCluster example
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.platform-events.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-cluster.platform-events.yaml
 ```
 
 ### RayJob example
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.platform-events.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-job.platform-events.yaml
 ```
 
 ## Verify the configuration

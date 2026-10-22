@@ -2,6 +2,7 @@ import concurrent.futures
 import contextlib
 import errno
 import fcntl
+import hashlib
 import io
 import json
 import logging
@@ -141,6 +142,9 @@ def apply_registry_mirror(registry: str, repo: str) -> Tuple[str, str]:
 def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
     """Parse image reference string into (registry, repository, tag_or_digest).
 
+    The registry comes back in lowercase, since host names are
+    case-insensitive: ``Docker.io/...`` is a Docker Hub reference too.
+
     Args:
         image_ref: Container image reference string (e.g. 'busybox:latest',
             'python:3.10-slim', 'docker.io/library/python:3.12-slim',
@@ -158,21 +162,63 @@ def parse_image_ref(image_ref: str) -> Tuple[str, str, str]:
             image_ref, tag = parts[0], parts[1]
 
     parts = image_ref.split("/", 1)
+    host = parts[0].lower()
     if len(parts) == 1:
         registry = "registry-1.docker.io"
         repo = f"library/{parts[0]}"
-    elif "." in parts[0] or ":" in parts[0] or parts[0] == "localhost":
-        if parts[0] in _DOCKER_HUB_REGISTRIES:
+    elif "." in host or ":" in host or host == "localhost":
+        if host in _DOCKER_HUB_REGISTRIES:
             registry = "registry-1.docker.io"
             repo = f"library/{parts[1]}" if "/" not in parts[1] else parts[1]
         else:
-            registry = parts[0]
+            registry = host
             repo = parts[1]
     else:
         registry = "registry-1.docker.io"
         repo = image_ref
 
     return registry, repo, tag
+
+
+# Keeps a cache entry's name, and the ``.lock`` and ``.tmp.<uuid>`` names
+# derived from it, well under the 255-byte limit on a file name.
+_CACHE_NAME_READABLE_CHARS = 128
+
+
+def image_cache_name(image: str) -> str:
+    """Name of an image's entry in the image cache.
+
+    A registry reference is normalized first, so every spelling of one image
+    (``python:3.12-slim``, ``library/python:3.12-slim``,
+    ``docker.io/library/python:3.12-slim``) shares one entry instead of each
+    pulling and building its own. The name is the normalized reference made
+    safe for a file name, then a hash of the reference: the first part turns
+    ``/``, ``:`` and ``@`` all into ``_``, so ``repo@sha256:<hex>`` and a tag
+    named ``sha256_<hex>`` differ only in the hash.
+
+    The name depends on the string alone, not on which files exist, so the
+    pin a pull takes and its later release always agree on it.
+
+    Args:
+        image: Container image reference or path to a local tar archive.
+
+    Returns:
+        A name that is safe as a directory and file name.
+    """
+    if (
+        not isinstance(image, str)
+        or not image.strip()
+        or image.endswith(".tar")
+        or image.startswith(("/", "./", "../"))
+    ):
+        return sanitize_image_name(image)
+    registry, repo, reference = parse_image_ref(image)
+    if registry == "registry-1.docker.io":
+        registry = "docker.io"
+    separator = "@" if "@" in image else ":"
+    ref = f"{registry}/{repo}{separator}{reference}"
+    ref_hash = hashlib.sha256(ref.encode("utf-8")).hexdigest()[:16]
+    return f"{sanitize_image_name(ref)[:_CACHE_NAME_READABLE_CHARS]}-{ref_hash}"
 
 
 def get_platform_arch() -> str:
@@ -906,7 +952,7 @@ def pull_and_extract_container_image(
             f"Failed to create images directory '{images_dir}': {err}"
         ) from err
 
-    safe_name = sanitize_image_name(image)
+    safe_name = image_cache_name(image)
     target_dir = os.path.join(images_dir, safe_name)
     lock_path = os.path.join(images_dir, f"{safe_name}.lock")
 
