@@ -145,6 +145,15 @@ class TestOperatorStatistics:
         assert OperatorStatistics(num_rows=10).scale(-1).num_rows == 0
         assert OperatorStatistics().scale(0.5).num_rows is None
 
+        zero_rows = OperatorStatistics(
+            num_rows=10,
+            size_bytes=0,
+            column_stats={"a": _int_column("a", distinct_count=5)},
+        ).scale(0.0)
+        assert zero_rows.num_rows == 0
+        # A 0-row dataset cannot have a distinct value.
+        assert zero_rows.column_stats["a"].distinct_count is None
+
     def test_passthrough(self):
         stats = OperatorStatistics(num_rows=10, selectivity=0.5, confidence=HIGH)
         passed = stats.passthrough(num_blocks=3)

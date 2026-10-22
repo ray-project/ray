@@ -1320,6 +1320,18 @@ def _parse_partition_column_values(
     return partitions
 
 
+def _column_nbytes(column: "pyarrow.Array") -> int:
+    """In-memory size of a column.
+
+    ``pyarrow.Array.nbytes`` was added in PyArrow 12, so fall back to
+    ``get_total_buffer_size()`` to keep the estimate working on older versions.
+    """
+    nbytes = getattr(column, "nbytes", None)
+    if nbytes is not None:
+        return nbytes
+    return column.get_total_buffer_size()
+
+
 def _fetch_parquet_file_info(
     fragment: _ParquetFragment,
     *,
@@ -1366,7 +1378,7 @@ def _fetch_parquet_file_info(
         if batch.num_rows > 0:
             avg_row_size = math.ceil(batch.nbytes / batch.num_rows)
             avg_column_sizes = {
-                name: batch.column(i).nbytes / batch.num_rows
+                name: _column_nbytes(batch.column(i)) / batch.num_rows
                 for i, name in enumerate(batch.schema.names)
             }
             break

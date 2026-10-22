@@ -193,7 +193,7 @@ class OperatorStatistics:
                     int(col.null_count * ratio) if col.null_count is not None else None
                 ),
                 distinct_count=(
-                    max(1, min(col.distinct_count, num_rows))
+                    min(col.distinct_count, num_rows)
                     if col.distinct_count is not None and num_rows is not None
                     else col.distinct_count
                 ),

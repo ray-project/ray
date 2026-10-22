@@ -167,6 +167,16 @@ class TestCollectDemands:
         demands, _ = _collect_demands(_PhysicalOp(left, right, size_bytes=20))
         assert sorted(demands) == [10, 10, 20, 100]
 
+    def test_shared_ineligible_downstream_is_charged_once(self):
+        read = _PhysicalOp(size_bytes=100)
+        branch_a = _PhysicalOp(read, size_bytes=10, throttling=False)
+        branch_b = _PhysicalOp(read, size_bytes=10, throttling=False)
+        shared = _PhysicalOp(branch_a, branch_b, size_bytes=5, throttling=False)
+        demands, _ = _collect_demands(shared)
+        # ``shared`` is reachable through both ineligible branches but its size
+        # must only be charged to ``read`` once (100 + 10 + 10 + 5).
+        assert demands == [125]
+
 
 class TestDeriveReservationRatioRule:
     def _apply(self, ctx, dag=None):

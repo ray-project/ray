@@ -127,8 +127,13 @@ def _collect_demands(
         total: Optional[float] = 0.0
         group = [op]
         frontier = list(consumers[id(op)])
+        # A node reachable through several paths must be charged only once.
+        seen = set()
         while frontier:
             downstream = frontier.pop()
+            if id(downstream) in seen:
+                continue
+            seen.add(id(downstream))
             if not _is_eligible(downstream):
                 group.append(downstream)
                 frontier.extend(consumers[id(downstream)])
