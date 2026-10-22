@@ -833,6 +833,31 @@ def test_unify_fixed_shaped_with_lower_ndim_variable_shaped(
         np.testing.assert_array_equal(arr, exp)
 
 
+def test_unify_fixed_shaped_with_lower_ndim_variable_shaped_null_rows(
+    tensor_format_context,
+):
+    # Null rows must stay null after the shapes are padded.
+    ta_fixed = ArrowTensorArray.from_numpy(np.arange(8).reshape((2, 2, 2)))
+    ta_ragged = ArrowVariableShapedTensorArray.from_numpy(
+        [np.arange(2), np.arange(3), np.arange(4)]
+    ).take(pa.array([0, None, 1, 2], type=pa.int64()))
+    # Slice so the null mask has an offset.
+    ta_ragged = ta_ragged.slice(1)
+
+    ta = concat_tensor_arrays(unify_tensor_arrays([ta_fixed, ta_ragged]))
+    assert ta.type.ndim == 2
+    assert ta.is_null().to_pylist() == [False, False, True, False, False]
+    # Read rows one at a time: converting null tensor rows with to_numpy() is
+    # a separate issue.
+    expected = [*np.arange(8).reshape((2, 2, 2)), None, [np.arange(3)], [np.arange(4)]]
+    for i, exp in enumerate(expected):
+        row = ta[i].as_py()
+        if exp is None:
+            assert row is None
+        else:
+            np.testing.assert_array_equal(row, exp)
+
+
 def test_variable_shaped_tensor_array_uniform_dim(tensor_format_context):
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)
