@@ -219,6 +219,7 @@ class LLMServer(LLMServerProtocol):
     ):
         """Shared initialization logic between constructors."""
         self._llm_config = llm_config
+        self._llm_router_handle = None
         self._engine_cls = engine_cls or self._get_default_engine_class()
         self.engine: Optional[LLMEngine] = None
         self._init_multiplex_loader(model_downloader)
@@ -611,6 +612,53 @@ class LLMServer(LLMServerProtocol):
         if self.engine is None:
             return {}
         return self.engine.routing_stats()
+
+    async def record_autoscaling_stats(self) -> Dict[str, Union[int, float]]:
+        """Relay the maximum global work snapshot across all LLMRouter replicas."""
+        from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
+            is_kv_aware,
+        )
+        from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+            get_llm_router_handle,
+        )
+        from ray.serve.experimental.llm_token_autoscaling_policy import (
+            ACTIVE_DECODE_REQUESTS,
+            OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
+        )
+
+        if not is_kv_aware(self._llm_config):
+            return {}
+        if self._llm_router_handle is None:
+            self._llm_router_handle = get_llm_router_handle()
+
+        try:
+            responses = await self._llm_router_handle.broadcast(
+                "get_autoscaling_snapshot"
+            ).results_async(timeout_s=3, return_exceptions=True)
+        except Exception as e:
+            logger.warning("Failed to collect LLM router autoscaling snapshots: %s", e)
+            return {}
+
+        snapshots = [
+            response
+            for response in responses
+            if isinstance(response, dict)
+            and isinstance(
+                response.get(OUTSTANDING_EFFECTIVE_PREFILL_TOKENS), (int, float)
+            )
+            and isinstance(response.get(ACTIVE_DECODE_REQUESTS), (int, float))
+        ]
+        if not snapshots:
+            return {}
+
+        return {
+            OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: max(
+                snapshot[OUTSTANDING_EFFECTIVE_PREFILL_TOKENS] for snapshot in snapshots
+            ),
+            ACTIVE_DECODE_REQUESTS: max(
+                snapshot[ACTIVE_DECODE_REQUESTS] for snapshot in snapshots
+            ),
+        }
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.
