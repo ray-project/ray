@@ -230,19 +230,15 @@ def test_parquet_session_mapping_is_checked_before_file_access(
     connection.close.assert_called_once()
 
 
-def test_orc_metadata_lowercase_does_not_conflate_distinct_unicode_names():
-    rows = _metadata("orc")
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_metadata_uses_lowercase_for_name_ambiguity(file_format):
+    rows = _metadata(file_format)
     rows[1:3] = [("ss", "bigint", None), ("\u00df", "bigint", None)]
     assert _parse_file_table(rows).schema.names == ["ss", "\u00df"]
-
-
-def test_parquet_metadata_uses_lowercase_for_name_ambiguity():
-    rows = _metadata("parquet")
-    rows[1:3] = [("ss", "bigint", None), ("\u00df", "bigint", None)]
-    assert _parse_file_table(rows).schema.names == ["ss", "\u00df"]
-    rows[2] = ("SS", "bigint", None)
-    with pytest.raises(ValueError, match="unambiguous"):
-        _parse_file_table(rows)
+    if file_format == "parquet":
+        rows[2] = ("SS", "bigint", None)
+        with pytest.raises(ValueError, match="unambiguous"):
+            _parse_file_table(rows)
 
 
 def test_lookup_preserves_error_and_closes_on_failure():
@@ -1039,14 +1035,16 @@ def test_orc_positional_mode_preserves_trailing_missing_and_extra_columns(tmp_pa
     assert result.to_pylist() == [{"id": 42, "added": None}, {"id": 43, "added": 44}]
 
 
-@pytest.mark.parametrize("tolerate", [False, True])
-def test_legacy_orc_honors_missing_schema_tolerance(tmp_path, tolerate):
+@pytest.mark.parametrize(
+    "logical_name,tolerate", [("id", False), ("id", True), ("_col0", True)]
+)
+def test_legacy_orc_honors_missing_schema_tolerance(tmp_path, logical_name, tolerate):
     path = _write_column_file(tmp_path / "part-00", "orc", "_col0", 42)
-    declared = pa.schema([("id", pa.int64())])
+    declared = pa.schema([(logical_name, pa.int64())])
     table = HiveFileTable(
         str(tmp_path), "orc", declared, tolerate_missing_schema=tolerate
     )
-    if not tolerate:
+    if logical_name != "_col0" and not tolerate:
         with pytest.raises(ValueError, match="tolerance is disabled"):
             HiveDirectDatasource(table)
     else:
@@ -1058,7 +1056,7 @@ def test_legacy_orc_honors_missing_schema_tolerance(tmp_path, tolerate):
                 .read(_manifest_for_paths([path]))
             )
         )
-        assert result.to_pylist() == [{"id": 42}]
+        assert result.to_pylist() == [{logical_name: 42}]
 
 
 @pytest.mark.parametrize("case_sensitive", [False, True])
@@ -1526,20 +1524,6 @@ def test_orc_rejects_decoded_pickle_before_filter(tmp_path, monkeypatch, nested)
     assert not marker.exists()
 
 
-def test_sampled_legacy_orc_uses_positional_layout(tmp_path):
-    path = _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
-    declared = pa.schema([("id", pa.int64())])
-    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
-    result = pa.concat_tables(
-        list(
-            source.create_scanner(source.infer_schema(None))
-            .create_reader()
-            .read(_manifest_for_paths([path]))
-        )
-    )
-    assert result.to_pylist() == [{"id": 42}]
-
-
 def test_orc_coln_layout_uses_position_even_when_names_conflict(tmp_path):
     path = tmp_path / "part-000"
     physical = pa.Table.from_arrays(
@@ -1613,11 +1597,15 @@ def test_orc_mixed_coln_and_named_columns_use_name_mapping(tmp_path):
     assert result.column("id").to_pylist() == [43]
 
 
-def test_orc_col_prefix_names_use_name_mapping(tmp_path):
+@pytest.mark.parametrize(
+    "physical,expected",
+    [({"_color": [42], "_column": [43]}, [43]), ({"_color": [42]}, [None])],
+)
+def test_orc_col_prefix_names_use_name_mapping(tmp_path, physical, expected):
     path = _write_table_file(
         tmp_path / "part-000",
         "orc",
-        pa.table({"_color": [42], "_column": [43]}),
+        pa.table(physical),
     )
     declared = pa.schema([("_column", pa.int64())])
     source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
@@ -1627,20 +1615,7 @@ def test_orc_col_prefix_names_use_name_mapping(tmp_path):
         list(scanner.create_reader().read(_manifest_for_paths([path])))
     )
 
-    assert result.column("_column").to_pylist() == [43]
-
-
-def test_orc_col_prefix_name_does_not_reject_missing_hive_column(tmp_path):
-    path = _write_column_file(tmp_path / "part-000", "orc", "_color", 42)
-    declared = pa.schema([("_column", pa.int64())])
-    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
-    scanner = source.create_scanner(source.infer_schema(None))
-
-    result = pa.concat_tables(
-        list(scanner.create_reader().read(_manifest_for_paths([path])))
-    )
-
-    assert result.column("_column").to_pylist() == [None]
+    assert result.column("_column").to_pylist() == expected
 
 
 def test_unsampled_legacy_orc_is_read_by_position(tmp_path, monkeypatch):
@@ -1659,18 +1634,6 @@ def test_unsampled_legacy_orc_is_read_by_position(tmp_path, monkeypatch):
     manifest = _manifest_for_paths([*sampled_paths, late_path])
     result = pa.concat_tables(list(scanner.create_reader().read(manifest)))
     assert result.column("id").to_pylist() == list(range(16)) + [99]
-
-
-def test_orc_declared_col0_is_read_by_name(tmp_path):
-    path = _write_column_file(tmp_path / "part-000", "orc", "_col0", 42)
-    declared = pa.schema([("_col0", pa.int64())])
-    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "orc", declared))
-    scanner = source.create_scanner(source.infer_schema(None))
-    result = pa.concat_tables(
-        list(scanner.create_reader().read(_manifest_for_paths([path])))
-    )
-
-    assert result.column("_col0").to_pylist() == [42]
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
@@ -1702,11 +1665,20 @@ def test_scanner_options_preserve_native_behavior(tmp_path, monkeypatch, file_fo
     assert native_reader._ignore_prefixes == expected_prefixes
 
 
-@pytest.mark.parametrize("file_format", ["parquet", "orc"])
-def test_empty_table_keeps_declared_schema(tmp_path, file_format):
+@pytest.mark.parametrize(
+    "file_format,merge_schema", [("parquet", False), ("orc", False), ("orc", True)]
+)
+def test_empty_table_keeps_declared_schema(tmp_path, file_format, merge_schema):
     declared = pa.schema([("id", pa.int64())])
-    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), file_format, declared))
+    source = HiveDirectDatasource(
+        HiveFileTable(str(tmp_path), file_format, declared), merge_schema=merge_schema
+    )
     assert source.infer_schema(None) == declared
+    if merge_schema:
+        assert (
+            list(source._get_file_indexer().list_file_infos(pa.array(source.paths)))
+            == []
+        )
 
 
 @pytest.mark.parametrize("mapping", ["name", "position", "legacy"])
@@ -1803,17 +1775,6 @@ def test_orc_full_schema_validates_late_types_during_planning(tmp_path):
     assert HiveDirectDatasource(table).infer_schema(None) == declared
     with pytest.raises(ValueError, match="type mismatch"):
         HiveDirectDatasource(table, merge_schema=True)
-
-
-def test_orc_full_schema_empty_table_keeps_hive_declaration(tmp_path):
-    declared = pa.schema([("id", pa.int64())])
-    source = HiveDirectDatasource(
-        HiveFileTable(str(tmp_path), "orc", declared), merge_schema=True
-    )
-    assert source.infer_schema(None) == declared
-    assert (
-        list(source._get_file_indexer().list_file_infos(pa.array(source.paths))) == []
-    )
 
 
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
