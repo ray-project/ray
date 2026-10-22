@@ -1809,11 +1809,10 @@ class ReporterAgent(
 
         if gpus_available:
             for gpu in gpus:
-                gram_used, gram_total = 0, 0
                 # No utilization record if the device doesn't report it.
                 gpus_utilization = gpu["utilization_gpu"]
-                gram_used += gpu["memory_used"]
-                gram_total += gpu["memory_total"]
+                gram_used = gpu["memory_used"]
+                gram_total = gpu["memory_total"]
                 gpu_index = gpu.get("index")
                 gpu_name = gpu.get("name")
                 gpu_uuid = gpu.get("uuid")

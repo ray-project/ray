@@ -506,6 +506,7 @@ class NvidiaGpuProvider(GpuProvider):
                     if last_seen_us > now_us + _PROCESS_UTIL_CURSOR_FUTURE_TOLERANCE_US:
                         # The clock stepped back; restart the window.
                         last_seen_us = now_us
+                        self._gpu_process_last_sample_ts[gpu_index] = now_us
                     nv_processes = self._pynvml.nvmlDeviceGetProcessesUtilizationInfo(
                         gpu_handle, last_seen_us
                     )
