@@ -25,6 +25,9 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BYTES,
 )
 from ray._private import logging_utils
+from ray._private.authentication.http_token_authentication import (
+    start_metrics_http_server,
+)
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._raylet import GcsClient
@@ -204,7 +207,7 @@ class Monitor:
                 kwargs = (
                     {"addr": get_localhost_ip()} if is_localhost(head_node_ip) else {}
                 )
-                prometheus_client.start_http_server(
+                start_metrics_http_server(
                     port=AUTOSCALER_METRIC_PORT,
                     registry=self.prom_metrics.registry,
                     **kwargs,

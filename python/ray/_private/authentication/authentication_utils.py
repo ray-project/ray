@@ -1,3 +1,5 @@
+from ray._common.utils import env_bool
+
 try:
     from ray._raylet import (
         AuthenticationMode,
@@ -21,6 +23,12 @@ def is_token_auth_enabled() -> bool:
         return False
 
     return get_authentication_mode() == AuthenticationMode.TOKEN
+
+
+def is_metrics_auth_skipped() -> bool:
+    """Whether RAY_AUTH_SKIP_METRICS opens Ray's metrics endpoints while token
+    auth protects everything else."""
+    return env_bool("RAY_AUTH_SKIP_METRICS", False)
 
 
 def validate_request_token(auth_header: str) -> bool:

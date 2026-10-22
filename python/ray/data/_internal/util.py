@@ -1844,13 +1844,12 @@ class MemoryProfiler:
 
     Example:
 
-        .. testcode::
-
-            with MemoryProfiler(poll_interval_s=1.0) as profiler:
-                for i in range(10):
-                    ...  # Your code here
-                    print(f"Max USS: {profiler.estimate_max_uss()}")
-                    profiler.reset()
+        >>> with MemoryProfiler(poll_interval_s=1.0) as profiler:
+        ...     for i in range(10):
+        ...         pass  # Your code here
+        ...         print(f"Max USS: {profiler.estimate_max_uss()}")
+        ...         profiler.reset()
+        Max USS: ...
     """
 
     def __init__(self, poll_interval_s: Optional[float]):
