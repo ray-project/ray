@@ -39,6 +39,7 @@ from ray.data._internal.logical.rules.derive_list_files_pushdown import (
     DeriveListFilesPushdown,
 )
 from ray.data.context import DataContext
+from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -116,7 +117,18 @@ def test_derives_state_the_scanner_accepted(tmp_path):
     assert list_files.limit == 5
 
 
-def test_partition_condition_reaches_reader_without_disabling_listing_limit(tmp_path):
+@pytest.mark.parametrize(
+    "shuffle_config,expected_limit",
+    [
+        (None, 10),
+        (FileShuffleConfig(seed=1), 10),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_partition_condition_reaches_reader_with_shuffle_aware_listing_limit(
+    tmp_path, shuffle_config, expected_limit
+):
     read_files = _mk_read_files(tmp_path)
     schema = read_files.schema.append(pa.field("year", pa.string()))
     scanner = ParquetScanner(
@@ -127,8 +139,19 @@ def test_partition_condition_reaches_reader_without_disabling_listing_limit(tmp_
     assert isinstance(scanner, ParquetScanner)
     scanner = scanner.push_limit(10)
     assert isinstance(scanner, ParquetScanner)
-    list_files = _list_files_of(_apply(replace(read_files, scanner=scanner)))
-    assert list_files.limit == 10
+    read_files = replace(
+        read_files,
+        scanner=scanner,
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+    list_files = _list_files_of(_apply(read_files))
+    assert list_files.limit == expected_limit
+    assert scanner.pushed_limit() == 10
     assert list_files.predicate is not None
     assert list_files.partition_pruner is not None
     assert list_files.predicate.structurally_equals(col("a") > 2)
@@ -141,6 +164,50 @@ def test_partition_condition_reaches_reader_without_disabling_listing_limit(tmp_
     assert reader._predicate.structurally_equals(
         (col("a") > 2) & (col("year") == "2024")
     )
+
+
+@pytest.mark.parametrize(
+    "shuffle_config, expected_limit",
+    [
+        (None, 5),
+        (FileShuffleConfig(seed=1), 5),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_limit_is_not_derived_onto_row_group_shuffle(
+    tmp_path, shuffle_config, expected_limit
+):
+    """Listing stops early before the row-group shuffle runs.
+
+    A listing limit would shrink the pool the shuffle permutes to the first
+    files listed, so only the scanner keeps the limit.
+    """
+    read_files = _mk_read_files(tmp_path)
+    predicate = col("a") > 2
+    scanner, _residual = _scanner_of(read_files).push_filters(predicate)
+    read_files = replace(
+        read_files,
+        scanner=scanner.push_limit(5),
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+
+    plan = _apply(read_files)
+
+    list_files = _list_files_of(plan)
+    assert list_files.limit == expected_limit
+    assert list_files.predicate is predicate
+    (scanner_limit,) = [
+        _scanner_of(op).pushed_limit()
+        for op in plan.dag.post_order_iter()
+        if isinstance(op, ReadFiles)
+    ]
+    assert scanner_limit == 5
 
 
 def test_no_pushdown_leaves_list_files_unconstrained(tmp_path):
