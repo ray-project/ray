@@ -133,6 +133,49 @@ def test_image_manager_config_parsing(tmp_path):
     assert mgr.get_envs(str(local_tar)) == ["PATH=/usr/bin", "FOO=bar", "BAZ=123"]
 
 
+def test_image_manager_config_from_docker_save_archive(tmp_path):
+    """A ``docker save`` archive's own config supplies the sandbox's default
+    env and workdir, with no .image_config.json written by hand."""
+    mgr = ImageManager(images_dir=str(tmp_path / "images"))
+
+    layer_buf = io.BytesIO()
+    with tarfile.open(fileobj=layer_buf, mode="w") as layer_tar:
+        ti = tarfile.TarInfo("app/main.sh")
+        ti.size = 4
+        layer_tar.addfile(ti, io.BytesIO(b"echo"))
+    layer = layer_buf.getvalue()
+    config = json.dumps(
+        {"config": {"Env": ["PATH=/usr/bin:/bin", "FOO=bar"], "WorkingDir": "/app"}}
+    ).encode()
+    files = {
+        "blobs/sha256/config": config,
+        "blobs/sha256/layer": layer,
+        "manifest.json": json.dumps(
+            [
+                {
+                    "Config": "blobs/sha256/config",
+                    "RepoTags": ["app:latest"],
+                    "Layers": ["blobs/sha256/layer"],
+                }
+            ]
+        ).encode(),
+    }
+    archive = tmp_path / "app-save.tar"
+    with tarfile.open(str(archive), "w") as tar:
+        for name, data in files.items():
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            tar.addfile(ti, io.BytesIO(data))
+
+    mgr.pull_image(str(archive))
+
+    assert mgr.get_workdir(str(archive)) == "/app"
+    assert mgr.get_envs(str(archive)) == ["PATH=/usr/bin:/bin", "FOO=bar"]
+    spec = mgr.create_oci_spec(image=str(archive), env_dict={"FOO": "override"})
+    assert "PATH=/usr/bin:/bin" in spec["process"]["env"]
+    assert "FOO=override" in spec["process"]["env"]
+
+
 def test_image_manager_create_oci_spec(tmp_path):
     images_dir = str(tmp_path / "images")
     mgr = ImageManager(images_dir=images_dir)

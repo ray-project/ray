@@ -569,6 +569,401 @@ def test_pull_nonexistent_local_tar(tmp_path):
         )
 
 
+def _layer(members, gzip=False):
+    """A layer tarball of ``members``: {name: contents, or None for a dir}."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz" if gzip else "w") as tar:
+        for name, data in members.items():
+            if data is None:
+                _add_member(tar, name, mode=0o755, typ=tarfile.DIRTYPE)
+            else:
+                _add_member(tar, name, data)
+    return buf.getvalue()
+
+
+def _blob_name(data):
+    return f"blobs/sha256/{hashlib.sha256(data).hexdigest()}"
+
+
+def _descriptor(data, media_type, **fields):
+    digest = f"sha256:{hashlib.sha256(data).hexdigest()}"
+    return {"mediaType": media_type, "digest": digest, "size": len(data), **fields}
+
+
+_OCI_INDEX = "application/vnd.oci.image.index.v1+json"
+_OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+
+
+def _oci_manifest(config, layers):
+    """An OCI image manifest of a config blob and layer blobs."""
+    return json.dumps(
+        {
+            "schemaVersion": 2,
+            "config": _descriptor(config, "application/vnd.oci.image.config.v1+json"),
+            "layers": [
+                _descriptor(layer, "application/vnd.oci.image.layer.v1.tar")
+                for layer in layers
+            ],
+        }
+    ).encode()
+
+
+def _write_oci_archive(path, blobs, index_entries):
+    """Write an OCI image layout of ``blobs`` whose index.json lists
+    ``index_entries``."""
+    with tarfile.open(str(path), "w") as tar:
+        for data in blobs:
+            _add_member(tar, _blob_name(data), data)
+        _add_member(
+            tar,
+            "index.json",
+            json.dumps({"schemaVersion": 2, "manifests": index_entries}).encode(),
+        )
+        _add_member(tar, "oci-layout", b'{"imageLayoutVersion":"1.0.0"}')
+
+
+def _write_image_archive(path, layers, config, layout="docker"):
+    """Write one image the way ``docker save`` or an OCI exporter does.
+
+    ``layout`` is "docker" (Docker 25+: OCI blobs and ``manifest.json``),
+    "legacy" (older Docker: ``<id>/layer.tar`` and ``<id>.json``), or "oci"
+    (an OCI image layout with no ``manifest.json``, whose index nests a
+    per-platform index that lists another platform first).
+    """
+    config_bytes = json.dumps(config).encode()
+    if layout == "legacy":
+        config_path = f"{hashlib.sha256(config_bytes).hexdigest()}.json"
+        layer_paths = [
+            f"{hashlib.sha256(layer).hexdigest()}/layer.tar" for layer in layers
+        ]
+    else:
+        config_path = _blob_name(config_bytes)
+        layer_paths = [_blob_name(layer) for layer in layers]
+    files = {config_path: config_bytes, **dict(zip(layer_paths, layers))}
+
+    if layout == "oci":
+
+        def add_manifest(cfg, lyrs, arch):
+            manifest = _oci_manifest(cfg, lyrs)
+            files[_blob_name(manifest)] = manifest
+            return _descriptor(
+                manifest,
+                _OCI_MANIFEST,
+                platform={"os": "linux", "architecture": arch},
+            )
+
+        other_arch = "s390x" if get_platform_arch() != "s390x" else "amd64"
+        other_config = json.dumps({"architecture": other_arch}).encode()
+        other_layer = _layer({"wrong-arch.txt": b"wrong"})
+        files[_blob_name(other_config)] = other_config
+        files[_blob_name(other_layer)] = other_layer
+        platforms = json.dumps(
+            {
+                "schemaVersion": 2,
+                "manifests": [
+                    add_manifest(other_config, [other_layer], other_arch),
+                    add_manifest(config_bytes, layers, get_platform_arch()),
+                ],
+            }
+        ).encode()
+        files[_blob_name(platforms)] = platforms
+        files["index.json"] = json.dumps(
+            {"schemaVersion": 2, "manifests": [_descriptor(platforms, _OCI_INDEX)]}
+        ).encode()
+        files["oci-layout"] = b'{"imageLayoutVersion":"1.0.0"}'
+    else:
+        files["manifest.json"] = json.dumps(
+            [{"Config": config_path, "RepoTags": ["app:latest"], "Layers": layer_paths}]
+        ).encode()
+
+    with tarfile.open(str(path), "w") as tar:
+        for name, data in files.items():
+            _add_member(tar, name, data)
+
+
+@pytest.mark.parametrize("gzip_layers", [False, True])
+@pytest.mark.parametrize("layout", ["docker", "legacy", "oci"])
+def test_pull_image_archive_applies_its_layers_in_order(tmp_path, layout, gzip_layers):
+    """A ``docker save`` or OCI archive boots as the image it holds: its layers
+    apply in order, whiteouts and opaque dirs included, and its config is
+    cached for the sandbox's env and workdir."""
+    base = _layer(
+        {
+            "bin": None,
+            "bin/sh": b"sh",
+            "app": None,
+            "app/old.txt": b"old",
+            "app/keep.txt": b"keep",
+            "cache": None,
+            "cache/stale.txt": b"stale",
+        },
+        gzip=gzip_layers,
+    )
+    top = _layer(
+        {
+            "app/.wh.old.txt": b"",
+            "app/new.txt": b"new",
+            "cache/.wh..wh..opq": b"",
+            "cache/fresh.txt": b"fresh",
+        },
+        gzip=gzip_layers,
+    )
+    config = {
+        "architecture": get_platform_arch(),
+        "os": "linux",
+        "config": {"Env": ["PATH=/bin", "FOO=bar"], "WorkingDir": "/app"},
+    }
+    archive = tmp_path / "app.tar"
+    _write_image_archive(archive, [base, top], config, layout)
+
+    image_dir = pull_and_extract_container_image(
+        str(archive), images_dir=str(tmp_path / "images")
+    )
+
+    files = {path for path, m in _image_tree(image_dir).items() if m.isfile()}
+    assert {"bin/sh", "app/keep.txt", "app/new.txt", "cache/fresh.txt"} <= files
+    assert not files & {"app/old.txt", "cache/stale.txt", "wrong-arch.txt"}
+    # None of the archive's own bookkeeping lands in the rootfs.
+    assert not files & {"manifest.json", "index.json", "oci-layout"}
+    assert not any(path.startswith("blobs/") or "layer.tar" in path for path in files)
+    assert _image_file(image_dir, "app/new.txt") == b"new"
+    with open(os.path.join(image_dir, ".image_config.json"), encoding="utf-8") as f:
+        assert json.load(f) == config
+
+
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        b"not json",
+        json.dumps({"name": "app"}).encode(),
+        # The shape of a save manifest, but the config it names isn't there.
+        json.dumps([{"Config": "cfg.json", "Layers": ["bin/sh"]}]).encode(),
+    ],
+)
+def test_pull_flat_tar_with_a_manifest_json_stays_flat(tmp_path, manifest):
+    """A root filesystem that ships its own /manifest.json is not mistaken
+    for a ``docker save`` archive."""
+    archive = tmp_path / "rootfs.tar"
+    with tarfile.open(str(archive), "w") as tar:
+        _add_member(tar, "manifest.json", manifest)
+        _add_member(tar, "bin/sh", b"sh")
+
+    image_dir = pull_and_extract_container_image(
+        str(archive), images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "manifest.json") == manifest
+    assert _image_file(image_dir, "bin/sh") == b"sh"
+    assert not os.path.exists(os.path.join(image_dir, ".image_config.json"))
+
+
+def test_pull_rejects_an_archive_of_several_images(tmp_path):
+    """``docker save a b`` writes both images into one archive; the pull
+    names them instead of picking one."""
+    config = json.dumps({"config": {}}).encode()
+    layer = _layer({"a.txt": b"a"})
+    entry = {"Config": _blob_name(config), "Layers": [_blob_name(layer)]}
+    archive = tmp_path / "two.tar"
+    with tarfile.open(str(archive), "w") as tar:
+        _add_member(tar, _blob_name(config), config)
+        _add_member(tar, _blob_name(layer), layer)
+        _add_member(
+            tar,
+            "manifest.json",
+            json.dumps(
+                [
+                    {**entry, "RepoTags": ["a:latest"]},
+                    {**entry, "RepoTags": ["b:latest"]},
+                ]
+            ).encode(),
+        )
+
+    with pytest.raises(
+        SandboxCreationError,
+        match=r"Failed to extract local image archive .*holds 2 images "
+        r"\(a:latest, b:latest\); save one image per archive",
+    ):
+        pull_and_extract_container_image(
+            str(archive), images_dir=str(tmp_path / "images")
+        )
+
+
+@pytest.mark.parametrize(
+    "damage, error", [("missing", "has no file"), ("truncated", "layer")]
+)
+def test_pull_fails_on_a_broken_layer(tmp_path, damage, error):
+    """A save archive whose layer is missing or cut short fails the pull,
+    naming the layer, instead of booting a partial image."""
+    base = _layer({"bin/sh": b"sh"})
+    broken = _layer({"data.bin": os.urandom(64 * 1024)}, gzip=True)
+    archive = tmp_path / "app.tar"
+    _write_image_archive(archive, [base, broken], {"config": {}})
+
+    damaged = tmp_path / "damaged.tar"
+    with tarfile.open(str(archive)) as src, tarfile.open(str(damaged), "w") as dst:
+        for member in src:
+            data = src.extractfile(member).read()
+            if member.name == _blob_name(broken):
+                if damage == "missing":
+                    continue
+                data = data[: len(data) // 2]
+            _add_member(dst, member.name, data)
+
+    images_dir = tmp_path / "images"
+    with pytest.raises(
+        SandboxCreationError,
+        match=rf"Failed to extract local image archive .*{error} "
+        rf"'{re.escape(_blob_name(broken))}'",
+    ):
+        pull_and_extract_container_image(str(damaged), images_dir=str(images_dir))
+    # Nothing half-built is left behind for a later pull to reuse.
+    assert not [n for n in os.listdir(images_dir) if not n.endswith(".lock")]
+
+
+def test_pull_reads_no_more_of_a_manifest_json_than_the_cap(tmp_path, monkeypatch):
+    """The format check stops reading a /manifest.json past the cap, so a flat
+    root filesystem's large one stays a plain file, even one shaped like a
+    save manifest."""
+    monkeypatch.setattr(image_utils, "_MAX_ARCHIVE_JSON_BYTES", 64)
+    manifest = json.dumps(
+        [{"Config": "cfg.json", "RepoTags": ["x" * 64], "Layers": ["bin/sh"]}]
+    ).encode()
+    archive = tmp_path / "rootfs.tar"
+    with tarfile.open(str(archive), "w") as tar:
+        _add_member(tar, "cfg.json", b"{}")
+        _add_member(tar, "manifest.json", manifest)
+        _add_member(tar, "bin/sh", b"sh")
+
+    image_dir = pull_and_extract_container_image(
+        str(archive), images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "manifest.json") == manifest
+    assert _image_file(image_dir, "bin/sh") == b"sh"
+    assert not os.path.exists(os.path.join(image_dir, ".image_config.json"))
+
+
+def _write_same_platform_oci_archive(path, tags, same_digest=False):
+    """An OCI layout whose index.json lists a manifest under each of two
+    tags, both for this node's platform: the first holds first.txt, the
+    second second.txt, or first.txt too with ``same_digest``."""
+    config = json.dumps({"config": {}}).encode()
+    layers = [_layer({"first.txt": b"1"}), _layer({"second.txt": b"2"})]
+    manifests = [_oci_manifest(config, [layer]) for layer in layers]
+    platform = {"os": "linux", "architecture": get_platform_arch()}
+    entries = [
+        _descriptor(
+            manifest,
+            _OCI_MANIFEST,
+            platform=platform,
+            annotations={"org.opencontainers.image.ref.name": tag},
+        )
+        for manifest, tag in zip([manifests[0]] * 2 if same_digest else manifests, tags)
+    ]
+    _write_oci_archive(path, [config, *layers, *manifests], entries)
+
+
+@pytest.mark.parametrize(
+    "tags, same_digest",
+    [
+        # Same-platform builds under one tag, such as amd64 v2 and v3: the
+        # pull takes the first, as a registry pull does.
+        (["latest", "latest"], False),
+        # Two tags of one manifest.
+        (["a", "b"], True),
+    ],
+)
+def test_pull_oci_layout_of_one_image(tmp_path, tags, same_digest):
+    archive = tmp_path / "app.tar"
+    _write_same_platform_oci_archive(archive, tags, same_digest)
+
+    image_dir = pull_and_extract_container_image(
+        str(archive), images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "first.txt") == b"1"
+    assert "second.txt" not in _image_tree(image_dir)
+
+
+def test_pull_rejects_an_oci_layout_of_several_tagged_images(tmp_path):
+    """Distinct manifests under distinct tags are distinct images, even when
+    each has a platform, so the pull names them instead of picking one."""
+    archive = tmp_path / "app.tar"
+    _write_same_platform_oci_archive(archive, ["a", "b"])
+
+    with pytest.raises(
+        SandboxCreationError,
+        match=r"Failed to extract local image archive .*lists several images "
+        r"\(a, b\); save one image per archive",
+    ):
+        pull_and_extract_container_image(
+            str(archive), images_dir=str(tmp_path / "images")
+        )
+
+
+def _write_nested_oci_archive(path, indexes):
+    """An OCI layout whose image manifest is ``indexes`` indexes deep,
+    index.json included; the image holds app.txt."""
+    config = json.dumps({"config": {}}).encode()
+    layer = _layer({"app.txt": b"app"})
+    manifest = _oci_manifest(config, [layer])
+    blobs = [config, layer, manifest]
+    entry = _descriptor(manifest, _OCI_MANIFEST)
+    for _ in range(indexes - 1):
+        index = json.dumps({"schemaVersion": 2, "manifests": [entry]}).encode()
+        blobs.append(index)
+        entry = _descriptor(index, _OCI_INDEX)
+    _write_oci_archive(path, blobs, [entry])
+
+
+def test_pull_oci_layout_at_the_index_depth_limit(tmp_path):
+    archive = tmp_path / "app.tar"
+    _write_nested_oci_archive(archive, image_utils._MAX_OCI_INDEX_DEPTH)
+
+    image_dir = pull_and_extract_container_image(
+        str(archive), images_dir=str(tmp_path / "images")
+    )
+    assert _image_file(image_dir, "app.txt") == b"app"
+
+
+def test_pull_rejects_an_oci_layout_past_the_index_depth_limit(tmp_path):
+    archive = tmp_path / "app.tar"
+    _write_nested_oci_archive(archive, image_utils._MAX_OCI_INDEX_DEPTH + 1)
+
+    with pytest.raises(
+        SandboxCreationError,
+        match=rf"more than {image_utils._MAX_OCI_INDEX_DEPTH} indexes deep",
+    ):
+        pull_and_extract_container_image(
+            str(archive), images_dir=str(tmp_path / "images")
+        )
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        # Not an object.
+        [],
+        # Not a list of descriptors.
+        {"manifests": "sha256:abc"},
+        # A descriptor without a digest.
+        {"manifests": [{"mediaType": _OCI_MANIFEST}]},
+    ],
+)
+def test_pull_rejects_a_malformed_oci_layout(tmp_path, index):
+    """A malformed index.json fails the pull as a malformed layout, not with
+    a bare KeyError or AttributeError."""
+    archive = tmp_path / "app.tar"
+    with tarfile.open(str(archive), "w") as tar:
+        _add_member(tar, "index.json", json.dumps(index).encode())
+        _add_member(tar, "oci-layout", b'{"imageLayoutVersion":"1.0.0"}')
+
+    with pytest.raises(
+        SandboxCreationError,
+        match=r"Failed to extract local image archive .*malformed OCI image layout",
+    ):
+        pull_and_extract_container_image(
+            str(archive), images_dir=str(tmp_path / "images")
+        )
+
+
 def test_extract_tar_layer_usr_merge(tmp_path):
     dest = tmp_path / "rootfs"
     dest.mkdir()

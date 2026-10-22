@@ -200,7 +200,8 @@ def image_cache_name(image: str) -> str:
     pin a pull takes and its later release always agree on it.
 
     Args:
-        image: Container image reference or path to a local tar archive.
+        image: Container image reference or path to a local ``docker save``
+            archive, OCI image layout archive, or flat root filesystem tar.
 
     Returns:
         A name that is safe as a directory and file name.
@@ -934,7 +935,9 @@ def pull_and_extract_container_image(
     """Pull a container image and cache it as an EROFS root filesystem.
 
     Args:
-        image: Container image name (e.g. 'python:3.10-slim') or path to local tar archive.
+        image: Container image reference (e.g. 'python:3.10-slim') or path to a
+            local ``docker save`` archive, OCI image layout archive, or flat
+            root filesystem tar.
         images_dir: Root directory for caching container images.
         timeout_seconds: Network request timeout.
         instance_id: When given, the sandbox instance is registered as a
@@ -1142,6 +1145,203 @@ def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
         download.result().close()
 
 
+def _pick_platform_manifest(manifests: List[dict]) -> dict:
+    """The entry of a manifest list or OCI index for this node's platform.
+
+    Falls back to the first entry when none is for linux on this
+    architecture.
+    """
+    target_arch = get_platform_arch()
+    for m in manifests:
+        plat = m.get("platform", {})
+        if plat.get("os") == "linux" and plat.get("architecture") == target_arch:
+            return m
+    return manifests[0]
+
+
+# How many indexes, index.json included, may lead to an OCI layout's image
+# manifest. Docker writes two: index.json, then an index of per-platform
+# manifests.
+_MAX_OCI_INDEX_DEPTH = 8
+# The largest manifest.json, index.json or manifest read from a local image
+# archive: the 4 MiB the OCI distribution spec has registries accept for a
+# manifest. It keeps the format check from reading a large /manifest.json of
+# a flat root filesystem into memory.
+_MAX_ARCHIVE_JSON_BYTES = 4 << 20
+# The annotation that tags an image in an OCI layout's index.json.
+_OCI_REF_NAME = "org.opencontainers.image.ref.name"
+
+
+def _open_member(
+    tar: tarfile.TarFile, members: Dict[str, tarfile.TarInfo], path: str
+) -> BinaryIO:
+    """Open the archive member at ``path``, read in place from the archive."""
+    member = members.get(os.path.normpath(path))
+    f = tar.extractfile(member) if member is not None else None
+    if f is None:
+        raise ValueError(f"the archive has no file '{path}'")
+    return f
+
+
+def _read_json_member(
+    tar: tarfile.TarFile, members: Dict[str, tarfile.TarInfo], path: str
+) -> object:
+    with _open_member(tar, members, path) as f:
+        data = f.read(_MAX_ARCHIVE_JSON_BYTES + 1)
+    if len(data) > _MAX_ARCHIVE_JSON_BYTES:
+        raise ValueError(f"'{path}' is over {_MAX_ARCHIVE_JSON_BYTES} bytes")
+    return json.loads(data)
+
+
+def _save_archive_image(
+    tar: tarfile.TarFile, members: Dict[str, tarfile.TarInfo]
+) -> Optional[Tuple[str, List[str]]]:
+    """Config and layer paths of the image in a ``docker save`` archive.
+
+    The archive's ``manifest.json`` lists each saved image's config and its
+    layers, base layer first. A flat root filesystem can hold a
+    ``/manifest.json`` too, so the archive counts as a save archive only if
+    that file has this shape and the archive holds the config it names.
+
+    Args:
+        tar: The archive, opened for reading.
+        members: {normalized path: member} of every member of ``tar``.
+
+    Returns:
+        (config path, layer paths), or None if this is not a save archive.
+
+    Raises:
+        ValueError: The archive holds more than one image.
+    """
+    if "manifest.json" not in members:
+        return None
+    try:
+        manifest = _read_json_member(tar, members, "manifest.json")
+    except (KeyError, ValueError):
+        return None
+    if not (
+        isinstance(manifest, list)
+        and manifest
+        and all(
+            isinstance(entry, dict)
+            and isinstance(entry.get("Config"), str)
+            and isinstance(entry.get("Layers"), list)
+            and all(isinstance(layer, str) for layer in entry["Layers"])
+            for entry in manifest
+        )
+    ):
+        return None
+    if not any(os.path.normpath(entry["Config"]) in members for entry in manifest):
+        return None
+    if len(manifest) > 1:
+        tags = [tag for entry in manifest for tag in entry.get("RepoTags") or []]
+        raise ValueError(
+            f"it holds {len(manifest)} images ({', '.join(tags) or 'untagged'}); "
+            "save one image per archive"
+        )
+    return manifest[0]["Config"], manifest[0]["Layers"]
+
+
+def _oci_layout_image(
+    tar: tarfile.TarFile, members: Dict[str, tarfile.TarInfo]
+) -> Optional[Tuple[str, List[str]]]:
+    """Config and layer paths of the image in an OCI image layout archive.
+
+    ``index.json`` leads to the image's manifest, through an index of
+    per-platform manifests for a multi-platform image, which resolves to
+    this node's platform as a registry pull does. Entries with one digest
+    are one image, however many tags name it. Entries with distinct digests
+    are distinct images when their tags differ or they lack platforms;
+    otherwise they are one image's platform variants.
+
+    Args:
+        tar: The archive, opened for reading.
+        members: {normalized path: member} of every member of ``tar``.
+
+    Returns:
+        (config path, layer paths), or None if this is not an OCI layout.
+
+    Raises:
+        ValueError: The layout holds more than one image, or is malformed.
+    """
+    if "oci-layout" not in members or "index.json" not in members:
+        return None
+
+    def blob_path(descriptor: dict) -> str:
+        algorithm, _, encoded = descriptor["digest"].partition(":")
+        return f"blobs/{algorithm}/{encoded}"
+
+    try:
+        index = _read_json_member(tar, members, "index.json")
+        entries = index.get("manifests") or []
+        if not entries:
+            raise ValueError("its index.json lists no images")
+        tags = sorted(
+            {entry.get("annotations", {}).get(_OCI_REF_NAME) for entry in entries}
+            - {None}
+        )
+        # Several tags of one digest are one image.
+        unique = list({entry["digest"]: entry for entry in entries}.values())
+        if len(unique) > 1 and (
+            len(tags) > 1 or not all("platform" in entry for entry in unique)
+        ):
+            raise ValueError(
+                "its index.json lists several images "
+                f"({', '.join(tags) or 'untagged'}); save one image per archive"
+            )
+        manifest = {"manifests": unique}
+        for _ in range(_MAX_OCI_INDEX_DEPTH):
+            chosen = _pick_platform_manifest(manifest["manifests"])
+            manifest = _read_json_member(tar, members, blob_path(chosen))
+            if "manifests" not in manifest:
+                break
+        else:
+            raise ValueError(
+                f"its image manifest is more than {_MAX_OCI_INDEX_DEPTH} "
+                "indexes deep, index.json included"
+            )
+        return blob_path(manifest["config"]), [
+            blob_path(layer) for layer in manifest["layers"]
+        ]
+    except (AttributeError, IndexError, KeyError, TypeError) as err:
+        raise ValueError(f"malformed OCI image layout: {err!r}") from err
+
+
+def _extract_local_image(
+    image: str,
+    rootfs_dir: str,
+    image_dir: str,
+    ownership: Dict[str, Tuple[int, int]],
+) -> None:
+    """Extract the local archive ``image`` into ``rootfs_dir``.
+
+    For ``docker save`` and OCI image layout archives, apply the layers in
+    order and write the image config to ``image_dir/.image_config.json``, as
+    for a registry pull. Read the layers directly from the archive without
+    first extracting them to disk. Treat other tar archives as flat root
+    filesystems and extract them as a single layer.
+    """
+    with open(image, "rb") as f:
+        with tarfile.open(fileobj=f, mode="r:*") as tar:
+            members = {os.path.normpath(m.name.lstrip("/")): m for m in tar}
+            found = _save_archive_image(tar, members) or _oci_layout_image(tar, members)
+            if found is not None:
+                config_path, layer_paths = found
+                with _open_member(tar, members, config_path) as f_in, open(
+                    os.path.join(image_dir, ".image_config.json"), "wb"
+                ) as f_cfg:
+                    shutil.copyfileobj(f_in, f_cfg)
+                for path in layer_paths:
+                    with _open_member(tar, members, path) as layer:
+                        try:
+                            extract_tar_layer(layer, rootfs_dir, ownership=ownership)
+                        except Exception as err:
+                            raise ValueError(f"layer '{path}': {err}") from err
+                return
+        f.seek(0)
+        extract_tar_layer(f, rootfs_dir, ownership=ownership)
+
+
 def _extract_image_layers(
     image: str,
     rootfs_dir: str,
@@ -1151,12 +1351,15 @@ def _extract_image_layers(
 ) -> Dict[str, Tuple[int, int]]:
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
-    ``image`` is a local tar archive or a registry reference. A registry
-    image's config is written to ``image_dir/.image_config.json`` and its
-    layer blobs are spooled through ``blob_dir``.
+    ``image`` is a registry reference or a local archive: a flat root
+    filesystem tar, or a ``docker save`` or OCI image layout archive. The
+    config of a registry image or an image archive is written to
+    ``image_dir/.image_config.json``. A registry image's layer blobs are
+    spooled through ``blob_dir``.
 
     Args:
-        image: Container image name or path to a local tar archive.
+        image: Container image reference or path to a local ``docker save``
+            archive, OCI image layout archive, or flat root filesystem tar.
         rootfs_dir: Empty directory that receives the flattened tree.
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
@@ -1171,8 +1374,7 @@ def _extract_image_layers(
     ownership: Dict[str, Tuple[int, int]] = {}
     if os.path.isfile(image):
         try:
-            with open(image, "rb") as f:
-                extract_tar_layer(f, rootfs_dir, ownership=ownership)
+            _extract_local_image(image, rootfs_dir, image_dir, ownership)
         except Exception as err:
             raise SandboxCreationError(
                 f"Failed to extract local image archive '{image}': {err}"
@@ -1212,18 +1414,9 @@ def _extract_image_layers(
 
         # Resolve multi-architecture manifest list / OCI index
         if "manifests" in manifest_data:
-            target_arch = get_platform_arch()
-            chosen_digest = None
-            for m in manifest_data["manifests"]:
-                plat = m.get("platform", {})
-                if (
-                    plat.get("os") == "linux"
-                    and plat.get("architecture") == target_arch
-                ):
-                    chosen_digest = m["digest"]
-                    break
-            if not chosen_digest:
-                chosen_digest = manifest_data["manifests"][0]["digest"]
+            chosen_digest = _pick_platform_manifest(manifest_data["manifests"])[
+                "digest"
+            ]
 
             sub_req = _registry_request(
                 f"{registry_base_url(registry)}/v2/{repo}/manifests/{chosen_digest}",

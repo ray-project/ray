@@ -667,6 +667,89 @@ def test_erofs_baked_ownership_and_chown(tmp_path):
         backend.delete_sandbox(sb)
 
 
+def _busybox_save_archive(archive_path: str) -> None:
+    """busybox re-packed the way ``docker save`` writes it: its image config
+    with WORKDIR /srv and one more env var, and a second layer that whites
+    out /bin/vi and adds /srv/hello.txt."""
+    import hashlib
+    import io
+    import tarfile
+    import tempfile
+
+    from ray.experimental.sandbox._internal.image_utils import _extract_image_layers
+
+    work = tempfile.mkdtemp(prefix="saved-busybox-")
+    try:
+        rootfs = os.path.join(work, "rootfs")
+        os.makedirs(rootfs)
+        _extract_image_layers("busybox:latest", rootfs, work, 120.0, work)
+        with open(os.path.join(work, ".image_config.json"), "rb") as f:
+            config = json.load(f)
+        config["config"]["WorkingDir"] = "/srv"
+        config["config"]["Env"] = config["config"].get("Env", []) + ["GREETING=hi"]
+
+        def _as_root(ti):
+            ti.uid = ti.gid = 0
+            ti.uname = ti.gname = ""
+            return ti
+
+        base = io.BytesIO()
+        with tarfile.open(fileobj=base, mode="w:gz") as tar:
+            tar.add(rootfs, arcname=".", filter=_as_root)
+        top = io.BytesIO()
+        with tarfile.open(fileobj=top, mode="w") as tar:
+            for name, data in (
+                ("bin/.wh.vi", b""),
+                ("srv", None),
+                ("srv/hello.txt", b"hello\n"),
+            ):
+                ti = tarfile.TarInfo(name)
+                if data is None:
+                    ti.type, ti.mode = tarfile.DIRTYPE, 0o755
+                    tar.addfile(ti)
+                else:
+                    ti.size = len(data)
+                    tar.addfile(ti, io.BytesIO(data))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+    blobs = [json.dumps(config).encode(), base.getvalue(), top.getvalue()]
+    paths = [f"blobs/sha256/{hashlib.sha256(b).hexdigest()}" for b in blobs]
+    manifest = [
+        {"Config": paths[0], "RepoTags": ["busybox:saved"], "Layers": paths[1:]}
+    ]
+    with tarfile.open(archive_path, "w") as tar:
+        for name, data in [*zip(paths, blobs), ("manifest.json", json.dumps(manifest))]:
+            data = data.encode() if isinstance(data, str) else data
+            ti = tarfile.TarInfo(name)
+            ti.size = len(data)
+            tar.addfile(ti, io.BytesIO(data))
+
+
+def test_boot_from_docker_save_archive(tmp_path):
+    """A ``docker save`` archive boots with no env passed: its config supplies
+    PATH, env and the workdir, and its layers apply in order."""
+    archive = str(tmp_path / "saved-busybox.tar")
+    _busybox_save_archive(archive)
+    backend = GVisorSandboxBackend()
+    sb = backend.create_sandbox(
+        GVisorSandboxConfig(image=archive, shell="/bin/sh", network="none")
+    )
+    try:
+        res = backend.exec_command(
+            sb,
+            "ls /; pwd; echo $GREETING; cat hello.txt; test ! -e /bin/vi && echo ok",
+            timeout=30,
+        )
+        assert res.exit_code == 0, res.stderr
+        out = res.stdout.split()
+        assert {"bin", "etc", "srv", "usr"} <= set(out)
+        assert not {"blobs", "manifest.json"} & set(out)
+        assert out[-4:] == ["/srv", "hi", "hello", "ok"]
+    finally:
+        backend.delete_sandbox(sb)
+
+
 def test_erofs_readonly_rootfs():
     """readonly=True keeps / read-only while /tmp stays writable, and the
     sandbox still boots (its mount points were seeded into the image)."""
