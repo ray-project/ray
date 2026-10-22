@@ -25,12 +25,14 @@ class RuntimeEnvContext:
         py_executable: Optional[str] = None,
         override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
+        fork_server_socket_path: Optional[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
+        self.fork_server_socket_path: Optional[str] = fork_server_socket_path
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)

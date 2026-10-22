@@ -1,19 +1,22 @@
 import asyncio
+import atexit
 import logging
 import logging.handlers
 import os
+import sys
 import time
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
+    env_bool,
 )
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
@@ -34,6 +37,7 @@ from ray._private.runtime_env.redaction import redact_serialized_runtime_env
 from ray._private.runtime_env.rocprof_sys import RocProfSysPlugin
 from ray._private.runtime_env.uv import UvPlugin
 from ray._private.runtime_env.working_dir import WorkingDirPlugin
+from ray._private.workers.fork_server import ForkServerProcess
 from ray._raylet import GcsClient
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -367,6 +371,15 @@ class RuntimeEnvAgent:
         self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
 
         self._runtime_env_dir = runtime_env_dir
+        self._sockets_dir = os.path.join(
+            os.path.dirname(os.path.abspath(self._runtime_env_dir)), "sockets"
+        )
+        self._enable_worker_fork_server = sys.platform.startswith("linux") and env_bool(
+            "RAY_enable_worker_fork_server", False
+        )
+        self._fork_servers: Dict[str, ForkServerProcess] = {}
+        self._fork_server_counter = 0
+
         self._setup_logger_factory = SetupLoggerFactory(
             logging_level=self._logging_params["logging_level"],
             logging_format=self._logging_params["logging_format"],
@@ -437,6 +450,66 @@ class RuntimeEnvAgent:
             self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
             self._node_prefix = "[Node unknown] "
 
+        if self._enable_worker_fork_server:
+            atexit.register(self._cleanup_fork_servers)
+            self._start_fork_server("{}")
+
+    def _should_start_fork_server(
+        self, runtime_env: RuntimeEnv, context: RuntimeEnvContext
+    ) -> bool:
+        return self._enable_worker_fork_server and not (
+            runtime_env.has_py_container()
+            or runtime_env.image_uri()
+            or context.override_worker_entrypoint
+            or runtime_env.nsight()
+            or runtime_env.rocprof_sys()
+        )
+
+    def _start_fork_server(
+        self,
+        serialized_env: str,
+        runtime_env: Optional[RuntimeEnv] = None,
+        context: Optional[RuntimeEnvContext] = None,
+        logger: Optional[logging.Logger] = None,
+        wait: bool = True,
+    ) -> Optional[ForkServerProcess]:
+        log = logger or self._logger
+        existing = self._fork_servers.pop(serialized_env, None)
+        if existing is not None:
+            existing.stop()
+        if serialized_env == "{}":
+            socket_name = "fork_server_default.sock"
+        else:
+            self._fork_server_counter += 1
+            socket_name = f"fork_server_{self._fork_server_counter}.sock"
+        socket_path = os.path.join(self._sockets_dir, socket_name)
+        try:
+            server = ForkServerProcess(
+                socket_path=socket_path,
+                preload_modules=runtime_env.preload_modules() if runtime_env else None,
+                context=context,
+                wait=wait,
+            )
+            self._fork_servers[serialized_env] = server
+            if context is not None:
+                context.fork_server_socket_path = socket_path
+            log.info(
+                "Started fork server at pid %s (socket=%s)",
+                server.process.pid,
+                socket_path,
+            )
+            return server
+        except Exception as e:
+            log.warning(
+                f"Failed to start fork server for runtime_env, falling back to exec: {e}"
+            )
+            return None
+
+    def _cleanup_fork_servers(self) -> None:
+        while self._fork_servers:
+            _, server = self._fork_servers.popitem()
+            server.stop()
+
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
@@ -452,7 +525,10 @@ class RuntimeEnvAgent:
 
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
-            del self._env_cache[unused_runtime_env]
+            server = self._fork_servers.pop(unused_runtime_env, None)
+            if server is not None:
+                server.stop()
+            self._env_cache.pop(unused_runtime_env, None)
             self._logger.info(
                 "Runtime env %s removed from env-level cache.",
                 redact_serialized_runtime_env(unused_runtime_env),
@@ -533,6 +609,28 @@ class RuntimeEnvAgent:
                             await create_for_plugin_if_needed(
                                 runtime_env, plugin, uri_cache, context, per_job_logger
                             )
+
+                if self._should_start_fork_server(runtime_env, context):
+                    server = self._start_fork_server(
+                        request.serialized_runtime_env,
+                        runtime_env,
+                        context,
+                        per_job_logger,
+                        wait=False,
+                    )
+                    if server is not None:
+                        try:
+                            await asyncio.get_running_loop().run_in_executor(
+                                None, server.wait_ready
+                            )
+                        except Exception as e:
+                            self._fork_servers.pop(request.serialized_runtime_env, None)
+                            context.fork_server_socket_path = None
+                            per_job_logger.warning(
+                                "Failed to wait for fork server, falling back to exec: %s",
+                                e,
+                            )
+
                 return context
 
         async def _create_runtime_env_with_retry(
@@ -642,7 +740,6 @@ class RuntimeEnvAgent:
 
         async with self._env_locks[serialized_env]:
             if serialized_env in self._env_cache:
-                serialized_context = self._env_cache[serialized_env]
                 result = self._env_cache[serialized_env]
                 if result.success:
                     context = result.result

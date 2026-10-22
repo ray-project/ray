@@ -269,6 +269,8 @@ def set_omp_num_threads_if_unset() -> bool:
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
     omp_num_threads = max(math.floor(num_assigned_cpus), 1)
     os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
+    if "torch" in sys.modules:
+        sys.modules["torch"].set_num_threads(omp_num_threads)
     return True
 
 

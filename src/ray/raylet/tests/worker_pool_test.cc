@@ -22,10 +22,16 @@
 #include <memory>
 #include <random>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#if !defined(_WIN32)
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
@@ -2751,5 +2757,141 @@ TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
         << "Port " << port << " was assigned to two workers.";
   }
 }
+
+#if !defined(_WIN32)
+TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallback) {
+  RayConfig::instance().enable_worker_fork_server() = true;
+  SetWorkerCommands(
+      {{Language::PYTHON,
+        {"python",
+         "ray/workers/setup_worker.py",
+         "ray/workers/default_worker.py",
+         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"}},
+       {Language::JAVA, {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
+  RegisterDriver(Language::PYTHON, JOB_ID, rpc::JobConfig());
+
+  std::string sock_path = "/tmp/ray_wp_test_fs_" + std::to_string(getpid()) + ".sock";
+  unlink(sock_path.c_str());
+
+  int listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  ASSERT_GE(listen_fd, 0);
+  struct sockaddr_un addr;
+  std::memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  std::strncpy(addr.sun_path, sock_path.c_str(), sizeof(addr.sun_path) - 1);
+  ASSERT_EQ(bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)), 0);
+  ASSERT_EQ(listen(listen_fd, 4), 0);
+
+  const pid_t expected_fork_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 999);
+  std::string received_request;
+  std::thread server_thread([listen_fd, expected_fork_pid, &received_request]() {
+    int conn_fd = accept(listen_fd, nullptr, nullptr);
+    if (conn_fd >= 0) {
+      char buf[1024];
+      while (received_request.find('\n') == std::string::npos) {
+        ssize_t n = read(conn_fd, buf, sizeof(buf));
+        if (n <= 0) {
+          break;
+        }
+        received_request.append(buf, static_cast<size_t>(n));
+      }
+      std::string reply = "{\"pid\": " + std::to_string(expected_fork_pid) + "}\n";
+      ssize_t written = write(conn_fd, reply.data(), reply.size());
+      EXPECT_EQ(written, static_cast<ssize_t>(reply.size()));
+      close(conn_fd);
+    }
+  });
+
+  json ctx_json;
+  ctx_json["fork_server_socket_path"] = sock_path;
+  rpc::RuntimeEnvInfo env_info;
+  env_info.set_serialized_runtime_env(R"({"preload_modules":["torch"]})");
+
+  PopWorkerStatus status = PopWorkerStatus::OK;
+  auto [proc, worker_id] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       /*serialized_runtime_env_context=*/ctx_json.dump(),
+                                       env_info);
+  server_thread.join();
+
+  ASSERT_EQ(proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(worker_id.IsNil());
+  // StartProcess (execvpe) must NOT have been called when ForkServer succeeded.
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+
+  auto req_json = json::parse(received_request, nullptr, false);
+  ASSERT_FALSE(req_json.is_discarded());
+  ASSERT_TRUE(req_json.contains("args"));
+  ASSERT_TRUE(req_json.contains("env"));
+  for (const auto &arg : req_json["args"]) {
+    const std::string arg_str = arg.get<std::string>();
+    // setup_worker.py wrapper flags must be stripped.
+    ASSERT_EQ(arg_str.find("--serialized-runtime-env-context="), std::string::npos);
+    ASSERT_EQ(arg_str.find("--language="), std::string::npos);
+  }
+  ASSERT_EQ(req_json["env"]["RAY_JOB_ID"].get<std::string>(), JOB_ID.Hex());
+
+  // When the listening socket accepts the connection in the kernel backlog but the
+  // server never replies, StartWorkerProcess must time out after ~500ms (SO_RCVTIMEO)
+  // and fall back to StartProcess rather than stalling for 5 seconds.
+  auto t_start = std::chrono::steady_clock::now();
+  auto [timeout_proc, timeout_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       /*serialized_runtime_env_context=*/ctx_json.dump(),
+                                       env_info);
+  auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - t_start)
+                        .count();
+  ASSERT_NE(timeout_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(timeout_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+  EXPECT_GE(elapsed_ms, 400);
+  EXPECT_LT(elapsed_ms, 2500);
+
+  close(listen_fd);
+  unlink(sock_path.c_str());
+
+  // When the socket no longer exists, StartWorkerProcess must fall back to StartProcess.
+  auto [fallback_proc, fallback_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       /*serialized_runtime_env_context=*/ctx_json.dump(),
+                                       env_info);
+  ASSERT_NE(fallback_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(fallback_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 2);
+
+  // When dynamic_options is non-empty, StartWorkerProcess must bypass ForkServer.
+  auto [dyn_proc, dyn_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{"--custom-flag"},
+                                       /*runtime_env_hash=*/123,
+                                       /*serialized_runtime_env_context=*/ctx_json.dump(),
+                                       env_info);
+  ASSERT_NE(dyn_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(dyn_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 3);
+
+  RayConfig::instance().enable_worker_fork_server() = false;
+}
+#endif
 
 }  // namespace ray::raylet

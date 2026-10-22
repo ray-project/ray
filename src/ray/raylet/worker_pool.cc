@@ -14,6 +14,13 @@
 
 #include "ray/raylet/worker_pool.h"
 
+#if !defined(_WIN32)
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <deque>
@@ -28,8 +35,10 @@
 #include <vector>
 
 #include "absl/random/random.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/constants.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
@@ -41,6 +50,7 @@
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process_utils.h"
+#include "ray/util/subreaper.h"
 
 namespace ray {
 
@@ -559,7 +569,16 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
   SteadyTimePoint start = clock_.SteadyNow();
   // Start a process and measure the startup time.
   std::unique_ptr<ProcessInterface> proc =
-      StartProcess(worker_command_args, env, worker_id);
+      TryStartProcessViaForkServer(language,
+                                   worker_command_args,
+                                   env,
+                                   worker_id,
+                                   dynamic_options,
+                                   serialized_runtime_env_context,
+                                   runtime_env_info);
+  if (!proc) {
+    proc = StartProcess(worker_command_args, env, worker_id);
+  }
   worker_pool_metrics_.num_workers_started_sum.Record(1);
   RAY_LOG(INFO).WithField(worker_id)
       << "Started worker process with pid " << proc->GetId();
@@ -667,6 +686,9 @@ void WorkerPool::MonitorStartingWorkerProcess(const WorkerID &worker_id,
       if (it->second.proc->IsAlive()) {
         it->second.proc->Kill();
       }
+#ifdef __linux__
+      KnownChildrenTracker::instance().RemoveKnownChild(it->second.proc->GetId());
+#endif
 
       process_failed_pending_registration_++;
       DeleteRuntimeEnvIfPossible(it->second.runtime_env_info.serialized_runtime_env());
@@ -705,6 +727,153 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
       PopWorkerCallbackAsync(pop_worker_request->callback_, nullptr, status);
     }
   });
+}
+
+std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
+    const Language &language,
+    const std::vector<std::string> &worker_command_args,
+    const ProcessEnvironment &env,
+    const WorkerID &worker_id,
+    const std::vector<std::string> &dynamic_options,
+    const std::string &serialized_runtime_env_context,
+    const rpc::RuntimeEnvInfo &runtime_env_info) {
+#if defined(_WIN32)
+  return nullptr;
+#else
+  if (!RayConfig::instance().enable_worker_fork_server() ||
+      language != Language::PYTHON || !dynamic_options.empty()) {
+    return nullptr;
+  }
+
+  auto default_worker_it = std::find_if(
+      worker_command_args.begin(), worker_command_args.end(), [](const std::string &arg) {
+        return absl::EndsWith(arg, "default_worker.py");
+      });
+  if (default_worker_it == worker_command_args.end()) {
+    return nullptr;
+  }
+
+  constexpr std::string_view kSerializedCtxPrefix = "--serialized-runtime-env-context=";
+  constexpr std::string_view kLanguagePrefix = "--language=";
+  constexpr std::string_view kTempDirPrefix = "--temp-dir=";
+  constexpr std::string_view kSessionNamePrefix = "--session-name=";
+
+  std::vector<std::string> worker_args;
+  std::string temp_dir;
+  std::string session_name;
+  for (auto it = std::next(default_worker_it); it != worker_command_args.end(); ++it) {
+    const std::string &arg = *it;
+    if (absl::StartsWith(arg, kSerializedCtxPrefix) ||
+        absl::StartsWith(arg, kLanguagePrefix)) {
+      continue;
+    }
+    if (!absl::StartsWith(arg, "--")) {
+      return nullptr;
+    }
+    if (absl::StartsWith(arg, kTempDirPrefix)) {
+      temp_dir = arg.substr(kTempDirPrefix.size());
+    } else if (absl::StartsWith(arg, kSessionNamePrefix)) {
+      session_name = arg.substr(kSessionNamePrefix.size());
+    }
+    worker_args.push_back(arg);
+  }
+
+  std::string fork_server_socket_path;
+  if (!serialized_runtime_env_context.empty() && serialized_runtime_env_context != "{}") {
+    auto ctx_json = nlohmann::json::parse(serialized_runtime_env_context, nullptr, false);
+    if (ctx_json.is_object() && ctx_json.contains("fork_server_socket_path") &&
+        ctx_json["fork_server_socket_path"].is_string()) {
+      fork_server_socket_path = ctx_json["fork_server_socket_path"].get<std::string>();
+    }
+  } else if (IsRuntimeEnvEmpty(runtime_env_info.serialized_runtime_env()) &&
+             !temp_dir.empty() && !session_name.empty()) {
+    fork_server_socket_path =
+        temp_dir + "/" + session_name + "/sockets/fork_server_default.sock";
+  }
+
+  if (fork_server_socket_path.empty()) {
+    return nullptr;
+  }
+
+  struct sockaddr_un addr = {};
+  addr.sun_family = AF_UNIX;
+  if (fork_server_socket_path.size() >= sizeof(addr.sun_path)) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Fork server socket path exceeds sun_path limit: " << fork_server_socket_path
+        << "; falling back to execvpe.";
+    return nullptr;
+  }
+  std::strncpy(addr.sun_path, fork_server_socket_path.c_str(), sizeof(addr.sun_path) - 1);
+
+  int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (sock_fd < 0) {
+    return nullptr;
+  }
+  struct timeval tv = {0, 500000};
+  setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+  setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+  if (connect(sock_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == -1) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Failed to connect to fork server at " << fork_server_socket_path << ": "
+        << strerror(errno) << "; falling back to execvpe.";
+    close(sock_fd);
+    return nullptr;
+  }
+
+  nlohmann::json req = {{"args", worker_args}, {"env", env}};
+  std::string payload = req.dump() + "\n";
+
+  size_t total_sent = 0;
+  while (total_sent < payload.size()) {
+    ssize_t sent =
+        write(sock_fd, payload.data() + total_sent, payload.size() - total_sent);
+    if (sent < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      close(sock_fd);
+      return nullptr;
+    }
+    total_sent += static_cast<size_t>(sent);
+  }
+
+  std::string response;
+  char buf[256];
+  while (response.find('\n') == std::string::npos && response.size() < 4096) {
+    ssize_t n = read(sock_fd, buf, sizeof(buf));
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    if (n <= 0) {
+      break;
+    }
+    response.append(buf, static_cast<size_t>(n));
+  }
+  close(sock_fd);
+
+  auto resp_json = nlohmann::json::parse(response, nullptr, false);
+  pid_t forked_pid = resp_json.is_object() && resp_json.contains("pid") &&
+                             resp_json["pid"].is_number_integer()
+                         ? resp_json["pid"].get<pid_t>()
+                         : -1;
+  if (forked_pid <= 0) {
+    RAY_LOG(WARNING).WithField(worker_id)
+        << "Invalid response from fork server at " << fork_server_socket_path << ": "
+        << response << "; falling back to execvpe.";
+    return nullptr;
+  }
+
+#ifdef __linux__
+  KnownChildrenTracker::instance().AddKnownChild(
+      [forked_pid]() -> pid_t { return forked_pid; });
+#endif
+  if (add_to_cgroup_hook_) {
+    add_to_cgroup_hook_(std::to_string(forked_pid));
+  }
+
+  return std::make_unique<Process>(forked_pid);
+#endif
 }
 
 std::unique_ptr<ProcessInterface> WorkerPool::StartProcess(
@@ -879,13 +1048,19 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
   // Save the worker's actual PGID at registration for safe cleanup later.
-  // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
-  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
+  // Only save if the worker is its own process group leader (pgid == pid), so cleanup
+  // never signals the raylet's, fork server's, or runtime_env_agent's process group.
   pid_t pgid = -1;
   errno = 0;
   pgid = getpgid(pid);
   if (pgid != -1) {
-    worker->SetSavedProcessGroupId(pgid);
+    if (pgid == pid) {
+      worker->SetSavedProcessGroupId(pgid);
+    } else {
+      RAY_LOG(WARNING) << "Worker " << pid << " pgid (" << pgid
+                       << ") != pid; skipping SetSavedProcessGroupId to avoid "
+                       << "signaling parent process group.";
+    }
   } else {
     RAY_LOG(WARNING) << "getpgid(" << pid
                      << ") failed at registration: " << strerror(errno);
@@ -1661,6 +1836,11 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
     DeleteRuntimeEnvIfPossible(serialized_runtime_env);
     RemoveWorkerProcess(state, worker->WorkerId());
   }
+#ifdef __linux__
+  if (worker->GetProcess().IsValid()) {
+    KnownChildrenTracker::instance().RemoveKnownChild(worker->GetProcess().GetId());
+  }
+#endif
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
 
   if (IsIOWorkerType(worker->GetWorkerType())) {

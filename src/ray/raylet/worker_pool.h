@@ -456,6 +456,19 @@ class WorkerPool : public WorkerPoolInterface {
       const ProcessEnvironment &env,
       const WorkerID &worker_id);
 
+  /// Try starting a Python worker process by requesting a fork from a running
+  /// ForkServer over its Unix domain socket. Returns nullptr if the fork server
+  /// is not enabled, not applicable, or fails, in which case StartWorkerProcess
+  /// falls back to spawning a new process via StartProcess (execvpe).
+  std::unique_ptr<ProcessInterface> TryStartProcessViaForkServer(
+      const Language &language,
+      const std::vector<std::string> &worker_command_args,
+      const ProcessEnvironment &env,
+      const WorkerID &worker_id,
+      const std::vector<std::string> &dynamic_options,
+      const std::string &serialized_runtime_env_context,
+      const rpc::RuntimeEnvInfo &runtime_env_info);
+
   /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
 

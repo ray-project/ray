@@ -292,6 +292,8 @@ class RuntimeEnv(dict):
             or with the ``config`` or ``env_vars`` parameters.
         uv: Either a list of pip packages, or a Python dictionary that has one field:
             1) ``packages`` (required, List[str]).
+        preload_modules: List of Python module names to preload in the worker fork
+            server before forking worker processes.
         **kwargs: Additional runtime environment fields that are forwarded
             verbatim to the underlying runtime environment dictionary.
     """
@@ -315,6 +317,7 @@ class RuntimeEnv(dict):
         "_nsight",
         "_rocprof_sys",
         "image_uri",
+        "preload_modules",
     }
 
     extensions_fields: Set[str] = {
@@ -340,6 +343,7 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         image_uri: Optional[str] = None,
         uv: Optional[List[str]] = None,
+        preload_modules: Optional[List[str]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -371,6 +375,8 @@ class RuntimeEnv(dict):
             runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
         if image_uri is not None:
             runtime_env["image_uri"] = image_uri
+        if preload_modules is not None:
+            runtime_env["preload_modules"] = preload_modules
 
         self.update(runtime_env)
 
@@ -616,6 +622,11 @@ class RuntimeEnv(dict):
 
     def image_uri(self) -> Optional[str]:
         return self.get("image_uri")
+
+    def preload_modules(self) -> List[str]:
+        if "preload_modules" in self:
+            return list(self["preload_modules"])
+        return []
 
     def plugins(self) -> List[Tuple[str, Any]]:
         result = list()

@@ -33,6 +33,9 @@ void RayConfig::initialize(const std::string &config_list) {
   name##_ = ReadEnv<type>("RAY_" #name, #type, default_value);
 
 #include "ray/common/ray_config_def.h"
+#define RAY_INTERNAL_FLAG RAY_CONFIG
+#include "ray/common/ray_internal_flag_def.h"
+#undef RAY_INTERNAL_FLAG
 #undef RAY_CONFIG
 
   if (config_list.empty()) {
