@@ -25,6 +25,8 @@ from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
 from ray.exceptions import RayTaskError
+from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def _filesystem(**kwargs):
@@ -79,6 +81,72 @@ def test_real_workers_receive_runtime_env_and_files(
     assert result.schema == pa.schema([("id", pa.int64())])
     assert result.metadata is not None
     assert sum(value["num_rows"] for value in result.metadata.to_pylist()) == 6
+
+
+@pytest.mark.parametrize(
+    "format_name,write,read",
+    [
+        ("parquet", pq.write_table, ray.data.read_parquet),
+        ("orc", orc.write_table, ray.data.read_orc),
+    ],
+)
+def test_full_schema_uses_driver_for_fractional_cpu_placement_group(
+    monkeypatch, tmp_path, ray_start_2_cpus, format_name, write, read
+):
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
+    # Exercise task admission without creating thousands of small files.
+    monkeypatch.setattr(inference, "_SCHEMA_READ_MIN_FILES", 0)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    paths = [data_dir / f"f{i}.{format_name}" for i in range(3)]
+    for i, path in enumerate(paths):
+        table = pa.table({"id": [i]})
+        if i == 2:
+            table = table.append_column("late", pa.array(["value"]))
+        write(table, path)
+    trace = tmp_path / "schema-opens.jsonl"
+    filesystem, _ = _filesystem(trace_path=str(trace))
+    pg = placement_group([{"CPU": 0.1}])
+    try:
+        ray.get(pg.ready(), timeout=20)
+        strategy = PlacementGroupSchedulingStrategy(pg, placement_group_bundle_index=0)
+        dataset = read(
+            str(data_dir),
+            filesystem=filesystem,
+            merge_schema=True,
+            num_cpus=0.1,
+            ray_remote_args={"scheduling_strategy": strategy},
+            override_num_blocks=1,
+        )
+        records = [json.loads(line) for line in trace.read_text().splitlines()]
+        assert Counter(record["path"] for record in records) == {
+            str(path): 1 for path in paths
+        }
+        assert all(record["pid"] == os.getpid() for record in records)
+        assert dataset.schema().base_schema == pa.schema(
+            [("id", pa.int64()), ("late", pa.string())]
+        )
+        read_op = dataset._logical_plan.dag
+        assert read_op.ray_remote_args["num_cpus"] == 0.1
+        retained_strategy = read_op.ray_remote_args["scheduling_strategy"]
+        assert retained_strategy.placement_group == pg
+        assert retained_strategy.placement_group_bundle_index == 0
+        blocks = read_op.input_dependencies[0].prelisted_file_infos
+        assert (
+            sum(
+                value["num_rows"]
+                for block in blocks
+                for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()
+            )
+            == 3
+        )
+        assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [
+            {"id": 0, "late": None},
+            {"id": 1, "late": None},
+            {"id": 2, "late": "value"},
+        ]
+    finally:
+        remove_placement_group(pg)
 
 
 @pytest.mark.parametrize(

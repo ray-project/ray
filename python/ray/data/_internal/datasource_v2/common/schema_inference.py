@@ -24,6 +24,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 # Bound submitted reads, not just executing threads, for full inference.
 _SCHEMA_READ_BATCH_SIZE = 256
@@ -213,6 +214,14 @@ def _read_schema_batch(
 
 
 def _schema_task_options(remote_args: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    scheduling_strategy = remote_args.get("scheduling_strategy", "DEFAULT")
+    # Metadata tasks reserve 0.5 CPU independently of read tasks and may not fit
+    # the placement group's bundles. Explicit None can inherit the caller's PG.
+    if scheduling_strategy is None or isinstance(
+        scheduling_strategy, PlacementGroupSchedulingStrategy
+    ):
+        logger.debug("Using driver schema reads for placement group scheduling")
+        return None
     supported = {
         "runtime_env",
         "label_selector",

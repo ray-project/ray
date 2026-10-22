@@ -12,6 +12,7 @@ import pytest
 from pyarrow import orc
 
 import ray
+from ray._raylet import PlacementGroupID
 from ray.data._internal.datasource_v2.common import schema_inference as inference
 from ray.data._internal.datasource_v2.common.file_metadata import (
     get_cached_file_metadata,
@@ -45,6 +46,8 @@ from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.expressions import col
 from ray.data.tests.schema_planning_utils import RecordingLocalFileSystem
+from ray.util.placement_group import PlacementGroup
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def _filesystem(**kwargs):
@@ -433,7 +436,12 @@ def test_metadata_stream_survives_whole_file_rebuild_and_shuffle(tmp_path):
     assert all(value.parquet_footer is None for value in metadatas)
 
 
-def test_schema_task_options_preserve_access_constraints():
+@pytest.mark.parametrize(
+    "scheduling_options",
+    [{}, {"scheduling_strategy": "DEFAULT"}, {"scheduling_strategy": "SPREAD"}],
+    ids=["default", "explicit_default", "spread"],
+)
+def test_schema_task_options_preserve_access_constraints(scheduling_options):
     remote = {
         "runtime_env": {"env_vars": {"X": "1"}},
         "label_selector": {"zone": "a"},
@@ -441,12 +449,17 @@ def test_schema_task_options_preserve_access_constraints():
         "num_gpus": 1,
         "num_cpus": 4,
         "memory": 100,
+        **scheduling_options,
     }
     options = inference._schema_task_options(remote)
-    assert options == {
-        key: remote[key]
-        for key in ("runtime_env", "label_selector", "fallback_strategy")
-    }
+    assert (
+        options
+        == {
+            key: remote[key]
+            for key in ("runtime_env", "label_selector", "fallback_strategy")
+        }
+        | scheduling_options
+    )
     assert inference._schema_task_options({"resources": {"storage": 1}}) is None
 
 
@@ -631,7 +644,8 @@ def test_small_or_cpu_limited_plans_keep_driver_io(monkeypatch, count, cpus):
 
 
 @pytest.mark.parametrize("offset", [0, 1], ids=["at_threshold", "above_threshold"])
-def test_default_schema_task_admission_boundary(monkeypatch, offset):
+@pytest.mark.parametrize("scheduling", ["default", "placement_group", "inherit"])
+def test_default_schema_task_admission_boundary(monkeypatch, offset, scheduling):
     count = inference._SCHEMA_READ_MIN_FILES + offset
     paths = list(map(str, range(count)))
     sample = FileManifest.construct_manifest(
@@ -641,6 +655,15 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset):
     read_paths = []
     concurrency = []
     submissions = []
+    remote_args = {"num_cpus": 0.1}
+    if scheduling == "placement_group":
+        pg = PlacementGroup(PlacementGroupID.from_random(), bundle_cache=[{"CPU": 0.1}])
+        remote_args["scheduling_strategy"] = PlacementGroupSchedulingStrategy(
+            pg, placement_group_bundle_index=0
+        )
+    elif scheduling == "inherit":
+        remote_args["scheduling_strategy"] = None
+    distributed = bool(offset) and scheduling == "default"
 
     def read_batch(files, *args, io_concurrency=4):
         read_paths.extend(file.path for file in files)
@@ -672,13 +695,21 @@ def test_default_schema_task_admission_boundary(monkeypatch, offset):
     monkeypatch.setattr(ray, "wait", lambda refs, **kwargs: (refs, []))
     monkeypatch.setattr(ray, "get", lambda ref: ref.value)
 
-    assert _infer(sample, pafs.LocalFileSystem(), distributed=True).schema == schema
+    assert (
+        _infer(
+            sample,
+            pafs.LocalFileSystem(),
+            distributed=True,
+            remote_args=remote_args,
+        ).schema
+        == schema
+    )
     assert read_paths == paths
     batches = (
         count + inference._SCHEMA_READ_BATCH_SIZE - 1
     ) // inference._SCHEMA_READ_BATCH_SIZE
-    assert concurrency == [4 if offset else 16] * batches
-    assert len(submissions) == (batches if offset else 0)
+    assert concurrency == [4 if distributed else 16] * batches
+    assert len(submissions) == (batches if distributed else 0)
 
 
 if __name__ == "__main__":
