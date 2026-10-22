@@ -124,24 +124,30 @@ def test_top_n_does_not_fuse_incompatible_upstream_map(
     assert ds.take_all() == [{"id": value} for value in range(3)]
 
 
+@pytest.mark.parametrize("limit", [0, 1, 7, 10, 20])
 def test_top_n_shuffle_v2_end_to_end(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
+    limit,
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
 
-    rows = [{"a": i % 4, "b": i} for i in range(40)]
+    rows = [{"a": i % 4, "b": i} for i in range(10)]
     random.Random(0).shuffle(rows)
-    result = (
+    ds = (
         ray.data.from_items(rows, override_num_blocks=4)
         .sort(["a", "b"], descending=[False, True])
-        .limit(7)
-        .take_all()
+        .limit(limit)
     )
+    if limit > 0:
+        assert isinstance(
+            get_execution_plan(ds._logical_plan)[0].dag, TopNMergeOperator
+        )
+    result = ds.take_all()
 
-    assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))[:7]
+    assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))[:limit]
 
 
 def test_top_n_shuffle_v2_handles_non_adjacent_sort_and_large_limit(
