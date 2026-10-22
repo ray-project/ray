@@ -808,6 +808,31 @@ def test_variable_shaped_tensor_array_chunked_concat(tensor_format_context):
         np.testing.assert_array_equal(arr, expected)
 
 
+@pytest.mark.parametrize("fixed_first", [True, False])
+def test_unify_fixed_shaped_with_lower_ndim_variable_shaped(
+    fixed_first, tensor_format_context
+):
+    # Unifying a fixed-shaped 2D tensor array with a variable-shaped 1D one
+    # requires padding the 1D shapes with a leading singleton axis.
+    fixed = np.arange(8).reshape((2, 2, 2))
+    ragged = [np.arange(2), np.arange(3)]
+    ta_fixed = ArrowTensorArray.from_numpy(fixed)
+    ta_ragged = ArrowVariableShapedTensorArray.from_numpy(ragged)
+
+    expected = list(fixed) + [r[np.newaxis] for r in ragged]
+    arrs = [ta_fixed, ta_ragged]
+    if not fixed_first:
+        arrs.reverse()
+        expected = expected[2:] + expected[:2]
+
+    ta = concat_tensor_arrays(unify_tensor_arrays(arrs))
+    assert isinstance(ta.type, ArrowVariableShapedTensorType)
+    assert ta.type.ndim == 2
+    assert len(ta) == len(expected)
+    for arr, exp in zip(ta.to_numpy(), expected):
+        np.testing.assert_array_equal(arr, exp)
+
+
 def test_variable_shaped_tensor_array_uniform_dim(tensor_format_context):
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)
