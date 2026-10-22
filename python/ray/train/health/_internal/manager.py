@@ -75,14 +75,14 @@ class HealthManager:
     """
 
     def __init__(self, inflight_checks: Sequence[PeriodicHealthCheck]):
-        probes = merge_probes(inflight_checks)
-        self._evaluators: List[Evaluator] = [
+        inflight_probes = merge_probes(inflight_checks)
+        self._inflight_evaluators: List[Evaluator] = [
             evaluator
             for check in inflight_checks
             for evaluator in check.evaluator_creator()
         ]
         self._node_monitor_group = NodeMonitorGroup(
-            [p for p in probes if isinstance(p.probe, NodeProbe)]
+            [p for p in inflight_probes if isinstance(p.probe, NodeProbe)]
         )
         # {probe name: {node ID, world rank or ControllerProbe key: the latest
         # ProbeResult}}
@@ -110,7 +110,7 @@ class HealthManager:
         self._on_demand_evaluators = []
         self._node_monitor_group.shutdown()
         self._node_monitor_group.start(node_ids)
-        for evaluator in self._evaluators:
+        for evaluator in self._inflight_evaluators:
             try:
                 evaluator.on_reset()
             except Exception:
@@ -140,7 +140,7 @@ class HealthManager:
         state = HealthState(
             probe_results={name: dict(r) for name, r in self._latest_results.items()}
         )
-        return self._decide(self._evaluators, state)
+        return self._decide(self._inflight_evaluators, state)
 
     def start_on_demand_checks(
         self, checks: Sequence[HealthCheck], timeout: float
