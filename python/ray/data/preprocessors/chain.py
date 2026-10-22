@@ -2,8 +2,9 @@ import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from ray.data.preprocessor import Preprocessor, SerializablePreprocessorBase
-from ray.data.preprocessors.dag import _AggregationNode, _build_aggregation_dag
+from ray.data.preprocessors.dag import _fit_levels, _fit_order
 from ray.data.preprocessors.utils import (
+    AggregateStatSpec,
     _PublicField,
     execute_aggregate_specs,
     migrate_private_fields,
@@ -186,14 +187,30 @@ class Chain(SerializablePreprocessorBase):
     def _materialize_deferred_stats(self) -> None:
         """Compute every member's deferred statistics over the fit dataset.
 
-        Builds a column-dependency DAG with one node per (member, aggregation)
-        pair and runs one aggregation query per dependency level: all
-        aggregations whose dependencies are complete run as a single
-        ``Dataset.aggregate()`` call, results are routed into each owning
-        member's ``stats_`` by aggregator alias, and each fully-fitted member
-        then transforms the (lazy) fit dataset so the next level aggregates
-        over transformed data - exactly what sequential fitting would have
-        produced, in as few scans as there are dependency levels.
+        Preprocessors are fitted in the order given by ``_fit_order`` - a
+        permutation that lets preprocessors touching disjoint columns share
+        the earliest scan possible. Only this fit-time pipeline is reordered;
+        the stored chain and inference-time transform order are untouched.
+
+        ``_fit_levels`` then assigns each preprocessor a level - a layered
+        topological sort of the column-dependency graph. Two preprocessors on
+        the same level never read each other's output columns, so their
+        statistics are valid over the same version of the fit dataset and can
+        be computed in the same pass.
+
+        The levels are then processed in order. For each level:
+
+        1. Compute the statistics: run every aggregation registered by that
+           level's preprocessors as one ``Dataset.aggregate()`` call, and
+           write each result into the owning preprocessor's ``stats_`` under
+           the aggregator's alias.
+        2. Advance the data: apply the transforms of the now fully-fitted
+           preprocessors, in chain order, so the next level's statistics are
+           computed over the data those preprocessors will actually see.
+
+        The fitted statistics are identical to sequential fitting; the cost
+        drops to ``max(levels) + 1`` dataset scans instead of one scan per
+        fittable preprocessor.
         """
         ds = self._fit_ds
 
@@ -208,66 +225,53 @@ class Chain(SerializablePreprocessorBase):
             self._fit_ds = None
             return
 
-        all_nodes = _build_aggregation_dag(self._preprocessors)
-        pending_nodes = list(all_nodes)
-        transformed = set()
+        fit_sequence = [self._preprocessors[i] for i in _fit_order(self._preprocessors)]
+        levels = _fit_levels(fit_sequence)
 
-        while pending_nodes:
-            # A node is ready once every member it depends on has transformed
-            # the dataset it aggregates over.
-            ready = [
-                node
-                for node in pending_nodes
-                if all(dep.preprocessor in transformed for dep in node.dependencies)
+        num_transformed = 0
+        for level in range(max(levels, default=-1) + 1):
+            # Every aggregation scheduled at this level. NOTE: Every
+            # registered aggregation runs, even when `stats_` is already
+            # partly filled (e.g. `Categorizer` copies the dtypes it was
+            # given before registering the rest).
+            ready: List[Tuple[Preprocessor, AggregateStatSpec]] = [
+                (p, spec)
+                for p, p_level in zip(fit_sequence, levels)
+                if p_level == level and p._is_fittable
+                for spec in p._stat_computation_plan
             ]
-            if not ready:
-                raise RuntimeError("Circular dependency detected in aggregation DAG.")
 
-            # One aggregation query for every ready aggregation node. Nodes
-            # sharing an alias (e.g. two members needing mean of the same
-            # column) can't share one query's result columns, so run them in
-            # alias-unique batches.
-            agg_nodes = [n for n in ready if isinstance(n, _AggregationNode)]
-            while agg_nodes:
+            # One aggregation query for all of them. Specs sharing an alias
+            # (e.g. two members needing mean of the same column) can't share
+            # one query's result columns, so run them in alias-unique batches.
+            while ready:
                 batch = []
                 rest = []
                 seen_aliases = set()
-                for node in agg_nodes:
-                    alias = node.agg_fn.name
-                    if alias in seen_aliases:
-                        rest.append(node)
+                for preprocessor, spec in ready:
+                    # NOTE: A plan's aggregate specs always hold an aggregation
+                    #       with an alias (callable stats are separate specs).
+                    if spec.stat_fn.name in seen_aliases:
+                        rest.append((preprocessor, spec))
                     else:
-                        seen_aliases.add(alias)
-                        batch.append(node)
+                        seen_aliases.add(spec.stat_fn.name)
+                        batch.append((preprocessor, spec))
 
-                results = execute_aggregate_specs(ds, [node.spec for node in batch])
-                for node in batch:
-                    node.preprocessor.stats_[node.agg_fn.name] = results[
-                        node.agg_fn.name
-                    ]
-                agg_nodes = rest
+                results = execute_aggregate_specs(ds, [spec for _, spec in batch])
+                for preprocessor, spec in batch:
+                    preprocessor.stats_[spec.stat_fn.name] = results[spec.stat_fn.name]
+                ready = rest
 
-            for node in ready:
-                node.completed = True
-            ready_set = set(ready)
-            pending_nodes = [n for n in pending_nodes if n not in ready_set]
-
-            # Apply transforms strictly in chain order, stopping at the first
-            # member still waiting on statistics, so the next level aggregates
-            # over transformed data. A later member must not transform the
-            # data before an earlier member has computed its statistics on it.
-            for preprocessor in self._preprocessors:
-                if preprocessor in transformed:
-                    continue
-                if not all(
-                    node.completed
-                    for node in all_nodes
-                    if node.preprocessor is preprocessor
-                ):
-                    break
+            # Apply this level's transforms, in fit order - a later member
+            # must not rewrite data before an earlier conflicting member has
+            # computed its statistics on it, and `_fit_levels` guarantees
+            # levels along the sequence never exceed the running level of the
+            # prefix.
+            while num_transformed < len(levels) and levels[num_transformed] <= level:
+                preprocessor = fit_sequence[num_transformed]
                 self._sync_nested_chain_fit_ds(preprocessor, ds)
                 ds = preprocessor.transform(ds)
-                transformed.add(preprocessor)
+                num_transformed += 1
 
         self._stats_materialized = True
         # The fit dataset is only needed to compute the statistics; don't keep

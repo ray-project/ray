@@ -616,36 +616,98 @@ def test_flag_off_preserves_eager_fit():
     assert encoder.has_stats()
 
 
-def test_dag_structure(deferred_fit_enabled):
-    from ray.data.preprocessors.dag import (
-        _AggregationNode,
-        _build_aggregation_dag,
+def test_fit_levels():
+    from ray.data.preprocessors.dag import _fit_levels
+
+    scaler = StandardScaler(["A", "B"])
+    imputer = SimpleImputer(["B"])
+    encoder = LabelEncoder("C")
+
+    # The imputer reads B, which the scaler writes -> next level. The encoder
+    # only touches C -> shares the scaler's scan.
+    assert _fit_levels([scaler, imputer, encoder]) == [0, 1, 0]
+
+    # A member that doesn't declare both its input and output columns may
+    # read and write any column: it waits for everything earlier, and
+    # everything later waits for it.
+    undeclared = _make_undeclared_in_place_scale("B", 10)
+    assert _fit_levels([scaler, undeclared, encoder]) == [0, 1, 2]
+
+    # Transforms apply strictly in chain order, so depending on a member also
+    # means waiting for every member before it: d depends only on c, but c's
+    # transform can't be applied until b (level 1) has fitted, pushing d to
+    # level 2 - not the pure-DAG level 1.
+    a, b = StandardScaler(["x"]), SimpleImputer(["x"])
+    c, d = StandardScaler(["y"]), SimpleImputer(["y"])
+    assert _fit_levels([a, b, c, d]) == [0, 1, 0, 2]
+
+
+def test_fit_order():
+    from ray.data.preprocessors import Concatenator
+    from ray.data.preprocessors.dag import _fit_order
+
+    scaler_x, imputer_x = StandardScaler(["x"]), SimpleImputer(["x"])
+    scaler_y, imputer_y = StandardScaler(["y"]), SimpleImputer(["y"])
+
+    # The (x, y) pairs are independent, so the scalers regroup to share the
+    # first scan and the imputers the second.
+    assert _fit_order([scaler_x, imputer_x, scaler_y, imputer_y]) == [0, 2, 1, 3]
+
+    # Anti-dependency: the concatenator overwrites x, which the imputer
+    # reads. It has no read-after-write dependency on anything (its own
+    # input is y), but moving it earlier would rewrite x before the imputer
+    # fits on it, so it must keep its position.
+    concatenator = Concatenator(columns=["y"], output_column_name="x")
+    assert _fit_order([scaler_x, imputer_x, concatenator]) == [0, 1, 2]
+
+    # Destructive read: Concatenator drops the columns it reads, so even a
+    # read-read overlap pins the order. The wide scaler sits at conflict
+    # level 1 (it reads x, which scaler_x writes); if the concatenator could
+    # jump to level 0, it would drop y before the wide scaler aggregates
+    # over it.
+    wide_scaler = StandardScaler(["x", "y"], output_columns=["x_s", "y_s"])
+    dropping = Concatenator(columns=["y"], output_column_name="f")
+    assert _fit_order([scaler_x, wide_scaler, dropping]) == [0, 1, 2]
+
+    # A member without declared columns conflicts with everything, pinning
+    # the order on both sides.
+    undeclared = _make_undeclared_in_place_scale("x", 10)
+    assert _fit_order([scaler_x, undeclared, scaler_y]) == [0, 1, 2]
+
+
+def test_fit_reordering_reduces_scans(deferred_fit_enabled, monkeypatch):
+    import ray.data.preprocessors.chain as chain_module
+
+    real_execute = chain_module.execute_aggregate_specs
+    scans = []
+
+    def counting_execute(ds, specs):
+        scans.append(sorted(spec.stat_fn.name for spec in specs))
+        return real_execute(ds, specs)
+
+    monkeypatch.setattr(chain_module, "execute_aggregate_specs", counting_execute)
+
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"x": [1.0, 2.0, None, 4.0], "y": [10.0, None, 30.0, 40.0]})
     )
+    scaler_x, imputer_x = StandardScaler(["x"]), SimpleImputer(["x"])
+    scaler_y, imputer_y = StandardScaler(["y"]), SimpleImputer(["y"])
+    chain = Chain(scaler_x, imputer_x, scaler_y, imputer_y)
 
-    ds = _example_dataset()
-    chain, (scaler, imputer, encoder) = _example_chain()
-    chain.fit(ds)
+    out = chain.fit_transform(ds).to_pandas()
 
-    nodes = _build_aggregation_dag([scaler, imputer, encoder])
-
-    scaler_nodes = [n for n in nodes if n.preprocessor is scaler]
-    imputer_nodes = [n for n in nodes if n.preprocessor is imputer]
-    encoder_nodes = [n for n in nodes if n.preprocessor is encoder]
-
-    assert len(scaler_nodes) == 4  # mean/std x A/B
-    assert len(imputer_nodes) == 1  # mean(B)
-    assert len(encoder_nodes) == 1  # unique_values(C)
-    assert all(isinstance(n, _AggregationNode) for n in nodes)
-
-    # Scaler writes B; imputer reads B -> the imputer node depends on every
-    # scaler node (dependencies are per-preprocessor, not per-column).
-    for node in imputer_nodes:
-        assert {dep.preprocessor for dep in node.dependencies} == {scaler}
-    # The encoder only touches C -> fully independent.
-    for node in encoder_nodes:
-        assert not node.dependencies
-    for node in scaler_nodes:
-        assert not node.dependencies
+    # In chain order this fit needs 3 scans (levels [0, 1, 0, 2]); fitted in
+    # `_fit_order`'s permutation both scalers share scan 0 and both imputers
+    # share scan 1.
+    assert scans == [
+        ["mean(x)", "mean(y)", "std(x)", "std(y)"],
+        ["mean(x)", "mean(y)"],
+    ]
+    # Statistics match sequential fitting: the imputers fit on standardized
+    # columns, whose mean is 0, and the transformed output has no nulls left.
+    assert imputer_x.stats_["mean(x)"] == pytest.approx(0.0)
+    assert imputer_y.stats_["mean(y)"] == pytest.approx(0.0)
+    assert not out["x"].isna().any() and not out["y"].isna().any()
 
 
 def _make_undeclared_in_place_scale(

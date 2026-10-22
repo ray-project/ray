@@ -1,81 +1,110 @@
-from typing import TYPE_CHECKING, List, Sequence, Set, cast
+from typing import List, Sequence
 
 from ray.data.preprocessor import Preprocessor
 
-if TYPE_CHECKING:
-    from ray.data.aggregate import AggregateFnV2
-    from ray.data.preprocessors.utils import AggregateStatSpec
 
+def _fit_levels(preprocessors: Sequence[Preprocessor]) -> List[int]:
+    """Layered topological sort of a chain's column-dependency graph.
 
-class _DAGNode:
-    """Base class for nodes in the deferred-fit aggregation DAG.
+    Returns each member's level. A member's statistics are computed in scan
+    number ``level``, over the fit dataset with every member of smaller
+    levels already applied; members that share a level share one scan, so a
+    deferred fit costs ``max(levels) + 1`` dataset scans.
 
-    Each node tracks column-level dependencies: a node depends on an earlier
-    one iff it reads any column the earlier one writes. This enables
-    topological scheduling of aggregations based on column lineage - members
-    that touch disjoint columns can have their statistics computed in the same
-    dataset scan.
+    A member depends on an earlier member if and only if it reads a column
+    the earlier one writes (a member that doesn't declare both its input and
+    output columns may read and write any column, so it depends on every
+    earlier member and every later member depends on it)::
 
-    A member that doesn't declare both its input and output columns may read
-    and write any column, so its node is treated as reading and writing every
-    column: it depends on every earlier node, and every later node depends on
-    it.
+        chain:   scaler ----------->  imputer ---------->  encoder
+                 reads/writes A,B     reads/writes B       reads/writes C
+                    ^                    |
+                    '------ reads B -----'
+        level:      0                    1                    0
 
-    Args:
-        preprocessor: The preprocessor this node belongs to.
+        scan 0 (raw dataset):     scaler and encoder statistics,
+                                  then the scaler transforms
+        scan 1 (scaled dataset):  imputer statistics, then the
+                                  imputer and encoder transform
+
+    One twist closes the graph over chain order: transforms are applied
+    strictly in chain order, so waiting for member ``j``'s transform means
+    waiting for every member before ``j`` as well::
+
+        chain:   a --------> b --------> c --------> d
+                 writes x    reads x     writes y    reads y
+                 ^           |           ^           |
+                 '--reads x--'           '--reads y--'
+        level:   0           1           0           2   (not 1!)
+
+        d reads only what c writes, but c's transform cannot be applied
+        until the chain reaches it - until b (level 1) has fitted - so d
+        aggregates one scan later. ``prefix_levels[j]``, the running
+        maximum ``max(levels[:j + 1])``, is the level after which members
+        ``0..j`` have all transformed; a dependency on ``j`` schedules a
+        member at ``prefix_levels[j] + 1``.
     """
+    declares = [_declares_columns(p) for p in preprocessors]
+    reads = [set(p.get_input_columns()) for p in preprocessors]
+    writes = [set(p.get_output_columns()) for p in preprocessors]
 
-    def __init__(self, preprocessor: Preprocessor):
-        self.preprocessor: Preprocessor = preprocessor
-        self.dependencies: Set["_DAGNode"] = set()
-        self.dependents: Set["_DAGNode"] = set()
-        self.completed: bool = False
-        self.read_cols: Set[str] = set(preprocessor.get_input_columns())
-        self.write_cols: Set[str] = set(preprocessor.get_output_columns())
-        self.touches_all_columns: bool = not _declares_columns(preprocessor)
-
-    def depends_on(self, earlier: "_DAGNode") -> bool:
-        """Whether this node must wait for an earlier chain member's node."""
-        return (
-            self.touches_all_columns
-            or earlier.touches_all_columns
-            or bool(self.read_cols & earlier.write_cols)
-        )
-
-    @property
-    def is_placeholder(self) -> bool:
-        return isinstance(self, _PlaceholderNode)
+    levels: List[int] = []
+    prefix_levels: List[int] = []
+    for i in range(len(preprocessors)):
+        level = 0
+        for j in range(i):
+            if not declares[i] or not declares[j] or reads[i] & writes[j]:
+                level = max(level, prefix_levels[j] + 1)
+        levels.append(level)
+        prefix_levels.append(max(level, prefix_levels[i - 1]) if i else level)
+    return levels
 
 
-class _AggregationNode(_DAGNode):
-    """Node representing a single aggregation of one preprocessor.
+def _fit_order(preprocessors: Sequence[Preprocessor]) -> List[int]:
+    """Order in which to fit a chain's members: a permutation of
+    ``range(len(preprocessors))`` that lets independent members share the
+    earliest scan possible, while preserving the relative order of every
+    conflicting pair.
 
-    Args:
-        preprocessor: The preprocessor this aggregation belongs to.
-        spec: The :class:`~ray.data.preprocessors.utils.AggregateStatSpec`
-            registered on the preprocessor's stat computation plan.
+    Two members conflict when they touch (read or write) any common column,
+    or when either doesn't declare its columns. Reordering a conflicting pair
+    could change what one of them computes or produces - note that even two
+    readers of the same column conflict, because a transform may consume the
+    columns it reads (``Concatenator`` drops its input columns). Members that
+    don't conflict touch disjoint columns, so their transforms commute and
+    they may be fitted in either order.
+
+    Sorting members by their level in this conflict graph (a stable sort, so
+    ties keep chain order) places every member directly behind the members it
+    conflicts with, removing the wait on unrelated slower members that chain
+    order would otherwise impose::
+
+        chain:                    scaler(x)  imputer(x)  scaler(y)  imputer(y)
+        levels in chain order:    [0,        1,          0,         2]
+        fit order:                [0,        2,          1,         3]
+        levels in fit order:      [0,        0,          1,         1]
+
+    In chain order, imputer(y) needs three scans: it must aggregate over
+    scaler(y)-transformed data, and scaler(y)'s transform sits behind
+    imputer(x) (fitted in scan 1) in the chain. Fitted in the reordered
+    sequence, both scalers share scan 0 and both imputers share scan 1.
     """
+    declares = [_declares_columns(p) for p in preprocessors]
+    touched = [
+        set(p.get_input_columns()) | set(p.get_output_columns()) for p in preprocessors
+    ]
 
-    def __init__(self, preprocessor: Preprocessor, spec: "AggregateStatSpec"):
-        super().__init__(preprocessor)
-        self.spec: "AggregateStatSpec" = spec
+    def conflicts(i: int, j: int) -> bool:
+        return not declares[i] or not declares[j] or bool(touched[i] & touched[j])
 
-    @property
-    def agg_fn(self) -> "AggregateFnV2":
-        # NOTE: A plan's aggregate specs always hold an aggregation (callable
-        #       stats are separate specs), but the spec type is a broader union.
-        return cast("AggregateFnV2", self.spec.stat_fn)
-
-
-class _PlaceholderNode(_DAGNode):
-    """Placeholder node for members that contribute no aggregations.
-
-    Covers non-fittable preprocessors and fittable members whose plan
-    registered nothing (e.g. a nested Chain, which computes its own statistics
-    when transformed). These nodes have nothing to compute, but they
-    participate in dependency tracking so that transforms are ordered
-    correctly.
-    """
+    conflict_levels: List[int] = []
+    for i in range(len(preprocessors)):
+        level = 0
+        for j in range(i):
+            if conflicts(i, j):
+                level = max(level, conflict_levels[j] + 1)
+        conflict_levels.append(level)
+    return sorted(range(len(preprocessors)), key=conflict_levels.__getitem__)
 
 
 def _declares_columns(preprocessor: Preprocessor) -> bool:
@@ -93,68 +122,3 @@ def _declares_columns(preprocessor: Preprocessor) -> bool:
     return bool(preprocessor.get_input_columns()) and bool(
         preprocessor.get_output_columns()
     )
-
-
-def _build_aggregation_dag(
-    preprocessors: Sequence[Preprocessor],
-) -> List[_DAGNode]:
-    """Construct the aggregation DAG for a chain of preprocessors.
-
-    Each fittable member contributes one node per aggregation registered on
-    its plan; every other member contributes a placeholder node. A later node
-    depends on an earlier one iff it reads a column the earlier one writes, or
-    either of them doesn't declare both its input and output columns.
-
-    Args:
-        preprocessors: The chain's members, in chain order.
-
-    Returns:
-        All nodes, in chain order (a member's aggregation nodes are adjacent).
-    """
-    all_nodes: List[_DAGNode] = []
-    nodes_per_preprocessor: List[List[_DAGNode]] = []
-
-    for preprocessor in preprocessors:
-        nodes: List[_DAGNode] = []
-        if preprocessor._is_fittable:
-            # NOTE: Every registered aggregation is pending, even when `stats_`
-            #       is already partly filled (e.g. `Categorizer` copies the
-            #       dtypes it was given before registering the rest).
-            for agg_spec in preprocessor._stat_computation_plan:
-                nodes.append(_AggregationNode(preprocessor=preprocessor, spec=agg_spec))
-        if not nodes:
-            nodes.append(_PlaceholderNode(preprocessor=preprocessor))
-
-        nodes_per_preprocessor.append(nodes)
-        all_nodes.extend(nodes)
-
-    # Add edges based on read/write column overlap between chain positions.
-    for i in range(len(preprocessors)):
-        for j in range(i):
-            for cur_node in nodes_per_preprocessor[i]:
-                for prev_node in nodes_per_preprocessor[j]:
-                    if cur_node.depends_on(prev_node):
-                        cur_node.dependencies.add(prev_node)
-                        prev_node.dependents.add(cur_node)
-
-    _validate_dag_is_acyclic(all_nodes)
-    return all_nodes
-
-
-def _validate_dag_is_acyclic(nodes: List[_DAGNode]) -> None:
-    visited = set()
-    stack = set()
-
-    def visit(node: _DAGNode):
-        if node in stack:
-            raise RuntimeError("Cycle detected in aggregation DAG")
-        if node in visited:
-            return
-        stack.add(node)
-        for dep in node.dependencies:
-            visit(dep)
-        stack.remove(node)
-        visited.add(node)
-
-    for node in nodes:
-        visit(node)
