@@ -422,7 +422,7 @@ Look up the form here rather than deriving it. The `Train.Terms` and `Train.Capi
 
 ## Writing Ray on Kubernetes and KubeRay docs
 
-Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/kuberay/` and in `doc/source/cluster/kubernetes.md` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/ray-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
+Ray on Kubernetes documentation sits in two places: the user-facing pages under `doc/source/kuberay/` and in `doc/source/cluster/kubernetes.md` in this repository, and the contributor-facing pages in the [KubeRay repository](https://github.com/kuberay-project/kuberay). This section applies to both. It exists because those pages describe Kubernetes API objects alongside Ray concepts, and the two vocabularies collide.
 
 When two rules conflict in this domain, follow this order:
 

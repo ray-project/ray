@@ -35,12 +35,12 @@ python/ray/rllib/rllib.py: rllib rllib_gpu rllib_directly
 
 # === Python Core ===
 
-python/core.py: ml tune train data serve llm core_python dashboard linux_wheels macos_wheels java
+python/core.py: ml tune train data serve core_python dashboard linux_wheels macos_wheels java
 python/setup.py: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements/test-requirements.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements_compiled.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
 python/requirements_compiled_py3.13.txt: ml tune train serve workflow data core_python dashboard linux_wheels macos_wheels java python_dependencies min_build
-python/_raylet.pyx: ml tune train data serve llm core_python dashboard linux_wheels macos_wheels java
+python/_raylet.pyx: ml tune train data serve core_python dashboard linux_wheels macos_wheels java
 
 # === Raydepsets lock files and configs ===
 # macos_depset lock is consumed by the mac smoke test (macos_wheels) AND
@@ -134,16 +134,30 @@ doc/source/tune/tutorials/BUILD.bazel: ml_doc
 doc/source/core/examples/BUILD.bazel: core_doc
 doc/source/llm/examples/batch/BUILD.bazel: llm
 doc/BUILD.bazel: core_doc data_doc ml_doc rllib_doc serve_doc llm
-# Data prose has per-file doctest targets (`doctest_each`), so it routes to
-# the opt-in step. Its API pages still hit the doc_api rule first.
+# All prose under doc/source/ routes to the opt-in step, whether or not a
+# per-file doctest target names the page: the opt-in selects targets by changed
+# file when it runs, so the rule doesn't need to know which pages have one. API
+# pages still hit the doc_api rule first.
 doc/source/data/key-concepts.rst: doc_example
 doc/source/data/working-with-tensors.md: doc_example
-# Other libraries' prose has only library-wide doctest targets, which the
-# opt-in never runs, so it stays skipped. Static images under a library doc dir
-# are skipped too. The per-library rules match whole directories, so these
-# cases lock in that the leading skip rule wins first.
-doc/source/serve/index.md:
-doc/source/core/tasks.md:
+doc/source/core/actors/named-actors.md: doc_example
+doc/source/rllib/api/utils.rst: doc_api
+doc/source/serve/advanced-guides/multi-app-container.md: doc_example
+doc/source/train/getting-started-xgboost.md: doc_example
+doc/source/core/tasks/nested-tasks.md: doc_example
+doc/source/train/user-guides/using-accelerators.md: doc_example
+doc/source/tune/index.md: doc_example
+doc/source/serve/index.md: doc_example
+doc/source/core/tasks.md: doc_example
+doc/source/index.md: doc_example
+doc/source/ray-references/glossary.md: doc_example
+doc/source/cluster/kubernetes/index.md: doc_example
+# Prose that Sphinx never renders as a page stays skipped.
+doc/source/_includes/_help-links.md:
+doc/source/_templates/autosummary/class.rst:
+# Static images under a library doc dir are skipped. The per-library rules
+# match whole directories, so these cases lock in that the leading skip rule
+# wins first.
 doc/source/rllib/images/rllib-stack.svg:
 doc/source/data/images/dataset-arch.png:
 doc/source/train/images/overview.jpg:
@@ -160,20 +174,14 @@ doc/source/serve/doc_code/config.yaml: doc_example
 doc/source/cluster/doc_code/slurm-basic.sh: doc
 doc/source/cluster/doc_code/slurm-launch.py: doc
 doc/source/ray-contribute/doc_code/example_module.py: doc
-# Starter templates and the authoring boilerplate are excluded from the Sphinx
-# build and back no bazel target, so they emit nothing at all. 05 is the lone
-# exception: a rendered Train page literalincludes its sources, so those route
-# to the build like any other include input.
-doc/source/templates/01_batch_inference/start.ipynb:
-doc/source/templates/03_serving_stable_diffusion/app.py:
-doc/source/templates/04_finetuning_llms_with_deepspeed/utils.py:
-doc/source/_templates/template.ipynb:
-doc/source/templates/05_dreambooth_finetuning/dreambooth/train.py: doc
 # The leading prose-and-image skip still wins inside a `doc`-routed directory,
-# so an image or README under 05 emits nothing. Locks in that the new rule did
-# not accidentally reorder past that skip.
-doc/source/templates/05_dreambooth_finetuning/dreambooth/images/lego-car/1.jpg:
-doc/source/templates/05_dreambooth_finetuning/README.md:
+# so a README or image under one emits nothing.
+doc/source/cluster/doc_code/README.md:
+doc/source/ray-contribute/doc_code/README.md:
+doc/source/cluster/doc_code/diagram.png:
+# The authoring boilerplate is excluded from the Sphinx build and backs no bazel
+# target, so it emits nothing at all.
+doc/source/_templates/template.ipynb:
 # Documentation validation infra stays on the `doc` tag. The Sphinx config, the
 # modules it imports, the in-repo build extensions, and the doc-build helper
 # scripts build the docs, so they route to the `doc` build and validation only,
@@ -228,6 +236,7 @@ doc/load_doc_cache.py: doc
 doc/update_cache_env.py: doc
 doc/rtd_doctor.py: doc
 doc/test_no_new_rst.py: doc
+doc/test_prose_doctest_targets.py: doc
 # Pre-routed ahead of the files landing with ray-project/ray#64458. The
 # llms.txt test is a hermetic Sphinx test that imports no Ray code, so it
 # belongs on the doc build side, not on a library example step.
@@ -250,6 +259,14 @@ doc/source/_intersphinx/README.md:
 # rather than `python_dependencies`.
 python/deplocks/docs/docbuild_depset_py3.11.lock: doc doc_api deplock_check
 ci/raydepsets/configs/docs.depsets.yaml: doc doc_api deplock_check
+# The docstring examples lock and its input feed only the label-gated
+# docstringbuild image, so they run just the lock check.
+python/deplocks/docs/docstring_examples_base_depset_py3.10.lock: deplock_check
+python/deplocks/docs/docstring_examples_depset_py3.10.lock: deplock_check
+python/requirements/doc/docstring-examples-requirements.txt: deplock_check
+# Its image definition runs nothing: only the label-gated step consumes it.
+ci/docker/docstring.build.Dockerfile:
+ci/docker/docstring.build.wanda.yaml:
 # Redirect YAML selects the dedicated lightweight check and nothing else: no
 # docbuild, no API checks, no per-team doc tests. The README beside it is prose
 # and stays unrouted, which is what the second case locks in.
