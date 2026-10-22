@@ -33,6 +33,26 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
+namespace {
+
+// Reply callback of a write watermark marker. Only a rejection is of interest:
+// the write before it may have gone through, for example an HDEL that Redis
+// accepts at its memory limit while it refuses the marker's HSET with -OOM.
+void MarkerReplyFn(redisAsyncContext * /*context*/,
+                   void *raw_reply,
+                   void * /*privdata*/) {
+  auto *reply = static_cast<redisReply *>(raw_reply);
+  if (reply != nullptr && reply->type == REDIS_REPLY_ERROR) {
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Redis rejected a write watermark marker: "
+        << std::string(reply->str, reply->len)
+        << ". Until a later marker gets through, a reconnect may report lost writes "
+           "that Redis still has.";
+  }
+}
+
+}  // namespace
+
 RedisAsyncContext::RedisAsyncContext(
     instrumented_io_context &io_service,
     std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context)
@@ -183,27 +203,45 @@ void RedisAsyncContext::WatchConnect(uint64_t generation) {
 void RedisAsyncContext::CheckConnect(uint64_t generation) {
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    auto connecting = [this, generation] {
-      return generation == socket_generation_ && redis_async_context_ != nullptr &&
-             (redis_async_context_->c.flags & REDIS_CONNECTED) == 0;
+    auto connected = [this] {
+      return (redis_async_context_->c.flags & REDIS_CONNECTED) != 0;
     };
-    if (!connecting()) {
+    // Watch until the connect completes and, while commands are paused, until
+    // the reconnect check has been answered: a server that accepts the
+    // connection but never answers must not hold the attempt forever.
+    auto watching = [this, generation, &connected] {
+      return generation == socket_generation_ && redis_async_context_ != nullptr &&
+             (!connected() || commands_paused_);
+    };
+    if (!watching()) {
       return;
     }
     if (std::chrono::steady_clock::now() >= connect_deadline_) {
-      RAY_LOG(WARNING) << "Redis connect did not complete within "
-                       << RayConfig::instance().redis_reconnect_connect_timeout_ms()
-                       << "ms. Giving up on this attempt.";
-      // Reports the failure through the connect callback, then frees the
-      // context, the same way a refused connect does.
-      redisAsyncHandleTimeout(redis_async_context_.get());
+      const int64_t timeout_ms =
+          RayConfig::instance().redis_reconnect_connect_timeout_ms();
+      if (!connected()) {
+        RAY_LOG(WARNING) << "Redis connect did not complete within " << timeout_ms
+                         << "ms. Giving up on this attempt.";
+        // Reports the failure through the connect callback, then frees the
+        // context, the same way a refused connect does.
+        redisAsyncHandleTimeout(redis_async_context_.get());
+      } else {
+        RAY_LOG(WARNING) << "Redis did not answer the reconnect check within "
+                         << timeout_ms << "ms. Giving up on this attempt.";
+        // redisAsyncDisconnect would wait for the unanswered check. Freeing
+        // runs its callback with no reply and then the disconnect callback,
+        // which schedules the next attempt.
+        redisAsyncFree(redis_async_context_.get());
+      }
       return;
     }
-    // Finds the connect still in progress, or completes it: hiredis then runs
-    // the connect callback and sends the commands queued behind it.
-    redisAsyncHandleWrite(redis_async_context_.get());
-    if (!connecting()) {
-      return;
+    if (!connected()) {
+      // Finds the connect still in progress, or completes it: hiredis then
+      // runs the connect callback and sends the commands queued behind it.
+      redisAsyncHandleWrite(redis_async_context_.get());
+      if (!watching()) {
+        return;
+      }
     }
   }
   WatchConnect(generation);
@@ -329,7 +367,7 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
     const size_t marker_argvlen[] = {
         4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
     if (redisAsyncCommandArgv(redis_async_context_.get(),
-                              /*fn=*/nullptr,
+                              &MarkerReplyFn,
                               /*privdata=*/nullptr,
                               4,
                               marker_argv,

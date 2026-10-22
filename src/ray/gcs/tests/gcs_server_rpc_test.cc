@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
@@ -35,6 +36,10 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
+
+extern "C" {
+#include "hiredis/hiredis.h"
+}
 
 namespace ray {
 
@@ -1129,6 +1134,33 @@ TEST_F(GcsLeaderElectionTest, TestPromotionRewritesActiveOnlyKeys) {
                    expected_v2_flag;
       },
       /*timeout_ms=*/30000));
+
+  passive->Stop();
+}
+
+// A passive GCS writes nothing to Redis, its write watermark included. It shares
+// the watermark's fields with the leader, so writing its own incarnation there would
+// make the leader's next reconnect check report lost writes.
+TEST_F(GcsLeaderElectionTest, TestPassiveLeavesTheWriteWatermarkAlone) {
+  auto watermark_incarnation = []() {
+    redisContext *redis = redisConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
+    RAY_CHECK(redis != nullptr && redis->err == 0);
+    const std::string key = absl::StrCat(
+        "RAY", RayConfig::instance().external_storage_namespace(), "@WriteWatermark");
+    auto *reply = static_cast<redisReply *>(
+        redisCommand(redis, "HGET %b gcs_tables", key.data(), key.size()));
+    RAY_CHECK(reply != nullptr);
+    std::string value =
+        reply->type == REDIS_REPLY_STRING ? std::string(reply->str, reply->len) : "";
+    freeReplyObject(reply);
+    redisFree(redis);
+    return value.substr(0, value.find(':'));
+  };
+  const std::string leader_incarnation = watermark_incarnation();
+  ASSERT_FALSE(leader_incarnation.empty());
+
+  auto passive = StartPassiveServer();
+  EXPECT_EQ(watermark_incarnation(), leader_incarnation);
 
   passive->Stop();
 }

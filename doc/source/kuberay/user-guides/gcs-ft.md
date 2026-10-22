@@ -447,6 +447,10 @@ caught up, and for a Redis restart with `appendonly yes`. With the
 process loses nothing, while a failure of the node it runs on can lose the
 last second of writes.
 
+Run Redis with `maxmemory-policy noeviction`. An eviction policy can drop GCS
+data while Redis keeps running, which neither this check nor a GCS restart
+notices.
+
 To run the check, GCS follows each write with a small marker write to the
 `RAY<namespace>@WriteWatermark` hash, which doubles the number of write
 commands it sends. Set `RAY_redis_reconnect_verify_writes=0` to turn off both
@@ -460,7 +464,7 @@ retry behavior of individual Redis commands.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
+| `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. With `0`, a command gives up after its own retry budget, roughly 3.5 seconds, as before in-place reconnects; GCS still reconnects in place. |
 | `RAY_redis_reconnect_connect_timeout_ms` | `5000` | How long each reconnect attempt waits for its TCP connect before trying again. Without it, a connect to an address that no longer answers, such as a deleted Redis Pod's IP, waits out the kernel's SYN retries for about two minutes. `0` turns the timeout off. |
 | `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. |
 | `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. See [When Redis comes back without data](#when-redis-comes-back-without-data). |

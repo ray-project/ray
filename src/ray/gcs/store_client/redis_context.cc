@@ -355,7 +355,14 @@ void RedisRequestContext::HandleFailure(RedisRequestContext *request_cxt,
   // Retry the request after a while.
   execute_after(
       request_cxt->io_service_,
-      [request_cxt]() { request_cxt->Run(); },
+      [request_cxt]() {
+        // The context may have been destroyed while this retry waited.
+        if (request_cxt->context_alive_.expired()) {
+          delete request_cxt;
+          return;
+        }
+        request_cxt->Run();
+      },
       std::chrono::milliseconds(delay));
 }
 
@@ -1347,11 +1354,6 @@ Status RedisContext::ConnectImpl(const std::string &address,
   redis_async_context_.reset(
       new RedisAsyncContext(io_service_, std::move(async_context)));
   redis_async_context_->SetDisconnectHandler([this] { OnAsyncDisconnected(); });
-  SetConnectionCallbacks(redis_async_context_->GetRawRedisAsyncContext(),
-                         redis_async_context_.get());
-  if (async_connected_hook_for_testing_) {
-    std::exchange(async_connected_hook_for_testing_, nullptr)(*redis_async_context_);
-  }
 
   // handle validation and primary connection for different types of redis
   auto is_sentinel = IsRedisSentinel();
@@ -1391,6 +1393,16 @@ Status RedisContext::ConnectImpl(const std::string &address,
     password_ = password;
     enable_ssl_ = enable_ssl;
     resolved_ip_ = ip_addresses[0];
+    // This context is the final one, so let hiredis drive it now and not
+    // earlier: registering the connect callback arms its first write, which the
+    // io_service picks up at once when it already runs on another thread, while
+    // the Sentinel and Cluster discovery above may still destroy the context
+    // from this one. A nested Connect() registered its own context instead.
+    SetConnectionCallbacks(redis_async_context_->GetRawRedisAsyncContext(),
+                           redis_async_context_.get());
+    if (async_connected_hook_for_testing_) {
+      std::exchange(async_connected_hook_for_testing_, nullptr)(*redis_async_context_);
+    }
   }
   return status;
 }
@@ -1405,7 +1417,11 @@ void RedisContext::OnAsyncDisconnected() {
     // Connect() is still running, possibly on another thread. It records the
     // address only at the end, so let it pass the drop back to us then.
     dropped_while_connecting_ = true;
-    return;
+    // Unless it finished between the check above and the store, and so no
+    // longer looks at the flag. Whichever side clears the flag handles the drop.
+    if (connect_depth_ > 0 || !dropped_while_connecting_.exchange(false)) {
+      return;
+    }
   }
   // Whatever connect was outstanding is settled now, one way or another.
   reconnect_pending_ = false;
@@ -1634,6 +1650,14 @@ void RedisContext::ReconnectCheckCallback(redisAsyncContext *async_context,
     // callback drives the retry.
     return;
   }
+  if ((async_context->c.flags & REDIS_DISCONNECTING) != 0) {
+    // A rejected AUTH already started the teardown, which hiredis completes
+    // after this callback; the disconnect callback drives the retry. A server
+    // that refuses the AUTH can still answer the check, for example one with no
+    // password configured, and counting that as a reconnect would start a new
+    // episode, with a fresh budget, on every attempt.
+    return;
+  }
   if (reply->type == REDIS_REPLY_ERROR) {
     // -LOADING while Redis reads its data back in, or -NOAUTH behind a rejected
     // AUTH (which has already started the teardown). Either way this server
@@ -1691,7 +1715,8 @@ void RedisContext::OnWritesLost(const std::string &reason) {
       reason,
       ". It lost data during the outage, for example by restarting without "
       "persistence, restoring an older snapshot, or failing over to a replica "
-      "that was behind. Exiting so that gcs_server restarts and reloads its state "
+      "that was behind. Another gcs_server writing to the same storage namespace "
+      "also causes this. Exiting so that gcs_server restarts and reloads its state "
       "from Redis.");
   if (writes_lost_handler_for_testing_) {
     writes_lost_handler_for_testing_(message);

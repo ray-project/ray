@@ -22,6 +22,7 @@ from ray._common.test_utils import (
 from ray._private import ray_constants
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import (
+    _pid_alive,
     external_redis_test_enabled,
     generate_system_config_map,
     persistent_gcs_test_enabled,
@@ -808,7 +809,7 @@ def test_redis_with_sentinel_failureover(
     # gcs_server used to die with the old primary and had to be restarted by
     # hand. It should now still be the same process, having re-resolved the
     # primary through Sentinel.
-    assert psutil.pid_exists(gcs_server_pid), "gcs_server exited on failover"
+    assert _pid_alive(gcs_server_pid), "gcs_server exited on failover"
     wait_for_condition(
         lambda: run_string_as_driver(
             f"""
@@ -827,7 +828,7 @@ print("ALIVE" if nodes[0]["alive"] else "DEAD")
         timeout=120,
         retry_interval_ms=2000,
     )
-    assert psutil.pid_exists(gcs_server_pid), "gcs_server exited after the failover"
+    assert _pid_alive(gcs_server_pid), "gcs_server exited after the failover"
 
     # Kill the actor. It should come back on the promoted primary.
     c_process.kill()
@@ -881,8 +882,8 @@ def _restart_redis_keeping_data(ip, port, data_dir):
     )
     redis_pid = cli.info()["process_id"]
     psutil.Process(pid=redis_pid).kill()
-    # SIGKILL is asynchronous: the listen socket is only released once the
-    # process is reaped, and binding the replacement before that fails.
+    # SIGKILL is asynchronous: wait for the process to exit, which frees its
+    # port, before binding the replacement.
     wait_for_pid_to_exit(redis_pid, 30)
 
     return subprocess.Popen(
@@ -966,10 +967,14 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
         wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
 
         # Same process: it reconnected in place, it was not restarted.
-        assert psutil.pid_exists(gcs_server_pid)
+        assert _pid_alive(gcs_server_pid)
         assert gcs_client.internal_kv_get(b"before_restart", None) == b"1"
         assert ray.get(f.remote()) == 7
     finally:
+        # Shut the cluster down while Redis still answers, so the teardown
+        # doesn't wait on a GCS that lost its Redis.
+        ray.shutdown()
+        cluster.shutdown()
         redis_proc.kill()
         redis_proc.wait()
         shutil.rmtree(data_dir, ignore_errors=True)
@@ -1086,7 +1091,7 @@ def test_redis_permanently_down_bounded_exit(
     # grace period (15s here) keeps the process alive past this check.
     try:
         time.sleep(8)
-        assert psutil.pid_exists(gcs_server_pid)
+        assert _pid_alive(gcs_server_pid)
 
         # And the exit must still come: grace (15s) + retry drain, which
         # expires before the reconnect budget (30 attempts) does.

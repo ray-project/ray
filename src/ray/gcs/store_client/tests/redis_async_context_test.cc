@@ -575,6 +575,61 @@ TEST_F(RedisAsyncContextTest, TestNoAuthRepliesDoNotSpendRetries) {
   EXPECT_TRUE(future.get());
 }
 
+// A server that rejects the reconnect AUTH but still answers the check, such
+// as one with no password configured, fails the attempt: counting it as a
+// reconnect started a fresh episode, with a fresh budget and no backoff, on
+// every attempt.
+TEST_F(RedisAsyncContextTest, TestRejectedAuthFailsTheAttemptEvenIfTheCheckPasses) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  redisContext *admin = redisConnect("127.0.0.1", port);
+  ASSERT_TRUE(admin != nullptr && admin->err == 0);
+  auto admin_command = [admin](const char *command, const char *arg = nullptr) {
+    auto *reply =
+        static_cast<redisReply *>(arg == nullptr ? redisCommand(admin, command)
+                                                 : redisCommand(admin, command, arg));
+    std::string result;
+    if (reply != nullptr) {
+      result = reply->type == REDIS_REPLY_INTEGER
+                   ? std::to_string(reply->integer)
+                   : std::string(reply->str == nullptr ? "" : reply->str, reply->len);
+      freeReplyObject(reply);
+    }
+    return result;
+  };
+  admin_command("CONFIG SET requirepass %s", "auth_loop_pw");
+  admin_command("AUTH auth_loop_pw");
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  absl::Cleanup stop = [&] {
+    admin_command("CONFIG SET requirepass %s", "");
+    redisFree(admin);
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(
+      ctx->Connect("127.0.0.1", port, /*username=*/"", /*password=*/"auth_loop_pw").ok());
+
+  // From now on AUTH is an error, while a command without it goes through.
+  admin_command("CONFIG SET requirepass %s", "");
+  auto connections = [&admin_command]() {
+    const std::string info = admin_command("INFO stats");
+    const std::string field = "total_connections_received:";
+    const size_t at = info.find(field);
+    RAY_CHECK(at != std::string::npos);
+    return std::stoll(info.substr(at + field.size()));
+  };
+  const int64_t before = connections();
+  admin_command("CLIENT KILL TYPE normal");
+  std::this_thread::sleep_for(2s);
+  // The backoff starts at 100ms and doubles: about five attempts in 2s.
+  EXPECT_LE(connections() - before, 10);
+}
+
 namespace {
 
 constexpr char kWatermarkKey[] = "test_write_watermark";
@@ -1057,6 +1112,72 @@ TEST_F(RedisAsyncContextTest, TestResetGivesUpOnAConnectThatNeverCompletes) {
   }
   const auto elapsed = std::chrono::steady_clock::now() - start;
   EXPECT_EQ(timed_out_connect_status.load(), REDIS_ERR);
+  EXPECT_GE(elapsed, std::chrono::milliseconds(250));
+  EXPECT_LT(elapsed, std::chrono::seconds(2));
+  EXPECT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);
+}
+
+namespace {
+
+std::atomic<bool> silent_check_answered{false};
+std::atomic<bool> silent_disconnected{false};
+void ReleaseOnDisconnect(const redisAsyncContext *c, int /*status*/) {
+  static_cast<RedisAsyncContext *>(c->data)->ResetRawRedisAsyncContext();
+  silent_disconnected = true;
+}
+
+}  // namespace
+
+// A server that completes the TCP handshake but never answers must not hold a
+// reconnect attempt forever: while commands are paused for the reconnect check,
+// the attempt is given up after redis_reconnect_connect_timeout_ms too.
+TEST_F(RedisAsyncContextTest, TestResetGivesUpOnACheckThatIsNeverAnswered) {
+  // The kernel completes handshakes for this listener, which never accepts or
+  // reads.
+  int listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  ASSERT_GE(listen_fd, 0);
+  absl::Cleanup close_listener = [listen_fd] { close(listen_fd); };
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  ASSERT_EQ(bind(listen_fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)), 0);
+  ASSERT_EQ(listen(listen_fd, 16), 0);
+  socklen_t len = sizeof(addr);
+  ASSERT_EQ(getsockname(listen_fd, reinterpret_cast<sockaddr *>(&addr), &len), 0);
+
+  RayConfig::instance().initialize(R"({"redis_reconnect_connect_timeout_ms": 300})");
+  absl::Cleanup restore = [] {
+    RayConfig::instance().initialize(R"({"redis_reconnect_connect_timeout_ms": 5000})");
+  };
+  instrumented_io_context local_io_service;
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(TEST_REDIS_SERVER_PORTS.front()));
+  SimulateHiredisDisconnect(ctx);
+
+  auto fresh = ConnectRaw(ntohs(addr.sin_port));
+  fresh->data = &ctx;
+  silent_check_answered = false;
+  silent_disconnected = false;
+  ASSERT_EQ(redisAsyncSetDisconnectCallback(fresh.get(), ReleaseOnDisconnect), REDIS_OK);
+  ASSERT_EQ(redisAsyncCommand(
+                fresh.get(),
+                [](redisAsyncContext *, void *reply, void *) {
+                  if (reply != nullptr) {
+                    silent_check_answered = true;
+                  }
+                },
+                nullptr,
+                "PING"),
+            REDIS_OK);
+  ctx.PauseCommands(true);
+  const auto start = std::chrono::steady_clock::now();
+  ctx.Reset(std::move(fresh));
+  for (int i = 0; i < 50 && !silent_disconnected.load(); ++i) {
+    local_io_service.run_for(std::chrono::milliseconds(100));
+    local_io_service.restart();
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  EXPECT_TRUE(silent_disconnected.load());
+  EXPECT_FALSE(silent_check_answered.load());
   EXPECT_GE(elapsed, std::chrono::milliseconds(250));
   EXPECT_LT(elapsed, std::chrono::seconds(2));
   EXPECT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);

@@ -147,11 +147,11 @@ RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
-  if (!options.write_watermark_name.empty()) {
-    primary_context_->EnableWriteWatermark(
-        RedisKey{external_storage_namespace_, "WriteWatermark"}.ToString(),
-        options.write_watermark_name);
-  }
+}
+
+void RedisStoreClient::EnableWriteWatermark(const std::string &name) {
+  primary_context_->EnableWriteWatermark(
+      RedisKey{external_storage_namespace_, "WriteWatermark"}.ToString(), name);
 }
 
 void RedisStoreClient::AsyncPut(const std::string &table_name,
