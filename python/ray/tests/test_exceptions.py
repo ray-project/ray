@@ -80,6 +80,23 @@ class TestAuthenticationError:
             else:
                 assert "RAY_AUTH_MODE is currently" not in error_str
 
+    def test_auth_mode_mismatch_omits_token_help(self):
+        """AuthModeMismatch is fixed by opting out, so no 'get a token' help."""
+        message = (
+            "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; "
+            "set it on the client too"
+        )
+        with patch.dict(
+            "sys.modules",
+            {
+                "ray._raylet": MagicMock(
+                    AuthenticationMode=FakeAuthMode,
+                    get_authentication_mode=lambda: FakeAuthMode.TOKEN,
+                )
+            },
+        ):
+            assert str(AuthenticationError(message)) == message
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
