@@ -671,6 +671,12 @@ Windows powershell users need additional escaping:
     "specified per node.",
 )
 @click.option(
+    "--logs-dir",
+    default=None,
+    help="manually specify the directory for Ray log files. Can be specified "
+    "per node independently of --temp-dir.",
+)
+@click.option(
     "--system-config",
     default=None,
     hidden=True,
@@ -829,6 +835,7 @@ def start(
     autoscaling_config,
     no_redirect_output,
     temp_dir,
+    logs_dir,
     system_config,
     enable_object_reconstruction,
     metrics_export_port,
@@ -942,6 +949,7 @@ def start(
         object_spilling_directory=object_spilling_directory,
         huge_pages=False,
         temp_dir=temp_dir,
+        logs_dir=logs_dir,
         include_dashboard=include_dashboard,
         dashboard_host=dashboard_host,
         dashboard_port=dashboard_port,
