@@ -2,6 +2,7 @@ import os
 import sys
 import time
 from collections import defaultdict, deque
+from unittest import mock
 
 import pytest
 
@@ -40,8 +41,13 @@ class Comms(ControllerProbe):
         return {"comm0": ProbeResult()}
 
 
+class Broken(ControllerProbe):
+    def poll(self):
+        raise RuntimeError("ncclras not found")
+
+
 class Always(Evaluator):
-    """Returns ``decision``, and records the results it decides on."""
+    """Returns ``decision``, and records the states it decides on."""
 
     def __init__(self, decision):
         self.decision = decision
@@ -49,7 +55,7 @@ class Always(Evaluator):
         self.resets = 0
 
     def evaluate(self, state):
-        self.seen.append(state.probe_results)
+        self.seen.append(state)
         return self.decision
 
     def on_reset(self):
@@ -102,17 +108,17 @@ def _diagnose(reason):
     return Diagnose(reason=reason, checks=[HealthCheck(probe_creator=lambda: [Pid()])])
 
 
-def _fake_temps(manager, results):
-    """Make each poll of ``manager`` get the next of ``results`` as node n1's
-    ``Temp`` result."""
-    results = iter(results)
-    manager._node_monitor_group.poll_status = lambda timeout: (
-        NodeMonitorGroupPollStatus(
-            node_monitor_statuses={
-                "n1": NodeMonitorStatus(probe_results={"Temp": next(results)})
-            }
-        )
-    )
+def _fake_monitors(manager, temps=()):
+    """Replace the manager's ``NodeMonitorGroup`` with a fake whose polls give
+    the next of ``temps`` as node n1's ``Temp`` result."""
+    temps = iter(temps)
+
+    def poll_status(timeout):
+        temp = next(temps, None)
+        statuses = {} if temp is None else {"n1": NodeMonitorStatus({"Temp": temp})}
+        return NodeMonitorGroupPollStatus(node_monitor_statuses=statuses)
+
+    manager._node_monitor_group = mock.Mock(poll_status=poll_status)
 
 
 def _wait_for(fn, timeout_s=15.0):
@@ -181,11 +187,15 @@ def test_every_inflight_evaluator_decides_on_every_evaluation():
     manager = HealthManager(
         [_check(2.0, evaluators=[fast]), _check(10.0, evaluators=[slow])]
     )
-    _fake_temps(manager, [ProbeResult(timestamp_s=1.0), ProbeResult(timestamp_s=2.0)])
+    _fake_monitors(
+        manager, [ProbeResult(timestamp_s=1.0), ProbeResult(timestamp_s=2.0)]
+    )
     manager.evaluate_inflight_checks(timeout=0)
     manager.evaluate_inflight_checks(timeout=0)
     for evaluator in (fast, slow):
-        assert [seen["Temp"]["n1"].timestamp_s for seen in evaluator.seen] == [1.0, 2.0]
+        assert [
+            seen.probe_results["Temp"]["n1"].timestamp_s for seen in evaluator.seen
+        ] == [1.0, 2.0]
 
 
 def test_an_evaluator_decides_on_the_history_it_keeps():
@@ -194,7 +204,7 @@ def test_an_evaluator_decides_on_the_history_it_keeps():
     # The probe samples at 1s, 2s, 3s and 4s; the 1s sample stays the latest for
     # 3 evaluations, and the 4s sample is cool.
     samples = [(1.0, 95.0)] * 3 + [(2.0, 95.0), (3.0, 95.0), (4.0, 60.0)]
-    _fake_temps(
+    _fake_monitors(
         manager,
         [ProbeResult(metrics={"temp_c": t}, timestamp_s=ts) for ts, t in samples],
     )
@@ -218,7 +228,7 @@ def test_an_evaluator_decides_on_the_history_it_keeps():
 def test_reset_drops_the_results_and_resets_the_evaluators():
     evaluator = Always(Noop())
     manager = HealthManager([_check(evaluators=[evaluator])])
-    _fake_temps(manager, [ProbeResult(timestamp_s=1.0)])
+    _fake_monitors(manager, [ProbeResult(timestamp_s=1.0)])
     manager.evaluate_inflight_checks(timeout=0)
     assert manager._latest_results
 
@@ -230,6 +240,7 @@ def test_reset_drops_the_results_and_resets_the_evaluators():
 def test_an_evicted_node_is_not_evicted_again():
     evaluator = Always(Evict(reason="hot", target_nodes=["n1"]))
     manager = HealthManager([_check(evaluators=[evaluator])])
+    _fake_monitors(manager)
     assert manager.evaluate_inflight_checks(timeout=0) == Evict(
         reason="hot", target_nodes=["n1"]
     )
@@ -263,7 +274,7 @@ def test_on_demand_checks_run_apart_from_the_inflight_checks():
     )
 
     assert manager.evaluate_inflight_checks(timeout=0) == Reattempt(reason="hang")
-    assert manager.evaluate_on_demand_checks() == Evict(
+    assert _wait_for(manager.evaluate_on_demand_checks) == Evict(
         reason="diagnosed", target_nodes=["n1"]
     )
 
@@ -281,12 +292,38 @@ def test_node_probes_are_sampled_on_the_nodes_of_each_attempt(ray_start_4_cpus):
         assert _wait_for(latest_temp).metrics == {"temp_c": 60.0}
 
         # A failed monitor stops, with its results, until the next attempt.
-        ray.kill(manager._node_monitor_group._monitors[node_id])
+        ray.kill(manager._node_monitor_group._worker_node_monitors[node_id])
         _wait_for(lambda: latest_temp() is None)
-        assert manager._node_monitor_group.node_ids == []
+        assert manager._node_monitor_group.worker_node_ids == []
 
         manager.reset([node_id])
         assert _wait_for(latest_temp).metrics == {"temp_c": 60.0}
+    finally:
+        manager.shutdown()
+
+
+def test_controller_probes_are_sampled_on_the_controller_node(ray_start_4_cpus):
+    evaluator = Always(Noop())
+    check = _check(0.1, probes=[Comms(), Broken()], evaluators=[evaluator])
+    manager = HealthManager([check])
+    manager.reset([])
+
+    def latest(name):
+        manager.evaluate_inflight_checks(timeout=10)
+        return evaluator.seen[-1].controller_probe_results.get(name)
+
+    try:
+        assert list(_wait_for(lambda: latest("Comms"))) == ["comm0"]
+        assert isinstance(_wait_for(lambda: latest("Broken")).error, RuntimeError)
+
+        # A failed monitor leaves each ControllerProbe a result with its error
+        # until the next attempt.
+        ray.kill(manager._node_monitor_group._controller_node_monitor)
+        comms = _wait_for(
+            lambda: isinstance(latest("Comms"), ProbeResult) and latest("Comms")
+        )
+        assert isinstance(comms.error, ray.exceptions.RayActorError)
+        assert latest("Comms") is comms
     finally:
         manager.shutdown()
 
@@ -297,14 +334,18 @@ def test_on_demand_checks_poll_their_probes_once_on_each_node(ray_start_4_cpus):
     manager.reset([node_id])
     evaluator = Always(Reattempt(reason="diagnosed"))
     check = HealthCheck(
-        probe_creator=lambda: [Pid()], evaluator_creator=lambda: [evaluator]
+        probe_creator=lambda: [Pid(), Comms(), Broken()],
+        evaluator_creator=lambda: [evaluator],
     )
     try:
         manager.start_on_demand_checks([check], timeout=30)
         assert _wait_for(manager.evaluate_on_demand_checks) == Reattempt(
             reason="diagnosed"
         )
-        assert evaluator.seen[0]["Pid"][node_id].metrics["pid"] != os.getpid()
+        (state,) = evaluator.seen
+        assert state.probe_results["Pid"][node_id].metrics["pid"] != os.getpid()
+        assert list(state.controller_probe_results["Comms"]) == ["comm0"]
+        assert isinstance(state.controller_probe_results["Broken"].error, RuntimeError)
     finally:
         manager.shutdown()
 

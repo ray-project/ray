@@ -1,6 +1,6 @@
 import logging
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, List, Optional, Sequence, Set, Union
 
 from ray.train.health._internal.constants import DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
@@ -8,7 +8,7 @@ from ray.train.health._internal.probe_utils import merge_probes
 from ray.train.health.check import HealthCheck, PeriodicHealthCheck
 from ray.train.health.decision import Diagnose, Evict, HealthDecision, Noop, Reattempt
 from ray.train.health.evaluator import Evaluator
-from ray.train.health.probe import NodeIdStr, NodeProbe, ProbeResult
+from ray.train.health.probe import NodeIdStr, ProbeResult
 from ray.train.health.state import HealthState
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ class HealthManager:
     health decisions.
 
     It runs two kinds of checks on the nodes of the attempt that ``reset()``
-    starts:
+    starts, and on the controller's node:
 
     - In-flight checks run throughout training. Their probes are sampled
       continuously, and each ``evaluate_inflight_checks()`` evaluates their
@@ -89,12 +89,14 @@ class HealthManager:
             for check in inflight_checks
             for evaluator in check.evaluator_creator()
         ]
-        self._node_monitor_group = NodeMonitorGroup(
-            [p for p in inflight_probes if isinstance(p.probe, NodeProbe)]
-        )
-        # {probe name: {node ID, world rank or ControllerProbe key: the latest
-        # ProbeResult}}
+        self._node_monitor_group = NodeMonitorGroup(inflight_probes)
+        # {probe name: {node ID: the latest ProbeResult}}, of the NodeProbes.
         self._latest_results: Dict[str, Dict[Any, ProbeResult]] = {}
+        # {probe name: {key: the latest ProbeResult}, or a ProbeResult with the
+        # error of its latest poll}, of the ControllerProbes.
+        self._latest_controller_results: Dict[
+            str, Union[ProbeResult, Dict[Any, ProbeResult]]
+        ] = {}
         # The evaluators of the on-demand checks that are running.
         self._on_demand_evaluators: List[Evaluator] = []
         # The IDs of the evaluators whose failure was logged.
@@ -115,9 +117,11 @@ class HealthManager:
             node_ids: The nodes the attempt's workers run on.
         """
         self._latest_results.clear()
+        self._latest_controller_results.clear()
         self._on_demand_evaluators = []
         self._node_monitor_group.shutdown()
-        self._node_monitor_group.start(node_ids)
+        self._node_monitor_group.start_worker_node_monitors(node_ids)
+        self._node_monitor_group.start_controller_node_monitor()
         for evaluator in self._inflight_evaluators:
             try:
                 evaluator.on_reset()
@@ -146,7 +150,8 @@ class HealthManager:
         """
         self._poll_latest_results(timeout)
         state = HealthState(
-            probe_results={name: dict(r) for name, r in self._latest_results.items()}
+            probe_results={name: dict(r) for name, r in self._latest_results.items()},
+            controller_probe_results=dict(self._latest_controller_results),
         )
         return self._decide(self._inflight_evaluators, state)
 
@@ -163,7 +168,7 @@ class HealthManager:
         """
         probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
         self._node_monitor_group.poll_probes_async(
-            [p for p in probes.values() if isinstance(p, NodeProbe)], timeout_s=timeout
+            list(probes.values()), timeout_s=timeout
         )
         self._on_demand_evaluators = [
             evaluator for check in checks for evaluator in check.evaluator_creator()
@@ -176,15 +181,17 @@ class HealthManager:
         Returns:
             The health decision to carry out, or ``None`` while the checks run.
         """
-        results = self._node_monitor_group.poll_probe_results()
-        if results is None:
+        state = self._node_monitor_group.poll_probe_results()
+        if state is None:
             return None
         evaluators, self._on_demand_evaluators = self._on_demand_evaluators, []
-        return self._decide(evaluators, HealthState(probe_results=results))
+        return self._decide(evaluators, state)
 
     def _poll_latest_results(self, timeout: float) -> None:
-        """Poll the latest probe results. A ``NodeMonitor`` that failed stops,
-        with its results, until the next ``reset()``.
+        """Poll the latest probe results. A ``NodeMonitor`` that failed stops
+        until the next ``reset()``: a worker node's drops its results, and the
+        controller node's leaves each ``ControllerProbe`` a result with its
+        error.
 
         Args:
             timeout: Timeout in seconds to wait for the ``NodeMonitor``\\ s.
@@ -200,9 +207,21 @@ class HealthManager:
                 node_id,
                 node_monitor_status.monitor_error,
             )
-            self._node_monitor_group.shutdown([node_id])
+            self._node_monitor_group.shutdown_worker_node_monitors([node_id])
             for results in self._latest_results.values():
                 results.pop(node_id, None)
+
+        controller_status = status.controller_node_monitor_status
+        if controller_status is None:
+            return
+        self._latest_controller_results.update(controller_status.probe_results)
+        if controller_status.monitor_error is not None:
+            logger.warning(
+                "Stopped monitoring the controller's node until the next "
+                "attempt: %s",
+                controller_status.monitor_error,
+            )
+            self._node_monitor_group.shutdown_controller_node_monitor()
 
     def _decide(
         self, evaluators: List[Evaluator], state: HealthState
