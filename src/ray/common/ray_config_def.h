@@ -469,7 +469,8 @@ RAY_CONFIG(int64_t, redis_reconnect_sentinel_timeout_ms, 2000)
 /// trying again. Without a bound, a connect whose SYN goes nowhere (an address
 /// that no longer exists, such as a deleted Redis pod's IP behind a stale
 /// connection tracking entry) waits out the kernel's SYN retries, about two
-/// minutes, which is longer than the grace period below.
+/// minutes, which is longer than the grace period below. 0 or less means no
+/// timeout.
 RAY_CONFIG(int64_t, redis_reconnect_connect_timeout_ms, 5000)
 
 /// Before gcs_server resumes on a reconnected Redis, check that Redis still

@@ -151,9 +151,12 @@ void RedisAsyncContext::Reset(
   // That write event is how hiredis learns that the connect finished, and it
   // can be consumed before then; see CheckConnect(). Check on a timer too, and
   // bound the connect.
-  connect_deadline_ = std::chrono::steady_clock::now() +
-                      std::chrono::milliseconds(
-                          RayConfig::instance().redis_reconnect_connect_timeout_ms());
+  // A non-positive timeout means no timeout; taken literally it would give up
+  // on every attempt before its connect could finish.
+  const int64_t timeout_ms = RayConfig::instance().redis_reconnect_connect_timeout_ms();
+  connect_deadline_ = timeout_ms > 0 ? std::chrono::steady_clock::now() +
+                                           std::chrono::milliseconds(timeout_ms)
+                                     : std::chrono::steady_clock::time_point::max();
   io_service_.dispatch(
       [this,
        alive = std::weak_ptr<bool>(alive_),

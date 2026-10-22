@@ -110,6 +110,8 @@ class RedisAsyncContextTest : public ::testing::Test {
     boost::system::error_code ec;
     context.socket_.cancel(ec);
   }
+
+  static void ExpectResetConnectCompletesWithoutItsWriteEvent();
 };
 
 TEST_F(RedisAsyncContextTest, TestRedisCommands) {
@@ -878,7 +880,7 @@ TEST_F(RedisAsyncContextTest, TestOutageDeadlineZeroGraceRefundsNothing) {
 // the connect completes. A reconnected context must still complete it and send
 // what was queued behind it, with nothing else submitted to ask for another
 // write event.
-TEST_F(RedisAsyncContextTest, TestResetConnectCompletesWithoutItsWriteEvent) {
+void RedisAsyncContextTest::ExpectResetConnectCompletesWithoutItsWriteEvent() {
   instrumented_io_context local_io_service;
   const int port = TEST_REDIS_SERVER_PORTS.front();
   RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
@@ -907,6 +909,20 @@ TEST_F(RedisAsyncContextTest, TestResetConnectCompletesWithoutItsWriteEvent) {
     local_io_service.restart();
   }
   EXPECT_TRUE(replied.load());
+}
+
+TEST_F(RedisAsyncContextTest, TestResetConnectCompletesWithoutItsWriteEvent) {
+  ExpectResetConnectCompletesWithoutItsWriteEvent();
+}
+
+// A connect timeout of 0 turns the timeout off rather than giving up on every
+// attempt at its first check.
+TEST_F(RedisAsyncContextTest, TestZeroConnectTimeoutMeansNoTimeout) {
+  RayConfig::instance().initialize(R"({"redis_reconnect_connect_timeout_ms": 0})");
+  absl::Cleanup restore = [] {
+    RayConfig::instance().initialize(R"({"redis_reconnect_connect_timeout_ms": 5000})");
+  };
+  ExpectResetConnectCompletesWithoutItsWriteEvent();
 }
 
 namespace {
