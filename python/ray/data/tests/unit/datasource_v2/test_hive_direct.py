@@ -1681,6 +1681,62 @@ def test_empty_table_keeps_declared_schema(tmp_path, file_format, merge_schema):
         )
 
 
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+@pytest.mark.parametrize(
+    "merge_schema,file_count,should_warn",
+    [(False, 16, False), (True, 10_000, False), (True, 10_001, True)],
+)
+def test_full_schema_warning_precedes_schema_reads(
+    tmp_path, monkeypatch, file_format, merge_schema, file_count, should_warn
+):
+    from ray.data import read_api
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+        ParquetDatasourceV2,
+    )
+
+    assert (
+        hive_direct._FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT
+        == read_api._FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT
+        == 10_000
+    )
+    declared = pa.schema([("id", pa.int64())])
+    sample = FileManifest.construct_manifest(
+        paths=[str(tmp_path / f"part-{i}") for i in range(file_count)],
+        sizes=[1] * file_count,
+        chunk_metadatas=[None] * file_count,
+    )
+    sampler = MagicMock(return_value=sample)
+    warning = MagicMock()
+    inferred = []
+
+    def infer_schema(_source, candidate_files, *_):
+        assert warning.call_count == int(should_warn)
+        inferred.append(candidate_files)
+        return declared
+
+    monkeypatch.setattr(hive_direct, "sample_files", sampler)
+    monkeypatch.setattr(hive_direct.logger, "warning", warning)
+    monkeypatch.setattr(ParquetDatasourceV2, "infer_schema", infer_schema)
+    monkeypatch.setattr(
+        hive_direct,
+        "_infer_orc_read_schema",
+        lambda *args: (infer_schema(*args), {"id": "id"}),
+    )
+    source = HiveDirectDatasource(
+        HiveFileTable(str(tmp_path), file_format, declared), merge_schema=merge_schema
+    )
+    assert source.infer_schema(None) == declared
+    assert len(inferred) == 1 and inferred[0] is sample
+    assert sampler.call_count == 1
+    assert sampler.call_args.kwargs["max_files"] == (None if merge_schema else 16)
+    assert source._retained is (sample if merge_schema else None)
+    assert warning.call_count == int(should_warn)
+    if should_warn:
+        message, count, threshold = warning.call_args.args
+        assert (count, threshold) == (file_count, 10_000)
+        assert "before returning the Dataset" in message
+
+
 @pytest.mark.parametrize("mapping", ["name", "position", "legacy"])
 def test_orc_full_schema_normalizes_before_shared_merge(tmp_path, monkeypatch, mapping):
     declared = pa.schema(

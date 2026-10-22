@@ -4274,12 +4274,18 @@ def read_hive(
             infer it from the table location. Reading workers need access to
             the storage and its client dependencies. Only supported in direct
             mode; the HS2 connection is used only for metadata in that mode.
-        merge_schema: For direct Parquet and ORC reads, use all eligible file schemas
-            instead of sampling up to 16 files. Defaults to ``False``. This
+        merge_schema: For direct Parquet and ORC reads, read all eligible file
+            schemas on the driver before returning the Dataset, instead of
+            sampling up to 16 files. Defaults to ``False``. This
             retains the discovered file set without changing the Hive table's
             declared columns or types. Native schema-evolution limits still
             apply. Sampling doesn't prevalidate every file; later file
             errors propagate without restarting through HiveServer2.
+            Full mode can be costly for large or remote datasets. Retained paths
+            and sizes add O(files) data to serialized lineage. The path set isn't
+            an atomic snapshot and doesn't protect against same-path replacements.
+            See https://github.com/ray-project/ray/issues/67040 for native
+            planning optimizations.
         num_cpus: The number of CPUs to reserve for the read task.
         memory: The heap memory in bytes to reserve for the read task.
         resources: Custom resources to reserve for the read task, expressed as

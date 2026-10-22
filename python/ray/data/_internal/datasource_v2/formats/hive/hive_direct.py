@@ -1,5 +1,6 @@
 """Hive metadata planning composed with native Parquet and ORC datasources."""
 
+import logging
 import re
 from contextlib import suppress
 from dataclasses import (
@@ -47,6 +48,11 @@ from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
+
+logger = logging.getLogger(__name__)
+
+# Keep the Hive-local warning aligned with native full-schema planning.
+_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
 
 _FORMATS = {
     (
@@ -893,6 +899,14 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             source.filesystem,
             max_files=None if merge_schema else 16,
         )
+        if merge_schema and len(sample) > _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT:
+            logger.warning(
+                "Full Hive schema inference discovered %d candidate files, exceeding "
+                "the %d-file warning threshold. Reading every file's schema on the "
+                "driver before returning the Dataset may make planning slow.",
+                len(sample),
+                _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
+            )
         if table.file_format == "orc":
             self._schema, sampled_names = _infer_orc_read_schema(
                 table, sample, source.filesystem
