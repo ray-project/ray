@@ -5,6 +5,7 @@ import glob
 import io
 import os
 import pickle
+import re
 import tarfile
 
 import numpy as np
@@ -367,6 +368,50 @@ def test_write_min_rows_per_file(tmp_path, ray_start_2_cpus, min_rows_per_file):
     for filename in os.listdir(tmp_path):
         dataset = wds.WebDataset(os.path.join(tmp_path, filename))
         assert len(list(dataset)) == min_rows_per_file
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "img_001.jpg",
+        "s3://b/run_017.mcap#[0,3200)@ab12cd34",
+        "v1.2_clip",
+        ".hidden",
+        "",
+        "dir/.hidden",
+    ],
+)
+def test_validate_key_rejects_unreadable_key(key):
+    from ray.data._internal.datasource.webdataset_datasink import _validate_key
+
+    with pytest.raises(ValueError, match=re.escape(f"can't recover key {key!r}")):
+        _validate_key(key)
+
+
+def test_write_webdataset_rejects_unreadable_key(ray_start_2_cpus, tmp_path):
+    key = "s3://b/run_017.mcap#[0,3200)@ab12cd34"
+    ds = ray.data.from_items([{"__key__": key, "txt": "hello"}])
+    with pytest.raises(ValueError, match=re.escape(f"can't recover key {key!r}")):
+        ds.write_webdataset(str(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "key", ["clip_001", "shard_07/clip_001", "v1.2/clip_001", None]
+)
+def test_write_webdataset_key_round_trip(ray_start_2_cpus, tmp_path, key):
+    row = {"txt": "hello", "front.mp4": b"\x00"}
+    if key is not None:
+        row["__key__"] = key
+    ray.data.from_items([row]).write_webdataset(str(tmp_path))
+
+    rows = ray.data.read_webdataset(str(tmp_path)).take_all()
+    assert len(rows) == 1
+    assert set(rows[0].keys()) == {"__url__", "__key__", "txt", "front.mp4"}
+    if key is None:
+        # Rows without a key get `uuid.uuid4().hex`.
+        assert re.fullmatch("[0-9a-f]{32}", rows[0]["__key__"])
+    else:
+        assert rows[0]["__key__"] == key
 
 
 @pytest.mark.parametrize(
