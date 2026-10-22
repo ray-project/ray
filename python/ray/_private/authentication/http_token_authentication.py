@@ -1,3 +1,4 @@
+import logging
 import socket
 import threading
 from http.cookies import CookieError, SimpleCookie
@@ -11,18 +12,17 @@ from ray._private.authentication import (
     authentication_utils as auth_utils,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def _carries_ray_token_header(headers) -> bool:
     """Whether a request carries a Ray token in a header. The token cookie doesn't
     count: a browser can keep it from an earlier token-mode cluster at the same
     address. Non-Bearer Authorization schemes, such as basic auth, don't count."""
     authorization = headers.get(authentication_constants.AUTHORIZATION_HEADER_NAME, "")
-    return (
-        authorization.lower().startswith(
-            authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
-        )
-        or authentication_constants.RAY_AUTHORIZATION_HEADER_NAME in headers
-    )
+    return authorization.lower().startswith(
+        authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+    ) or bool(headers.get(authentication_constants.RAY_AUTHORIZATION_HEADER_NAME))
 
 
 def get_token_auth_middleware(
@@ -48,16 +48,21 @@ def get_token_auth_middleware(
     async def token_auth_middleware(request, handler):
         """Middleware to validate bearer tokens when token authentication is enabled.
 
-        In minimal Ray installations (without ray._raylet), this middleware is a no-op
-        and passes all requests through without authentication.
+        With auth disabled, or in minimal Ray installations (without ray._raylet), it
+        authenticates nothing; it only rejects Ray token headers when
+        reject_token_when_auth_disabled is set.
         """
-        # No-op if token auth is not enabled or raylet is not available
         if not auth_utils.is_token_auth_enabled():
+            # A Kubernetes service-account bearer token is not a Ray token.
             if (
                 reject_token_when_auth_disabled
                 and _carries_ray_token_header(request.headers)
                 and not auth_utils.is_k8s_token_auth_enabled()
             ):
+                logger.debug(
+                    f"Rejecting {request.method} {request.path} with a token because "
+                    "auth is disabled"
+                )
                 return aiohttp_module.web.Response(
                     status=401,
                     text=authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE,

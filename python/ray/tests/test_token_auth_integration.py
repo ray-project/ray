@@ -1003,6 +1003,8 @@ _HTTP_CLIENT_CALLS = {
     "JobSubmissionClient('{dashboard_url}').list_jobs()\n",
     "state": "from ray.util.state import list_nodes\n"
     "list_nodes(address='{dashboard_url}')\n",
+    "serve": "from ray.dashboard.modules.serve.sdk import ServeSubmissionClient\n"
+    "ServeSubmissionClient('{dashboard_url}')\n",
 }
 
 
@@ -1012,8 +1014,8 @@ _HTTP_CLIENT_CALLS = {
 )
 def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
     """A dashboard with RAY_AUTH_MODE=disabled rejects requests that carry a Ray
-    token in a header, so the jobs and state clients with a token file work only if
-    they set RAY_AUTH_MODE=disabled too."""
+    token in a header, so the jobs, state and Serve clients with a token file work
+    only if they set RAY_AUTH_MODE=disabled too."""
     import requests
 
     from ray._private.authentication.authentication_constants import (
@@ -1026,20 +1028,23 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
         timeout=30,
     )
     token = "c" * 64
-    for headers, cookies, expect_mismatch in [
-        ({"Authorization": f"Bearer {token}"}, None, True),
-        ({"X-Ray-Authorization": f"Bearer {token}"}, None, True),
-        (None, {AUTHENTICATION_TOKEN_COOKIE_NAME: token}, False),
-        ({"Authorization": "Basic dXNlcjpwYXNz"}, None, False),
+    for path, headers, cookies, expect_mismatch in [
+        ("/api/version", {"Authorization": f"Bearer {token}"}, None, True),
+        ("/api/version", {"Authorization": f"bearer {token}"}, None, True),
+        ("/api/version", {"X-Ray-Authorization": f"Bearer {token}"}, None, True),
+        ("/api/authentication_mode", {"Authorization": f"Bearer {token}"}, None, True),
+        ("/api/version", None, {AUTHENTICATION_TOKEN_COOKIE_NAME: token}, False),
+        ("/api/version", {"Authorization": "Basic dXNlcjpwYXNz"}, None, False),
+        ("/api/version", {"X-Ray-Authorization": ""}, None, False),
     ]:
         response = requests.get(
-            f"{dashboard_url}/api/version", headers=headers, cookies=cookies, timeout=5
+            f"{dashboard_url}{path}", headers=headers, cookies=cookies, timeout=5
         )
         if expect_mismatch:
-            assert response.status_code == 401, (headers, response.text)
+            assert response.status_code == 401, (path, headers, response.text)
             assert _AUTH_MODE_MISMATCH in response.text
         else:
-            assert response.status_code == 200, (headers, cookies, response.text)
+            assert response.status_code == 200, (path, headers, cookies, response.text)
     for client_name, client_call in _HTTP_CLIENT_CALLS.items():
         for client_auth_mode in ["disabled", "token"]:
             result = subprocess.run(
@@ -1063,8 +1068,8 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
                 assert "client ok" in output
             else:
                 assert result.returncode != 0, output
-                assert _AUTH_MODE_MISMATCH in output
-                assert "ray get-auth-token" not in output
+                assert "AuthenticationError" in output, output
+                _assert_auth_mode_mismatch_only(output)
 
 
 def test_kill_raylet_on_auth_disabled_cluster_with_token_file():
