@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import importlib
 import os
 import random
@@ -1524,6 +1525,107 @@ async def test_routing_task_cancelled_while_cancelled_probe_finishes(pow_2_route
     await async_wait_for_condition(
         lambda: r1.num_cleanups_finished == r1.num_cleanups_started
     )
+
+
+@pytest.mark.asyncio
+async def test_failed_probe_exception_retrieved_when_routing_task_cancelled(
+    pow_2_router,
+):
+    """
+    Verify that a `get_queue_len` call that has already raised when the routing
+    task is cancelled doesn't have its exception logged as "never retrieved".
+    """
+    s = pow_2_router
+    # Long enough that only the cancellation can end the wait.
+    s.queue_len_response_deadline_s = 100
+    loop = get_or_create_event_loop()
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(queue_len=0, exception=RuntimeError("probe failed"))
+    r2 = FakeRunningReplica("r2")
+
+    unhandled = []
+    original_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _, context: unhandled.append(context))
+    try:
+        task = loop.create_task(s._probe_queue_lens([r1, r2], 0))
+        await async_wait_for_condition(
+            lambda: r1.num_get_queue_len_calls == 1 and r2.num_get_queue_len_calls == 1
+        )
+        # Let r1's probe raise.
+        await asyncio.sleep(0.01)
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        del task
+        gc.collect()
+        await asyncio.sleep(0)
+    finally:
+        loop.set_exception_handler(original_handler)
+
+    assert [c["message"] for c in unhandled] == []
+
+
+@pytest.mark.asyncio
+async def test_probe_results_kept_when_cancelled_during_probe_cleanup(pow_2_router):
+    """
+    Verify that the results of the probes that finished are acted on even if the
+    routing task is cancelled while it waits for cancelled probes to finish.
+    """
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 0.01
+    # Long enough that only the cancellation can end the wait.
+    s.max_queue_len_response_deadline_s = 100
+    loop = get_or_create_event_loop()
+
+    r1 = FakeRunningReplica("r1")
+    r1.set_queue_len_response(0)
+    r2 = SlowToCancelReplica("r2", cleanup_s=100)
+    s.update_replicas([r1, r2])
+    # Let the probe started by `update_replicas` time out on r2.
+    await async_wait_for_condition(lambda: r2.num_cleanups_started == 1)
+    r1.set_queue_len_response(queue_len=0, exception=ActorDiedError())
+    assert r1.replica_id in s.curr_replicas
+
+    task = loop.create_task(s._probe_queue_lens([r1, r2], 0))
+    # r2's probe timed out and was cancelled, so the task is waiting for it.
+    await async_wait_for_condition(lambda: r2.num_cleanups_started == 2)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    # r1's ActorDiedError was still acted on.
+    assert r1.replica_id not in s.curr_replicas
+
+    r2.finish_cleanup()
+    await async_wait_for_condition(
+        lambda: r2.num_cleanups_finished == r2.num_cleanups_started
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancelled_routing_task_does_not_wait_for_probe_cleanup(pow_2_router):
+    """
+    Verify that a routing task cancelled while its probes are in flight exits
+    without waiting for the cancelled probes to finish.
+    """
+    s = pow_2_router
+    s.queue_len_response_deadline_s = 100
+    s.max_queue_len_response_deadline_s = 100
+    loop = get_or_create_event_loop()
+
+    r1 = SlowToCancelReplica("r1", cleanup_s=100)
+    task = loop.create_task(s._probe_queue_lens([r1], 0))
+    await async_wait_for_condition(lambda: r1.num_get_queue_len_calls == 1)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(task, timeout=5)
+    await async_wait_for_condition(lambda: r1.num_cleanups_started == 1)
+
+    r1.finish_cleanup()
+    await async_wait_for_condition(lambda: r1.num_cleanups_finished == 1)
 
 
 @pytest.mark.asyncio
