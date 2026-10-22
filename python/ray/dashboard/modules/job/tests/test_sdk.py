@@ -1,8 +1,11 @@
+import io
 import os
 import shutil
 import sys
 import tempfile
 import time
+import types
+import zipfile
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
@@ -162,6 +165,45 @@ def test_submit_job_does_not_mutate_runtime_env():
         == "test_job"
     )
     assert runtime_env == original_runtime_env
+
+
+def test_submit_job_with_module_object_in_py_modules(tmp_path):
+    module_dir = tmp_path / "my_module"
+    module_dir.mkdir()
+    (module_dir / "__init__.py").write_text("")
+    my_module = types.ModuleType("my_module")
+    my_module.__path__ = [str(module_dir)]
+
+    class TestClient(JobSubmissionClient):
+        def __init__(self):
+            self._default_metadata = {}
+            self.requests = []
+
+        def _do_request(self, method, endpoint, **kwargs):
+            self.requests.append((method, endpoint, kwargs))
+            if method == "GET":
+                return MagicMock(status_code=404)
+            if method == "PUT":
+                return MagicMock(status_code=200)
+            return MagicMock(
+                status_code=200,
+                json=lambda: {"job_id": "test_job", "submission_id": "test_job"},
+            )
+
+    client = TestClient()
+    runtime_env = {"py_modules": [my_module]}
+    assert (
+        client.submit_job(entrypoint="echo hi", runtime_env=runtime_env) == "test_job"
+    )
+    assert runtime_env == {"py_modules": [my_module]}
+
+    get_request, put_request, submit_request = client.requests
+    assert get_request[:2] == ("GET", put_request[1])
+    with zipfile.ZipFile(io.BytesIO(put_request[2]["data"])) as package:
+        assert "my_module/__init__.py" in package.namelist()
+    assert submit_request[:2] == ("POST", "/api/jobs/")
+    (package_uri,) = submit_request[2]["json_data"]["runtime_env"]["py_modules"]
+    assert package_uri.startswith("gcs://")
 
 
 @pytest.mark.parametrize(

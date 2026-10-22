@@ -73,9 +73,6 @@ from ray.data._internal.execution.lineage_tracker import (
     ParentBlockOutput,
     ReconstructionPlanId,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    OneToOneOperator,
-)
 from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
     LineageReconstructionMixin,
 )
@@ -211,7 +208,7 @@ def _get_schema_from_bundle(
     return None
 
 
-class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
+class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
 
     This operator implements the distributed map operation, supporting both task
@@ -282,7 +279,7 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, data_context, target_max_block_size_override)
+        super().__init__(name, [input_op], data_context, target_max_block_size_override)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
