@@ -805,6 +805,12 @@ Windows powershell users need additional escaping:
     is_flag=True,
     default=False,
     hidden=True,
+    # Kept out of start()'s signature so this internal flag stays off the
+    # public API; read back from ctx.meta.
+    expose_value=False,
+    callback=lambda ctx, _param, value: ctx.meta.update(
+        create_auth_token_if_missing=value
+    ),
     help="Create the auth token if none exists. Used by drivers and test "
     "clusters that start a throwaway cluster on this machine.",
 )
@@ -857,7 +863,6 @@ def start(
     system_reserved_memory,
     cgroup_path,
     proxy_server_url,
-    create_auth_token_if_missing,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -1083,7 +1088,10 @@ def start(
 
         try:
             ensure_token_if_auth_enabled(
-                system_config, create_token_if_missing=create_auth_token_if_missing
+                system_config,
+                create_token_if_missing=click.get_current_context().meta[
+                    "create_auth_token_if_missing"
+                ],
             )
         except AuthenticationError as e:
             # Other auth errors, such as RAY_AUTH_TOKEN_PATH naming a missing file,
