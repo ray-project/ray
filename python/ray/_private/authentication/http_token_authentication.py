@@ -1,3 +1,4 @@
+import os
 import socket
 import threading
 from http.cookies import CookieError, SimpleCookie
@@ -92,6 +93,11 @@ def get_token_auth_wsgi_app(app):
     """
 
     def token_auth_app(environ, start_response):
+        # Metrics may be exposed without a token when explicitly requested.
+        # This wrapper is only used by Ray's metrics WSGI servers.
+        if os.environ.get("RAY_AUTH_METRICS_DISABLED") == "1":
+            return app(environ, start_response)
+
         if not auth_utils.is_token_auth_enabled():
             return app(environ, start_response)
 
