@@ -119,8 +119,9 @@ class _FakeSession:
     awaited, so ``on_send`` runs then and not when ``post`` is called.
     """
 
-    def __init__(self, on_send):
+    def __init__(self, on_send, body=None):
         self.on_send = on_send
+        self.body = body
 
     async def __aenter__(self):
         return self
@@ -133,7 +134,7 @@ class _FakeSession:
 
     async def _send(self, payload):
         await self.on_send(payload)
-        return _FakeResponse({"echo": payload})
+        return _FakeResponse({"echo": payload} if self.body is None else self.body)
 
 
 @pytest.mark.asyncio
@@ -235,6 +236,30 @@ async def test_http_request_udf_cancels_pending_requests_when_a_row_fails():
             pass
 
     assert cancelled == ["slow"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{}, []])
+async def test_http_request_udf_accepts_empty_json_response(body):
+    """An empty JSON body is a successful response, not a failed request."""
+
+    async def on_send(payload):
+        pass
+
+    udf = HttpRequestUDF(
+        data_column="__data",
+        expected_input_keys=["payload"],
+        url="http://test.com/api",
+        qps=None,
+        session_factory=lambda: _FakeSession(on_send, body=body),  # noqa: E731
+    )
+    batch = {"__data": [{"payload": {"text": "hello"}}]}
+
+    results = []
+    async for result in udf(batch):
+        results.extend(result["__data"])
+
+    assert results[0]["http_response"] == body
 
 
 @pytest.mark.asyncio

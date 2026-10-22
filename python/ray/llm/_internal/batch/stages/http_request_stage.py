@@ -134,7 +134,6 @@ class HttpRequestUDF(StatefulStageUDF):
         Returns:
             The JSON body of the response.
         """
-        resp_json = None
         last_exception = None
         last_exception_traceback = None
         for retry_count in range(self.max_retries + 1):
@@ -162,7 +161,8 @@ class HttpRequestUDF(StatefulStageUDF):
                             "The response of the HTTP request must not contain "
                             f"the column {self.IDX_IN_BATCH_COLUMN}."
                         )
-                break
+                # An empty body such as {} or [] is still a successful response.
+                return resp_json
             except (
                 asyncio.TimeoutError,
                 aiohttp.ClientConnectionError,
@@ -173,11 +173,9 @@ class HttpRequestUDF(StatefulStageUDF):
                 wait_time = self.base_retry_wait_time_in_s * (2**retry_count)
                 await asyncio.sleep(wait_time)
                 continue
-        if not resp_json:
-            raise RuntimeError(
-                f"Reached maximum retries of {self.max_retries} for input row {payload}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
-            )
-        return resp_json
+        raise RuntimeError(
+            f"Reached maximum retries of {self.max_retries} for input row {payload}. Previous Exception: {last_exception}. Full Traceback: \n{last_exception_traceback}"
+        )
 
     async def udf(self, batch: List[Dict[str, Any]]) -> AsyncIterator[Dict[str, Any]]:
         """
