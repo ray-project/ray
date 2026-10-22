@@ -322,6 +322,26 @@ void TaskReceiver::SetupActor(bool is_asyncio,
   allow_out_of_order_execution_ = allow_out_of_order_execution;
 }
 
+void TaskReceiver::RunOnActorExecutor(const std::string &concurrency_group,
+                                      std::function<void()> fn) {
+  if (stopping_) {
+    return;
+  }
+  if (is_asyncio_) {
+    fiber_state_manager_
+        ->GetExecutor(concurrency_group, FunctionDescriptorBuilder::Empty())
+        ->EnqueueFiber(std::move(fn));
+    return;
+  }
+  std::shared_ptr<BoundedExecutor> pool =
+      pool_manager_->GetExecutor(concurrency_group, FunctionDescriptorBuilder::Empty());
+  if (pool == nullptr) {
+    fn();
+  } else {
+    pool->Post(std::move(fn));
+  }
+}
+
 void TaskReceiver::Stop() {
   if (stopping_.exchange(true)) {
     return;
