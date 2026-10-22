@@ -115,6 +115,18 @@ def test_public_api_rejects_unsupported_native_options_without_connecting(
         )
 
 
+def test_direct_table_schema_rejected_before_connection():
+    with pytest.raises(ValueError, match="schema is only supported for query reads"):
+        read_hive(
+            "events",
+            schema=pa.schema([("id", pa.int64())]),
+            read_mode="direct",
+            connection_factory=lambda: pytest.fail(
+                "Direct table schema must not connect"
+            ),
+        )
+
+
 def test_direct_query_rejected_before_connection():
     with pytest.raises(ValueError, match="table reads"):
         read_hive(

@@ -71,6 +71,9 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
+)
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
 )
@@ -156,7 +159,6 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
-_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
 INT32_MAX = 2**31 - 1
 
 

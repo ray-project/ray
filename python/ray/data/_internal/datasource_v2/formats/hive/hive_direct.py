@@ -21,6 +21,7 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 )
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import HiveReadSpec
@@ -50,9 +51,6 @@ from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
-
-# Keep the Hive-local warning aligned with native full-schema planning.
-_FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT = 10_000
 
 _FORMATS = {
     (
