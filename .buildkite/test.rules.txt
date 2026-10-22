@@ -303,7 +303,7 @@ python/ray/experimental/sandbox/
 
 python/
 # Run library tests on core Python code change.
-@ core_python llm ml tune train data serve
+@ core_python ml tune train data serve
 # Python changes might impact cross language stack in Java.
 # Java also depends on Python CLI to manage processes.
 @ core_python dashboard linux_wheels macos_wheels java
