@@ -1,5 +1,4 @@
-Actor State: Definitions & Transition Diagram
-============================================
+# Actor State: Definitions & Transition Diagram
 
 An actor can be in one of the following states:
 
@@ -14,20 +13,20 @@ An actor can be in one of the following states:
 
 - **DEAD**: The actor is already dead and won't be restarted.
 
-::
-
-                                                                         3
-   0                            1                       2          ------------->
- ---->DEPENDENCIES_UNREADY-------->PENDING_CREATION-------->ALIVE                RESTARTING
-               |                            |                  |   <-------------      |
-               |                            |                  |         4             |
-               |                            |                  |                       |
-             8 |                         7  |                6 |                       | 5
-               |                            |                  |                       |
-               |                            |                  |                       |
-               |                            |                  |                       |
-               |                            v                  |                       |
-                -------------------------->DEAD<---------------------------------------
+```
+                                                                        3
+  0                            1                       2          ------------->
+---->DEPENDENCIES_UNREADY-------->PENDING_CREATION-------->ALIVE                RESTARTING
+              |                            |                  |   <-------------      |
+              |                            |                  |         4             |
+              |                            |                  |                       |
+            8 |                         7  |                6 |                       | 5
+              |                            |                  |                       |
+              |                            |                  |                       |
+              |                            |                  |                       |
+              |                            v                  |                       |
+               -------------------------->DEAD<---------------------------------------
+```
 
 - **0**: When GCS receives a `RegisterActor` request from core worker, GCS will persist the actor in database with state `DEPENDENCIES_UNREADY`.
 
