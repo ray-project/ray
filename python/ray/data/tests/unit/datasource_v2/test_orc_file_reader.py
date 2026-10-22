@@ -4,6 +4,7 @@ import math
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import GeneratorType
 from unittest.mock import Mock
 
 import pyarrow as pa
@@ -1540,6 +1541,7 @@ def test_orc_reader_early_stop_releases_estimation_input(tmp_path, monkeypatch, 
         schema=table.schema, target_block_size=65536, limit=limit
     ).create_reader()
     batches = reader.read(_manifest(path))
+    assert isinstance(batches, GeneratorType)
     try:
         first = next(batches)
         assert first.num_rows == (16 if limit is None else 1)
