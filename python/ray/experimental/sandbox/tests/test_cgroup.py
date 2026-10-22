@@ -134,6 +134,16 @@ def test_fractional_cpu_and_memory_are_enforced_together(manager):
     assert not sandbox.path.exists()
 
 
+def test_memory_limit_is_written_in_whole_pages(manager):
+    """The kernel rounds memory.max down to whole pages, so a limit in SI
+    units, such as 1GB, is written already rounded and verifies."""
+    page = os.sysconf("SC_PAGE_SIZE")
+    sandbox = manager.allocate("ray-sandbox-000000000001", 0, 10**9, [])
+    assert (sandbox.path / "memory.max").read_text() == str(10**9 // page * page)
+    (sandbox.path / "cgroup.procs").write_text("321\n")
+    sandbox.verify(321)
+
+
 def test_cpu_limits_choose_a_spread_cpu_subset(manager):
     # At least two CPUs each, least-used first.
     assert manager.choose_cpus(1, []) == [0, 1]

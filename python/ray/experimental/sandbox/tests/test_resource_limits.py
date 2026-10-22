@@ -127,6 +127,16 @@ def test_memory_limit_contains_oom_and_preserves_worker(network, request):
         runtime.delete(next_sid)
 
 
+def test_memory_limit_in_si_units_starts():
+    """The kernel rounds memory.max down to whole pages, and 1GB isn't a
+    whole number of pages."""
+    runtime, sid = _create("none", memory="1GB")
+    try:
+        assert runtime.exec(sid, ["true"]).exit_code == 0
+    finally:
+        runtime.delete(sid)
+
+
 def test_fractional_cpu_quota_is_exact():
     runtime, sid = _create("none", cpu=0.25, memory="512Mi")
     try:

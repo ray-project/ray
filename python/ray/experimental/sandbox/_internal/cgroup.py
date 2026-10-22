@@ -243,9 +243,12 @@ class SandboxCgroupManager:
         if cpu > 0:
             limits["cpu.max"] = f"{int(cpu * _PERIOD_US)} {_PERIOD_US}"
         if memory > 0:
+            # The kernel keeps memory.max in whole pages, rounded down, and
+            # verify reads back what was written.
+            page = os.sysconf("SC_PAGE_SIZE")
             limits.update(
                 {
-                    "memory.max": str(memory),
+                    "memory.max": str(memory // page * page),
                     "memory.swap.max": "0",
                     "memory.oom.group": "1",
                 }
