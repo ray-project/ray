@@ -124,7 +124,7 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 # Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
 # requests and conda itself, and the transaction fails with RemoveError.
 # conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
-# 3.10 keeps Miniforge's pip 24.3.1.
+# 3.10 installs it from PyPI after the conda step.
 # TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
 CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
 if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
@@ -132,6 +132,11 @@ if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
 fi
 /home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
 /home/ray/anaconda3/bin/conda clean -a
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+fi
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock

@@ -110,7 +110,7 @@ rm /tmp/miniforge.sh
 # Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
 # requests and conda itself, and the transaction fails with RemoveError.
 # conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
-# 3.10 keeps Miniforge's pip 24.3.1.
+# 3.10 installs it from PyPI after the conda step.
 # TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
 CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
 if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
@@ -124,6 +124,11 @@ wget -qO- https://astral.sh/uv/0.13.4/install.sh | sudo -E env UV_UNMANAGED_INST
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+fi
 
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`
