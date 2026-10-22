@@ -1,3 +1,4 @@
+import logging
 import os
 from urllib.parse import urlparse
 from urllib.request import url2pathname
@@ -6,7 +7,10 @@ from ray._common.runtime_env_uri import Protocol
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
 RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
+RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS"
 _DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
+
+logger = logging.getLogger(__name__)
 
 
 class ProtocolsProvider:
@@ -208,7 +212,7 @@ class ProtocolsProvider:
         return open_file, None
 
     @classmethod
-    def _http_headers(cls) -> dict:
+    def _http_headers(cls, uri: str) -> dict:
         headers = {
             "User-Agent": os.environ.get(
                 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR, _DEFAULT_HTTP_USER_AGENT
@@ -218,7 +222,29 @@ class ProtocolsProvider:
 
         bearer_token = os.environ.get(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR)
         if bearer_token:
-            headers["Authorization"] = f"Bearer {bearer_token}"
+            # The URI comes from the job submitter, so only send the cluster's
+            # token over TLS to hosts the cluster admin has explicitly trusted.
+            allowed_hosts = {
+                entry.strip().lower()
+                for entry in os.environ.get(
+                    RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS_ENV_VAR, ""
+                ).split(",")
+                if entry.strip()
+            }
+            parsed_uri = urlparse(uri)
+            if parsed_uri.scheme != "https":
+                logger.warning(
+                    f"Not sending {RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR} over "
+                    f"unencrypted {parsed_uri.scheme}:// to {parsed_uri.hostname!r}."
+                )
+            elif parsed_uri.hostname not in allowed_hosts:
+                logger.warning(
+                    f"Not sending {RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR} to "
+                    f"{parsed_uri.hostname!r} because it isn't listed in "
+                    f"{RAY_RUNTIME_ENV_BEARER_TOKEN_HOSTS_ENV_VAR}."
+                )
+            else:
+                headers["Authorization"] = f"Bearer {bearer_token}"
 
         return headers
 
@@ -236,7 +262,7 @@ class ProtocolsProvider:
 
         def open_file(uri, mode, *, transport_params=None):
             params = {
-                "headers": cls._http_headers(),
+                "headers": cls._http_headers(uri),
                 "timeout": 60,
             }
             if transport_params:
