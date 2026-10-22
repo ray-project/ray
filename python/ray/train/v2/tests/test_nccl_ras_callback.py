@@ -2176,7 +2176,7 @@ def test_detector_metrics_skipped_before_controller_start(monkeypatch):
     for _ in reports:
         callback.after_worker_group_poll_status(MagicMock())
     assert callback._metrics is None
-    assert callback.comm_deadlock_count == {_COMM_A: 1}
+    assert {c: s.polls for c, s in callback.comm_stalls.items()} == {_COMM_A: 1}
 
 
 def make_train_worker(world_rank: int, node_ip: str, pid: int) -> MagicMock:

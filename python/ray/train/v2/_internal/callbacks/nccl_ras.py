@@ -24,7 +24,7 @@ import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum from Enum
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
@@ -1151,6 +1151,12 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             ),
         }
 
+    async def before_controller_shutdown(self):
+        # Clear the gauges so a finished run doesn't keep showing its last state.
+        if self._metrics is not None:
+            for metric in self._metrics.values():
+                metric.reset()
+
     def after_worker_group_start(self, worker_group: WorkerGroup):
         # A new worker group is a new set of communicators, so detection
         # starts afresh.
@@ -1161,6 +1167,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         self._poll_index = 0
         self._run_id = worker_group._train_run_context.run_id
         self._attempt_id = worker_group.get_worker_group_context().run_attempt_id
+
+        # So the panel doesn't keep showing the previous group's state.
+        self.record_detector_metrics()
         if self._is_ras_degraded:
             return
         self._ras_poller = RASPoller(worker_group, self._poll_interval_s)
@@ -1170,11 +1179,6 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if self._ras_poller is not None:
             self._ras_poller.stop()
             self._ras_poller = None
-
-        # Clear the gauges so a finished run doesn't keep showing its last state.
-        if self._metrics is not None:
-            for metric in self._metrics.values():
-                metric.reset()
 
         # An attempt that ends with a hung communicator ends with STOPPED,
         # unless the detector was disabled, which already ended its events.
@@ -1240,6 +1244,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self.record_detector_metrics()
 
             if outcome.confirmed_comms:
+                # TODO: Add a Grafana annotation with
+                #  `ray.train.annotate(..., severity="error")` once
+                #  annotations are merged.
                 diagnostics, ras_text_report = self.capture_diagnostics()
                 # Exported before the action, so the event exists even if it raises.
                 if any(diagnostics.values()):
@@ -1385,7 +1392,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 ),
             )
             # TODO: Add a Grafana annotation with
-            #  `ray.train.annotate(..., severity="warning")` once
+            #  `ray.train.annotate(..., severity="info")` once
             #  annotations are merged.
 
         if outcome.new_suspicion or outcome.periodic_reminder:
@@ -1648,12 +1655,14 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.DEGRADED)
             return
 
-        max_streak = max(self.comm_deadlock_count.values(), default=0)
+        max_streak = max(
+            (stall.polls for stall in self.comm_stalls.values()), default=0
+        )
         self._metrics[GRAFANA_STALL_DURATION_S].record(
             max_streak * self._poll_interval_s
         )
 
-        if max_streak >= self._confirm_poll_counts:
+        if any(stall.confirmed for stall in self.comm_stalls.values()):
             self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.CONFIRMED)
         elif max_streak >= max(self._suspicion_polls, 1):
             self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.SUSPECTED)
