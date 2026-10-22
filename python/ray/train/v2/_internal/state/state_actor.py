@@ -55,8 +55,12 @@ class TrainStateActor:
         self._run_attempts: Dict[str, OrderedDict[str, TrainRunAttempt]] = defaultdict(
             OrderedDict
         )
-        # {ExportEvent.SourceType: export logger} for the enabled source types.
-        self._export_loggers = self._init_export_loggers()
+        (
+            self._export_logger,
+            self._is_train_run_export_api_enabled,
+            self._is_train_run_attempt_export_api_enabled,
+        ) = self._init_export_logger()
+        self._nccl_hang_export_logger = self._init_nccl_hang_export_logger()
 
         # TODO: consider row level locking if loop takes too long.
         self._runs_lock = threading.RLock()
@@ -173,80 +177,105 @@ class TrainStateActor:
     # ============================
 
     def is_export_api_enabled(self) -> bool:
-        return bool(self._export_loggers)
+        return (
+            self._export_logger is not None or self._nccl_hang_export_logger is not None
+        )
 
-    def _init_export_loggers(self) -> Dict[int, ExportEventLoggerAdapter]:
-        """Build an export logger for each enabled Train export source type.
-
-        The train run and attempt events share the ``TRAIN_STATE`` log file,
-        while the NCCL hang events are written to their own file so consumers of
-        the train state events never see them.
+    def _init_export_logger(self) -> tuple[Optional[logging.Logger], bool, bool]:
+        """Initialize the export logger and check if the export API is enabled.
 
         Returns:
-            ``{ExportEvent.SourceType: logger}`` for the enabled source types;
-            empty when none is enabled or the loggers could not be created.
+            A tuple containing:
+                - The export logger (or None if export API is not enabled).
+                - A boolean indicating if the export API is enabled for train runs.
+                - A boolean indicating if the export API is enabled for train run attempts.
         """
         # Proto schemas should be imported within the scope of TrainStateActor to
         # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
 
-        log_types = {
-            ExportEvent.SourceType.EXPORT_TRAIN_RUN: EventLogType.TRAIN_STATE,
-            ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT: EventLogType.TRAIN_STATE,
-            ExportEvent.SourceType.EXPORT_TRAIN_NCCL_HANG: EventLogType.TRAIN_NCCL_HANG,
-        }
-        enabled = {
-            source_type: log_type
-            for source_type, log_type in log_types.items()
-            if check_export_api_enabled(source_type)
-        }
-        if not enabled:
-            return {}
+        is_train_run_export_api_enabled = check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_TRAIN_RUN
+        )
+        is_train_run_attempt_export_api_enabled = check_export_api_enabled(
+            ExportEvent.SourceType.EXPORT_TRAIN_RUN_ATTEMPT
+        )
+        export_api_enabled = (
+            is_train_run_export_api_enabled or is_train_run_attempt_export_api_enabled
+        )
+
+        if not export_api_enabled:
+            return None, False, False
 
         log_directory = os.path.join(
             ray._private.worker._global_node.get_session_dir_path(), "logs"
         )
-        export_loggers = {}
-        for source_type, log_type in enabled.items():
-            try:
-                export_loggers[source_type] = get_export_event_logger(
-                    log_type, log_directory
-                )
-            except Exception:
-                logger.exception(
-                    "Unable to initialize the %s export event logger, so no %s "
-                    "export events will be written.",
-                    log_type.log_type_name,
-                    ExportEvent.SourceType.Name(source_type),
-                )
-        return export_loggers
+        export_logger = None
+        try:
+            export_logger = get_export_event_logger(
+                EventLogType.TRAIN_STATE,
+                log_directory,
+            )
+        except Exception:
+            logger.exception(
+                "Unable to initialize the export event logger, so no Train export "
+                "events will be written."
+            )
 
-    def _get_export_logger(
-        self, source_type_name: str
-    ) -> Optional[ExportEventLoggerAdapter]:
-        from ray.core.generated.export_event_pb2 import ExportEvent
+        if export_logger is None:
+            return None, False, False
 
-        return self._export_loggers.get(ExportEvent.SourceType.Value(source_type_name))
+        return (
+            export_logger,
+            is_train_run_export_api_enabled,
+            is_train_run_attempt_export_api_enabled,
+        )
 
     def _maybe_export_train_run(self, run: TrainRun) -> None:
-        export_logger = self._get_export_logger("EXPORT_TRAIN_RUN")
-        if export_logger is None:
+        if not self._is_train_run_export_api_enabled:
             return
 
         from ray.train.v2._internal.state.export import train_run_to_proto
 
         run_proto = train_run_to_proto(run)
-        export_logger.send_event(run_proto)
+        self._export_logger.send_event(run_proto)
 
     def _maybe_export_train_run_attempt(self, run_attempt: TrainRunAttempt) -> None:
-        export_logger = self._get_export_logger("EXPORT_TRAIN_RUN_ATTEMPT")
-        if export_logger is None:
+        if not self._is_train_run_attempt_export_api_enabled:
             return
 
         from ray.train.v2._internal.state.export import train_run_attempt_to_proto
 
         run_attempt_proto = train_run_attempt_to_proto(run_attempt)
-        export_logger.send_event(run_attempt_proto)
+        self._export_logger.send_event(run_attempt_proto)
+
+    def _init_nccl_hang_export_logger(self) -> Optional[ExportEventLoggerAdapter]:
+        """Initialize the NCCL hang detector's export logger.
+
+        The NCCL hang events are written to their own file, not the
+        ``TRAIN_STATE`` one, so consumers of the train run and attempt events
+        never see them.
+
+        Returns:
+            The export logger, or None if its export API is not enabled or the
+            logger could not be created.
+        """
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        if not check_export_api_enabled(ExportEvent.SourceType.EXPORT_TRAIN_NCCL_HANG):
+            return None
+
+        log_directory = os.path.join(
+            ray._private.worker._global_node.get_session_dir_path(), "logs"
+        )
+        try:
+            return get_export_event_logger(EventLogType.TRAIN_NCCL_HANG, log_directory)
+        except Exception:
+            logger.exception(
+                "Unable to initialize the NCCL hang export event logger, so no "
+                "NCCL hang export events will be written."
+            )
+            return None
 
     def export_train_nccl_hang_event(self, event: TrainNcclHangEvent) -> None:
         """Export a NCCL hang detector event, if its export is enabled.
@@ -257,15 +286,14 @@ class TrainStateActor:
         Args:
             event: The event to export.
         """
-        export_logger = self._get_export_logger("EXPORT_TRAIN_NCCL_HANG")
-        if export_logger is None:
+        if self._nccl_hang_export_logger is None:
             return
 
         from ray.train.v2._internal.state.export import (
             train_nccl_hang_event_to_proto,
         )
 
-        export_logger.send_event(train_nccl_hang_event_to_proto(event))
+        self._nccl_hang_export_logger.send_event(train_nccl_hang_event_to_proto(event))
 
 
 TRAIN_STATE_ACTOR_NAME = "train_v2_state_actor"

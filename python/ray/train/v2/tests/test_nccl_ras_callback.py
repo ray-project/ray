@@ -37,7 +37,6 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
     TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
-from ray.train.v2._internal.state import state_manager
 from ray.train.v2._internal.state.schema import (
     NcclCommunicatorState,
     NcclHangDetectorStatus,
@@ -2425,8 +2424,8 @@ def test_failing_export_never_affects_detection(monkeypatch, action):
         raise RuntimeError("export bug")
 
     monkeypatch.setattr(nccl_ras.NcclHangEventExporter, "export", _REAL_EXPORT)
-    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: True)
-    monkeypatch.setattr(state_manager, "get_state_actor", boom)
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(nccl_ras, "get_state_actor", boom)
     callback, calls = make_nccl_ras_callback(
         monkeypatch, action, confirm_count=2, reports=[_FROZEN] * 3
     )

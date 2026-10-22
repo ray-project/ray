@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray.train.v2._internal.callbacks.nccl_ras import NcclHangEventExporter
 from ray.train.v2._internal.state.export import (
     _MAX_RAS_REPORT_BYTES,
     _truncate_ras_report,
@@ -22,7 +23,6 @@ from ray.train.v2._internal.state.state_actor import (
     get_or_create_state_actor,
     get_state_actor,
 )
-from ray.train.v2._internal.state.state_manager import NcclHangEventExporter
 from ray.train.v2.tests.util import (
     create_mock_train_run,
     create_mock_train_run_attempt,
@@ -839,14 +839,14 @@ def test_export_nccl_hang_event_helper(enable_export_api_write):
 
 
 def test_export_nccl_hang_event_helper_never_raises(monkeypatch):
-    from ray.train.v2._internal.state import state_manager
+    from ray.train.v2._internal.callbacks import nccl_ras
 
-    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: True)
 
     def boom():
         raise RuntimeError("GCS unavailable")
 
-    monkeypatch.setattr(state_manager, "get_state_actor", boom)
+    monkeypatch.setattr(nccl_ras, "get_state_actor", boom)
     NcclHangEventExporter().export(_create_nccl_hang_event())
 
 
@@ -865,20 +865,20 @@ class _FakeStateActor:
 
 def test_export_nccl_hang_event_helper_without_ray(monkeypatch):
     """The exporter never starts Ray to look up the actor."""
-    from ray.train.v2._internal.state import state_manager
+    from ray.train.v2._internal.callbacks import nccl_ras
 
     def get_state_actor():
         raise AssertionError("Looked up the actor without Ray running.")
 
-    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: False)
-    monkeypatch.setattr(state_manager, "get_state_actor", get_state_actor)
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: False)
+    monkeypatch.setattr(nccl_ras, "get_state_actor", get_state_actor)
     NcclHangEventExporter().export(_create_nccl_hang_event())
 
 
 def test_export_nccl_hang_event_helper_looks_up_the_actor_once(monkeypatch):
     """The actor is looked up on the first event only, and every event is sent
     without waiting on it."""
-    from ray.train.v2._internal.state import state_manager
+    from ray.train.v2._internal.callbacks import nccl_ras
 
     actor = _FakeStateActor()
     lookups = []
@@ -890,9 +890,9 @@ def test_export_nccl_hang_event_helper_looks_up_the_actor_once(monkeypatch):
     def no_blocking_get(*args, **kwargs):
         raise AssertionError("The exporter must never wait on the actor.")
 
-    monkeypatch.setattr(state_manager, "get_state_actor", get_state_actor)
-    monkeypatch.setattr(state_manager.ray, "is_initialized", lambda: True)
-    monkeypatch.setattr(state_manager.ray, "get", no_blocking_get)
+    monkeypatch.setattr(nccl_ras, "get_state_actor", get_state_actor)
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(nccl_ras.ray, "get", no_blocking_get)
 
     exporter = NcclHangEventExporter()
     for _ in range(3):
