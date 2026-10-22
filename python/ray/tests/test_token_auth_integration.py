@@ -998,6 +998,57 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
     assert _AUTH_MODE_MISMATCH in exc_info.value.details()
 
 
+@pytest.mark.parametrize(
+    "reject_token, k8s_token_auth, headers, expected_status",
+    [
+        (True, False, {"Authorization": "Bearer t"}, 401),
+        (True, False, {"X-Ray-Authorization": "Bearer t"}, 401),
+        (True, False, {"Authorization": "Basic dXNlcjpwYXNz"}, 200),
+        (True, False, {}, 200),
+        (True, True, {"Authorization": "Bearer t"}, 200),
+        (False, False, {"Authorization": "Bearer t"}, 200),
+    ],
+)
+def test_token_auth_middleware_with_auth_disabled(
+    reject_token: bool,
+    k8s_token_auth: bool,
+    headers: dict,
+    expected_status: int,
+):
+    """With auth disabled, only a middleware built with
+    reject_token_when_auth_disabled rejects a Ray token header, and not under
+    Kubernetes token auth."""
+    import asyncio
+    from unittest import mock
+
+    import aiohttp
+    from aiohttp.test_utils import make_mocked_request
+
+    from ray._private.authentication import authentication_utils
+    from ray._private.authentication.http_token_authentication import (
+        get_token_auth_middleware,
+    )
+
+    middleware = get_token_auth_middleware(
+        aiohttp, reject_token_when_auth_disabled=reject_token
+    )
+
+    async def handler(request):
+        return aiohttp.web.Response(status=200)
+
+    request = make_mocked_request("GET", "/api/version", headers=headers)
+    with mock.patch.object(
+        authentication_utils, "is_token_auth_enabled", return_value=False
+    ), mock.patch.object(
+        authentication_utils, "is_k8s_token_auth_enabled", return_value=k8s_token_auth
+    ):
+        response = asyncio.run(middleware(request, handler))
+
+    assert response.status == expected_status
+    if expected_status == 401:
+        assert _AUTH_MODE_MISMATCH in response.text
+
+
 _HTTP_CLIENT_CALLS = {
     "jobs": "from ray.job_submission import JobSubmissionClient\n"
     "JobSubmissionClient('{dashboard_url}').list_jobs()\n",

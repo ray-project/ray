@@ -4,7 +4,7 @@ import threading
 from http.cookies import CookieError, SimpleCookie
 from socketserver import ThreadingMixIn
 from types import ModuleType
-from typing import Dict, List, Optional
+from typing import Dict, List, Mapping, Optional
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from ray._private.authentication import (
@@ -15,7 +15,7 @@ from ray._private.authentication import (
 logger = logging.getLogger(__name__)
 
 
-def _carries_ray_token_header(headers) -> bool:
+def _carries_ray_token_header(headers: Mapping[str, str]) -> bool:
     """Whether a request carries a Ray token in a header. The token cookie doesn't
     count: a browser can keep it from an earlier token-mode cluster at the same
     address. Non-Bearer Authorization schemes, such as basic auth, don't count."""
@@ -53,10 +53,10 @@ def get_token_auth_middleware(
         reject_token_when_auth_disabled is set.
         """
         if not auth_utils.is_token_auth_enabled():
-            # A Kubernetes service-account bearer token is not a Ray token.
             if (
                 reject_token_when_auth_disabled
                 and _carries_ray_token_header(request.headers)
+                # A Kubernetes service-account bearer token is not a Ray token.
                 and not auth_utils.is_k8s_token_auth_enabled()
             ):
                 logger.debug(
