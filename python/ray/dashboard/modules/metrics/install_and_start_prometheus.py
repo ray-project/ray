@@ -43,6 +43,8 @@ def get_prometheus_authorization_config() -> str:
         ValueError: Token auth is on, RAY_AUTH_TOKEN isn't set, and the token
             file is missing, unreadable, empty or holds more than one line.
     """
+    if os.environ.get("RAY_AUTH_METRICS_DISABLED") == "1":
+        return ""
     if not is_token_auth_enabled():
         return ""
     env_token = os.environ.get("RAY_AUTH_TOKEN", "").strip()
