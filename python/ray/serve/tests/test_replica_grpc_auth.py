@@ -75,7 +75,7 @@ def serve_instance_with_token_auth():
             yield token
         finally:
             # Gate on `is_initialized`: `serve.shutdown()` connects lazily and
-            # would start a fresh cluster if `ray.init` above was what failed.
+            # could join an unrelated cluster if `ray.init` above was what failed.
             if ray.is_initialized():
                 serve.shutdown()
                 ray.shutdown()

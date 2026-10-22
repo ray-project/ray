@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
+from ray._private.ray_constants import RAY_ADDRESS_ENVIRONMENT_VARIABLE
+from ray._private.utils import read_ray_address
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
@@ -144,9 +146,9 @@ def _check_cached_client_alive() -> tuple:
     """
 
     if not _cached_client_from_current_session():
-        # Either nothing cached, or a handle left behind by a previous driver
-        # session. In the latter case GCS is alive (we are connected now), so it
-        # is safe for callers to reconnect. Drop any stale handle.
+        # Nothing cached, Ray not initialized, or a handle from a previous driver
+        # session: no sign of a dead GCS, so callers may look the controller up
+        # again (_connect() never starts Ray). Drop any stale handle.
         _disconnect()
         return None, False
 
@@ -262,6 +264,18 @@ def _set_internal_replica_context(
     )
 
 
+def _ray_cluster_discoverable() -> bool:
+    """Whether an address-less ``ray.init()`` would connect to a cluster, not start one.
+
+    Same lookup as ``ray.init()``: ``RAY_ADDRESS`` (``local`` starts a new
+    instance), else the address file written by the last ``ray start``.
+    """
+    address = os.environ.get(RAY_ADDRESS_ENVIRONMENT_VARIABLE)
+    if address:
+        return address != "local"
+    return read_ray_address() is not None
+
+
 def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
     """Connect to an existing Serve application on this Ray cluster.
 
@@ -286,6 +300,14 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
     # Initialize ray if needed.
     ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
+        # Only join a running cluster: one started here has no Serve controller.
+        if not _ray_cluster_discoverable():
+            if raise_if_no_controller_running:
+                raise RayServeException(
+                    "There is no Serve instance running: Ray is not initialized "
+                    "and there is no running Ray cluster to connect to."
+                )
+            return
         ray.init(namespace=SERVE_NAMESPACE)
 
     # Try to get serve controller if it exists
