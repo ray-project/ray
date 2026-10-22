@@ -27,9 +27,9 @@ def plan_top_n_op(
     def transform(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         # Bound each block to at most ``limit`` candidates before the final merge.
         for block in blocks:
-            yield BlockAccessor.for_block(block).top_n(
-                logical_op.sort_key, logical_op.limit
-            )
+            accessor = BlockAccessor.for_block(block)
+            logical_op.sort_key.validate_schema(accessor.schema())
+            yield accessor.top_n(logical_op.sort_key, logical_op.limit)
 
     local_map = MapOperator.create(
         MapTransformer([BlockMapTransformFn(transform, disable_block_shaping=True)]),
@@ -38,8 +38,6 @@ def plan_top_n_op(
         name=f"LocalTopN(limit={logical_op.limit})",
         compute_strategy=TaskPoolStrategy(),
         ref_bundler=RebundleQueue(EstimateSize(None)),
-        supports_fusion=False,
-        on_start=logical_op.sort_key.validate_schema,
     )
 
     return TopNMergeOperator(
