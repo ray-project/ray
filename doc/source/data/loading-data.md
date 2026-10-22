@@ -883,9 +883,9 @@ The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` int
 
 Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
 
-Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Use `NOSASL` only with a HiveServer2 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple Authentication and Security Layer (SASL) mechanism. Use a non-sensitive placeholder password because that server mode doesn't check it. `PLAIN` doesn't encrypt the password without TLS. For TLS connections, set `verify_cert=True` or provide a trusted `ca_cert`. For `GSSAPI`, install `impyla[kerberos]`, set `kerberos_service_name="hive"`, and configure authentication credentials on the driver and read worker.
+Configure authentication, transport, TLS certificate verification, and client retries in the factory. Choose `auth_mechanism` explicitly when calling `impala.dbapi.connect()`. Use `NOSASL` only with a HiveServer2 configured for `NOSASL`. Hive server mode `NONE` uses `PLAIN`, a Simple Authentication and Security Layer (SASL) mechanism. Use a non-sensitive placeholder password because that server mode doesn't check it. `PLAIN` doesn't encrypt the password without TLS. For TLS, set `use_ssl=True`, `verify_cert=True`, and `ca_cert` to a trusted certificate authority (CA) file. The host name must match the server certificate.
 
-The real-server integration test verifies the `PLAIN` mechanism with HiveServer2 in server mode `NONE`. It doesn't cover `NOSASL` or `GSSAPI`.
+Real-server validation with Hive 4.2.0 and `impyla==0.23.0` covers `GSSAPI`, verified TLS, combined `GSSAPI` and TLS, and `NOSASL`. The TLS profile uses `PLAIN` with HiveServer2 in server mode `NONE`.
 
 Read credentials inside the factory. Captured values, including passwords stored in a closure or `functools.partial`, can be serialized with the factory. The optional `user` argument to `read_hive` sets the HS2 session or proxy user through `connection.cursor(user=user)`. Configure the authentication user separately in the factory.
 
@@ -943,6 +943,43 @@ The reader attempts to cancel the HiveServer2 operation and close its cursor and
 :::
 
 Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+
+(read-hive-auth-tls)=
+#### Configure authentication and TLS
+
+Install `impyla[kerberos]` wherever the factory runs. Impyla 0.23.0 uses the native `kerberos` package with `thrift==0.16.0` and `thrift_sasl==0.4.3`. Installing an unrelated Python GSSAPI package doesn't replace these dependencies. The operating system also needs its Kerberos runtime and configuration.
+
+Prepare a valid ticket cache for each driver and read worker. Set `KRB5_CONFIG` to the Kerberos configuration and `KRB5CCNAME` to that process's cache, such as `FILE:/run/hive/reader.ccache`. Obtain tickets through your deployment's login or `kinit` procedure before reading. A keytab file alone doesn't establish that the factory process has a usable ticket. Ray doesn't obtain, distribute, or renew these credentials.
+
+Set `kerberos_service_name="hive"` for the Hive service. This is a service name, not a complete `hive/host@REALM` principal. Use the service host name that matches your Kerberos configuration and TLS certificate. Keep authentication identity separate from the HS2 session or proxy `user` argument.
+
+The following factory configures binary GSSAPI with verified TLS. Set `HIVE_HOST` and `HIVE_CA_CERT` in each execution environment. Make the CA file readable there. The server's TLS private key stays on the server.
+
+```python
+def create_secure_connection():
+    import os
+
+    from impala.dbapi import connect
+
+    return connect(
+        host=os.environ["HIVE_HOST"],
+        port=10000,
+        auth_mechanism="GSSAPI",
+        kerberos_service_name="hive",
+        use_http_transport=False,
+        use_ssl=True,
+        verify_cert=True,
+        ca_cert=os.environ["HIVE_CA_CERT"],
+        timeout=30,
+        retries=1,
+    )
+```
+
+Pass this factory through `connection_factory`. Keep credentials out of its serialized closure. A driver connection doesn't prove that a worker has the same dependencies, tickets, host resolution, or CA files. Check those prerequisites on the node where each connection opens.
+
+The socket timeout bounds client socket operations. It doesn't guarantee server-side query cancellation. Impyla's `retries=1` requests one RPC attempt. It isn't equivalent to setting Impyla `retries=0`, which can prevent the attempt. Ray's separate no-replay contract still applies. Ray doesn't switch authentication modes or disable certificate verification after a read fails.
+
+The security tests use the SASL `auth` protection level. GSSAPI authentication alone doesn't establish encrypted data transport. Configure TLS separately when you need that protection. HTTP transport, automatic ticket renewal, Lightweight Directory Access Protocol (LDAP) deployment validation, and mutual TLS aren't covered by these profiles. Underlying exception causes can contain details from the client or service. Don't assume that Ray redacts SQL or credentials from arbitrary factories or exception messages.
 
 (reading_sql)=
 (reading-sql-databases)=
