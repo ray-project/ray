@@ -1,0 +1,4 @@
+# Layered on the ray-torch image for the data image_embedding_from_uris and
+# image_embedding_from_jsonl benchmarks.
+albumentations
+pybase64
