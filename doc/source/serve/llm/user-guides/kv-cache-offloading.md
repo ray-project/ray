@@ -134,6 +134,15 @@ The KV Cache Offload / Reload row expanded. Every panel breaks down by `LLMServe
 | Overall Prefix Hit Rate | GPU and external hits over `ray_vllm_prefix_cache_queries_total` | Combined prefix cache hit rate across GPU and external tiers. |
 | Lookup Delay P90 | `ray_vllm_kv_offload_lookup_sync_delay_seconds` | P90 latency added by cache lookup before prefill. |
 
+When vLLM's tiered offloading puts a disk tier behind the CPU tier, the **KV Cache Disk Tier** row, also collapsed by default, shows the traffic between the two. vLLM labels each tier `<index>:<type>`, for example `0:primary` for the CPU tier and `1:fs` for a file system tier. The panels exclude `0:primary`.
+
+| Panel | Metric | What to look for |
+| --- | --- | --- |
+| Store / Reload Throughput | `ray_vllm_kv_offload_tiering_write_bytes_total`, `ray_vllm_kv_offload_tiering_read_bytes_total` | CPU-to-disk and disk-to-CPU data rates. Writes without reads suggest the disk tier holds prefixes that no request asks for again. |
+| Store / Reload Bandwidth | Bytes over `..._write_time_total` and `..._read_time_total` | Effective disk bandwidth. Compare it with what the device sustains to tell a slow disk from low volume. |
+| Prefix Hit Rate | `ray_vllm_kv_offload_tiering_chunk_hits_total` over `..._chunk_queries_total` | Percentage of the chunks looked up on disk that were found there. |
+| Lookup Delay P90 | `ray_vllm_kv_offload_tiering_lookup_sync_delay_seconds` | P90 latency of the disk lookup. |
+
 (lmcache-kv-offloading)=
 ## Deploy with LMCache
 
