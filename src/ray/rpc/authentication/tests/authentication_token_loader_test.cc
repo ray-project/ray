@@ -322,9 +322,9 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   EXPECT_TRUE(token_opt->Equals(expected));
 }
 
-TEST_F(AuthenticationTokenLoaderTest, TestLeadingBlankLinesSkipped) {
+TEST_F(AuthenticationTokenLoaderTest, TestFirstNonBlankLine) {
   ensure_ray_dir_exists();
-  write_token_file(default_token_path_, "\n  \n\ttoken-after-blank-lines\n");
+  write_token_file(default_token_path_, "\n  \n token-after-blank-lines \nsecond-line\n");
 
   auto &loader = AuthenticationTokenLoader::instance();
   auto token_opt = loader.GetToken();

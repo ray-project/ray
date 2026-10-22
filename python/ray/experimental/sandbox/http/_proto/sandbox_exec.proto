@@ -6,6 +6,8 @@
 
 syntax = "proto3";
 
+import "ray/experimental/sandbox/http/_proto/sandbox_control.proto";
+
 package ray_sandbox_facade.modal.task_command_router;
 
 enum TaskExecStdioFileDescriptor {
@@ -91,7 +93,12 @@ message TaskExecWaitResponse {
   }
 }
 
-message TaskSetNetworkAccessRequest {}
+message TaskSetNetworkAccessRequest {
+  string task_id = 1;
+  // Replaces the task's network access policy: an allowlist, or OPEN for an
+  // allow-all one.
+  modal.client.NetworkAccess network_access = 2;
+}
 
 message TaskSetNetworkAccessResponse {}
 
