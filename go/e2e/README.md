@@ -33,7 +33,7 @@ e2e/
 │       ├── BUILD.bazel
 │       └── main.go
 ├── test_go_call_python.py      # Python-side file for driver_call_python
-└── test_python_call_go_simple.py  # Python -> Go call example (referenced by docs)
+└── test_python_call_go.py  # Python -> Go call example (referenced by docs)
 ```
 
 ## E2E cases
@@ -215,7 +215,7 @@ Four rows: three dependency-bound drivers submitted as Ray jobs, plus the standa
 | `driver_call_python` | driver mode | `test_go_call_python.py`, staged into the job directory by the runner |
 | `driver_call_cpp` | driver mode | the C++ worker `bazel-bin/go/e2e/driver_call_cpp/cpp_xlang_worker.so`, staged in, and a C++ worker running to register the matching functions |
 | `runtime_env_driver` | driver mode | the newer runtime (RuntimeEnv API + autoscaler status report) in the packaged `ray/go` |
-| `test_python_call_go_simple` | direct | Python -> Go lane, run on the head node (`--ray-address`), not through `ray job submit` |
+| `test_python_call_go` | direct | Python -> Go lane, run on the head node (`--ray-address`), not through `ray job submit` |
 
 ### The direct lane must run on a Ray node
 
@@ -223,12 +223,12 @@ The `direct` row runs its Python script with the local interpreter. That is corr
 
 ```bash
 # On the head node, the local cluster needs no address at all:
-kubectl -n <ns> cp go/e2e/test_python_call_go_simple.py <head-pod>:/tmp/lane/
+kubectl -n <ns> cp go/e2e/test_python_call_go.py <head-pod>:/tmp/lane/
 kubectl -n <ns> cp bazel-bin/go/e2e/userfuncs/plugin/userfuncs.so <head-pod>:/tmp/lane/userfuncs.so
-kubectl -n <ns> exec <head-pod> -- sh -c 'cd /tmp/lane && python3 test_python_call_go_simple.py'
+kubectl -n <ns> exec <head-pod> -- sh -c 'cd /tmp/lane && python3 test_python_call_go.py'
 ```
 
-The node that runs the lane also needs the tree's Python binding: `ray.cross_language.go_function` and the `Language.GO` / `GoFunctionDescriptor` support it uses live in `python/ray/cross_language.py` and `python/ray/_raylet.so`, so a ray installed from an older tree fails at import. Rebuild `bazel build //:python/ray/_raylet.so` and sync the resulting `_raylet.so` (plus `cross_language.py`) into that ray.
+The node that runs the lane also needs the tree's Python bindings `ray.cross_language.go_function` and `ray.cross_language.go_actor_class`, plus the `Language.GO` / `GoFunctionDescriptor` descriptor support they use; these live in `python/ray/cross_language.py` and `python/ray/_raylet.so`, so a ray installed from an older tree fails at import. Rebuild `bazel build //:python/ray/_raylet.so` and sync the resulting `_raylet.so` (plus `cross_language.py`) into that ray.
 
 Phase 2 is followed by a load-tolerance re-run with the deadline scale raised, to show the polling drivers tolerate a loaded cluster. The six drivers that honour `RAY_GO_E2E_TIMEOUT_SCALE` are `actor_integration_driver`, `driver_app`, `driver_call_cpp`, `driver_gcs_client`, `driver_placement_group` and `runtime_context_driver`; five of them are Phase 1 rows and `driver_call_cpp` is a Phase 2 row, so the scaled re-run covers both phases. A row that passes only when scaled is the evidence the scale knob works; a row that fails even scaled is a real defect or an over-strict assertion, not a flake.
 
@@ -256,7 +256,7 @@ Each row is compared against the criterion its own source defines, and the runne
 These drivers are manual targets: build them with `bazel build //go/e2e/<target>`
 and run them against a real cluster via `ray job submit`. They are not wired
 into CI. The two pytest scripts (`test_go_call_python.py` and
-`test_python_call_go_simple.py`) are manual real-machine lanes for
+`test_python_call_go.py`) are manual real-machine lanes for
 cross-language verification.
 
 On a shared or loaded cluster the poll-loop deadlines can flake even though the behavior under test is correct. Export `RAY_GO_E2E_TIMEOUT_SCALE` to scale every poll deadline in the six polling drivers (listed in [Run matrix and pass criterion](#run-matrix-and-pass-criterion)) — e.g. `RAY_GO_E2E_TIMEOUT_SCALE=3 ray job submit ...`, or `--timeout-scale 3` through the runner — instead of editing the per-driver constants; values below 1.0 are ignored so an assertion deadline is never shortened. `global_state_accessor_driver` keeps its own validated override `GSA_ACTOR_STATE_TIMEOUT` (seconds) for the actor-state probe.

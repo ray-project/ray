@@ -33,9 +33,15 @@ import (
 
 // Put puts an object into the object store.
 //
+// The owner argument is rejected when non-nil: owned puts (the experimental
+// `_owner` argument to ray.put) were removed upstream in Ray 2.56
+// (ray-project/ray#63520), and this Go bridge does not forward an owner
+// address to the C++ core worker. A nil owner keeps the object owned by the
+// current worker.
+//
 // Parameters:
 //   - value: the value to put
-//   - owner: the owner of the object (optional, can be nil)
+//   - owner: must be nil; a non-nil owner is rejected
 //
 // Returns:
 //   - *ObjectRef[T]: a reference to the put object
@@ -56,6 +62,15 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 		return nil, fmt.Errorf("object store not available")
 	}
 
+	// Reject owned puts loudly instead of routing them: the C++ core worker no
+	// longer accepts an owner address (upstream removed the experimental `_owner`
+	// support for ray.put in Ray 2.56, ray-project/ray#63520), so an owner cannot
+	// be honored. A nil owner (the only supported value) leaves the object owned
+	// by the current worker via the plain PutRaw path.
+	if owner != nil {
+		return nil, errOwnedPutRemoved
+	}
+
 	// Serialize the value using the global serializer
 	ser := object.GetSerializer()
 	nativeObj, err := ser.Serialize(value)
@@ -67,9 +82,9 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 	// so the Go-side buffer is no longer needed once PutRaw returns.
 	defer func() { _ = nativeObj.Close() }()
 
-	// Put the serialized object into object store. PutRaw derives the ObjectID
-	// in the core worker (CreateOwnedAndIncrementLocalRef) and registers
-	// ownership, so no Go-side ObjectID generation is required. The single local
+	// Put the serialized object into object store. The core worker derives the
+	// ObjectID (CreateOwnedAndIncrementLocalRef) and the current worker owns the
+	// object, so no Go-side ObjectID generation is required. The single local
 	// reference is registered by the C++ side and removed by the ObjectRef
 	// finalizer below.
 	putObjectID, err := objectStore.PutRaw(nativeObj)
@@ -107,24 +122,23 @@ func Put[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
 	return ref, nil
 }
 
-// PutWithOwner puts an object into the object store with a specific owner.
+// PutWithOwner puts an object into the object store; a non-nil owner is
+// rejected.
 //
-// Note: owned-object registration is not yet wired through the CGO object
-// store bridge, so a non-nil owner is rejected rather than silently dropped.
-// The object behaves as a regular (self-owned) object.
+// The owner argument is rejected when non-nil: owned puts (the experimental
+// `_owner` argument to ray.put) were removed upstream in Ray 2.56
+// (ray-project/ray#63520). A nil owner delegates to Put, which keeps the object
+// owned by the current worker.
 //
 // Parameters:
 //   - value: the value to put
-//   - owner: the owner of the object (must be nil for now)
+//   - owner: must be nil; a non-nil owner is rejected
 //
 // Returns:
 //   - *ObjectRef[T]: a reference to the put object
 //   - error: any error encountered during the put operation
 func PutWithOwner[T any](value T, owner *ActorHandleImpl[T]) (*ObjectRef[T], error) {
-	if owner != nil {
-		return nil, fmt.Errorf("PutWithOwner: owned-object registration is not supported yet; owner must be nil")
-	}
-	return Put(value, nil)
+	return Put(value, owner)
 }
 
 // Get fetches the object from the object store.
@@ -562,3 +576,11 @@ func createObjectRefWithFinalizer[T any](returnID ids.ObjectID, objectType strin
 
 	return ref, nil
 }
+
+// errOwnedPutRemoved is returned by Put and PutWithOwner when a non-nil owner
+// is passed. Owned puts (the experimental `_owner` argument to ray.put) were
+// removed upstream in Ray 2.56 (ray-project/ray#63520), and this bridge does
+// not forward an owner address to the C++ core worker, so the owner cannot be
+// honored. The message is deliberately descriptive so callers learn the
+// capability was removed rather than simply unimplemented.
+var errOwnedPutRemoved = fmt.Errorf("owned puts (the _owner argument to ray.put) were removed in Ray 2.56 (ray-project/ray#63520); put without an owner instead")

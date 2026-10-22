@@ -24,6 +24,7 @@ import (
 	"github.com/ray-project/ray/go/pkg/runtime/function"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // This file guards the task-return double-reference contract: task return
@@ -54,6 +55,13 @@ type recordingObjectStore struct {
 	mu      sync.Mutex
 	added   map[string]int
 	removed map[string]int
+
+	// putRawCalls and putRawOwnerCalls count the Put paths taken so a test can
+	// pin which one api.Put routed to. lastOwner records the actor ID forwarded
+	// to PutRawWithOwner so the exact owner can be asserted.
+	putRawCalls      int
+	putRawOwnerCalls int
+	lastOwner        *ids.ActorID
 
 	deleteCalls []deleteCall
 	// deleteErr, when non-nil, is returned by Delete to simulate a store failure.
@@ -100,10 +108,23 @@ func (s *recordingObjectStore) lastDeleteCall() deleteCall {
 }
 
 func (s *recordingObjectStore) PutRaw(obj *object.NativeRayObject) (*ids.ObjectID, error) {
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.putRawCalls++
+	oid := ids.NewObjectID()
+	return &oid, nil
 }
 func (s *recordingObjectStore) PutRawWithOwner(obj *object.NativeRayObject, ownerActorID *ids.ActorID) (*ids.ObjectID, error) {
-	return nil, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.putRawOwnerCalls++
+	// Copy the actor ID so the recorded value survives the caller's pointer.
+	if ownerActorID != nil {
+		id := *ownerActorID
+		s.lastOwner = &id
+	}
+	oid := ids.NewObjectID()
+	return &oid, nil
 }
 func (s *recordingObjectStore) PutRawWithID(obj *object.NativeRayObject, objectID *ids.ObjectID) error {
 	return nil
@@ -277,3 +298,155 @@ func TestTaskReturnRefSingleRemove(t *testing.T) {
 		t.Fatalf("Release() removed %d local reference(s); expected exactly 1", got)
 	}
 }
+
+// TestPutForwardsOwnerActorID verifies that api.Put rejects a non-nil owner
+// with the owned-put removal error (the experimental `_owner` argument to
+// ray.put was removed upstream in Ray 2.56, ray-project/ray#63520, and this
+// bridge does not forward an owner address to the C++ core worker), and that a
+// nil owner falls back to the plain PutRaw path (the current worker owns the
+// object).
+func TestPutForwardsOwnerActorID(t *testing.T) {
+	store, _ := newRecordingHandle()
+	defer clearHandle()
+
+	// Put serializes via the global serializer, which is normally registered by
+	// the runtime. Install a minimal serializer for this test and restore the
+	// nil default afterwards so sibling tests are unaffected.
+	object.SetSerializer(&putTestSerializer{})
+	defer object.SetSerializer(nil)
+
+	ownerID, err := ids.ActorIDFromHex("0123456789abcdef0123456789abcdef")
+	if err != nil {
+		t.Fatalf("ActorIDFromHex failed: %v", err)
+	}
+	owner := NewActorHandleImpl[int](ownerID)
+
+	// Owner present: must be rejected with the removal error, and the store
+	// must not see any put (reject before serializing or storing).
+	if _, err := Put(42, owner); err == nil {
+		t.Fatal("Put with owner: expected an error, got nil")
+	} else if err.Error() != errOwnedPutRemoved.Error() {
+		t.Fatalf("Put with owner: got error %q, want %q", err, errOwnedPutRemoved)
+	}
+	if store.putRawCalls != 0 || store.putRawOwnerCalls != 0 {
+		t.Fatalf("Put with owner: putRawCalls=%d putRawOwnerCalls=%d; want 0/0 (rejected before the store)",
+			store.putRawCalls, store.putRawOwnerCalls)
+	}
+
+	// Nil owner: must route through the plain PutRaw path.
+	if _, err := Put(43, nil); err != nil {
+		t.Fatalf("Put without owner failed: %v", err)
+	}
+	if store.putRawCalls != 1 || store.putRawOwnerCalls != 0 {
+		t.Fatalf("Put without owner: putRawCalls=%d putRawOwnerCalls=%d; want 1/0",
+			store.putRawCalls, store.putRawOwnerCalls)
+	}
+}
+
+// TestPutTypedNilOwnerBehavesLikeNoOwner verifies that a nil *ActorHandleImpl
+// passed as the owner does not panic. At the package level a typed nil is
+// indistinguishable from "no owner" (a nil concrete pointer), so Put routes it
+// through the plain PutRaw path exactly like a nil owner; the owner rejection
+// that closes the typed-nil panic path lives in the interface entry point
+// Ray.PutWithOwner, covered by TestRayPutWithOwnerRejectsOwner.
+func TestPutTypedNilOwnerBehavesLikeNoOwner(t *testing.T) {
+	store, _ := newRecordingHandle()
+	defer clearHandle()
+
+	object.SetSerializer(&putTestSerializer{})
+	defer object.SetSerializer(nil)
+
+	var owner *ActorHandleImpl[int]
+	if _, err := Put(44, owner); err != nil {
+		t.Fatalf("Put with a typed-nil owner failed: %v", err)
+	}
+	if store.putRawCalls != 1 || store.putRawOwnerCalls != 0 {
+		t.Fatalf("Put with typed-nil owner: putRawCalls=%d putRawOwnerCalls=%d; want 1/0",
+			store.putRawCalls, store.putRawOwnerCalls)
+	}
+}
+
+// TestRayPutWithOwnerRejectsOwner pins the public Ray.PutWithOwner entry point:
+// a non-nil owner is rejected with the removal error, a non-nil owner holding a
+// nil *ActorHandleImpl (a typed nil stored in the ActorHandle interface) is
+// also rejected instead of panicking, and a nil owner routes to the plain
+// PutRaw path.
+func TestRayPutWithOwnerRejectsOwner(t *testing.T) {
+	store, _ := newRecordingHandle()
+	defer clearHandle()
+
+	object.SetSerializer(&putTestSerializer{})
+	defer object.SetSerializer(nil)
+
+	ownerID, err := ids.ActorIDFromHex("fedcba9876543210fedcba9876543210")
+	if err != nil {
+		t.Fatalf("ActorIDFromHex failed: %v", err)
+	}
+	owner := NewActorHandleImpl[int](ownerID)
+
+	ray := &Ray{}
+	if _, err := ray.PutWithOwner(7, owner); err == nil {
+		t.Fatal("Ray.PutWithOwner with owner: expected an error, got nil")
+	} else if err.Error() != errOwnedPutRemoved.Error() {
+		t.Fatalf("Ray.PutWithOwner with owner: got error %q, want %q", err, errOwnedPutRemoved)
+	}
+	if store.putRawCalls != 0 || store.putRawOwnerCalls != 0 {
+		t.Fatalf("Ray.PutWithOwner with owner: putRawCalls=%d putRawOwnerCalls=%d; want 0/0 (rejected before the store)",
+			store.putRawCalls, store.putRawOwnerCalls)
+	}
+
+	// Typed-nil in the ActorHandle interface: the old code panicked here
+	// (NewActorHandleImpl(nil ID) is fine, but the type assertion on a nil
+	// *ActorHandleImpl must not panic); the rejection path must return the same
+	// removal error.
+	var typedNil *ActorHandleImpl[interface{}]
+	var typedNilOwner ActorHandle = typedNil
+	if _, err := ray.PutWithOwner(9, typedNilOwner); err == nil {
+		t.Fatal("Ray.PutWithOwner with typed-nil owner: expected an error, got nil")
+	} else if err.Error() != errOwnedPutRemoved.Error() {
+		t.Fatalf("Ray.PutWithOwner with typed-nil owner: got error %q, want %q", err, errOwnedPutRemoved)
+	}
+	if store.putRawCalls != 0 || store.putRawOwnerCalls != 0 {
+		t.Fatalf("Ray.PutWithOwner with typed-nil owner: putRawCalls=%d putRawOwnerCalls=%d; want 0/0 (rejected before the store)",
+			store.putRawCalls, store.putRawOwnerCalls)
+	}
+
+	// Nil owner: must route through the plain PutRaw path.
+	if _, err := ray.PutWithOwner(8, nil); err != nil {
+		t.Fatalf("Ray.PutWithOwner without owner failed: %v", err)
+	}
+	if store.putRawCalls != 1 || store.putRawOwnerCalls != 0 {
+		t.Fatalf("Ray.PutWithOwner without owner: putRawCalls=%d putRawOwnerCalls=%d; want 1/0",
+			store.putRawCalls, store.putRawOwnerCalls)
+	}
+}
+
+// putTestSerializer is a minimal object.Serializer for tests that drive api.Put
+// without a running runtime. It encodes the value as its own msgpack bytes so
+// Put can build a NativeRayObject without touching the real serializer package.
+type putTestSerializer struct{}
+
+func (s *putTestSerializer) Serialize(obj interface{}) (*object.NativeRayObject, error) {
+	// Encode with vmihailenco/msgpack so the payload is a valid RAW object; this
+	// test only checks routing, so a trivial int encoding is fine.
+	data, err := msgpack.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	return &object.NativeRayObject{Data: data, Metadata: []byte("RAW")}, nil
+}
+func (s *putTestSerializer) Deserialize(nativeObj *object.NativeRayObject, objectID *ids.ObjectID, objectType string) (interface{}, error) {
+	return nil, nil
+}
+func (s *putTestSerializer) DeserializeTo(nativeObj *object.NativeRayObject, target interface{}) error {
+	return nil
+}
+func (s *putTestSerializer) AddContainedObjectID(objectID ids.ObjectID)    {}
+func (s *putTestSerializer) GetAndClearContainedObjectIDs() []ids.ObjectID { return nil }
+func (s *putTestSerializer) SetOuterObjectID(objectID ids.ObjectID)        {}
+func (s *putTestSerializer) GetOuterObjectID() ids.ObjectID                { return ids.NilObjectID() }
+func (s *putTestSerializer) ResetOuterObjectID()                           {}
+func (s *putTestSerializer) EstimateBufferSize(obj interface{}) int        { return 0 }
+func (s *putTestSerializer) GetBuffer(size int) []byte                     { return nil }
+func (s *putTestSerializer) PutBuffer(buf []byte)                          {}
+func (s *putTestSerializer) IsCrossLanguageType(obj interface{}) bool      { return false }

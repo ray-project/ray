@@ -101,7 +101,7 @@ load_driver_table() {
     "job|2|driver_call_python|src:test_go_call_python.py|"
     "job|2|driver_call_cpp|bin:cpp_xlang_worker.so|"
     "job|2|runtime_env_driver||"
-    "direct|2|test_python_call_go_simple|src:test_python_call_go_simple.py|--ray-address=$CLUSTER_ADDRESS"
+    "direct|2|test_python_call_go|src:test_python_call_go.py|--ray-address=$CLUSTER_ADDRESS"
   )
 }
 
@@ -301,7 +301,7 @@ stage_job_dir() {   # $1=driver  $2=comma-separated extras (may be empty)
   # Go driver to stage. The plugin is staged for every row, because that lane's
   # code_search_path is the relative "./userfuncs.so" and the Go worker its task
   # lands on opens the plugin from the job directory.
-  if [[ "$d" != "test_python_call_go_simple" ]]; then
+  if [[ "$d" != "test_python_call_go" ]]; then
     [[ -f "$bin" ]] || die "driver binary missing at $bin — did the build step run?"
     cp "$bin" "$job/$d"
   fi
@@ -338,7 +338,7 @@ plan_driver() {     # $1=exec mode  $2=driver  $3=args  $4=extras
   log="$RESULTS/$(log_stem "$d" "$args").log"
   printf 'DRY-RUN  %s %s%s\n' "$mode" "$d" "${args:+ $args}"
   printf '    mkdir -p %s\n' "$job"
-  if [[ "$d" != "test_python_call_go_simple" ]]; then
+  if [[ "$d" != "test_python_call_go" ]]; then
     printf '    cp %s %s/%s\n' "$ROOT/bazel-bin/go/e2e/$d/${d}_/$d" "$job" "$d"
   fi
   printf '    cp %s %s/userfuncs.so\n' "$PLUGIN" "$job"

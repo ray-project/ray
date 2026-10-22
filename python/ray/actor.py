@@ -1381,6 +1381,20 @@ class _ActorClassMethodMetadata(object):
         return self
 
 
+def _get_actor_class_name(actor_creation_function_descriptor) -> str:
+    """Return the actor class name from a creation function descriptor.
+
+    Python/Java/C++/Go descriptors all expose ``class_name``. Go's
+    ``GoFunctionDescriptor.class_name`` is non-empty only when
+    ``method_name`` is non-empty (i.e. for actor methods), in which case it
+    equals ``function_name`` — the actor type passed by ``go_actor_class`` —
+    and empty otherwise.
+    """
+    if hasattr(actor_creation_function_descriptor, "class_name"):
+        return actor_creation_function_descriptor.class_name
+    return actor_creation_function_descriptor.function_name
+
+
 class _ActorClassMetadata:
     """Metadata for an actor class.
 
@@ -1485,7 +1499,7 @@ class _ActorClassMetadata:
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = actor_creation_function_descriptor
         self.method_meta = method_meta
-        self.class_name = actor_creation_function_descriptor.class_name
+        self.class_name = _get_actor_class_name(actor_creation_function_descriptor)
         self.is_cross_language = language != Language.PYTHON
         self.class_id = class_id
         self.max_restarts = max_restarts
@@ -2145,7 +2159,7 @@ class ActorClass(Generic[T]):
             assert cg_name in concurrency_groups_dict
 
             module_name = meta.actor_creation_function_descriptor.module_name
-            class_name = meta.actor_creation_function_descriptor.class_name
+            class_name = _get_actor_class_name(meta.actor_creation_function_descriptor)
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name)
             )
@@ -2427,7 +2441,7 @@ class ActorHandle(Generic[T]):
                 actor_creation_function_descriptor, PythonFunctionDescriptor
             )
             module_name = actor_creation_function_descriptor.module_name
-            class_name = actor_creation_function_descriptor.class_name
+            class_name = _get_actor_class_name(actor_creation_function_descriptor)
             for method_name in self._ray_method_signatures.keys():
                 function_descriptor = PythonFunctionDescriptor(
                     module_name, method_name, class_name
@@ -2680,7 +2694,7 @@ class ActorHandle(Generic[T]):
     def __repr__(self):
         return (
             "Actor("
-            f"{self._ray_actor_creation_function_descriptor.class_name}, "
+            f"{_get_actor_class_name(self._ray_actor_creation_function_descriptor)}, "
             f"{self._actor_id.hex()})"
         )
 

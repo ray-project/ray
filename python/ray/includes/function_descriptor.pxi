@@ -460,6 +460,20 @@ cdef class GoFunctionDescriptor(FunctionDescriptor):
         return <str>self.typed_descriptor.FunctionName()
 
     @property
+    def class_name(self):
+        """Get the actor class name of the current function descriptor.
+
+        For Go, the class name is the function name for actor methods and
+        empty otherwise, because ``ClassName()`` returns ``""`` when
+        ``method_name`` is empty.
+
+        Returns:
+            The actor type name (equal to the function name) for actor
+                methods, or an empty string for a plain function.
+        """
+        return <str>self.typed_descriptor.ClassName()
+
+    @property
     def method_name(self):
         """Get the actor method name of the current function descriptor.
 
@@ -476,3 +490,11 @@ cdef class GoFunctionDescriptor(FunctionDescriptor):
                  self.method_name])
         return ".".join(
             [self.module_name, self.package_path, self.function_name])
+
+    def is_actor_method(self):
+        """Whether this function descriptor is an actor method.
+
+        Returns:
+            True if it's an actor method, False if it's a normal function.
+        """
+        return not self.typed_descriptor.MethodName().empty()

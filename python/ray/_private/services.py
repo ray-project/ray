@@ -100,6 +100,7 @@ RAYGO_EXECUTABLE = _resolve_raygo_executable()
 # of surfacing as a silent runtime failure.
 _GO_SWITCHES_REQUIRING_RAYGO = (
     ("RAY_ENABLE_GO_DASHBOARD_HEAD", ray_constants.ENABLE_GO_DASHBOARD_HEAD),
+    ("RAY_ENABLE_GO_DASHBOARD_AGENT", ray_constants.ENABLE_GO_DASHBOARD_AGENT),
     ("RAY_ENABLE_GO_SETUP_WORKER", ray_constants.ENABLE_GO_SETUP_WORKER),
     ("RAY_ENABLE_GO_LOG_MONITOR", ray_constants.ENABLE_GO_LOG_MONITOR),
     ("RAY_ENABLE_GO_AUTOSCALER_MONITOR", ray_constants.ENABLE_GO_AUTOSCALER_MONITOR),
@@ -125,9 +126,11 @@ def check_raygo_available_for_go_switches() -> None:
     raise RuntimeError(
         f"GO switches {', '.join(enabled)} are enabled but the raygo executable "
         f"'{RAYGO_EXECUTABLE}' is missing. GO processes (dashboard head, setup "
-        f"worker, log monitor, autoscaler monitor, runtime env agent) cannot "
-        f"start without it. Install the ray_go wheel (e.g. via the image build "
-        f"argument INCLUDE_GO=1) or unset the GO switches above."
+        f"worker, log monitor, autoscaler monitor, runtime env agent, dashboard "
+        f"agent) cannot start without it. The Go artifacts ship in the ray wheel "
+        f"under ray/go/ (built by //go:gen_ray_go_pkg): build and sync "
+        f"ray/go/{{cmd/raygo,lib/go_runtime.so}} (e.g. bazel run "
+        f"//go:gen_ray_go_pkg) or unset the GO switches above."
     )
 
 

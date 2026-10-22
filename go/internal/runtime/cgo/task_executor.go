@@ -43,6 +43,7 @@ import (
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/runtime/contract"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
 
 var taskExecutorLogger = log.WithName("task_executor")
@@ -245,10 +246,53 @@ func convertGoResultToC(results []function.SerializedObject, err error, numRetur
 		return convertGoResultToC(errorResults, nil, numReturns)
 	}
 
+	// Pad a short result array up to numReturns. A cross-language caller
+	// (Python/C++) always expects exactly numReturns results for a task or actor
+	// method (DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1), even when the Go method
+	// is logically void and produced zero SerializedObjects (e.g. CheckHealth()).
+	// Without padding, the C++ return slot in runtime_callbacks.cc stays nullptr
+	// and CoreWorker::ExecuteTask CHECK-fails on objects_valid in task_receiver.cc,
+	// crashing the worker. Each padded slot carries a valid cross-language nil
+	// object (9-byte length header + msgpack nil) whose metadata is
+	// MetadataTypeCrossLanguage (aka XLANG): Python's _deserialize_object rejects
+	// the Go metadata a plain Serialize(nil) would emit. Actor creation tasks
+	// (numReturns == 0) are untouched: the count == 0 array below already
+	// satisfies the C++ success path (no return slots are expected).
+	if len(results) < numReturns {
+		if len(results) > 0 {
+			// A non-void method produced fewer results than numReturns: silently
+			// padding would mask a Go-side defect (the original C++ objects_valid
+			// CHECK surfaced it explicitly). Keep the default log level so the
+			// anomaly is always visible (logr has no Warn level; plain Info is
+			// the always-on severity here).
+			taskExecutorLogger.Info("Task returned fewer results than numReturns; padding the remaining slots",
+				"produced", len(results), "numReturns", numReturns)
+		} else {
+			taskExecutorLogger.V(1).Info("Padding task results up to numReturns",
+				"produced", len(results), "numReturns", numReturns)
+		}
+		paddedResults := make([]function.SerializedObject, numReturns)
+		copy(paddedResults, results)
+		// The cross-language nil payload is a fixed byte pattern, so it is built
+		// once and shared across every missing slot. Sharing is safe: the bytes
+		// are read-only and allocateCSerializedObject deep-copies each slot into
+		// C memory (the error-result path above shares one byte slice across all
+		// slots the same way). Building it directly also avoids the global
+		// serializer and cannot fail, so this path never hands C++ a nil array.
+		for i := len(results); i < numReturns; i++ {
+			paddedResults[i] = function.SerializedObject{
+				Data:     crossLanguageNilData,
+				Metadata: crossLanguageNilMetadata,
+			}
+		}
+		results = paddedResults
+	}
+
 	if len(results) == 0 {
-		// Empty success (e.g. an actor creation task with no return values).
-		// Return a zero-count array rather than null: null is reserved for
-		// execution errors and makes the C++ caller fail the task.
+		// Empty success (an actor creation task with numReturns == 0: any other
+		// task is padded to numReturns above, so it reaches here with a non-empty
+		// result array). Return a zero-count array rather than null: null is
+		// reserved for execution errors and makes the C++ caller fail the task.
 		taskExecutorLogger.Info("Task execution returned empty results")
 		cArray := (*C.CSerializedObjectArray)(C.malloc(C.size_t(unsafe.Sizeof(C.CSerializedObjectArray{}))))
 		if cArray == nil {
@@ -313,6 +357,28 @@ func convertGoResultToC(results []function.SerializedObject, err error, numRetur
 		"objectCount", cArray.count)
 	return cArray
 }
+
+// crossLanguageNilPayload returns the fixed byte layout of a cross-language nil
+// object: a 9-byte msgpack length header encoding a 1-byte payload (compact int
+// 0x01, zero-padded) followed by the msgpack nil byte (0xc0). This is the exact
+// layout the serializer's EncodeToBuffer produces for a nil value and what
+// Python's _deserialize_object expects for a cross-language nil result. It is
+// constant, so it is built once and reused for every padded result slot.
+func crossLanguageNilPayload() []byte {
+	payload := make([]byte, 10) // 9-byte length header + msgpack nil
+	payload[0] = 0x01
+	payload[9] = 0xc0
+	return payload
+}
+
+// crossLanguageNilData and crossLanguageNilMetadata together form the
+// cross-language nil object's data and metadata, built once at package init
+// and shared across every padded result slot in convertGoResultToC. Sharing is
+// safe: allocateCSerializedObject deep-copies each slot into C memory.
+var (
+	crossLanguageNilData     = crossLanguageNilPayload()
+	crossLanguageNilMetadata = []byte(object.MetadataTypeCrossLanguage)
+)
 
 // cgoMemoryStats tracks CGO memory allocation statistics
 var cgoMemoryStats struct {

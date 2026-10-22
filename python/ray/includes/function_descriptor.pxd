@@ -92,3 +92,4 @@ cdef extern from "ray/common/function_descriptor.h" nogil:
         c_string PackagePath()
         c_string FunctionName()
         c_string MethodName()
+        c_string ClassName()

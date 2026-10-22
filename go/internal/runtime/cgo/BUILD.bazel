@@ -79,6 +79,7 @@ go_test(
     embed = [":cgo"],
     deps = [
         "//go/internal/runtime/base",
+        "//go/internal/runtime/serializer",
         "//go/pkg/ids",
         "//go/pkg/runtime/contract",
         "//go/pkg/runtime/function",

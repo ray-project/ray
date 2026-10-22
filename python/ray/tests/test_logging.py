@@ -1459,7 +1459,25 @@ def test_check_raygo_error_message_lists_switches_and_fix(monkeypatch):
     message = str(exc_info.value)
     assert "RAY_ENABLE_GO_DASHBOARD_HEAD" in message
     assert "RAY_ENABLE_GO_SETUP_WORKER" in message
-    assert "INCLUDE_GO" in message
+    assert "gen_ray_go_pkg" in message
+
+
+def test_all_raygo_launching_switches_are_covered_by_the_fail_fast_tuple():
+    """Every GO switch that launches raygo must be in the fail-fast tuple.
+
+    The expected set is derived mechanically from the constants module rather
+    than hardcoded, so the next raygo-launching switch cannot silently skip the
+    fail-fast check. The tuple's first element is the env-var NAME (a string
+    such as "RAY_ENABLE_GO_DASHBOARD_AGENT") because that is the documented,
+    user-facing switch that the error message names; the constants hold the
+    boolean VALUE of those same switches, so recovering the name from a
+    constant requires prefixing the constant name with "RAY_".
+    """
+    expected = {
+        "RAY_" + name for name in dir(ray_constants) if name.startswith("ENABLE_GO_")
+    }
+    actual = {name for name, _ in ray._private.services._GO_SWITCHES_REQUIRING_RAYGO}
+    assert actual == expected
 
 
 def test_node_head_uses_fully_qualified_services_call():

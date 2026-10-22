@@ -15,6 +15,7 @@ __all__ = [
     "java_actor_class",
     "cpp_function",
     "go_function",
+    "go_actor_class",
 ]
 
 
@@ -81,6 +82,29 @@ def go_function(module_name: str, package_path: str, function_name: str):
         Language.GO,
         lambda *args, **kwargs: None,
         GoFunctionDescriptor(module_name, package_path, function_name),
+        {},
+    )
+
+
+@PublicAPI(stability="beta")
+def go_actor_class(module_name: str, package_path: str, actor_type: str):
+    """Define a Go actor class.
+
+    Args:
+        module_name: The Go module path, e.g. ``github.com/ray-project/ray``.
+        package_path: The package path within the module, e.g.
+            ``go/e2e/userfuncs``.
+        actor_type: The Go actor type name.
+
+    Returns:
+        An ``ActorClass`` wrapping the referenced Go class so it can be
+        instantiated from Python.
+    """
+    from ray.actor import ActorClass
+
+    return ActorClass._ray_from_function_descriptor(
+        Language.GO,
+        GoFunctionDescriptor(module_name, package_path, actor_type, "<init>"),
         {},
     )
 
@@ -180,6 +204,13 @@ def _get_function_descriptor_for_actor_method(
             method_name,
             "PYTHON",
             actor_creation_function_descriptor.class_name,
+        )
+    elif language == Language.GO:
+        return GoFunctionDescriptor(
+            actor_creation_function_descriptor.module_name,
+            actor_creation_function_descriptor.package_path,
+            actor_creation_function_descriptor.function_name,
+            method_name,
         )
     else:
         raise NotImplementedError(

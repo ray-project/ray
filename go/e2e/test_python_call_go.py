@@ -1,22 +1,38 @@
 #!/usr/bin/env python3
 """
-Simple test script for calling Go functions from Python runtime.
+Cross-language Python -> Go end-to-end test (extended from the former
+test_python_call_go_simple.py).
 
-This demonstrates cross-language calling: Python -> Go via Ray.
+Covers two call forms of Python -> Go:
+  Part A: stateless remote functions (go_function) — goAdd/goMultiply/goConcat/goCompute
+          plus concurrent calls (originally test_python_call_go_simple.py).
+  Part B: Go actor created and driven from Python (the fourth cross-language
+          scenario), in particular a logically-void
+          method (Counter.Void) — the cross-language void regression
+          (added in this change).
+
+Regression target (Part B): a cross-language actor method call defaults to
+num_returns = 1 (DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS, hardcoded in
+python/ray/actor.py for cross-language methods), while a Go void method
+(func (c *Counter) Void()) produces zero SerializedObjects. Before the padding
+fix in convertGoResultToC (go/internal/runtime/cgo/task_executor.go), C++ left
+the return slot nullptr and CoreWorker::ExecuteTask CHECK-failed on
+objects_valid in task_receiver.cc, crashing the Go worker. After the fix, the
+padding slot is a cross-language nil object (9-byte length header + msgpack nil,
+XLANG metadata) and ray.get returns None.
+
+NOTE: this lane runs against a real cluster (cluster mode). Ray's
+`ray.init(local_mode=True)` entry is removed in Ray 2.56 (it raises
+RuntimeError), and the padding under test is the cluster worker's — a
+same-process runner would not exercise it either way.
 
 Prerequisites:
-1. Build the Go plugin:
-   bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
-
-2. Start Ray (or use local mode):
-   ray start --head --port=6379
-
-   Or for testing:
-   python test_python_call_go_simple.py --local-mode
+  bazel build //go/e2e/userfuncs/plugin:userfuncs_plugin
+  ray start --head --port=6379
 
 Usage:
-    python go/e2e/test_python_call_go_simple.py --ray-address=localhost:6379
-    python go/e2e/test_python_call_go_simple.py --local-mode
+  python go/e2e/test_python_call_go.py --ray-address=localhost:6379
+  python go/e2e/test_python_call_go.py    # connects to the local cluster
 """
 
 import os
@@ -27,8 +43,18 @@ RAY_PYTHON_PATH = os.path.join(os.path.dirname(__file__), "../../python")
 sys.path.insert(0, RAY_PYTHON_PATH)
 
 import ray  # noqa: E402
-from ray.cross_language import go_function  # noqa: E402
+from ray.cross_language import go_actor_class, go_function  # noqa: E402
 from ray.job_config import JobConfig  # noqa: E402
+
+# module_name / package_path must match what api.RegisterActorClass derives from
+# the (*Counter)(nil) type (DescriptorPartsFromType): module "github.com/ray-project/ray",
+# package "go/e2e/userfuncs", type "Counter". Passing a bare "userfuncs" module name
+# fails Go-side validation (isValidModulePath requires a '/' or "main").
+COUNTER_DESC = dict(
+    module_name="github.com/ray-project/ray",
+    package_path="go/e2e/userfuncs",
+    actor_type="Counter",
+)
 
 
 def _code_search_path():
@@ -51,28 +77,8 @@ def _code_search_path():
     return ["./userfuncs.so"]
 
 
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Test Python calling Go functions")
-    parser.add_argument(
-        "--local-mode",
-        action="store_true",
-        help="Run in local mode without Ray cluster",
-    )
-    parser.add_argument(
-        "--ray-address",
-        type=str,
-        default=None,
-        help="Ray cluster address, e.g., 'localhost:6379'",
-    )
-    args = parser.parse_args()
-
-    # Initialize Ray
-    if args.local_mode:
-        print("Initializing Ray in local mode...")
-        ray.init(local_mode=True)
-    elif args.ray_address:
+def _init_ray(args):
+    if args.ray_address:
         print(f"Connecting to Ray at {args.ray_address}...")
         ray.init(
             address=args.ray_address,
@@ -81,9 +87,11 @@ def main():
     else:
         print("Starting Ray local cluster...")
         ray.init(job_config=JobConfig(code_search_path=_code_search_path()))
-
     print(f"Ray initialized: {ray.is_initialized()}")
 
+
+def _test_go_functions():
+    """Part A: stateless remote function calls (originally test_python_call_go_simple.py)."""
     # ============================================================
     # Test 1: Call Go's goAdd(x, y) -> int
     # ============================================================
@@ -187,10 +195,83 @@ def main():
     assert results == expected, f"Expected {expected}, got {results}"
     print("✓ Test 5 passed!")
 
-    # Cleanup
+
+def _test_go_actor():
+    """Part B: Go actor driven from Python, including the void-method regression
+    (added in this change)."""
+    # ============================================================
+    # Test 6: create the Go actor (ACTOR_CREATION_TASK, num_returns = 0)
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("Test 6: create Go Counter actor with initial value 10")
+    print("=" * 60)
+    Counter = go_actor_class(**COUNTER_DESC)
+    actor = Counter.remote(10)
+    print("✓ Actor created (no crash on creation)")
+
+    # ============================================================
+    # Test 7: value-returning method (baseline, Add -> int)
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("Test 7: Python calling value-returning Go method Add(5)")
+    print("=" * 60)
+    result = ray.get(actor.Add.remote(5))
+    print(f"Result: {result}")
+    assert result == 15, f"Expected 15 (10 + 5), got {result}"
+    print("✓ Test 7 passed!")
+
+    # ============================================================
+    # Test 8: void method (the regression: 0 results vs num_returns = 1)
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("Test 8: Python calling void Go method Void()")
+    print("=" * 60)
+    # Pre-fix this crashes the Go worker (RAY_CHECK in task_receiver.cc); the
+    # subsequent Value() call would then fail with a worker-died error.
+    result = ray.get(actor.Void.remote())
+    print(f"Result: {result}")
+    assert result is None, f"Expected None for void method, got {result!r}"
+    print("✓ Test 8 passed!")
+
+    # ============================================================
+    # Test 9: state persists after the void call (worker still alive)
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("Test 9: Value() after Void() -> worker alive, state preserved")
+    print("=" * 60)
+    result = ray.get(actor.Value.remote())
+    print(f"Result: {result}")
+    assert result == 15, f"Expected 15 (unchanged by Void), got {result}"
+    print("✓ Test 9 passed!")
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Test Python calling Go functions and Go actor methods"
+    )
+    parser.add_argument(
+        "--ray-address",
+        type=str,
+        default=None,
+        help="Ray cluster address, e.g., 'localhost:6379'",
+    )
+    args = parser.parse_args()
+
+    _init_ray(args)
+
+    # Part A: stateless remote functions
+    _test_go_functions()
+
+    # Part B: Go actor (incl. cross-language void regression)
+    _test_go_actor()
+
     ray.shutdown()
     print("\n" + "=" * 60)
-    print("✅ All tests passed! Python successfully called Go functions via Ray!")
+    print(
+        "✅ All tests passed! Python successfully called Go functions and Go actor methods via Ray!"
+    )
     print("=" * 60)
 
 

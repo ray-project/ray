@@ -23,11 +23,14 @@ package cgo
 */
 import "C"
 import (
+	"bytes"
 	"testing"
 	"unsafe"
 
+	"github.com/ray-project/ray/go/internal/runtime/serializer"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/runtime/function"
+	"github.com/ray-project/ray/go/pkg/runtime/object"
 )
 
 // TestConvertCFunctionArgToBase_ValueType tests conversion of value-type arguments
@@ -234,6 +237,133 @@ func TestConvertGoResultToC_EmptyResults(t *testing.T) {
 	}
 	if cArray.objects != nil {
 		t.Errorf("Expected nil objects pointer for empty results, got non-nil")
+	}
+}
+
+// TestConvertGoResultToC_PadsVoidResultToNumReturns is the regression test for
+// the cross-language void-actor-method crash: a logically-void Go method
+// (e.g. CheckHealth() error) produces zero SerializedObjects while the
+// cross-language caller expects numReturns == 1 (DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS).
+// Without padding, C++ leaves the return slot nullptr and CoreWorker::ExecuteTask
+// CHECK-fails in task_receiver.cc. The padding slot must be a valid
+// cross-language nil object (9-byte length header + msgpack nil) with
+// MetadataTypeCrossLanguage (XLANG) metadata, which Python's _deserialize_object
+// requires (a Go metadata payload would be rejected).
+func TestConvertGoResultToC_PadsVoidResultToNumReturns(t *testing.T) {
+	cArray := convertGoResultToC([]function.SerializedObject{}, nil, 1)
+	if cArray == nil {
+		t.Fatal("Expected non-nil C array, got nil")
+	}
+	defer C.CNativeCommon_FreeCSerializedObjectArray(cArray)
+
+	if cArray.count != 1 {
+		t.Fatalf("Expected count 1 (padded), got %d", cArray.count)
+	}
+	if cArray.objects == nil {
+		t.Fatal("Expected non-nil objects pointer after padding, got nil")
+	}
+	obj := (*C.CSerializedObject)(unsafe.Pointer(cArray.objects))
+	if obj.data == nil || obj.data_size <= 0 {
+		t.Fatal("Expected padding slot to carry non-empty data")
+	}
+	// Data layout: 9-byte cross-language length header + msgpack nil (0xc0).
+	paddingData := C.GoBytes(unsafe.Pointer(obj.data), obj.data_size)
+	if len(paddingData) != 10 {
+		t.Fatalf("Expected exactly 9-byte header + msgpack nil payload (10 bytes), got %d bytes", len(paddingData))
+	}
+	if paddingData[len(paddingData)-1] != 0xc0 {
+		t.Errorf("Expected trailing msgpack nil byte 0xc0, got %#x", paddingData[len(paddingData)-1])
+	}
+	if obj.metadata == nil {
+		t.Fatal("Expected padding slot to carry metadata")
+	}
+	metadata := C.GoBytes(unsafe.Pointer(obj.metadata), obj.metadata_size)
+	if string(metadata) != string(object.MetadataTypeCrossLanguage) {
+		t.Errorf("Expected padding metadata %q, got %q", object.MetadataTypeCrossLanguage, metadata)
+	}
+}
+
+// TestConvertGoResultToC_PadsPartialResults tests that a short result array is
+// padded up to numReturns while the real results keep their original data and
+// metadata.
+func TestConvertGoResultToC_PadsPartialResults(t *testing.T) {
+	results := []function.SerializedObject{
+		{Data: []byte("real result"), Metadata: []byte("REAL")},
+	}
+	cArray := convertGoResultToC(results, nil, 3)
+	if cArray == nil {
+		t.Fatal("Expected non-nil C array, got nil")
+	}
+	defer C.CNativeCommon_FreeCSerializedObjectArray(cArray)
+
+	if cArray.count != 3 {
+		t.Fatalf("Expected count 3, got %d", cArray.count)
+	}
+	objs := unsafe.Slice((*C.CSerializedObject)(cArray.objects), int(cArray.count))
+
+	first := C.GoBytes(unsafe.Pointer(objs[0].data), objs[0].data_size)
+	if string(first) != "real result" {
+		t.Errorf("Expected first slot to keep original data %q, got %q", "real result", first)
+	}
+	firstMeta := C.GoBytes(unsafe.Pointer(objs[0].metadata), objs[0].metadata_size)
+	if string(firstMeta) != "REAL" {
+		t.Errorf("Expected first slot to keep original metadata %q, got %q", "REAL", firstMeta)
+	}
+
+	for i := 1; i < 3; i++ {
+		if objs[i].data == nil || objs[i].data_size <= 0 {
+			t.Fatalf("Expected padded slot %d to carry non-empty data", i)
+		}
+		meta := C.GoBytes(unsafe.Pointer(objs[i].metadata), objs[i].metadata_size)
+		if string(meta) != string(object.MetadataTypeCrossLanguage) {
+			t.Errorf("Expected padded slot %d metadata %q, got %q", i, object.MetadataTypeCrossLanguage, meta)
+		}
+	}
+}
+
+// TestConvertGoResultToC_NoPadWhenResultsMatchOrExceedNumReturns verifies that
+// padding only kicks in when len(results) < numReturns: an exact match keeps
+// count == len(results), and a numReturns of 0 (actor creation task) never pads.
+func TestConvertGoResultToC_NoPadWhenResultsMatchOrExceedNumReturns(t *testing.T) {
+	results := []function.SerializedObject{
+		{Data: []byte("a"), Metadata: []byte("A")},
+		{Data: []byte("b"), Metadata: []byte("B")},
+	}
+
+	cArray := convertGoResultToC(results, nil, 2)
+	if cArray == nil {
+		t.Fatal("Expected non-nil C array, got nil")
+	}
+	defer C.CNativeCommon_FreeCSerializedObjectArray(cArray)
+	if cArray.count != 2 {
+		t.Errorf("Exact match: expected count 2, got %d", cArray.count)
+	}
+
+	cArray0 := convertGoResultToC(results, nil, 0)
+	if cArray0 == nil {
+		t.Fatal("Expected non-nil C array, got nil")
+	}
+	defer C.CNativeCommon_FreeCSerializedObjectArray(cArray0)
+	if cArray0.count != 2 {
+		t.Errorf("numReturns=0: expected count to stay 2 (no padding), got %d", cArray0.count)
+	}
+}
+
+// TestCrossLanguageNilPayloadMatchesSerializerWireFormat is the drift guard for
+// crossLanguageNilPayload: the hand-built padding bytes must stay byte-identical
+// to what the serializer's EncodeToBuffer produces for a nil value (compact-int
+// length header + msgpack nil). If the wire format (MessagePackOffset, compact
+// ints, msgpack nil byte) ever changes, this test fails and forces the padding
+// payload to be updated in lockstep instead of silently drifting.
+func TestCrossLanguageNilPayloadMatchesSerializerWireFormat(t *testing.T) {
+	buf := make([]byte, serializer.MessagePackOffset, serializer.MessagePackOffset+1)
+	msgpackSerializer := serializer.NewMsgpackSerializer()
+	if err := msgpackSerializer.EncodeToBuffer(nil, &buf, false); err != nil {
+		t.Fatalf("EncodeToBuffer(nil) failed: %v", err)
+	}
+	payload := crossLanguageNilPayload()
+	if !bytes.Equal(payload, buf) {
+		t.Errorf("crossLanguageNilPayload() = %x, want serializer nil wire format %x", payload, buf)
 	}
 }
 
