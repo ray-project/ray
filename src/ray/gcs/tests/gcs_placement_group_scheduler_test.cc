@@ -18,6 +18,7 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -1582,6 +1583,29 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestUnsupportedTopologyStrategyIsInfeasible) {
+  // PACK is not a topology strategy: the placement group is reported infeasible
+  // rather than crashing the GCS or being scheduled as STRICT_PACK.
+  AddNode(GenNodeInfo(0));
+  auto request = GenCreatePlacementGroupRequest(
+      /*name=*/"", rpc::PlacementStrategy::PACK, /*bundles_count=*/1);
+  (*request.mutable_placement_group_spec()
+        ->mutable_topology_strategy())["ray.io/gpu-domain"] =
+      rpc::PlacementStrategy::PACK;
+  auto placement_group =
+      std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+
+  std::optional<bool> is_feasible;
+  scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
+      placement_group,
+      [&is_feasible](std::shared_ptr<GcsPlacementGroup>, bool feasible) {
+        is_feasible = feasible;
+      },
+      [](std::shared_ptr<GcsPlacementGroup>) { ADD_FAILURE() << "Must not schedule."; }});
+  ASSERT_TRUE(is_feasible.has_value());
+  ASSERT_FALSE(*is_feasible);
 }
 
 }  // namespace gcs

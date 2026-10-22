@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/policy/scheduling_policy.h"
 
@@ -77,6 +79,20 @@ class TopologySchedulingPolicyInterface {
   bool IsRequestFeasible(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const;
+
+  /**
+   * @brief Partitions candidate nodes into groups keyed by their value of
+   * `label_key`.
+   *
+   * @param candidate_nodes The nodes to partition.
+   * @param label_key The topology label key to group by.
+   * @return Map from topology label value to the nodes carrying that value.
+   *   Nodes lacking the label, or carrying an empty value, are dropped.
+   */
+  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+  GroupNodesByTopologyValue(
+      const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
+      const std::string &label_key) const;
 
   ClusterResourceManager &cluster_resource_manager_;
 };

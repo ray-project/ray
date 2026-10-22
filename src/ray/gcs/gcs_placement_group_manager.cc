@@ -739,7 +739,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         // responsible for rescheduling; clearing the assignments is handled by
         // ScheduleUnplacedBundles within the scheduler.
         if (iter->second->AllUnplacedBundles() &&
-            iter->second->GetTopologyStrategyKeys().has_value()) {
+            iter->second->GetTopologyStrategy().has_value()) {
           auto infeasible_pg_iter =
               std::find_if(infeasible_placement_groups_.begin(),
                            infeasible_placement_groups_.end(),

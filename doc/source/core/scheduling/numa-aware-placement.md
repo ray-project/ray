@@ -1,13 +1,13 @@
 ---
 myst:
   html_meta:
-    description: "Learn how to bind a Ray GPU actor's CPU threads and host memory to its GPU's NUMA node, since Ray assigns GPUs but does not place actors NUMA-aware by default."
+    description: "Learn how to bind a Ray GPU actor's CPU threads and host memory to its GPU's NUMA node, since Ray assigns GPUs but doesn't place actors NUMA-aware by default."
 ---
 
 (numa-aware-placement)=
-# NUMA-Aware Placement for GPU Actors
+# NUMA-aware placement for GPU actors
 
-Ray assigns GPUs to actors, but does not automatically bind their CPU threads or host memory to the GPU's NUMA node. This guide shows three ways to set that placement yourself.
+Ray assigns GPUs to actors by setting `CUDA_VISIBLE_DEVICES` in the worker process, as described in {ref}`accelerator support <accelerator-support>`, but doesn't automatically bind their CPU threads or host memory to the GPU's NUMA node. This guide shows three ways to set that placement yourself.
 
 ```{note}
 These are workarounds until Ray supports NUMA-aware placement natively.
@@ -16,7 +16,7 @@ These are workarounds until Ray supports NUMA-aware placement natively.
 ## Prerequisites
 
 - Linux hosts with NVIDIA GPUs and multiple NUMA nodes
-- `nvidia-smi`, access to PCI and NUMA information in `/sys`, and `numactl` for the approaches that use it.
+- `nvidia-smi`, access to PCI and NUMA information in `/sys`, and `numactl` for the approaches that use it
 
 Check your host's topology before starting:
 
@@ -37,8 +37,8 @@ Use the reported NUMA node IDs and GPU affinity throughout this guide. A socket 
 
 Approaches 1 and 2 bind each actor individually inside a Ray node that spans the whole host, so two things stay outside the actor's control. Approach 3 avoids both by giving each NUMA domain its own Ray node.
 
-- **Object store.** Actors still share the Ray node's object store, so an actor may access objects stored in memory on another NUMA node. Binding the actor does not move those shared objects. With approach 3, each Ray node's object store stays within its NUMA domain; objects passed between Ray nodes require a transfer.
-- **Thread affinity.** Both approaches place threads by setting the worker's CPU affinity mask, which a process can change again. Libraries such as OpenMP and MKL runtimes may override thread affinity during initialization or execution. Disable conflicting settings such as `OMP_PROC_BIND`, `OMP_PLACES`, `GOMP_CPU_AFFINITY`, and `KMP_AFFINITY`, and verify thread placement after initialization. Approach 3 restricts CPUs with a cgroup, which the kernel enforces, so libraries cannot escape it.
+- **Object store.** Actors still share the Ray node's object store, so an actor may access objects stored in memory on another NUMA node. Binding the actor doesn't move those shared objects. With approach 3, each Ray node's object store stays within its NUMA domain. Objects passed between Ray nodes require a transfer.
+- **Thread affinity.** Both approaches place threads by setting the worker's CPU affinity mask, which a process can change again. Libraries such as OpenMP and MKL runtimes may override thread affinity during initialization or execution. Disable conflicting settings such as `OMP_PROC_BIND`, `OMP_PLACES`, `GOMP_CPU_AFFINITY`, and `KMP_AFFINITY`, and verify thread placement after initialization. Approach 3 restricts CPUs with a cgroup, which the kernel enforces, so libraries can't escape it.
 
 ## Pin each actor's CPU threads
 
@@ -93,13 +93,13 @@ class MyActor:
         self.model = load_model()  # Allocate after pinning.
 ```
 
-CPU pinning helps new allocations stay local under the default memory policy. It does not bind memory or move existing allocations. Use the next approach if you need memory binding.
+CPU pinning helps new allocations stay local under the default memory policy. It doesn't bind memory or move existing allocations. Use the next approach if you need memory binding.
 
 Use this helper for actors. Reused task workers need additional handling to restore their affinity between tasks.
 
 ## Bind each worker before it starts
 
-Choose the NUMA node and GPUs each actor should use. Then configure Ray to start the actor's worker under `numactl`, binding its CPU threads and new memory allocations to that node. For illustration, examples below assume GPUs 0-3 belong to NUMA node 0 and GPUs 4-7 to NUMA node 1.
+Choose the NUMA node and GPUs each actor should use. Then configure Ray to start the actor's worker under `numactl`, binding its CPU threads and new memory allocations to that node. For illustration, the following examples assume GPUs 0-3 belong to NUMA node 0 and GPUs 4-7 to NUMA node 1.
 
 1. Advertise GPU capacity as a custom resource for each NUMA node, and set `--num-gpus=0`.
 
@@ -107,7 +107,7 @@ Choose the NUMA node and GPUs each actor should use. Then configure Ray to start
    ray start --head --num-gpus=0 --resources='{"numa0_gpu": 4, "numa1_gpu": 4}'
    ```
 
-2. Request the matching resource and configure the actor's `runtime_env` as shown below.
+1. Request the matching resource and configure the actor's `runtime_env` as shown below.
 
    ```python
    def numa_env(numa_node, gpu_ids):
@@ -126,8 +126,8 @@ Choose the NUMA node and GPUs each actor should use. Then configure Ray to start
    class MyActor:
        ...
 
-   # Example: GPUs 0–3 are local to NUMA node 0;
-   # GPUs 4–7 are local to NUMA node 1.
+   # Example: GPUs 0-3 are local to NUMA node 0;
+   # GPUs 4-7 are local to NUMA node 1.
 
    # Two actors on NUMA node 0, two GPUs each.
    a = MyActor.options(
@@ -147,7 +147,7 @@ Choose the NUMA node and GPUs each actor should use. Then configure Ray to start
    ```
 
 ```{warning}
-Ray counts the per-NUMA-node resource but doesn't track which GPU IDs are in use. Make sure no two running actors receive the same IDs, and don't run actors that request `num_gpus` on the same node. These assignments are not recorded as Ray GPU resource allocations. Configure autoscaling around the custom resources.
+Ray counts the per-NUMA-node resource but doesn't track which GPU IDs are in use. Make sure no two running actors receive the same IDs, and don't run actors that request `num_gpus` on the same node. These assignments aren't recorded as Ray GPU resource allocations. Configure autoscaling around the custom resources.
 ```
 
 ## Run one Ray node per NUMA domain
@@ -167,7 +167,7 @@ Run one Ray node per NUMA node on each host. Restrict each Ray node to that NUMA
 
    Configure CPU reservations and `reservedMemory` as required by CPU Manager and Memory Manager. The GPU device plugin must report NUMA topology.
 
-2. Update your existing worker groups so each worker pod fits one NUMA node. Set matching CPU and memory requests and limits for every container so the pod has Guaranteed QoS. Request whole physical cores according to the host's SMT configuration.
+1. Update your existing worker groups so each worker pod fits one NUMA node. Set matching CPU and memory requests and limits for every container so the pod has Guaranteed QoS. Request whole physical cores according to the host's SMT configuration.
 
    For illustration, the fragment below shows where these resource settings go in a RayCluster.
 
@@ -191,7 +191,7 @@ Kubernetes 1.37 introduces the standard DRA device attribute `resource.kubernete
 
 Start each Ray node with its own CPU, memory, and GPU allocation. Set its resource capacities and memory sizes to match that allocation.
 
-For example, on a p5.48xlarge (two sockets, eight GPUs):
+For example, on a p5.48xlarge instance, which has two sockets and eight GPUs:
 
 ```bash
 sudo systemd-run --scope --uid=$USER -p AllowedCPUs=0-47,96-143 -p AllowedMemoryNodes=0 \
@@ -208,12 +208,12 @@ sudo systemd-run --scope --uid=$USER -p AllowedCPUs=48-95,144-191 -p AllowedMemo
 To adapt this to your host, replace:
 
 - `AllowedCPUs` and `AllowedMemoryNodes` with each NUMA node's CPU list and node ID from `numactl -H`, and `--num-cpus` to that list's count.
-- `CUDA_VISIBLE_DEVICES` and `--num-gpus` with that NUMA node's GPUs from `nvidia-smi topo -m`
-- `--object-store-memory` with 30% of the NUMA node's memory (at most 200 GB) and `--memory` with the rest, both in bytes. If you leave them out, each node sizes itself as if it had the whole host.
+- `CUDA_VISIBLE_DEVICES` and `--num-gpus` with that NUMA node's GPUs from `nvidia-smi topo -m`.
+- `--object-store-memory` with 30% of the NUMA node's memory, up to 200 GB, and `--memory` with the rest, both in bytes. If you leave them out, each node sizes itself as if it had the whole host.
 
 ### Scheduling and data-transfer implications
 
-- An actor cannot request more GPUs than a single Ray node exposes.
+- An actor can't request more GPUs than a single Ray node exposes.
 - Objects in separate Ray nodes' object stores require transfer rather than access through one shared object store, even when those Ray nodes share a host.
 
 ## Verify placement
@@ -242,11 +242,11 @@ A few MB on the other node is normal.
 
 ## Benchmark
 
-We measured CPU–GPU copy throughput on a p5.48xlarge with eight H100 GPUs and two CPU sockets, each with 96 vCPUs. GPUs 0–3 were local to socket 0, and GPUs 4–7 to socket 1.
+This benchmark measured CPU-to-GPU copy throughput on a p5.48xlarge with eight H100 GPUs and two CPU sockets, each with 96 vCPUs. GPUs 0-3 were local to socket 0, and GPUs 4-7 to socket 1.
 
 Eight actors, one per GPU, each copied a 2 GiB pinned host buffer to its GPU, then copied the data back. All actors copied concurrently in each direction, with 10 copies per direction per run. The table reports mean aggregate throughput across all eight actors over five runs, in decimal GB/s.
 
-| Configuration | Host → device (GB/s) | Device → host (GB/s) |
+| Configuration | Host to device (GB/s) | Device to host (GB/s) |
 | --- | --- | --- |
 | Baseline: no explicit NUMA placement | 114.7 | 23.7 |
 | Approach 1: pin actor CPU threads | 114.7 | 49.2 |

@@ -17,6 +17,22 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
+absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+TopologySchedulingPolicyInterface::GroupNodesByTopologyValue(
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes,
+    const std::string &label_key) const {
+  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
+      topology_groups;
+  for (const auto &node_id : candidate_nodes) {
+    const auto &labels = cluster_resource_manager_.GetNodeLabels(node_id);
+    auto it = labels.find(label_key);
+    if (it != labels.end() && !it->second.empty()) {
+      topology_groups[it->second].insert(node_id);
+    }
+  }
+  return topology_groups;
+}
+
 bool TopologySchedulingPolicyInterface::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const {
@@ -90,16 +106,7 @@ SchedulingResult TopologyStrictPackSchedulingPolicy::Schedule(
     return result;
   }
 
-  // Group candidate nodes by their topology value.
-  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>>
-      topology_groups;
-  for (const auto &node_id : candidate_nodes) {
-    const auto &labels = cluster_resource_manager_.GetNodeLabels(node_id);
-    auto it = labels.find(label_key);
-    if (it != labels.end() && !it->second.empty()) {
-      topology_groups[it->second].insert(node_id);
-    }
-  }
+  auto topology_groups = GroupNodesByTopologyValue(candidate_nodes, label_key);
 
   if (topology_groups.empty()) {
     RAY_LOG(DEBUG) << "No candidate nodes have a " << label_key

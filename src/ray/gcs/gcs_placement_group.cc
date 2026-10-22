@@ -148,18 +148,13 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
   return placement_group_table_data_.mutable_stats();
 }
 
-std::optional<std::vector<std::string>> GcsPlacementGroup::GetTopologyStrategyKeys()
-    const {
+std::optional<std::pair<std::string, rpc::PlacementStrategy>>
+GcsPlacementGroup::GetTopologyStrategy() const {
   const auto &entries = placement_group_table_data_.topology_strategy();
   if (entries.empty()) {
     return std::nullopt;
   }
-  std::vector<std::string> keys;
-  keys.reserve(entries.size());
-  for (const auto &entry : entries) {
-    keys.push_back(entry.first);
-  }
-  return keys;
+  return *entries.begin();
 }
 
 std::optional<std::string> GcsPlacementGroup::GetTopologyAssignment(

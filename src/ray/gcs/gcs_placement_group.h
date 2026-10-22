@@ -164,9 +164,13 @@ class GcsPlacementGroup {
 
   rpc::PlacementGroupStats *GetMutableStats();
 
-  /// Get the non-node topology label keys (e.g. {"ray.io/gpu-domain"}), or
-  /// std::nullopt if this PG doesn't use a topology strategy.
-  std::optional<std::vector<std::string>> GetTopologyStrategyKeys() const;
+  /// Get the topology label of this placement group and the strategy applied to it.
+  /// TODO(#61777): return every entry once multiple topology labels are supported.
+  ///
+  /// \return The (label key, strategy) pair, e.g. ("ray.io/gpu-domain", STRICT_PACK),
+  /// or std::nullopt if this placement group doesn't use a topology strategy.
+  std::optional<std::pair<std::string, rpc::PlacementStrategy>> GetTopologyStrategy()
+      const;
 
   /// Get the topology assignment value selected for `label_key` (e.g. the
   /// chosen ray.io/gpu-domain for this PG).

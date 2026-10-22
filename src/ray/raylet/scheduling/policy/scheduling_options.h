@@ -15,6 +15,7 @@
 #pragma once
 
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -43,10 +44,21 @@ enum class SchedulingType {
 };
 
 // Topology-level scheduling strategies for placement groups.
-// Only STRICT_PACK is supported for now.
 enum class TopologySchedulingStrategy {
   NONE = 0,
   STRICT_PACK = 1,
+};
+
+// Topology-level scheduling target for placement groups.
+struct TopologyTarget {
+  // The node label key used to partition nodes into topology groups.
+  std::string label_key;
+  // The topology-level strategy applied to `label_key`. Must not be NONE: the
+  // SchedulingOptions constructor RAY_CHECKs a target whose strategy is NONE.
+  TopologySchedulingStrategy strategy = TopologySchedulingStrategy::NONE;
+  // STRICT_PACK rescheduling only: if set, constrains scheduling to this
+  // already-selected topology value.
+  std::optional<std::string> target_value;
 };
 
 // Options that controls the scheduling behavior.
@@ -77,7 +89,7 @@ struct SchedulingOptions {
                              avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes(),
-                             /*target_topology_assignment*/ std::nullopt,
+                             /*topology_target*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              preferred_node_id);
   }
@@ -114,7 +126,7 @@ struct SchedulingOptions {
         /*avoid_local_node*/ false,
         /*require_node_available*/ true,
         /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
-        /*target_topology_assignment*/ std::nullopt,
+        /*topology_target*/ std::nullopt,
         std::move(scheduling_context));
   }
   /*
@@ -123,39 +135,36 @@ struct SchedulingOptions {
 
   // construct option for soft pack scheduling policy.
   static SchedulingOptions BundlePack(
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_topology_assignment = std::nullopt) {
+      std::optional<TopologyTarget> topology_target = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_topology_assignment));
+                             std::move(topology_target));
   }
 
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleSpread(
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_topology_assignment = std::nullopt) {
+      std::optional<TopologyTarget> topology_target = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_topology_assignment));
+                             std::move(topology_target));
   }
 
   // construct option for strict pack scheduling policy.
   static SchedulingOptions BundleStrictPack(
       scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil(),
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_topology_assignment = std::nullopt) {
+      std::optional<TopologyTarget> topology_target = std::nullopt) {
     SchedulingOptions options(SchedulingType::BUNDLE_STRICT_PACK,
                               /*spread_threshold*/ 0,
                               /*avoid_local_node*/ false,
                               /*require_node_available*/ true,
                               /*avoid_gpu_nodes*/ false,
-                              std::move(target_topology_assignment));
+                              std::move(topology_target));
     options.bundle_strict_pack_soft_target_node_id_ = soft_target_node_id;
     return options;
   }
@@ -163,14 +172,13 @@ struct SchedulingOptions {
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleStrictSpread(
       std::unique_ptr<SchedulingContext> scheduling_context = nullptr,
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_topology_assignment = std::nullopt) {
+      std::optional<TopologyTarget> topology_target = std::nullopt) {
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             std::move(target_topology_assignment),
+                             std::move(topology_target),
                              std::move(scheduling_context));
   }
 
@@ -183,10 +191,7 @@ struct SchedulingOptions {
   // Set to NONE to disable the topology strategy.
   TopologySchedulingStrategy topology_scheduling_strategy_ =
       TopologySchedulingStrategy::NONE;
-  // The topology target for topology strategy scheduling.
-  // first: the node label key used to partition nodes into groups.
-  // second: if set, constrains scheduling to this topology value
-  //   (bundle rescheduling). If nullopt, a new group is selected.
+  // TopologyTarget's (label_key, target_value).
   std::pair<std::string, std::optional<std::string>> target_topology_assignment_;
   // ID of the target node where bundles should be placed
   // iff the target node has enough available resources.
@@ -211,8 +216,7 @@ struct SchedulingOptions {
       bool avoid_local_node,
       bool require_node_available,
       bool avoid_gpu_nodes,
-      std::optional<std::pair<std::string, std::optional<std::string>>>
-          target_topology_assignment = std::nullopt,
+      std::optional<TopologyTarget> topology_target = std::nullopt,
       std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
       const std::string &preferred_node_id = std::string(),
       int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
@@ -222,17 +226,18 @@ struct SchedulingOptions {
         avoid_local_node_(avoid_local_node),
         require_node_available_(require_node_available),
         avoid_gpu_nodes_(avoid_gpu_nodes),
-        topology_scheduling_strategy_(target_topology_assignment.has_value()
-                                          ? TopologySchedulingStrategy::STRICT_PACK
-                                          : TopologySchedulingStrategy::NONE),
-        target_topology_assignment_(
-            target_topology_assignment.has_value()
-                ? std::move(*target_topology_assignment)
-                : std::pair<std::string, std::optional<std::string>>{}),
         scheduling_context_(std::move(scheduling_context)),
         preferred_node_id_(preferred_node_id),
         schedule_top_k_absolute_(schedule_top_k_absolute),
-        scheduler_top_k_fraction_(scheduler_top_k_fraction) {}
+        scheduler_top_k_fraction_(scheduler_top_k_fraction) {
+    if (topology_target.has_value()) {
+      RAY_CHECK(topology_target->strategy != TopologySchedulingStrategy::NONE)
+          << "TopologyTarget must carry a topology strategy other than NONE.";
+      topology_scheduling_strategy_ = topology_target->strategy;
+      target_topology_assignment_ = {std::move(topology_target->label_key),
+                                     std::move(topology_target->target_value)};
+    }
+  }
 
   friend class ::ray::raylet::SchedulingPolicyTest;
   friend class HybridSchedulingPolicyTest;
