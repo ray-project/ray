@@ -3,6 +3,7 @@ import concurrent.futures
 import inspect
 import logging
 import pickle
+import threading
 from abc import ABC, abstractmethod
 from asyncio import run_coroutine_threadsafe
 from functools import wraps
@@ -29,25 +30,28 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 def _consume_generator_ref_when_ready(
     replica_result: "ActorReplicaResult",
-) -> Callable[[], None]:
+) -> None:
     """Advance a peeked generator stream once the user ref is ready.
 
     Uses ``ObjectRef._on_ready`` so readiness does not pull or
-    deserialize the payload. Clears ``replica_result._cancel_consume_wait``
-    when the wait fires.
+    deserialize the payload. Sets ``replica_result._cancel_consume_wait``
+    to cancel the wait, and clears it when the wait fires.
 
     Args:
         replica_result: Accepted unary result with ``_obj_ref`` peeked.
-
-    Returns:
-        Function that cancels the wait.
     """
     obj_ref_gen = replica_result._obj_ref_gen
     ref = replica_result._obj_ref
     assert obj_ref_gen is not None and ref is not None
 
+    lock = threading.Lock()
+    fired = False
+
     def _on_ready(exc):
-        replica_result._cancel_consume_wait = None
+        nonlocal fired
+        with lock:
+            fired = True
+            replica_result._cancel_consume_wait = None
         if exc is not None:
             logger.debug("_on_ready failed while waiting to a generator ref: %s", exc)
             return
@@ -56,7 +60,11 @@ def _consume_generator_ref_when_ready(
         except Exception:
             logger.exception("failed to consume generator ref after _on_ready")
 
-    return ref._on_ready(_on_ready)
+    cancel = ref._on_ready(_on_ready)
+    # The io thread can fire before _on_ready returns; never store a spent handle.
+    with lock:
+        if not fired:
+            replica_result._cancel_consume_wait = cancel
 
 
 def is_running_in_asyncio_loop() -> bool:
@@ -188,7 +196,7 @@ class ActorReplicaResult(ReplicaResult):
                 and self._obj_ref is None
             ):
                 [self._obj_ref] = self._obj_ref_gen._get_next_ref_n(1)
-                self._cancel_consume_wait = _consume_generator_ref_when_ready(self)
+                _consume_generator_ref_when_ready(self)
 
             return self._rejection_response
         except asyncio.CancelledError as e:

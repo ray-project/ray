@@ -11,8 +11,9 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
+from ray.exceptions import AuthenticationError
 from ray.serve.schema import ServeApplicationSchema
-from ray.serve.scripts import build, convert_args_to_dict, deploy
+from ray.serve.scripts import build, controller_health, convert_args_to_dict, deploy
 
 
 def test_convert_args_to_dict():
@@ -188,6 +189,17 @@ class TestEnumSerialization:
             os.unlink(temp_path)
             if output_path:
                 os.unlink(output_path)
+
+
+def test_controller_health_keeps_authentication_error():
+    rejection = AuthenticationError("Token rejected")
+    with patch("ray.is_initialized", return_value=False), patch(
+        "ray.init", side_effect=rejection
+    ):
+        result = CliRunner().invoke(controller_health, ["--address", "1.2.3.4:6379"])
+
+    assert result.exception is rejection, result.output
+    assert "Make sure a Ray cluster is running" not in result.output
 
 
 if __name__ == "__main__":

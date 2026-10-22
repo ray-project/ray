@@ -93,6 +93,7 @@ from ray._raylet import (
 from ray.actor import ActorClass
 from ray.exceptions import (
     ActorHandleNotFoundError,
+    AuthenticationError,
     ObjectStoreFullError,
     RayError,
     RaySystemError,
@@ -1996,6 +1997,9 @@ def init(
                 spawn_reaper=False,
                 connect_only=True,
             )
+        except AuthenticationError:
+            # A ConnectionError subclass; keep its fix text instead of wrapping it.
+            raise
         except (ConnectionError, RuntimeError) as e:
             if gcs_address == ray._private.utils.read_ray_address(_temp_dir):
                 logger.info(
@@ -2924,10 +2928,10 @@ def get(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/ray-get-loop`
-    - :doc:`/ray-core/patterns/unnecessary-ray-get`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
-    - :doc:`/ray-core/patterns/ray-get-too-many-objects`
+    - :doc:`/core/patterns/ray-get-loop`
+    - :doc:`/core/patterns/unnecessary-ray-get`
+    - :doc:`/core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/ray-get-too-many-objects`
 
 
     Args:
@@ -3056,9 +3060,9 @@ def put(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/return-ray-put`
-    - :doc:`/ray-core/patterns/pass-large-arg-by-value`
-    - :doc:`/ray-core/patterns/closure-capture-large-objects`
+    - :doc:`/core/patterns/return-ray-put`
+    - :doc:`/core/patterns/pass-large-arg-by-value`
+    - :doc:`/core/patterns/closure-capture-large-objects`
 
     Args:
         value: The Python object to be stored.
@@ -3144,8 +3148,8 @@ def wait(
 
     Related patterns and anti-patterns:
 
-    - :doc:`/ray-core/patterns/limit-pending-tasks`
-    - :doc:`/ray-core/patterns/ray-get-submission-order`
+    - :doc:`/core/patterns/limit-pending-tasks`
+    - :doc:`/core/patterns/ray-get-submission-order`
 
     Args:
         ray_waitables: List of :class:`~ObjectRef` or

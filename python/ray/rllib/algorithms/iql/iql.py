@@ -102,10 +102,6 @@ class IQLConfig(MARWILConfig):
         """Sets the training related configuration.
 
         Args:
-            beta: The temperature to scaling advantages in exponential terms.
-                Must be >> 0.0. The higher this parameter the less greedy
-                (exploitative) the policy becomes. It also means that the policy
-                is fitting less to the best actions in the dataset.
             twin_q: If a twin-Q architecture should be used (advisable).
             expectile: The expectile to use in expectile regression for the value
                 function. For high expectiles the value function tries to match
@@ -121,8 +117,10 @@ class IQLConfig(MARWILConfig):
             tau: The update parameter for Polyak-averaging of the target Q-network.
                 The higher this value the faster the weights move towards the actual
                 Q-network.
+            **kwargs: Additional config settings, forwarded to the parent
+                `MARWILConfig.training()` method.
 
-        Return:
+        Returns:
             This updated `AlgorithmConfig` object.
         """
         super().training(**kwargs)

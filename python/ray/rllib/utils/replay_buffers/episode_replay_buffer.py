@@ -134,6 +134,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             batch_size_B: The number of rows in a SampleBatch returned from `sample()`.
             batch_length_T: The length of each row in a SampleBatch returned from
                 `sample()`.
+            metrics_num_episodes_for_smoothing: The number of episodes to use for
+                smoothing (windowed averaging) of this buffer's metrics.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
         """
         self.capacity = capacity
         self.batch_size_B = batch_size_B
@@ -342,7 +345,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         Args:
             num_episodes_added: The total number of episodes added to the
                 buffer in the `EpisodeReplayBuffer.add` call.
-            num_timesteps_added: The total number of environment steps added to the
+            num_env_steps_added: The total number of environment steps added to the
                 buffer in the `EpisodeReplayBuffer.add` call.
             num_episodes_evicted: The total number of environment steps evicted from
                 the buffer in the `EpisodeReplayBuffer.add` call. Note, this
@@ -362,14 +365,15 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 agent ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
             agent_to_num_steps_evicted: A dictionary with the number of agent steps per
                 agent ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
-            module_to_num_episodes_added: A dictionary with the number of episodes per
-                module ID added to the buffer during the `EpisodeReplayBuffer.add` call.
             module_to_num_steps_added: A dictionary with the number of agent steps per
+                module ID added to the buffer during the `EpisodeReplayBuffer.add` call.
+            module_to_num_episodes_added: A dictionary with the number of episodes per
                 module ID added to the buffer during the `EpisodeReplayBuffer.add` call.
             module_to_num_episodes_evicted: A dictionary with the number of episodes per
                 module ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
             module_to_num_steps_evicted: A dictionary with the number of agent steps per
                 module ID evicted to the buffer during the `EpisodeReplayBuffer.add` call.
+            **kwargs: Additional metrics passed in by subclasses. Ignored here.
         """
         # Whole buffer episode metrics.
         self.metrics.log_value(
@@ -575,6 +579,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 state-action pair that triggered the rewards.
                 If `n_step` is a tuple, it is considered as a range to sample
                 from. If `None`, we use `n_step=1`.
+            beta: The exponent of the importance sampling weight. Unused by this
+                uniformly sampling buffer and only forwarded for compatibility with
+                prioritized buffers.
             gamma: The discount factor to be used when applying n-step calculations.
                 The default of `0.99` should be replaced by the `Algorithm`s
                 discount factor.
@@ -589,6 +596,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 actual state of model e.g. action log-probabilities, etc.). If `True`,
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
+            sample_episodes: If `True`, return a list of `SingleAgentEpisode`s
+                instead of a `SampleBatch`.
             to_numpy: If episodes should be numpy'ized.
             lookback: A desired lookback. Any non-negative integer is valid.
             min_batch_length_T: An optional minimal length when sampling sequences. It
@@ -597,6 +606,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 learning, when using a burn-in period for stateful `RLModule`s. In rare
                 cases, such as when episodes are very short early in training, this may
                 result in longer sampling times.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
 
         Returns:
             Either a batch with transitions in each row or (if `return_episodes=True`)
@@ -859,6 +869,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 learning, when using a burn-in period for stateful `RLModule`s. In rare
                 cases, such as when episodes are very short early in training, this may
                 result in longer sampling times.
+            **kwargs: Forward compatibility kwargs. Ignored by this buffer.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -1126,6 +1137,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 module ID in a single call to `PrioritizedEpisodeReplayBuffer.sample`.
                 A resampling is triggered when the sampled timestep is to near to the
                 episode end to cover the required n-step.
+            **kwargs: Additional metrics passed in by subclasses. Ignored here.
         """
         # Whole buffer sampled env steps metrics.
         self.metrics.log_value(
@@ -1316,7 +1328,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         }
 
     @override(ReplayBufferInterface)
-    def set_state(self, state) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of a buffer from a previously stored state.
 
         See `get_state()` for more information on what is stored in the state. This

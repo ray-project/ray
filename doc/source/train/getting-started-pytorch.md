@@ -1,30 +1,28 @@
 ---
 myst:
   html_meta:
-    description: "Convert a PyTorch script to distributed training with Ray Train: TorchTrainer, sharded dataloaders, metrics, checkpoints, and GPU scaling."
+    description: "Convert a PyTorch script to distributed training with Ray Train: TorchTrainer, sharded data loaders, metrics, checkpoints, and GPU scaling."
 ---
 
 (train-pytorch)=
 
-# Get Started with Distributed Training using PyTorch
+# Get started with distributed training using PyTorch
 
-This tutorial walks through the process of converting an existing PyTorch script to use Ray Train.
+This tutorial shows you how to convert an existing PyTorch script to use Ray Train.
 
-Learn how to:
+Learn how to do the following:
 
-1. Configure a model to run distributed and on the correct CPU/GPU device.
-2. Configure a dataloader to shard data across the {ref}`workers <train-overview-worker>` and place data on the correct CPU or GPU device.
-3. Configure a {ref}`training function <train-overview-training-function>` to report metrics and save checkpoints.
-4. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
-5. Launch a distributed training job with a {class}`~ray.train.torch.TorchTrainer` class.
+1. Configure a model to run distributed and on the correct CPU or GPU device.
+1. Configure a data loader to shard data across the {ref}`workers <train-overview-worker>` and place data on the correct CPU or GPU device.
+1. Configure a {ref}`training function <train-overview-training-function>` to save checkpoints so that training can recover from failures.
+1. Configure {ref}`scaling <train-overview-scaling-config>` and CPU or GPU resource requirements for a training job.
+1. Launch a distributed training job with {class}`~ray.train.torch.TorchTrainer`.
 
 ## Quickstart
 
-For reference, the final code will look something like the following:
+For reference, the final code looks similar to the following:
 
-```{testcode}
-:skipif: True
-
+```python
 from ray.train.torch import TorchTrainer
 from ray.train import ScalingConfig
 
@@ -37,14 +35,14 @@ trainer = TorchTrainer(train_func, scaling_config=scaling_config)
 result = trainer.fit()
 ```
 
-1. `train_func` is the Python code that executes on each distributed training worker.
-2. {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
-3. {class}`~ray.train.torch.TorchTrainer` launches the distributed training job.
+- `train_func` is the Python code that runs on each distributed training worker.
+- {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs.
+- {class}`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch training script with and without Ray Train.
 
 ::::{tab-set}
-:::{tab-item} PyTorch + Ray Train
+:::{tab-item} PyTorch with Ray Train
 ```{code-block} python
 :emphasize-lines: 12, 14, 21, 32, 36-37, 55-58, 59, 63, 66-73
 
@@ -95,7 +93,7 @@ def train_func():
             loss.backward()
             optimizer.step()
 
-        # [3] Report metrics and checkpoint.
+        # [3] Report a checkpoint so that training can resume after a failure.
         metrics = {"loss": loss.item(), "epoch": epoch}
         with tempfile.TemporaryDirectory() as temp_checkpoint_dir:
             torch.save(
@@ -137,9 +135,7 @@ with result.checkpoint.as_directory() as checkpoint_dir:
 :::{tab-item} PyTorch
 <!-- This snippet isn't tested because it doesn't use any Ray code. -->
 
-```{testcode}
-:skipif: True
-
+```python
 import os
 import tempfile
 
@@ -192,10 +188,10 @@ for epoch in range(10):
 
 ### Set up a model
 
-Use the {func}`ray.train.torch.prepare_model` utility function to:
+Use the {func}`ray.train.torch.prepare_model` utility function to do the following:
 
-1. Move your model to the correct device.
-2. Wrap it in `DistributedDataParallel`.
+- Move your model to the correct device.
+- Wrap it in `DistributedDataParallel`.
 
 ```diff
 -from torch.nn.parallel import DistributedDataParallel
@@ -221,12 +217,12 @@ Use the {func}`ray.train.torch.prepare_model` utility function to:
 
 <!-- TODO: Update this to use Ray Data. -->
 
-Use the {func}`ray.train.torch.prepare_data_loader` utility function, which:
+Use the {func}`ray.train.torch.prepare_data_loader` utility function, which does the following:
 
-1. Adds a {class}`~torch.utils.data.distributed.DistributedSampler` to your {class}`~torch.utils.data.DataLoader`.
-2. Moves the batches to the right device.
+- Adds a {class}`~torch.utils.data.distributed.DistributedSampler` to your {class}`~torch.utils.data.DataLoader`.
+- Moves the batches to the right device.
 
-Note that this step isn't necessary if you're passing in Ray Data to your Trainer. See {ref}`data-ingest-torch`.
+You don't need this step if you pass a Ray Data dataset to your trainer. See {ref}`data-ingest-torch`.
 
 ```diff
  from torch.utils.data import DataLoader
@@ -253,28 +249,28 @@ Note that this step isn't necessary if you're passing in Ray Data to your Traine
 ```
 
 :::{tip}
-Keep in mind that `DataLoader` takes in a `batch_size` which is the batch size for each worker. The global batch size can be calculated from the worker batch size (and vice-versa) with the following equation:
+The `batch_size` that `DataLoader` takes is the batch size for each worker. To convert between the worker batch size and the global batch size, use the following equation:
 
-```{testcode}
-:skipif: True
-
+```python
 global_batch_size = worker_batch_size * ray.train.get_context().get_world_size()
 ```
 :::
 
 :::{note}
-If you already manually set up your `DataLoader` with a `DistributedSampler`, {meth}`~ray.train.torch.prepare_data_loader` will not add another one, and will respect the configuration of the existing sampler.
+If you already set up your `DataLoader` with a `DistributedSampler`, {meth}`~ray.train.torch.prepare_data_loader` doesn't add another one and respects the configuration of the existing sampler.
 :::
 
 :::{note}
-{class}`~torch.utils.data.distributed.DistributedSampler` does not work with a `DataLoader` that wraps {class}`~torch.utils.data.IterableDataset`. If you want to work with an dataset iterator, consider using {ref}`Ray Data <data>` instead of PyTorch DataLoader since it provides performant streaming data ingestion for large scale datasets.
+{class}`~torch.utils.data.distributed.DistributedSampler` doesn't work with a `DataLoader` that wraps {class}`~torch.utils.data.IterableDataset`. To work with a dataset iterator, consider using {ref}`Ray Data <data>` instead of a PyTorch `DataLoader`. Ray Data provides performant streaming data ingestion for large-scale datasets.
 
-See {ref}`data-ingest-torch` for more details.
+For details, see {ref}`data-ingest-torch`.
 :::
 
-### Report checkpoints and metrics
+### Save checkpoints for fault tolerance
 
-To monitor progress, you can report intermediate metrics and checkpoints using the {func}`ray.train.report` utility function.
+To recover from worker and node failures without losing progress, save checkpoints with the {func}`ray.train.report` utility function. Ray Train uploads each checkpoint to persistent storage. When you {ref}`enable worker fault tolerance <train-worker-fault-tolerance>`, Ray Train restarts failed workers, and your training function can resume from the latest checkpoint with {func}`ray.train.get_checkpoint`.
+
+Ray Train attaches the metrics that you pass to `ray.train.report` to the checkpoint and uses them to decide which checkpoints to keep. To track metrics over the course of training, log them to an experiment tracking tool. See {ref}`train-experiment-tracking-native`.
 
 ```diff
 +import os
@@ -291,7 +287,7 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
             model.state_dict(), os.path.join(temp_checkpoint_dir, "model.pt")
         )
 
-+       metrics = {"loss": loss.item()}  # Training/validation metrics.
++       metrics = {"loss": loss.item()}  # Metrics to attach to the checkpoint.
 
         # Build a Ray Train checkpoint from a directory
 +       checkpoint = ray.train.Checkpoint.from_directory(temp_checkpoint_dir)
@@ -303,7 +299,7 @@ To monitor progress, you can report intermediate metrics and checkpoints using t
      ...
 ```
 
-For more details, see {ref}`train-monitoring-and-logging` and {ref}`train-checkpointing`.
+For details, see {ref}`train-checkpointing` and {ref}`train-fault-tolerance`.
 
 
 ```{include} common/torch-configure-run.md
@@ -313,8 +309,8 @@ For more details, see {ref}`train-monitoring-and-logging` and {ref}`train-checkp
 
 ## Next steps
 
-After you have converted your PyTorch training script to use Ray Train:
+After you convert your PyTorch training script to use Ray Train, explore the following resources:
 
-* See {ref}`User Guides <train-user-guides>` to learn more about how to perform specific tasks.
-* Browse the {doc}`Examples <examples>` for end-to-end examples of how to use Ray Train.
-* Dive into the {ref}`API Reference <train-api>` for more details on the classes and methods used in this tutorial.
+* See the {ref}`user guides <train-user-guides>` to learn how to perform specific tasks.
+* Browse the {doc}`examples <examples>` for end-to-end examples of Ray Train.
+* See the {ref}`API reference <train-api>` for details on the classes and methods that this tutorial uses.

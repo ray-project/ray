@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from types import MappingProxyType
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -29,7 +29,7 @@ MAX_LOG_NN_OUTPUT = 2
     help="RLlib itself has no use for this anymore.",
     error=False,
 )
-def aligned_array(size: int, dtype, align: int = 64) -> np.ndarray:
+def aligned_array(size: int, dtype: np.dtype, align: int = 64) -> np.ndarray:
     """Returns an array of a given size that is 64-byte aligned.
 
     The returned array can be efficiently copied into GPU memory by TensorFlow.
@@ -337,7 +337,7 @@ def flatten_inputs_to_1d_tensor(
 
 
 @PublicAPI
-def make_action_immutable(obj):
+def make_action_immutable(obj: Any) -> Any:
     """Flags actions immutable to notify users when trying to change them.
 
     Can also be used with any tree-like structure containing either
@@ -398,7 +398,7 @@ def l2_loss(x: np.ndarray) -> np.ndarray:
 
 @PublicAPI
 def lstm(
-    x,
+    x: TensorType,
     weights: np.ndarray,
     biases: Optional[np.ndarray] = None,
     initial_internal_states: Optional[np.ndarray] = None,
@@ -484,6 +484,7 @@ def one_hot(
         depth: The max. number to be one-hot encoded (size of last rank).
         on_value: The value to use for on. Default: 1.0.
         off_value: The value to use for off. Default: 0.0.
+        dtype: The numpy dtype of the returned one-hot array.
 
     Returns:
         The one-hot encoded equivalent of the input array.

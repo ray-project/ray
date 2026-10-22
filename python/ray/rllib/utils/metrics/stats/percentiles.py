@@ -35,6 +35,10 @@ class PercentilesStats(StatsBase):
             percentiles: The percentiles to track.
                 If None, track the default percentiles [0, 50, 75, 90, 95, 99, 100].
                 If a list, track the given percentiles.
+            window: The number of most recent values to compute the percentiles
+                over. If None, all values are kept.
+            *args: Additional positional args passed on to `StatsBase.__init__`.
+            **kwargs: Additional keyword args passed on to `StatsBase.__init__`.
         """
         super().__init__(*args, **kwargs)
 
@@ -259,7 +263,10 @@ class PercentilesStats(StatsBase):
 
 
 @DeveloperAPI
-def compute_percentiles(sorted_list, percentiles):
+def compute_percentiles(
+    sorted_list: List[Union[int, float]],
+    percentiles: List[Union[int, float]],
+) -> Dict[Union[int, float], Any]:
     """Compute percentiles from an already sorted list.
 
     Note that this will not raise an error if the list is not sorted to avoid overhead.

@@ -11,9 +11,6 @@ import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
 )
@@ -61,11 +58,7 @@ def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
-def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2.pyorc_available",
-        lambda: False,
-    )
+def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     file_path = partition_dir / "data.orc"
@@ -85,7 +78,11 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, monkey
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
-    assert isinstance(partitioner, RoundRobinPartitioner)
+    from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+        OrcStripePartitioner,
+    )
+
+    assert isinstance(partitioner, OrcStripePartitioner)
     partitioner.add_input(sample)
     partitioner.finalize()
     assert partitioner.has_partition()
@@ -109,8 +106,15 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
         file_extensions=["orc"],
         include_paths=True,
     )
+    from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+
+    raw_indexer = datasource._get_file_indexer()
+    sample = sample_files(raw_indexer, datasource.paths, datasource.filesystem)
+    _, prepared_indexer, _ = datasource.prepare_read(
+        sample, raw_indexer, PartitionHints(0, 1024, 1)
+    )
     manifests = list(
-        datasource._get_file_indexer().list_files(
+        prepared_indexer.list_files(
             pa.array(datasource.paths, type=pa.string()),
             filesystem=datasource.filesystem,
             preserve_order=True,
@@ -134,7 +138,10 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
     assert rows[1]["path"].endswith("year=2024/data.orc")
 
 
-def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_read_orc_routes_to_v2_and_forwards_read_options(
+    monkeypatch, tmp_path, merge_schema
+):
     result = object()
     captured = {}
 
@@ -154,6 +161,7 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
         concurrency=4,
         parallelism=2,
         override_num_blocks=3,
+        merge_schema=merge_schema,
     )
 
     datasource = captured["datasource"]
@@ -165,6 +173,39 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path):
     assert captured["kwargs"]["parallelism"] == 2
     assert captured["kwargs"]["concurrency"] == 4
     assert captured["kwargs"]["partition_filter"] is partition_filter
+    assert captured["kwargs"]["sample_all_files_for_schema"] is merge_schema
+
+
+def test_read_orc_rejects_full_schema_on_v1(monkeypatch, tmp_path):
+    monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", False)
+    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
+        read_api.read_orc(str(tmp_path), merge_schema=True)
+
+
+def test_infer_schema_empty_sample(tmp_path):
+    sample = FileManifest.construct_manifest(paths=[], sizes=[], chunk_metadatas=[])
+    assert OrcDatasourceV2([str(tmp_path)]).infer_schema(sample) == pa.schema([])
+
+
+def test_infer_schema_unifies_across_batches(tmp_path):
+    from ray.data._internal.datasource_v2.common.schema_inference import (
+        _SCHEMA_READ_BATCH_SIZE,
+    )
+
+    paths = []
+    for i in range(_SCHEMA_READ_BATCH_SIZE + 1):
+        path = tmp_path / f"f{i:03d}.orc"
+        table = (
+            pa.table({"id": [i], "late": ["value"]})
+            if i == _SCHEMA_READ_BATCH_SIZE
+            else pa.table({"id": [i]})
+        )
+        _write_orc(path, table)
+        paths.append(path)
+
+    schema = OrcDatasourceV2([str(tmp_path)]).infer_schema(_manifest_of(paths))
+
+    assert schema.names == ["id", "late"]
 
 
 def test_read_orc_routes_to_v1_when_v2_is_disabled(monkeypatch, tmp_path):
