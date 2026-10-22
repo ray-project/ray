@@ -1,4 +1,9 @@
-from .execution_group import ExecutionGroup, ReplicaGroup
+from .execution_group import (
+    ExecutionGroup,
+    ExecutionResult,
+    ReplicaGroup,
+    collect_results,
+)
 from .placement_group_handle import (
     DefaultPlacementGroupHandle,
     PlacementGroupHandle,
@@ -17,6 +22,7 @@ __all__ = [
     "ActorMetadata",
     "DefaultPlacementGroupHandle",
     "ExecutionGroup",
+    "ExecutionResult",
     "PlacementGroupHandle",
     "RayTrainWorker",
     "ReplicaGroup",
@@ -28,4 +34,5 @@ __all__ = [
     "WorkerGroupState",
     "WorkerGroupStateBuilder",
     "WorkerStatus",
+    "collect_results",
 ]

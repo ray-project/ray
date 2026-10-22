@@ -66,14 +66,24 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.storage import _upload_to_fs_path
-from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
+from ray.train.v2._internal.execution.worker_group import (
+    Worker,
+    WorkerGroup,
+    collect_results,
+)
 from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
 
-# Query timeout lengths
-_STACK_DUMP_TIMEOUT_S: float = 30.0
-_NVIDIA_SMI_TIMEOUT_S: float = 30.0
+# Timeout in seconds for the `py-spy dump` subprocess on each worker.
+_PY_SPY_TIMEOUT_S: float = 29.0
+# Timeout in seconds for the `nvidia-smi -q` subprocess on each node.
+_NVIDIA_SMI_TIMEOUT_S: float = 29.0
+# Timeouts in seconds to wait for every target's dump. The stack trace and
+# nvidia-smi waits outlast their subprocess, so a target whose subprocess timed
+# out still reports why.
+_STACK_DUMP_TIMEOUT_S: float = _PY_SPY_TIMEOUT_S + 1
+_NVIDIA_SMI_DUMP_TIMEOUT_S: float = _NVIDIA_SMI_TIMEOUT_S + 1
 _FLIGHT_RECORDER_DUMP_TIMEOUT_S: float = 30.0
 _NCCL_RAS_QUERY_TIMEOUT_S: float = 8.0  # the default ncclras -t value is 5
 
@@ -589,62 +599,6 @@ class DiagnosticResult:
 
     value: Optional[Any] = None
     error: Optional[Exception] = None
-
-
-def fan_out_to_workers(
-    workers: List[Worker], fn: Callable[..., Any], *fn_args, timeout_s: float
-) -> Dict[int, DiagnosticResult]:
-    """Run ``fn`` on every worker in parallel and collect what each returned.
-
-    Args:
-        workers: The train workers to run ``fn`` on.
-        fn: The worker-side function, called with ``fn_args``. It may return a
-            ``DiagnosticResult`` to report its own failure, which is kept as is.
-        *fn_args: Positional arguments forwarded to ``fn`` on every worker.
-        timeout_s: Budget for the whole fan-out, shared by every worker.
-
-    Returns:
-        Dictionary of the diagnostic result with its world rank of the worker.
-    """
-    dumps: Dict[int, DiagnosticResult] = {}
-    refs: Dict[ray.ObjectRef, int] = {}
-
-    for worker in workers:
-        rank = worker.distributed_context.world_rank
-        try:
-            refs[worker.execute_async(fn, *fn_args)] = rank
-        except Exception as e:  # noqa: BLE001
-            logger.info("Failed to launch %s on rank %d: %s", fn.__name__, rank, e)
-            dumps[rank] = DiagnosticResult(error=e)
-
-    if refs:
-        _, not_ready = ray.wait(list(refs), num_returns=len(refs), timeout=timeout_s)
-        for ref, rank in refs.items():
-            if ref in not_ready:
-                logger.warning(
-                    "%s on rank %d did not finish within %.0fs. It will be missing "
-                    "from the hang diagnostics.",
-                    fn.__name__,
-                    rank,
-                    timeout_s,
-                )
-                dumps[rank] = DiagnosticResult(
-                    error=TimeoutError(f"timed out after {timeout_s:.0f}s")
-                )
-                continue
-
-            try:
-                value = ray.get(ref)
-                dumps[rank] = (
-                    value
-                    if isinstance(value, DiagnosticResult)
-                    else DiagnosticResult(value=value)
-                )
-            except Exception as e:  # noqa: BLE001
-                logger.info("Failed to collect %s on rank %d: %s", fn.__name__, rank, e)
-                dumps[rank] = DiagnosticResult(error=e)
-
-    return dumps
 
 
 def dump_stack_trace(pyspy_timeout_s: float) -> str:
@@ -1278,8 +1232,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         """Fan out a native stack dump to every worker and write it to the log dir.
 
         Every rank gets a ``rank_<worker rank>.log`` in the uploaded folder. A rank
-        whose dump could not be launched, timed out, or failed to collect gets a
-        one-line placeholder saying so users know why it failed.
+        whose dump timed out or failed gets a one-line placeholder saying so users
+        know why it failed.
 
         Returns:
             The path to the folder with the stack traces.
@@ -1288,17 +1242,16 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if not workers:
             return None
 
-        dumps = fan_out_to_workers(
-            workers,
-            dump_stack_trace,
-            _STACK_DUMP_TIMEOUT_S - 1,
-            timeout_s=_STACK_DUMP_TIMEOUT_S,
-        )
+        refs = [
+            worker.execute_async(dump_stack_trace, _PY_SPY_TIMEOUT_S)
+            for worker in workers
+        ]
+        results = collect_results(refs, timeout_s=_STACK_DUMP_TIMEOUT_S)
         files = {
-            f"rank_{rank}.log": str(dump.value)
-            if dump.error is None
-            else str(dump.error)
-            for rank, dump in dumps.items()
+            f"rank_{worker.distributed_context.world_rank}.log": str(result.value)
+            if result.error is None
+            else str(result.error)
+            for worker, result in zip(workers, results)
         }
         return self.upload_diagnostics(_STACK_TRACES_TOOL, files)
 
@@ -1319,12 +1272,15 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         if not workers:
             return None
 
-        dumps = fan_out_to_workers(
-            workers, dump_flight_recorder, timeout_s=_FLIGHT_RECORDER_DUMP_TIMEOUT_S
-        )
+        refs = [worker.execute_async(dump_flight_recorder) for worker in workers]
+        results = collect_results(refs, timeout_s=_FLIGHT_RECORDER_DUMP_TIMEOUT_S)
 
         files: Dict[str, str] = {}
-        for rank, diagnostic_result in dumps.items():
+        for worker, result in zip(workers, results):
+            rank = worker.distributed_context.world_rank
+            diagnostic_result = result.value
+            if result.error is not None:
+                diagnostic_result = DiagnosticResult(error=result.error)
             error = diagnostic_result.error
             if error is not None:
                 logger.info("No Flight Recorder dump from rank %d: %s", rank, error)
@@ -1345,23 +1301,22 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             The path to the folder with the snapshots.
         """
         node_workers: Dict[str, Worker] = {}
-        node_ips: Dict[int, str] = {}
         for worker in self._worker_group.get_workers():
             node_workers.setdefault(worker.metadata.node_ip, worker)
-            node_ips[worker.distributed_context.world_rank] = worker.metadata.node_ip
         if not node_workers:
             return None
 
-        dumps = fan_out_to_workers(
-            list(node_workers.values()),
-            run_nvidia_smi,
-            _NVIDIA_SMI_TIMEOUT_S - 1,
-            timeout_s=_NVIDIA_SMI_TIMEOUT_S,
-        )
+        refs = [
+            worker.execute_async(run_nvidia_smi, _NVIDIA_SMI_TIMEOUT_S)
+            for worker in node_workers.values()
+        ]
+        results = collect_results(refs, timeout_s=_NVIDIA_SMI_DUMP_TIMEOUT_S)
 
         files: Dict[str, str] = {}
-        for rank, dump in dumps.items():
-            node_ip = node_ips[rank]
+        for node_ip, result in zip(node_workers, results):
+            dump = result.value
+            if result.error is not None:
+                dump = DiagnosticResult(error=result.error)
             files[f"node_{node_ip}.log"] = (
                 str(dump.value)
                 if dump.error is None

@@ -22,7 +22,6 @@ from ray.train.v2._internal.callbacks.nccl_ras import (
     RASReport,
     dump_flight_recorder,
     dump_stack_trace,
-    fan_out_to_workers,
     parse_ras_addr,
     parse_ras_schema,
     run_nvidia_smi,
@@ -36,6 +35,7 @@ from ray.train.v2._internal.constants import (
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
     TORCH_FR_BUFFER_SIZE_ENV_VAR,
 )
+from ray.train.v2._internal.execution.worker_group import ExecutionResult
 from ray.train.v2.api.exceptions import NCCLHangError
 
 HEALTHY_RAS_JSON = """{
@@ -1540,139 +1540,21 @@ def test_flight_recorder_dump_failures(
 
 
 # ---------------------------------------------------------------------------
-# Diagnostics, stage 2: fanning a worker-side function out to the group
+# Diagnostics, stage 2: turning each tool's dumps into uploaded files
 # ---------------------------------------------------------------------------
 
 
 def make_worker(rank, node_ip="10.0.0.1"):
-    """A train worker stand-in; the diagnostics only need its rank and node."""
-    return MagicMock(
+    """A train worker stand-in; the diagnostics only need its rank and node.
+
+    A call launched on it returns ``(rank, fn, fn_args)`` in place of an ObjectRef.
+    """
+    worker = MagicMock(
         distributed_context=MagicMock(world_rank=rank),
         metadata=MagicMock(node_ip=node_ip),
     )
-
-
-@pytest.fixture
-def fan_out(monkeypatch):
-    """Script what each worker does when a diagnostic fans out to it.
-
-    Returns a namespace holding a ``worker(rank, ...)`` factory and the
-    ``ray.wait`` mock the fan-out used. A worker returns ``value``, or instead
-    fails its launch (``launch_error``), never finishes so the fan-out times out
-    (``ready=False``), or fails when its finished call is collected
-    (``get_error``).
-    """
-    pending, values, get_errors = set(), {}, {}
-
-    def worker(rank, value=None, launch_error=None, get_error=None, ready=True):
-        worker = make_worker(rank)
-        if launch_error is not None:
-            worker.execute_async.side_effect = launch_error
-            return worker
-        # The mock's return value stands in for the call's ObjectRef.
-        ref = worker.execute_async.return_value
-        values[ref] = value
-        if not ready:
-            pending.add(ref)
-        if get_error is not None:
-            get_errors[ref] = get_error
-        return worker
-
-    def wait(refs, num_returns, timeout):
-        assert num_returns == len(refs)
-        return (
-            [ref for ref in refs if ref not in pending],
-            [ref for ref in refs if ref in pending],
-        )
-
-    def get(ref, timeout=None):
-        if ref in get_errors:
-            raise get_errors[ref]
-        return values[ref]
-
-    wait_mock = MagicMock(side_effect=wait)
-    monkeypatch.setattr(nccl_ras.ray, "wait", wait_mock)
-    monkeypatch.setattr(nccl_ras.ray, "get", get)
-    return types.SimpleNamespace(worker=worker, wait=wait_mock)
-
-
-def test_fan_out_collects_every_worker(fan_out):
-    workers = [fan_out.worker(7, value="stack-7"), fan_out.worker(4, value="stack-4")]
-
-    dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
-
-    # A dump is keyed by the worker's world rank, not its position in the list.
-    assert {rank: dump.value for rank, dump in dumps.items()} == {
-        7: "stack-7",
-        4: "stack-4",
-    }
-    assert all(dump.error is None for dump in dumps.values())
-    workers[0].execute_async.assert_called_once_with(dump_stack_trace, 25.0)
-    # One wait for the whole fan-out, sharing the budget between the workers.
-    assert fan_out.wait.call_args.kwargs["timeout"] == 30.0
-
-
-@pytest.mark.parametrize(
-    "broken,expected_type,expected_message,expected_log",
-    [
-        (
-            {"launch_error": RuntimeError("actor is dead")},
-            RuntimeError,
-            "actor is dead",
-            "Failed to launch dump_stack_trace on rank 0",
-        ),
-        (
-            {"ready": False},
-            TimeoutError,
-            "timed out after 30s",
-            "dump_stack_trace on rank 0 did not finish within 30s",
-        ),
-        (
-            {"get_error": RuntimeError("worker exited")},
-            RuntimeError,
-            "worker exited",
-            "Failed to collect dump_stack_trace on rank 0",
-        ),
-    ],
-    ids=["launch_failed", "timed_out", "collect_failed"],
-)
-def test_fan_out_records_per_rank_failures(
-    fan_out,
-    caplog,
-    propagate_logs,
-    broken,
-    expected_type,
-    expected_message,
-    expected_log,
-):
-    # One unreachable rank (the hung one is the interesting one) must not cost
-    # us the ranks that did answer and the failure is logged.
-    workers = [fan_out.worker(0, **broken), fan_out.worker(1, value="stack-1")]
-
-    with caplog.at_level(logging.INFO, logger=nccl_ras.logger.name):
-        dumps = fan_out_to_workers(workers, dump_stack_trace, 25.0, timeout_s=30.0)
-
-    assert dumps[0].value is None
-    assert isinstance(dumps[0].error, expected_type)
-    assert expected_message in str(dumps[0].error)
-    assert dumps[1].value == "stack-1" and dumps[1].error is None
-    assert expected_log in caplog.text
-
-
-def test_fan_out_keeps_a_returned_diagnostic_result(fan_out):
-    # A worker-side function that reports its own failure must not be wrapped
-    # as a successful value.
-    error = RuntimeError("no GPUs")
-    workers = [fan_out.worker(0, value=DiagnosticResult(error=error))]
-
-    dumps = fan_out_to_workers(workers, run_nvidia_smi, 25.0, timeout_s=30.0)
-
-    assert dumps[0].value is None and dumps[0].error is error
-
-
-# ---------------------------------------------------------------------------
-# Diagnostics, stage 3: turning each tool's dumps into uploaded files
-# ---------------------------------------------------------------------------
+    worker.execute_async.side_effect = lambda fn, *fn_args: (rank, fn, fn_args)
+    return worker
 
 
 @pytest.fixture
@@ -1704,15 +1586,15 @@ def make_diagnostics_callback(workers=None, experiment_fs_path="/exp"):
     return callback
 
 
-def scripted_fan_out(monkeypatch, dumps):
-    """Replace the worker fan-out with fixed dumps, recording how it was called."""
+def scripted_results(monkeypatch, results):
+    """Replace the wait on the workers with fixed ``results``, recording each wait."""
     calls = []
 
-    def fake_fan_out(workers, fn, *fn_args, timeout_s):
-        calls.append((workers, fn, fn_args, timeout_s))
-        return dumps
+    def fake_collect_results(refs, timeout_s):
+        calls.append((refs, timeout_s))
+        return results
 
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", fake_fan_out)
+    monkeypatch.setattr(nccl_ras, "collect_results", fake_collect_results)
     return calls
 
 
@@ -1727,6 +1609,8 @@ class FanOutDiagnostic:
         fn_args: The arguments ``fn`` is fanned out with.
         timeout_s: The fan-out's budget.
         ok: The worker's return value for a successful dump of ``contents``.
+        failed: The worker's return value for a dump it could not take because
+            of ``error``, or ``None`` if it never reports one.
         filename: The file a rank's dump lands in (nvidia-smi: its node's).
         placeholder: What is written in place of a dump that failed with
             ``reason``.
@@ -1738,6 +1622,7 @@ class FanOutDiagnostic:
     fn_args: tuple
     timeout_s: float
     ok: Callable[[str], Any]
+    failed: Optional[Callable[[Exception], Any]]
     filename: Callable[[int], str]
     placeholder: Callable[[str], str]
 
@@ -1748,9 +1633,10 @@ _FAN_OUT_DIAGNOSTICS = [
         method="dump_workers_stack_traces",
         fn=nccl_ras.dump_stack_trace,
         # py-spy has to give up before the controller stops waiting.
-        fn_args=(nccl_ras._STACK_DUMP_TIMEOUT_S - 1,),
+        fn_args=(nccl_ras._PY_SPY_TIMEOUT_S,),
         timeout_s=nccl_ras._STACK_DUMP_TIMEOUT_S,
         ok=lambda contents: contents,
+        failed=None,
         filename=lambda rank: f"rank_{rank}.log",
         placeholder=lambda reason: reason,
     ),
@@ -1758,9 +1644,10 @@ _FAN_OUT_DIAGNOSTICS = [
         tool=nccl_ras._NVIDIA_SMI_TOOL,
         method="dump_nodes_nvidia_smi",
         fn=nccl_ras.run_nvidia_smi,
-        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S - 1,),
-        timeout_s=nccl_ras._NVIDIA_SMI_TIMEOUT_S,
-        ok=lambda contents: contents,
+        fn_args=(nccl_ras._NVIDIA_SMI_TIMEOUT_S,),
+        timeout_s=nccl_ras._NVIDIA_SMI_DUMP_TIMEOUT_S,
+        ok=lambda contents: DiagnosticResult(value=contents),
+        failed=lambda error: DiagnosticResult(error=error),
         filename=lambda rank: f"node_10.0.0.{rank}.log",
         placeholder=lambda reason: f"no `nvidia-smi` snapshot: {reason}",
     ),
@@ -1770,7 +1657,8 @@ _FAN_OUT_DIAGNOSTICS = [
         fn=nccl_ras.dump_flight_recorder,
         fn_args=(),
         timeout_s=nccl_ras._FLIGHT_RECORDER_DUMP_TIMEOUT_S,
-        ok=lambda contents: contents,
+        ok=lambda contents: DiagnosticResult(value=contents),
+        failed=lambda error: DiagnosticResult(error=error),
         filename=lambda rank: f"rank_{rank}.json",
         # Still valid JSON, so every file in the directory parses.
         placeholder=lambda reason: json.dumps({"dump_error": reason}),
@@ -1786,13 +1674,9 @@ def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic
     # matched to the RAS report, holding exactly what the worker returned.
     monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
     callback = make_diagnostics_callback()
-    workers = callback._worker_group.get_workers()
-    calls = scripted_fan_out(
+    calls = scripted_results(
         monkeypatch,
-        {
-            rank: DiagnosticResult(value=diagnostic.ok(f"dump {rank}"))
-            for rank in (0, 1)
-        },
+        [ExecutionResult(value=diagnostic.ok(f"dump {rank}")) for rank in (0, 1)],
     )
 
     fs_path = getattr(callback, diagnostic.method)()
@@ -1801,7 +1685,9 @@ def test_diagnostic_uploads_one_file_per_target(monkeypatch, uploads, diagnostic
     assert uploads == [
         (fs_path, {diagnostic.filename(rank): f"dump {rank}" for rank in (0, 1)})
     ]
-    assert calls == [(workers, diagnostic.fn, diagnostic.fn_args, diagnostic.timeout_s)]
+    # One wait for the calls on every target, sharing the tool's budget.
+    launched = [(rank, diagnostic.fn, diagnostic.fn_args) for rank in (0, 1)]
+    assert calls == [(launched, diagnostic.timeout_s)]
 
 
 @pytest.mark.parametrize(
@@ -1812,10 +1698,35 @@ def test_diagnostic_failed_target_gets_placeholder(monkeypatch, uploads, diagnos
     monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
     callback = make_diagnostics_callback()
     reason = "it went wrong"
-    bad_dump = DiagnosticResult(error=RuntimeError(reason))
+    bad_dump = ExecutionResult(error=RuntimeError(reason))
 
-    scripted_fan_out(
-        monkeypatch, {0: bad_dump, 1: DiagnosticResult(value=diagnostic.ok("dump 1"))}
+    scripted_results(
+        monkeypatch, [bad_dump, ExecutionResult(value=diagnostic.ok("dump 1"))]
+    )
+    getattr(callback, diagnostic.method)()
+
+    ((_, files),) = uploads
+    assert files == {
+        diagnostic.filename(0): diagnostic.placeholder(reason),
+        diagnostic.filename(1): "dump 1",
+    }
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [diagnostic for diagnostic in _FAN_OUT_DIAGNOSTICS if diagnostic.failed],
+    ids=lambda diagnostic: diagnostic.tool,
+)
+def test_diagnostic_reported_failure_gets_placeholder(monkeypatch, uploads, diagnostic):
+    # A worker that reports why it has no dump gets a file saying so, like a
+    # failed call.
+    monkeypatch.setenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, "2000")
+    callback = make_diagnostics_callback()
+    reason = "it went wrong"
+    reported = ExecutionResult(value=diagnostic.failed(RuntimeError(reason)))
+
+    scripted_results(
+        monkeypatch, [reported, ExecutionResult(value=diagnostic.ok("dump 1"))]
     )
     getattr(callback, diagnostic.method)()
 
@@ -1835,18 +1746,18 @@ def test_nvidia_smi_queries_one_worker_per_node(monkeypatch, uploads):
         make_worker(2, node_ip="10.0.0.2"),
     ]
     callback = make_diagnostics_callback(workers)
-    calls = scripted_fan_out(
+    calls = scripted_results(
         monkeypatch,
-        {
-            0: DiagnosticResult(value="node 1 GPUs"),
-            2: DiagnosticResult(value="node 2 GPUs"),
-        },
+        [
+            ExecutionResult(value=DiagnosticResult(value="node 1 GPUs")),
+            ExecutionResult(value=DiagnosticResult(value="node 2 GPUs")),
+        ],
     )
 
     callback.dump_nodes_nvidia_smi()
 
-    ((queried, *_),) = calls
-    assert queried == [workers[0], workers[2]]
+    ((launched, _),) = calls
+    assert [rank for rank, _, _ in launched] == [0, 2]
     ((_, files),) = uploads
     assert files == {
         "node_10.0.0.1.log": "node 1 GPUs",
@@ -1860,12 +1771,10 @@ def test_nvidia_smi_report_reaches_the_uploaded_file(monkeypatch, uploads):
     fake_subprocess_run(monkeypatch, stdout="Driver Version : 580.65.06\n")
     callback = make_diagnostics_callback([make_worker(0, node_ip="10.0.0.1")])
 
-    def local_fan_out(workers, fn, *fn_args, timeout_s):
-        return {
-            worker.distributed_context.world_rank: fn(*fn_args) for worker in workers
-        }
+    def run_locally(refs, timeout_s):
+        return [ExecutionResult(value=fn(*fn_args)) for _, fn, fn_args in refs]
 
-    monkeypatch.setattr(nccl_ras, "fan_out_to_workers", local_fan_out)
+    monkeypatch.setattr(nccl_ras, "collect_results", run_locally)
 
     callback.dump_nodes_nvidia_smi()
 
@@ -1900,7 +1809,7 @@ def test_diagnostic_skipped(monkeypatch, uploads, method, has_workers, fr_armed)
     else:
         monkeypatch.delenv(TORCH_FR_BUFFER_SIZE_ENV_VAR, raising=False)
     callback = make_diagnostics_callback(None if has_workers else [])
-    calls = scripted_fan_out(monkeypatch, [])
+    calls = scripted_results(monkeypatch, [])
 
     assert getattr(callback, method)() is None
     assert calls == [] and uploads == []

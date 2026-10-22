@@ -1,7 +1,9 @@
 import abc
-from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, TypeVar
 
 import ray
+from ray.exceptions import GetTimeoutError
 from ray.train._internal.base_worker_group import BaseWorkerGroup
 from ray.train.v2._internal.execution.worker_group.state import _shutdown_workers
 from ray.train.v2._internal.execution.worker_group.worker import Worker
@@ -61,6 +63,46 @@ class ExecutionGroup(BaseWorkerGroup):
     def __len__(self) -> int:
         self._assert_active()
         return len(self.get_workers())
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    """What a remote call returned, or the error it failed with.
+
+    Attributes:
+        value: What the call returned, or ``None`` if it failed.
+        error: The exception the call failed with, or ``None`` if it returned.
+    """
+
+    value: Optional[Any] = None
+    error: Optional[Exception] = None
+
+
+def collect_results(refs: List[ObjectRef], timeout_s: float) -> List[ExecutionResult]:
+    """Wait up to ``timeout_s`` for every ref and get each one's value or error.
+
+    Args:
+        refs: The refs to wait for, e.g. from ``execute_async``.
+        timeout_s: Budget for the whole wait, shared by every ref.
+
+    Returns:
+        One result per ref, in the order of ``refs``. A ref that has not finished
+        in time gets a ``GetTimeoutError``, and its call keeps running.
+    """
+    _, not_ready = ray.wait(refs, num_returns=len(refs), timeout=timeout_s)
+    not_ready = set(not_ready)
+
+    results = []
+    for ref in refs:
+        if ref in not_ready:
+            error = GetTimeoutError(f"timed out after {timeout_s:g}s")
+            results.append(ExecutionResult(error=error))
+            continue
+        try:
+            results.append(ExecutionResult(value=ray.get(ref)))
+        except Exception as e:
+            results.append(ExecutionResult(error=e))
+    return results
 
 
 class ReplicaGroup(ExecutionGroup):
