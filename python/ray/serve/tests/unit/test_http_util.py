@@ -172,6 +172,21 @@ async def test_message_queue_drains_messages_before_error(close_after_error: boo
 
 
 @pytest.mark.asyncio
+async def test_message_queue_falsy_error_is_raised():
+    class FalsyError(Exception):
+        def __bool__(self):
+            return False
+
+    queue = MessageQueue()
+    queue.put_nowait("A")
+    queue.set_error(FalsyError())
+
+    assert await asyncio.wait_for(queue.get_one_message(), 1) == "A"
+    with pytest.raises(FalsyError):
+        await asyncio.wait_for(queue.get_one_message(), 1)
+
+
+@pytest.mark.asyncio
 async def test_message_queue_error_discards_messages():
     queue = MessageQueue()
 

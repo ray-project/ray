@@ -305,7 +305,7 @@ class MessageQueue(Send):
                 self._new_message_event.clear()
 
             return msg
-        elif len(self._message_queue) == 0 and self._error:
+        elif len(self._message_queue) == 0 and self._error is not None:
             raise self._error
         elif len(self._message_queue) == 0 and self._closed:
             raise StopAsyncIteration
