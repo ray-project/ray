@@ -29,6 +29,7 @@
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
@@ -101,6 +102,13 @@ class RedisAsyncContextTest : public ::testing::Test {
   static bool TrySubmissionLock(RedisAsyncContext &context) {
     std::unique_lock<std::mutex> lock(context.mutex_, std::try_to_lock);
     return lock.owns_lock();
+  }
+
+  // End every socket wait of `context` without telling hiredis, the way a
+  // write wait completed by EPOLLERR before the connect finishes leaves it.
+  static void CancelSocketWaits(RedisAsyncContext &context) {
+    boost::system::error_code ec;
+    context.socket_.cancel(ec);
   }
 };
 
@@ -256,6 +264,53 @@ TEST_F(RedisAsyncContextTest, TestReconnectsToLiteralAddress) {
 // async_resolve path: everything else connects to a literal IP.
 TEST_F(RedisAsyncContextTest, TestReconnectsThroughHostName) {
   ExpectReconnectAfterServerDropsConnection("localhost");
+}
+
+namespace {
+
+// Stop the test Redis and bring it back on the same port a moment later, the
+// way a restarted Redis container does: the attempts in between are refused,
+// and the one that connects must still go through with nothing else queued
+// behind the reconnect check.
+void ExpectReconnectAfterRedisRestarts(const std::string &host) {
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  instrumented_io_context io;
+  auto work = boost::asio::make_work_guard(io.get_executor());
+  std::thread io_thread([&io] { io.run(); });
+  ray::Clock clock;
+  auto ctx = std::make_unique<RedisContext>(io, clock);
+  absl::Cleanup stop = [&] {
+    work.reset();
+    io.stop();
+    io_thread.join();
+    ctx.reset();
+  };
+  ASSERT_TRUE(ctx->Connect(host, port, /*username=*/"", /*password=*/"").ok());
+
+  TestSetupUtil::ShutDownRedisServers();
+  std::this_thread::sleep_for(1s);
+  TestSetupUtil::StartUpRedisServers({port});
+
+  std::promise<bool> done;
+  ctx->RunArgvAsync(
+      {"SET", "after_restart", "1"},
+      [&done](const std::shared_ptr<CallbackReply> &reply) {
+        done.set_value(reply->ReadAsStatus().ok());
+      },
+      kNoTable);
+  auto future = done.get_future();
+  ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
+  EXPECT_TRUE(future.get());
+}
+
+}  // namespace
+
+TEST_F(RedisAsyncContextTest, TestReconnectsAfterRedisRestartsToLiteralAddress) {
+  ExpectReconnectAfterRedisRestarts("127.0.0.1");
+}
+
+TEST_F(RedisAsyncContextTest, TestReconnectsAfterRedisRestartsThroughHostName) {
+  ExpectReconnectAfterRedisRestarts("localhost");
 }
 
 // GcsServer connects its KV store client from the main thread while that
@@ -819,6 +874,41 @@ TEST_F(RedisAsyncContextTest, TestOutageDeadlineZeroGraceRefundsNothing) {
   EXPECT_FALSE(now < ctx.OutageDeadline(now, absl::ZeroDuration()));
 }
 
+// The write event hiredis waits for to finish a connect can be used up before
+// the connect completes. A reconnected context must still complete it and send
+// what was queued behind it, with nothing else submitted to ask for another
+// write event.
+TEST_F(RedisAsyncContextTest, TestResetConnectCompletesWithoutItsWriteEvent) {
+  instrumented_io_context local_io_service;
+  const int port = TEST_REDIS_SERVER_PORTS.front();
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(port));
+  SimulateHiredisDisconnect(ctx);
+
+  auto fresh = ConnectRaw(port);
+  fresh->data = &ctx;
+  std::atomic<bool> replied{false};
+  ASSERT_EQ(redisAsyncCommand(
+                fresh.get(),
+                [](redisAsyncContext *, void *reply, void *privdata) {
+                  if (reply != nullptr) {
+                    static_cast<std::atomic<bool> *>(privdata)->store(true);
+                  }
+                },
+                &replied,
+                "PING"),
+            REDIS_OK);
+  ctx.Reset(std::move(fresh));
+  // Run the write wait Reset() arms, then end it unanswered.
+  local_io_service.poll_one();
+  CancelSocketWaits(ctx);
+
+  for (int i = 0; i < 50 && !replied.load(); ++i) {
+    local_io_service.run_for(std::chrono::milliseconds(100));
+    local_io_service.restart();
+  }
+  EXPECT_TRUE(replied.load());
+}
+
 namespace {
 std::atomic<int> connect_callback_status{-1};
 void RecordConnectStatus(const redisAsyncContext * /*c*/, int status) {
@@ -849,6 +939,113 @@ TEST_F(RedisAsyncContextTest, TestResetArmsWriteForPreRegisteredConnectCallback)
   }
   EXPECT_EQ(connect_callback_status.load(), REDIS_OK);
 }
+
+#if !defined(_WIN32)
+namespace {
+
+// A listener whose accept queue is full, so the kernel drops further SYNs and
+// a connect to it stays in progress, like one to an address that is gone.
+class BlackholeListener {
+ public:
+  BlackholeListener() {
+    listen_fd_ = socket(AF_INET, SOCK_STREAM, 0);
+    RAY_CHECK(listen_fd_ >= 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    RAY_CHECK(bind(listen_fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
+    RAY_CHECK(listen(listen_fd_, 0) == 0);
+    socklen_t len = sizeof(addr);
+    RAY_CHECK(getsockname(listen_fd_, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
+    port_ = ntohs(addr.sin_port);
+    for (int i = 0; i < 8; ++i) {
+      fillers_.push_back(StartConnect());
+    }
+  }
+
+  ~BlackholeListener() {
+    for (int fd : fillers_) {
+      close(fd);
+    }
+    close(listen_fd_);
+  }
+
+  int port() const { return port_; }
+
+  // Whether a new connect stays in progress, which not every platform does
+  // for a full accept queue.
+  bool Blackholes() {
+    int fd = StartConnect();
+    pollfd p{fd, POLLOUT, 0};
+    const bool in_progress = poll(&p, 1, 300) == 0;
+    close(fd);
+    return in_progress;
+  }
+
+ private:
+  int StartConnect() {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    RAY_CHECK(fd >= 0);
+    RAY_CHECK(fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK) == 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(port_);
+    connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+    return fd;
+  }
+
+  int listen_fd_ = -1;
+  int port_ = 0;
+  std::vector<int> fillers_;
+};
+
+// REDIS_ERR is -1, so "not called yet" needs a value of its own.
+constexpr int kConnectNotReported = 1000;
+std::atomic<int> timed_out_connect_status{kConnectNotReported};
+void RecordFailedConnect(const redisAsyncContext *c, int status) {
+  if (status != REDIS_OK) {
+    // hiredis frees a context whose connect failed; release it first.
+    static_cast<RedisAsyncContext *>(c->data)->ResetRawRedisAsyncContext();
+  }
+  timed_out_connect_status = status;
+}
+
+}  // namespace
+
+// A reconnect whose connect never completes is given up after
+// redis_reconnect_connect_timeout_ms and reported as a failed connect, so the
+// next attempt can start, instead of waiting out the kernel's SYN retries.
+TEST_F(RedisAsyncContextTest, TestResetGivesUpOnAConnectThatNeverCompletes) {
+  BlackholeListener hole;
+  if (!hole.Blackholes()) {
+    GTEST_SKIP() << "A full accept queue does not drop SYNs here.";
+  }
+  RayConfig::instance().initialize(R"({"redis_reconnect_connect_timeout_ms": 300})");
+  absl::Cleanup restore = [] {
+    RayConfig::instance().initialize(R"({"redis_reconnect_connect_timeout_ms": 5000})");
+  };
+  instrumented_io_context local_io_service;
+  RedisAsyncContext ctx(local_io_service, ConnectRaw(TEST_REDIS_SERVER_PORTS.front()));
+  SimulateHiredisDisconnect(ctx);
+
+  auto fresh = ConnectRaw(hole.port());
+  fresh->data = &ctx;
+  timed_out_connect_status = kConnectNotReported;
+  ASSERT_EQ(redisAsyncSetConnectCallback(fresh.get(), RecordFailedConnect), REDIS_OK);
+  const auto start = std::chrono::steady_clock::now();
+  ctx.Reset(std::move(fresh));
+  for (int i = 0; i < 50 && timed_out_connect_status.load() == kConnectNotReported; ++i) {
+    local_io_service.run_for(std::chrono::milliseconds(100));
+    local_io_service.restart();
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  EXPECT_EQ(timed_out_connect_status.load(), REDIS_ERR);
+  EXPECT_GE(elapsed, std::chrono::milliseconds(250));
+  EXPECT_LT(elapsed, std::chrono::seconds(2));
+  EXPECT_EQ(ctx.GetRawRedisAsyncContext(), nullptr);
+}
+#endif
 
 TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
   auto local_io_service = std::make_unique<instrumented_io_context>(

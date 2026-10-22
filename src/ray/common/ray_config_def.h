@@ -459,6 +459,13 @@ RAY_CONFIG(int64_t, redis_reconnect_grace_period_ms, 60000)
 /// redis_db_probe_timeout_milliseconds, which only applies at startup.
 RAY_CONFIG(int64_t, redis_reconnect_sentinel_timeout_ms, 2000)
 
+/// How long a reconnect attempt waits for its TCP connect before giving up and
+/// trying again. Without a bound, a connect whose SYN goes nowhere (an address
+/// that no longer exists, such as a deleted Redis pod's IP behind a stale
+/// connection tracking entry) waits out the kernel's SYN retries, about two
+/// minutes, which is longer than the grace period below.
+RAY_CONFIG(int64_t, redis_reconnect_connect_timeout_ms, 5000)
+
 /// Before gcs_server resumes on a reconnected Redis, check that Redis still
 /// has every write it got a reply for, and exit if it does not, so that the
 /// restarted process reloads what Redis actually holds. Each GCS write is

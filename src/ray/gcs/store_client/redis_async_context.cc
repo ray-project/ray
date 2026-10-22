@@ -24,6 +24,7 @@
 #endif
 
 #include "absl/strings/str_cat.h"
+#include "ray/common/ray_config.h"
 
 extern "C" {
 #include "hiredis/async.h"
@@ -35,7 +36,7 @@ namespace gcs {
 RedisAsyncContext::RedisAsyncContext(
     instrumented_io_context &io_service,
     std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context)
-    : io_service_(io_service), socket_(io_service) {
+    : io_service_(io_service), socket_(io_service), connect_timer_(io_service) {
   std::lock_guard<std::mutex> lock(mutex_);
   AttachLocked(std::move(redis_async_context));
 }
@@ -147,6 +148,62 @@ void RedisAsyncContext::Reset(
   // it, and any command queued meanwhile (the reconnect AUTH) goes out then.
   // AddWrite only dispatches onto the io_service, so holding `mutex_` is fine.
   AddWrite();
+  // That write event is how hiredis learns that the connect finished, and it
+  // can be consumed before then; see CheckConnect(). Check on a timer too, and
+  // bound the connect.
+  connect_deadline_ = std::chrono::steady_clock::now() +
+                      std::chrono::milliseconds(
+                          RayConfig::instance().redis_reconnect_connect_timeout_ms());
+  io_service_.dispatch(
+      [this,
+       alive = std::weak_ptr<bool>(alive_),
+       generation = socket_generation_.load()] {
+        if (alive.expired()) {
+          return;
+        }
+        WatchConnect(generation);
+      },
+      "RedisAsyncContext.watchConnect");
+}
+
+void RedisAsyncContext::WatchConnect(uint64_t generation) {
+  connect_timer_.expires_after(kConnectCheckInterval);
+  connect_timer_.async_wait([this, alive = std::weak_ptr<bool>(alive_), generation](
+                                const boost::system::error_code &error_code) {
+    if (error_code == boost::asio::error::operation_aborted || alive.expired()) {
+      return;
+    }
+    CheckConnect(generation);
+  });
+}
+
+void RedisAsyncContext::CheckConnect(uint64_t generation) {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto connecting = [this, generation] {
+      return generation == socket_generation_ && redis_async_context_ != nullptr &&
+             (redis_async_context_->c.flags & REDIS_CONNECTED) == 0;
+    };
+    if (!connecting()) {
+      return;
+    }
+    if (std::chrono::steady_clock::now() >= connect_deadline_) {
+      RAY_LOG(WARNING) << "Redis connect did not complete within "
+                       << RayConfig::instance().redis_reconnect_connect_timeout_ms()
+                       << "ms. Giving up on this attempt.";
+      // Reports the failure through the connect callback, then frees the
+      // context, the same way a refused connect does.
+      redisAsyncHandleTimeout(redis_async_context_.get());
+      return;
+    }
+    // Finds the connect still in progress, or completes it: hiredis then runs
+    // the connect callback and sends the commands queued behind it.
+    redisAsyncHandleWrite(redis_async_context_.get());
+    if (!connecting()) {
+      return;
+    }
+  }
+  WatchConnect(generation);
 }
 
 absl::Time RedisAsyncContext::OutageDeadline(absl::Time now, absl::Duration grace) {

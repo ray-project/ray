@@ -19,7 +19,9 @@
 #include <atomic>
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/bind/bind.hpp>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -96,6 +98,11 @@ class RedisAsyncContext {
   /// calling this: once published here, other threads may submit commands on
   /// it. Because hiredis arms its first write while those callbacks are being
   /// registered, before our event hooks exist, Reset() arms it again itself.
+  ///
+  /// Until the connect completes, Reset() also checks it every
+  /// kConnectCheckInterval and gives up after
+  /// redis_reconnect_connect_timeout_ms, reporting a failed connect through the
+  /// connect callback.
   ///
   /// \param redis_async_context A raw context to adopt, typically with its
   /// non-blocking connect still in progress.
@@ -230,6 +237,11 @@ class RedisAsyncContext {
 
   instrumented_io_context &io_service_;
   boost::asio::ip::tcp::socket socket_;
+  /// See WatchConnect(). Only used on the io_service thread.
+  boost::asio::steady_timer connect_timer_;
+  /// When the connect adopted by the last Reset() times out. Guarded by
+  /// `mutex_`.
+  std::chrono::steady_clock::time_point connect_deadline_;
   /// Invoked when hiredis reports the connection was lost. Set once at
   /// construction time by RedisContext, so it needs no lock.
   std::function<void()> disconnect_handler_;
@@ -271,6 +283,21 @@ class RedisAsyncContext {
 
   /// Issue async socket operations depending on the state of the redis async context.
   void Operate();
+
+  /// How often an in-progress connect adopted by Reset() is checked.
+  static constexpr std::chrono::milliseconds kConnectCheckInterval{50};
+
+  /// Arm the next connect check for the connection of `generation`. Runs on
+  /// the io_service thread.
+  void WatchConnect(uint64_t generation);
+
+  /// Let hiredis check whether the connect of `generation` completed, or time
+  /// it out once connect_deadline_ has passed. hiredis only checks on a write
+  /// event, and epoll reports EPOLLERR or EPOLLHUP for a socket whose connect
+  /// is still in progress: the write wait completes, hiredis finds the connect
+  /// unfinished, and nothing asks for another write event. Before a reconnect
+  /// held commands back, the next submitted command asked for one.
+  void CheckConnect(uint64_t generation);
   /// The callback function for socket operations
   ///
   /// \param error_code The error code of the socket operation.
