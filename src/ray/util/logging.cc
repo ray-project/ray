@@ -35,6 +35,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -44,6 +45,7 @@
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "absl/log/globals.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
 #include "ray/util/thread_utils.h"
@@ -345,12 +347,32 @@ void RayLog::InitLogFormat() {
   return 1;
 }
 
+namespace {
+
+// gRPC >= 1.65 logs through absl. When GRPC_VERBOSITY is unset it leaves absl's
+// minimum log level alone, and absl defaults to INFO, so gRPC INFO messages (e.g.
+// "Got goaway") end up on stderr and are forwarded to the driver. Older gRPC
+// defaulted to ERROR; keep that unless the user asks for more with
+// GRPC_VERBOSITY. Ray's own logging goes through spdlog and is unaffected.
+void InitAbslLogging() {
+  static std::once_flag once;
+  std::call_once(once, [] {
+    const char *grpc_verbosity = std::getenv("GRPC_VERBOSITY");
+    if (grpc_verbosity == nullptr || grpc_verbosity[0] == '\0') {
+      absl::SetMinLogLevel(absl::LogSeverityAtLeast::kError);
+    }
+  });
+}
+
+}  // namespace
+
 /*static*/ void RayLog::StartRayLog(const std::string &app_name,
                                     RayLogLevel severity_threshold,
                                     const std::string &log_filepath,
                                     const std::string &err_log_filepath,
                                     size_t log_rotation_max_size,
                                     size_t log_rotation_file_num) {
+  InitAbslLogging();
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
 
