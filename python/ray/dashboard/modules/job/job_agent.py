@@ -1,3 +1,4 @@
+import asyncio
 import dataclasses
 import json
 import logging
@@ -205,7 +206,23 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         return self._job_manager
 
     async def run(self, server):
-        pass
+        # Creating the JobManager schedules recovery of jobs left PENDING or
+        # RUNNING by a previous agent instance. Do it eagerly on the head node,
+        # which handles job submissions by default, so recovery does not wait
+        # for the next Job API request. Other nodes stay lazy.
+        if not self._dashboard_agent.is_head:
+            return
+        try:
+            # `ray.init` blocks, so connect off the event loop.
+            await asyncio.get_running_loop().run_in_executor(
+                None, optional_utils.init_ray_connection, self.gcs_address
+            )
+            self.get_job_manager()
+        except Exception:
+            logger.exception(
+                "Failed to initialize the JobManager at startup. It will be "
+                "initialized on the next Job API request instead."
+            )
 
     @staticmethod
     def is_minimal_module():
