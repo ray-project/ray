@@ -4769,8 +4769,9 @@ class DeploymentState:
         # Deployment-scoped actor failed after threshold exceeded (consistent
         # with replica startup: transition only when retries exhausted).
         # Checked before the running-replica case below: running replicas
-        # depend on the shared actors, and the controller no longer recreates
-        # them, so the failure must surface even with replicas running.
+        # depend on the shared actors, and the controller stops recreating
+        # them once retries are exhausted, so the failure must surface even
+        # with replicas running.
         if self.deployment_actor_terminally_failed():
             msg = self._deployment_actor_failed
             self._curr_status_info = self._curr_status_info.handle_transition(

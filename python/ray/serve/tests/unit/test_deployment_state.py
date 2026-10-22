@@ -3778,10 +3778,9 @@ class TestDeploymentActors:
     ):
         """Exhausting recreate retries after a health failure is reported.
 
-        Previously the DEPLOYMENT_ACTOR_FAILED trigger was dropped outside of
-        UPDATING (0 replicas) or never raised (replicas running), so the status
-        stayed UNHEALTHY/HEALTH_CHECK_FAILED with a stale "Retrying" message
-        even though the controller had stopped recreating the actor.
+        Once retries are exhausted the controller stops recreating the actor,
+        so the status must be UNHEALTHY/DEPLOYMENT_ACTOR_FAILED with the
+        startup error, whether or not replicas are running.
         """
         create_dsm, _, _, _ = mock_deployment_state_manager
 
