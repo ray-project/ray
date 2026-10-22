@@ -12,7 +12,10 @@ from ray._private.authentication.authentication_token_setup import (
     _get_default_token_path,
     maybe_enable_token_auth_if_token_available,
 )
-from ray._private.authentication.authentication_utils import is_token_auth_enabled
+from ray._private.authentication.authentication_utils import (
+    is_metrics_auth_skipped,
+    is_token_auth_enabled,
+)
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 
 FALLBACK_PROMETHEUS_VERSION = "2.48.1"
@@ -37,13 +40,13 @@ def get_prometheus_authorization_config() -> str:
 
     Returns:
         The YAML block to append to PROMETHEUS_CONFIG_INPUT_PATH, or "" when token
-        auth is off.
+        auth is off or RAY_AUTH_SKIP_METRICS is set.
 
     Raises:
         ValueError: Token auth is on, RAY_AUTH_TOKEN isn't set, and the token
             file is missing, unreadable, empty or holds more than one line.
     """
-    if not is_token_auth_enabled():
+    if not is_token_auth_enabled() or is_metrics_auth_skipped():
         return ""
     env_token = os.environ.get("RAY_AUTH_TOKEN", "").strip()
     if env_token:
@@ -274,6 +277,7 @@ def main():
     if (
         not maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
         and auth_mode_unset
+        and not is_metrics_auth_skipped()
     ):
         logging.warning(
             "No auth token found in RAY_AUTH_TOKEN, RAY_AUTH_TOKEN_PATH or "
