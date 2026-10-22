@@ -78,16 +78,15 @@ def parse_resource_demands(
     """
     demand_bundles = []
     try:
-        for request_by_count in pending_resource_requests:
-            request_shape = dict(request_by_count.request.resources_bundle)
-            # Cap each shape's own contribution rather than the running
-            # total, so a single shape with a huge backlog (e.g. demand for
-            # a resource no node type can ever provide) can't crowd out a
-            # different, smaller shape's demand from the vector.
-            count = min(
-                request_by_count.count, AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
+        shapes = [
+            (
+                dict(request_by_count.request.resources_bundle),
+                min(request_by_count.count, AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE),
             )
-            demand_bundles.extend([request_shape] * count)
+            for request_by_count in pending_resource_requests
+        ]
+        for i in range(max((count for _, count in shapes), default=0)):
+            demand_bundles.extend(shape for shape, count in shapes if count > i)
     except Exception:
         logger.exception("Failed to parse resource demands.")
 
