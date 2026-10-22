@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Recommended Ray Serve development loop: iterate locally with serve.run, send HTTP requests, use local testing mode, then test on a cluster."
+    description: "Recommended Ray Serve development loop: iterate locally with serve.run, send HTTP requests, use local testing mode, write unit and integration tests, then test on a cluster."
 ---
 
 (serve-dev-workflow)=
@@ -102,6 +102,51 @@ In local testing mode, Ray Serve runs your deployments locally in a single proce
 ```
 
 This mode runs each deployment in a background thread and supports most of the same features as running on a full Ray cluster. Local testing mode doesn't support some features, such as converting `DeploymentResponses` to `ObjectRefs`. If you encounter limitations, consider filing a feature request on GitHub.
+
+(serve-testing-patterns)=
+## Write unit and integration tests
+
+Test a Serve application at two levels. Unit tests check your business logic as plain Python, without starting Ray. Integration tests deploy the application with `serve.run` and send it requests through a `DeploymentHandle` or over HTTP. Structure your code so that each level is straightforward to write.
+
+### Separate business logic from the deployment
+
+Put your business logic in a plain Python class, then subclass it in the deployment class that defines the serving interface, such as FastAPI routes. The base class has no dependency on Ray Serve, so you can instantiate and test it directly:
+
+```{literalinclude} ../doc_code/testing_patterns.py
+:start-after: __testing_app_start__
+:end-before: __testing_app_end__
+:language: python
+```
+
+### Unit test the business logic
+
+Write unit tests against the base class. They run as ordinary `pytest` tests and don't start Ray:
+
+```{literalinclude} ../doc_code/testing_patterns.py
+:start-after: __testing_unit_start__
+:end-before: __testing_unit_end__
+:language: python
+```
+
+If your logic lives in the deployment class itself, get the class that the deployment wraps from the deployment's `func_or_class` property and instantiate it directly:
+
+```{literalinclude} ../doc_code/testing_patterns.py
+:start-after: __testing_func_or_class_start__
+:end-before: __testing_func_or_class_end__
+:language: python
+```
+
+### Integration test with `serve.run`
+
+To test the deployed application, call `serve.run` from a `pytest` fixture. `serve.run` deploys the application and returns a `DeploymentHandle` to the ingress deployment. Call a method with `handle.<method>.remote(...)`, which returns a `DeploymentResponse`, and call `.result()` on the response to wait for the return value. To test the HTTP interface, send requests with an HTTP client such as `requests`. Shut down Serve and Ray when the tests finish:
+
+```{literalinclude} ../doc_code/testing_patterns.py
+:start-after: __testing_integration_start__
+:end-before: __testing_integration_end__
+:language: python
+```
+
+To run handle-based tests in a single process without a Ray cluster, see {ref}`local-testing-mode`.
 
 (testing-on-a-remote-cluster)=
 ## Test on a remote cluster
