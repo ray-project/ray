@@ -6,3 +6,4 @@
 
 idna>=3.15
 certifi>=2025.1.31
+virtualenv>=21.14.12

@@ -2624,6 +2624,7 @@ vine==5.1.0
 virtualenv==21.14.12
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
