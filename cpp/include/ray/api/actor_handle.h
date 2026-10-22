@@ -34,7 +34,7 @@ class ActorHandle {
   // Used to identify its type.
   static bool IsActorHandle() { return true; }
 
-  /// Get a untyped ID of the actor
+  /// Get an untyped ID of the actor
   const std::string &ID() const { return id_; }
 
   /// Include the `Call` methods for calling remote functions.

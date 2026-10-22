@@ -156,7 +156,8 @@ class GlobalStateAccessor {
   ///
   /// \param worker_id The ID of worker to update in the GCS Service.
   /// \param num_paused_threads_delta The delta of paused threads of worker to update in
-  /// the GCS Service. \return Is operation success.
+  /// the GCS Service.
+  /// \return Whether the operation succeeded.
   bool UpdateWorkerNumPausedThreads(const WorkerID &worker_id,
                                     const int num_paused_threads_delta);
 
