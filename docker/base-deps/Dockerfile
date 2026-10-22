@@ -109,8 +109,10 @@ rm /tmp/miniforge.sh
 # conda-forge certifi builds from 2026 on require python>=3.11. Downgrading the
 # Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
 # requests and conda itself, and the transaction fails with RemoveError.
+# conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
+# 3.10 keeps Miniforge's pip 24.3.1.
 # TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
-CONDA_PYTHON_EXTRA_SPECS=()
+CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
 if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
     CONDA_PYTHON_EXTRA_SPECS=("certifi<2026")
 fi
@@ -118,7 +120,7 @@ $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
-wget -qO- https://astral.sh/uv/0.11.33/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/0.13.4/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
