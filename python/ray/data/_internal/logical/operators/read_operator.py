@@ -520,6 +520,8 @@ class ListFiles(LogicalOperator, SourceOperator):
             PATH_COLUMN_NAME,
         )
 
+        if self.prelisted_file_infos:
+            return self.prelisted_file_infos[0].schema
         return pa.schema(
             [
                 pa.field(PATH_COLUMN_NAME, pa.string()),

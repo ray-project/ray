@@ -20,6 +20,7 @@ from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
+    Dict,
     Generic,
     List,
     Literal,
@@ -37,6 +38,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.common.schema_inference import (
+        FullSchemaInferenceResult,
+    )
     from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         FilePartitioner,
         PartitionHints,
@@ -278,6 +282,23 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
     listing. Parquet, CSV and every other plain file format belong here; a
     source that finds its own data extends :class:`DataSourceWithMetadata` instead.
     """
+
+    def infer_full_schema(
+        self,
+        sample: FileManifest,
+        *,
+        ray_remote_args: Dict[str, Any],
+    ) -> "FullSchemaInferenceResult":
+        """Infer all candidate schemas, optionally handing metadata to execution.
+
+        The default delegates to the existing method so file sources need not
+        implement this opt-in planning optimization.
+        """
+        from ray.data._internal.datasource_v2.common.schema_inference import (
+            FullSchemaInferenceResult,
+        )
+
+        return FullSchemaInferenceResult(self.infer_schema(sample))
 
     @property
     @abstractmethod

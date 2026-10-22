@@ -67,7 +67,9 @@ def _expand_directory(
             continue
 
         if child.type == FileType.File:
-            files.append(FileInfo(path=child.path, size=child.size))
+            files.append(
+                FileInfo(path=child.path, size=child.size, mtime_ns=child.mtime_ns)
+            )
         elif child.type == FileType.Directory:
             subdirs.append(child.path)
         elif child.type == FileType.UNKNOWN:
@@ -109,7 +111,10 @@ def _get_path_contents(
         raise
 
     if info.type == FileType.File:
-        return PathContents(files=[FileInfo(path=path, size=info.size)], subdirs=[])
+        return PathContents(
+            files=[FileInfo(path=path, size=info.size, mtime_ns=info.mtime_ns)],
+            subdirs=[],
+        )
     elif info.type == FileType.Directory:
         return _expand_directory(
             path, filesystem, ignore_missing_path, skip_paths, root_path=root_path

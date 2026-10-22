@@ -551,6 +551,7 @@ def _read_datasource_v2(
         FileDataSourceV2,
     )
     from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
         FILE_SIZE_COLUMN_NAME,
         PATH_COLUMN_NAME,
     )
@@ -644,7 +645,16 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
-    schema = datasource.infer_schema(sample)
+    planning_metadata = None
+    if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
+        assert sample is not None
+        inference = datasource.infer_full_schema(
+            sample, ray_remote_args=ray_remote_args
+        )
+        schema = inference.schema
+        planning_metadata = inference.metadata
+    else:
+        schema = datasource.infer_schema(sample)
     schema_elapsed = (
         time.perf_counter() - schema_started if schema_started is not None else None
     )
@@ -656,6 +666,10 @@ def _read_datasource_v2(
         sample_block = sample.as_block()
         assert isinstance(sample_block, pa.Table)
         file_infos = sample_block.select([PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME])
+        if planning_metadata is not None:
+            file_infos = file_infos.append_column(
+                FILE_METADATA_COLUMN_NAME, planning_metadata
+            )
         prelisted_file_infos = []
         for i in builtins.range(
             0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
@@ -1864,13 +1878,15 @@ def read_parquet(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
-        planning, which can be expensive for large or remote datasets. Execution
-        reads footer metadata again. With more than 10,000 candidate files, the
-        reader warns before footer merging. Retained path and size metadata adds
-        O(files) data to serialized lineage.
-
-        Follow-up work for distributed planning-time footer reads and metadata
-        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+        planning, which can be expensive for large or remote datasets. Larger
+        eligible reads distribute this work across bounded Ray tasks. Schemas
+        requiring type promotion or nested/extension reconciliation retain the
+        existing one-shot merge behavior and its driver memory cost.
+        Within a bounded cache budget, planning metadata can be reused for
+        row-group indexing and exact file counts. Data scanning may still read
+        footers. With more than 10,000 candidate files, the reader warns before
+        schema merging. Retained file-info and optional metadata columns add
+        O(files) data to serialized lineage, plus budgeted cached footer bytes.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -3066,14 +3082,15 @@ def read_orc(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads their schemas
-        on the driver during planning, which can be expensive for large or remote
-        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
-        ORC metadata from schema inference for reuse during execution.
+        during planning, which can be expensive for large or remote datasets.
+        Larger eligible reads distribute this work across bounded Ray tasks.
+        Schemas requiring type promotion or nested/extension reconciliation retain
+        the existing one-shot merge behavior and its driver memory cost.
+        Planning can retain exact file row counts within a bounded cache budget
+        for count queries; ordinary data scans still open ORC metadata.
         With more than 10,000 candidate files, Ray warns before schema merging.
-        Retained path and size metadata adds O(files) data to serialized lineage.
-
-        Follow-up work for distributed planning-time schema reads and metadata
-        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+        Retained file-info and optional metadata columns add O(files) data to
+        serialized lineage.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -3105,6 +3122,7 @@ def read_orc(
             ignore_missing_paths=ignore_missing_paths,
             include_paths=include_paths,
             shuffle=shuffle,
+            reuse_file_metadata=merge_schema,
         )
         return _read_datasource_v2(
             datasource,

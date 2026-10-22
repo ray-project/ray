@@ -24,7 +24,10 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
     FileInfo,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileManifest,
+    FileMetadata,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.dynamic_work_queue import parallel_process_work_stealing
 from ray.data.block import BlockColumn
@@ -415,6 +418,8 @@ class NonSamplingFileIndexer(FileIndexer):
         # footer indexer) override ``list_files`` instead.
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
+        running_metadatas: List[FileMetadata] = []
+        has_metadata = False
         manifests_count = 0
         files_count = 0
 
@@ -423,6 +428,15 @@ class NonSamplingFileIndexer(FileIndexer):
             assert file_info.size is not None
             running_paths.append(file_info.path)
             running_file_sizes.append(file_info.size)
+            if file_info.metadata is not None and not has_metadata:
+                running_metadatas = [FileMetadata()] * (len(running_paths) - 1)
+                has_metadata = True
+            if has_metadata:
+                running_metadatas.append(
+                    file_info.metadata.without_footer()
+                    if file_info.metadata is not None
+                    else FileMetadata()
+                )
             files_count += 1
 
             if len(running_paths) >= self._max_paths_per_output:
@@ -431,9 +445,12 @@ class NonSamplingFileIndexer(FileIndexer):
                     paths=running_paths,
                     sizes=running_file_sizes,
                     chunk_metadatas=[None] * len(running_paths),
+                    file_metadatas=running_metadatas if has_metadata else None,
                 )
                 running_paths = []
                 running_file_sizes = []
+                running_metadatas = []
+                has_metadata = False
 
         if running_paths:
             manifests_count += 1
@@ -441,6 +458,7 @@ class NonSamplingFileIndexer(FileIndexer):
                 paths=running_paths,
                 sizes=running_file_sizes,
                 chunk_metadatas=[None] * len(running_paths),
+                file_metadatas=running_metadatas if has_metadata else None,
             )
 
         logger.debug(

@@ -19,6 +19,7 @@ from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     FileDataSourceV2,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileIndexer
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
 from ray.data.read_api import _read_datasource_v2
 
@@ -120,6 +121,26 @@ def test_file_source_defaults():
     assert isinstance(source, DataSourceV2)
     assert source.file_extensions is None
     assert source.shuffle is None
+
+
+def test_file_source_full_schema_defaults_to_infer_schema(monkeypatch):
+    source = _FileSource()
+    sample = FileManifest.construct_manifest(
+        paths=["example.parquet"], sizes=[1], chunk_metadatas=[None]
+    )
+    calls = []
+
+    def infer_schema(received_sample):
+        calls.append(received_sample)
+        return _SCHEMA
+
+    monkeypatch.setattr(source, "infer_schema", infer_schema)
+    result = source.infer_full_schema(sample, ray_remote_args={})
+
+    assert len(calls) == 1
+    assert calls[0] is sample
+    assert result.schema is _SCHEMA
+    assert result.metadata is None
 
 
 def test_parquet_is_a_file_source():
