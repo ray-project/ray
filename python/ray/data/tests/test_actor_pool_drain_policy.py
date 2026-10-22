@@ -749,6 +749,33 @@ def test_adaptive_ceiling_steps_at_most_once_per_window(monkeypatch):
     assert pool.dynamic_max_size() == 64
 
 
+def test_hysteresis_band_does_not_consume_the_ceiling_window(monkeypatch):
+    """Only a real ceiling step may consume the once-per-window budget.
+
+    A sample inside the hysteresis band leaves the ceiling unchanged. It must
+    not push the next real step a full window into the future.
+    """
+    clock = [1000.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+
+    policy = _make_policy(cap_decay=0.8)
+    op = _make_op(current_size=100, min_size=1, max_size=1000, tasks_in_flight=10)
+    pool = op.get_autoscaling_actor_pools()[0]
+
+    band = (
+        DEFAULT_ACTOR_POOL_DRAIN_RESUME_RATIO + DEFAULT_ACTOR_POOL_DRAIN_STALL_RATIO
+    ) / 2
+    _fill_window(policy, op, band)
+    policy.can_add_input(op)
+    assert pool.dynamic_max_size() is None
+    assert op not in policy._cap_updated_at
+
+    # Crossing into stall immediately must step now, not one window later.
+    _fill_window(policy, op, 1.0)
+    policy.can_add_input(op)
+    assert pool.dynamic_max_size() == 80
+
+
 def test_adaptive_ceiling_steps_up_when_output_is_read(monkeypatch):
     """A recovered window grows the ceiling additively, up to `max_size`."""
     clock = [1000.0]
