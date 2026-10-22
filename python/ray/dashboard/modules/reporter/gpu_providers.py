@@ -223,6 +223,9 @@ class NvidiaGpuProvider(GpuProvider):
     def _free_gpm_samples(self) -> None:
         """Free all GPM samples; devices are checked and allocated again after init."""
         for state in self._gpm_state.values():
+            if not state.samples:
+                # Unsupported devices keep their result; nothing to free.
+                continue
             for sample in state.samples:
                 try:
                     self._pynvml.nvmlGpmSampleFree(sample)
