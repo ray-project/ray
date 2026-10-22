@@ -979,6 +979,56 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         )
 
     @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_keeps_nvml_open_between_polls(self, mock_pynvml):
+        """With GPM samples allocated, NVML isn't shut down between polls."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [{2: (25.0, 0), 1: (40.0, 0)}])
+        clock = self._gpm_clock()
+
+        self.provider.get_gpu_utilization()
+        clock["now"] += 5.0
+        second = self.provider.get_gpu_utilization()[0]
+
+        self.assertEqual(second["sm_active_percent"], 25.0)
+        mock_pynvml.nvmlShutdown.assert_not_called()
+        mock_pynvml.nvmlGpmSampleFree.assert_not_called()
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_nvml_shut_down_each_poll_without_gpm(self, mock_pynvml):
+        """Devices without GPM keep the per-poll nvmlInit/nvmlShutdown."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA T4"])
+        mock_pynvml.nvmlGpmQueryDeviceSupport.return_value = Mock(isSupportedDevice=0)
+
+        self.provider.get_gpu_utilization()
+
+        mock_pynvml.nvmlShutdown.assert_called_once()
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpm_samples_freed_before_shutdown_after_error(self, mock_pynvml):
+        """A failed poll frees the GPM samples, then shuts NVML down."""
+        self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
+        self._configure_gpm(mock_pynvml, [])
+        self._gpm_clock()
+        calls = []
+        mock_pynvml.nvmlGpmSampleFree.side_effect = lambda s: calls.append(("free", s))
+        mock_pynvml.nvmlShutdown.side_effect = lambda: calls.append(("shutdown",))
+
+        self.provider.get_gpu_utilization()
+        samples = list(self.provider._gpm_state["GPU-0"].samples)
+        mock_pynvml.nvmlDeviceGetCount.side_effect = mock_pynvml.NVMLError(
+            "Uninitialized"
+        )
+        self.provider.get_gpu_utilization()
+
+        self.assertEqual(
+            calls, [("free", samples[0]), ("free", samples[1]), ("shutdown",)]
+        )
+        state = self.provider._gpm_state["GPU-0"]
+        self.assertEqual(state.samples, [])
+        # Checked and allocated again after the next nvmlInit.
+        self.assertIsNone(state.supported)
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
     def test_gpm_first_poll_opens_window_second_reports(self, mock_pynvml):
         """SM active and graphics engine come from GPM over the poll window."""
         self._configure_nvidia_collection(mock_pynvml, ["NVIDIA H100"])
