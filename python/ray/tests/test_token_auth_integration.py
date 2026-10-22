@@ -1010,16 +1010,36 @@ _HTTP_CLIENT_CALLS = {
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-def test_http_clients_on_auth_disabled_cluster(disabled_head_with_token_file):
-    """The jobs and state API clients with a token file work on a cluster with
-    RAY_AUTH_MODE=disabled only if they set RAY_AUTH_MODE=disabled too."""
+def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
+    """A dashboard with RAY_AUTH_MODE=disabled rejects requests that carry a Ray
+    token in a header, so the jobs and state clients with a token file work only if
+    they set RAY_AUTH_MODE=disabled too."""
     import requests
+
+    from ray._private.authentication.authentication_constants import (
+        AUTHENTICATION_TOKEN_COOKIE_NAME,
+    )
 
     env, _, _, dashboard_url = disabled_head_with_token_file
     wait_for_condition(
         lambda: requests.get(f"{dashboard_url}/api/version", timeout=5).ok,
         timeout=30,
     )
+    token = "c" * 64
+    for headers, cookies, expect_mismatch in [
+        ({"Authorization": f"Bearer {token}"}, None, True),
+        ({"X-Ray-Authorization": f"Bearer {token}"}, None, True),
+        (None, {AUTHENTICATION_TOKEN_COOKIE_NAME: token}, False),
+        ({"Authorization": "Basic dXNlcjpwYXNz"}, None, False),
+    ]:
+        response = requests.get(
+            f"{dashboard_url}/api/version", headers=headers, cookies=cookies, timeout=5
+        )
+        if expect_mismatch:
+            assert response.status_code == 401, (headers, response.text)
+            assert _AUTH_MODE_MISMATCH in response.text
+        else:
+            assert response.status_code == 200, (headers, cookies, response.text)
     for client_name, client_call in _HTTP_CLIENT_CALLS.items():
         for client_auth_mode in ["disabled", "token"]:
             result = subprocess.run(

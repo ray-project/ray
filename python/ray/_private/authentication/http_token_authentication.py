@@ -12,10 +12,24 @@ from ray._private.authentication import (
 )
 
 
+def _carries_ray_token_header(headers) -> bool:
+    """Whether a request carries a Ray token in a header. The token cookie doesn't
+    count: a browser can keep it from an earlier token-mode cluster at the same
+    address. Non-Bearer Authorization schemes, such as basic auth, don't count."""
+    authorization = headers.get(authentication_constants.AUTHORIZATION_HEADER_NAME, "")
+    return (
+        authorization.lower().startswith(
+            authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+        )
+        or authentication_constants.RAY_AUTHORIZATION_HEADER_NAME in headers
+    )
+
+
 def get_token_auth_middleware(
     aiohttp_module: ModuleType,
     whitelisted_exact_paths: Optional[List[str]] = None,
     whitelisted_path_prefixes: Optional[List[str]] = None,
+    reject_token_when_auth_disabled: bool = False,
 ):
     """Internal helper to create token auth middleware with provided modules.
 
@@ -23,6 +37,9 @@ def get_token_auth_middleware(
         aiohttp_module: The aiohttp module to use
         whitelisted_exact_paths: List of exact paths that don't require authentication
         whitelisted_path_prefixes: List of path prefixes that don't require authentication
+        reject_token_when_auth_disabled: With auth disabled, reject requests that
+            carry a Ray token in a header with AuthModeMismatch, so token-mode
+            clients opt out too.
     Returns:
         An aiohttp middleware function
     """
@@ -36,6 +53,15 @@ def get_token_auth_middleware(
         """
         # No-op if token auth is not enabled or raylet is not available
         if not auth_utils.is_token_auth_enabled():
+            if (
+                reject_token_when_auth_disabled
+                and _carries_ray_token_header(request.headers)
+                and not auth_utils.is_k8s_token_auth_enabled()
+            ):
+                return aiohttp_module.web.Response(
+                    status=401,
+                    text=authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE,
+                )
             return await handler(request)
 
         # skip authentication for whitelisted paths
@@ -196,6 +222,9 @@ def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     """Return a user-friendly authentication error message, if applicable."""
 
     if status == 401:
+        # The fix is to opt out of auth, so the help on getting a token would mislead.
+        if authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE in body:
+            return body
         return "Authentication required: {body}\n\n{details}".format(
             body=body,
             details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,

@@ -12,10 +12,6 @@ import packaging.version
 import yaml
 
 import ray
-from ray._private.authentication.authentication_constants import (
-    AUTH_MODE_MISMATCH_ERROR_MESSAGE,
-)
-from ray._private.authentication.authentication_utils import is_token_auth_enabled
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -283,7 +279,6 @@ class SubmissionClient:
                 f"Please ensure the cluster is running Ray {min_version} or higher."
             )
 
-        self._check_auth_mode()
         try:
             r = self._do_request("GET", url)
             if r.status_code == 404:
@@ -305,31 +300,6 @@ class SubmissionClient:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}."
             )
-
-    def _check_auth_mode(self) -> None:
-        """Raise AuthModeMismatch if this client is in token mode and the cluster has
-        RAY_AUTH_MODE=disabled.
-
-        The dashboard doesn't reject a request because of its Authorization header,
-        since a reverse proxy in front of a disabled dashboard can add its own.
-        """
-        if not is_token_auth_enabled():
-            return
-        try:
-            r = self._do_request("GET", "/api/authentication_mode", timeout=10)
-            r.raise_for_status()
-            body = r.json()
-        except (
-            requests.exceptions.RequestException,
-            AuthenticationError,
-            ValueError,
-        ) as e:
-            # The next request reports an unreachable or rejecting cluster, and
-            # clusters older than this endpoint have no mode to compare.
-            logger.debug(f"Skipping the auth mode check against {self._address}: {e}")
-            return
-        if isinstance(body, dict) and body.get("authentication_mode") == "disabled":
-            raise AuthenticationError(AUTH_MODE_MISMATCH_ERROR_MESSAGE)
 
     def _raise_error(self, r: "requests.Response"):
         raise RuntimeError(
