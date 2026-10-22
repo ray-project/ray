@@ -57,7 +57,7 @@ docker run -d --name "${service}" --network "${network}" \
   --network-alias hiveserver2 \
   -e SERVICE_NAME=hiveserver2 \
   -e 'SERVICE_OPTS=-Dhive.server2.authentication=NONE -Dhive.server2.enable.doAs=false -Dhive.execution.engine=mr -Dmapreduce.framework.name=local -Dfs.defaultFS=file:///' \
-  apache/hive:4.2.0
+  apache/hive:4.2.0@sha256:b0d2842722567a89ac35da8af9002b6bba0fc2d0eb272664954a1fa46d694472
 
 # A listening TCP socket is insufficient: require an authenticated SQL query.
 # Bound both each probe and the total wait, and detect a crashed service early.

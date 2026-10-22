@@ -1,7 +1,8 @@
 # HiveServer2 integration CI
 
 The Data pipeline runs `run_hive_integration.sh` on premerge builds. It starts
-`apache/hive:4.2.0` with an embedded Derby metastore and local MapReduce, waits
+`apache/hive:4.2.0` (pinned by digest so a republished tag cannot change the
+fixture) with an embedded Derby metastore and local MapReduce, waits
 for a successful Beeline `SELECT 1`, then runs
 `//python/ray/data:test_hive_integration` in the Data integration image. The
 service and test containers share an isolated Docker network; no host ports or

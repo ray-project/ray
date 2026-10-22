@@ -125,6 +125,7 @@ def test_ready_service_runs_suite(run_script, scenario):
     assert result.returncode == 0, result.stderr
     service_command = next(call for call in calls if call[:2] == ["docker", "run"])
     assert "-Dhive.server2.authentication=NONE" in " ".join(service_command)
+    assert service_command[-1].startswith("apache/hive:4.2.0@sha256:")
     assert service_command[service_command.index("--network-alias") + 1] == (
         "hiveserver2"
     )
