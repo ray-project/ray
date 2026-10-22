@@ -738,6 +738,7 @@ async def test_get_job_logs_when_driver_node_is_missing(job_head_with_agent):
             aiohttp.ClientConnectionError("Connection refused"),
             id="connection-refused",
         ),
+        pytest.param(aiohttp.ServerDisconnectedError(), id="server-disconnected"),
         pytest.param(asyncio.TimeoutError(), id="timeout"),
     ],
 )
@@ -757,6 +758,23 @@ async def test_get_job_logs_when_driver_agent_is_unreachable(
     assert response.status == 503
     assert response.content_type == "application/json"
     assert json.loads(response.text)["error_code"] == JOB_LOGS_UNAVAILABLE_ERROR_CODE
+
+
+@pytest.mark.asyncio
+async def test_get_job_logs_bad_agent_response_is_not_reported_unavailable(
+    job_head_with_agent,
+):
+    job_head, job, agent = job_head_with_agent
+    agent.get_job_logs_internal.side_effect = aiohttp.ContentTypeError(MagicMock(), ())
+    request = MagicMock(match_info={"job_or_submission_id": job.submission_id})
+
+    with patch(
+        "ray.dashboard.modules.job.job_head.find_job_by_ids",
+        new=AsyncMock(return_value=job),
+    ):
+        response = await job_head.get_job_logs(request)
+
+    assert response.status == 500
 
 
 @pytest.mark.asyncio
