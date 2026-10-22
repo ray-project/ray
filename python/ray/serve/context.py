@@ -276,7 +276,9 @@ def _ray_cluster_discoverable() -> bool:
     return read_ray_address() is not None
 
 
-def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClient:
+def _connect(
+    raise_if_no_controller_running: bool = True,
+) -> Optional[ServeControllerClient]:
     """Connect to an existing Serve application on this Ray cluster.
 
     If called from within a replica, this will connect to the same Serve
@@ -307,7 +309,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
                     "There is no Serve instance running: Ray is not initialized "
                     "and there is no running Ray cluster to connect to."
                 )
-            return
+            return None
         ray.init(namespace=SERVE_NAMESPACE)
 
     # Try to get serve controller if it exists
@@ -318,7 +320,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
             raise RayServeException(
                 "There is no Serve instance running on this Ray cluster."
             )
-        return
+        return None
 
     client = ServeControllerClient(
         controller,
