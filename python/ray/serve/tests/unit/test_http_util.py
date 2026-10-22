@@ -172,6 +172,22 @@ async def test_message_queue_drains_messages_before_error(close_after_error: boo
 
 
 @pytest.mark.asyncio
+async def test_message_queue_error_discards_messages():
+    queue = MessageQueue()
+
+    # With `discard_messages=True`, queued messages are dropped and the error
+    # is raised immediately (used for cancellation).
+    queue.put_nowait("A")
+    queue.put_nowait("B")
+    queue.set_error(TypeError("uh oh! something went wrong."), discard_messages=True)
+    queue.close()
+
+    for _ in range(10):
+        with pytest.raises(TypeError, match="uh oh! something went wrong"):
+            await asyncio.wait_for(queue.get_one_message(), 1)
+
+
+@pytest.mark.asyncio
 async def test_message_queue_error_wakes_pending_waiter():
     queue = MessageQueue()
 

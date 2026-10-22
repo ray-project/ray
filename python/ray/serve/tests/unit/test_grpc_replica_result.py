@@ -8,6 +8,7 @@ from ray import ActorID, cloudpickle
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.replica_result import gRPCReplicaResult
+from ray.serve.exceptions import RequestCancelledError
 from ray.serve.generated import serve_pb2
 
 
@@ -270,6 +271,45 @@ class TestSeparateLoop:
             async for r in replica_result:
                 results.append(r)
         assert results == [1, 2, 3]
+
+    def _make_cancelled_streaming_request(self, loop):
+        # A locally cancelled gRPC call raises `asyncio.CancelledError` from the
+        # stream. Wait until it has been consumed with results still buffered.
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                [1, 2, 3],
+                loop,
+                on_separate_loop=True,
+                transport_error=asyncio.CancelledError(),
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+        wait_for_condition(replica_result._consume_task.done, retry_interval_ms=10)
+        return replica_result
+
+    def test_streaming_cancelled_discards_buffered_results_sync(
+        self, create_asyncio_event_loop_in_thread
+    ):
+        """Cancellation raises immediately instead of returning buffered results."""
+        loop, _ = create_asyncio_event_loop_in_thread
+        replica_result = self._make_cancelled_streaming_request(loop)
+
+        for _ in range(3):
+            with pytest.raises(RequestCancelledError):
+                replica_result.__next__()
+
+    @pytest.mark.asyncio
+    async def test_streaming_cancelled_discards_buffered_results_async(
+        self, create_asyncio_event_loop_in_thread
+    ):
+        """Cancellation raises immediately instead of returning buffered results."""
+        loop, _ = create_asyncio_event_loop_in_thread
+        replica_result = self._make_cancelled_streaming_request(loop)
+
+        for _ in range(3):
+            with pytest.raises(asyncio.CancelledError):
+                await replica_result.__anext__()
 
     @pytest.mark.asyncio
     async def test_streaming_blocked(self, create_asyncio_event_loop_in_thread):

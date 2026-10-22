@@ -223,11 +223,14 @@ class MessageQueue(Send):
         self._closed = True
         self._new_message_event.set()
 
-    def set_error(self, e: BaseException):
+    def set_error(self, e: BaseException, *, discard_messages: bool = False):
         """Set an error to be raised once all queued messages are consumed.
 
-        Wakes up any pending `get_one_message` call.
+        If `discard_messages` is True, queued messages are dropped so the error
+        is raised immediately. Wakes up any pending `get_one_message` call.
         """
+        if discard_messages:
+            self._message_queue.clear()
         self._error = e
         self._new_message_event.set()
 
