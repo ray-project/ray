@@ -1031,6 +1031,43 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[infer1_op].gpu == 2
         assert allocator._op_budgets[infer2_op].gpu == 2
 
+    @pytest.mark.parametrize(
+        "num_partitions,num_cpus,num_gpus,expected_max_gpu",
+        [
+            (1, 1, 0.5, 0.5),
+            (4, 4, 0.5, 2.0),
+        ],
+    )
+    def test_join_max_gpu_reflects_aggregator_override(
+        self,
+        restore_data_context,
+        num_partitions,
+        num_cpus,
+        num_gpus,
+        expected_max_gpu,
+    ):
+        """A ``num_gpus`` aggregator override is reflected in the join's
+        declared max so GPU accounting matches what the pool acquires."""
+        left_in = InputDataBuffer(DataContext.get_current(), [])
+        right_in = InputDataBuffer(DataContext.get_current(), [])
+
+        infer1_op = mock_map_op(
+            left_in, ray_remote_args={"num_gpus": 1}, name="Infer1"
+        )
+        infer2_op = mock_map_op(
+            right_in, ray_remote_args={"num_gpus": 1}, name="Infer2"
+        )
+
+        join_op = mock_join_op(
+            infer1_op,
+            infer2_op,
+            num_partitions=num_partitions,
+            num_cpus=num_cpus,
+            aggregator_ray_remote_args_override={"num_gpus": num_gpus},
+        )
+        _, join_max_req = join_op.min_max_resource_requirements()
+        assert join_max_req.gpu == expected_max_gpu
+
     def test_reservation_accounts_for_completed_ops(self, restore_data_context):
         """Test that resource reservation properly accounts for completed ops."""
         DataContext.get_current().op_resource_reservation_enabled = True

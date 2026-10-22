@@ -1346,7 +1346,16 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     def min_max_resource_requirements(
         self,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
-        return ExecutionResources.zero(), ExecutionResources.for_limits(gpu=0)
+        # Aggregator actors are CPU-only by default, but a ``num_gpus``
+        # override in ``aggregator_ray_remote_args`` makes each aggregator
+        # acquire that many GPUs. The declared max has to reflect the
+        # override so GPU accounting stays consistent.
+        gpu_override = (self._aggregator_ray_remote_args_override or {}).get(
+            "num_gpus", 0
+        )
+        return ExecutionResources.zero(), ExecutionResources.for_limits(
+            gpu=self._num_aggregators * gpu_override
+        )
 
     def has_completed(self) -> bool:
         # TODO separate marking as completed from the check
