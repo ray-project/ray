@@ -50,6 +50,13 @@ def upload_wheels_to_pypi(pypi_env: str, directory_path: str) -> None:
             "-m",
             "twine",
             "upload",
+            # A file that is already on the index must not fail the whole
+            # upload: twine uploads one file per call and `check=True` aborts
+            # the loop, so a single rejected file strands every wheel after it
+            # in sort order and a retry then dies on the first file it already
+            # uploaded. This was hit on the 2.58.1 release, where 9 of 24
+            # wheels never reached TestPyPI and the retry could not recover.
+            "--skip-existing",
             "--repository-url",
             pypi_url,
             "--username",
