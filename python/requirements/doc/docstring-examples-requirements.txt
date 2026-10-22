@@ -1,0 +1,27 @@
+# Libraries that >>> docstring examples need on top of ray[all]. Used by the
+# docstring_examples depset in ci/raydepsets/configs/docs.depsets.yaml, which
+# runs the "docstring-only" label's examples without torch or TensorFlow.
+# Versions come from requirements_compiled, the same pins Ray Data's tests use.
+
+# Imported at the top of ray.util.dask.
+dask
+
+# The dashboard, which ray.init() starts, imports every module under
+# ray/dashboard/modules when it loads, including test modules in packaged tests/
+# directories, and some import pytest. Without it, the dashboard fails to start
+# and each ray.init() waits out an RPC deadline.
+pytest
+
+# Ray Data imports these lazily, inside the readers, writers, and aggregations
+# whose examples call them.
+crc32c
+datasketches
+decord
+fastavro
+pillow
+pyiceberg
+soundfile
+
+# The Azure SDK is left out on purpose: the Azure node provider needs
+# azure-cli-core to import, and its one runnable example is a single private
+# import. The examples runner skips that module instead.

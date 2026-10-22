@@ -47,6 +47,7 @@ from ray._raylet import (
 from ray.core.generated import autoscaler_pb2
 from ray.core.generated.gcs_pb2 import GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
+from ray.exceptions import AuthenticationError
 
 import psutil
 
@@ -1004,6 +1005,9 @@ class Node:
                     client.internal_kv_get(b"dummy", None)
                 self._gcs_client = client
                 break
+            except AuthenticationError:
+                # A rejected token stays rejected; retrying only delays the error.
+                raise
             except Exception:
                 if gcs_process is not None and gcs_process.poll() is not None:
                     # GCS has exited.

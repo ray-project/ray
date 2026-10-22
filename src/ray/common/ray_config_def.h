@@ -443,6 +443,12 @@ RAY_CONFIG(int64_t, redis_tcp_keepalive_interval_seconds, 30)
 /// keepalive is enabled.
 RAY_CONFIG(int64_t, redis_tcp_keepalive_probes, 3)
 
+/// Whether the GCS records gcs_storage_operation_count and
+/// gcs_storage_operation_latency_ms on the Redis backend. Adds two metric
+/// records per storage operation. The in-memory and RocksDB backends always
+/// record them.
+RAY_CONFIG(bool, gcs_redis_storage_metrics_enabled, true)
+
 /// Number of retries for a redis request failure.
 RAY_CONFIG(size_t, num_redis_request_retries, 5)
 

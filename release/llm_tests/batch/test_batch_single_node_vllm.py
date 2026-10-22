@@ -16,6 +16,9 @@ import pytest
 import requests
 
 import ray
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.llm._internal.batch.benchmark.dataset import ShareGPTDataset
 from ray.llm._internal.batch.benchmark.benchmark_processor import (
     Mode,
@@ -96,7 +99,9 @@ def _get_prometheus_metric_snapshot(
         for addr in _metrics_scrape_addresses(node_addr):
             try:
                 candidate = requests.get(
-                    f"http://{addr}:{metrics_port}/metrics", timeout=5
+                    f"http://{addr}:{metrics_port}/metrics",
+                    headers=get_auth_headers_if_auth_enabled({}),
+                    timeout=5,
                 )
                 candidate.raise_for_status()
                 response = candidate
