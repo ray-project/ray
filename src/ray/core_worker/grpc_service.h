@@ -134,6 +134,10 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                                        PlasmaObjectReadyReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleOnObjectFreed(OnObjectFreedRequest request,
+                                   OnObjectFreedReply *reply,
+                                   SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleExit(ExitRequest request,
                           ExitReply *reply,
                           SendReplyCallback send_reply_callback) = 0;
