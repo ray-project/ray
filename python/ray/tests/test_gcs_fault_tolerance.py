@@ -857,26 +857,27 @@ print("DONE")
     wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
 
 
-def _restart_redis_keeping_data(ip, port):
+def _restart_redis_keeping_data(ip, port, data_dir):
     """Kill the external Redis and start it again on the same port with the
     data it held.
 
-    The fixture's Redis runs without persistence, so turn on an fsync-always
-    AOF first and wait for its initial rewrite. Returns the new process and
-    the directory holding the AOF, for the caller to clean up.
+    The fixture's Redis runs without persistence, and a running Redis can't be
+    pointed at another directory. Hold writes, pull an RDB snapshot over the
+    replication protocol into `data_dir`, and start the replacement from it, so
+    it holds every write GCS got a reply for. Returns the new process.
     """
     import redis
 
     from ray._private.test_utils import REDIS_EXECUTABLE
 
     cli = redis.Redis(ip, int(port))
-    data_dir = cli.config_get("dir")["dir"]
-    cli.config_set("appendfsync", "always")
-    cli.config_set("appendonly", "yes")
-    wait_for_condition(
-        lambda: cli.info("persistence")["aof_rewrite_in_progress"] == 0
-        and cli.info("persistence")["aof_enabled"] == 1,
-        timeout=30,
+    # Writes from here on wait until the old server dies, and GCS retries them
+    # after the reconnect.
+    cli.execute_command("CLIENT", "PAUSE", "30000", "WRITE")
+    redis_cli = os.path.join(os.path.dirname(REDIS_EXECUTABLE), "redis-cli")
+    subprocess.check_call(
+        [redis_cli, "-h", ip, "-p", str(port), "--rdb", f"{data_dir}/dump.rdb"],
+        stdout=subprocess.DEVNULL,
     )
     redis_pid = cli.info()["process_id"]
     psutil.Process(pid=redis_pid).kill()
@@ -884,24 +885,23 @@ def _restart_redis_keeping_data(ip, port):
     # process is reaped, and binding the replacement before that fails.
     wait_for_pid_to_exit(redis_pid, 30)
 
-    proc = subprocess.Popen(
+    return subprocess.Popen(
         [
             REDIS_EXECUTABLE,
             "--port",
             str(port),
             "--dir",
             data_dir,
-            "--appendonly",
-            "yes",
-            "--appendfsync",
-            "always",
+            "--dbfilename",
+            "dump.rdb",
             "--save",
             "",
+            "--appendonly",
+            "no",
             "--loglevel",
             "warning",
         ]
     )
-    return proc, data_dir
 
 
 def _wait_for_redis(ip, port):
@@ -928,7 +928,7 @@ def _wait_for_redis(ip, port):
 def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     """gcs_server survives a Redis restart that keeps the data.
 
-    Restart the external Redis from an fsync-always AOF. The same gcs_server
+    Restart the external Redis from a snapshot taken while writes are held. The same gcs_server
     process must reconnect, find every write it got a reply for still there,
     and serve GCS writes again: no crash, no restart. This is the plain-Redis
     half of what test_redis_with_sentinel_failureover asserts through a
@@ -949,7 +949,8 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     gcs_client = ray._private.worker.global_worker.gcs_client
     gcs_client.internal_kv_put(b"before_restart", b"1", True, None)
 
-    redis_proc, data_dir = _restart_redis_keeping_data(ip, port)
+    data_dir = tempfile.mkdtemp()
+    redis_proc = _restart_redis_keeping_data(ip, port, data_dir)
     try:
         _wait_for_redis(ip, port)
 
@@ -971,7 +972,7 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     finally:
         redis_proc.kill()
         redis_proc.wait()
-        shutil.rmtree(os.path.join(data_dir, "appendonlydir"), ignore_errors=True)
+        shutil.rmtree(data_dir, ignore_errors=True)
 
 
 @pytest.mark.parametrize(
