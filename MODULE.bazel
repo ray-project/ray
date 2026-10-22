@@ -54,3 +54,17 @@ single_version_override(
 )
 
 bazel_dep(name = "zlib", version = "1.3.2.bcr.2", repo_name = "zlib")
+
+# One rules_java for both dependency systems. Bazel 8 loads the Java rules from
+# the module graph's rules_java; WORKSPACE's rules_jvm_external (@maven) builds
+# JavaInfo from WORKSPACE's. Two copies make Ray's java_library reject the
+# @maven jars ("jvm_import ... is misplaced here"). Declaring it here under its
+# WORKSPACE name makes both resolve to this module. bazel_tools asks for 8.14.0,
+# but 8.13+ ship java_tools that need GLIBCXX_3.4.21, which manylinux2014
+# (CentOS 7) lacks, so hold it at WORKSPACE's 8.12.0.
+bazel_dep(name = "rules_java", version = "8.12.0", repo_name = "rules_java")
+
+single_version_override(
+    module_name = "rules_java",
+    version = "8.12.0",
+)
