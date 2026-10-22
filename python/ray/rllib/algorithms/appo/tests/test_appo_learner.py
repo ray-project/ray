@@ -141,6 +141,7 @@ class TestAPPOLearner(unittest.TestCase):
         learner_group = config.build_learner_group(
             spaces={DEFAULT_MODULE_ID: (env.observation_space, env.action_space)}
         )
+        self.addCleanup(learner_group.shutdown)
         learner = learner_group._learner
 
         # Replace the gradient update in the learner thread with a stub that only
@@ -191,8 +192,6 @@ class TestAPPOLearner(unittest.TestCase):
             ),
             num_batches * num_iterations_per_batch * len(FAKE_BATCH[Columns.OBS]),
         )
-
-        learner_group.shutdown()
 
 
 if __name__ == "__main__":
