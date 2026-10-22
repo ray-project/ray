@@ -1,6 +1,9 @@
 import os
 from functools import lru_cache
-from typing import Dict, List, Optional, Tuple
+from inspect import signature
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from packaging.version import InvalidVersion, Version
 
 _NAMESPACE_CACHE_SIZE = int(os.environ.get("LANCE_RAY_NAMESPACE_CACHE_SIZE", "16"))
 
@@ -56,3 +59,52 @@ def create_storage_options_provider(
     from lance import LanceNamespaceStorageOptionsProvider
 
     return LanceNamespaceStorageOptionsProvider(namespace=namespace, table_id=table_id)
+
+
+@lru_cache(maxsize=_NAMESPACE_CACHE_SIZE)
+def _has_namespace_client(target: Callable[..., Any]) -> bool:
+    try:
+        return "namespace_client" in signature(target).parameters
+    except (TypeError, ValueError):
+        docstring = getattr(target, "__doc__", "") or ""
+        if "namespace_client" in docstring:
+            return True
+        elif "storage_options_provider" in docstring:
+            return False
+        else:
+            import lance
+
+            try:
+                return Version(getattr(lance, "__version__", "")) >= Version("6.0.0")
+            except (InvalidVersion, TypeError):
+                return False
+
+
+def get_lance_namespace_kwargs(
+    target: Callable[..., Any],
+    namespace_impl: Optional[str],
+    namespace_properties: Optional[Dict[str, str]],
+    table_id: Optional[List[str]],
+) -> Dict[str, Any]:
+    """Return the namespace arguments accepted by a Lance API target.
+
+    PyLance 6 replaced ``storage_options_provider`` with ``namespace_client`` and
+    ``table_id``. Keep supporting both APIs, and omit namespace arguments
+    altogether for regular URI writes.
+    """
+    if not _has_namespace_params(namespace_impl, table_id):
+        return {}
+
+    assert table_id is not None
+    namespace = get_or_create_namespace(namespace_impl, namespace_properties)
+    if namespace is None:
+        return {}
+
+    if _has_namespace_client(target):
+        return {"namespace_client": namespace, "table_id": table_id}
+
+    return {
+        "storage_options_provider": create_storage_options_provider(
+            namespace_impl, namespace_properties, table_id
+        )
+    }
