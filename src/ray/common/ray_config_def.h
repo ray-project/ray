@@ -459,6 +459,13 @@ RAY_CONFIG(int64_t, redis_reconnect_grace_period_ms, 60000)
 /// redis_db_probe_timeout_milliseconds, which only applies at startup.
 RAY_CONFIG(int64_t, redis_reconnect_sentinel_timeout_ms, 2000)
 
+/// Before gcs_server resumes on a reconnected Redis, check that Redis still
+/// has every write it got a reply for, and exit if it does not, so that the
+/// restarted process reloads what Redis actually holds. Each GCS write is
+/// followed by a small marker write that makes the check possible. Turning
+/// this off removes the marker writes and resumes after any reconnect.
+RAY_CONFIG(bool, redis_reconnect_verify_writes, true)
+
 /// Exponential backoff setup. By default:
 /// 100ms, 200ms, 400ms, 800ms, 1s, 1s,...
 RAY_CONFIG(int64_t, redis_retry_base_ms, 100)

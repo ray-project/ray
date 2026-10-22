@@ -23,6 +23,8 @@
 #include <sys/socket.h>
 #endif
 
+#include "absl/strings/str_cat.h"
+
 extern "C" {
 #include "hiredis/async.h"
 #include "hiredis/hiredis.h"
@@ -161,6 +163,28 @@ absl::Time RedisAsyncContext::OutageDeadline(absl::Time now, absl::Duration grac
 
 void RedisAsyncContext::ClearOutage() { outage_deadline_ns_.store(kNoOutage); }
 
+void RedisAsyncContext::EnableWriteWatermark(WriteWatermark watermark) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  write_watermark_ = std::move(watermark);
+  last_submitted_write_ = 1;
+  AckWrite(1);
+}
+
+std::optional<RedisAsyncContext::WriteWatermark> RedisAsyncContext::GetWriteWatermark() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return write_watermark_;
+}
+
+void RedisAsyncContext::AckWrite(uint64_t n) {
+  uint64_t acked = last_acked_write_.load();
+  while (acked < n && !last_acked_write_.compare_exchange_weak(acked, n)) {
+  }
+}
+
+uint64_t RedisAsyncContext::LastAckedWrite() const { return last_acked_write_.load(); }
+
+void RedisAsyncContext::PauseCommands(bool paused) { commands_paused_.store(paused); }
+
 void RedisAsyncContext::SetDisconnectHandler(std::function<void()> handler) {
   disconnect_handler_ = std::move(handler);
 }
@@ -193,7 +217,7 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
   {
     // `redisAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!redis_async_context_) {
+    if (!redis_async_context_ || commands_paused_) {
       va_end(ap);
       return Status::Disconnected("Redis is disconnected");
     }
@@ -220,9 +244,10 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
     int argc,
     const char **argv,
     const size_t *argvlen,
-    std::optional<absl::FunctionRef<void()>> on_accepted) {
+    std::optional<absl::FunctionRef<void()>> on_accepted,
+    uint64_t *write_number) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!redis_async_context_) {
+  if (!redis_async_context_ || commands_paused_) {
     return Status::Disconnected("Redis is disconnected");
   }
   const int ret_code = redisAsyncCommandArgv(
@@ -231,6 +256,33 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
     return Status::RedisError(std::string(redis_async_context_->errstr));
   }
   RAY_CHECK(ret_code == REDIS_OK);
+  if (write_number != nullptr && write_watermark_.has_value()) {
+    // Queue the marker right behind the write, under the same lock, so marker
+    // numbers rise in the order Redis runs the writes. Its reply is not
+    // needed: the reconnect check reads the marker back.
+    const uint64_t n = ++last_submitted_write_;
+    const std::string value = absl::StrCat(write_watermark_->incarnation, ":", n);
+    const char *marker_argv[] = {"HSET",
+                                 write_watermark_->key.data(),
+                                 write_watermark_->field.data(),
+                                 value.data()};
+    const size_t marker_argvlen[] = {
+        4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
+    if (redisAsyncCommandArgv(redis_async_context_.get(),
+                              /*fn=*/nullptr,
+                              /*privdata=*/nullptr,
+                              4,
+                              marker_argv,
+                              marker_argvlen) != REDIS_OK) {
+      // Only a context that is already being torn down refuses a command it
+      // just accepted. The write is still numbered: should Redis reply to it,
+      // the missing marker makes the next reconnect check fail and the
+      // process restart, which errs on the safe side.
+      RAY_LOG(WARNING) << "Failed to queue the write watermark marker: "
+                       << redis_async_context_->errstr;
+    }
+    *write_number = n;
+  }
   // hiredis queues the reply callback without invoking it inline. Keep the
   // HandleIo mutex until bookkeeping state has been captured, so another thread
   // cannot deliver a reply and free privdata before this notification finishes.

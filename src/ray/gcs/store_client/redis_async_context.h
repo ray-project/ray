@@ -25,6 +25,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 
 #include "absl/functional/function_ref.h"
 #include "absl/time/time.h"
@@ -140,6 +141,45 @@ class RedisAsyncContext {
   /// Thread-safe.
   void ClearOutage();
 
+  /// Where the write watermark of this connection lives in Redis, and the
+  /// value prefix that marks it as written by this process.
+  struct WriteWatermark {
+    std::string key;
+    std::string field;
+    std::string incarnation;
+  };
+
+  /// Follow every write submitted from now on with a marker write
+  /// `HSET key field "<incarnation>:<n>"`, where n counts this connection's
+  /// writes. Redis runs a connection's commands in order and whatever it keeps
+  /// after a crash, a restore or a failover is a prefix of what it ran, so if
+  /// the marker of write n survived, write n and every write before it did too.
+  /// The caller has already written marker 1 and got a reply, so numbering
+  /// continues from 2. Thread-safe.
+  ///
+  /// \param watermark Where to write the marker and what to prefix it with.
+  void EnableWriteWatermark(WriteWatermark watermark);
+
+  /// The watermark set by EnableWriteWatermark(), if any. Thread-safe.
+  std::optional<WriteWatermark> GetWriteWatermark();
+
+  /// Record that Redis replied to write `n`. Thread-safe.
+  ///
+  /// \param n The number EnableWriteWatermark() gave the write.
+  void AckWrite(uint64_t n);
+
+  /// The highest write number Redis replied to, 0 if none. Thread-safe.
+  uint64_t LastAckedWrite() const;
+
+  /// Turn commands away, as if the connection were down, until called again
+  /// with false. RedisContext pauses a reconnected context until Redis has
+  /// passed its reconnect check, so no retried write lands on a server that
+  /// turns out to have lost data. Commands queued on the raw context before
+  /// Reset() are not affected. Thread-safe.
+  ///
+  /// \param paused Whether to turn commands away.
+  void PauseCommands(bool paused);
+
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
   /// \param fn Callback that will be called after the command finishes.
@@ -161,6 +201,10 @@ class RedisAsyncContext {
   /// Not retained or called on rejection. Must not reenter this context, invoke
   /// user callbacks or metric recorders, or throw. Only capture bookkeeping state
   /// here; record metrics after this method returns and releases the mutex.
+  /// \param write_number Non-null for a command that changes data. Once the
+  /// command is accepted and a write watermark is enabled, the marker write is
+  /// queued right behind it and the write's number is stored here, before the
+  /// reply can arrive. Left untouched otherwise.
   /// \return Status
   Status RedisAsyncCommandArgv(
       redisCallbackFn *fn,
@@ -168,7 +212,8 @@ class RedisAsyncContext {
       int argc,
       const char **argv,
       const size_t *argvlen,
-      std::optional<absl::FunctionRef<void()>> on_accepted = std::nullopt);
+      std::optional<absl::FunctionRef<void()>> on_accepted = std::nullopt,
+      uint64_t *write_number = nullptr);
 
  private:
   /// This mutex is used to protect `redis_async_context`.
@@ -209,6 +254,15 @@ class RedisAsyncContext {
   /// See OutageDeadline(). `kNoOutage` means no outage is in progress.
   static constexpr int64_t kNoOutage = INT64_MIN;
   std::atomic<int64_t> outage_deadline_ns_{kNoOutage};
+  /// See EnableWriteWatermark(). Guarded by `mutex_`.
+  std::optional<WriteWatermark> write_watermark_;
+  /// Number of the last write submitted with a marker. Guarded by `mutex_`, so
+  /// numbers follow the order in which writes reach the socket.
+  uint64_t last_submitted_write_ = 0;
+  /// See AckWrite().
+  std::atomic<uint64_t> last_acked_write_{0};
+  /// See PauseCommands(). Read under `mutex_` at submission.
+  std::atomic<bool> commands_paused_{false};
   /// Sentinel letting a queued socket operation notice that this object was
   /// destroyed before its handler ran. Registering a hiredis connect callback
   /// arms a write wait immediately, and RedisContext::Connect tears the

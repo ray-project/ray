@@ -310,7 +310,9 @@ class GcsServer {
   /// Makes several InternalKV calls, all in continuation.io_context().
   void GetOrGenerateClusterId(Postable<void(ClusterID cluster_id)> continuation);
 
-  RedisClientOptions GetRedisClientOptions();
+  /// \param write_watermark_name The client's field in the Redis write
+  /// watermark hash; see RedisClientOptions::write_watermark_name.
+  RedisClientOptions GetRedisClientOptions(std::string write_watermark_name);
 
   const ray::gcs::GcsServerMetrics &metrics_;
 

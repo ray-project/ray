@@ -102,6 +102,13 @@ struct RedisClientOptions {
 
   // Whether to use TLS/SSL for the connection.
   bool enable_ssl = false;
+
+  // This client's field in the write watermark hash, which lets a reconnect
+  // check that Redis kept every write it acknowledged (see
+  // RedisContext::EnableWriteWatermark). Each client of a gcs_server needs its
+  // own name; the same name is reused across restarts, so the hash stays
+  // small. Empty turns the check off.
+  std::string write_watermark_name;
 };
 
 // StoreClient using Redis as persistence backend.

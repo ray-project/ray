@@ -21,6 +21,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -43,6 +44,8 @@ extern "C" {
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status_or.h"
 
@@ -53,6 +56,47 @@ namespace gcs {
 namespace {
 
 constexpr size_t kMaxRedisCommandLabelLength = 16;
+
+/// Whether a command only reads. Everything else counts as a write and gets a
+/// write watermark marker, so a write command added later is covered without
+/// touching this list; a read left off it only costs a marker.
+bool IsReadOnlyCommand(std::string_view verb) {
+  for (std::string_view read_only : {"HGET",
+                                     "HMGET",
+                                     "HGETALL",
+                                     "HSCAN",
+                                     "HEXISTS",
+                                     "HKEYS",
+                                     "HLEN",
+                                     "GET",
+                                     "MGET",
+                                     "EXISTS",
+                                     "SCAN",
+                                     "PING"}) {
+    if (absl::EqualsIgnoreCase(verb, read_only)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Parse a write watermark value, "<incarnation>:<n>", into n. Returns nullopt
+/// for a value written by another incarnation, or one that does not parse.
+std::optional<uint64_t> ParseWriteWatermark(std::string_view value,
+                                            std::string_view incarnation) {
+  if (value.size() <= incarnation.size() + 1 ||
+      value.substr(0, incarnation.size()) != incarnation ||
+      value[incarnation.size()] != ':') {
+    return std::nullopt;
+  }
+  const std::string_view digits = value.substr(incarnation.size() + 1);
+  uint64_t n = 0;
+  auto [end, ec] = std::from_chars(digits.data(), digits.data() + digits.size(), n);
+  if (ec != std::errc() || end != digits.data() + digits.size()) {
+    return std::nullopt;
+  }
+  return n;
+}
 
 }  // namespace
 
@@ -236,6 +280,8 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                     RayConfig::instance().redis_retry_max_ms()),
       io_service_(io_service),
       redis_context_(context),
+      // Initialized before `redis_cmds_`, so it reads `args` before the move.
+      is_write_(!args.empty() && !IsReadOnlyCommand(args.front())),
       context_alive_(context->GetAliveToken()),
       pending_retries_(RayConfig::instance().num_redis_request_retries() + 1),
       callback_(std::move(callback)),
@@ -328,6 +374,11 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
         redis_reply != nullptr && !absl::StartsWith(error_msg, "NOAUTH");
     HandleFailure(request_cxt, reached_redis, error_msg);
   } else {
+    // Count the write as acknowledged before its callback can act on it, so a
+    // reconnect check from here on requires Redis to still have it.
+    if (request_cxt->write_number_ != 0) {
+      request_cxt->redis_context_->AckWrite(request_cxt->write_number_);
+    }
     // Measure while hiredis still owns the reply, and before anything is posted
     // to the io_service: `request_cxt` is deleted at the end of this branch, so
     // every read of it has to happen above the post.
@@ -378,6 +429,9 @@ void RedisRequestContext::Run() {
         *metrics_, command_label_, table_label_, request_payload_bytes_});
     request_metrics_claimed_ = true;
   };
+  // The previous attempt, if any, failed without a reply, so nothing else reads
+  // this until the submission below sets it under the lock.
+  write_number_ = 0;
   Status status = redis_context_->RedisAsyncCommandArgv(
       RedisResponseFn,
       this,
@@ -386,7 +440,8 @@ void RedisRequestContext::Run() {
       argc_.data(),
       metrics_ != nullptr
           ? std::make_optional(absl::FunctionRef<void()>(capture_acceptance))
-          : std::nullopt);
+          : std::nullopt,
+      is_write_ ? &write_number_ : nullptr);
   if (status.ok()) {
     // The submission lock has been released, so a reply on the IO thread may
     // already have deleted this request. Only use the independent local snapshot,
@@ -1386,12 +1441,17 @@ Status RedisContext::RefreshPrimaryFromSentinel(const std::string &sentinel_ip) 
 }
 
 namespace {
-/// privdata for ReconnectAuthCallback and ReconnectPingCallback.
+/// privdata for ReconnectAuthCallback and ReconnectCheckCallback.
 /// Heap-allocated because hiredis may hold it past the RedisContext's lifetime
 /// (teardown flushes callbacks).
 struct ReconnectProbe {
   RedisContext *context;
   std::weak_ptr<bool> alive;
+  /// For the check: the highest write Redis had acknowledged when the check
+  /// was queued, 0 when the check is a plain PING.
+  uint64_t expected_write = 0;
+  /// For the check: the prefix this process writes its markers with.
+  std::string incarnation;
 };
 }  // namespace
 
@@ -1434,16 +1494,33 @@ Status RedisContext::ConnectToResolvedAddress() {
     }
   }
 
-  // Then a PING, whose reply ends the attempt. A completed TCP connect proves
-  // little: a proxy in front of a Redis that is down accepts the connection
-  // and closes it right away. Counting that as success reset the backoff and
-  // turned the outage into a tight loop of connects. Queued before Reset() so
-  // it stays ahead of any retried command in the pipeline.
-  auto *ping = new ReconnectProbe{this, std::weak_ptr<bool>(alive_)};
-  int ping_status = redisAsyncCommand(
-      async_context.get(), &RedisContext::ReconnectPingCallback, ping, "PING");
-  if (ping_status == REDIS_ERR) {
-    delete ping;
+  // Then the check, whose reply ends the attempt. A completed TCP connect
+  // proves little: a proxy in front of a Redis that is down accepts the
+  // connection and closes it right away. Counting that as success reset the
+  // backoff and turned the outage into a tight loop of connects. Once Redis
+  // has acknowledged a write, the check reads the write watermark back, so a
+  // Redis that lost acknowledged writes is caught before GCS runs on.
+  auto *check = new ReconnectProbe{this, std::weak_ptr<bool>(alive_)};
+  int check_status = REDIS_ERR;
+  auto watermark = redis_async_context_->GetWriteWatermark();
+  const uint64_t expected_write = redis_async_context_->LastAckedWrite();
+  if (watermark.has_value() && expected_write > 0) {
+    check->expected_write = expected_write;
+    check->incarnation = watermark->incarnation;
+    check_status = redisAsyncCommand(async_context.get(),
+                                     &RedisContext::ReconnectCheckCallback,
+                                     check,
+                                     "HGET %b %b",
+                                     watermark->key.data(),
+                                     watermark->key.size(),
+                                     watermark->field.data(),
+                                     watermark->field.size());
+  } else {
+    check_status = redisAsyncCommand(
+        async_context.get(), &RedisContext::ReconnectCheckCallback, check, "PING");
+  }
+  if (check_status == REDIS_ERR) {
+    delete check;
     return Status::RedisError(std::string(async_context->errstr));
   }
 
@@ -1455,7 +1532,10 @@ Status RedisContext::ConnectToResolvedAddress() {
   SetConnectionCallbacks(async_context.get(), redis_async_context_.get());
 
   // Rebind rather than recreate: in-flight RedisRequestContexts hold a raw
-  // pointer to this RedisAsyncContext.
+  // pointer to this RedisAsyncContext. Keep other commands out until the check
+  // passes: on a Redis that lost data, a retried write would land on top of
+  // the gap, and the restarted GCS would load it as if nothing were missing.
+  redis_async_context_->PauseCommands(true);
   redis_async_context_->Reset(std::move(async_context));
   return Status::OK();
 }
@@ -1470,7 +1550,7 @@ void RedisContext::ReconnectAuthCallback(redisAsyncContext *async_context,
   }
   auto *reply = static_cast<redisReply *>(raw_reply);
   // No reply means the connection died first, and the disconnect callback
-  // drives the retry. Success needs no action: the PING queued behind AUTH
+  // drives the retry. Success needs no action: the check queued behind AUTH
   // decides the attempt.
   if (reply == nullptr || reply->type != REDIS_REPLY_ERROR) {
     return;
@@ -1483,9 +1563,9 @@ void RedisContext::ReconnectAuthCallback(redisAsyncContext *async_context,
   redisAsyncDisconnect(async_context);
 }
 
-void RedisContext::ReconnectPingCallback(redisAsyncContext *async_context,
-                                         void *raw_reply,
-                                         void *privdata) {
+void RedisContext::ReconnectCheckCallback(redisAsyncContext *async_context,
+                                          void *raw_reply,
+                                          void *privdata) {
   std::unique_ptr<ReconnectProbe> probe(static_cast<ReconnectProbe *>(privdata));
   if (probe->alive.expired()) {
     return;
@@ -1493,7 +1573,7 @@ void RedisContext::ReconnectPingCallback(redisAsyncContext *async_context,
   auto *redis_context = probe->context;
   auto *reply = static_cast<redisReply *>(raw_reply);
   if (reply == nullptr) {
-    // The connection died before the PING was answered. The disconnect
+    // The connection died before the check was answered. The disconnect
     // callback drives the retry.
     return;
   }
@@ -1507,6 +1587,26 @@ void RedisContext::ReconnectPingCallback(redisAsyncContext *async_context,
     }
     redisAsyncDisconnect(async_context);
     return;
+  }
+  if (probe->expected_write > 0) {
+    // Redis keeps a prefix of the commands it ran, and each write's marker ran
+    // right after it, so the marker shows how far this connection's writes
+    // survived. A missing marker, or one from another incarnation, means
+    // Redis lost everything since this process started writing.
+    std::optional<uint64_t> found;
+    if (reply->type == REDIS_REPLY_STRING) {
+      found = ParseWriteWatermark(std::string_view(reply->str, reply->len),
+                                  probe->incarnation);
+    }
+    if (!found.has_value() || *found < probe->expected_write) {
+      redis_context->OnWritesLost(
+          absl::StrCat("Redis acknowledged write ",
+                       probe->expected_write,
+                       " on this connection, but after the reconnect it holds ",
+                       found.has_value() ? absl::StrCat("only writes up to ", *found)
+                                         : std::string("none of this process's writes")));
+      return;
+    }
   }
   redis_context->OnReconnectConfirmed();
 }
@@ -1522,7 +1622,51 @@ void RedisContext::OnReconnectConfirmed() {
   ++reconnect_epoch_;
   // The outage is over; the next one gets a fresh grace period.
   redis_async_context_->ClearOutage();
+  redis_async_context_->PauseCommands(false);
   RAY_LOG(INFO) << "Reconnected to Redis at " << BuildAddress(address_, port_) << ".";
+}
+
+void RedisContext::OnWritesLost(const std::string &reason) {
+  const std::string message = absl::StrCat(
+      "Redis at ",
+      BuildAddress(address_, port_),
+      " came back without writes it had acknowledged: ",
+      reason,
+      ". It lost data during the outage, for example by restarting without "
+      "persistence, restoring an older snapshot, or failing over to a replica "
+      "that was behind. Exiting so that gcs_server restarts and reloads its state "
+      "from Redis.");
+  if (writes_lost_handler_for_testing_) {
+    writes_lost_handler_for_testing_(message);
+    return;
+  }
+  RAY_LOG(FATAL) << message;
+}
+
+void RedisContext::EnableWriteWatermark(std::string key, std::string field) {
+  if (!RayConfig::instance().redis_reconnect_verify_writes()) {
+    return;
+  }
+  RAY_CHECK(redis_async_context_);
+  // Tells this process's markers apart from those of an earlier gcs_server
+  // that used the same field: a restored snapshot can hold one of those.
+  std::random_device random_device;
+  std::mt19937_64 generator((static_cast<uint64_t>(random_device()) << 32) ^
+                            random_device() ^
+                            static_cast<uint64_t>(absl::ToUnixNanos(absl::Now())));
+  std::string incarnation = absl::StrCat(absl::Hex(generator(), absl::kZeroPad16),
+                                         absl::Hex(generator(), absl::kZeroPad16));
+  // Write marker 1 on the synchronous connection and wait for the reply before
+  // the async one numbers anything: from then on, a reconnect check also
+  // covers what Redis held before this process wrote, such as the state
+  // gcs_server loads at startup. Redis runs it before any write submitted
+  // after this returns, whichever connection that write uses.
+  auto reply = RunArgvSync({"HSET", key, field, absl::StrCat(incarnation, ":1")});
+  RAY_CHECK(reply != nullptr && !reply->IsError())
+      << "Failed to write the Redis write watermark: "
+      << (reply != nullptr ? reply->ReadAsStatus().ToString() : std::string("no reply"));
+  redis_async_context_->EnableWriteWatermark(RedisAsyncContext::WriteWatermark{
+      std::move(key), std::move(field), std::move(incarnation)});
 }
 
 void RedisContext::ScheduleReconnectRetry() {

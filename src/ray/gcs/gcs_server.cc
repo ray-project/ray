@@ -206,8 +206,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         clock_);
     break;
   case StorageType::REDIS_PERSIST: {
-    auto redis_store_client = std::make_shared<RedisStoreClient>(
-        io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
+    auto redis_store_client =
+        std::make_shared<RedisStoreClient>(io_context,
+                                           GetRedisClientOptions("gcs_tables"),
+                                           clock_,
+                                           MakeRedisMetrics(metrics_));
     // Health check Redis periodically and crash if it becomes unavailable.
     // NOTE: periodical_runner_ must run on the same IO context as the Redis client.
     periodical_runner_->RunFnPeriodically(
@@ -1005,8 +1008,11 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<StoreClient> store_client;
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    store_client = std::make_unique<RedisStoreClient>(
-        io_context, GetRedisClientOptions(), clock_, MakeRedisMetrics(metrics_));
+    store_client =
+        std::make_unique<RedisStoreClient>(io_context,
+                                           GetRedisClientOptions("gcs_internal_kv"),
+                                           clock_,
+                                           MakeRedisMetrics(metrics_));
     break;
   case (StorageType::IN_MEMORY):
     store_client = std::make_unique<ObservableStoreClient>(
@@ -1329,12 +1335,13 @@ void GcsServer::PrintDebugState() const {
   }
 }
 
-RedisClientOptions GcsServer::GetRedisClientOptions() {
+RedisClientOptions GcsServer::GetRedisClientOptions(std::string write_watermark_name) {
   return RedisClientOptions{config_.redis_address,
                             config_.redis_port,
                             config_.redis_username,
                             config_.redis_password,
-                            config_.enable_redis_ssl};
+                            config_.enable_redis_ssl,
+                            std::move(write_watermark_name)};
 }
 
 void GcsServer::InitMetricsExporter(int metrics_agent_port) {

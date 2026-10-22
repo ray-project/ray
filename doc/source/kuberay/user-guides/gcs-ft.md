@@ -406,7 +406,9 @@ window comfortably longer than any stall you expect to recover from.
 
 GCS reconnects in place. It does not exit and wait to be restarted, and the
 detached actors and job metadata it stored survive as long as Redis keeps the
-data. This includes a connection that TCP keepalive (step 5) declares dead.
+data. This includes a connection that TCP keepalive (step 5) declares dead. If
+Redis lost data during the outage, GCS exits instead; see
+[below](#when-redis-comes-back-without-data).
 
 Where the primary moves during a failover, GCS follows it:
 
@@ -422,16 +424,45 @@ Where the primary moves during a failover, GCS follows it:
 GCS still exits if Redis stays unreachable past the grace period below. That is
 deliberate: a head node that cannot reach its metadata store is not serving.
 
+### When Redis comes back without data
+
+Before it resumes, GCS checks that Redis still holds every write it got a reply
+for. Redis can come back without recent writes:
+
+* A restart without persistence comes back empty.
+* A restart from an RDB snapshot comes back without the writes made since that
+  snapshot.
+* A failover to a replica that was behind drops the writes the replica hadn't
+  received yet.
+
+GCS keeps its running state in memory, so continuing on such a Redis would
+leave the two out of step. The damage shows up later, for example as a detached
+actor that is listed but can't be fetched. GCS exits instead, and the restarted
+GCS reloads what Redis actually holds, as it did before in-place reconnects.
+
+When Redis lost nothing, the check passes and GCS continues without a restart.
+That's the case for a dropped connection, for a failover to a replica that had
+caught up, and for a Redis restart with `appendonly yes`. With the
+`appendfsync everysec` setting that KubeRay recommends, a restart of the Redis
+process loses nothing, while a failure of the node it runs on can lose the
+last second of writes.
+
+To run the check, GCS follows each write with a small marker write to the
+`RAY<namespace>@WriteWatermark` hash, which doubles the number of write
+commands it sends. Set `RAY_redis_reconnect_verify_writes=0` to turn off both
+the check and the marker writes; GCS then continues after any reconnect.
+
 ### Tuning the reconnect
 
 Set these as environment variables on every node before `ray start`. The first
-two are specific to reconnecting; the rest predate them and also govern the
+three are specific to reconnecting; the rest predate them and also govern the
 retry behavior of individual Redis commands.
 
 | Variable | Default | Effect |
 |---|---|---|
 | `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
 | `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. |
+| `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. See [When Redis comes back without data](#when-redis-comes-back-without-data). |
 | `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
 | `RAY_redis_retry_base_ms` | `100` | First backoff between attempts. |
 | `RAY_redis_retry_multiplier` | `2` | Backoff growth. |

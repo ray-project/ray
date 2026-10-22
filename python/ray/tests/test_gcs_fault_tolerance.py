@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -783,6 +784,18 @@ def test_redis_with_sentinel_failureover(
     # Wait until all data is updated in the replica
     leader_cli.set("_hole", "0")
     wait_for_condition(lambda: all([b"_hole" in f.keys("*") for f in follower_cli]))
+    # GCS keeps writing in the background. Hold writes and let the replicas
+    # catch up, so the promoted one has every write GCS got a reply for: a
+    # failover to a replica that is behind loses data, and GCS exits on that
+    # by design (test_redis_reconnect_exits_when_redis_lost_data).
+    leader_cli.execute_command("CLIENT", "PAUSE", "10000", "WRITE")
+    leader_offset = leader_cli.info("replication")["master_repl_offset"]
+    wait_for_condition(
+        lambda: all(
+            f.info("replication")["slave_repl_offset"] >= leader_offset
+            for f in follower_cli
+        )
+    )
     current_leader = get_sentinel_nodes()[0]
 
     # Now kill pid
@@ -844,6 +857,65 @@ print("DONE")
     wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
 
 
+def _restart_redis_keeping_data(ip, port):
+    """Kill the external Redis and start it again on the same port with the
+    data it held.
+
+    The fixture's Redis runs without persistence, so turn on an fsync-always
+    AOF first and wait for its initial rewrite. Returns the new process and
+    the directory holding the AOF, for the caller to clean up.
+    """
+    import redis
+
+    from ray._private.test_utils import REDIS_EXECUTABLE
+
+    cli = redis.Redis(ip, int(port))
+    data_dir = cli.config_get("dir")["dir"]
+    cli.config_set("appendfsync", "always")
+    cli.config_set("appendonly", "yes")
+    wait_for_condition(
+        lambda: cli.info("persistence")["aof_rewrite_in_progress"] == 0
+        and cli.info("persistence")["aof_enabled"] == 1,
+        timeout=30,
+    )
+    redis_pid = cli.info()["process_id"]
+    psutil.Process(pid=redis_pid).kill()
+    # SIGKILL is asynchronous: the listen socket is only released once the
+    # process is reaped, and binding the replacement before that fails.
+    wait_for_pid_to_exit(redis_pid, 30)
+
+    proc = subprocess.Popen(
+        [
+            REDIS_EXECUTABLE,
+            "--port",
+            str(port),
+            "--dir",
+            data_dir,
+            "--appendonly",
+            "yes",
+            "--appendfsync",
+            "always",
+            "--save",
+            "",
+            "--loglevel",
+            "warning",
+        ]
+    )
+    return proc, data_dir
+
+
+def _wait_for_redis(ip, port):
+    import redis
+
+    def redis_serving():
+        try:
+            return redis.Redis(ip, int(port)).ping()
+        except Exception:
+            return False
+
+    wait_for_condition(redis_serving, timeout=30)
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head_with_external_redis",
     [
@@ -854,12 +926,72 @@ print("DONE")
     indirect=True,
 )
 def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
-    """gcs_server survives its Redis connection dropping.
+    """gcs_server survives a Redis restart that keeps the data.
 
-    Kill the external Redis and bring a fresh one up on the same port. The
-    same gcs_server process must reconnect and serve GCS writes again: no
-    crash, no restart. This is the plain-Redis half of what
-    test_redis_with_sentinel_failureover asserts through a Sentinel.
+    Restart the external Redis from an fsync-always AOF. The same gcs_server
+    process must reconnect, find every write it got a reply for still there,
+    and serve GCS writes again: no crash, no restart. This is the plain-Redis
+    half of what test_redis_with_sentinel_failureover asserts through a
+    Sentinel.
+    """
+    cluster = ray_start_cluster_head_with_external_redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS").split(",")[0]
+    ip, port = parse_address(redis_addr)
+
+    gcs_server_pid = cluster.head_node.all_processes["gcs_server"][0].process.pid
+
+    @ray.remote
+    def f():
+        return 7
+
+    assert ray.get(f.remote()) == 7
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    gcs_client.internal_kv_put(b"before_restart", b"1", True, None)
+
+    redis_proc, data_dir = _restart_redis_keeping_data(ip, port)
+    try:
+        _wait_for_redis(ip, port)
+
+        def gcs_writes_flow():
+            # Internal KV writes go GCS -> Redis, so this only succeeds once
+            # the in-place reconnect has landed.
+            try:
+                gcs_client.internal_kv_put(b"reconnect_probe", b"1", True, None)
+                return gcs_client.internal_kv_get(b"reconnect_probe", None) == b"1"
+            except Exception:
+                return False
+
+        wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
+
+        # Same process: it reconnected in place, it was not restarted.
+        assert psutil.pid_exists(gcs_server_pid)
+        assert gcs_client.internal_kv_get(b"before_restart", None) == b"1"
+        assert ray.get(f.remote()) == 7
+    finally:
+        redis_proc.kill()
+        redis_proc.wait()
+        shutil.rmtree(os.path.join(data_dir, "appendonlydir"), ignore_errors=True)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_server_request_timeout_seconds=10,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_reconnect_exits_when_redis_lost_data(
+    ray_start_cluster_head_with_external_redis,
+):
+    """gcs_server exits when Redis comes back without its writes.
+
+    Kill the external Redis and bring an empty one up on the same port, the
+    way a Redis without persistence restarts. Running on would leave GCS
+    memory ahead of storage, so gcs_server must exit and leave the reload to
+    its restart.
     """
     cluster = ray_start_cluster_head_with_external_redis
     import redis
@@ -877,41 +1009,22 @@ def test_redis_in_place_reconnect(ray_start_cluster_head_with_external_redis):
     assert ray.get(f.remote()) == 7
 
     psutil.Process(pid=redis_pid).kill()
-    # SIGKILL is asynchronous: the listen socket is only released once the
-    # process is reaped, and binding the replacement before that fails.
     wait_for_pid_to_exit(redis_pid, 30)
 
-    # A fresh server on the same port. The GCS keeps its runtime state in
-    # memory, so the cluster stays usable even though the new Redis is empty;
-    # the Redis contents only matter for a GCS restart.
     with tempfile.TemporaryDirectory() as tmpdir:
         _, redis_proc = start_redis_instance(tmpdir, int(port), num_retries=1)
         try:
+            _wait_for_redis(ip, port)
+            wait_for_pid_to_exit(gcs_server_pid, 60)
 
-            def redis_serving():
-                try:
-                    return redis.Redis(ip, int(port)).ping()
-                except Exception:
-                    return False
-
-            wait_for_condition(redis_serving, timeout=30)
-
-            gcs_client = ray._private.worker.global_worker.gcs_client
-
-            def gcs_writes_flow():
-                # Internal KV writes go GCS -> Redis, so this only succeeds once
-                # the in-place reconnect has landed.
-                try:
-                    gcs_client.internal_kv_put(b"reconnect_probe", b"1", True, None)
-                    return gcs_client.internal_kv_get(b"reconnect_probe", None) == b"1"
-                except Exception:
-                    return False
-
-            wait_for_condition(gcs_writes_flow, timeout=60, retry_interval_ms=1000)
-
-            # Same process: it reconnected in place, it was not restarted.
-            assert psutil.pid_exists(gcs_server_pid)
-            assert ray.get(f.remote()) == 7
+            log_dir = cluster.head_node.get_logs_dir_path()
+            gcs_log = ""
+            for name in ("gcs_server.out", "gcs_server.err"):
+                path = os.path.join(log_dir, name)
+                if os.path.exists(path):
+                    with open(path, errors="replace") as log_file:
+                        gcs_log += log_file.read()
+            assert "came back without writes it had acknowledged" in gcs_log
         finally:
             redis_proc.process.kill()
 

@@ -202,6 +202,12 @@ struct RedisRequestContext {
   ExponentialBackoff exp_back_off_;
   instrumented_io_context &io_service_;
   RedisAsyncContext *redis_context_;
+  /// Whether the command can change data, so that it gets a write watermark
+  /// marker. See RedisAsyncContext::EnableWriteWatermark.
+  bool is_write_;
+  /// The watermark number of the attempt in flight, 0 if it has none. Written
+  /// under the submission lock, read by the reply callback.
+  uint64_t write_number_ = 0;
   /// Expires when `redis_context_` is destroyed. Its teardown flushes this
   /// request's callback while the event loop may be going away with it, so
   /// the retry path must not schedule anything once this is gone.
@@ -292,6 +298,28 @@ class RedisContext {
 
   instrumented_io_context &io_service() { return io_service_; }
 
+  /// From now on, check after every reconnect that Redis still has every write
+  /// it replied to on this connection, and exit the process if it does not:
+  /// the state GCS holds in memory would then be ahead of storage, and a
+  /// restarted GCS reloads what storage has. Each write is followed by a marker
+  /// in hash `key`, field `field` (see RedisAsyncContext::EnableWriteWatermark).
+  /// The first marker is written before this returns, over the synchronous
+  /// connection, so a Redis that comes back without the data that was there at
+  /// this call is caught too. Call once, after Connect() and before submitting
+  /// writes; it blocks for one round trip. Does nothing when
+  /// redis_reconnect_verify_writes is off.
+  ///
+  /// \param key The Redis hash holding the markers.
+  /// \param field This connection's field in it. Must not be shared with
+  /// another connection in use at the same time.
+  void EnableWriteWatermark(std::string key, std::string field);
+
+  /// Replace the process exit on a failed reconnect check. The handler gets the
+  /// reason; commands stay paused afterwards.
+  void SetWritesLostHandlerForTesting(std::function<void(const std::string &)> handler) {
+    writes_lost_handler_for_testing_ = std::move(handler);
+  }
+
  private:
   /// The body of Connect(). Connect() wraps it to track connect_depth_.
   Status ConnectImpl(const std::string &address,
@@ -311,16 +339,23 @@ class RedisContext {
                                     void *raw_reply,
                                     void *privdata);
 
-  /// hiredis reply callback for the PING that ConnectToResolvedAddress sends
-  /// after AUTH. Its reply, not the TCP connect, ends a reconnect: a proxy in
-  /// front of a Redis that is down accepts the connection and closes it, and a
-  /// Redis still loading its data answers -LOADING.
-  static void ReconnectPingCallback(redisAsyncContext *async_context,
-                                    void *raw_reply,
-                                    void *privdata);
+  /// hiredis reply callback for the check that ConnectToResolvedAddress sends
+  /// after AUTH: a read of the write watermark once a write has been
+  /// acknowledged, a PING before that. Its reply, not the TCP connect, ends a
+  /// reconnect: a proxy in front of a Redis that is down accepts the
+  /// connection and closes it, and a Redis still loading its data answers
+  /// -LOADING.
+  static void ReconnectCheckCallback(redisAsyncContext *async_context,
+                                     void *raw_reply,
+                                     void *privdata);
 
-  /// The reconnect PING was answered: end the episode.
+  /// The reconnect check passed: end the episode and let commands through.
   void OnReconnectConfirmed();
+
+  /// The reconnect check found writes missing. Exits the process.
+  ///
+  /// \param reason What the check found, for the log.
+  void OnWritesLost(const std::string &reason);
 
   /// Try once to re-establish the async connection, rescheduling itself with
   /// exponential backoff on failure. Runs on the io_service thread and never
@@ -432,6 +467,7 @@ class RedisContext {
   /// reconnect needs.
   std::atomic<bool> dropped_while_connecting_ = false;
   std::function<void(RedisAsyncContext &)> async_connected_hook_for_testing_;
+  std::function<void(const std::string &)> writes_lost_handler_for_testing_;
   /// Guards against overlapping reconnect attempts.
   bool reconnecting_ = false;
   /// A reconnect attempt is in flight: its DNS resolve or its async connect

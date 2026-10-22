@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -36,9 +37,11 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/redis_context.h"
 #include "ray/observability/fake_metric.h"
@@ -513,6 +516,277 @@ TEST_F(RedisAsyncContextTest, TestNoAuthRepliesDoNotSpendRetries) {
   admin_command("CLIENT KILL TYPE normal");
   ASSERT_EQ(future.wait_for(std::chrono::seconds(20)), std::future_status::ready);
   EXPECT_TRUE(future.get());
+}
+
+namespace {
+
+constexpr char kWatermarkKey[] = "test_write_watermark";
+constexpr char kWatermarkField[] = "test_client";
+
+// A RedisContext on its own io thread whose failed reconnect checks are
+// recorded instead of exiting, and an admin connection to the same Redis for
+// arranging what the server holds.
+class ReconnectCheckHarness {
+ public:
+  ReconnectCheckHarness()
+      : port_(TEST_REDIS_SERVER_PORTS.front()),
+        work_(boost::asio::make_work_guard(io_.get_executor())),
+        io_thread_([this] { io_.run(); }),
+        ctx_(std::make_unique<RedisContext>(io_, clock_)) {
+    admin_ = redisConnect("127.0.0.1", port_);
+    RAY_CHECK(admin_ != nullptr && admin_->err == 0);
+    ctx_->SetWritesLostHandlerForTesting([this](const std::string &reason) {
+      std::lock_guard<std::mutex> lock(mu_);
+      lost_reasons_.push_back(reason);
+      lost_cv_.notify_all();
+    });
+    RAY_CHECK_OK(ctx_->Connect("127.0.0.1", port_, /*username=*/"", /*password=*/""));
+  }
+
+  ~ReconnectCheckHarness() {
+    redisFree(admin_);
+    // The contract in redis_context.h: destroy the context only once its
+    // io_context has stopped running.
+    work_.reset();
+    io_.stop();
+    io_thread_.join();
+    ctx_.reset();
+  }
+
+  RedisContext &ctx() { return *ctx_; }
+
+  void EnableWatermark() { ctx_->EnableWriteWatermark(kWatermarkKey, kWatermarkField); }
+
+  // Run a command through the context and wait for its reply; nullptr if none
+  // comes within `timeout`.
+  std::shared_ptr<CallbackReply> Run(std::vector<std::string> args,
+                                     std::chrono::seconds timeout = 20s) {
+    auto done = std::make_shared<std::promise<std::shared_ptr<CallbackReply>>>();
+    auto future = done->get_future();
+    ctx_->RunArgvAsync(
+        std::move(args),
+        [done](const std::shared_ptr<CallbackReply> &reply) { done->set_value(reply); },
+        kNoTable);
+    if (future.wait_for(timeout) != std::future_status::ready) {
+      return nullptr;
+    }
+    return future.get();
+  }
+
+  // A round trip behind everything submitted so far, markers included.
+  void Sync() { ASSERT_NE(Run({"PING"}), nullptr); }
+
+  // Run a command on the admin connection and return the reply's text, its
+  // integer as text, or "(nil)".
+  std::string Admin(const std::vector<std::string> &args) {
+    std::vector<const char *> argv;
+    std::vector<size_t> argvlen;
+    for (const auto &arg : args) {
+      argv.push_back(arg.data());
+      argvlen.push_back(arg.size());
+    }
+    auto *reply = static_cast<redisReply *>(
+        redisCommandArgv(admin_, argv.size(), argv.data(), argvlen.data()));
+    RAY_CHECK(reply != nullptr);
+    std::string result;
+    if (reply->type == REDIS_REPLY_INTEGER) {
+      result = std::to_string(reply->integer);
+    } else if (reply->type == REDIS_REPLY_NIL) {
+      result = "(nil)";
+    } else {
+      result = std::string(reply->str, reply->len);
+    }
+    freeReplyObject(reply);
+    return result;
+  }
+
+  std::string Watermark() { return Admin({"HGET", kWatermarkKey, kWatermarkField}); }
+
+  // Close the context's connection from the server side; the server and its
+  // data stay as they are.
+  void DropConnection() { ASSERT_NE(Admin({"CLIENT", "KILL", "TYPE", "normal"}), "0"); }
+
+  std::optional<std::string> WaitForWritesLost(std::chrono::seconds timeout = 20s) {
+    std::unique_lock<std::mutex> lock(mu_);
+    if (!lost_cv_.wait_for(lock, timeout, [this] { return !lost_reasons_.empty(); })) {
+      return std::nullopt;
+    }
+    return lost_reasons_.front();
+  }
+
+  size_t NumWritesLost() {
+    std::lock_guard<std::mutex> lock(mu_);
+    return lost_reasons_.size();
+  }
+
+ private:
+  const int port_;
+  instrumented_io_context io_;
+  boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
+  std::thread io_thread_;
+  ray::Clock clock_;
+  std::unique_ptr<RedisContext> ctx_;
+  redisContext *admin_ = nullptr;
+  std::mutex mu_;
+  std::condition_variable lost_cv_;
+  std::vector<std::string> lost_reasons_;
+};
+
+// Split a watermark value, "<incarnation>:<n>".
+std::pair<std::string, uint64_t> SplitWatermark(const std::string &value) {
+  const size_t colon = value.rfind(':');
+  RAY_CHECK(colon != std::string::npos) << value;
+  return {value.substr(0, colon), std::stoull(value.substr(colon + 1))};
+}
+
+}  // namespace
+
+// Every command that changes data is followed by a marker carrying the next
+// write number; reads are not. The first marker goes out when the watermark
+// is enabled.
+TEST_F(RedisAsyncContextTest, TestWriteWatermarkCountsWritesOnly) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  h.Sync();
+  const auto [incarnation, first] = SplitWatermark(h.Watermark());
+  EXPECT_EQ(first, 1u);
+
+  ASSERT_NE(h.Run({"SET", "a", "1"}), nullptr);
+  h.Sync();
+  EXPECT_EQ(h.Watermark(), absl::StrCat(incarnation, ":2"));
+
+  ASSERT_NE(h.Run({"GET", "a"}), nullptr);
+  ASSERT_NE(h.Run({"HGET", kWatermarkKey, kWatermarkField}), nullptr);
+  ASSERT_NE(h.Run({"HEXISTS", "h", "x"}), nullptr);
+  h.Sync();
+  EXPECT_EQ(h.Watermark(), absl::StrCat(incarnation, ":2"));
+
+  ASSERT_NE(h.Run({"HDEL", "h", "x"}), nullptr);
+  ASSERT_NE(h.Run({"INCRBY", "counter", "1"}), nullptr);
+  h.Sync();
+  EXPECT_EQ(h.Watermark(), absl::StrCat(incarnation, ":4"));
+}
+
+// A dropped connection to a Redis that kept its data passes the check, and
+// commands go through again.
+TEST_F(RedisAsyncContextTest, TestReconnectResumesWhenRedisKeptWrites) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  ASSERT_NE(h.Run({"SET", "before", "1"}), nullptr);
+  h.Sync();
+
+  h.DropConnection();
+  auto reply = h.Run({"SET", "after", "1"});
+  ASSERT_NE(reply, nullptr);
+  EXPECT_TRUE(reply->ReadAsStatus().ok());
+  EXPECT_EQ(h.Admin({"GET", "after"}), "1");
+  EXPECT_EQ(h.NumWritesLost(), 0u);
+}
+
+// A Redis that came back empty fails the check. Commands stay paused, so a
+// write issued during the outage never lands on the emptied server.
+TEST_F(RedisAsyncContextTest, TestReconnectCatchesRedisThatCameBackEmpty) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  ASSERT_NE(h.Run({"SET", "before", "1"}), nullptr);
+  h.Sync();
+
+  ASSERT_EQ(h.Admin({"FLUSHALL"}), "OK");
+  h.DropConnection();
+  h.ctx().RunArgvAsync({"SET", "during_outage", "1"}, nullptr, kNoTable);
+
+  auto reason = h.WaitForWritesLost();
+  ASSERT_TRUE(reason.has_value());
+  EXPECT_NE(reason->find("none of this process's writes"), std::string::npos) << *reason;
+  std::this_thread::sleep_for(1s);
+  EXPECT_EQ(h.Admin({"EXISTS", "during_outage"}), "0");
+}
+
+// The check catches a Redis that kept older writes but lost the latest ones,
+// which is what an older snapshot or a lagging replica leaves behind.
+TEST_F(RedisAsyncContextTest, TestReconnectCatchesLostRecentWrites) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  ASSERT_NE(h.Run({"SET", "a", "1"}), nullptr);
+  ASSERT_NE(h.Run({"SET", "b", "1"}), nullptr);
+  h.Sync();
+  const auto [incarnation, last] = SplitWatermark(h.Watermark());
+
+  ASSERT_EQ(h.Admin({"HSET",
+                     kWatermarkKey,
+                     kWatermarkField,
+                     absl::StrCat(incarnation, ":", last - 1)}),
+            "0");
+  h.DropConnection();
+
+  auto reason = h.WaitForWritesLost();
+  ASSERT_TRUE(reason.has_value());
+  EXPECT_NE(reason->find(absl::StrCat("only writes up to ", last - 1)), std::string::npos)
+      << *reason;
+}
+
+// A marker left by another process under the same field says nothing about
+// this process's writes: Redis was restored to a point before them.
+TEST_F(RedisAsyncContextTest, TestReconnectCatchesAnotherIncarnationsMarker) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  ASSERT_NE(h.Run({"SET", "a", "1"}), nullptr);
+  h.Sync();
+
+  ASSERT_EQ(h.Admin({"HSET", kWatermarkKey, kWatermarkField, "0123456789abcdef:99"}),
+            "0");
+  h.DropConnection();
+
+  auto reason = h.WaitForWritesLost();
+  ASSERT_TRUE(reason.has_value());
+  EXPECT_NE(reason->find("none of this process's writes"), std::string::npos) << *reason;
+}
+
+// The first marker covers what Redis held before this process wrote anything,
+// such as the state GCS loaded at startup.
+TEST_F(RedisAsyncContextTest, TestFirstMarkerCoversDataFromBeforeAnyWrite) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  h.Sync();
+
+  ASSERT_EQ(h.Admin({"FLUSHALL"}), "OK");
+  h.DropConnection();
+
+  EXPECT_TRUE(h.WaitForWritesLost().has_value());
+}
+
+// Without a watermark, as for contexts outside gcs_server, a reconnect only
+// needs Redis to answer.
+TEST_F(RedisAsyncContextTest, TestReconnectWithoutWatermarkOnlyNeedsAnAnswer) {
+  ReconnectCheckHarness h;
+  ASSERT_NE(h.Run({"SET", "before", "1"}), nullptr);
+
+  ASSERT_EQ(h.Admin({"FLUSHALL"}), "OK");
+  h.DropConnection();
+  auto reply = h.Run({"SET", "after", "1"});
+  ASSERT_NE(reply, nullptr);
+  EXPECT_TRUE(reply->ReadAsStatus().ok());
+  EXPECT_EQ(h.NumWritesLost(), 0u);
+}
+
+// redis_reconnect_verify_writes=false writes no markers and skips the check.
+TEST_F(RedisAsyncContextTest, TestWriteWatermarkCanBeTurnedOff) {
+  RayConfig::instance().initialize(R"({"redis_reconnect_verify_writes": false})");
+  absl::Cleanup restore = [] {
+    RayConfig::instance().initialize(R"({"redis_reconnect_verify_writes": true})");
+  };
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  ASSERT_NE(h.Run({"SET", "before", "1"}), nullptr);
+  h.Sync();
+  EXPECT_EQ(h.Admin({"EXISTS", kWatermarkKey}), "0");
+
+  ASSERT_EQ(h.Admin({"FLUSHALL"}), "OK");
+  h.DropConnection();
+  auto reply = h.Run({"SET", "after", "1"});
+  ASSERT_NE(reply, nullptr);
+  EXPECT_TRUE(reply->ReadAsStatus().ok());
+  EXPECT_EQ(h.NumWritesLost(), 0u);
 }
 
 // The outage deadline is stamped once, by whoever gets there first, and every
