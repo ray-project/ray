@@ -526,6 +526,26 @@ def test_create_token_if_missing_overwrites_an_unreadable_file(tmp_path, monkeyp
     assert len(token_path.read_text()) == 64
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32" or os.geteuid() == 0,
+    reason="Needs POSIX permissions that apply to the current user",
+)
+def test_create_token_if_missing_reports_an_unwritable_home(tmp_path, monkeypatch):
+    """A token file that can't be written raises RuntimeError naming the file,
+    not an AuthenticationError telling the user to copy a token from a head."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    token_dir = tmp_path / ".ray"
+    token_dir.mkdir()
+    token_dir.chmod(0o500)
+    reset_auth_token_state()
+
+    try:
+        with pytest.raises(RuntimeError, match=str(token_dir / "auth_token")):
+            AuthenticationTokenLoader.instance().create_token_if_missing()
+    finally:
+        token_dir.chmod(0o700)
+
+
 @pytest.mark.parametrize(
     "token_file_content, loaded_token",
     [
@@ -555,6 +575,18 @@ def test_token_creation_keeps_an_existing_token(
     ensure_token_if_auth_enabled(create_token_if_missing=True)
     reset_auth_token_state()
     AuthenticationTokenLoader.instance().create_token_if_missing()
+    # The CLI returns at has_token here; this checks only the user-facing path.
+    cli = subprocess.run(
+        ["ray", "get-auth-token", "--generate"],
+        env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    # Printing a non-UTF-8 token fails on its own; only the file matters then.
+    if loaded_token is not None:
+        assert cli.returncode == 0, cli.stderr
+        assert cli.stdout == loaded_token
 
     assert token_path.read_bytes() == token_file_content
     if loaded_token is not None:
@@ -627,9 +659,10 @@ def test_ray_start_address_without_token_raises_error(setup_cluster_with_token_a
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
 
-    _run_ray_start_and_verify_status(
+    result = _run_ray_start_and_verify_status(
         [f"--address={cluster.address}"], env, expect_success=False
     )
+    assert "ray get-auth-token" in result.stdout + result.stderr
     assert not default_token_path.exists()
 
 

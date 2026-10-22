@@ -1,8 +1,6 @@
-"""Authentication token setup for Ray.
-
-This module provides functions to generate and save authentication tokens
-for Ray's token-based authentication system. Token loading and caching is
-handled by the C++ AuthenticationTokenLoader.
+"""Token authentication setup for Ray: enable token mode and make sure a token
+exists. Token loading, caching and creation live in the C++
+AuthenticationTokenLoader.
 """
 
 import logging
@@ -127,10 +125,7 @@ def ensure_token_if_auth_enabled(
 
     token_loader = AuthenticationTokenLoader.instance()
 
-    if not token_loader.has_token(ignore_auth_mode=True):
-        if create_token_if_missing:
-            token_loader.create_token_if_missing()
-        else:
-            raise AuthenticationError(
-                TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
-            )
+    if create_token_if_missing:
+        token_loader.create_token_if_missing()
+    elif not token_loader.has_token(ignore_auth_mode=True):
+        raise AuthenticationError(TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE)

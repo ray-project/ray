@@ -288,6 +288,10 @@ std::string AuthenticationTokenLoader::CreateTokenIfMissing() {
   }
   if (created_dir) {
     std::filesystem::permissions(token_dir, std::filesystem::perms::owner_all, ec);
+    if (ec) {
+      return "Failed to restrict " + token_dir.string() +
+             " to its owner: " + ec.message();
+    }
   }
 
   // 256 bits of entropy, hex-encoded: the same format `ray get-auth-token --generate`
@@ -314,13 +318,21 @@ std::string AuthenticationTokenLoader::CreateTokenIfMissing() {
   if (fd < 0) {
     return "Failed to open " + token_path + ": " + std::strerror(errno);
   }
-  const bool written = fchmod(fd, 0600) == 0 && write(fd, token.data(), token.size()) ==
-                                                    static_cast<ssize_t>(token.size());
-  const int write_errno = errno;
+  std::string write_error;
+  if (fchmod(fd, 0600) != 0) {
+    write_error = std::strerror(errno);
+  } else {
+    const ssize_t written = write(fd, token.data(), token.size());
+    if (written < 0) {
+      write_error = std::strerror(errno);
+    } else if (static_cast<size_t>(written) != token.size()) {
+      write_error = "short write";
+    }
+  }
   close(fd);
-  if (!written) {
+  if (!write_error.empty()) {
     return "Failed to write the authentication token to " + token_path + ": " +
-           std::strerror(write_errno);
+           write_error;
   }
 #endif
 
@@ -406,12 +418,11 @@ void MaybeEnableTokenAuthIfTokenAvailable() {
                       "https://docs.ray.io/en/latest/ray-security/token-auth.html";
 }
 
-void CreateTokenIfMissingForOwnCluster() {
+std::string CreateTokenIfMissingForOwnCluster() {
   if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
-    return;
+    return "";
   }
-  const std::string error = AuthenticationTokenLoader::instance().CreateTokenIfMissing();
-  RAY_CHECK(error.empty()) << error;
+  return AuthenticationTokenLoader::instance().CreateTokenIfMissing();
 }
 
 }  // namespace rpc

@@ -436,8 +436,8 @@ cc_test(
     data = [
         "metric_example.so",
     ],
-    # No token is set, so the `ray start --head` spawned by the driver has to create
-    # one under HOME, which the Bazel test runner points at TEST_TMPDIR.
+    # No token is set, so the driver creates one under HOME, which the Bazel test
+    # runner points at TEST_TMPDIR, before it runs `ray start --head`.
     env = {"RAY_AUTH_MODE": "token"},
     linkstatic = True,
     tags = ["team:core"],

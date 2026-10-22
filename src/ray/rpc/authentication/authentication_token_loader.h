@@ -112,7 +112,8 @@ void MaybeEnableTokenAuthIfTokenAvailable();
 
 /// For a driver that starts its own cluster with `ray start --head`, which never
 /// creates a token: when token auth is enabled, create a missing token first.
-void CreateTokenIfMissingForOwnCluster();
+/// \return An error message, or an empty string on success.
+std::string CreateTokenIfMissingForOwnCluster();
 
 }  // namespace rpc
 }  // namespace ray

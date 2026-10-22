@@ -373,6 +373,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReportsBadTokenPat
   set_env_var("RAY_AUTH_TOKEN_PATH", "/nonexistent/ray_test_token");
 
   EXPECT_NE(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+  EXPECT_FALSE(std::ifstream(default_token_path_).good());
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestFirstNonBlankLine) {

@@ -25,9 +25,6 @@ import ray._private.services as services
 from ray._common.network_utils import build_address, get_localhost_ip, parse_address
 from ray._common.usage import usage_lib
 from ray._common.utils import load_class
-from ray._private.authentication.authentication_constants import (
-    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
-)
 from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
     maybe_enable_token_auth_if_token_available,
@@ -65,7 +62,6 @@ from ray.autoscaler._private.constants import RAY_PROCESSES
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.core.generated import autoscaler_pb2
 from ray.dashboard.modules.metrics import install_and_start_prometheus
-from ray.exceptions import AuthenticationError
 from ray.scripts.symmetric_run import symmetric_run
 from ray.util.annotations import PublicAPI
 from ray.util.check_open_ports import check_open_ports
@@ -1072,13 +1068,17 @@ def start(
 
         maybe_enable_token_auth_if_token_available()
 
-        try:
-            ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
-        except AuthenticationError as e:
-            # Other auth errors, such as RAY_AUTH_TOKEN_PATH naming a missing file,
-            # surface unchanged.
-            if e.message != TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE:
-                raise
+        from ray._raylet import (
+            AuthenticationMode,
+            AuthenticationTokenLoader,
+            get_authentication_mode,
+        )
+
+        # has_token raises other auth errors, such as RAY_AUTH_TOKEN_PATH naming a
+        # missing file, unchanged.
+        if get_authentication_mode() == AuthenticationMode.TOKEN and not (
+            AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True)
+        ):
             # Worker nodes of this cluster need the same token, so a token made
             # here could only work for a single-node cluster.
             cli_logger.abort(
@@ -1086,6 +1086,7 @@ def start(
                 "found. Run `ray get-auth-token --generate` to create one, then put "
                 "that token on every node of the cluster before starting it."
             )
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
             ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block
@@ -2952,7 +2953,10 @@ def get_auth_token(generate):
     if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
-            loader.create_token_if_missing()
+            try:
+                loader.create_token_if_missing()
+            except RuntimeError as e:
+                raise click.ClickException(str(e)) from e
         else:
             raise click.ClickException(
                 "No authentication token found. Use ray `get-auth-token --generate` to create one.",
