@@ -39,13 +39,13 @@ qwen3-reward-plugin/          # project directory -- run `pip install .` here
 
 ### Model class
 
-Subclass vLLM's `Qwen3ForCausalLM` to reuse its backbone, then attach the reward head and a last-token classification pooler. See the full model class [here](https://github.com/ray-project/ray/tree/master/doc/source/llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/qwen3_rm.py).
+Subclass vLLM's `Qwen3ForCausalLM` to reuse its backbone, then attach the reward head and a last-token classification pooler. See the full model class [here](https://github.com/ray-project/ray/tree/master/doc/source/serve/llm/doc_code/custom_vllm/qwen3_reward_plugin/qwen3_rm.py).
 
 ### Register the architecture
 
 vLLM calls `register()` in every process it starts, the driver, the engine core, and each rank worker, through vLLM's `load_general_plugins()`.
 
-```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/__init__.py
+```{literalinclude} ../doc_code/custom_vllm/qwen3_reward_plugin/__init__.py
 :language: python
 :start-after: __register_start__
 :end-before: __register_end__
@@ -55,7 +55,7 @@ vLLM calls `register()` in every process it starts, the driver, the engine core,
 
 Declare the `vllm.general_plugins` entry point in `setup.py`. vLLM discovers the package and runs `register()` when the package installs.
 
-```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/setup.py
+```{literalinclude} ../doc_code/custom_vllm/setup.py
 :language: python
 :start-after: __setup_start__
 :end-before: __setup_end__
@@ -77,7 +77,7 @@ Set `runner="pooling"` because a reward model encodes rather than generates, and
 
 The plugin entry point registers the architecture in the vLLM engine and worker processes. Ray Serve LLM also resolves and validates the architecture while it builds the engine configuration, so register it there too: point `server_cls` at an `LLMServer` subclass whose import calls `register()`.
 
-```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/qwen3_reward_plugin/serve_hook.py
+```{literalinclude} ../doc_code/custom_vllm/qwen3_reward_plugin/serve_hook.py
 :language: python
 :start-after: __serve_hook_start__
 :end-before: __serve_hook_end__
@@ -101,7 +101,7 @@ Deploy with the Python API or an equivalent YAML config:
 :::{tab-item} Python
 :sync: python
 
-```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/custom_vllm_example.py
+```{literalinclude} ../doc_code/custom_vllm/custom_vllm_example.py
 :language: python
 :start-after: __custom_vllm_example_start__
 :end-before: __custom_vllm_example_end__
@@ -113,7 +113,7 @@ Save this as `app.py` and run it to deploy.
 :::{tab-item} YAML
 :sync: yaml
 
-```{literalinclude} ../../../llm/doc_code/serve/custom_vllm/custom_vllm_config.yaml
+```{literalinclude} ../doc_code/custom_vllm/custom_vllm_config.yaml
 :language: yaml
 ```
 

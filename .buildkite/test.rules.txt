@@ -144,16 +144,17 @@ python/deplocks/llm/*.lock
 @ llm python_dependencies
 ;
 
-# The llm example BUILD file defines test targets, so it keeps the llm tag.
-# The llm doc assets themselves run nothing: every llm doc example test is a
-# GPU test, and docs examples never run GPU tests in premerge or microcheck.
-# The postmerge build covers them.
-doc/source/llm/*BUILD.bazel
+# Ray LLM doc assets live in an llm/ directory under a library's docs, such as
+# doc/source/serve/llm/ or doc/source/data/examples/llm/. An llm example BUILD
+# file defines test targets, so it keeps the llm tag. The llm doc assets
+# themselves run nothing: every llm doc example test is a GPU test, and docs
+# examples never run GPU tests in premerge or microcheck. The postmerge build
+# covers them.
+doc/source/*/llm/*BUILD.bazel
 @ llm
 ;
 
-doc/source/llm/
-doc/source/data/doc_code/working-with-llms/
+doc/source/*/llm/*
 # pass
 ;
 
