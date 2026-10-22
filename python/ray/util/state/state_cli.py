@@ -1187,7 +1187,7 @@ def log_actor(
         (ip=x.x.x.x, pid=123, class_name) logs.
 
         ```
-        ray logs actor --pid=123  —ip=x.x.x.x
+        ray logs actor --pid=123 --node-ip=x.x.x.x
         ```
 
         Get the actor err log file.
@@ -1353,7 +1353,7 @@ def log_job(
         Follow the submission job log.
 
         ```
-        ray logs jobs --id raysubmit_xxx --follow
+        ray logs job --id raysubmit_xxx --follow
 
         ```
 
@@ -1424,13 +1424,13 @@ def log_task(
         Follow the log file from a task with task id = ABCDEFG
 
         ```
-        ray logs tasks --id ABCDEFG --follow
+        ray logs task --id ABCDEFG --follow
         ```
 
         Get the log from a retry attempt 1 from a task.
 
         ```
-        ray logs tasks --id ABCDEFG -a 1
+        ray logs task --id ABCDEFG -a 1
         ```
 
     Note: If a task is from a concurrent actor (i.e. an async actor or
