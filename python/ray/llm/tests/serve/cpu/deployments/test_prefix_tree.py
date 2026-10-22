@@ -617,6 +617,17 @@ class TestPrefixTreeGetSmallestTenants:
         smallest_tenants = tree.get_smallest_tenants()
         assert set(smallest_tenants) == {"tenant_1", "tenant_2"}
 
+    def test_get_smallest_tenants_among_available(self, tree: PrefixTree) -> None:
+        """Test get_smallest_tenants only considers the available tenants."""
+        tree.add_tenants(["tenant_1", "tenant_2", "tenant_3"], 0)
+        tree.insert("aaaa", "tenant_1", 1)  # 4 chars
+        tree.insert("bb", "tenant_2", 2)  # 2 chars
+        tree.insert("c", "tenant_3", 3)  # 1 char
+        assert tree.get_smallest_tenants(["tenant_1", "tenant_2"]) == ["tenant_2"]
+        # Tenants that aren't in the tree are ignored.
+        assert tree.get_smallest_tenants(["tenant_1", "unknown"]) == ["tenant_1"]
+        assert tree.get_smallest_tenants(["unknown"]) is None
+
 
 class TestPrefixTreeComprehensive:
     """Comprehensive tests for the PrefixTree"""
