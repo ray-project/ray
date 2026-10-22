@@ -27,7 +27,10 @@ manual_rules = _prefix_rules(["test_default"])
 all_rules = size_rules + timeout_rules + manual_rules + size_and_timeout_rules
 
 
-@pytest.fixture
+# Module-scoped: every bazel query in a fresh HOME starts a new Bazel server and,
+# on Bazel 8, fetches rules_python from the registry to autoload py_test. Sharing
+# one workspace pays that once instead of once per test. Tests only read it.
+@pytest.fixture(scope="module")
 def mock_build_dir():
     """Create a mock bazel workspace"""
     with tempfile.TemporaryDirectory() as tmpdir, tempfile.TemporaryDirectory() as tmphome:
