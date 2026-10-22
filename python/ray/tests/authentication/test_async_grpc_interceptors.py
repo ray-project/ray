@@ -2,6 +2,7 @@ import grpc
 import pytest
 from grpc import aio as aiogrpc
 
+from ray._private.authentication import grpc_authentication_server_interceptor
 from ray._private.authentication.authentication_token_generator import (
     generate_new_authentication_token,
 )
@@ -148,6 +149,52 @@ async def test_async_server_with_auth_disabled_allows_all(create_async_test_serv
             # Should succeed because auth is disabled
             response = await stub.HealthCheck(request, timeout=5)
             assert response is not None
+        finally:
+            await server.stop(grace=1)
+
+
+@pytest.mark.parametrize("k8s_token_auth_enabled", [False, True])
+@pytest.mark.asyncio
+async def test_async_server_with_auth_disabled_rejects_token(
+    create_async_test_server, monkeypatch, k8s_token_auth_enabled
+):
+    """A server with auth disabled rejects a request that carries a token, unless
+    Kubernetes token auth is enabled."""
+    monkeypatch.setattr(
+        grpc_authentication_server_interceptor,
+        "is_k8s_token_auth_enabled",
+        lambda: k8s_token_auth_enabled,
+    )
+    with authentication_env_guard():
+        set_auth_mode("disabled")
+        reset_auth_token_state()
+
+        server, port = await create_async_test_server(with_auth=True)
+
+        try:
+            channel = aiogrpc.insecure_channel(f"localhost:{port}")
+            stub = reporter_pb2_grpc.ReporterServiceStub(channel)
+            metadata = (
+                ("authorization", f"Bearer {generate_new_authentication_token()}"),
+            )
+
+            if k8s_token_auth_enabled:
+                reply = await stub.HealthCheck(
+                    reporter_pb2.HealthCheckRequest(), metadata=metadata, timeout=5
+                )
+                assert isinstance(reply, reporter_pb2.HealthCheckReply)
+                return
+
+            with pytest.raises(grpc.RpcError) as exc_info:
+                await stub.HealthCheck(
+                    reporter_pb2.HealthCheckRequest(), metadata=metadata, timeout=5
+                )
+
+            assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
+            assert exc_info.value.details() == (
+                "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; "
+                "set it on the client too"
+            )
         finally:
             await server.stop(grace=1)
 

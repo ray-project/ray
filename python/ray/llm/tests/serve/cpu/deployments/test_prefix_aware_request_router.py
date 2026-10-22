@@ -4,11 +4,13 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
     PrefixCacheAffinityRouter,
 )
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_tree import (
+    PrefixTree,
     PrefixTreeActor,
 )
 from ray.serve._private.common import (
@@ -101,6 +103,68 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         ),
         created_at=time.time(),
     )
+
+
+@ray.remote
+class SlowPrefixTreeActor(PrefixTree):
+    """Prefix tree actor whose lookups and inserts each take delay_s."""
+
+    def __init__(self, delay_s: float):
+        super().__init__()
+        self._delay_s = delay_s
+
+    def prefix_match(self, *args, **kwargs):
+        time.sleep(self._delay_s)
+        return super().prefix_match(*args, **kwargs)
+
+    def insert(self, *args, **kwargs):
+        time.sleep(self._delay_s)
+        return super().insert(*args, **kwargs)
+
+    def get_tenant_to_char_count(self):
+        return self.tenant_to_char_count
+
+
+@ray.remote
+class BlockingPrefixTreeActor(PrefixTree):
+    """Prefix tree actor whose prefix matches wait until a signal is sent."""
+
+    def __init__(self, signal):
+        super().__init__()
+        self._signal = signal
+
+    def prefix_match(self, *args, **kwargs):
+        ray.get(self._signal.wait.remote())
+        return super().prefix_match(*args, **kwargs)
+
+
+@ray.remote
+class LookupCountingPrefixTreeActor(PrefixTree):
+    """Prefix tree actor that counts the router's lookups."""
+
+    def __init__(self):
+        super().__init__()
+        self._num_lookups = 0
+
+    def prefix_match_or_smallest_tenants(self, *args, **kwargs):
+        self._num_lookups += 1
+        return super().prefix_match_or_smallest_tenants(*args, **kwargs)
+
+    def get_num_lookups(self) -> int:
+        return self._num_lookups
+
+
+def make_router(
+    tree_actor, use_replica_queue_len_cache: bool = False, **state_kwargs
+) -> PrefixCacheAffinityRouter:
+    router = PrefixCacheAffinityRouter(
+        deployment_id=DeploymentID(name="TEST_DEPLOYMENT"),
+        handle_source=DeploymentHandleSource.REPLICA,
+        use_replica_queue_len_cache=use_replica_queue_len_cache,
+        get_curr_time_s=TIMER.time,
+    )
+    router.initialize_state(tree_actor=tree_actor, **state_kwargs)
+    return router
 
 
 # === Tests ===
@@ -252,6 +316,134 @@ class TestPrefixAwareLogic:
             assert (
                 await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
+
+
+class TestNonBlockingTreeCalls:
+    """Tests that the router doesn't block its event loop on the tree actor."""
+
+    @pytest.mark.asyncio
+    async def test_tree_lookup_does_not_block_event_loop(self):
+        tree_actor = SlowPrefixTreeActor.remote(delay_s=0.5)
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        router.update_replicas([r1])
+
+        routing = asyncio.ensure_future(
+            router._choose_replica_for_request(fake_pending_request(prompt="hello"))
+        )
+        # Keep ticking the loop while the lookup is in flight. Blocking on the
+        # actor would stall the loop for the whole lookup.
+        max_gap_s = 0.0
+        last = time.monotonic()
+        while not routing.done():
+            await asyncio.sleep(0.01)
+            now = time.monotonic()
+            max_gap_s = max(max_gap_s, now - last)
+            last = now
+        assert await routing == r1
+        assert max_gap_s < 0.25
+        ray.kill(tree_actor)
+
+    @pytest.mark.asyncio
+    async def test_on_request_routed_does_not_wait_for_insert(self):
+        tree_actor = SlowPrefixTreeActor.remote(delay_s=0.5)
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        router.update_replicas([r1])
+
+        start = time.monotonic()
+        router.on_request_routed(
+            fake_pending_request(prompt="hello"), r1.replica_id, result=None
+        )
+        assert time.monotonic() - start < 0.25
+        # The insert still lands before later calls from this process.
+        tenant_to_char_count = ray.get(tree_actor.get_tenant_to_char_count.remote())
+        assert tenant_to_char_count[r1.replica_id.to_full_id_str()] == 5
+        ray.kill(tree_actor)
+
+    @pytest.mark.asyncio
+    async def test_replica_removed_during_tree_lookup_is_not_chosen(self):
+        signal = SignalActor.remote()
+        tree_actor = BlockingPrefixTreeActor.remote(signal)
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        router.update_replicas([r1, r2])
+        ray.get(tree_actor.insert.remote("hello", r2.replica_id.to_full_id_str(), 0.0))
+
+        routing = asyncio.ensure_future(
+            router._choose_replica_for_request(
+                fake_pending_request(prompt="hello world")
+            )
+        )
+
+        # Hold the lookup, which will match r2, until r2 is removed.
+        async def lookup_waiting():
+            return await signal.cur_num_waiters.remote() == 1
+
+        await async_wait_for_condition(lookup_waiting)
+        router.update_replicas([r1])
+        await signal.send.remote()
+        assert await asyncio.wait_for(routing, timeout=10) == r1
+        ray.kill(tree_actor)
+        ray.kill(signal)
+
+
+class TestLoadCheck:
+    """Tests that the load check doesn't do work whose result isn't used."""
+
+    @pytest.mark.asyncio
+    async def test_default_threshold_skips_queue_length_probes(self):
+        """Load can't be imbalanced at the default threshold, so prefix matching
+        doesn't probe queue lengths."""
+        tree_actor = LookupCountingPrefixTreeActor.remote()
+        router = make_router(tree_actor)
+        r1 = FakeRunningReplica("r1")
+        r2 = FakeRunningReplica("r2")
+        router.update_replicas([r1, r2])
+        probed = []
+
+        async def probe_queue_lens(replicas, backoff_index):
+            probed.extend(replicas)
+            return [(r, 0) for r in replicas]
+
+        router._probe_queue_lens = probe_queue_lens
+
+        chosen = await router._prefix_match_best_replicas(
+            fake_pending_request(prompt="hello"), [r1, r2]
+        )
+        assert probed == []
+        assert ray.get(tree_actor.get_num_lookups.remote()) == 1
+        # Neither replica has cached text, so both are the smallest tenants.
+        assert set(chosen[0]) == {r1, r2}
+        ray.kill(tree_actor)
+
+    @pytest.mark.parametrize("r2_queue_len, num_lookups", [(100, 0), (5, 1)])
+    @pytest.mark.asyncio
+    async def test_cached_imbalance_skips_tree_lookup(self, r2_queue_len, num_lookups):
+        """If cached queue lengths already differ by more than the threshold, the
+        router doesn't send a tree lookup whose result it would discard."""
+        tree_actor = LookupCountingPrefixTreeActor.remote()
+        router = make_router(
+            tree_actor, use_replica_queue_len_cache=True, imbalanced_threshold=10
+        )
+        r1 = FakeRunningReplica("r1", max_ongoing_requests=1000)
+        r2 = FakeRunningReplica("r2", max_ongoing_requests=1000)
+        router.update_replicas([r1, r2])
+        router._replica_queue_len_cache.update(r1.replica_id, 0)
+        router._replica_queue_len_cache.update(r2.replica_id, r2_queue_len)
+
+        chosen = await router._prefix_match_best_replicas(
+            fake_pending_request(prompt="hello"), [r1, r2]
+        )
+        assert ray.get(tree_actor.get_num_lookups.remote()) == num_lookups
+        # Imbalanced load skips prefix matching; balanced load picks the smallest
+        # tenants.
+        assert bool(chosen[0]) == bool(num_lookups)
+        ray.kill(tree_actor)
 
 
 class TestEvictionBehavior:

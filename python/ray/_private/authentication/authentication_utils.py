@@ -4,6 +4,7 @@ try:
     from ray._raylet import (
         AuthenticationMode,
         get_authentication_mode,
+        is_k8s_token_auth_enabled as _is_k8s_token_auth_enabled,
         validate_authentication_token,
     )
 
@@ -23,6 +24,11 @@ def is_token_auth_enabled() -> bool:
         return False
 
     return get_authentication_mode() == AuthenticationMode.TOKEN
+
+
+def is_k8s_token_auth_enabled() -> bool:
+    """Check if Kubernetes token authentication is enabled."""
+    return _RAYLET_AVAILABLE and _is_k8s_token_auth_enabled()
 
 
 def is_metrics_auth_skipped() -> bool:

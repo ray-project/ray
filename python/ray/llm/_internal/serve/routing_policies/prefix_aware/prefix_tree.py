@@ -543,23 +543,66 @@ class PrefixTree:
 
             return total_chars_removed
 
-    def get_smallest_tenants(self) -> Optional[List[str]]:
+    def get_smallest_tenants(
+        self, available_tenants: Optional[List[str]] = None
+    ) -> Optional[List[str]]:
         """
         Get the tenants with the smallest total character count.
+
+        Args:
+            available_tenants: List of tenants to choose from (or None for all)
 
         Returns:
             Tenants with smallest character count, or None if no tenants
         """
         with self.lock:
-            if not self.tenant_to_char_count:
+            tenant_to_char_count = self.tenant_to_char_count
+            if available_tenants is not None:
+                tenant_to_char_count = {
+                    tenant: tenant_to_char_count[tenant]
+                    for tenant in available_tenants
+                    if tenant in tenant_to_char_count
+                }
+            if not tenant_to_char_count:
                 return None
 
-            min_count = min(self.tenant_to_char_count.values())
+            min_count = min(tenant_to_char_count.values())
             return [
                 tenant
-                for tenant, count in self.tenant_to_char_count.items()
+                for tenant, count in tenant_to_char_count.items()
                 if count == min_count
             ]
+
+    def prefix_match_or_smallest_tenants(
+        self,
+        text: str,
+        available_tenants: Optional[List[str]] = None,
+        match_rate_threshold: float = 0.0,
+    ) -> Optional[List[str]]:
+        """
+        Match text against the tree, falling back to the smallest tenants on a weak match.
+
+        Combines prefix_match and get_smallest_tenants, so a caller that routes on the
+        result makes one call instead of two.
+
+        Args:
+            text: Text to match
+            available_tenants: List of tenants to choose from (or None for all)
+            match_rate_threshold: Minimum fraction of the text that must match. Below
+                it, the smallest tenants are returned instead of the matched ones.
+
+        Returns:
+            The tenants that own the matched prefix, or the tenants with the smallest
+            character count if the match rate is below match_rate_threshold. None if
+            there are no such tenants.
+        """
+        with self.lock:
+            matched_text, matched_tenants = self.prefix_match(text, available_tenants)
+            # Empty text (e.g. image-only messages) has no prefix to match.
+            match_rate = len(matched_text) / len(text) if text else 0.0
+            if match_rate < match_rate_threshold:
+                return self.get_smallest_tenants(available_tenants)
+            return matched_tenants
 
     def start_eviction_loop(
         self, eviction_threshold: int, eviction_target: int, interval_secs: float
