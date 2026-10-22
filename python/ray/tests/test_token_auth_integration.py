@@ -998,24 +998,19 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
     assert _AUTH_MODE_MISMATCH in exc_info.value.details()
 
 
+_HTTP_CLIENT_CALLS = {
+    "jobs": "from ray.job_submission import JobSubmissionClient\n"
+    "JobSubmissionClient('{dashboard_url}').list_jobs()\n",
+    "state": "from ray.util.state import list_nodes\n"
+    "list_nodes(address='{dashboard_url}')\n",
+}
+
+
 @pytest.mark.skipif(
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-@pytest.mark.parametrize(
-    "client_call",
-    [
-        "from ray.job_submission import JobSubmissionClient\n"
-        "JobSubmissionClient('{dashboard_url}').list_jobs()\n",
-        "from ray.util.state import list_nodes\n"
-        "list_nodes(address='{dashboard_url}')\n",
-    ],
-    ids=["jobs", "state"],
-)
-@pytest.mark.parametrize("client_auth_mode", ["disabled", "token"])
-def test_http_client_on_auth_disabled_cluster(
-    client_call, client_auth_mode, disabled_head_with_token_file
-):
+def test_http_clients_on_auth_disabled_cluster(disabled_head_with_token_file):
     """The jobs and state API clients with a token file work on a cluster with
     RAY_AUTH_MODE=disabled only if they set RAY_AUTH_MODE=disabled too."""
     import requests
@@ -1025,26 +1020,31 @@ def test_http_client_on_auth_disabled_cluster(
         lambda: requests.get(f"{dashboard_url}/api/version", timeout=5).ok,
         timeout=30,
     )
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            client_call.format(dashboard_url=dashboard_url) + "print('client ok')\n",
-        ],
-        env={**env, "RAY_AUTH_MODE": client_auth_mode},
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    output = result.stdout + result.stderr
+    for client_name, client_call in _HTTP_CLIENT_CALLS.items():
+        for client_auth_mode in ["disabled", "token"]:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    client_call.format(dashboard_url=dashboard_url)
+                    + "print('client ok')\n",
+                ],
+                env={**env, "RAY_AUTH_MODE": client_auth_mode},
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            output = f"{client_name}, RAY_AUTH_MODE={client_auth_mode}:\n" + (
+                result.stdout + result.stderr
+            )
 
-    if client_auth_mode == "disabled":
-        assert result.returncode == 0, output
-        assert "client ok" in output
-    else:
-        assert result.returncode != 0, output
-        assert _AUTH_MODE_MISMATCH in output
-        assert "ray get-auth-token" not in output
+            if client_auth_mode == "disabled":
+                assert result.returncode == 0, output
+                assert "client ok" in output
+            else:
+                assert result.returncode != 0, output
+                assert _AUTH_MODE_MISMATCH in output
+                assert "ray get-auth-token" not in output
 
 
 def test_kill_raylet_on_auth_disabled_cluster_with_token_file():

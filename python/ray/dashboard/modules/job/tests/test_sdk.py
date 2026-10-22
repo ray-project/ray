@@ -44,6 +44,7 @@ from ray.exceptions import AuthenticationError
 from ray.runtime_env.runtime_env import RuntimeEnv
 from ray.tests.conftest import _ray_start
 from ray.util.state import list_nodes
+from ray.util.state.api import StateApiClient
 
 import psutil
 
@@ -151,12 +152,7 @@ def _client_with_auth_mode_response(
         response.status_code = status_code
         response._content = body
         request = Mock(return_value=response)
-    client = SubmissionClient.__new__(SubmissionClient)
-    client._address = "http://127.0.0.1:8265"
-    client._cookies = None
-    client._headers = {}
-    client._verify = True
-    return client, request
+    return SubmissionClient("http://127.0.0.1:8265"), request
 
 
 @pytest.mark.parametrize(
@@ -226,6 +222,13 @@ def test_version_check_runs_auth_mode_check_first(version_url: str) -> None:
     client._check_connection_and_version_with_url(url=version_url)
 
     assert calls == ["auth_mode", version_url]
+
+
+def test_state_api_client_runs_auth_mode_check() -> None:
+    with patch.object(SubmissionClient, "_check_auth_mode") as check_auth_mode:
+        StateApiClient(address="http://127.0.0.1:8265")
+
+    check_auth_mode.assert_called_once_with()
 
 
 def test_submit_job_does_not_mutate_runtime_env():
