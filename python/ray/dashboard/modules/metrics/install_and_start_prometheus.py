@@ -277,12 +277,12 @@ def main():
     if (
         not maybe_enable_token_auth_if_token_available(warn_if_disabled=False)
         and auth_mode_unset
-        and not is_metrics_auth_skipped()
     ):
         logging.warning(
             "No auth token found in RAY_AUTH_TOKEN, RAY_AUTH_TOKEN_PATH or "
             "~/.ray/auth_token, so the Prometheus config has no authorization "
-            "block. If the cluster runs token auth, every Ray target returns 401."
+            "block. If the cluster runs token auth, every Ray target returns 401 "
+            "unless its nodes set RAY_AUTH_SKIP_METRICS=1."
         )
     try:
         authorization_config = get_prometheus_authorization_config()

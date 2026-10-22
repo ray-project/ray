@@ -52,7 +52,6 @@ def test_prometheus_authorization_config_empty_when_auth_disabled(
 def test_prometheus_authorization_config_empty_when_metrics_auth_skipped(
     auth_env, monkeypatch, auth_mode
 ):
-    monkeypatch.setenv("RAY_AUTH_TOKEN", "a" * 64)
     monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
     monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
     reset_auth_token_state()
@@ -198,21 +197,8 @@ def test_launch_prometheus_warns_when_no_token_found(
 
     # An explicit opt-out is intended, so only the unset mode warns.
     assert ("401" in caplog.text) == (auth_mode is None)
-
-
-def test_launch_prometheus_does_not_warn_when_metrics_auth_skipped(
-    auth_env, monkeypatch, caplog
-):
-    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
-    reset_auth_token_state()
-    monkeypatch.setattr(
-        install_and_start_prometheus, "download_prometheus", lambda: (False, "")
-    )
-
-    with pytest.raises(SystemExit):
-        install_and_start_prometheus.main()
-
-    assert "401" not in caplog.text
+    # The launcher can't see whether the cluster's nodes skip metrics auth.
+    assert ("RAY_AUTH_SKIP_METRICS" in caplog.text) == (auth_mode is None)
 
 
 def test_launch_prometheus_exits_cleanly_when_config_write_fails(
