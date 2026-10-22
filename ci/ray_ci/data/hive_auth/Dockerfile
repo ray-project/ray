@@ -12,7 +12,6 @@ COPY ${HIVE_AUTH_REQUIREMENTS} /opt/hive-auth-requirements.txt
 RUN python -m venv --system-site-packages /opt/hive-venv \
     && /opt/hive-venv/bin/python -m pip install -r /opt/hive-auth-requirements.txt \
     && chown -R 1000:1000 /opt/hive-venv
-COPY ci/ray_ci/data/hive_auth/prepare.py ci/ray_ci/data/hive_auth/probe.py /opt/hive_auth/
 ENV PATH=/opt/hive-venv/bin:${PATH}
 ENV PYTHONDONTWRITEBYTECODE=1 \
     KRB5_CONFIG=/krb/krb5.conf \

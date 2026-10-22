@@ -10,10 +10,11 @@ bash ci/ray_ci/data/run_hive_auth_integration.sh \
 The entry builds one shared runtime image, starts isolated KDC, HiveServer2,
 driver, and worker containers, and runs each selected profile once. Choose a
 new log directory for every invocation. It doesn't retry failed suites.
-In CI, failures return status 2 to avoid RayCI's automatic retry of status 1.
-JSON results retain the original failure code. A retried Buildkite
-job stops before creating services unless you explicitly pass
-`--allow-ci-retry` after reviewing the previous result and obtaining approval.
+The container entry maps pytest's own status 1 to RayCI's test-failure status 42.
+The original pytest status is saved as `pytest-exit-code` in the profile's
+event artifacts. Per-profile JSON retains the Docker command status. Docker
+exec failures before pytest starts retain their exit codes, and RayCI controls
+job retries.
 CI logs use `/artifact-mount`, which the platform exposes as host artifacts.
 To reuse an existing runtime, pass `--runtime-image <image>`. The entry leaves
 that caller-provided image in place.
@@ -88,7 +89,8 @@ producers for one execution. These are client invocation attempts, not a
 server-side exactly-once guarantee.
 
 Logs and per-profile JSON results remain in the requested directory. The
-shared event volume contains JSONL evidence and JUnit XML only. Private
+shared event volume contains JSONL evidence, JUnit XML, and the original
+pytest status in `pytest-exit-code`. Private
 credential volumes aren't copied into artifacts. Cleanup handles normal exit,
 errors, and interruption and removes only the unique Compose project's
 containers, network, and volumes. An image built by the entry belongs to that

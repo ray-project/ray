@@ -303,10 +303,10 @@ class _TrackedCursor:
         return result
 
 
-def _read_events(directory: Path, *, roles, terminated=()):
+def _read_events(directory: Path, *, roles):
     """Validate all producers before accepting any RPC count, including zero."""
     manifest = json.loads((directory / "manifest.json").read_text())
-    if manifest.get("terminal") not in {"success", "error", "killed"}:
+    if manifest.get("terminal") not in {"success", "error"}:
         raise ValueError("Dataset action has no observed terminal state")
     if set(manifest["roles"]) != set(roles):
         raise ValueError("Unexpected role manifest")
@@ -342,12 +342,8 @@ def _read_events(directory: Path, *, roles, terminated=()):
                 raise ValueError("Producer sequence or identity mismatch")
         if not any(r["event"] == "factory_enter" for r in records):
             raise ValueError("Missing factory entry")
-        ended = records[-1]["event"] == "producer_end"
-        killed = manifest["terminal"] == "killed" and first["producer"] in terminated
-        if not ended and not killed:
+        if records[-1]["event"] != "producer_end":
             raise ValueError("Producer has no observed end")
-        if killed and not any(r["event"] == "rpc_attempt" for r in records):
-            raise ValueError("Cannot prove zero RPCs from a killed producer")
         seen_roles.append(first["role"])
         result.extend(records)
     if sorted(seen_roles) != sorted(roles):

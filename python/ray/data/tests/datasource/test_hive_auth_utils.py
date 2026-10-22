@@ -97,26 +97,25 @@ def test_missing_plain_password_is_rejected_at_invocation(monkeypatch, options, 
         factory()
 
 
-def _evidence(tmp_path, *, terminal="error", role="worker", rpc=False, ended=True):
+def _evidence(tmp_path, *, rpc=False):
     (tmp_path / "manifest.json").write_text(
         json.dumps(
             {
-                "terminal": terminal,
-                "roles": [role],
+                "terminal": "error",
+                "roles": ["worker"],
                 "run_id": "unit",
                 "case_id": tmp_path.name,
             }
         )
     )
-    writer = _Events(tmp_path, role, "node", "/ray/python/ray/data/hive.py")
+    writer = _Events(tmp_path, "worker", "node", "/ray/python/ray/data/hive.py")
     writer.emit("factory_enter")
     if rpc:
         writer.emit("cursor_return")
         writer.emit("rpc_attempt", kind="data")
     else:
         writer.emit("error", stage="connect")
-    if ended:
-        writer.emit("producer_end")
+    writer.emit("producer_end")
     return writer
 
 
@@ -173,18 +172,6 @@ def test_incomplete_or_unexpected_producer_is_rejected(tmp_path, damage):
         writer.path.write_text("".join(json.dumps(r) + "\n" for r in records))
     with pytest.raises(ValueError):
         _read_events(tmp_path, roles=["worker"])
-
-
-def test_observed_worker_termination_retains_rpc_evidence(tmp_path):
-    writer = _evidence(tmp_path, terminal="killed", rpc=True, ended=False)
-    records = _read_events(tmp_path, roles=["worker"], terminated=[writer.producer])
-    assert sum(r["event"] == "rpc_attempt" for r in records) == 1
-
-
-def test_termination_does_not_prove_zero_rpc(tmp_path):
-    writer = _evidence(tmp_path, terminal="killed", ended=False)
-    with pytest.raises(ValueError, match="Cannot prove zero"):
-        _read_events(tmp_path, roles=["worker"], terminated=[writer.producer])
 
 
 def test_case_path_cannot_escape_volume(monkeypatch, tmp_path):

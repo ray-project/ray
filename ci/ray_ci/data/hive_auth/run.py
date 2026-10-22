@@ -24,6 +24,16 @@ PROXIES = (
     "all_proxy",
 )
 TARGET = "python/ray/data/tests/datasource/test_hive_auth_integration.py"
+PYTEST_ENTRYPOINT = """
+import sys
+from pathlib import Path
+
+import pytest
+
+code = int(pytest.main(sys.argv[2:]))
+Path(sys.argv[1]).write_text(str(code))
+sys.exit(42 if code == 1 else code)
+"""
 
 
 class CommandFailed(RuntimeError):
@@ -215,8 +225,9 @@ def run_profile(args, profile, runtime, run_id, directory):
                     "-T",
                     "head",
                     "python",
-                    "-m",
-                    "pytest",
+                    "-c",
+                    PYTEST_ENTRYPOINT,
+                    "/events/pytest-exit-code",
                     "-v",
                     "-x",
                     "--timeout=180",
@@ -332,29 +343,10 @@ def parser():
     )
     result.add_argument("--log-dir", type=Path, required=True)
     result.add_argument("--prepare-only", action="store_true")
-    result.add_argument(
-        "--allow-ci-retry",
-        action="store_true",
-        help="Allow a reviewed CI retry; never set automatically",
-    )
     result.add_argument("--readiness-timeout", type=int, default=300)
     result.add_argument("--profile-timeout", type=int, default=1200)
     result.add_argument("--cleanup-timeout", type=int, default=60)
     return result
-
-
-def ci_retry_blocked(allowed):
-    return (
-        os.environ.get("BUILDKITE") == "true"
-        and int(os.environ.get("BUILDKITE_RETRY_COUNT", "0")) > 0
-        and not allowed
-    )
-
-
-def cli_exit_code(code):
-    # RayCI automatically retries status 1. Keep the original code in JSON,
-    # and use the non-retriable status 2 at the CI process boundary.
-    return 2 if code and os.environ.get("BUILDKITE") == "true" else code
 
 
 def main(argv=None):
@@ -368,25 +360,6 @@ def main(argv=None):
             "Use a new or empty log directory; previous evidence is preserved"
         )
     args.log_dir.mkdir(parents=True, exist_ok=True)
-    if ci_retry_blocked(args.allow_ci_retry):
-        (args.log_dir / "result.json").write_text(
-            json.dumps(
-                {
-                    "profiles": [
-                        {"profile": p, "state": "not_run"} for p in args.profiles
-                    ],
-                    "exit_code": 2,
-                    "reason": "CI retry requires explicit approval",
-                },
-                indent=2,
-            )
-            + "\n"
-        )
-        print(
-            "CI retry blocked before services start; review prior results before using --allow-ci-retry.",
-            file=sys.stderr,
-        )
-        return 2
     run_id = uuid.uuid4().hex[:12]
     runtime = args.runtime_image or f"ray-hive-auth-it:{run_id}"
     env = {k: v for k, v in os.environ.items() if k not in PROXIES}
@@ -520,4 +493,4 @@ if __name__ == "__main__":
         raise InterruptedError(f"Interrupted by signal {signum}")
 
     signal.signal(signal.SIGTERM, interrupted)
-    sys.exit(cli_exit_code(main()))
+    sys.exit(main())

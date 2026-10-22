@@ -1,8 +1,10 @@
 """Fast regression tests for the dedicated Hive security runner."""
 
 import json
+import os
 import signal
 import subprocess
+import sys
 from types import SimpleNamespace
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -170,43 +172,109 @@ def test_existing_artifacts_are_preserved(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "code,in_ci,expected",
-    [(0, True, 0), (1, True, 2), (42, True, 2), (3, True, 2), (42, False, 42)],
+    "code,pytest_code",
+    [
+        (0, 0),
+        (1, None),
+        (42, 1),
+        (2, 2),
+    ],
 )
-def test_ci_failure_status_does_not_trigger_framework_retry(
-    monkeypatch, code, in_ci, expected
+def test_ci_retry_preserves_exec_and_pytest_status(
+    tmp_path, monkeypatch, code, pytest_code
 ):
-    monkeypatch.setenv("BUILDKITE", "true" if in_ci else "false")
-    assert run.cli_exit_code(code) == expected
+    monkeypatch.setenv("BUILDKITE", "true")
+    monkeypatch.setenv("BUILDKITE_RETRY_COUNT", "1")
+    monkeypatch.setattr(run, "image_info", lambda *a: {})
+    monkeypatch.setattr(run, "remove_owned_dangling", lambda *a: None)
+    monkeypatch.setattr(run, "wait_for_probe", lambda *a: None)
+    calls = []
+    directory = tmp_path / "GT"
+
+    def command(args, log, **kwargs):
+        calls.append(log.stem)
+        if log.stem == "pytest":
+            assert args[args.index("python") + 1 :][:3] == [
+                "-c",
+                run.PYTEST_ENTRYPOINT,
+                "/events/pytest-exit-code",
+            ]
+            if code:
+                raise run.CommandFailed("pytest", code)
+        if log.stem == "copy":
+            results(directory / "events/results.xml")
+        if log.stem in {"copy", "events"} and pytest_code is not None:
+            artifacts = directory / (
+                "events" if log.stem == "copy" else "failure-events"
+            )
+            artifacts.mkdir(parents=True, exist_ok=True)
+            (artifacts / "pytest-exit-code").write_text(str(pytest_code))
+        return 0
+
+    monkeypatch.setattr(run, "command", command)
+    assert (
+        run.main(
+            [
+                "--profiles",
+                "GT",
+                "--runtime-image",
+                "runtime:fixed",
+                "--log-dir",
+                str(tmp_path),
+            ]
+        )
+        == code
+    )
+    assert calls.count("pytest") == calls.count("cleanup") == 1
+    result = json.loads((tmp_path / "result.json").read_text())
+    assert result["exit_code"] == code
+    assert result["profiles"][0]["exit_code"] == code
+    artifacts = directory / ("events" if code == 0 else "failure-events")
+    status = artifacts / "pytest-exit-code"
+    if pytest_code is None:
+        assert not status.exists()
+        assert result["profiles"][0]["stage"] == "tests"
+        assert result["profiles"][0]["error"] == "CommandFailed"
+    else:
+        assert int(status.read_text()) == pytest_code
 
 
 @pytest.mark.parametrize(
-    "in_ci,retry,allowed,blocked",
+    "source,pytest_code,code",
     [
-        (True, 1, False, True),
-        (True, 0, False, False),
-        (True, 1, True, False),
-        (False, 1, False, False),
+        ("def test_result(): pass\n", 0, 0),
+        ("def test_result(): assert False\n", 1, 42),
+        ("def test_result(:\n", 2, 2),
     ],
 )
-def test_ci_retry_requires_explicit_allowance(
-    monkeypatch, in_ci, retry, allowed, blocked
-):
-    monkeypatch.setenv("BUILDKITE", "true" if in_ci else "false")
-    monkeypatch.setenv("BUILDKITE_RETRY_COUNT", str(retry))
-    assert run.ci_retry_blocked(allowed) is blocked
-
-
-def test_retry_stops_before_docker_and_records_unrun_profiles(tmp_path, monkeypatch):
-    monkeypatch.setenv("BUILDKITE", "true")
-    monkeypatch.setenv("BUILDKITE_RETRY_COUNT", "1")
-    monkeypatch.setattr(
-        run, "command", lambda *a, **kw: pytest.fail("Docker must not run")
+def test_entrypoint_uses_actual_pytest_status(tmp_path, source, pytest_code, code):
+    test = tmp_path / "test_result.py"
+    test.write_text(source)
+    status = tmp_path / "pytest-exit-code"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            run.PYTEST_ENTRYPOINT,
+            str(status),
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            str(test),
+        ],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PYTEST_ADDOPTS": "",
+            "PYTEST_PLUGINS": "",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
-    assert run.main(["--profiles", "G", "GT", "--log-dir", str(tmp_path)]) == 2
-    result = json.loads((tmp_path / "result.json").read_text())
-    assert result["exit_code"] == 2
-    assert all(p["state"] == "not_run" for p in result["profiles"])
+    assert result.returncode == code, result.stdout + result.stderr
+    assert int(status.read_text()) == pytest_code
 
 
 @pytest.mark.parametrize("changed", ["id", "created", "labels", "tags", None])
@@ -280,6 +348,4 @@ def test_timeout_stops_child_group_before_returning(tmp_path, monkeypatch):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))
