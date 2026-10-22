@@ -62,6 +62,8 @@ class FakeSandboxRuntime:
         self.create_error: Optional[Exception] = None
         self.exec_error: Optional[Exception] = None
         self.exec_results: List[FakeExecResult] = []
+        self.allowlist_calls: List[Dict[str, Any]] = []
+        self.allowlist_error: Optional[Exception] = None
         # When set, pull_image blocks until the event fires, holding the
         # sandbox in the "pulling" state for conflict tests.
         self.pull_gate: Optional[threading.Event] = None
@@ -158,6 +160,11 @@ class FakeSandboxRuntime:
             raise SandboxExecError(f"cat: {path}: No such file or directory")
         return self.readable_files[path]
 
+    def set_egress_allowlist(self, instance_id: str, cidrs: List[str]) -> None:
+        self.allowlist_calls.append({"instance_id": instance_id, "cidrs": list(cidrs)})
+        if self.allowlist_error is not None:
+            raise self.allowlist_error
+
     def delete(self, instance_id: str) -> None:
         if self.delete_gate is not None:
             if not self.delete_gate.wait(timeout=30):
@@ -238,9 +245,45 @@ class FakeResolver:
                 self.killed.append(name)
 
 
+class LoopbackRuntime(FakeSandboxRuntime):
+    """A fake runtime that acts like a small shell, for tests that can only
+    observe it through a client: ``echo`` prints its arguments,
+    ``sh -c "exit N"`` exits with N, and files read back what was written."""
+
+    def exec(self, instance_id: str, command: Any, **kwargs: Any) -> FakeExecResult:
+        result = super().exec(instance_id, command, **kwargs)
+        argv = command if isinstance(command, list) else [command]
+        if argv[:1] == ["echo"]:
+            return FakeExecResult(stdout=" ".join(argv[1:]) + "\n")
+        if argv[:2] == ["sh", "-c"] and argv[2:3] and argv[2].startswith("exit "):
+            return FakeExecResult(exit_code=int(argv[2].split()[1]))
+        return result
+
+    def read_file(self, instance_id: str, path: str) -> bytes:
+        if path in self.written_files:
+            return self.written_files[path]
+        return super().read_file(instance_id, path)
+
+
+class LoopbackResolver(FakeResolver):
+    """A ``FakeResolver`` whose sandboxes run on ``LoopbackRuntime``."""
+
+    def _runtime_factory(self) -> FakeSandboxRuntime:
+        runtime = LoopbackRuntime()
+        self.runtimes.append(runtime)
+        return runtime
+
+
 @pytest.fixture
 def fake_resolver() -> FakeResolver:
     return FakeResolver()
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_api_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a token exported in the developer's shell out of the tests;
+    the tests that need one set it themselves."""
+    monkeypatch.delenv("RAY_SANDBOX_API_TOKEN", raising=False)
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -284,6 +327,8 @@ __all__ = [
     "FakeSandboxRuntime",
     "FakeHandle",
     "FakeResolver",
+    "LoopbackResolver",
+    "LoopbackRuntime",
     "SandboxExecError",
     "SandboxTimeoutError",
     "wait_until",

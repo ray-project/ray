@@ -50,7 +50,11 @@ if TYPE_CHECKING:
     import pandas
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+    from ray.data._internal.execution.interfaces import (
+        ExecutionResources,
+        NodeIdStr,
+        RefBundle,
+    )
     from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
@@ -59,6 +63,7 @@ if TYPE_CHECKING:
         Schema,
         UserDefinedFunction,
     )
+    from ray.data.dataset import Dataset
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
 
@@ -817,16 +822,11 @@ def unify_block_metadata_schema(
         A unified schema of the input list of schemas, or None if no valid schemas
         are provided.
     """
-    # Some blocks could be empty, in which case we cannot get their schema.
-    # TODO(ekl) validate schema is the same across different blocks.
-
-    # First check if there are blocks with computed schemas, then unify
-    # valid schemas from all such blocks.
-
-    schemas_to_unify = []
-    for m in block_metadata_with_schemas:
-        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-            schemas_to_unify.append(m.schema)
+    # NOTE: An empty block can still carry a valid schema (e.g., an empty
+    # Arrow table), so blocks are not filtered on their number of rows.
+    schemas_to_unify = [
+        m.schema for m in block_metadata_with_schemas if m.schema is not None
+    ]
     return unify_schemas_with_validation(schemas_to_unify)
 
 
@@ -850,12 +850,11 @@ def unify_schemas_with_validation(
 def unify_ref_bundles_schema(
     ref_bundles: List["RefBundle"],
 ) -> Optional["Schema"]:
-    schemas_to_unify = []
-    for bundle in ref_bundles:
-        if bundle.schema is not None and (
-            bundle.num_rows() is None or bundle.num_rows() > 0
-        ):
-            schemas_to_unify.append(bundle.schema)
+    # NOTE: An empty bundle can still carry a valid schema (e.g., an empty
+    # Arrow table), so bundles are not filtered on their number of rows.
+    schemas_to_unify = [
+        bundle.schema for bundle in ref_bundles if bundle.schema is not None
+    ]
     return unify_schemas_with_validation(schemas_to_unify)
 
 
@@ -1845,13 +1844,12 @@ class MemoryProfiler:
 
     Example:
 
-        .. testcode::
-
-            with MemoryProfiler(poll_interval_s=1.0) as profiler:
-                for i in range(10):
-                    ...  # Your code here
-                    print(f"Max USS: {profiler.estimate_max_uss()}")
-                    profiler.reset()
+        >>> with MemoryProfiler(poll_interval_s=1.0) as profiler:
+        ...     for i in range(10):
+        ...         pass  # Your code here
+        ...         print(f"Max USS: {profiler.estimate_max_uss()}")
+        ...         profiler.reset()
+        Max USS: ...
     """
 
     def __init__(self, poll_interval_s: Optional[float]):
@@ -2140,3 +2138,27 @@ def explain_plan(logical_plan: "LogicalPlan") -> str:
     _add_section("Physical Plan (Optimized)", optimized_physical)
 
     return "".join(sections)
+
+
+def create_streaming_split_dataset(
+    dataset: "Dataset",
+    n: int,
+    *,
+    equal: bool = False,
+    locality_hints: Optional[List["NodeIdStr"]] = None,
+) -> "Dataset":
+    """Wrap ``dataset`` in a ``StreamingSplit`` logical op, as
+    :meth:`Dataset.streaming_split` does."""
+    from ray.data._internal.logical.interfaces import LogicalPlan
+    from ray.data._internal.logical.operators import StreamingSplit
+    from ray.data.dataset import Dataset
+
+    op = StreamingSplit(
+        num_splits=n,
+        equal=equal,
+        input_dependencies=[dataset._logical_plan.dag],
+        locality_hints=locality_hints,
+    )
+    split_dataset = Dataset._from_parent(dataset, LogicalPlan(op, dataset.context))
+    split_dataset._set_uuid(dataset._uuid)
+    return split_dataset

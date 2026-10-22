@@ -95,7 +95,7 @@ another_impala = config.build_algo()
 another_impala.stop()
 ```
 
-If you are working with [Ray Tune](https://docs.ray.io/en/latest/tune/index.html), pass your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance into the constructor of the {py:class}`~ray.tune.tuner.Tuner`:
+If you are working with [Ray Tune](../tune/index.md), pass your {py:class}`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance into the constructor of the {py:class}`~ray.tune.tuner.Tuner`:
 
 ```python
 from ray import tune
@@ -231,6 +231,6 @@ Besides the most common settings described earlier, the {py:class}`~ray.rllib.al
 - {ref}`Config settings for debugging <rllib-config-debugging>`
 - {ref}`Experimental config settings <rllib-config-experimental>`
 
-To familiarize yourself with RLlib's many config options, browse [RLlib's examples folder](https://github.com/ray-project/ray/tree/master/rllib/examples) or see the {ref}`examples folder overview page <rllib-examples-overview-docs>`.
+To familiarize yourself with RLlib's many config options, browse [RLlib's examples folder](https://github.com/ray-project/ray/tree/master/python/ray/rllib/examples) or see the {ref}`examples folder overview page <rllib-examples-overview-docs>`.
 
 Each example script usually introduces a config setting or shows you how to implement a customization by combining config options with custom code in your experiment.

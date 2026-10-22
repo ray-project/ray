@@ -15,15 +15,13 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.datasource_v2.common.arrow_file_scanner import ArrowFileScanner
+from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.listing_utils import sample_files
-from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
-)
-from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
-    ArrowFileScanner,
 )
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -38,6 +36,7 @@ from ray.data._internal.logical.rules.derive_list_files_pushdown import (
     DeriveListFilesPushdown,
 )
 from ray.data.context import DataContext
+from ray.data.datasource import FileShuffleConfig
 from ray.data.expressions import col
 
 
@@ -112,6 +111,50 @@ def test_derives_state_the_scanner_accepted(tmp_path):
     assert list_files.predicate is predicate
     assert list_files.projected_columns == ["a"]
     assert list_files.limit == 5
+
+
+@pytest.mark.parametrize(
+    "shuffle_config, expected_limit",
+    [
+        (None, 5),
+        (FileShuffleConfig(seed=1), 5),
+        (FileShuffleConfig(seed=1, small_chunks_shuffle=True), None),
+    ],
+    ids=["no_shuffle", "file_shuffle", "small_chunks_shuffle"],
+)
+def test_limit_is_not_derived_onto_row_group_shuffle(
+    tmp_path, shuffle_config, expected_limit
+):
+    """Listing stops early before the row-group shuffle runs.
+
+    A listing limit would shrink the pool the shuffle permutes to the first
+    files listed, so only the scanner keeps the limit.
+    """
+    read_files = _mk_read_files(tmp_path)
+    predicate = col("a") > 2
+    scanner, _residual = _scanner_of(read_files).push_filters(predicate)
+    read_files = replace(
+        read_files,
+        scanner=scanner.push_limit(5),
+        input_dependencies=[
+            replace(
+                _source_list_files(read_files),
+                shuffle_config_factory=lambda: shuffle_config,
+            )
+        ],
+    )
+
+    plan = _apply(read_files)
+
+    list_files = _list_files_of(plan)
+    assert list_files.limit == expected_limit
+    assert list_files.predicate is predicate
+    (scanner_limit,) = [
+        _scanner_of(op).pushed_limit()
+        for op in plan.dag.post_order_iter()
+        if isinstance(op, ReadFiles)
+    ]
+    assert scanner_limit == 5
 
 
 def test_no_pushdown_leaves_list_files_unconstrained(tmp_path):

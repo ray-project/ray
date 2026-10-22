@@ -1,6 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import numpy as np
@@ -17,7 +18,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     unify_tensor_types,
 )
 from ray.data._internal.tensor_extensions.chunked_tensor_take import (
-    PreparedChunkedTensorTake,
+    PreparedTensorTake,
     _log_take_fallback,
     _TakeFallbackReason,
     try_prepare_chunked_tensor_take,
@@ -227,6 +228,24 @@ def _group_indices(
     return grouped_indices, offsets
 
 
+@lru_cache()
+def _get_nullable_dtypes() -> Dict["pyarrow.DataType", Any]:
+    """Build the pandas dtype map only when the hash fallback is used."""
+    import pandas as pd
+
+    return {
+        pyarrow.bool_(): pd.BooleanDtype(),
+        pyarrow.int8(): pd.Int8Dtype(),
+        pyarrow.int16(): pd.Int16Dtype(),
+        pyarrow.int32(): pd.Int32Dtype(),
+        pyarrow.int64(): pd.Int64Dtype(),
+        pyarrow.uint8(): pd.UInt8Dtype(),
+        pyarrow.uint16(): pd.UInt16Dtype(),
+        pyarrow.uint32(): pd.UInt32Dtype(),
+        pyarrow.uint64(): pd.UInt64Dtype(),
+    }
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -247,12 +266,15 @@ def _hash_partition(
         # row-by-row loop.
         import pandas as pd
 
-        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
-        # in pandas. This avoids int64 -> float64 promotion for nullable integer
-        # columns, which would cause the same value to hash differently across
-        # blocks depending on whether the block contains nulls.
+        # Use pandas' nullable integer and boolean dtypes so null and non-null
+        # values hash consistently across blocks.
+        nullable_dtypes = _get_nullable_dtypes()
+
+        def types_mapper(dtype):
+            return nullable_dtypes.get(dtype) or pd.ArrowDtype(dtype)
+
         hashes = pd.util.hash_pandas_object(
-            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+            table.to_pandas(types_mapper=types_mapper), index=False
         ).values
         # pandas 3.0+ returns a read-only hash array for Arrow-backed columns;
         # avoid in-place np.mod(..., out=hashes). See #64552.
@@ -367,7 +389,7 @@ def _try_normalize_take_indices(
 def _prepare_chunked_tensor_takes(
     table: "pyarrow.Table",
     indices: Union[List[int], np.ndarray, "pyarrow.Array", "pyarrow.ChunkedArray"],
-) -> Dict[int, PreparedChunkedTensorTake]:
+) -> Dict[int, PreparedTensorTake]:
     """Prepare eligible tensor columns for one table take request.
 
     The index length is the exact output-size bound required by column
@@ -477,18 +499,15 @@ def _reconcile_diverging_fields(
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
     reconciled_fields = {}
-    field_types = defaultdict(list)  # field_name -> list of types seen so far
+    field_types = defaultdict(list)  # field_name -> list of unique types
     field_flags = defaultdict(
         lambda: defaultdict(bool)
     )  # field_name -> dict of boolean flags
 
-    # Process schemas and reconcile on-the-fly
+    # Collect all field types before reconciling. A field may appear
+    # reconcilable until a later schema introduces an incompatible type.
     for schema in unique_schemas:
         for field_name in schema.names:
-            if field_name in reconciled_fields:
-                # If the field has already been reconciled, skip it.
-                continue
-
             field_type = schema.field(field_name).type
             if field_type not in field_types[field_name]:
                 field_types[field_name].append(field_type)
@@ -503,40 +522,51 @@ def _reconcile_diverging_fields(
             flags["has_null"] |= pyarrow.types.is_null(field_type)
             flags["has_struct"] |= pyarrow.types.is_struct(field_type)
 
-            # Check for object-tensor conflict
+            # Check for object-tensor conflict after every type is collected.
             if flags["has_object"] and flags["has_tensor"]:
                 raise ValueError(
                     f"Found columns with both objects and tensors: {field_name}"
                 )
 
-            # Reconcile immediately if it's a special type and if it's divergent.
-            if any(flags.values()) and len(field_types[field_name]) > 1:
-                reconciled_value = _reconcile_field(
-                    non_null_types=field_types[field_name],
-                    promote_types=promote_types,
-                )
-                if reconciled_value is not None:
-                    reconciled_fields[field_name] = reconciled_value
+    # Reconcile only after all schemas have been inspected. This prevents a
+    # null arm or an intermediate special type from masking later types.
+    for field_name, types in field_types.items():
+        if any(field_flags[field_name].values()) and len(types) > 1:
+            reconciled_value = _reconcile_field(
+                field_types=types,
+                promote_types=promote_types,
+            )
+            if reconciled_value is not None:
+                reconciled_fields[field_name] = reconciled_value
 
     return reconciled_fields
 
 
 def _reconcile_field(
-    non_null_types: List[pyarrow.DataType],
+    field_types: List[pyarrow.DataType],
     promote_types: bool = False,
 ) -> Optional[pyarrow.DataType]:
     """
     Reconcile a single divergent field across schemas.
 
     Returns reconciled type or None if default PyArrow handling is sufficient.
+    ``pa.null()`` entries are stripped first — null unifies with any type.
     """
     from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
     from ray.data._internal.tensor_extensions.arrow import (
         get_arrow_extension_tensor_types,
     )
 
+    # Null unifies with anything; strip so downstream branches only see
+    # types that carry structure.
+    non_null_types = [t for t in field_types if not pyarrow.types.is_null(t)]
+
     if not non_null_types:
         return None
+
+    # A single concrete type is already the complete reconciliation result.
+    if len(non_null_types) == 1:
+        return non_null_types[0]
 
     # Handle special cases in priority order
 
@@ -551,15 +581,10 @@ def _reconcile_field(
     if any(isinstance(t, ArrowPythonObjectType) for t in non_null_types):
         return ArrowPythonObjectType()
 
-    # 3. Struct fields (recursive unification)
-    struct_types = [t for t in non_null_types if pyarrow.types.is_struct(t)]
-    if struct_types:
-        # Convert struct types to schemas
-        struct_schemas = []
-        for t in non_null_types:
-            if pyarrow.types.is_struct(t):
-                struct_schemas.append(pyarrow.schema(list(t)))
-        # Recursively unify
+    # 3. Struct fields (recursive unification). Reconcile only when every
+    # arm is a struct; otherwise return None so PyArrow reports the conflict.
+    if all(pyarrow.types.is_struct(t) for t in non_null_types):
+        struct_schemas = [pyarrow.schema(list(t)) for t in non_null_types]
         unified_struct = unify_schemas(struct_schemas, promote_types=promote_types)
         return pyarrow.struct(list(unified_struct))
 
@@ -757,6 +782,9 @@ def _backfill_missing_fields(
 
     Returns:
         pa.StructArray: The aligned struct array.
+
+    Raises:
+        ValueError: If ``column`` is neither a struct nor an all-null array.
     """
     import pyarrow as pa
 
@@ -768,6 +796,24 @@ def _backfill_missing_fields(
         _is_native_tensor_type,
     )
 
+    # An all-null nested field infers as ``pa.null()``. Handle it explicitly
+    # rather than relying on PyArrow's promote mode (which does unify ``null``
+    # into a struct on pyarrow >= 17, Ray's minimum): without this branch the
+    # non-struct guard below would reject the column.
+    column_type = column.type
+    if pa.types.is_null(column_type):
+        return pa.nulls(block_length, type=unified_struct_type)
+
+    # Defensive guard for callers aligning to an externally supplied schema
+    # (e.g. the Parquet reader). ``unify_schemas`` rejects struct/primitive
+    # mixes, so this is unreachable from the normal ``concat`` path.
+    if not pa.types.is_struct(column_type):
+        raise ValueError(
+            f"Column of type {column_type} cannot be aligned with struct type "
+            f"{unified_struct_type}. A block holds a non-struct value where the "
+            "unified schema expects a struct."
+        )
+
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
         column = pa.concat_arrays(column.chunks)
@@ -777,11 +823,8 @@ def _backfill_missing_fields(
         field.name: column.field(i) for i, field in enumerate(column.type)
     }
 
-    # Assert that the current fields are a subset of the unified struct type's field names
-    unified_field_names = {field.name for field in unified_struct_type}
-    assert set(current_fields.keys()).issubset(
-        unified_field_names
-    ), f"Fields {set(current_fields.keys())} are not a subset of unified struct fields {unified_field_names}."
+    # Ignore fields outside the target schema. A reader may pin the schema to
+    # an inference sample while later files contain additional struct fields.
 
     # Early exit if no fields are missing in the schema
     if column.type == unified_struct_type:
@@ -837,10 +880,11 @@ def _backfill_missing_fields(
             # If the field is missing, fill with nulls
             aligned_fields.append(pa.nulls(block_length, type=field_type))
 
-    # Reconstruct the struct column with aligned fields
+    # Preserve parent nulls independently of the aligned child values.
     return pa.StructArray.from_arrays(
         aligned_fields,
         fields=unified_struct_type,
+        mask=column.is_null(),
     )
 
 
@@ -850,10 +894,10 @@ def _align_struct_fields(
     """
     Align struct columns across blocks to match the provided schema.
 
-    Struct columns in each block are backfilled with nulls for any fields
-    present in the unified schema but missing in that block. Non-struct
-    columns missing from a block are also appended as null columns, and
-    columns are reordered to match the schema.
+    Struct columns in each block are backfilled with nulls for fields present
+    in the unified schema but missing in that block. Struct fields absent from
+    the target schema are dropped. Non-struct columns missing from a block are
+    also appended as null columns, and columns are reordered to match the schema.
 
     Args:
         blocks: List of Arrow tables to align.
@@ -904,11 +948,10 @@ def _align_struct_fields(
             if column_name in block_schema_field_names:
                 column = block[column_name]
 
-                # Check if the column type matches a struct type
-                if (
-                    isinstance(column.type, pa.StructType)
-                    and column.type != unified_struct_type
-                ):
+                # Check if the column type matches a struct type.
+                # _backfill_missing_fields handles all-null columns, aligns
+                # struct fields recursively, and validates other mismatches.
+                if column.type != unified_struct_type:
                     # Align struct fields
                     aligned_column = _backfill_missing_fields(
                         column, unified_struct_type, block_length
@@ -1457,6 +1500,29 @@ def try_combine_chunked_columns(
         new_column_values_arrays.append(new_col)
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def deepcopy_array(
+    array: Union["pyarrow.ChunkedArray", "pyarrow.Array"],
+) -> "pyarrow.Array":
+    """Deepcopy an Arrow array.
+
+    `pa.concat_arrays` copies the input arrays into a new array buffer.
+
+    This utility can be used to sever references to the original buffers
+    and allows them to be freed. See https://github.com/apache/arrow/issues/38806.
+
+    For example, consider a pyarrow table in shared memory that contains many columns.
+    If we keep a column view of the table around as metadata, even though all
+    other columns are no longer referenced, the table would not be freed.
+    If we deepcopy the column instead, the original table can be freed earlier.
+    """
+    chunks = array.chunks if isinstance(array, pyarrow.ChunkedArray) else [array]
+
+    if len(chunks) == 0:
+        return pyarrow.array([], type=array.type)
+
+    return pyarrow.concat_arrays(chunks)
 
 
 def combine_chunks(table: "pyarrow.Table", copy: bool = False) -> "pyarrow.Table":

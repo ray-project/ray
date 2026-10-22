@@ -9,6 +9,8 @@ from ray.experimental.sandbox.backend.base import (
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 from ray.experimental.sandbox.config import (
+    ALLOW_ALL_CIDRS,
+    DEFAULT_PUBLIC_ALLOWLIST,
     DEFAULT_PUBLIC_DNS,
     DOCKER_DEFAULT_CAPABILITIES,
     parse_memory_bytes,
@@ -42,9 +44,11 @@ def create(
     rootless: bool = True,
     network: str = "none",
     dns: Optional[List[str]] = None,
+    cidr_allowlist: Optional[List[str]] = None,
     capabilities: Optional[List[str]] = None,
     resources: Optional[Dict[str, float]] = None,
     readonly: bool = True,
+    disk: Union[str, int, float] = 0,
     **kwargs,
 ) -> ActorHandle:
     """Create a remote sandbox environment managed by a Ray actor.
@@ -72,6 +76,13 @@ def create(
             is the recommended internet-access mode.
         dns: Optional nameserver IPs for the generated /etc/resolv.conf
             (public resolvers by default for "public").
+        cidr_allowlist: Optional egress allowlist for network="public": only
+            the listed destinations are reachable (plus DNS to the ``dns``
+            resolvers). None means the public internet, with internal
+            addresses left out as a best effort, and a denylist keeps
+            instance metadata and the Kubernetes API service closed whatever
+            the list says; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         capabilities: Linux capabilities, written exactly (None keeps the
             runtime default; ``[]`` means none). Use
             ``DOCKER_DEFAULT_CAPABILITIES`` for Docker parity.
@@ -81,6 +92,10 @@ def create(
             is writable. Writes are isolated within a per-sandbox copy-on-write overlay
             filesystem, ensuring multiple sandboxes running the same container image do
             not interfere with each other or modify the base image.
+        disk: Size cap of the writable rootfs (e.g. "10Gi"); writes past it
+            fail with ENOSPC. Zero (default) means no cap. Requires
+            ``readonly=False`` or a ``workdir``; see
+            :class:`~ray.experimental.sandbox.config.SandboxConfig`.
         **kwargs: Additional options.
 
     Returns:
@@ -108,14 +123,18 @@ def create(
         rootless=rootless,
         network=network,
         dns=dns,
+        cidr_allowlist=cidr_allowlist,
         capabilities=capabilities,
         readonly=readonly,
+        disk=disk,
         **kwargs,
     )
 
 
 __all__ = [
     "create",
+    "ALLOW_ALL_CIDRS",
+    "DEFAULT_PUBLIC_ALLOWLIST",
     "DEFAULT_PUBLIC_DNS",
     "DOCKER_DEFAULT_CAPABILITIES",
     "Sandbox",

@@ -27,33 +27,26 @@ class AutoscalerMetricsReporter:
             - recently_failed_nodes: Nodes that are being terminated.
         """
         # map of instance type to a dict of status to count.
-        status_count_by_type: Dict[NodeType, Dict[str, int]] = {}
-
-        def _new_status_count() -> Dict[str, int]:
-            return {
+        status_count_by_type: Dict[NodeType, Dict[str, int]] = defaultdict(
+            lambda: {
                 "pending": 0,
                 "running": 0,
                 "terminating": 0,
-                "terminated": 0,
             }
+        )
 
         # initialize the status count by type.
-        for instance_type in node_type_configs.keys():
-            status_count_by_type[instance_type] = _new_status_count()
+        for instance_type in node_type_configs:
+            status_count_by_type[instance_type] = status_count_by_type.default_factory()
 
         for instance in instances:
-            status_count = status_count_by_type.get(instance.instance_type)
-            if status_count is None:
-                status_count = _new_status_count()
-                status_count_by_type[instance.instance_type] = status_count
+            status_count = status_count_by_type[instance.instance_type]
             if InstanceUtil.is_ray_pending(instance.status):
                 status_count["pending"] += 1
             elif InstanceUtil.is_ray_running(instance.status):
                 status_count["running"] += 1
             elif instance.status == IMInstance.TERMINATING:
                 status_count["terminating"] += 1
-            elif instance.status == IMInstance.TERMINATED:
-                status_count["terminated"] += 1
 
         for instance_type, status_count in status_count_by_type.items():
             self._prom_metrics.pending_nodes.labels(

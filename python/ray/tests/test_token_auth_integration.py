@@ -4,16 +4,21 @@ Cluster lifecycle, connection, and end-to-end operation tests.
 """
 
 import os
+import secrets
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
 import pytest
 
 import ray
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import wait_for_condition
 from ray._private.test_utils import client_test_enabled
+from ray.cluster_utils import Cluster
+from ray.exceptions import AuthenticationError
 
 try:
     from ray._raylet import AuthenticationTokenLoader
@@ -296,9 +301,9 @@ def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
     token_loader = AuthenticationTokenLoader.instance()
     assert not token_loader.has_token()
 
-    # Try to connect to the cluster without a token - should raise RuntimeError
-    with pytest.raises(ConnectionError):
+    with pytest.raises(ConnectionError) as exc_info:
         ray.init(address=cluster.address)
+    assert isinstance(exc_info.value, AuthenticationError)
 
 
 @pytest.mark.parametrize(
@@ -367,12 +372,13 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
 
     else:
         # Should fail - connection or gRPC calls should fail
-        with pytest.raises((ConnectionError, RuntimeError)):
+        with pytest.raises(ConnectionError) as exc_info:
             ray.init(address=cluster.address)
             try:
                 ray.put("test")
             finally:
                 ray.shutdown()
+        assert isinstance(exc_info.value, AuthenticationError)
 
 
 @pytest.mark.skipif(
@@ -638,8 +644,9 @@ def test_ray_start_head_enables_auth_from_existing_token():
         set_auth_mode("disabled")
         clear_auth_token_sources(remove_default=False)
         reset_auth_token_state()
-        with pytest.raises(ConnectionError):
+        with pytest.raises(ConnectionError) as exc_info:
             ray.init(address="auto")
+        assert isinstance(exc_info.value, AuthenticationError)
 
         # Connecting with the matching token succeeds.
         set_auth_mode("token")
@@ -656,6 +663,58 @@ def test_ray_start_head_enables_auth_from_existing_token():
         wait_for_condition(cluster_ready, timeout=10)
         assert ray.is_initialized()
 
+    finally:
+        _cleanup_ray_start(env)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+@pytest.mark.parametrize("address", [None, "auto", "explicit"])
+def test_ray_init_connect_reuses_existing_token(address, propagate_logs, caplog):
+    """ray.init() finding a local cluster (no address or "auto") reuses the token
+    of a head that enabled auth from it; an explicit address never auto-enables."""
+    from ray._private.authentication_test_utils import set_default_auth_token
+    from ray._private.services import canonicalize_bootstrap_address
+    from ray._raylet import AuthenticationMode, get_authentication_mode
+
+    set_default_auth_token("b" * 64)
+
+    env = os.environ.copy()
+    env.pop("RAY_AUTH_MODE", None)
+    env.pop("RAY_AUTH_TOKEN", None)
+    env.pop("RAY_AUTH_TOKEN_PATH", None)
+    env.pop("RAY_ADDRESS", None)
+
+    try:
+        _run_ray_start_and_verify_status(
+            ["--head", "--port=0"], env, expect_success=True
+        )
+
+        os.environ.pop("RAY_AUTH_MODE", None)
+        reset_auth_token_state()
+
+        if address == "explicit":
+            with pytest.raises(ConnectionError) as exc_info:
+                ray.init(address=canonicalize_bootstrap_address("auto"))
+            assert isinstance(exc_info.value, AuthenticationError)
+            assert get_authentication_mode() == AuthenticationMode.DISABLED
+            return
+
+        with caplog.at_level(
+            "WARNING", logger="ray._private.authentication.authentication_token_setup"
+        ):
+            ray.init(address=address)
+
+        assert get_authentication_mode() == AuthenticationMode.TOKEN
+        assert "Token authentication is enabled" in caplog.text
+
+        @ray.remote
+        def f():
+            return "ok"
+
+        assert ray.get(f.remote()) == "ok"
     finally:
         _cleanup_ray_start(env)
 
@@ -849,6 +908,113 @@ def test_logs_api_with_token_auth(setup_cluster_with_token_auth):
         break
 
     assert chunks_received > 0, "Should have received at least one log chunk"
+
+
+@pytest.fixture
+def token_cluster_with_client_server(cleanup_auth_token_env):
+    """A token-auth head node that also serves ray:// clients."""
+    test_token = secrets.token_hex(32)
+    set_auth_mode("token")
+    set_env_auth_token(test_token)
+    reset_auth_token_state()
+
+    client_server_port = find_free_port()
+    cluster = Cluster()
+    cluster.add_node(
+        dashboard_agent_listen_port=find_free_port(),
+        ray_client_server_port=client_server_port,
+    )
+    try:
+        yield {
+            "gcs_address": cluster.address,
+            "client_address": f"ray://127.0.0.1:{client_server_port}",
+        }
+    finally:
+        cluster.shutdown()
+
+
+def _connect_command(entry_point: str, cluster_info: dict) -> list:
+    if entry_point == "ray_start":
+        return ["ray", "start", f"--address={cluster_info['gcs_address']}"]
+    address = cluster_info[
+        "client_address" if entry_point == "ray_client" else "gcs_address"
+    ]
+    return [sys.executable, "-c", f"import ray; ray.init(address={address!r})"]
+
+
+def _assert_connect_fails_naming_fix(
+    entry_point: str, cluster_info: dict, env_overrides: dict
+):
+    """Run a connecting entry point in a subprocess and check how it fails."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH")
+    }
+    # Replace the pre_envs fixture's cap of 2 GCS connect retries with 60, so code
+    # that retries a rejection takes about 60s, far above the bound below.
+    env["RAY_NUM_REDIS_GET_RETRIES"] = "60"
+    env.update(env_overrides)
+    start = time.monotonic()
+    result = subprocess.run(
+        _connect_command(entry_point, cluster_info),
+        env={"RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1", **env},
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    elapsed_s = time.monotonic() - start
+    output = result.stdout + result.stderr
+
+    assert result.returncode != 0, f"{entry_point} should have failed: {output}"
+    assert "ray get-auth-token" in output, output
+    assert "RAY_AUTH_MODE=disabled" in output, output
+    assert "--generate" not in output, output
+    # Retrying takes about 60s for GCS and 31s for ray://; failing fast takes ~1s.
+    assert elapsed_s < 20, f"{entry_point} took {elapsed_s:.0f}s to fail: {output}"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Runs connecting entry points in subprocesses",
+)
+@pytest.mark.parametrize(
+    "env_overrides",
+    [
+        {"RAY_AUTH_MODE": "token"},
+        {"RAY_AUTH_MODE": "disabled"},
+        {"RAY_AUTH_MODE": "token", "RAY_AUTH_TOKEN": "b" * 64},
+    ],
+    ids=["no_token", "auth_disabled", "wrong_token"],
+)
+def test_rejected_connect_fails_fast_naming_fix(
+    env_overrides, token_cluster_with_client_server
+):
+    for entry_point in ["ray_start", "ray_init", "ray_client"]:
+        _assert_connect_fails_naming_fix(
+            entry_point, token_cluster_with_client_server, env_overrides
+        )
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Connects its own ray:// client",
+)
+def test_ray_client_checks_token_before_connecting():
+    set_auth_mode("token")
+    reset_auth_token_state()
+
+    # Nothing listens on the port, so only a check made before connecting
+    # can fail with AuthenticationError instead of a connection timeout.
+    start = time.monotonic()
+    try:
+        with pytest.raises(AuthenticationError, match="ray get-auth-token"):
+            ray.init(f"ray://127.0.0.1:{find_free_port()}")
+    finally:
+        # A failed ray:// connect leaves client mode on; later tests in this
+        # process would then route ray.init through the client.
+        ray.util.disconnect()
+    assert time.monotonic() - start < 5
 
 
 if __name__ == "__main__":
