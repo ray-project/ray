@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -9,6 +10,7 @@ from ci.ray_ci.automation.image_tags_lib import (
 from ci.ray_ci.automation.push_release_test_image import (
     ReleaseTestImagePushContext,
     _annotate_pushed_image,
+    _run_gcloud_docker_login,
 )
 from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
 from ci.ray_ci.docker_container import GPU_PLATFORM
@@ -388,6 +390,76 @@ class TestAnnotatePushedImage:
         _annotate_pushed_image("example/image:tag", "ray")
 
         assert len(captured_calls) == 1
+
+
+class TestRunGcloudDockerLogin:
+    @pytest.fixture
+    def gcloud_calls(self, monkeypatch):
+        calls: list = []
+
+        class _Done:
+            returncode = 0
+            stderr = ""
+
+        def _run(args, **kwargs):
+            calls.append(args)
+            return _Done()
+
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image.subprocess.run", _run
+        )
+        return calls
+
+    @staticmethod
+    def _set_credentials(monkeypatch, credentials: str) -> None:
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image.get_global_config",
+            lambda: {
+                "aws2gce_credentials": credentials,
+                "byod_gcp_cr": "us-west1-docker.pkg.dev/example/project",
+            },
+        )
+
+    def test_logs_in_with_configured_credentials(self, monkeypatch, gcloud_calls):
+        self._set_credentials(monkeypatch, "release/aws2gce_iam.json")
+
+        _run_gcloud_docker_login()
+
+        login = gcloud_calls[0]
+        assert login[:3] == ["gcloud", "auth", "login"]
+        cred_file = login[login.index("--cred-file") + 1]
+        assert cred_file.endswith("release/aws2gce_iam.json")
+        assert os.path.isfile(cred_file)
+        assert gcloud_calls[1][:4] == [
+            "gcloud",
+            "auth",
+            "configure-docker",
+            "us-west1-docker.pkg.dev",
+        ]
+
+    def test_credentials_follow_the_global_config(self, monkeypatch, gcloud_calls):
+        # A deployment whose agents federate through a different identity pool
+        # (e.g. another AWS account) names its own file in the global config;
+        # the login must use that file, not a hardcoded one.
+        self._set_credentials(monkeypatch, "release/aws2gce_other_pool.json")
+        looked_up: list = []
+
+        class _Runfiles:
+            def Rlocation(self, path):
+                looked_up.append(path)
+                return "/runfiles/" + path
+
+        monkeypatch.setattr(
+            "ci.ray_ci.automation.push_release_test_image._runfiles", _Runfiles()
+        )
+
+        _run_gcloud_docker_login()
+
+        assert looked_up == ["io_ray/release/aws2gce_other_pool.json"]
+        login = gcloud_calls[0]
+        assert login[login.index("--cred-file") + 1] == (
+            "/runfiles/io_ray/release/aws2gce_other_pool.json"
+        )
 
 
 if __name__ == "__main__":
