@@ -117,6 +117,9 @@ class FakeCoreWorkerClient : public CoreWorkerClientInterface {
       const PlasmaObjectReadyRequest &request,
       const ClientCallback<PlasmaObjectReadyReply> &callback) override {}
 
+  void OnObjectFreed(const OnObjectFreedRequest &request,
+                     const ClientCallback<OnObjectFreedReply> &callback) override {}
+
   void RayletNotifyGCSRestart(
       const RayletNotifyGCSRestartRequest &request,
       const ClientCallback<RayletNotifyGCSRestartReply> &callback) override {}

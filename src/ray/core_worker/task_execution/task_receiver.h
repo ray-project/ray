@@ -113,6 +113,18 @@ class TaskReceiver {
 
   void Stop();
 
+  /**
+   * Run `fn` where an actor method in `concurrency_group` would run: on the group's
+   * fiber executor for an asyncio actor, on the group's thread pool for a threaded
+   * actor, and right here otherwise. Must be called on the task execution thread after
+   * the actor creation task, which creates the executors on that thread. Drops `fn` if
+   * the receiver is stopping.
+   *
+   * \param[in] concurrency_group The concurrency group. Empty means the default group.
+   * \param[in] fn The function to run.
+   */
+  void RunOnActorExecutor(const std::string &concurrency_group, std::function<void()> fn);
+
  private:
   /// Set up the configs for an actor.
   /// This should be called once for the actor creation task.
