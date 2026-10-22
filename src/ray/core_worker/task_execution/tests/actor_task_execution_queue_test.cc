@@ -386,10 +386,9 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
 
 TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundCancelsRemainingAttempt) {
   // Two attempts of one task can be pending at the same time (e.g. a retry
-  // submitted before the original attempt's RPC arrived, as in
+  // that arrives while an earlier attempt is still queued or running, as in
   // UnorderedActorTaskExecutionQueueTest.TestSameTaskMultipleAttemptsCancellation).
-  // Cancellation bookkeeping is per attempt, so discarding one attempt must
-  // not hide the other one from CancelTaskIfFound.
+  // Discarding one attempt must not hide the other one from CancelTaskIfFound.
   instrumented_io_context io_service;
   MockWaiter waiter;
   MockTaskEventBuffer task_event_buffer;
@@ -450,15 +449,15 @@ TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundCancelsRemainingAttemp
 
   ASSERT_EQ(n_executed.load(), 0);
   ASSERT_EQ(n_rejected.load(), 1);
-  // The rejected attempt took its own entry with it, so nothing is left to cancel.
+  // The rejected attempt was the last one pending, so nothing is left to cancel.
   ASSERT_FALSE(queue.CancelTaskIfFound(task_id));
 
   queue.Stop();
 }
 
 // A cancel also applies to an attempt that arrives after it, as long as an earlier
-// attempt of the same task is still pending: the shared entry used to give that for
-// free, and the per-attempt entry now inherits the mark instead.
+// attempt of the same task is still pending, and stays applied after that earlier
+// attempt leaves.
 TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundMarksLaterAttempt) {
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -489,7 +488,7 @@ TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundMarksLaterAttempt) {
   JobID job_id = JobID::FromInt(1);
   TaskID task_id = TaskID::FromRandom(job_id);
 
-  // Attempt 0 stays queued waiting for its dependencies, and is canceled there.
+  // Attempt 0 is queued waiting for its dependencies when the cancel lands.
   TaskSpecification task_spec_attempt_0;
   task_spec_attempt_0.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task_spec_attempt_0.GetMutableMessage().set_task_id(task_id.Binary());
@@ -508,13 +507,16 @@ TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundMarksLaterAttempt) {
       ObjectID::FromRandom().Binary());
   EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_attempt_1));
 
-  // Its dependencies arrive; it must be rejected rather than executed.
+  // Both attempts' dependencies arrive, attempt 0 first. Attempt 0 leaving must not
+  // take the mark with it: both are rejected rather than executed.
+  waiter.Complete(0);
   waiter.Complete(1);
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
 
   ASSERT_EQ(n_executed.load(), 0);
-  ASSERT_EQ(n_rejected.load(), 1);
+  ASSERT_EQ(n_rejected.load(), 2);
+  ASSERT_FALSE(queue.CancelTaskIfFound(task_id));
 
   queue.Stop();
 }
@@ -555,16 +557,16 @@ TEST(OrderedActorTaskExecutionQueueTest, TestWaitForObjects) {
       ->set_object_id(obj.Binary());
   EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
   // change task_id since <task_id, task_attempt> should be unique
-  // across all PushTask for actor life
-  task_spec_with_dependency.GetMutableMessage().set_task_id(
-      TaskID::FromRandom(JobID::FromInt(1)).Binary());
-  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_with_dependency));
-  task_spec_with_dependency.GetMutableMessage().set_task_id(
-      TaskID::FromRandom(JobID::FromInt(1)).Binary());
-  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_with_dependency));
-  task_spec_with_dependency.GetMutableMessage().set_task_id(
-      TaskID::FromRandom(JobID::FromInt(1)).Binary());
-  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec_with_dependency));
+  // across all PushTask for actor life. Copies of a TaskSpecification share one
+  // message, so enqueue a deep copy that the next set_task_id cannot rename.
+  auto next_task_with_dependency = [&task_spec_with_dependency]() {
+    task_spec_with_dependency.GetMutableMessage().set_task_id(
+        TaskID::FromRandom(JobID::FromInt(1)).Binary());
+    return MakeTaskToExecute(TaskSpecification(task_spec_with_dependency.GetMessage()));
+  };
+  EnqueueWithFetch(queue, waiter, 1, -1, next_task_with_dependency());
+  EnqueueWithFetch(queue, waiter, 2, -1, next_task_with_dependency());
+  EnqueueWithFetch(queue, waiter, 3, -1, next_task_with_dependency());
 
   ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
 

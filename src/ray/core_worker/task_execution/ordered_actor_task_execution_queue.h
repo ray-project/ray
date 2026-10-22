@@ -67,18 +67,13 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Executes as many queued tasks as are ready to execute.
   void ExecuteQueuedTasks();
 
-  /// Accept the given TaskToExecute or reject it if the task attempt is
-  /// canceled via CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(const TaskAttempt &task_attempt,
-                                       TaskToExecute &request);
+  /// Accept the given TaskToExecute or reject it if a task id is canceled via
+  /// CancelTaskIfFound.
+  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
 
-  /// Whether any pending attempt of the given task is already marked canceled.
-  bool IsTaskCanceledLocked(const TaskID &task_id) const
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Drop one attempt's cancellation entry, and the task's entry with it once no
-  /// attempt of that task is pending.
-  void EraseTaskAttemptLocked(const TaskID &task_id, int32_t attempt_number)
+  /// Drop one pending attempt of the task, and the task's entry once none is left.
+  /// Must be called exactly once for every attempt EnqueueTask added.
+  void RemovePendingAttemptLocked(const TaskID &task_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   void ExecuteRequest(TaskToExecute &&request);
@@ -129,13 +124,18 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
   /// Mutex to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
 
-  /// A map of actor task ids -> attempt number -> is_canceled
-  /// Pending means tasks are queued or running. Attempts of one task are tracked
-  /// independently, because two of them can be pending at the same time. A task's
-  /// entry is erased once none of its attempts is pending, so an entry that exists
-  /// always holds at least one attempt.
-  absl::flat_hash_map<TaskID, absl::flat_hash_map<int32_t, bool>>
-      pending_task_attempt_to_is_canceled ABSL_GUARDED_BY(mu_);
+  struct PendingTaskState {
+    /// Attempts of the task that are queued or running. More than one can be pending
+    /// at once.
+    int32_t num_pending_attempts = 0;
+    /// Shared by all pending attempts of the task.
+    bool is_canceled = false;
+  };
+
+  /// A map of actor task IDs -> pending state.
+  /// Pending means tasks are queued or running.
+  absl::flat_hash_map<TaskID, PendingTaskState> pending_task_id_to_state
+      ABSL_GUARDED_BY(mu_);
 
   friend class OrderedActorTaskExecutionQueueTest;
 };
