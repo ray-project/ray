@@ -13,9 +13,11 @@ from click.testing import CliRunner
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.authentication import authentication_utils as auth_utils
-from ray._private.authentication.http_token_authentication import get_token_auth_wsgi_app
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_wsgi_app,
+)
+from ray._private.authentication_test_utils import reset_auth_token_state
 from ray.cluster_utils import Cluster
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 from ray.dashboard.modules.metrics import install_and_start_prometheus, metrics_head
@@ -49,7 +51,12 @@ def _enable_token_auth(monkeypatch):
 
 @pytest.mark.parametrize(
     "metrics_auth_disabled, expected_status",
-    [(None, "401 Unauthorized"), ("0", "401 Unauthorized"), ("true", "401 Unauthorized"), ("1", "200 OK")],
+    [
+        (None, "401 Unauthorized"),
+        ("0", "401 Unauthorized"),
+        ("true", "401 Unauthorized"),
+        ("1", "200 OK"),
+    ],
 )
 def test_metrics_wsgi_auth_can_be_disabled_explicitly(
     monkeypatch, metrics_auth_disabled, expected_status
@@ -60,9 +67,11 @@ def test_metrics_wsgi_auth_can_be_disabled_explicitly(
     else:
         monkeypatch.setenv("RAY_AUTH_METRICS_DISABLED", metrics_auth_disabled)
 
-    app = get_token_auth_wsgi_app(
-        lambda environ, start_response: (start_response("200 OK", []), [b"metrics"])[1]
-    )
+    def metrics_app(environ, start_response):
+        start_response("200 OK", [])
+        return [b"metrics"]
+
+    app = get_token_auth_wsgi_app(metrics_app)
     responses = []
     body = app({}, lambda status, headers: responses.append(status))
 
