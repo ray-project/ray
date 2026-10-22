@@ -1,6 +1,6 @@
 import asyncio
 import os
-from typing import List
+from typing import List, Set
 
 import httpx
 import pytest
@@ -11,11 +11,15 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_MULTIPLEXED_MODEL_ID,
+)
 from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.schema import ServeInstanceDetails
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -322,7 +326,7 @@ def test_request_routing_info(serve_instance):
     replica_id = handle.remote("model1").result()
 
     def check_replica_information(
-        model_ids: List[str],
+        model_ids: Set[str],
     ):
         if not handle.is_initialized:
             handle._init()
@@ -335,7 +339,21 @@ def test_request_routing_info(serve_instance):
             ):
                 return False
 
-        return True
+        # The controller also exposes the model IDs in the replica details
+        # returned by the REST API / `get_serve_details()`.
+        serve_details = serve_instance.get_serve_details()
+        app = serve_details["applications"][SERVE_DEFAULT_APP_NAME]
+        replicas = app["deployments"]["MyModel"]["replicas"]
+        if len(replicas) != 1 or replicas[0]["replica_id"] != replica_id.unique_id:
+            return False
+        if set(replicas[0].get("multiplexed_model_ids", [])) != model_ids:
+            return False
+
+        details = ServeInstanceDetails(**serve_details)
+        (replica_details,) = (
+            details.applications[SERVE_DEFAULT_APP_NAME].deployments["MyModel"].replicas
+        )
+        return set(replica_details.multiplexed_model_ids) == model_ids
 
     wait_for_condition(
         check_replica_information,
