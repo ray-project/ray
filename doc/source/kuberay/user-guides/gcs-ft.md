@@ -461,7 +461,7 @@ retry behavior of individual Redis commands.
 | Variable | Default | Effect |
 |---|---|---|
 | `RAY_redis_reconnect_grace_period_ms` | `60000` | How long commands wait out a reconnect before they start spending their retry budget, counted from when the connection dropped. Set to `0` for the pre-reconnect behavior, where a command gives up after roughly 3.5 seconds. |
-| `RAY_redis_reconnect_connect_timeout_ms` | `5000` | How long each reconnect attempt waits for its TCP connect before trying again. Without it, a connect to an address that no longer answers, such as a deleted Redis Pod's IP, waits out the kernel's SYN retries for about two minutes. |
+| `RAY_redis_reconnect_connect_timeout_ms` | `5000` | How long each reconnect attempt waits for its TCP connect before trying again. Without it, a connect to an address that no longer answers, such as a deleted Redis Pod's IP, waits out the kernel's SYN retries for about two minutes. `0` turns the timeout off. |
 | `RAY_redis_reconnect_sentinel_timeout_ms` | `2000` | Timeout for each step of the query a reconnect sends to Sentinel to find the current primary. |
 | `RAY_redis_reconnect_verify_writes` | `1` | Whether GCS checks, before resuming, that Redis kept every write it acknowledged, and exits if not. See [When Redis comes back without data](#when-redis-comes-back-without-data). |
 | `RAY_redis_db_connect_retries` | `120` | Reconnect attempts before GCS exits. Also bounds the connect attempts at startup. |
