@@ -285,7 +285,7 @@ class WorkerPool : public WorkerPoolInterface {
   void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle spill I/O worker from the pool and trigger a callback when
-  /// an spill I/O worker is available.
+  /// a spill I/O worker is available.
   /// The caller is responsible for pushing the worker back onto the
   /// pool once the worker has completed its work.
   ///
@@ -299,7 +299,7 @@ class WorkerPool : public WorkerPoolInterface {
   void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle restore I/O worker from the pool and trigger a callback when
-  /// an restore I/O worker is available.
+  /// a restore I/O worker is available.
   /// The caller is responsible for pushing the worker back onto the
   /// pool once the worker has completed its work.
   ///
