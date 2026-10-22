@@ -15,8 +15,10 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 
@@ -320,6 +322,57 @@ TEST_F(AuthenticationTokenLoaderTest, TestWhitespaceHandling) {
   ASSERT_TRUE(token_opt != nullptr);
   AuthenticationToken expected("token-with-spaces");
   EXPECT_TRUE(token_opt->Equals(expected));
+}
+
+std::string ReadWholeFile(const std::string &path) {
+  std::ifstream file(path);
+  return std::string(std::istreambuf_iterator<char>(file),
+                     std::istreambuf_iterator<char>());
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingWritesOwnerOnlyToken) {
+  ensure_ray_dir_exists();
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  std::string token = ReadWholeFile(default_token_path_);
+  EXPECT_EQ(token.size(), 64);
+  EXPECT_TRUE(std::all_of(token.begin(), token.end(), [](char c) {
+    return std::isdigit(c) || (c >= 'a' && c <= 'f');
+  }));
+#ifndef _WIN32
+  struct stat file_stat;
+  ASSERT_EQ(stat(default_token_path_.c_str(), &file_stat), 0);
+  EXPECT_EQ(file_stat.st_mode & 0777, 0600);
+#endif
+  auto loaded = AuthenticationTokenLoader::instance().GetToken(/*ignore_auth_mode=*/true);
+  ASSERT_TRUE(loaded != nullptr);
+  EXPECT_TRUE(loaded->Equals(AuthenticationToken(token)));
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingKeepsExistingToken) {
+  ensure_ray_dir_exists();
+  const std::string content = "\n  \nexisting-token\n";
+  write_token_file(default_token_path_, content);
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  EXPECT_EQ(ReadWholeFile(default_token_path_), content);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReplacesBlankFile) {
+  ensure_ray_dir_exists();
+  write_token_file(default_token_path_, " \n\t\n");
+
+  EXPECT_EQ(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+
+  EXPECT_EQ(ReadWholeFile(default_token_path_).size(), 64);
+}
+
+TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReportsBadTokenPath) {
+  set_env_var("RAY_AUTH_TOKEN_PATH", "/nonexistent/ray_test_token");
+
+  EXPECT_NE(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
 }
 
 TEST_F(AuthenticationTokenLoaderTest, TestFirstNonBlankLine) {

@@ -800,20 +800,6 @@ Windows powershell users need additional escaping:
     "you can set this option to override the server url. "
     "Ex: --proxy-server-url=http://historyserver:8080 ",
 )
-@click.option(
-    "--create-auth-token-if-missing",
-    is_flag=True,
-    default=False,
-    hidden=True,
-    # Kept out of start()'s signature so this internal flag stays off the
-    # public API; read back from ctx.meta.
-    expose_value=False,
-    callback=lambda ctx, _param, value: ctx.meta.update(
-        create_auth_token_if_missing=value
-    ),
-    help="Create the auth token if none exists. Used by drivers and test "
-    "clusters that start a throwaway cluster on this machine.",
-)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -1087,12 +1073,7 @@ def start(
         maybe_enable_token_auth_if_token_available()
 
         try:
-            ensure_token_if_auth_enabled(
-                system_config,
-                create_token_if_missing=click.get_current_context().meta[
-                    "create_auth_token_if_missing"
-                ],
-            )
+            ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
         except AuthenticationError as e:
             # Other auth errors, such as RAY_AUTH_TOKEN_PATH naming a missing file,
             # surface unchanged.
@@ -2961,9 +2942,6 @@ def get_auth_token(generate):
 
     If --generate is specified, a new token is created and saved to ~/.ray/auth_token if one does not exist.
     """
-    from ray._private.authentication.authentication_token_setup import (
-        generate_and_save_token,
-    )
     from ray._raylet import (
         AuthenticationTokenLoader,
     )
@@ -2974,8 +2952,7 @@ def get_auth_token(generate):
     if not loader.has_token(ignore_auth_mode=True):
         if generate:
             click.echo("Generating new authentication token...", err=True)
-            generate_and_save_token()
-            loader.reset_cache()
+            loader.create_token_if_missing()
         else:
             raise click.ClickException(
                 "No authentication token found. Use ray `get-auth-token --generate` to create one.",

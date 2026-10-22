@@ -38,7 +38,6 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
   std::vector<std::string> cmdargs({"ray",
                                     "start",
                                     "--head",
-                                    "--create-auth-token-if-missing",
                                     "--port",
                                     std::to_string(port),
                                     "--redis-username",
@@ -87,6 +86,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       bootstrap_ip.empty()) {
     bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
     rpc::MaybeEnableTokenAuthIfTokenAvailable();
+    rpc::CreateTokenIfMissingForOwnCluster();
     StartRayNode(bootstrap_ip,
                  bootstrap_port,
                  ConfigInternal::Instance().redis_username,

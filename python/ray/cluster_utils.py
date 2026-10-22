@@ -99,7 +99,6 @@ class AutoscalingCluster:
             "start",
             "--autoscaling-config={}".format(fake_config),
             "--head",
-            "--create-auth-token-if-missing",
         ]
         if "CPU" in self._head_resources:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
@@ -132,6 +131,8 @@ class AutoscalingCluster:
             )
         if override_env:
             env.update(override_env)
+        # `ray start --head` never creates a token, so create it here first.
+        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
         subprocess.check_call(cmd, env=env)
         ray._private.services.find_gcs_addresses.cache_clear()
 

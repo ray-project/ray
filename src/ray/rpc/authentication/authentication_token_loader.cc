@@ -14,6 +14,7 @@
 
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -23,6 +24,7 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
+#include "openssl/rand.h"
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
@@ -32,8 +34,13 @@
 #ifdef _WIN32
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
 #else
+#include <fcntl.h>
 #include <pwd.h>
+#include <sys/stat.h>
 #include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
 #endif
 
 namespace ray {
@@ -260,6 +267,68 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
   return "";
 }
 
+std::string AuthenticationTokenLoader::CreateTokenIfMissing() {
+  TokenLoadResult existing = TryLoadToken(/*ignore_auth_mode=*/true);
+  if (existing.hasError()) {
+    return existing.error_message;
+  }
+  if (existing.token.has_value() && !existing.token->empty()) {
+    return "";
+  }
+
+  const std::string token_path = GetDefaultTokenPath();
+  if (token_path.empty()) {
+    return "Cannot determine the home directory to store the authentication token in.";
+  }
+  const std::filesystem::path token_dir = std::filesystem::path(token_path).parent_path();
+  std::error_code ec;
+  const bool created_dir = std::filesystem::create_directories(token_dir, ec);
+  if (ec) {
+    return "Failed to create " + token_dir.string() + ": " + ec.message();
+  }
+  if (created_dir) {
+    std::filesystem::permissions(token_dir, std::filesystem::perms::owner_all, ec);
+  }
+
+  // 256 bits of entropy, hex-encoded: the same format `ray get-auth-token --generate`
+  // has always produced.
+  unsigned char random_bytes[32];
+  if (RAND_bytes(random_bytes, sizeof(random_bytes)) != 1) {
+    return "Failed to generate a random authentication token.";
+  }
+  const std::string token = absl::BytesToHexString(absl::string_view(
+      reinterpret_cast<const char *>(random_bytes), sizeof(random_bytes)));
+
+  // Written in place, so a symlinked token file keeps its link. The token is the
+  // cluster credential, so the file is owner-only; fchmod covers a file that existed
+  // before with a wider mode. Windows has no POSIX modes.
+#ifdef _WIN32
+  std::ofstream token_file(token_path, std::ios::out | std::ios::trunc);
+  token_file << token;
+  token_file.close();
+  if (!token_file) {
+    return "Failed to write the authentication token to " + token_path;
+  }
+#else
+  const int fd = open(token_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) {
+    return "Failed to open " + token_path + ": " + std::strerror(errno);
+  }
+  const bool written = fchmod(fd, 0600) == 0 && write(fd, token.data(), token.size()) ==
+                                                    static_cast<ssize_t>(token.size());
+  const int write_errno = errno;
+  close(fd);
+  if (!written) {
+    return "Failed to write the authentication token to " + token_path + ": " +
+           std::strerror(write_errno);
+  }
+#endif
+
+  ResetCache();
+  RAY_LOG(INFO) << "Generated new authentication token and saved to " << token_path;
+  return "";
+}
+
 std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
   std::string home_dir;
 
@@ -335,6 +404,14 @@ void MaybeEnableTokenAuthIfTokenAvailable() {
   RAY_LOG(WARNING) << "Token authentication is enabled for this Ray cluster. Set "
                       "RAY_AUTH_MODE=disabled to opt out. For more information, see "
                       "https://docs.ray.io/en/latest/ray-security/token-auth.html";
+}
+
+void CreateTokenIfMissingForOwnCluster() {
+  if (GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    return;
+  }
+  const std::string error = AuthenticationTokenLoader::instance().CreateTokenIfMissing();
+  RAY_CHECK(error.empty()) << error;
 }
 
 }  // namespace rpc

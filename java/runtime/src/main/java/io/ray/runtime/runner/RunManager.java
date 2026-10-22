@@ -27,7 +27,6 @@ public class RunManager {
     command.add("ray");
     command.add("start");
     command.add("--head");
-    command.add("--create-auth-token-if-missing");
     command.add("--redis-username");
     command.add(rayConfig.redisUsername);
     command.add("--redis-password");

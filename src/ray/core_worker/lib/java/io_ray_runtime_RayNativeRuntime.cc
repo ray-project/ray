@@ -380,6 +380,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeMaybeEnableTokenAuthIfTokenAvailable(
   ray::rpc::MaybeEnableTokenAuthIfTokenAvailable();
 }
 
+JNIEXPORT void JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeCreateTokenIfMissingForOwnCluster(JNIEnv *env,
+                                                                             jclass) {
+  ray::rpc::CreateTokenIfMissingForOwnCluster();
+}
+
 JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEnv *env,
                                                                            jclass o) {
   CoreWorkerProcess::Shutdown();

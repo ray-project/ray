@@ -461,9 +461,8 @@ def test_ray_start_head_reports_a_missing_token_path_file(tmp_path):
     "multi-node provider, which don't run in client mode or on Windows",
 )
 def test_autoscaling_cluster_creates_token():
-    """AutoscalingCluster starts its head through the hidden
-    --create-auth-token-if-missing option, so it comes up with auth on in an
-    empty HOME."""
+    """AutoscalingCluster creates the token before its `ray start --head`, so it
+    comes up with auth on in an empty HOME."""
     from ray.cluster_utils import AutoscalingCluster
 
     set_auth_mode("token")
@@ -489,13 +488,9 @@ def test_autoscaling_cluster_creates_token():
 
 
 @pytest.mark.parametrize("leftover_file_content", [None, b"", b" \t\n\x0b\x0c\r\n"])
-def test_generate_and_save_token(leftover_file_content, tmp_path, monkeypatch):
+def test_create_token_if_missing(leftover_file_content, tmp_path, monkeypatch):
     """Token creation writes an owner-only token, overwriting a leftover token
     file that holds no token."""
-    from ray._private.authentication.authentication_token_setup import (
-        generate_and_save_token,
-    )
-
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     token_path = tmp_path / ".ray" / "auth_token"
@@ -503,7 +498,8 @@ def test_generate_and_save_token(leftover_file_content, tmp_path, monkeypatch):
         token_path.parent.mkdir()
         token_path.write_bytes(leftover_file_content)
 
-    generate_and_save_token()
+    reset_auth_token_state()
+    AuthenticationTokenLoader.instance().create_token_if_missing()
 
     assert len(token_path.read_text()) == 64
     if sys.platform != "win32":
@@ -514,20 +510,17 @@ def test_generate_and_save_token(leftover_file_content, tmp_path, monkeypatch):
     sys.platform == "win32" or os.geteuid() == 0,
     reason="Needs POSIX permissions that apply to the current user",
 )
-def test_generate_and_save_token_overwrites_an_unreadable_file(tmp_path, monkeypatch):
+def test_create_token_if_missing_overwrites_an_unreadable_file(tmp_path, monkeypatch):
     """A leftover token file the owner can write but not read is overwritten,
     as before this change, instead of crashing token creation."""
-    from ray._private.authentication.authentication_token_setup import (
-        generate_and_save_token,
-    )
-
     monkeypatch.setenv("HOME", str(tmp_path))
     token_path = tmp_path / ".ray" / "auth_token"
     token_path.parent.mkdir()
     token_path.write_bytes(b"")
     token_path.chmod(0o200)
 
-    generate_and_save_token()
+    reset_auth_token_state()
+    AuthenticationTokenLoader.instance().create_token_if_missing()
 
     assert token_path.stat().st_mode & 0o777 == 0o600
     assert len(token_path.read_text()) == 64
@@ -549,7 +542,6 @@ def test_token_creation_keeps_an_existing_token(
     loader reads it, is left unchanged by token creation."""
     from ray._private.authentication.authentication_token_setup import (
         ensure_token_if_auth_enabled,
-        generate_and_save_token,
     )
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -561,7 +553,8 @@ def test_token_creation_keeps_an_existing_token(
     reset_auth_token_state()
 
     ensure_token_if_auth_enabled(create_token_if_missing=True)
-    generate_and_save_token()
+    reset_auth_token_state()
+    AuthenticationTokenLoader.instance().create_token_if_missing()
 
     assert token_path.read_bytes() == token_file_content
     if loaded_token is not None:

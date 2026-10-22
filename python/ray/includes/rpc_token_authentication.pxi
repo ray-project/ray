@@ -97,6 +97,23 @@ class AuthenticationTokenLoader:
             return False
         return True
 
+    def create_token_if_missing(self):
+        """Create ~/.ray/auth_token with a new random token, unless a token source
+        already holds a token. Ignores RAY_AUTH_MODE.
+
+        Raises:
+            AuthenticationError: The token can't be created, or RAY_AUTH_TOKEN_PATH
+                names a file that can't be read.
+        """
+        cdef string error
+
+        with nogil:
+            error = CAuthenticationTokenLoader.instance().CreateTokenIfMissing()
+
+        if not error.empty():
+            from ray.exceptions import AuthenticationError
+            raise AuthenticationError(error.decode('utf-8'))
+
     def reset_cache(self):
         """Reset the C++ authentication token cache.
 

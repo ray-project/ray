@@ -5,7 +5,6 @@ for Ray's token-based authentication system. Token loading and caching is
 handled by the C++ AuthenticationTokenLoader.
 """
 
-import contextlib
 import logging
 import os
 from pathlib import Path
@@ -13,9 +12,6 @@ from typing import Any, Dict, Optional
 
 from ray._private.authentication.authentication_constants import (
     TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
-)
-from ray._private.authentication.authentication_token_generator import (
-    generate_new_authentication_token,
 )
 from ray._raylet import (
     AuthenticationMode,
@@ -28,35 +24,6 @@ from ray.exceptions import AuthenticationError
 AUTH_MODE_ENV_VAR = "RAY_AUTH_MODE"
 
 logger = logging.getLogger(__name__)
-
-
-def generate_and_save_token() -> None:
-    """Generate a random token and save it at the default token path, unless the
-    file there already holds a token."""
-    # Generate a UUID-based token
-    token = generate_new_authentication_token()
-
-    token_path = _get_default_token_path()
-    token_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-
-    # Same rule as the C++ token loader: the token is the first non-blank line,
-    # and bytes.strip() trims the same " \t\n\r\f\v" set as its TrimWhitespace.
-    with contextlib.suppress(OSError):
-        if token_path.read_bytes().strip():
-            return
-
-    # The token is the cluster credential, so keep it owner-only. The mode passed
-    # to os.open only applies when the file is created; fchmod covers a
-    # pre-existing (e.g. empty) file before the token is written into it.
-    # Windows has no os.fchmod before Python 3.13, and its chmod can't restrict
-    # reads anyway.
-    fd = os.open(token_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o600)
-        f.write(token)
-
-    logger.info(f"Generated new authentication token and saved to {token_path}")
 
 
 def _get_default_token_path() -> Path:
@@ -132,9 +99,8 @@ def ensure_token_if_auth_enabled(
 
     Only callers that start a throwaway cluster on this machine pass
     ``create_token_if_missing=True``: a bare ``ray.init()``,
-    ``ray.cluster_utils.Cluster()`` and ``ray start --head
-    --create-auth-token-if-missing``. A token made anywhere else can't match the
-    one the rest of the cluster uses.
+    ``ray.cluster_utils.Cluster()`` and ``ray.cluster_utils.AutoscalingCluster``.
+    A token made anywhere else can't match the one the rest of the cluster uses.
 
     Args:
         system_config: Ray raises an error if you set AUTH_MODE in system_config instead of the environment.
@@ -163,11 +129,7 @@ def ensure_token_if_auth_enabled(
 
     if not token_loader.has_token(ignore_auth_mode=True):
         if create_token_if_missing:
-            # Generate a new token.
-            generate_and_save_token()
-
-            # Reload the cache so subsequent calls to token_loader read the new token.
-            token_loader.reset_cache()
+            token_loader.create_token_if_missing()
         else:
             raise AuthenticationError(
                 TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
