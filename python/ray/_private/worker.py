@@ -1074,8 +1074,10 @@ class Worker:
             # and been released. Drop the handle so nothing after this point
             # (e.g. the atexit shutdown hook) calls into the released worker:
             # that quick-exits the process mid-teardown, which surfaces as an
-            # access violation on Windows.
-            del self.core_worker
+            # access violation on Windows. It may already be gone if a task
+            # called ray.shutdown().
+            if hasattr(self, "core_worker"):
+                del self.core_worker
         sys.exit(0)
 
     def print_logs(self):

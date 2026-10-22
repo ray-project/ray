@@ -15,10 +15,13 @@ from ray._private.worker import Worker
 
 
 class _FakeCoreWorker:
-    def __init__(self, loop_exit=None):
+    def __init__(self, loop_exit=None, during_loop=None):
         self._loop_exit = loop_exit
+        self._during_loop = during_loop
 
     def run_task_loop(self):
+        if self._during_loop is not None:
+            self._during_loop()
         if self._loop_exit is not None:
             raise self._loop_exit
 
@@ -56,6 +59,21 @@ def test_main_loop_releases_core_worker_when_task_loop_is_interrupted(worker):
     assert exc_info.value.code == 1
     assert not hasattr(worker, "core_worker")
     assert worker.job_logging_config is None
+
+
+def test_main_loop_exits_cleanly_if_core_worker_was_already_dropped(worker):
+    """A task calling ray.shutdown() deletes the handle before the loop returns."""
+
+    def _shutdown_from_a_task():
+        del worker.core_worker
+
+    worker.core_worker = _FakeCoreWorker(during_loop=_shutdown_from_a_task)
+
+    with pytest.raises(SystemExit) as exc_info:
+        worker.main_loop()
+
+    assert exc_info.value.code == 0
+    assert not hasattr(worker, "core_worker")
 
 
 _ACTOR_POOL_WITH_RUNTIME_ENV = """
