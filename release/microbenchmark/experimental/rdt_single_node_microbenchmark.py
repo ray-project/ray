@@ -220,6 +220,11 @@ def do_benchmark(transport, device, test_func):
         time.sleep(2)
 
     destroy_all_collective_groups()
+    # Free this round's GPUs before the next round creates its actors. Without
+    # this the old actors can outlive the round, and on a cluster with only two
+    # GPUs the next round's actors never schedule.
+    ray.kill(sender)
+    ray.kill(receiver)
     print()
     return bench_times
 
