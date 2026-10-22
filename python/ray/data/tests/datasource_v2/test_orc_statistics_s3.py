@@ -4,7 +4,9 @@ import io
 import json
 import logging
 import random
+import statistics
 import threading
+import time
 
 import boto3
 import pyarrow as pa
@@ -32,8 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def measured_s3(monkeypatch):
+def measured_s3(monkeypatch, request):
     monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    delay_seconds = getattr(request, "param", 0.0)
     records = []
     phase = ["setup"]
     idle = threading.Condition()
@@ -50,7 +53,10 @@ def measured_s3(monkeypatch):
             "path": environ["PATH_INFO"],
             "range": environ.get("HTTP_RANGE"),
             "bytes": 0,
+            "delay_seconds": delay_seconds if phase[0] != "setup" else 0.0,
         }
+        if entry["delay_seconds"]:
+            time.sleep(entry["delay_seconds"])
 
         def response(status, headers, exc_info=None):
             entry["status"] = int(status.split()[0])
@@ -538,6 +544,191 @@ def test_orc_s3_small_file_costs(
         measured_s3, "zlib", trace_application=True, small_files=True
     )
     record_property("orc_s3_small_file_metrics", json.dumps(metrics, sort_keys=True))
+
+
+def _measure_default_pruning_costs(measured_s3, workload, delay_seconds):
+    """Compare native S3 reads without requiring a timing-dependent speedup."""
+    from ray.data._internal.datasource_v2.formats.orc import orc_file_reader
+
+    def plan(filesystem, manifest):
+        prefix = manifest.paths.tolist()[0].rsplit("/", 1)[0]
+        files = filesystem.get_file_info(pafs.FileSelector(prefix))
+        schema = pds.dataset(
+            manifest.paths.tolist(), filesystem=filesystem, format="orc"
+        ).schema
+        reader = OrcFileReader(format=FileFormat.ORC, filesystem=filesystem)
+        sizes = SamplingInMemorySizeEstimator(reader).estimate_in_memory_sizes(manifest)
+        return len(files), schema.names, sizes.tolist()
+
+    def read(scanner, manifest, expected):
+        if scanner is None:
+            return
+        streamed, statistics_reads = [], []
+        original_scan = OrcFileReader._scan_with_statistics
+        original_metadata = orc_file_reader.read_metadata
+
+        def metadata(source):
+            statistics_reads.append(True)
+            return original_metadata(source)
+
+        def scan(self, fragment, *args, **kwargs):
+            class Fragment:
+                def __getattr__(self, name):
+                    return getattr(fragment, name)
+
+                def scanner(self, **scanner_kwargs):
+                    native = fragment.scanner(**scanner_kwargs)
+
+                    class Scanner:
+                        def scan_batches(self):
+                            streamed.append(fragment.path)
+                            yield from native.scan_batches()
+
+                    return Scanner()
+
+            yield from original_scan(self, Fragment(), *args, **kwargs)
+
+        OrcFileReader._scan_with_statistics = scan
+        orc_file_reader.read_metadata = metadata
+        try:
+            tables = list(scanner.create_reader().read(manifest))
+            actual = pa.concat_tables(tables)
+            assert actual.sort_by(
+                [("x", "ascending"), ("payload", "ascending")]
+            ).equals(expected)
+        finally:
+            OrcFileReader._scan_with_statistics = original_scan
+            orc_file_reader.read_metadata = original_metadata
+        return streamed, len(statistics_reads)
+
+    client, filesystem, records, phase, wait_for_responses, _ = measured_s3
+    file_count, row_count, width = {
+        "retained": (2, 8192, 128),
+        "low_pruning": (10, 1024, 128),
+        "small_files": (8, 64, 32),
+    }[workload]
+    # Cost inputs must not enter the bucket listed by the other S3 tests.
+    bucket = f"orc-cost-{workload}-{int(delay_seconds * 1000)}".replace("_", "-")
+    client.create_bucket(Bucket=bucket)
+    rng = random.Random(66995)
+    paths, sizes, tables = [], [], []
+    for index in range(file_count):
+        excluded = workload == "low_pruning" and index == 0
+        values = range(-row_count, 0) if excluded else range(row_count)
+        table = pa.table(
+            {"x": values, "payload": [rng.randbytes(width) for _ in range(row_count)]}
+        )
+        sink = pa.BufferOutputStream()
+        orc.write_table(table, sink, compression="zlib", stripe_size=32768)
+        data = sink.getvalue().to_pybytes()
+        # Moto's backend can outlive an HTTP fixture; isolate parameter inputs.
+        key = f"cost-{workload}-{int(delay_seconds * 1000)}/part-{index:03}.orc"
+        client.put_object(Bucket=bucket, Key=key, Body=data)
+        paths.append(bucket + "/" + key)
+        sizes.append(len(data))
+        tables.append(table)
+    predicate = col("x") >= 0
+    expected = (
+        pa.concat_tables(tables)
+        .filter(predicate.to_pyarrow())
+        .sort_by([("x", "ascending"), ("payload", "ascending")])
+    )
+    expected_ref = ray.put(expected)
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=sizes, chunk_metadatas=[None] * file_count
+    )
+    plan_remote, read_remote = ray.remote(plan), ray.remote(read)
+    # Initialize the worker before timing; no extra object-store reads.
+    ray.get(read_remote.remote(None, None, None))
+    samples = []
+    for repetition in range(3):
+        for mode in ("off", "file") if repetition % 2 == 0 else ("file", "off"):
+            sample = {"mode": mode, "repetition": repetition}
+            for stage in ("planning", "execution"):
+                label = f"cost:{repetition}:{mode}:{stage}"
+                phase[0] = label
+                started = time.perf_counter()
+                if stage == "planning":
+                    discovered, names, estimated = ray.get(
+                        plan_remote.remote(filesystem, manifest)
+                    )
+                    assert discovered == file_count and names == expected.schema.names
+                    assert len(estimated) == file_count
+                else:
+                    scanner = OrcScanner(
+                        schema=expected.schema,
+                        filesystem=filesystem,
+                        predicate=predicate,
+                        statistics_pruning=mode,
+                        batch_size=127,
+                    )
+                    streamed, statistics_reads = ray.get(
+                        read_remote.remote(scanner, manifest, expected_ref)
+                    )
+                    kept = paths[1:] if workload == "low_pruning" else paths
+                    assert sorted(streamed) == sorted(paths if mode == "off" else kept)
+                    assert statistics_reads == (0 if mode == "off" else file_count)
+                    sample["streamed_files"] = streamed
+                    sample["statistics_reads"] = statistics_reads
+                wait_for_responses()
+                elapsed = time.perf_counter() - started
+                entries = [entry for entry in records if entry["phase"] == label]
+                assert entries and all(entry["status"] < 400 for entry in entries)
+                assert all(entry["delay_seconds"] == delay_seconds for entry in entries)
+                sample[stage] = {
+                    "seconds": elapsed,
+                    "requests": len(entries),
+                    "head_requests": sum(
+                        entry["method"] == "HEAD" for entry in entries
+                    ),
+                    "range_gets": sum(
+                        entry["method"] == "GET" and bool(entry["range"])
+                        for entry in entries
+                    ),
+                    "bytes": sum(entry["bytes"] for entry in entries),
+                }
+            sample["total"] = {
+                key: sample["planning"][key] + sample["execution"][key]
+                for key in sample["planning"]
+            }
+            samples.append(sample)
+    summary = {}
+    for mode in ("off", "file"):
+        group = [sample for sample in samples if sample["mode"] == mode]
+        summary[mode] = {
+            stage: {
+                key: {
+                    "median": statistics.median(sample[stage][key] for sample in group),
+                    "min": min(sample[stage][key] for sample in group),
+                    "max": max(sample[stage][key] for sample in group),
+                }
+                for key in group[0][stage]
+            }
+            for stage in ("planning", "execution", "total")
+        }
+    return {
+        "workload": workload,
+        "delay_seconds": delay_seconds,
+        "file_sizes": sizes,
+        "expected_rows": expected.num_rows,
+        "samples": samples,
+        "summary": summary,
+    }
+
+
+@pytest.mark.parametrize("workload", ["retained", "low_pruning", "small_files"])
+@pytest.mark.parametrize(
+    "measured_s3,delay_seconds",
+    [(0.0, 0.0), (0.05, 0.05)],
+    indirect=["measured_s3"],
+    ids=["local", "50ms"],
+)
+def test_orc_s3_default_pruning_costs(
+    ray_start_regular_shared, measured_s3, workload, delay_seconds, record_property
+):
+    metrics = _measure_default_pruning_costs(measured_s3, workload, delay_seconds)
+    record_property("orc_s3_default_costs", json.dumps(metrics, sort_keys=True))
+    logger.warning("ORC_S3_DEFAULT_COSTS %s", json.dumps(metrics, sort_keys=True))
 
 
 if __name__ == "__main__":
