@@ -63,9 +63,11 @@ def test_netns_sandbox_actor_changes_its_egress_allowlist(ensure_slirp4netns):
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
 
-    actor = Sandbox.remote(
-        image="python:3.10-slim", network="public", cidr_allowlist=[]
-    )
+    # ensure_slirp4netns can put slirp4netns on this process's PATH after an
+    # earlier test started Ray's workers, so pass the PATH to the actor.
+    actor = Sandbox.options(
+        runtime_env={"env_vars": {"PATH": os.environ["PATH"]}}
+    ).remote(image="python:3.10-slim", network="public", cidr_allowlist=[])
     connect = (
         'python3 -c "import socket; '
         "socket.create_connection(('1.1.1.1', 443), timeout=5).close()\""
