@@ -114,6 +114,11 @@ if tuple(int(part) for part in installed.split(".")[:3]) < MINIMUM:
     )
 PY
 
+# uv skips bytecode compilation, so every new container recompiles vLLM and its
+# deps on startup. Precompile all of site-packages here; UV_COMPILE_BYTECODE would
+# miss packages from the base image and the vLLM files patched above.
+python -m compileall -q -j 0 "${VLLM_SITE_PACKAGES}"
+
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
@@ -128,3 +133,6 @@ EOF
 # introduces longer adds a large one-time engine initialization cost. To avoid performance
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
+
+# Precompile packages installed at runtime (e.g. via runtime_env).
+ENV UV_COMPILE_BYTECODE=1

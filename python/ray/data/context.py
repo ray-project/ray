@@ -112,6 +112,8 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
+DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE = 64 * 1024 * 1024
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -135,7 +137,7 @@ def _deduce_default_shuffle_compression() -> str:
             "RAY_DATA_SHUFFLE_COMPRESSION instead"
         )
 
-    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "zstd")
+    return os.environ.get("RAY_DATA_SHUFFLE_COMPRESSION", legacy_codec or "lz4")
 
 
 DEFAULT_SHUFFLE_COMPRESSION = _deduce_default_shuffle_compression()
@@ -712,6 +714,10 @@ class DataContext:
             ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
+        small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
+            runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
+            Contiguous row groups are coalesced up to this size; a single row group
+            larger than it is shuffled on its own.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -885,7 +891,7 @@ class DataContext:
         default_hash_shuffle_parallelism: Default parallelism level for hash-based
             shuffle operations if the number of partitions is unspecifed.
         shuffle_compression: Codec used to compress shuffle intermediate
-            shards: "none", "lz4", or "zstd" (default "zstd"). Deprecated
+            shards: "none", "lz4", or "zstd" (default "lz4"). Deprecated
             alias: ``hash_shuffle_compression``.
         hash_shuffle_reduce_batch_size: Number of shard object references each
             hash-shuffle reduce task dereferences per ``ray.get()`` call.
@@ -1096,6 +1102,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

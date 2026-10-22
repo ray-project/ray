@@ -84,50 +84,39 @@ class TurbopufferDatasink(Datasink):
     Examples:
         Write to a single namespace using a region:
 
-        .. testcode::
-           :skipif: True
-
-           import ray
-           from ray.data._internal.datasource.turbopuffer_datasink import (
-               TurbopufferDatasink,
-           )
-
-           ds = ray.data.range(100)
-           ds = ds.map_batches(lambda batch: {"id": batch["id"], "vector": ...})
-
-           ds.write_datasink(
-               TurbopufferDatasink(
-                   namespace="my-namespace",
-                   api_key="<YOUR_API_KEY>",
-                   region="gcp-us-central1",
-               )
-           )
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> from ray.data._internal.datasource.turbopuffer_datasink import (
+        ...     TurbopufferDatasink,
+        ... )
+        >>> ds = ray.data.range(100)
+        >>> ds = ds.map_batches(lambda batch: {"id": batch["id"], "vector": ...})
+        >>> ds.write_datasink(
+        ...     TurbopufferDatasink(
+        ...         namespace="my-namespace",
+        ...         api_key="<YOUR_API_KEY>",
+        ...         region="gcp-us-central1",
+        ...     )
+        ... )
 
         Write using a base URL instead of a region:
 
-        .. testcode::
-           :skipif: True
-
-           ds.write_datasink(
-               TurbopufferDatasink(
-                   namespace="my-namespace",
-                   api_key="<YOUR_API_KEY>",
-                   base_url="https://gcp-us-central1.turbopuffer.com",
-               )
-           )
+        >>> ds.write_datasink(
+        ...     TurbopufferDatasink(
+        ...         namespace="my-namespace",
+        ...         api_key="<YOUR_API_KEY>",
+        ...         base_url="https://gcp-us-central1.turbopuffer.com",
+        ...     )
+        ... )
 
         Write to multiple namespaces driven by a column:
 
-        .. testcode::
-           :skipif: True
-
-           ds.write_datasink(
-               TurbopufferDatasink(
-                   namespace_column="tenant",
-                   api_key="<YOUR_API_KEY>",
-                   region="gcp-us-central1",
-               )
-           )
+        >>> ds.write_datasink(
+        ...     TurbopufferDatasink(
+        ...         namespace_column="tenant",
+        ...         api_key="<YOUR_API_KEY>",
+        ...         region="gcp-us-central1",
+        ...     )
+        ... )
     """
 
     def __init__(
