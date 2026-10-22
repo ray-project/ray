@@ -54,12 +54,18 @@ _BUSYBOX_CACHE = os.path.join(DEFAULT_IMAGES_DIR, image_cache_name("busybox:late
 
 def test_gvisor_backend_local_lifecycle_and_file_ops():
     backend = GVisorSandboxBackend()
+    # Positive limits need a delegated cgroup v2 subtree. On a provisioned
+    # node, file operations and execs also run through the cgroup launcher.
+    limits = (
+        {"cpu": 1.0, "memory": "512Mi"}
+        if os.environ.get("RAY_SANDBOX_CGROUP_PATH")
+        else {}
+    )
     config = GVisorSandboxConfig(
         image="busybox:latest",
         shell="/bin/sh",
         workdir="/workspace",
-        cpu=1.0,
-        memory="512Mi",
+        **limits,
     )
 
     sandbox_id = backend.create_sandbox(config)
@@ -992,17 +998,22 @@ def test_create_public_sandbox_installs_the_default_allowlist(tmp_path, monkeypa
     class _Started(Exception):
         pass
 
+    rulesets = []
+
     def fake_popen(args, **kwargs):
+        # The failed create deletes its bundle, so read the ruleset now.
+        (root_dir,) = tmp_path.iterdir()
+        rulesets.append((root_dir / "egress.nft").read_text())
         raise _Started(args)
 
     monkeypatch.setattr(
         "ray.experimental.sandbox.backend.gvisor.subprocess.Popen", fake_popen
     )
     backend = GVisorSandboxBackend(image_manager=_StubImageManager())
-    with pytest.raises(_Started):
+    with pytest.raises(SandboxCreationError) as err:
         backend.create_sandbox(_public_config())
-    (root_dir,) = tmp_path.iterdir()
-    text = (root_dir / "egress.nft").read_text()
+    assert isinstance(err.value.__cause__, _Started)
+    (text,) = rulesets
     not_public = " ".join(f"ip daddr != {net}" for net in INTERNET_EXCLUDED_IPV4)
     assert f"{not_public} accept" in text
     assert "169.254.0.0/16" in text

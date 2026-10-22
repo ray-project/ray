@@ -618,7 +618,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When code needs the internet, `network="public"` gives it the public internet without the node's resolver configuration or network identity. Its egress filter keeps instance metadata and the Kubernetes API Service closed whatever the allowlist says, and its default allowlist leaves out internal addresses as a best effort. See [What can a public sandbox reach?](#what-can-a-public-sandbox-reach)
-* **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors. A `disk` cap bounds a sandbox's writable overlay on the node's disk.
+* **Resource quotas**: Ray configures a host cgroup v2 for each limited sandbox. CPU bandwidth and memory limits apply to the sandbox runtime and its helpers. A `disk` cap bounds a sandbox's writable overlay on the node's disk.
 
 ### How does Ray filter a public sandbox's traffic?
 
@@ -640,6 +640,20 @@ The egress filter matches IP addresses only. Keep the following gaps in mind:
 
 :::{tip}
 For defense in depth, turn on Ray's token authentication with `RAY_AUTH_MODE=token` on clusters that host sandboxes, so that Ray's own ports refuse callers without the cluster's token. On Kubernetes, also set `automountServiceAccountToken: false` on worker Pods that don't call the Kubernetes API.
+:::
+
+### Enforce resource limits
+
+Provision a writable cgroup v2 subtree on each eligible worker node and set `RAY_SANDBOX_CGROUP_PATH` to its mount path. Enable the `cpu` and `memory` controllers in the subtree's `cgroup.subtree_control`, and keep processes in separate leaf cgroups. Ray requires `cgroup.kill` support and permission to write it. Grant the worker permission to create child cgroups and to move its launch helpers from the worker cgroup into them. See [Linux cgroup v2 delegation](https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation) for the directory, controller, and common-ancestor permissions.
+
+Every positive `cpu` or `memory` limit requires this configuration. Without it, creation fails before the image pull. Ray writes `cpu.max`, `memory.max`, and `memory.swap.max` before starting runsc or the network wrapper. Fractional CPU limits remain bandwidth limits: `cpu=0.25` gives the whole sandbox one quarter of a CPU. A sandbox with a CPU limit also runs on `max(2, ceil(cpu))` of the pool's CPUs, which Ray picks so that sandboxes spread across the pool. gVisor sizes a sandbox's CPUs from the CPUs it can run on, so `nproc`, and tools that size worker pools by CPU count, see the limit instead of the whole node. Two is gVisor's minimum. Memory limits include Sentry, Gofer, and network helpers, and limited sandboxes can't use swap. Memory exhaustion terminates the sandbox and leaves its hosting Ray worker alive.
+
+Ray owns the cgroup, so `--ignore-cgroups` disables runsc's own cgroup management without disabling Ray's limits. `RAY_SANDBOX_IGNORE_CGROUPS=1` can't bypass a requested limit. Passing zero means no limit; passing `cpu=None` to the sandbox actor derives a limit from its assigned Ray CPU resources.
+
+The node allocator serializes leases across worker processes with a file lock. Set `RAY_SANDBOX_CGROUP_STATE_DIR` to a shared node-local directory if workers don't share `/tmp/ray/sandbox/cgroup-state`. Workers must share the same PID namespace and cgroup mount paths. A reaper outside the sandbox budgets kills orphaned workloads, deletes their runsc state, bundles, and image pins, and then releases their leases. It detaches from the worker that starts it, so it survives that worker's exit. Allocation also reconciles stale leases.
+
+:::{note}
+A CPU limit caps what a sandbox uses but doesn't reserve CPU time for it. Other work on the node still affects how long a task takes, so resource limits don't guarantee a wall-clock deadline.
 :::
 
 ## HTTP API service
@@ -669,7 +683,7 @@ Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..
 Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
-* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits. `disk_limit_mb` caps the writable root filesystem (see [Cap disk use](#cap-disk-use)) and requires `readonly: false` or a `workdir`.
+* **Resources**: `resources` separates cluster reservations from enforced sandbox budgets. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become host cgroup caps on provisioned nodes; creation fails if the node can't enforce them. Requests default to the limits. `disk_limit_mb` caps the writable root filesystem (see [Cap disk use](#cap-disk-use)) and requires `readonly: false` or a `workdir`.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
 * **Network modes**: The server accepts `none`, the default, and `public`. It answers `403 forbidden` to `host` and `sandbox` unless its `allowed_network_modes` setting lists them, and to `rootless: false` unless you set `allow_rootful`. `host` gives a sandbox the node's network and every Ray port on it, and `sandbox` needs a rootful runsc, so allow them only for trusted clients. See [Networking and DNS](#networking-and-dns).
 * **Egress allowlists**: A `public` sandbox takes `cidr_allowlist` at creation, with the same entries and defaults as the Python API. See [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist). The HTTP API can't change the allowlist afterward.
@@ -876,7 +890,7 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`gVisor container failed to start: WARNING: host page size mismatch - running on non-4K host`**: The node's kernel uses 64 KiB pages, and gVisor's prebuilt `runsc` only supports 4 KiB pages. Build `runsc` from source with `--define=pagesize=64k` (see [Requirements](#requirements)).
 * **`mkfs.erofs` not found or too old**: Sandbox creation fails with an error naming erofs-utils 1.7. Install erofs-utils 1.7 or later on every worker node; Ubuntu 22.04's packaged 1.4 predates the `--tar` option Ray relies on.
 * **`mkfs.erofs failed: ... invalid block size 65536`**: The node's kernel uses 64 KiB pages, and its erofs-utils package can only build 4 KiB blocks. Build erofs-utils from source with `./configure MAX_BLOCK_SIZE=65536` (see [Requirements](#requirements)).
-* **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
+* **cgroup or permission errors**: Keep `rootless=True` for unprivileged runsc. Positive CPU or memory limits also require a delegated cgroup v2 subtree configured through `RAY_SANDBOX_CGROUP_PATH`. `RAY_SANDBOX_IGNORE_CGROUPS=1` disables runsc's cgroup setup but doesn't remove this requirement. See [Enforce resource limits](#enforce-resource-limits).
 * **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.
 * **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
 * **`slirp4netns` not found for `network="public"`**: Install the slirp4netns package (or a [static build](https://github.com/rootless-containers/slirp4netns/releases)) on worker nodes.

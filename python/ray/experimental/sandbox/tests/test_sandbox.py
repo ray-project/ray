@@ -1,3 +1,4 @@
+import os
 import sys
 
 import pytest
@@ -5,6 +6,8 @@ import pytest
 import ray
 from ray.experimental.sandbox import Sandbox
 from ray.experimental.sandbox.runtime import SandboxRuntime
+
+_CGROUP_PROVISIONED = bool(os.environ.get("RAY_SANDBOX_CGROUP_PATH"))
 
 
 def test_sandbox_runtime_interface(tmp_path):
@@ -128,6 +131,9 @@ def test_ray_remote_sandbox_runtime():
     ray.kill(rt_actor)
 
 
+@pytest.mark.skipif(
+    not _CGROUP_PROVISIONED, reason="Positive limits need RAY_SANDBOX_CGROUP_PATH"
+)
 def test_sandbox_actor_resource_translation():
     if not ray.is_initialized():
         ray.init(ignore_reinit_error=True)
@@ -141,6 +147,20 @@ def test_sandbox_actor_resource_translation():
 
     ray.get(actor.delete.remote())
     ray.kill(actor)
+
+
+@pytest.mark.skipif(_CGROUP_PROVISIONED, reason="Checks a node without a cgroup")
+def test_sandbox_actor_fails_closed_without_cgroup():
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True)
+
+    # Without an explicit cpu, the actor's CPUs become an enforced limit.
+    actor = Sandbox.options(num_cpus=2.0).remote(
+        image="busybox:latest", shell="/bin/sh", workdir="/workspace"
+    )
+
+    with pytest.raises(ray.exceptions.ActorDiedError, match="RAY_SANDBOX_CGROUP_PATH"):
+        ray.get(actor.get_config.remote())
 
 
 def test_sandbox_runtime_create_variants():
