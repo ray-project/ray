@@ -444,7 +444,7 @@ dill==0.3.8
     #   multiprocess
 directsearch==1.0.1
     # via nevergrad
-distlib==0.4.0
+distlib==0.4.3
     # via virtualenv
 distributed==2026.3.0
     # via
@@ -1356,7 +1356,7 @@ ormsgpack==1.12.2
     # via
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements.txt
-packaging==26.1
+packaging==26.3
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements.txt
@@ -1412,6 +1412,7 @@ packaging==26.1
     #   torchmetrics
     #   transformers
     #   utilsforecast
+    #   virtualenv
     #   wandb
     #   wheel
 pandas==2.3.3
@@ -1476,7 +1477,6 @@ platformdirs==4.9.6
     #   black
     #   jupyter-core
     #   moocore
-    #   python-discovery
     #   snowflake-connector-python
     #   textual
     #   virtualenv
@@ -1760,7 +1760,7 @@ python-dateutil==2.9.0.post0
     #   pandas
     #   segment-analytics-python
     #   strictyaml
-python-discovery==1.2.2
+python-discovery==1.6.1
     # via virtualenv
 python-dotenv==1.2.2
     # via
@@ -2275,7 +2275,7 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2381,7 +2381,7 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.2.4
+virtualenv==21.14.12
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
