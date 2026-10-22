@@ -16,7 +16,10 @@ import uuid
 from typing import IO, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.experimental.sandbox._internal import egress_guard
-from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+from ray.experimental.sandbox._internal.cgroup import (
+    SandboxCgroup,
+    SandboxCgroupManager,
+)
 from ray.experimental.sandbox._internal.image_utils import image_use_marker
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
@@ -474,8 +477,15 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
+        # Until the sandbox is registered, nothing else deletes what this
+        # create makes, so the handler below does: the cgroup, the image pin,
+        # and the bundle with its owner file. _start_sandbox stops the
+        # processes it starts.
+        owner_file = None
         cgroup = None
         try:
+            os.makedirs(root_dir, mode=0o777, exist_ok=True)
+            owner_file = self._own_bundle(config, root_dir)
             memory = parse_memory_bytes(config.memory) or 0
             if config.cpu > 0 or memory > 0:
                 # If this worker dies, the node's reaper kills the sandbox and
@@ -494,7 +504,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         "remove": remove,
                     },
                 )
-            return self._start_sandbox(config, sandbox_id, root_dir, cgroup)
+            self._start_sandbox(config, sandbox_id, root_dir, owner_file, cgroup)
         except Exception as err:
             if cgroup is not None:
                 try:
@@ -509,18 +519,54 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
             self._image_manager.release_image(config.image, sandbox_id)
             shutil.rmtree(root_dir, ignore_errors=True)
+            if owner_file is not None:
+                owner_file.close()
             if isinstance(err, SandboxError):
                 raise
             raise SandboxCreationError(f"Failed to create sandbox: {err}") from err
 
-    def _start_sandbox(self, config, sandbox_id, root_dir, cgroup):
-        """Start the workload only after allocating its enforced resources."""
+        if config.network == "public" and config.dns:
+            # The filter drops a resolver it can't match, such as a
+            # Service IP that the cluster's network translates when a
+            # connection opens, and the sandbox has no IPv6 route. Either
+            # way every lookup would fail, so fail the create instead.
+            unreachable = self._unreachable_resolver(sandbox_id, config.dns)
+            if unreachable is not None:
+                self.delete_sandbox(sandbox_id)
+                server, reason = unreachable
+                raise SandboxCreationError(
+                    f"dns resolver {server} isn't reachable from a "
+                    f"network='public' sandbox: {reason}. The sandbox "
+                    "has no IPv6 route, and on Kubernetes clusters that "
+                    "translate Service IPs when a connection opens, such "
+                    "as Cilium clusters, its egress filter drops a "
+                    "Service IP such as the cluster DNS Service's. Use an "
+                    "IPv4 resolver that isn't a Service IP."
+                )
+        return sandbox_id
 
-        owner_file = None
+    def _start_sandbox(
+        self,
+        config: SandboxConfig,
+        sandbox_id: str,
+        root_dir: str,
+        owner_file: IO[str],
+        cgroup: Optional[SandboxCgroup],
+    ) -> None:
+        """Start a sandbox in its new bundle and register it.
+
+        If the sandbox doesn't come up, this stops the processes it started
+        and deletes runsc's state for them. ``create_sandbox`` deletes the
+        rest.
+
+        Args:
+            config: The sandbox's configuration.
+            sandbox_id: The sandbox's ID, which also names its bundle.
+            root_dir: The sandbox's bundle directory.
+            owner_file: The bundle's owner file, which this backend holds.
+            cgroup: The sandbox's cgroup, or None if it has no limits.
+        """
         try:
-            os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            owner_file = self._own_bundle(config, root_dir)
-
             # The instance id pins the image in the cache while this sandbox
             # lives (its EROFS image is the sandbox's root filesystem).
             self._image_manager.pull_image(
@@ -552,36 +598,26 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
-            shutil.rmtree(root_dir, ignore_errors=True)
-            self._image_manager.release_image(config.image, sandbox_id)
-            if owner_file:
-                owner_file.close()
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        try:
-            self._image_manager.prepare_oci_bundle(
-                root_dir=root_dir,
-                workdir_path=workdir_path,
-                container_cwd=container_cwd,
-                image=config.image,
-                env_dict=config.env,
-                cpu=config.cpu,
-                memory=config.memory,
-                readonly=config.readonly,
-                capabilities=config.capabilities,
-                network=config.network,
-                dns=config.dns,
-                _oci_spec_transform_fn=config._oci_spec_transform_fn,
-                disk=config.disk,
-            )
-        except Exception:
-            shutil.rmtree(root_dir, ignore_errors=True)
-            self._image_manager.release_image(config.image, sandbox_id)
-            owner_file.close()
-            raise
+        self._image_manager.prepare_oci_bundle(
+            root_dir=root_dir,
+            workdir_path=workdir_path,
+            container_cwd=container_cwd,
+            image=config.image,
+            env_dict=config.env,
+            cpu=config.cpu,
+            memory=config.memory,
+            readonly=config.readonly,
+            capabilities=config.capabilities,
+            network=config.network,
+            dns=config.dns,
+            _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            disk=config.disk,
+        )
         egress_allowlist = None
         if config.network == "public":
             egress_allowlist = list(
@@ -594,9 +630,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             try:
                 _write_egress_ruleset(root_dir, egress_allowlist, config.dns)
             except Exception as err:
-                shutil.rmtree(root_dir, ignore_errors=True)
-                self._image_manager.release_image(config.image, sandbox_id)
-                owner_file.close()
                 raise SandboxCreationError(
                     f"Failed to write the egress ruleset for '{root_dir}': {err}"
                 ) from err
@@ -676,11 +709,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
-            # The sandbox never registered, so delete_sandbox will not run
-            # for it: release the image here to keep it evictable.
-            self._image_manager.release_image(config.image, sandbox_id)
-            owner_file.close()
             raise
 
         # The namespaces set_egress_allowlist must find behind netns.pid,
@@ -710,26 +738,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "owner_file": owner_file,
             "status": SandboxStatus.RUNNING,
         }
-        if egress_allowlist is not None:
-            if config.dns:
-                # The filter drops a resolver it can't match, such as a
-                # Service IP that the cluster's network translates when a
-                # connection opens, and the sandbox has no IPv6 route. Either
-                # way every lookup would fail, so fail the create instead.
-                unreachable = self._unreachable_resolver(sandbox_id, config.dns)
-                if unreachable is not None:
-                    self.delete_sandbox(sandbox_id)
-                    server, reason = unreachable
-                    raise SandboxCreationError(
-                        f"dns resolver {server} isn't reachable from a "
-                        f"network='public' sandbox: {reason}. The sandbox "
-                        "has no IPv6 route, and on Kubernetes clusters that "
-                        "translate Service IPs when a connection opens, such "
-                        "as Cilium clusters, its egress filter drops a "
-                        "Service IP such as the cluster DNS Service's. Use an "
-                        "IPv4 resolver that isn't a Service IP."
-                    )
-        return sandbox_id
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""

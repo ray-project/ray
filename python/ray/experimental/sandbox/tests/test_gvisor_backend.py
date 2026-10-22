@@ -1901,20 +1901,30 @@ def test_reclaim_deletes_the_owner_file_last(private_bundles, monkeypatch):
     assert ("busybox:latest", "ray-sandbox-00000000000e") in images.released
 
 
-@pytest.mark.parametrize("failure", ["pull", "owner file"])
+@pytest.mark.parametrize("failure", ["pull", "owner file", "oci bundle"])
 def test_failed_create_leaves_no_bundle(private_bundles, monkeypatch, failure):
     """A create that fails before its sandbox starts deletes its bundle, even
-    one without an owner file for a reclaim to find."""
-    backend = GVisorSandboxBackend(image_manager=_RecordingImageManager())
+    one without an owner file for a reclaim to find, and releases its image."""
+    images = _RecordingImageManager()
+    backend = GVisorSandboxBackend(image_manager=images)
     if failure == "owner file":
 
         def no_space(*args):
             raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
 
         monkeypatch.setattr(backend, "_own_bundle", no_space)
+    elif failure == "oci bundle":
+
+        def bad_spec(**kwargs):
+            raise ValueError("bad OCI spec")
+
+        monkeypatch.setattr(images, "pull_image", lambda *args, **kwargs: "/image")
+        monkeypatch.setattr(images, "get_workdir", lambda image: None, raising=False)
+        monkeypatch.setattr(images, "prepare_oci_bundle", bad_spec, raising=False)
     with pytest.raises(SandboxCreationError):
         backend.create_sandbox(GVisorSandboxConfig(image="busybox:latest"))
     assert os.listdir(gvisor._RAY_SANDBOX_DIR) == []
+    assert [image for image, _ in images.released] == ["busybox:latest"]
 
 
 def test_reclaim_runs_in_the_background(monkeypatch):

@@ -404,8 +404,7 @@ def test_failed_create_reports_its_error_when_release_also_fails(tmp_path, monke
     monkeypatch.setattr("shutil.which", lambda _: "/runsc")
     backend = gvisor.GVisorSandboxBackend(Mock())
 
-    def start(config, sandbox_id, root_dir, cgroup):
-        os.makedirs(root_dir)
+    def start(config, sandbox_id, root_dir, owner_file, cgroup):
         raise SandboxTimeoutError("never reached running")
 
     monkeypatch.setattr(backend, "_start_sandbox", start)
