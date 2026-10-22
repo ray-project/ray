@@ -933,33 +933,39 @@ def _print_log(
 
 
 LOG_CLI_HELP_MSG = """
-Get logs based on filename (cluster) or resource identifiers (actor)
+Get Ray logs by file name, or by the actor, task, worker, or job that wrote them.
+
+`ray logs cluster` lists or prints log files by file name on one node. By
+default, it reads the head node. To read another node, pass `--node-id` or
+`--node-ip`. You can get node IDs and IPs from `ray list nodes`. The `actor`,
+`task`, `worker`, and `job` subcommands find the log file of one specific
+resource for you.
 
 Example:
 
-    Get all the log files available on a node (ray address could be
-    obtained from `ray start --head` or `ray.init()`).
+    [ray logs cluster] List all the log files on the head node.
 
     ```
     ray logs cluster
     ```
 
-    [ray logs cluster] Print the last 500 lines of raylet.out on a head node.
+    [ray logs cluster] Print the last 500 lines of raylet.out on the head node.
 
     ```
     ray logs cluster raylet.out --tail 500
     ```
 
-    Or simply, using `ray logs` as an alias for `ray logs cluster`:
+    `ray logs <GLOB_FILTER>` is shorthand for `ray logs cluster <GLOB_FILTER>`:
 
     ```
     ray logs raylet.out --tail 500
     ```
 
-    Print the last 500 lines of raylet.out on a worker node id A.
+    [ray logs cluster] Print the last 500 lines of raylet.out on the node with
+    ID <NODE_ID> instead of the head node.
 
     ```
-    ray logs raylet.out --tail 500 —-node-id A
+    ray logs raylet.out --tail 500 --node-id <NODE_ID>
     ```
 
     [ray logs actor] Follow the log file with an actor id ABC.
@@ -1029,23 +1035,26 @@ def log_cluster(
     encoding: str,
     encoding_errors: str,
 ):
-    """Get/List logs that matches the GLOB_FILTER in the cluster.
-    By default, it prints a list of log files that match the filter.
-    By default, it prints the head node logs.
-    If there's only 1 match, it will print the log file.
+    """List or print the log files that match GLOB_FILTER on one node.
+
+    By default, this command reads the head node. To read another node, pass
+    `--node-id` or `--node-ip`. If exactly one file on the node matches
+    GLOB_FILTER, the command prints that file. Otherwise, it lists the
+    matching files. GLOB_FILTER defaults to `*`, which lists every log file on
+    the node.
 
     Example:
 
-        Print the last 500 lines of raylet.out on a head node.
+        Print the last 500 lines of raylet.out on the head node.
 
         ```
         ray logs [cluster] raylet.out --tail 500
         ```
 
-        Print the last 500 lines of raylet.out on a worker node id A.
+        Print the last 500 lines of raylet.out on the node with ID <NODE_ID>.
 
         ```
-        ray logs [cluster] raylet.out --tail 500 —-node-id A
+        ray logs [cluster] raylet.out --tail 500 --node-id <NODE_ID>
         ```
 
         Download the gcs_server.txt file to the local machine.
