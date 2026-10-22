@@ -252,8 +252,8 @@ class ActorPoolDrainPolicy(BackpressurePolicy):
         last = self._cap_updated_at.get(op)
         if last is not None and now - last < self._window_s:
             return
-        self._cap_updated_at[op] = now
 
+        adjusted = False
         if stalled_fraction >= self._stall_ratio:
             for pool in pools:
                 ceiling = pool.effective_max_size()
@@ -275,6 +275,7 @@ class ActorPoolDrainPolicy(BackpressurePolicy):
                 new_ceiling = max(pool.min_size(), int(base * self._cap_decay))
                 if new_ceiling < ceiling:
                     pool.set_dynamic_max_size(new_ceiling)
+                    adjusted = True
                     logger.info(
                         # `%s`, not `%d`: an actor pool with no configured
                         # `max_size` reports an unbounded ceiling (`inf`), and
@@ -305,6 +306,7 @@ class ActorPoolDrainPolicy(BackpressurePolicy):
                 pool.set_dynamic_max_size(
                     None if new_ceiling >= pool.max_size() else new_ceiling
                 )
+                adjusted = True
                 logger.info(
                     "Stepped up adaptive max size of %s pool: %s -> %d "
                     "(output read for %.0f%% of the last %ss)",
@@ -314,6 +316,12 @@ class ActorPoolDrainPolicy(BackpressurePolicy):
                     (1 - stalled_fraction) * 100,
                     self._window_s,
                 )
+
+        if adjusted:
+            # Only an actual step consumes the window. A sample in the
+            # hysteresis band, or a pool already at its floor, must not delay
+            # the next real adjustment by a full window.
+            self._cap_updated_at[op] = now
 
     def _consumer_is_starving(self, op: "PhysicalOperator") -> bool:
         """Whether an external consumer is blocked waiting for output.
