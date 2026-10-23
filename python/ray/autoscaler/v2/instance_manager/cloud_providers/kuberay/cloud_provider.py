@@ -21,6 +21,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KubernetesHttpApiClient,
     _worker_group_index,
     _worker_group_max_replicas,
+    _worker_group_min_replicas,
     _worker_group_num_of_hosts,
     _worker_group_replicas,
     finalizer_patch,
@@ -399,6 +400,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_min_replicas = _worker_group_min_replicas(raycluster, group_index)
             group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
             target_replicas = num_workers // group_num_of_hosts
@@ -415,6 +417,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                 rejected_replicas = original_target_replicas - target_replicas
                 if rejected_replicas > 0:
                     rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
+            # Raise the replica count to minReplicas, matching KubeRay's clamp.
+            if group_min_replicas > target_replicas:
+                logger.info(
+                    "Autoscaler attempted to request "
+                    + "fewer than minReplicas pods of type {}.".format(node_type)
+                )
+                target_replicas = group_min_replicas
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.
