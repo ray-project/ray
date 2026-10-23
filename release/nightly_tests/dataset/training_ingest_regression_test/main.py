@@ -556,15 +556,13 @@ def main() -> None:
     try:
         benchmark.run_fn(f"{name}.pull", _run_all, pull_args)
         benchmark.run_fn(f"{name}.push", _run_all, push_args)
-        _compare_pull_push(benchmark.result, name, args)
+        _compare_pull_push(benchmark.result, name)
     finally:
         benchmark.write_result()
     _check_pull_push(benchmark.result[f"{name}.comparison"], args)
 
 
-def _compare_pull_push(
-    result: Dict[str, Dict[str, float]], name: str, args: argparse.Namespace
-) -> None:
+def _compare_pull_push(result: Dict[str, Dict[str, float]], name: str) -> None:
     """Add a ``<name>.comparison`` case with push/pull ratios."""
     pull, push = result[f"{name}.pull"], result[f"{name}.push"]
     throughput_key = "steady_throughput_rows_s_mean"

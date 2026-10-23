@@ -239,17 +239,15 @@ class PushBasedDataIterator(DataIterator):
                 ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
             },
         ).remote(split_dataset, n)
-        return [PushBasedDataIterator(coord_actor, i, n) for i in range(n)]
+        return [PushBasedDataIterator(coord_actor, i) for i in range(n)]
 
     def __init__(
         self,
         coord_actor: ray.actor.ActorHandle,
         output_split_idx: int,
-        world_size: int,
     ):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
-        self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
         # Epoch this split is currently consuming. Written by the consuming
         # thread; a stale generator uses it to detect that its epoch ended.
@@ -425,9 +423,6 @@ class PushBasedDataIterator(DataIterator):
         return cast(
             DataContext, ray.get(self._coord_actor.get_dataset_context.remote())
         )
-
-    def world_size(self) -> int:
-        return self._world_size
 
     def _get_dataset_tag(self) -> Dict[str, Optional[str]]:
         return cast(
