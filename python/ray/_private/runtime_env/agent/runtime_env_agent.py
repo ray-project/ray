@@ -370,7 +370,7 @@ class ReferenceTable:
             default_logger.info(
                 "Runtime env %s lost all references during creation; "
                 "releasing dynamic URIs %s.",
-                serialized_env,
+                redact_serialized_runtime_env(serialized_env),
                 unused_uris,
             )
             self._unused_uris_callback(unused_uris)

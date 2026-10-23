@@ -139,6 +139,12 @@ installation environment. Runtime environment setup timeout settings apply to
 image inspection and dependency installation. Failed or timed-out installation
 attempts aren't published to the cache.
 
+Ray sets the variables in `env_vars` during the installation too, so they can
+configure pip, for example with `PIP_INDEX_URL`, or a package build. In the worker
+container, Ray sets `VIRTUAL_ENV` to the cached environment and puts its `bin`
+directory first on `PATH`, ahead of the `PATH` from `env_vars` or, if `env_vars`
+doesn't set one, from the image.
+
 Ray keys the cache on the immutable image that the tag resolves to on each node
 when the environment is created, and workers run that exact image so the cached
 environment always matches it. Pull an updated tag onto the nodes and recreate the
