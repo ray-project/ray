@@ -3526,7 +3526,7 @@ def test_output_block_stats_retention_is_bounded():
     baseline = live_block_stats()
 
     raw = [make_block_stats(i) for i in range(num_blocks)]
-    expected = OperatorStatsSummary.from_block_metadata("Map", raw, False)
+    expected = OperatorStatsSummary.from_block_metadata("Map", raw + [raw[-1]], False)
 
     # Exercise the exact call pattern the operators' dequeue paths use:
     # extend() per output bundle (Map/HashShuffle/ShuffleReduce/...) and
@@ -3549,7 +3549,7 @@ def test_output_block_stats_retention_is_bounded():
     # Reporting is unchanged: the online summary matches the list-based one.
     actual = OperatorStatsSummary.from_block_metadata("Map", collector, False)
     assert str(actual) == str(expected)
-    assert actual.output_num_rows.sum == num_blocks * 10
+    assert actual.output_num_rows.sum == (num_blocks + 1) * 10
     # The DatasetStats -> to_summary() path (what ds.stats() uses) accepts it.
     summary = DatasetStats(metadata={"Map": collector}, parent=None).to_summary()
     assert str(summary.operators_stats[0]) == str(expected)
