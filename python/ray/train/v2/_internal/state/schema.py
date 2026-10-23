@@ -530,3 +530,75 @@ class TrainRunsResponse(BaseModel):
     train_runs: List[DecoratedTrainRun] = Field(
         description="A list of Train runs with detailed metadata."
     )
+
+
+class NcclHangDetectorStatus(str, Enum):
+    """The NCCL hang detector's status in a ``TrainNcclHangEvent``."""
+
+    # Monitoring the attempt; the hang state is given by the communicators.
+    MONITORING = "MONITORING"
+    # Stopped monitoring the attempt, as its worker group shut down while a
+    # communicator was hung.
+    STOPPED = "STOPPED"
+    # Disabled for the rest of the run; no further events follow.
+    DISABLED = "DISABLED"
+
+
+class NcclHangDisabledReason(str, Enum):
+    """Why the NCCL hang detector disabled itself for the rest of the run."""
+
+    # `ncclras` can't be used, e.g. the binary is missing.
+    RAS_UNAVAILABLE = "RAS_UNAVAILABLE"
+    # The detector hit an unexpected error.
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class NcclCommunicatorState(str, Enum):
+    """How hung the NCCL hang detector considers a communicator."""
+
+    # Stalled past the suspicion threshold.
+    SUSPECTED = "SUSPECTED"
+    # Stalled for the confirm duration; it stays confirmed until it recovers.
+    CONFIRMED = "CONFIRMED"
+
+
+class NcclCommunicator(BaseModel):
+    """A hung communicator in a ``TrainNcclHangEvent``."""
+
+    communicator_id: str = Field(description="The NCCL RAS communicator hash.")
+    state: NcclCommunicatorState = Field(description="The communicator's state.")
+    stalled_since_ms: int = Field(
+        description="When the stall began (the poll before the first frozen "
+        "poll), in ms since the UNIX epoch."
+    )
+
+
+class TrainNcclHangEvent(BaseModel):
+    """A snapshot of the NCCL hang detector, exported as an
+    ``EXPORT_TRAIN_NCCL_HANG`` event."""
+
+    run_id: str = Field(description="The Train run id.")
+    attempt_id: str = Field(description="The Train run attempt id.")
+    poll_index: int = Field(
+        description="Orders the attempt's events, strictly increasing."
+    )
+    timestamp_ms: int = Field(
+        description="When the poll's `ncclras` query returned (the detector "
+        "stopped, for STOPPED and DISABLED), in ms since the UNIX epoch."
+    )
+    detector_status: NcclHangDetectorStatus = Field(
+        description="The detector's status."
+    )
+    disabled_reason: Optional[NcclHangDisabledReason] = Field(
+        None, description="Why the detector was disabled, for DISABLED."
+    )
+    ras_text_report: Optional[str] = Field(
+        None, description="The `ncclras -f text` report fetched at this poll."
+    )
+    diagnostics_dir: Optional[str] = Field(
+        None, description="Where the diagnostics were uploaded, on CONFIRMED."
+    )
+    communicators: List[NcclCommunicator] = Field(
+        default_factory=list,
+        description="The hung communicators; empty on the poll where the last one recovers.",
+    )

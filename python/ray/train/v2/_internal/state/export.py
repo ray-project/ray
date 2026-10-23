@@ -2,6 +2,9 @@ import logging
 
 from google.protobuf.struct_pb2 import Struct
 
+from ray.core.generated.export_train_nccl_hang_pb2 import (
+    ExportTrainNcclHangEventData as ProtoTrainNcclHangEvent,
+)
 from ray.core.generated.export_train_state_pb2 import (
     ExportTrainRunAttemptEventData as ProtoTrainRunAttempt,
     ExportTrainRunEventData as ProtoTrainRun,
@@ -16,11 +19,15 @@ from ray.train.v2._internal.state.schema import (
     BackendConfig,
     DataConfig,
     ExecutionOptions,
+    NcclCommunicatorState,
+    NcclHangDetectorStatus,
+    NcclHangDisabledReason,
     RunAttemptStatus,
     RunConfig,
     RunSettings,
     RunStatus,
     ScalingConfig,
+    TrainNcclHangEvent,
     TrainRun,
     TrainRunAttempt,
     TrainWorker,
@@ -31,6 +38,13 @@ from ray.train.v2._internal.util import TrainingFramework
 # exported json) so downstream consumers can distinguish schema versions.
 TRAIN_SCHEMA_VERSION = 4
 RAY_TRAIN_VERSION = 2
+
+# Schema version of the NCCL hang events, versioned apart from the Train run
+# and attempt events as they are exported to their own file.
+TRAIN_NCCL_HANG_SCHEMA_VERSION = 1
+# The `ncclras` text report grows with the number of communicators, so the
+# exported copy is capped. The head, which has the summary, is kept.
+_MAX_RAS_REPORT_BYTES = 32 * 1024
 
 # Status mapping dictionaries
 _ACTOR_STATUS_MAP = {
@@ -311,3 +325,80 @@ def train_run_to_proto(run: TrainRun) -> ProtoTrainRun:
     )
 
     return proto_train_run
+
+
+def _truncate_ras_report(report: str, max_bytes: int = _MAX_RAS_REPORT_BYTES) -> str:
+    """Cap a report at ``max_bytes`` of UTF-8, keeping its head.
+
+    Args:
+        report: The ``ncclras -f text`` report.
+        max_bytes: The most bytes the returned report may have, marker included.
+
+    Returns:
+        The report, or its head followed by ``"\n... [truncated N bytes]"``.
+    """
+    encoded = report.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return report
+    # The marker is at most this long, as fewer bytes are dropped than there are.
+    marker_bytes = len(f"\n... [truncated {len(encoded)} bytes]".encode("utf-8"))
+    head = encoded[: max(0, max_bytes - marker_bytes)].decode("utf-8", errors="ignore")
+    dropped = len(encoded) - len(head.encode("utf-8"))
+    return f"{head}\n... [truncated {dropped} bytes]"
+
+
+_NCCL_HANG_DETECTOR_STATUS_MAP = {
+    NcclHangDetectorStatus.MONITORING: ProtoTrainNcclHangEvent.DetectorStatus.MONITORING,
+    NcclHangDetectorStatus.STOPPED: ProtoTrainNcclHangEvent.DetectorStatus.STOPPED,
+    NcclHangDetectorStatus.DISABLED: ProtoTrainNcclHangEvent.DetectorStatus.DISABLED,
+}
+
+_NCCL_HANG_DISABLED_REASON_MAP = {
+    NcclHangDisabledReason.RAS_UNAVAILABLE: (
+        ProtoTrainNcclHangEvent.DisabledReason.RAS_UNAVAILABLE
+    ),
+    NcclHangDisabledReason.INTERNAL_ERROR: (
+        ProtoTrainNcclHangEvent.DisabledReason.INTERNAL_ERROR
+    ),
+}
+
+_NCCL_COMMUNICATOR_STATE_MAP = {
+    NcclCommunicatorState.SUSPECTED: ProtoTrainNcclHangEvent.Communicator.SUSPECTED,
+    NcclCommunicatorState.CONFIRMED: ProtoTrainNcclHangEvent.Communicator.CONFIRMED,
+}
+
+
+def train_nccl_hang_event_to_proto(
+    event: TrainNcclHangEvent,
+) -> ProtoTrainNcclHangEvent:
+    """Convert a TrainNcclHangEvent to protobuf format.
+
+    Unset optional fields stay unset, so they are left out of the exported JSON.
+    """
+    return ProtoTrainNcclHangEvent(
+        schema_version=TRAIN_NCCL_HANG_SCHEMA_VERSION,
+        run_id=event.run_id,
+        attempt_id=event.attempt_id,
+        poll_index=event.poll_index,
+        timestamp_ms=event.timestamp_ms,
+        detector_status=_NCCL_HANG_DETECTOR_STATUS_MAP[event.detector_status],
+        disabled_reason=(
+            _NCCL_HANG_DISABLED_REASON_MAP[event.disabled_reason]
+            if event.disabled_reason is not None
+            else None
+        ),
+        ras_text_report=(
+            _truncate_ras_report(event.ras_text_report)
+            if event.ras_text_report is not None
+            else None
+        ),
+        diagnostics_dir=event.diagnostics_dir,
+        communicators=[
+            ProtoTrainNcclHangEvent.Communicator(
+                communicator_id=comm.communicator_id,
+                state=_NCCL_COMMUNICATOR_STATE_MAP[comm.state],
+                stalled_since_ms=comm.stalled_since_ms,
+            )
+            for comm in event.communicators
+        ],
+    )

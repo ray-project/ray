@@ -4,11 +4,25 @@ import os
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray.train.v2._internal.callbacks.nccl_ras import NcclHangEventExporter
+from ray.train.v2._internal.state.export import (
+    _MAX_RAS_REPORT_BYTES,
+    _truncate_ras_report,
+)
 from ray.train.v2._internal.state.schema import (
+    NcclCommunicator,
+    NcclCommunicatorState,
+    NcclHangDetectorStatus,
+    NcclHangDisabledReason,
     RunAttemptStatus,
     RunStatus,
+    TrainNcclHangEvent,
 )
-from ray.train.v2._internal.state.state_actor import get_or_create_state_actor
+from ray.train.v2._internal.state.state_actor import (
+    get_or_create_state_actor,
+    get_state_actor,
+)
 from ray.train.v2.tests.util import (
     create_mock_train_run,
     create_mock_train_run_attempt,
@@ -21,17 +35,21 @@ def shutdown_only():
     ray.shutdown()
 
 
-def _get_export_file_path() -> str:
+def _get_export_file_path(log_type_name: str = "EXPORT_TRAIN_STATE") -> str:
     return os.path.join(
         ray._private.worker._global_node.get_session_dir_path(),
         "logs",
         "export_events",
-        "event_EXPORT_TRAIN_STATE.log",
+        f"event_{log_type_name}.log",
     )
 
 
-def _get_exported_data():
-    exported_file = _get_export_file_path()
+def _get_nccl_hang_export_file_path() -> str:
+    return _get_export_file_path("EXPORT_TRAIN_NCCL_HANG")
+
+
+def _get_exported_data(exported_file: str = None):
+    exported_file = exported_file or _get_export_file_path()
     assert os.path.isfile(exported_file)
 
     with open(exported_file, "r") as f:
@@ -47,6 +65,18 @@ def enable_export_api_config(shutdown_only):
         num_cpus=4,
         runtime_env={
             "env_vars": {"RAY_enable_export_api_write_config": "EXPORT_TRAIN_RUN"}
+        },
+    )
+    yield
+
+
+@pytest.fixture
+def enable_nccl_hang_export_only(shutdown_only):
+    """Enable export API for the EXPORT_TRAIN_NCCL_HANG resource type only."""
+    ray.init(
+        num_cpus=4,
+        runtime_env={
+            "env_vars": {"RAY_enable_export_api_write_config": "EXPORT_TRAIN_NCCL_HANG"}
         },
     )
     yield
@@ -618,6 +648,258 @@ def test_export_optional_fields(enable_export_api_write):
     assert attempt_data["source_type"] == "EXPORT_TRAIN_RUN_ATTEMPT"
     assert attempt_data["event_data"]["status_detail"] == "Attempt details"
     assert "end_time_ns" in attempt_data["event_data"]
+
+
+def _create_nccl_hang_event(**overrides) -> TrainNcclHangEvent:
+    fields = dict(
+        run_id="run_id",
+        attempt_id="attempt_id",
+        poll_index=44,
+        timestamp_ms=1760000660123,
+        detector_status=NcclHangDetectorStatus.MONITORING,
+        ras_text_report="RAS report",
+        diagnostics_dir="s3://bucket/run/hang_detector",
+        communicators=[
+            NcclCommunicator(
+                communicator_id="0x11aa22bb",
+                state=NcclCommunicatorState.SUSPECTED,
+                stalled_since_ms=1760000600123,
+            ),
+            NcclCommunicator(
+                communicator_id="0x8a3f1c2b",
+                state=NcclCommunicatorState.CONFIRMED,
+                stalled_since_ms=1760000060123,
+            ),
+        ],
+    )
+    fields.update(overrides)
+    return TrainNcclHangEvent(**fields)
+
+
+def test_export_nccl_hang_event(enable_export_api_write):
+    """Every field of a hang event is exported to the hang log file, and none
+    to the train state file."""
+    state_actor = get_or_create_state_actor()
+    lifecycle = dict(ras_text_report=None, diagnostics_dir=None, communicators=[])
+    ray.get(
+        [
+            state_actor.export_train_nccl_hang_event.remote(_create_nccl_hang_event()),
+            state_actor.export_train_nccl_hang_event.remote(
+                _create_nccl_hang_event(
+                    poll_index=45,
+                    detector_status=NcclHangDetectorStatus.STOPPED,
+                    **lifecycle,
+                )
+            ),
+            state_actor.export_train_nccl_hang_event.remote(
+                _create_nccl_hang_event(
+                    poll_index=46,
+                    detector_status=NcclHangDetectorStatus.DISABLED,
+                    disabled_reason=NcclHangDisabledReason.INTERNAL_ERROR,
+                    **lifecycle,
+                )
+            ),
+        ]
+    )
+
+    # The JSON line is the contract with readers such as Anyscale: enums are
+    # their names, int64 fields are strings, unset optional fields are left
+    # out (so readers can tell them from "") and empty repeated fields are kept.
+    events = _get_exported_data(_get_nccl_hang_export_file_path())
+    assert [e["source_type"] for e in events] == ["EXPORT_TRAIN_NCCL_HANG"] * 3
+    assert all(isinstance(e["timestamp"], int) for e in events)
+    active, stopped, disabled = [e["event_data"] for e in events]
+    common = {
+        "schema_version": 1,
+        "run_id": "run_id",
+        "attempt_id": "attempt_id",
+        "timestamp_ms": "1760000660123",
+    }
+    assert active == {
+        **common,
+        "poll_index": "44",
+        "detector_status": "MONITORING",
+        "ras_text_report": "RAS report",
+        "diagnostics_dir": "s3://bucket/run/hang_detector",
+        "communicators": [
+            {
+                "communicator_id": "0x11aa22bb",
+                "state": "SUSPECTED",
+                "stalled_since_ms": "1760000600123",
+            },
+            {
+                "communicator_id": "0x8a3f1c2b",
+                "state": "CONFIRMED",
+                "stalled_since_ms": "1760000060123",
+            },
+        ],
+    }
+    assert stopped == {
+        **common,
+        "poll_index": "45",
+        "detector_status": "STOPPED",
+        "communicators": [],
+    }
+    assert disabled == {
+        **common,
+        "poll_index": "46",
+        "detector_status": "DISABLED",
+        "disabled_reason": "INTERNAL_ERROR",
+        "communicators": [],
+    }
+
+    # The hang events never reach the train state file (which exists, empty,
+    # as every export type is enabled).
+    assert _get_exported_data() == []
+
+
+def test_export_nccl_hang_event_disabled(ray_start_4_cpus):
+    state_actor = get_or_create_state_actor()
+    ray.get(state_actor.export_train_nccl_hang_event.remote(_create_nccl_hang_event()))
+    assert not os.path.exists(_get_nccl_hang_export_file_path())
+
+
+def test_export_nccl_hang_event_truncates_the_report(enable_export_api_write):
+    report = "summary\n" + "x" * (2 * _MAX_RAS_REPORT_BYTES)
+    state_actor = get_or_create_state_actor()
+    ray.get(
+        state_actor.export_train_nccl_hang_event.remote(
+            _create_nccl_hang_event(ras_text_report=report)
+        )
+    )
+
+    [event] = _get_exported_data(_get_nccl_hang_export_file_path())
+    exported = event["event_data"]["ras_text_report"]
+    assert exported.startswith("summary\n")
+    assert len(exported.encode("utf-8")) <= _MAX_RAS_REPORT_BYTES
+    kept = len(exported) - len(exported[exported.rindex("\n... [truncated ") :])
+    assert exported.endswith(f"\n... [truncated {len(report) - kept} bytes]")
+
+
+@pytest.mark.parametrize(
+    "report,max_bytes,expected",
+    [
+        ("short", 100, "short"),
+        ("x" * 100, 100, "x" * 100),
+        ("x" * 101, 30, "x" * 4 + "\n... [truncated 97 bytes]"),
+        # A multi-byte character cut at the cap is dropped whole.
+        ("é" * 20, 30, "é" * 2 + "\n... [truncated 36 bytes]"),
+    ],
+)
+def test_truncate_ras_report(report, max_bytes, expected):
+    truncated = _truncate_ras_report(report, max_bytes)
+    assert truncated == expected
+    assert len(truncated.encode("utf-8")) <= max(max_bytes, len(report.encode()))
+
+
+def test_export_only_nccl_hang_enabled(enable_nccl_hang_export_only):
+    """With only the hang type enabled, hang events are exported but train
+    runs and attempts are not."""
+    state_actor = get_or_create_state_actor()
+    ray.get(
+        [
+            state_actor.create_or_update_train_run.remote(create_mock_train_run()),
+            state_actor.create_or_update_train_run_attempt.remote(
+                create_mock_train_run_attempt()
+            ),
+            state_actor.export_train_nccl_hang_event.remote(_create_nccl_hang_event()),
+        ]
+    )
+    assert len(_get_exported_data(_get_nccl_hang_export_file_path())) == 1
+    assert not os.path.exists(_get_export_file_path())
+
+
+def test_export_only_train_run_enabled(enable_export_api_config):
+    """With only the train run type enabled, train runs are exported but hang
+    events are not."""
+    state_actor = get_or_create_state_actor()
+    ray.get(
+        [
+            state_actor.create_or_update_train_run.remote(create_mock_train_run()),
+            state_actor.export_train_nccl_hang_event.remote(_create_nccl_hang_event()),
+        ]
+    )
+    assert [d["source_type"] for d in _get_exported_data()] == ["EXPORT_TRAIN_RUN"]
+    assert not os.path.exists(_get_nccl_hang_export_file_path())
+
+
+def test_export_nccl_hang_event_helper(enable_export_api_write):
+    """The exporter the detector calls never creates the state actor and never
+    raises, and forwards the event once the actor exists."""
+    exporter = NcclHangEventExporter()
+    exporter.export(_create_nccl_hang_event())  # no actor: dropped
+    assert get_state_actor() is None
+
+    get_or_create_state_actor()
+    exporter.export(_create_nccl_hang_event())
+    wait_for_condition(lambda: os.path.exists(_get_nccl_hang_export_file_path()))
+    wait_for_condition(
+        lambda: len(_get_exported_data(_get_nccl_hang_export_file_path())) == 1
+    )
+
+
+def test_export_nccl_hang_event_helper_never_raises(monkeypatch):
+    from ray.train.v2._internal.callbacks import nccl_ras
+
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: True)
+
+    def boom():
+        raise RuntimeError("GCS unavailable")
+
+    monkeypatch.setattr(nccl_ras, "get_state_actor", boom)
+    NcclHangEventExporter().export(_create_nccl_hang_event())
+
+
+class _FakeMethod:
+    def __init__(self):
+        self.calls = []
+
+    def remote(self, *args):
+        self.calls.append(args)
+
+
+class _FakeStateActor:
+    def __init__(self):
+        self.export_train_nccl_hang_event = _FakeMethod()
+
+
+def test_export_nccl_hang_event_helper_without_ray(monkeypatch):
+    """The exporter never starts Ray to look up the actor."""
+    from ray.train.v2._internal.callbacks import nccl_ras
+
+    def get_state_actor():
+        raise AssertionError("Looked up the actor without Ray running.")
+
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: False)
+    monkeypatch.setattr(nccl_ras, "get_state_actor", get_state_actor)
+    NcclHangEventExporter().export(_create_nccl_hang_event())
+
+
+def test_export_nccl_hang_event_helper_looks_up_the_actor_once(monkeypatch):
+    """The actor is looked up on the first event only, and every event is sent
+    without waiting on it."""
+    from ray.train.v2._internal.callbacks import nccl_ras
+
+    actor = _FakeStateActor()
+    lookups = []
+
+    def get_state_actor():
+        lookups.append(1)
+        return actor
+
+    def no_blocking_get(*args, **kwargs):
+        raise AssertionError("The exporter must never wait on the actor.")
+
+    monkeypatch.setattr(nccl_ras, "get_state_actor", get_state_actor)
+    monkeypatch.setattr(nccl_ras.ray, "is_initialized", lambda: True)
+    monkeypatch.setattr(nccl_ras.ray, "get", no_blocking_get)
+
+    exporter = NcclHangEventExporter()
+    for _ in range(3):
+        exporter.export(_create_nccl_hang_event())
+
+    assert len(lookups) == 1
+    assert len(actor.export_train_nccl_hang_event.calls) == 3
 
 
 if __name__ == "__main__":

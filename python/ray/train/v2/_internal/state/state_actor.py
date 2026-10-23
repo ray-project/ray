@@ -10,6 +10,7 @@ import ray
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import (
     EventLogType,
+    ExportEventLoggerAdapter,
     check_export_api_enabled,
     get_export_event_logger,
 )
@@ -23,6 +24,7 @@ from ray.train.v2._internal.constants import (
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
 )
 from ray.train.v2._internal.state.schema import (
+    TrainNcclHangEvent,
     TrainRun,
     TrainRunAttempt,
 )
@@ -58,6 +60,7 @@ class TrainStateActor:
             self._is_train_run_export_api_enabled,
             self._is_train_run_attempt_export_api_enabled,
         ) = self._init_export_logger()
+        self._nccl_hang_export_logger = self._init_nccl_hang_export_logger()
 
         # TODO: consider row level locking if loop takes too long.
         self._runs_lock = threading.RLock()
@@ -174,7 +177,9 @@ class TrainStateActor:
     # ============================
 
     def is_export_api_enabled(self) -> bool:
-        return self._export_logger is not None
+        return (
+            self._export_logger is not None or self._nccl_hang_export_logger is not None
+        )
 
     def _init_export_logger(self) -> tuple[Optional[logging.Logger], bool, bool]:
         """Initialize the export logger and check if the export API is enabled.
@@ -205,9 +210,9 @@ class TrainStateActor:
         log_directory = os.path.join(
             ray._private.worker._global_node.get_session_dir_path(), "logs"
         )
-        logger = None
+        export_logger = None
         try:
-            logger = get_export_event_logger(
+            export_logger = get_export_event_logger(
                 EventLogType.TRAIN_STATE,
                 log_directory,
             )
@@ -217,11 +222,11 @@ class TrainStateActor:
                 "events will be written."
             )
 
-        if logger is None:
+        if export_logger is None:
             return None, False, False
 
         return (
-            logger,
+            export_logger,
             is_train_run_export_api_enabled,
             is_train_run_attempt_export_api_enabled,
         )
@@ -243,6 +248,52 @@ class TrainStateActor:
 
         run_attempt_proto = train_run_attempt_to_proto(run_attempt)
         self._export_logger.send_event(run_attempt_proto)
+
+    def _init_nccl_hang_export_logger(self) -> Optional[ExportEventLoggerAdapter]:
+        """Initialize the NCCL hang detector's export logger.
+
+        The NCCL hang events are written to their own file, not the
+        ``TRAIN_STATE`` one, so consumers of the train run and attempt events
+        never see them.
+
+        Returns:
+            The export logger, or None if its export API is not enabled or the
+            logger could not be created.
+        """
+        from ray.core.generated.export_event_pb2 import ExportEvent
+
+        if not check_export_api_enabled(ExportEvent.SourceType.EXPORT_TRAIN_NCCL_HANG):
+            return None
+
+        log_directory = os.path.join(
+            ray._private.worker._global_node.get_session_dir_path(), "logs"
+        )
+        try:
+            return get_export_event_logger(EventLogType.TRAIN_NCCL_HANG, log_directory)
+        except Exception:
+            logger.exception(
+                "Unable to initialize the NCCL hang export event logger, so no "
+                "NCCL hang export events will be written."
+            )
+            return None
+
+    def export_train_nccl_hang_event(self, event: TrainNcclHangEvent) -> None:
+        """Export a NCCL hang detector event, if its export is enabled.
+
+        The event is not kept in the actor: its history lives only in the
+        export log.
+
+        Args:
+            event: The event to export.
+        """
+        if self._nccl_hang_export_logger is None:
+            return
+
+        from ray.train.v2._internal.state.export import (
+            train_nccl_hang_event_to_proto,
+        )
+
+        self._nccl_hang_export_logger.send_event(train_nccl_hang_event_to_proto(event))
 
 
 TRAIN_STATE_ACTOR_NAME = "train_v2_state_actor"

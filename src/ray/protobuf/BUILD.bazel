@@ -267,6 +267,7 @@ proto_library(
         ":export_node_event_proto",
         ":export_submission_job_event_proto",
         ":export_task_event_proto",
+        ":export_train_nccl_hang_proto",
         ":export_train_state_proto",
     ],
 )
@@ -357,6 +358,18 @@ proto_library(
 cc_proto_library(
     name = "export_train_state_cc_proto",
     deps = [":export_train_state_proto"],
+)
+
+proto_library(
+    name = "export_train_nccl_hang_proto",
+    srcs = ["export_train_nccl_hang.proto"],
+    visibility = ["//visibility:private"],
+)
+
+cc_proto_library(
+    name = "export_train_nccl_hang_cc_proto",
+    visibility = ["//visibility:private"],
+    deps = [":export_train_nccl_hang_proto"],
 )
 
 proto_library(

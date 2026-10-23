@@ -7,6 +7,8 @@ behavior: query RAS on a worker -> parse -> classify per communicator -> capture
 diagnostics (per-rank stack traces and PyTorch Flight Recorder dumps plus
 per-node `nvidia-smi` snapshots) -> raise :class:`NCCLHangError`.
 """
+import copy
+import json
 import os
 import shutil
 from pathlib import Path
@@ -18,8 +20,10 @@ import torch.distributed as dist
 
 import ray
 import ray.train
+from ray._common.test_utils import wait_for_condition
 from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig, TorchTrainer, get_device
+from ray.train.v2._internal.state.state_actor import get_state_actor
 from ray.train.v2.api.exceptions import NCCLHangError, WorkerGroupError
 
 if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
@@ -367,6 +371,71 @@ def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus, tmp_path):
 
     if isinstance(err, NCCLHangError):
         assert_hang_diagnostics(err, tmp_path, num_workers=4)
+
+
+@pytest.fixture
+def ray_start_with_hang_export(nccl_ras_env, monkeypatch):
+    # Like the train run and attempt events, the hang events go through the
+    # Train state actor, which only exists when state tracking is enabled. The
+    # trainer reads this on the driver.
+    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
+    runtime_env = copy.deepcopy(nccl_ras_env)
+    runtime_env.setdefault("env_vars", {})[
+        "RAY_enable_export_api_write_config"
+    ] = "EXPORT_TRAIN_NCCL_HANG"
+    ray.init(num_cpus=4, num_gpus=2, runtime_env=runtime_env)
+    yield
+    ray.shutdown()
+
+
+def _read_nccl_hang_events():
+    path = os.path.join(
+        ray._private.worker._global_node.get_session_dir_path(),
+        "logs",
+        "export_events",
+        "event_EXPORT_TRAIN_NCCL_HANG.log",
+    )
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        return [json.loads(line)["event_data"] for line in f]
+
+
+def test_hang_exports_events(ray_start_with_hang_export, tmp_path):
+    """An induced hang is exported as a suspicion then a confirmation (both
+    with NCCL's report, the latter with the diagnostics directory), then
+    STOPPED, still listing the hung communicator, as the failed worker group
+    shuts down."""
+    err = run_train_fn(straggler_train_fn, num_workers=2, storage_path=tmp_path)
+    _assert_outcome(err, HANG)
+
+    # Exporting is fire-and-forget, so the last event may still be in flight.
+    wait_for_condition(
+        lambda: "STOPPED" in [e["detector_status"] for e in _read_nccl_hang_events()]
+    )
+    events = _read_nccl_hang_events()
+    assert [
+        (e["detector_status"], [c["state"] for c in e["communicators"]]) for e in events
+    ] == [
+        ("MONITORING", ["SUSPECTED"]),
+        ("MONITORING", ["CONFIRMED"]),
+        ("STOPPED", ["CONFIRMED"]),
+    ]
+    poll_indices = [int(e["poll_index"]) for e in events]
+    assert poll_indices == sorted(set(poll_indices))
+
+    [run] = ray.get(get_state_actor().get_train_runs.remote()).values()
+    assert {e["run_id"] for e in events} == {run.id}
+    assert len({e["attempt_id"] for e in events}) == 1
+
+    suspected, confirmed, stopped = events
+    assert suspected["ras_text_report"]
+    assert confirmed["ras_text_report"]
+    assert confirmed["diagnostics_dir"].endswith("hang_detector")
+    assert (
+        confirmed["communicators"][0]["stalled_since_ms"]
+        == suspected["communicators"][0]["stalled_since_ms"]
+    )
 
 
 if __name__ == "__main__":
