@@ -497,11 +497,6 @@ class PushSplitCoordinator:
                 try:
                     if self._teardown_error is not None:
                         raise self._teardown_error
-                    if len(self._consumers) != self._n:
-                        raise RuntimeError(
-                            f"Expected {self._n} registered consumers, got "
-                            f"{len(self._consumers)}."
-                        )
                     ds = self._base_dataset
                     self._current_executor = ds._create_executor()
                     self._output_iterator = ds._build_bundle_iterator(
