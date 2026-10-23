@@ -186,6 +186,10 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
       node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
+    // The raylet gates its graceful shutdown on this reply and the RPC has no
+    // client-side deadline, so an already-removed node (health check beat the
+    // raylet to it, or a stale unregister) must still be answered.
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     return;
   }
 
