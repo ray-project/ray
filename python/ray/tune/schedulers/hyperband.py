@@ -114,7 +114,7 @@ class HyperBandScheduler(FIFOScheduler):
         # bracket max trials
         self._get_n0 = lambda s: int(np.ceil(self._s_max_1 / (s + 1) * self._eta**s))
         # bracket initial iterations
-        self._get_r0 = lambda s: int((max_t * self._eta ** (-s)))
+        self._get_r0 = lambda s: int(max_t / self._eta**s)
         self._hyperbands = [[]]  # list of hyperband iterations
         self._trial_info = {}  # Stores Trial -> Bracket, Band Iteration
 
@@ -518,14 +518,14 @@ class _Bracket:
 
         # Likewise, we increase the number of iterations until we process the bracket
         # again.
-        # Remember r0 = max_t * self._eta ** (-s)
+        # Remember r0 = max_t / eta**s, so rung i is max_t / eta**(s - i).
         # Let max_t=16, eta=2, s=1. Then r0=8, and we calculate r1=16.
         # Let max_t=16, eta=2, s=2. Then r0=4, and we calculate r1=8, r2=16.
 
         # Let max_t=81, eta=3, s=1. Then r0=27, and we calculate r1=81.
         # Let max_t=81, eta=3, s=2. Then r0=9, and we calculate r1=27, r2=81.
-        self._r *= self._eta
-        self._r = int(min(self._r, self._max_t_attr))
+        # Let max_t=50, eta=3, s=2. Then r0=5, and we calculate r1=16, r2=50.
+        self._r = int(self._max_t_attr / self._eta**self._halves)
         self._cumul_r = self._r
         sorted_trials = sorted(
             self._live_trials, key=lambda t: metric_op * self._live_trials[t][metric]
