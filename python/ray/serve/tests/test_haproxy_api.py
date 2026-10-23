@@ -1096,6 +1096,7 @@ def test_ingress_request_router_forward_body_gate_renders(
             "http-request del-header serve-multiplexed-model-id "
             "if has_ingress_request_router_app"
         ) in cfg
+        assert "x-serve-router-original-method" not in lua
         assert "extract_json_string" not in lua
 
 

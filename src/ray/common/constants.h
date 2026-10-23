@@ -44,6 +44,11 @@ constexpr char kObjectTablePrefix[] = "ObjectTable";
 constexpr char kClusterIdKey[] = "ray_cluster_id";
 constexpr char kAuthTokenKey[] = "authorization";
 constexpr char kBearerPrefix[] = "Bearer ";
+// Python matches this text to detect the error; keep in sync with
+// AUTH_MODE_MISMATCH_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py.
+constexpr char kAuthModeMismatchErrorMessage[] =
+    "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client too";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";

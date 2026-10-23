@@ -104,6 +104,23 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     return False
 
 
+# Set by `serve._router_application`.
+ROUTER_APPLICATION_MARKER_ATTR = "_serve_router_application"
+
+
+def _is_router_application_class(obj: Any) -> bool:
+    """Whether `obj` is a class marked with `@serve._router_application`."""
+    if not isinstance(obj, type):
+        return False
+    # Walks the MRO, so the marker survives `@serve.ingress`'s wrapper subclass.
+    try:
+        return (
+            inspect.getattr_static(obj, ROUTER_APPLICATION_MARKER_ATTR, False) is True
+        )
+    except Exception:
+        return False
+
+
 def asyncio_grpc_exception_handler(loop, context):
     """Exception handler to filter out false positive BlockingIOErrors from gRPC."""
     exc = context.get("exception")

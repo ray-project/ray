@@ -29,9 +29,10 @@ class AuthenticationTokenValidator {
   /// Validate the provided authentication metadata against the expected token.
   /// When auth_mode=token, uses constant-time comparison via CompareWithMetadata.
   /// When auth_mode=k8s, provided_metadata is parsed and validated against Kubernetes
-  /// API. \param expected_token The expected token (nullptr if auth disabled or K8S
-  /// mode). \param provided_metadata The authorization header value (e.g., "Bearer
-  /// <token>"). \return true if the token is valid, false otherwise.
+  /// API.
+  /// \param expected_token The expected token (nullptr if auth disabled or K8S mode).
+  /// \param provided_metadata The authorization header value (e.g., "Bearer <token>").
+  /// \return true if the token is valid, false otherwise.
   bool ValidateToken(const std::shared_ptr<const AuthenticationToken> &expected_token,
                      std::string_view provided_metadata);
 

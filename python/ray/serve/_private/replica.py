@@ -1180,8 +1180,8 @@ class Replica:
         self._rank: Optional[ReplicaRank] = None
 
         # gRPC server for inter-deployment communication. Created via the shared
-        # helper so Ray's authentication interceptor is attached when token auth
-        # is enabled; without it this server would accept unauthenticated calls.
+        # helper so Ray's authentication interceptor is attached; without it this
+        # server would accept unauthenticated calls when token auth is enabled.
         self._server = create_grpc_server_with_interceptors(
             asynchronous=True,
             options=[
