@@ -30,6 +30,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
@@ -65,8 +66,16 @@ from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
     WorkerGroupCallback,
 )
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.storage import _upload_to_fs_path
 from ray.train.v2._internal.execution.worker_group import Worker, WorkerGroup
+from ray.train.v2._internal.metrics.base import (
+    RUN_ID_TAG_KEY,
+    RUN_NAME_TAG_KEY,
+    EnumMetric,
+    Metric,
+    ValueMetric,
+)
 from ray.train.v2.api.exceptions import NCCLHangError
 
 logger = logging.getLogger(__name__)
@@ -98,6 +107,20 @@ _PERIODIC_WARN_EVERY_S: float = 120.0
 # Rank ranges named per list in a log line; the rest are summarised as a
 # count so a 1000-rank job doesn't log 1000 ranks per poll.
 _MAX_RANKS_LOGGED: int = 8
+
+# Grafana dashboard metric names
+GRAFANA_STATE = "train_nccl_hang_detector_state"
+GRAFANA_STALL_DURATION_S = "train_nccl_hang_stall_duration_s"
+GRAFANA_STATE_TAG_KEY = "ray_train_nccl_hang_detector_state"
+
+
+class NCCLHangDetectorState(Enum):
+    """What the NCCL hang detector believes about the run."""
+
+    HEALTHY = "HEALTHY"
+    SUSPECTED = "SUSPECTED"
+    CONFIRMED = "CONFIRMED"
+    DEGRADED = "DEGRADED"
 
 
 def parse_ras_addr(addr: str) -> Tuple[str, int]:
@@ -843,6 +866,10 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
 
     Every poll is added to a circular buffer so users have a history of ncclras
     queries and for improving the detection.
+
+    Every poll also records the detector's state and the longest stall as
+    Grafana metrics, so a run's whole detection history can be read against
+    its other metrics.
     """
 
     def __init__(self):
@@ -907,11 +934,43 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # One-time degradation (e.g. missing binary) so we stop querying.
         self._is_ras_degraded: bool = False
 
+        # Created once the controller knows the run's name and id.
+        self._metrics: Optional[Dict[str, Metric]] = None
+
+    def after_controller_start(self, train_run_context: TrainRunContext):
+        base_tags = {
+            RUN_NAME_TAG_KEY: train_run_context.get_run_config().name,
+            RUN_ID_TAG_KEY: train_run_context.run_id,
+        }
+        self._metrics = {
+            GRAFANA_STATE: EnumMetric[NCCLHangDetectorState](
+                name=GRAFANA_STATE,
+                description="Current state of the NCCL hang detector.",
+                base_tags=base_tags,
+                enum_tag_key=GRAFANA_STATE_TAG_KEY,
+            ),
+            GRAFANA_STALL_DURATION_S: ValueMetric(
+                name=GRAFANA_STALL_DURATION_S,
+                description=(
+                    "Seconds the most stalled NCCL communicator has made no "
+                    "progress with a collective mismatch."
+                ),
+                base_tags=base_tags,
+            ),
+        }
+
+    async def before_controller_shutdown(self):
+        # Clear the gauges so a finished run doesn't keep showing its last state.
+        if self._metrics is not None:
+            for metric in self._metrics.values():
+                metric.reset()
+
     def reset_detection_state(self):
         """Full worker-group lifecycle reset (on (re)start / shutdown)."""
         self.prev_report = None
         self.ras_history.clear()
         self.reset_hang_counters()
+        self.record_detector_metrics()
 
     def reset_hang_counters(self):
         """Per-healthy-poll debounce reset `_prev_report` left for the next poll as comparison."""
@@ -952,6 +1011,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                     result,
                 )
                 self._is_ras_degraded = True
+                self.record_detector_metrics()
                 return
 
             self.ras_history.append(result)
@@ -961,6 +1021,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             else:  # Healthy with no mismatches, so every frozen streak is over
                 self.log_recovered_comms(frozen_counts={})
                 self.reset_hang_counters()
+                self.record_detector_metrics()
             self.prev_report = result
         except NCCLHangError:
             raise
@@ -970,6 +1031,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 "disabling it for the rest of this training run."
             )
             self._is_ras_degraded = True
+            self.record_detector_metrics()
 
     def evaluate_comm_mismatch(self, report: RASReport):
         """Advance the per-communicator frozen streaks and act on them.
@@ -980,6 +1042,7 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         detected currently.
         """
         if self.prev_report is None:
+            self.record_detector_metrics()
             return
 
         # 1. Classify: which mismatched communicators made no progress this poll
@@ -993,6 +1056,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
         # 2. Update state: a communicator that progressed drops its streak
         self.log_recovered_comms(frozen_counts)
         self.comm_deadlock_count = frozen_counts
+        # Recorded before acting, as a confirmed hang can raise or spend its
+        # time capturing diagnostics.
+        self.record_detector_metrics()
 
         # 3. Act
         if confirmed_comm_hangs:
@@ -1027,6 +1093,28 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
                 frozen_counts[comm_id] = self.comm_deadlock_count.get(comm_id, 0) + 1
         return frozen_counts
 
+    def record_detector_metrics(self):
+        """Record the detector's current state and the longest stall."""
+        if self._metrics is None:
+            return
+
+        if self._is_ras_degraded:
+            self._metrics[GRAFANA_STALL_DURATION_S].record(0)
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.DEGRADED)
+            return
+
+        max_streak = max(self.comm_deadlock_count.values(), default=0)
+        self._metrics[GRAFANA_STALL_DURATION_S].record(
+            max_streak * self._poll_interval_s
+        )
+
+        if max_streak >= self._confirm_poll_counts:
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.CONFIRMED)
+        elif max_streak >= max(self._suspicion_polls, 1):
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.SUSPECTED)
+        else:
+            self._metrics[GRAFANA_STATE].record(NCCLHangDetectorState.HEALTHY)
+
     def log_recovered_comms(self, frozen_counts: Dict[str, int]):
         """Log each previously suspected communicator that is no longer frozen.
 
@@ -1048,6 +1136,8 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     def handle_confirmed_hangs(
         self, confirmed_comm_hangs: List[str], report: RASReport
     ):
+        # TODO: Add a Grafana annotation with
+        #  `ray.train.annotate(..., severity="error")` once annotations are merged.
         # Record first to prevent buffer being overwritten by other ranks
         flight_recorder_dir = self.capture_diagnostic(
             "Flight Recorder dumps", self.dump_workers_flight_recorder
@@ -1114,6 +1204,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
             if count == self._suspicion_polls
         ]
         if new_suspicions:
+            # TODO: Add a Grafana annotation with
+            #  `ray.train.annotate(..., severity="warning")` once annotations
+            #  are merged.
             # An earlier report predates these communicators stalling.
             self._ras_text_logged = False
             stalled_comms = new_suspicions

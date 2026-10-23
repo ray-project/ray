@@ -14,6 +14,11 @@ TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE = (
     + TOKEN_AUTH_FIX_MESSAGE
 )
 
+# Keep in sync with kAuthModeMismatchErrorMessage in src/ray/common/constants.h.
+AUTH_MODE_MISMATCH_ERROR_MESSAGE = (
+    "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client too"
+)
+
 TOKEN_INVALID_ERROR_MESSAGE = "Token authentication is enabled but the authentication token is invalid or incorrect."  # noqa: E501
 
 # HTTP header and cookie constants
