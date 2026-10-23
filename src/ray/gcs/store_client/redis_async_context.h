@@ -161,11 +161,12 @@ class RedisAsyncContext {
     std::string incarnation;
   };
 
-  /// Follow every write submitted from now on with a marker write
-  /// `HSET key field "<incarnation>:<n>"`, where n counts this connection's
-  /// writes. Redis runs a connection's commands in order and whatever it keeps
-  /// after a crash, a restore or a failover is a prefix of what it ran, so if
-  /// the marker of write n survived, write n and every write before it did too.
+  /// From now on, number every write submitted and, each time the output
+  /// buffer is flushed, queue a marker write `HSET key field
+  /// "<incarnation>:<n>"` behind it, where n is the last write queued. Redis
+  /// runs a connection's commands in order and whatever it keeps after a
+  /// crash, a restore or a failover is a prefix of what it ran, so if marker n
+  /// survived, write n and every write before it did too.
   /// Marker 1 is queued here, ahead of every later write, and counts as
   /// acknowledged once Redis replies to it: from then on a reconnect check also
   /// covers what Redis held before this process wrote. If the connection is
@@ -279,9 +280,11 @@ class RedisAsyncContext {
   std::atomic<int64_t> outage_deadline_ns_{kNoOutage};
   /// See EnableWriteWatermark(). Guarded by `mutex_`.
   std::optional<WriteWatermark> write_watermark_;
-  /// Number of the last write submitted with a marker. Guarded by `mutex_`, so
-  /// numbers follow the order in which writes reach the socket.
+  /// Number of the last write submitted. Guarded by `mutex_`, so numbers
+  /// follow the order in which writes reach the socket.
   uint64_t last_submitted_write_ = 0;
+  /// Number carried by the last marker queued. Guarded by `mutex_`.
+  uint64_t last_marked_write_ = 0;
   /// See AckWrite().
   std::atomic<uint64_t> last_acked_write_{0};
   /// See PauseCommands(). Read under `mutex_` at submission.
@@ -327,6 +330,10 @@ class RedisAsyncContext {
   friend void CallbackAddWrite(void *);
   friend void CallbackDelWrite(void *);
   friend void CallbackCleanup(void *);
+
+  /// Queue a marker for the writes submitted since the last one, right before
+  /// the output buffer is flushed. `mutex_` must be held.
+  void AppendMarkerLocked();
 
   /// Reply callback of marker 1: acknowledges it. privdata is a heap-allocated
   /// weak_ptr to `alive_`, freed here.

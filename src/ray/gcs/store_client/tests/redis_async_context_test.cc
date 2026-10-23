@@ -17,6 +17,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstring>
 #include <future>
 #include <iostream>
 #include <memory>
@@ -757,6 +758,45 @@ std::pair<std::string, uint64_t> SplitWatermark(const std::string &value) {
 // Every command that changes data is followed by a marker carrying the next
 // write number; reads are not. The first marker goes out when the watermark
 // is enabled.
+// Writes queued together share one marker, written behind the last of them:
+// the marker count follows flushes, not writes.
+TEST_F(RedisAsyncContextTest, TestOneMarkerCoversABurstOfWrites) {
+  ReconnectCheckHarness h;
+  h.EnableWatermark();
+  h.Sync();
+  const auto [incarnation, first] = SplitWatermark(h.Watermark());
+  ASSERT_EQ(h.Admin({"CONFIG", "RESETSTAT"}), "OK");
+
+  constexpr int kWrites = 500;
+  std::atomic<int> replies = 0;
+  std::promise<void> all_replied;
+  for (int i = 0; i < kWrites; ++i) {
+    h.ctx().RunArgvAsync(
+        {"SET", absl::StrCat("burst", i), "1"},
+        [&](const std::shared_ptr<CallbackReply> &) {
+          if (++replies == kWrites) {
+            all_replied.set_value();
+          }
+        },
+        kNoTable);
+  }
+  ASSERT_EQ(all_replied.get_future().wait_for(20s), std::future_status::ready);
+  h.Sync();
+
+  EXPECT_EQ(h.Watermark(), absl::StrCat(incarnation, ":", first + kWrites));
+  // Writes are plain SETs, so every HSET Redis ran was a marker.
+  const std::string stats = h.Admin({"INFO", "commandstats"});
+  const size_t at = stats.find("cmdstat_hset:calls=");
+  ASSERT_NE(at, std::string::npos) << stats;
+  const int markers = std::stoi(stats.substr(at + std::strlen("cmdstat_hset:calls=")));
+  EXPECT_GE(markers, 1);
+  EXPECT_LT(markers, kWrites);
+
+  h.DropConnection();
+  h.Sync();
+  EXPECT_EQ(h.NumWritesLost(), 0u);
+}
+
 TEST_F(RedisAsyncContextTest, TestWriteWatermarkCountsWritesOnly) {
   ReconnectCheckHarness h;
   h.EnableWatermark();

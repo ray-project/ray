@@ -167,6 +167,9 @@ void RedisAsyncContext::Reset(
   write_requested_ = false;
   read_in_progress_ = false;
   write_in_progress_ = false;
+  // Writes numbered on the old connection never reach this one; their retries
+  // get new numbers. Don't let a marker here claim them.
+  last_marked_write_ = last_submitted_write_;
   AttachLocked(std::move(redis_async_context));
   // The caller registered the connect callback before our hooks existed, so
   // the write wait hiredis armed for it went nowhere. Arm it now: the socket
@@ -271,6 +274,7 @@ void RedisAsyncContext::EnableWriteWatermark(WriteWatermark watermark) {
   std::lock_guard<std::mutex> lock(mutex_);
   write_watermark_ = std::move(watermark);
   last_submitted_write_ = 1;
+  last_marked_write_ = 1;
   // Go through this connection, not the synchronous one: only this one is
   // re-established after a reconnect, and a GCS promoted to leader gets here
   // long after startup. During a reconnect, skip marker 1; the next write's
@@ -399,31 +403,10 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
   }
   RAY_CHECK(ret_code == REDIS_OK);
   if (write_number != nullptr && write_watermark_.has_value()) {
-    // Queue the marker right behind the write, under the same lock, so marker
-    // numbers rise in the order Redis runs the writes. Its reply is not
-    // needed: the reconnect check reads the marker back.
-    const uint64_t n = ++last_submitted_write_;
-    const std::string value = absl::StrCat(write_watermark_->incarnation, ":", n);
-    const char *marker_argv[] = {"HSET",
-                                 write_watermark_->key.data(),
-                                 write_watermark_->field.data(),
-                                 value.data()};
-    const size_t marker_argvlen[] = {
-        4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
-    if (redisAsyncCommandArgv(redis_async_context_.get(),
-                              &MarkerReplyFn,
-                              /*privdata=*/nullptr,
-                              4,
-                              marker_argv,
-                              marker_argvlen) != REDIS_OK) {
-      // Only a context that is already being torn down refuses a command it
-      // just accepted. The write is still numbered: should Redis reply to it,
-      // the missing marker makes the next reconnect check fail and the
-      // process restart, which errs on the safe side.
-      RAY_LOG(WARNING) << "Failed to queue the write watermark marker: "
-                       << redis_async_context_->errstr;
-    }
-    *write_number = n;
+    // Number the write under the same lock that queues it, so numbers rise in
+    // the order Redis runs the writes. Its marker goes out when the buffer is
+    // flushed; see AppendMarkerLocked().
+    *write_number = ++last_submitted_write_;
   }
   // hiredis queues the reply callback without invoking it inline. Keep the
   // HandleIo mutex until bookkeeping state has been captured, so another thread
@@ -432,6 +415,40 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(
     (*on_accepted)();
   }
   return Status::OK();
+}
+
+void RedisAsyncContext::AppendMarkerLocked() {
+  // One marker per flush instead of one per write: it carries the number of
+  // the last write queued so far and sits behind all of them in the same
+  // buffer, so Redis runs it after every write it covers. A write that got a
+  // reply was flushed with such a marker behind it, and a Redis that lost the
+  // write lost that marker too. During a reconnect, commands are held and the
+  // check must read what the previous connection left, so add none.
+  if (!write_watermark_.has_value() || commands_paused_ ||
+      last_marked_write_ >= last_submitted_write_) {
+    return;
+  }
+  const std::string value =
+      absl::StrCat(write_watermark_->incarnation, ":", last_submitted_write_);
+  const char *argv[] = {
+      "HSET", write_watermark_->key.data(), write_watermark_->field.data(), value.data()};
+  const size_t argvlen[] = {
+      4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
+  // The buffer is about to be flushed, so the write event hiredis asks for
+  // here is not needed.
+  const bool dispatch_pending = write_dispatch_pending_.exchange(true);
+  const int ret_code = redisAsyncCommandArgv(
+      redis_async_context_.get(), &MarkerReplyFn, /*privdata=*/nullptr, 4, argv, argvlen);
+  write_dispatch_pending_ = dispatch_pending;
+  if (ret_code != REDIS_OK) {
+    // Only a context already being torn down refuses a command. The writes
+    // stay unmarked: should Redis reply to them, the next reconnect check
+    // fails and the process restarts, which errs on the safe side.
+    RAY_LOG(WARNING) << "Failed to queue the write watermark marker: "
+                     << redis_async_context_->errstr;
+    return;
+  }
+  last_marked_write_ = last_submitted_write_;
 }
 
 void RedisAsyncContext::Operate() {
@@ -480,8 +497,12 @@ void RedisAsyncContext::HandleIo(boost::system::error_code error_code, bool writ
     if (redis_async_context_ == nullptr) {
       return;
     }
-    write ? redisAsyncHandleWrite(redis_async_context_.get())
-          : redisAsyncHandleRead(redis_async_context_.get());
+    if (write) {
+      AppendMarkerLocked();
+      redisAsyncHandleWrite(redis_async_context_.get());
+    } else {
+      redisAsyncHandleRead(redis_async_context_.get());
+    }
   }
 
   if (error_code == boost::asio::error::would_block) {
