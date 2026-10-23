@@ -34,7 +34,7 @@ helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0 -n ray-sy
 ```sh
 # Install CRD and KubeRay operator into the ray-system namespace.
 kubectl create namespace ray-system
-kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.7.0" -n ray-system
+kubectl create -k "github.com/kuberay-project/kuberay/ray-operator/config/default?ref=v1.7.0" -n ray-system
 ```
 
 ## Step 3: Validate Installation

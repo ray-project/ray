@@ -47,7 +47,8 @@ RayServerBidiReactor::RayServerBidiReactor(
     grpc::CallbackServerContext *server_context,
     instrumented_io_context &io_context,
     const std::string &local_node_id,
-    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
+    std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
+        message_processor,
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
     ray::rpc::AuthenticationTokenValidator &auth_token_validator,
@@ -83,6 +84,13 @@ RayServerBidiReactor::RayServerBidiReactor(
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Invalid bearer token"));
       return;
     }
+  } else if (server_context->client_metadata().count(kAuthTokenKey) > 0) {
+    // Auth is disabled here; reject clients that send a token so that they opt out too.
+    RAY_LOG(WARNING) << "Authorization header in syncer connection from node "
+                     << NodeID::FromBinary(GetRemoteNodeID()) << " but auth is disabled";
+    Finish(
+        grpc::Status(grpc::StatusCode::UNAUTHENTICATED, kAuthModeMismatchErrorMessage));
+    return;
   }
 
   if (NodeID::FromBinary(GetRemoteNodeID()).IsNil()) {

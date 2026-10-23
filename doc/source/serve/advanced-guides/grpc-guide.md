@@ -48,7 +48,7 @@ Ensure that the generated files are in the same directory as where the Ray clust
 
 (start-serve-with-grpc-proxy)=
 ## Start Serve with gRPC enabled
-The [Serve start](https://docs.ray.io/en/releases-2.7.0/serve/api/index.html#serve-start) CLI, [`ray.serve.start`](https://docs.ray.io/en/releases-2.7.0/serve/api/doc/ray.serve.start.html#ray.serve.start) API, and [Serve config files](https://docs.ray.io/en/releases-2.7.0/serve/production-guide/config.html#serve-config-files-serve-build) all support starting Serve with a gRPC proxy. Two options are related to Serve's gRPC proxy: `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC proxies to listen to. It defaults to 9000. `grpc_servicer_functions` is a list of import paths for gRPC `add_servicer_to_server` functions to add to a gRPC proxy. It also serves as the flag to determine whether to start gRPC server. The default is an empty list, meaning no gRPC server is started.
+The {ref}`Serve start <serve-cli>` CLI, {func}`ray.serve.start` API, and {ref}`Serve config files <serve-in-production-config-file>` all support starting Serve with a gRPC proxy. Two options are related to Serve's gRPC proxy: `grpc_port` and `grpc_servicer_functions`. `grpc_port` is the port for gRPC proxies to listen to. It defaults to 9000. `grpc_servicer_functions` is a list of import paths for gRPC `add_servicer_to_server` functions to add to a gRPC proxy. It also serves as the flag to determine whether to start gRPC server. The default is an empty list, meaning no gRPC server is started.
 
 ::::{tab-set}
 

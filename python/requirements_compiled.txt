@@ -51,10 +51,11 @@ aiofiles==25.1.0
     # via aim
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
@@ -281,7 +282,7 @@ cachetools==5.5.2
     #   pyiceberg
 celery==5.6.3
     # via -r python/requirements.txt
-certifi==2026.4.22
+certifi==2026.10.19
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/security-requirements.txt
@@ -477,7 +478,7 @@ dill==0.4.1
     #   multiprocess
 directsearch==1.0.1
     # via nevergrad
-distlib==0.4.0
+distlib==0.4.3
     # via virtualenv
 distributed==2026.3.0
     # via
@@ -813,7 +814,7 @@ httpx==0.28.1
     #   jupyterlab
     #   openlineage-python
     #   safehttpx
-hudi==0.4.0
+hudi==0.5.0
     # via -r python/requirements/ml/data-test-requirements.txt
 huey==2.6.0
     # via mlflow
@@ -1471,7 +1472,7 @@ ormsgpack==1.12.2
     #   -r python/requirements/ml/rllib-requirements.txt
 overrides==7.7.0
     # via jupyter-server
-packaging==25.0
+packaging==26.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
@@ -1529,6 +1530,7 @@ packaging==25.0
     #   torchmetrics
     #   transformers
     #   utilsforecast
+    #   virtualenv
     #   wandb
     #   wheel
 pandas==2.3.3
@@ -1595,7 +1597,6 @@ platformdirs==4.9.6
     #   black
     #   jupyter-core
     #   moocore
-    #   python-discovery
     #   snowflake-connector-python
     #   textual
     #   virtualenv
@@ -1910,7 +1911,7 @@ python-dateutil==2.9.0.post0
     #   pandas
     #   segment-analytics-python
     #   strictyaml
-python-discovery==1.2.2
+python-discovery==1.6.1
     # via virtualenv
 python-dotenv==1.2.2
     # via
@@ -2501,7 +2502,7 @@ types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
 types-urllib3==1.26.25.14
     # via types-requests
-typing-extensions==4.15.0
+typing-extensions==4.16.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2621,9 +2622,10 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.2.4
+virtualenv==21.14.12
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   pre-commit
     #   pytest-virtualenv
@@ -2701,7 +2703,7 @@ xyzservices==2026.3.0
     # via bokeh
 yahp==0.1.1
     # via mosaicml
-yarl==1.23.0
+yarl==1.25.1
     # via
     #   aiohttp
     #   delta-sharing

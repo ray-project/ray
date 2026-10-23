@@ -3,11 +3,13 @@
 import asyncio
 import sys
 import threading
+import time
 
 import pytest
 
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
+    SandboxError,
     SandboxExecError,
     SandboxTimeoutError,
 )
@@ -79,6 +81,8 @@ def test_boot_reaches_running_with_expected_create_kwargs() -> None:
     assert create_call["image"] == "python:3.12-slim"
     assert create_call["cpu"] == 2.0
     assert create_call["memory"] == "1024Mi"
+    # No disk_limit_mb means no cap.
+    assert create_call["disk"] == 0
     assert create_call["env"] == {"TASK_VAR": "1"}
     assert create_call["workdir"] == "/"
     # The API owns the TTL; the upstream runtime must not double-manage it.
@@ -92,6 +96,14 @@ def test_boot_reaches_running_with_expected_create_kwargs() -> None:
     assert create_call["readonly"] is False
     assert create_call["capabilities"] == list(DOCKER_DEFAULT_CAPABILITIES)
     assert "_oci_spec_transform_fn" not in create_call
+
+
+def test_boot_passes_the_disk_limit_to_the_runtime() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime, spec_overrides={"disk_limit_mb": 2048})
+    asyncio.run(host.boot())
+    (create_call,) = runtime.create_calls
+    assert create_call["disk"] == "2048Mi"
 
 
 def test_boot_failure_is_pollable_not_raised() -> None:
@@ -122,6 +134,29 @@ def test_boot_create_failure_cleans_up_nothing_and_reports() -> None:
     info = asyncio.run(scenario())
     assert info["status"] == "error"
     assert "runsc not found" in info["error"]
+
+
+def test_unsupported_limits_fail_before_image_pull() -> None:
+    runtime = FakeSandboxRuntime()
+    runtime.resource_error = SandboxCreationError("Cannot enforce sandbox resources")
+    host = _make_host(runtime)
+    asyncio.run(host.boot())
+    info = asyncio.run(host.describe())
+    assert info["status"] == "error"
+    assert "Cannot enforce" in info["error"]
+    assert not runtime.pull_calls
+    assert not runtime.create_calls
+
+
+def test_memory_oom_is_reported_without_killing_host() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime)
+    asyncio.run(host.boot())
+    runtime.termination_reason = "Sandbox exceeded its enforced memory limit"
+    info = asyncio.run(host.describe())
+    assert info["status"] == "error"
+    assert info["error"] == runtime.termination_reason
+    assert runtime.deleted == []
 
 
 def test_boot_is_idempotent() -> None:
@@ -174,6 +209,81 @@ def test_network_mode_passed_through_natively() -> None:
 
     (create_call,) = runtime.create_calls
     assert create_call["network"] == "sandbox"
+
+
+def test_cidr_allowlist_passed_through_and_reported() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(
+        runtime, spec_overrides={"network": "public", "cidr_allowlist": ["10.0.0.0/8"]}
+    )
+    asyncio.run(host.boot())
+
+    (create_call,) = runtime.create_calls
+    assert create_call["cidr_allowlist"] == ["10.0.0.0/8"]
+    assert asyncio.run(host.describe())["cidr_allowlist"] == ["10.0.0.0/8"]
+
+
+def test_default_public_allowlist_is_reported_and_changeable() -> None:
+    """A public sandbox created without an allowlist runs under the default,
+    the public internet, and reports it; one without network has none."""
+    runtime = FakeSandboxRuntime()
+    host = _make_host(runtime, spec_overrides={"network": "public"})
+    asyncio.run(host.boot())
+
+    (create_call,) = runtime.create_calls
+    assert create_call["cidr_allowlist"] is None
+    assert asyncio.run(host.describe())["cidr_allowlist"] == ["internet"]
+    info = asyncio.run(host.set_network_access(["internet:443"]))
+    assert info["cidr_allowlist"] == ["internet:443"]
+
+    no_network = _make_host(FakeSandboxRuntime(), spec_overrides={"network": "none"})
+    asyncio.run(no_network.boot())
+    assert asyncio.run(no_network.describe())["cidr_allowlist"] is None
+
+
+def test_set_network_access_updates_runtime_and_info() -> None:
+    runtime = FakeSandboxRuntime()
+    host = _make_host(
+        runtime, spec_overrides={"network": "public", "cidr_allowlist": ["0.0.0.0/0"]}
+    )
+    asyncio.run(host.boot())
+
+    info = asyncio.run(host.set_network_access(["52.0.0.1", "10.0.1.5/24"]))
+    assert info["cidr_allowlist"] == ["52.0.0.1/32", "10.0.1.0/24"]
+    assert runtime.allowlist_calls == [
+        {"instance_id": runtime.instance_id, "cidrs": ["52.0.0.1/32", "10.0.1.0/24"]}
+    ]
+
+    assert asyncio.run(host.set_network_access(["nope"]))["error_code"] == "invalid"
+
+    runtime.allowlist_error = SandboxError("nft: Protocol not supported")
+    result = asyncio.run(host.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "internal"
+    assert "Protocol not supported" in result["message"]
+    # The reported allowlist is the one still in force.
+    assert asyncio.run(host.describe())["cidr_allowlist"] == [
+        "52.0.0.1/32",
+        "10.0.1.0/24",
+    ]
+
+
+def test_set_network_access_conflicts() -> None:
+    """Only a network="public" sandbox has an allowlist to change, and nothing
+    is changed before the sandbox runs."""
+    runtime = FakeSandboxRuntime()
+    no_network = _make_host(runtime, spec_overrides={"network": "none"})
+    asyncio.run(no_network.boot())
+    result = asyncio.run(no_network.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "conflict"
+    assert "only network='public'" in result["message"]
+
+    not_running = _make_host(
+        FakeSandboxRuntime(),
+        spec_overrides={"network": "public", "cidr_allowlist": []},
+    )
+    result = asyncio.run(not_running.set_network_access(["10.0.0.0/8"]))
+    assert result["error_code"] == "conflict"
+    assert runtime.allowlist_calls == []
 
 
 def test_explicit_capabilities_passed_through() -> None:
@@ -568,7 +678,7 @@ def test_write_failure_is_reported_not_raised() -> None:
 
 
 def test_work_is_refused_while_terminating() -> None:
-    """Execs and file ops that arrive while terminate() is deleting the
+    """Execs, file ops, and network updates that arrive while terminate() is deleting the
     container are refused, although the status still reads running."""
     runtime = FakeSandboxRuntime()
     runtime.delete_gate = threading.Event()
@@ -582,15 +692,50 @@ def test_work_is_refused_while_terminating() -> None:
             await host.start_exec(["true"]),
             await host.write_file("/f", b"x"),
             await host.read_file("/f"),
+            await host.set_network_access(["1.1.1.1/32"]),
         ]
         runtime.delete_gate.set()
         await terminate
         return results
 
     results = asyncio.run(scenario())
-    assert [r["error_code"] for r in results] == ["conflict"] * 3
+    assert [r["error_code"] for r in results] == ["conflict"] * 4
     assert all("terminating" in r["message"] for r in results)
     assert runtime.exec_calls == []
+
+
+def test_network_updates_are_serialized() -> None:
+    """Concurrent set_network_access calls swap the ruleset one at a time,
+    and the recorded allowlist is the one applied last."""
+    runtime = FakeSandboxRuntime()
+    inside = [0, 0]  # [current, peak]
+    counter_lock = threading.Lock()
+
+    def slow_update(instance_id, cidrs):
+        with counter_lock:
+            inside[0] += 1
+            inside[1] = max(inside[1], inside[0])
+        time.sleep(0.05)
+        runtime.allowlist_calls.append({"instance_id": instance_id, "cidrs": cidrs})
+        with counter_lock:
+            inside[0] -= 1
+
+    runtime.set_egress_allowlist = slow_update
+    host = _make_host(
+        runtime,
+        spec_overrides={"network": "public", "cidr_allowlist": ["0.0.0.0/0"]},
+    )
+
+    async def scenario():
+        await host.boot()
+        await asyncio.gather(
+            *(host.set_network_access([c]) for c in ("1.1.1.1", "1.0.0.1", "9.9.9.9"))
+        )
+        return await host.describe()
+
+    info = asyncio.run(scenario())
+    assert inside[1] == 1
+    assert info["cidr_allowlist"] == runtime.allowlist_calls[-1]["cidrs"]
 
 
 if __name__ == "__main__":

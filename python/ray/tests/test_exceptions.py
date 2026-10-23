@@ -5,6 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from ray._private.authentication.authentication_constants import (
+    TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+)
 from ray.exceptions import AuthenticationError, RayError
 
 
@@ -27,6 +30,22 @@ class TestAuthenticationError:
         assert "Token is missing" in error_str
         # Doc URL included
         assert self.auth_doc_url in error_str
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "Token is missing",
+            "Token is invalid.",
+            TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
+        ],
+        ids=["no_period", "trailing_period", "no_token_message"],
+    )
+    def test_punctuation(self, message):
+        error_str = str(AuthenticationError(message))
+
+        # A period right after the URL ends up inside terminal links.
+        assert self.auth_doc_url + "." not in error_str
+        assert ".." not in error_str
 
     def test_is_ray_error_subclass(self):
         """Test that AuthenticationError is a RayError subclass."""
@@ -60,6 +79,23 @@ class TestAuthenticationError:
                 assert expected_note in error_str
             else:
                 assert "RAY_AUTH_MODE is currently" not in error_str
+
+    def test_auth_mode_mismatch_omits_token_help(self):
+        """AuthModeMismatch is fixed by opting out, so no 'get a token' help."""
+        message = (
+            "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; "
+            "set it on the client too"
+        )
+        with patch.dict(
+            "sys.modules",
+            {
+                "ray._raylet": MagicMock(
+                    AuthenticationMode=FakeAuthMode,
+                    get_authentication_mode=lambda: FakeAuthMode.TOKEN,
+                )
+            },
+        ):
+            assert str(AuthenticationError(message)) == message
 
 
 if __name__ == "__main__":

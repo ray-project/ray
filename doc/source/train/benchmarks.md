@@ -50,7 +50,7 @@ For multi-host distributed training on AWS, make sure the EC2 instances are in t
 
 This task checks performance parity between native PyTorch Distributed and Ray Train's distributed `TorchTrainer`.
 
-These benchmarks show that the two frameworks perform similarly (within 2.5\%). Performance can vary greatly across model, hardware, and cluster configurations.
+In these benchmarks, Ray Train is at most 2.5\% slower than native PyTorch Distributed, and it's faster in the 16-worker CPU configuration. Performance can vary greatly across model, hardware, and cluster configurations.
 
 The reported times are raw training times. Both methods also have an unreported constant setup overhead of a few seconds, which is negligible for longer training runs.
 
@@ -84,7 +84,7 @@ The reported times are raw training times. Both methods also have an unreported 
 
 This task checks performance parity between native TensorFlow Distributed and Ray Train's distributed `TensorflowTrainer`.
 
-These benchmarks show that the two frameworks perform similarly (within 1\%). Performance can vary greatly across model, hardware, and cluster configurations.
+In these benchmarks, Ray Train is at most 1\% slower than native TensorFlow Distributed, and it's faster in both CPU configurations. Performance can vary greatly across model, hardware, and cluster configurations.
 
 The reported times are raw training times. Both methods also have an unreported constant setup overhead of a few seconds, which is negligible for longer training runs.
 
