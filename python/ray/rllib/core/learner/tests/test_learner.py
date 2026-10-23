@@ -41,6 +41,26 @@ class TestLearner(unittest.TestCase):
     def tearDown(cls) -> None:
         ray.shutdown()
 
+    def test_zero_version_checkpoint_round_trip(self):
+        """Restoring a version-zero checkpoint must not invent a new update."""
+        learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
+        initial_state = learner.get_state()
+        self.assertEqual(initial_state[WEIGHTS_SEQ_NO], 0)
+        module_state = initial_state[COMPONENT_RL_MODULE]
+
+        # Full/checkpoint state explicitly carries the sequence number.
+        learner.set_state({COMPONENT_RL_MODULE: module_state, WEIGHTS_SEQ_NO: 0})
+        self.assertEqual(learner.get_state()[WEIGHTS_SEQ_NO], 0)
+
+        # By contrast, an unversioned manual mutation must be published.
+        learner.set_state({COMPONENT_RL_MODULE: module_state})
+        self.assertEqual(learner.get_state()[WEIGHTS_SEQ_NO], 1)
+
+        # Applying an explicit-zero state to an already newer Learner cannot
+        # silently overwrite weights while keeping the same sequence.
+        learner.set_state({COMPONENT_RL_MODULE: module_state, WEIGHTS_SEQ_NO: 0})
+        self.assertEqual(learner.get_state()[WEIGHTS_SEQ_NO], 2)
+
     def test_unversioned_module_state_update_advances_weights_seq_no(self):
         """Manual RLModule updates must be visible to EnvRunner pull-if-newer sync."""
         learner = BaseTestingAlgorithmConfig().build_learner(env=self.ENV)
