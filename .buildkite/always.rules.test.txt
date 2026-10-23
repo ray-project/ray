@@ -44,6 +44,8 @@ doc/source/data/examples/BUILD.bazel: always lint
 doc/BUILD.bazel: always lint
 doc/test_no_new_rst.py: always lint
 doc/test_prose_doctest_targets.py: always lint
+doc/test_doc_assets.py: always lint
+doc/asset_allowlists/doc_code.txt: always lint
 
 # Config that pre-commit's whitespace hooks can see emits pre_commit, which
 # selects the pre_commit step alone rather than the whole lint matrix.

@@ -36,6 +36,11 @@ steps:
       # target, and the doc_example rule routes it. A prose change can fail it
       # by adding a runnable block to an unlisted page.
       - doc_prose_doctest_targets
+      # Fails on a new notebook or doc_code script under doc/source/ that no
+      # page shows. It's here rather than on a doc step because a prose-only
+      # change can fail it: deleting a page's last literalinclude of a script
+      # orphans that script.
+      - doc_assets
       # Links to files on Ray's master branch. A prose change can fail it,
       # because renaming or deleting a doc file breaks links to it elsewhere.
       - ray_repo_links

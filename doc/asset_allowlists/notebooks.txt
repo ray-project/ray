@@ -1,0 +1,56 @@
+# Notebooks under doc/source/ that predate the rule against new notebooks.
+# doc/test_doc_assets.py fails on any .ipynb under doc/source/ that isn't
+# listed here, and on any entry here whose file no longer exists.
+#
+# This list only shrinks. When you convert a notebook to MyST Markdown or
+# delete it, delete its line in the same PR. Don't add lines. Delete this file
+# and the notebook check when the list is empty.
+
+doc/source/_templates/template.ipynb
+doc/source/core/examples/batch_prediction.ipynb
+doc/source/core/examples/gentle_walkthrough.ipynb
+doc/source/core/examples/highly_parallel.ipynb
+doc/source/core/examples/map_reduce.ipynb
+doc/source/core/examples/plot_hyperparameter.ipynb
+doc/source/core/examples/plot_parameter_server.ipynb
+doc/source/core/examples/plot_pong_example.ipynb
+doc/source/core/examples/web_crawler.ipynb
+doc/source/data/examples/batch_inference_object_detection.ipynb
+doc/source/data/examples/huggingface_vit_batch_prediction.ipynb
+doc/source/data/examples/pytorch_resnet_batch_prediction.ipynb
+doc/source/llm/examples/batch/vllm-with-lora.ipynb
+doc/source/llm/examples/batch/vllm-with-structural-output.ipynb
+doc/source/serve/tutorials/video-analysis/README.ipynb
+doc/source/serve/tutorials/video-analysis/analyze_load_tests.ipynb
+doc/source/serve/tutorials/video-analysis/chunk_video_benchmark.ipynb
+doc/source/train/examples/intel-gaudi/llama.ipynb
+doc/source/train/examples/intel-gaudi/resnet.ipynb
+doc/source/train/examples/intel-gaudi/sd.ipynb
+doc/source/train/examples/jax/intro-to-jax-trainer/README.ipynb
+doc/source/train/examples/lightning/lightning-cola-advanced.ipynb
+doc/source/train/examples/lightning/lightning-mnist-example.ipynb
+doc/source/train/examples/pytorch/pytorch-resnet-finetune.ipynb
+doc/source/train/examples/transformers/huggingface-text-classification.ipynb
+doc/source/train/examples/transformers/transformer-reinforcement-learning/README.ipynb
+doc/source/tune/examples/ax-example.ipynb
+doc/source/tune/examples/batch-tuning.ipynb
+doc/source/tune/examples/bayesopt-example.ipynb
+doc/source/tune/examples/bohb-example.ipynb
+doc/source/tune/examples/hyperopt-example.ipynb
+doc/source/tune/examples/lightgbm-example.ipynb
+doc/source/tune/examples/nevergrad-example.ipynb
+doc/source/tune/examples/optuna-example.ipynb
+doc/source/tune/examples/pbt-guide.ipynb
+doc/source/tune/examples/pbt-ppo-example.ipynb
+doc/source/tune/examples/pbt-transformers.ipynb
+doc/source/tune/examples/pbt-visualization/index.ipynb
+doc/source/tune/examples/tune-aim.ipynb
+doc/source/tune/examples/tune-analyze-results.ipynb
+doc/source/tune/examples/tune-comet.ipynb
+doc/source/tune/examples/tune-mlflow.ipynb
+doc/source/tune/examples/tune-mnist-keras.ipynb
+doc/source/tune/examples/tune-pytorch-cifar.ipynb
+doc/source/tune/examples/tune-pytorch-lightning.ipynb
+doc/source/tune/examples/tune-vanilla-pytorch-lightning.ipynb
+doc/source/tune/examples/tune-wandb.ipynb
+doc/source/tune/examples/tune-xgboost.ipynb
