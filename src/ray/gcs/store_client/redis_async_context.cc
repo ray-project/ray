@@ -271,7 +271,45 @@ void RedisAsyncContext::EnableWriteWatermark(WriteWatermark watermark) {
   std::lock_guard<std::mutex> lock(mutex_);
   write_watermark_ = std::move(watermark);
   last_submitted_write_ = 1;
-  AckWrite(1);
+  // Go through this connection, not the synchronous one: only this one is
+  // re-established after a reconnect, and a GCS promoted to leader gets here
+  // long after startup. During a reconnect, skip marker 1; the next write's
+  // marker covers everything up to it.
+  if (!redis_async_context_ || commands_paused_) {
+    return;
+  }
+  const std::string value = absl::StrCat(write_watermark_->incarnation, ":1");
+  const char *argv[] = {
+      "HSET", write_watermark_->key.data(), write_watermark_->field.data(), value.data()};
+  const size_t argvlen[] = {
+      4, write_watermark_->key.size(), write_watermark_->field.size(), value.size()};
+  auto *privdata = new std::weak_ptr<bool>(alive_);
+  if (redisAsyncCommandArgv(
+          redis_async_context_.get(), &FirstMarkerReplyFn, privdata, 4, argv, argvlen) !=
+      REDIS_OK) {
+    delete privdata;
+    RAY_LOG(WARNING) << "Failed to queue the first write watermark marker: "
+                     << redis_async_context_->errstr;
+  }
+}
+
+void RedisAsyncContext::FirstMarkerReplyFn(redisAsyncContext *context,
+                                           void *raw_reply,
+                                           void *privdata) {
+  std::unique_ptr<std::weak_ptr<bool>> alive(
+      static_cast<std::weak_ptr<bool> *>(privdata));
+  auto *reply = static_cast<redisReply *>(raw_reply);
+  if (reply == nullptr || alive->expired()) {
+    return;
+  }
+  if (reply->type == REDIS_REPLY_ERROR) {
+    RAY_LOG(WARNING) << "Redis rejected the first write watermark marker: "
+                     << std::string(reply->str, reply->len)
+                     << ". Until a later marker gets through, a reconnect may report "
+                        "lost writes that Redis still has.";
+    return;
+  }
+  static_cast<RedisAsyncContext *>(context->ev.data)->AckWrite(1);
 }
 
 std::optional<RedisAsyncContext::WriteWatermark> RedisAsyncContext::GetWriteWatermark() {

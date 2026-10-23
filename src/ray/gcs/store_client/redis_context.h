@@ -310,10 +310,11 @@ class RedisContext {
   /// the state GCS holds in memory would then be ahead of storage, and a
   /// restarted GCS reloads what storage has. Each write is followed by a marker
   /// in hash `key`, field `field` (see RedisAsyncContext::EnableWriteWatermark).
-  /// The first marker is written before this returns, over the synchronous
-  /// connection, so a Redis that comes back without the data that was there at
-  /// this call is caught too. Call once, after Connect() and before submitting
-  /// writes; it blocks for one round trip. Does nothing when
+  /// The first marker is queued ahead of any later write, so once Redis replies
+  /// to it, a Redis that comes back without the data that was there at this
+  /// call is caught too. It goes over the async connection, the only one a
+  /// reconnect re-establishes, so this works long after Connect(), as on a GCS
+  /// promoted to leader. Does not block. Does nothing when
   /// redis_reconnect_verify_writes is off.
   ///
   /// \param key The Redis hash holding the markers.

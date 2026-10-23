@@ -166,8 +166,11 @@ class RedisAsyncContext {
   /// writes. Redis runs a connection's commands in order and whatever it keeps
   /// after a crash, a restore or a failover is a prefix of what it ran, so if
   /// the marker of write n survived, write n and every write before it did too.
-  /// The caller has already written marker 1 and got a reply, so numbering
-  /// continues from 2. Thread-safe.
+  /// Marker 1 is queued here, ahead of every later write, and counts as
+  /// acknowledged once Redis replies to it: from then on a reconnect check also
+  /// covers what Redis held before this process wrote. If the connection is
+  /// down right now, marker 1 is skipped and numbering starts at 2 with the
+  /// next write. Thread-safe.
   ///
   /// \param watermark Where to write the marker and what to prefix it with.
   void EnableWriteWatermark(WriteWatermark watermark);
@@ -321,6 +324,12 @@ class RedisAsyncContext {
   friend void CallbackAddWrite(void *);
   friend void CallbackDelWrite(void *);
   friend void CallbackCleanup(void *);
+
+  /// Reply callback of marker 1: acknowledges it. privdata is a heap-allocated
+  /// weak_ptr to `alive_`, freed here.
+  static void FirstMarkerReplyFn(redisAsyncContext *context,
+                                 void *raw_reply,
+                                 void *privdata);
   friend class RedisAsyncContextTest;
 };
 }  // namespace gcs

@@ -38,6 +38,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "gtest/gtest.h"
@@ -867,21 +868,36 @@ TEST_F(RedisAsyncContextTest, TestFirstMarkerCoversDataFromBeforeAnyWrite) {
   EXPECT_TRUE(h.WaitForWritesLost().has_value());
 }
 
-#if !defined(_WIN32)
-// A Redis that rejects the startup marker stops gcs_server, and the message
-// carries Redis's own error.
-TEST_F(RedisAsyncContextTest, TestRejectedStartupMarkerReportsTheRedisError) {
-  // Fork without re-running the test: a re-run would start its own Redis,
-  // which inherits the pipe the parent reads to the end. Windows has only
-  // the re-running style, hence the guard.
-  GTEST_FLAG_SET(death_test_style, "fast");
+// A rejected first marker is not counted as acknowledged, so a reconnect does
+// not take Redis's word for data the marker was meant to cover.
+TEST_F(RedisAsyncContextTest, TestRejectedFirstMarkerIsNotAcknowledged) {
   ReconnectCheckHarness h;
   // HSET on a string key fails with WRONGTYPE.
   ASSERT_EQ(h.Admin({"SET", kWatermarkKey, "not a hash"}), "OK");
-  EXPECT_DEATH(h.EnableWatermark(),
-               "Failed to write the Redis write watermark: WRONGTYPE");
+  h.EnableWatermark();
+  h.Sync();
+  EXPECT_EQ(h.ctx().async_context().LastAckedWrite(), 0u);
 }
-#endif
+
+// A promoted GCS enables its watermark long after startup, possibly after a
+// reconnect, which re-establishes only the async connection. The first marker
+// must still land, and later reconnects must still pass.
+TEST_F(RedisAsyncContextTest, TestWatermarkEnabledAfterAReconnect) {
+  ReconnectCheckHarness h;
+  h.Sync();
+  h.DropConnection();
+  h.Sync();
+
+  h.EnableWatermark();
+  h.Sync();
+  const std::string marker = h.Watermark();
+  EXPECT_TRUE(absl::EndsWith(marker, ":1")) << marker;
+
+  ASSERT_NE(h.Run({"SET", "after", "1"}), nullptr);
+  h.DropConnection();
+  h.Sync();
+  EXPECT_EQ(h.NumWritesLost(), 0u);
+}
 
 // Without a watermark, as for contexts outside gcs_server, a reconnect only
 // needs Redis to answer.

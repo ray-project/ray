@@ -193,7 +193,7 @@ class RedisStoreClient : public StoreClient {
 
   /// Check after every reconnect that Redis kept the writes it acknowledged
   /// to this client, and exit if not; see RedisContext::EnableWriteWatermark.
-  /// Blocks for one round trip. Thread-safe.
+  /// Thread-safe.
   ///
   /// \param name This client's field in the watermark hash. Each client of a
   /// gcs_server needs its own.

@@ -1746,15 +1746,6 @@ void RedisContext::EnableWriteWatermark(std::string key, std::string field) {
                             static_cast<uint64_t>(absl::ToUnixNanos(absl::Now())));
   std::string incarnation = absl::StrCat(absl::Hex(generator(), absl::kZeroPad16),
                                          absl::Hex(generator(), absl::kZeroPad16));
-  // Write marker 1 on the synchronous connection and wait for the reply before
-  // the async one numbers anything: from then on, a reconnect check also
-  // covers what Redis held before this process wrote, such as the state
-  // gcs_server loads at startup. Redis runs it before any write submitted
-  // after this returns, whichever connection that write uses.
-  auto reply = RunArgvSync({"HSET", key, field, absl::StrCat(incarnation, ":1")});
-  RAY_CHECK(reply != nullptr && !reply->IsError())
-      << "Failed to write the Redis write watermark: "
-      << (reply != nullptr ? reply->ReadAsError() : std::string("no reply"));
   redis_async_context_->EnableWriteWatermark(RedisAsyncContext::WriteWatermark{
       std::move(key), std::move(field), std::move(incarnation)});
 }
