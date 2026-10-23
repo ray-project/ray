@@ -9,7 +9,7 @@ the bundler.
 
 import pickle
 from dataclasses import replace
-from typing import Dict
+from typing import TYPE_CHECKING, Dict, List
 from unittest.mock import MagicMock
 
 import pytest
@@ -29,6 +29,9 @@ from ray.data.tests.util import create_map_transformer_from_block_fn
 from ray.exceptions import ObjectLostError
 from ray.job_config import JobConfig
 from ray.tests.conftest import *  # noqa: F401, F403
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces import RefBundle
 
 reconstruction_enabled = pytest.mark.parametrize(
     "ray_start_regular_shared",
@@ -208,8 +211,10 @@ def test_second_loss_joins_the_queued_seed_re_execution(
         )
 
     (call,) = topology[source_op].add_output.call_args_list
-    assert call.args[0].reconstruction_stamp.lineage_task_id == seed_task_id
-    assert seed_op._queued_seed_reexecutions == {seed_task_id: set(lost_task_ids)}
+    assert call.args[0].reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, frozenset({lost_task_ids[0]})
+    )
+    assert seed_op._batched_plans == {seed_task_id: {lost_task_ids[1]}}
 
 
 def _produced_bundles(simple_data):
@@ -276,6 +281,14 @@ def _seed_and_consumer_ops():
     return producer, consumer, seed_input, tracker
 
 
+def _drain(op):
+    """Every bundle in ``op``'s output queue, in order."""
+    bundles = []
+    while op.has_next():
+        bundles.append(op.get_next())
+    return bundles
+
+
 def test_shared_seed_re_execution_serves_every_joined_plan(
     ray_start_regular_shared,  # noqa: F405
 ):
@@ -326,7 +339,7 @@ def test_shared_seed_re_execution_serves_every_joined_plan(
     (task,) = producer._data_tasks.values()
     assert task.lineage_task_id == seed_task_id
     assert task.reconstruction_plan_ids == frozenset(plan_ids)
-    assert producer._queued_seed_reexecutions == {}
+    assert producer._batched_plans == {}
 
     # Each re-produced output is withheld under exactly the plan whose child needs
     # it. Nothing reaches the output queue on its own.
@@ -351,21 +364,21 @@ def test_shared_seed_re_execution_serves_every_joined_plan(
         second_run[1].block_refs,
     ]
     assert [bundle.reconstruction_stamp for bundle in released] == [
-        ReconstructionStamp(child_task_ids[0], plan_ids[0]),
-        ReconstructionStamp(child_task_ids[1], plan_ids[1]),
+        ReconstructionStamp(child_task_ids[0], frozenset({plan_ids[0]})),
+        ReconstructionStamp(child_task_ids[1], frozenset({plan_ids[1]})),
     ]
     assert producer._reconstruction_outputs == {}
 
 
-def test_joined_plans_sharing_a_child_release_it_once_per_plan(
+def test_joined_plans_sharing_a_child_release_it_once(
     ray_start_regular_shared,  # noqa: F405
 ):
     """Two leaves under one child of a seed are lost while the seed's re-execution
     is still queued.
 
-    Both plans need that child, and they still share one seed re-run. The re-run
-    withholds the child's input under both plans, releases it once per plan as
-    separately stamped bundles, and each copy is submitted under its own plan.
+    Both plans need that child, and they share one seed re-run. The re-run
+    withholds the child's input under both plans, then releases it once for both,
+    and the child is submitted once under both plans.
     """
     from ray.data._internal.execution.interfaces.physical_operator import (
         TaskExecDriverStats,
@@ -417,26 +430,231 @@ def test_joined_plans_sharing_a_child_release_it_once_per_plan(
         for plan_id in plan_ids
     }
 
-    # Completing releases the child once per plan, from the same blocks.
+    # Completing releases the child once, for both plans.
     task._task_done_callback(
         None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
     )
-    released = []
-    while producer.has_next():
-        released.append(producer.get_next())
-    assert [bundle.block_refs for bundle in released] == [second_run.block_refs] * 2
-    assert [bundle.reconstruction_stamp for bundle in released] == [
-        ReconstructionStamp(child_task_id, plan_id) for plan_id in plan_ids
-    ]
+    (released,) = _drain(producer)
+    assert released.block_refs == second_run.block_refs
+    assert released.reconstruction_stamp == ReconstructionStamp(
+        child_task_id, frozenset(plan_ids)
+    )
     assert producer._reconstruction_outputs == {}
 
-    # Each copy of the child is submitted as a re-execution of its own plan.
-    for bundle in released:
+    # The child is submitted once, as a re-execution of both plans.
+    consumer._submit_data_task(MagicMock(), released)
+    (child_task,) = consumer._data_tasks.values()
+    assert child_task.lineage_task_id == child_task_id
+    assert child_task.reconstruction_plan_ids == frozenset(plan_ids)
+
+
+def _run_to_completion(
+    op: MapOperator, inputs: "RefBundle", outputs: List["RefBundle"]
+) -> DataOpTask:
+    """Submit ``inputs`` on ``op``, emit ``outputs`` from the task and complete it.
+
+    Args:
+        op: The operator to submit the task on.
+        inputs: The task's input bundle.
+        outputs: The bundles the task emits, in order.
+
+    Returns:
+        The submitted task.
+    """
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        TaskExecDriverStats,
+    )
+
+    submitted = set(op._data_tasks)
+    op._submit_data_task(MagicMock(), inputs)
+    (task_index,) = set(op._data_tasks) - submitted
+    task = op._data_tasks[task_index]
+    for bundle in outputs:
+        task._output_ready_callback(bundle)
+    task._task_done_callback(
+        None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
+    )
+    return task
+
+
+def test_shared_child_releases_each_plan_when_its_input_is_ready(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """A child reads from two seeds, and two leaves under it are lost.
+
+    The second plan joins the first plan's queued re-execution of one seed, but
+    the other seed re-runs once per plan. The child is released for the first
+    plan once its input is complete. The second plan's input is still missing a
+    block then, so it is held back and released on its own later.
+    """
+    from ray.data._internal.execution.util import make_ref_bundles
+
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    # First run: two seeds feed one child, which fans two blocks out to two leaves.
+    seed_task_ids = [producer._lineage_task_id_for(index) for index in range(2)]
+    child_task_id = consumer._lineage_task_id_for(0)
+    leaf_task_ids = ["leaf:0", "leaf:1"]
+    seed_block_ids = []
+    for seed_task_id in seed_task_ids:
+        block_id = make_ref_bundles([[1]])[0].block_refs[0].hex()
+        tracker.register_task_submission(seed_task_id, [])
+        tracker.register_block_output(seed_task_id, block_id, 0)
+        tracker.register_block_queued(seed_task_id, 0)
+        seed_block_ids.append(block_id)
+    tracker.register_task_submission(
+        child_task_id, tracker.resolve_dependencies(seed_block_ids)
+    )
+    for output_index, leaf_task_id in enumerate(leaf_task_ids):
+        child_block_id = f"{child_task_id}/{output_index}"
+        tracker.register_block_output(child_task_id, child_block_id, output_index)
+        tracker.register_block_queued(child_task_id, output_index)
+        tracker.register_task_submission(
+            leaf_task_id, tracker.resolve_dependencies([child_block_id])
+        )
+    plan_a, plan_b = (
+        tracker.register_task_failed(leaf_task_id)[1] for leaf_task_id in leaf_task_ids
+    )
+
+    # The second seed re-runs for the first plan alone. The child still waits on the
+    # first seed.
+    (second_seed_a,) = _produced_bundles([[2]])
+    _run_to_completion(
+        producer,
+        producer.stamp_seed_reexecution(seed_task_ids[1], {plan_a}, seed_input),
+        [second_seed_a],
+    )
+    assert not producer.has_next()
+
+    # Both plans share the first seed's re-run. Its completion completes the child's
+    # input for the first plan only.
+    stamped = producer.stamp_seed_reexecution(seed_task_ids[0], {plan_a}, seed_input)
+    assert producer.join_queued_seed_reexecution(seed_task_ids[0], {plan_b})
+    (first_seed,) = _produced_bundles([[1]])
+    _run_to_completion(producer, stamped, [first_seed])
+    (released_a,) = _drain(producer)
+    assert released_a.block_refs == first_seed.block_refs + second_seed_a.block_refs
+    assert released_a.reconstruction_stamp == ReconstructionStamp(
+        child_task_id, frozenset({plan_a})
+    )
+
+    # The second seed's re-run for the second plan releases the child for that plan.
+    (second_seed_b,) = _produced_bundles([[2]])
+    _run_to_completion(
+        producer,
+        producer.stamp_seed_reexecution(seed_task_ids[1], {plan_b}, seed_input),
+        [second_seed_b],
+    )
+    (released_b,) = _drain(producer)
+    assert released_b.block_refs == first_seed.block_refs + second_seed_b.block_refs
+    assert released_b.reconstruction_stamp == ReconstructionStamp(
+        child_task_id, frozenset({plan_b})
+    )
+    assert producer._reconstruction_outputs == {}
+
+    for bundle in (released_a, released_b):
         consumer._submit_data_task(MagicMock(), bundle)
     assert sorted(
-        (task.lineage_task_id, task.reconstruction_plan_ids)
-        for task in consumer._data_tasks.values()
-    ) == [(child_task_id, frozenset({plan_id})) for plan_id in plan_ids]
+        task.reconstruction_plan_ids for task in consumer._data_tasks.values()
+    ) == sorted([frozenset({plan_a}), frozenset({plan_b})])
+
+
+def test_seed_targeted_by_one_plan_and_reused_by_another(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """A seed loses an output it had not queued yet, and its child loses its own.
+
+    The seed is the target of the first plan and an intermediate task of the
+    second, and one re-run serves both. The output the child consumed is held for
+    the second plan only. The output never queued is NEW for the first plan, and
+    goes to the output queue unstamped.
+    """
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    # First run: the seed queues its first output to the child, then loses the
+    # second before queueing it.
+    seed_task_id = producer._lineage_task_id_for(0)
+    child_task_id = consumer._lineage_task_id_for(0)
+    seed_block_id = "seed/0"
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_block_output(seed_task_id, seed_block_id, 0)
+    tracker.register_block_queued(seed_task_id, 0)
+    tracker.register_task_submission(
+        child_task_id, tracker.resolve_dependencies([seed_block_id])
+    )
+    seed_plan = tracker.register_task_failed(seed_task_id)[1]
+    child_plan = tracker.register_task_failed(child_task_id)[1]
+
+    stamped = producer.stamp_seed_reexecution(seed_task_id, {seed_plan}, seed_input)
+    assert producer.join_queued_seed_reexecution(seed_task_id, {child_plan})
+    consumed_output, unqueued_output = _produced_bundles([[1], [2]])
+    task = _run_to_completion(producer, stamped, [consumed_output, unqueued_output])
+    assert task.reconstruction_plan_ids == frozenset({seed_plan, child_plan})
+
+    # The NEW output is queued as is, then the child is released for its plan.
+    new_output, released = _drain(producer)
+    assert new_output.block_refs == unqueued_output.block_refs
+    assert new_output.reconstruction_stamp is None
+    assert released.block_refs == consumed_output.block_refs
+    assert released.reconstruction_stamp == ReconstructionStamp(
+        child_task_id, frozenset({child_plan})
+    )
+    assert producer._reconstruction_outputs == {}
+    assert _nodes(tracker)[seed_task_id].num_queued_outputs == 2
+
+
+def test_loss_after_the_seed_re_execution_is_submitted_re_injects_the_seed(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """A plan that traces back to a seed whose re-execution was already submitted
+    cannot join it, and re-injects the seed for itself.
+    """
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    seed_task_id = producer._lineage_task_id_for(0)
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_seed_input(seed_task_id, seed_input)
+    lost_task_ids = [consumer._lineage_task_id_for(index) for index in range(2)]
+    for output_index, child_task_id in enumerate(lost_task_ids):
+        block_id = f"{seed_task_id}/{output_index}"
+        tracker.register_block_output(seed_task_id, block_id, output_index)
+        tracker.register_block_queued(seed_task_id, output_index)
+        tracker.register_task_submission(
+            child_task_id, tracker.resolve_dependencies([block_id])
+        )
+
+    source_op = producer.input_dependencies[0]
+    topology = {source_op: MagicMock(), producer: MagicMock(), consumer: MagicMock()}
+
+    def lose(lost_task_id):
+        task = DataOpTask(
+            0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
+        )
+        _reconstruct_lost_object(
+            topology,
+            tracker,
+            MagicMock(),
+            task,
+            ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+        )
+
+    # The first loss re-injects the seed, and the re-execution is submitted.
+    lose(lost_task_ids[0])
+    (first_call,) = topology[source_op].add_output.call_args_list
+    producer._submit_data_task(MagicMock(), first_call.args[0])
+    assert producer._batched_plans == {}
+
+    # The second loss finds nothing queued to join, so it re-injects the seed again.
+    lose(lost_task_ids[1])
+    first_call, second_call = topology[source_op].add_output.call_args_list
+    assert first_call.args[0].reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, frozenset({lost_task_ids[0]})
+    )
+    assert second_call.args[0].reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, frozenset({lost_task_ids[1]})
+    )
+    # The second plan is on the new stamp, and nothing is batched into it yet.
+    assert producer._batched_plans == {seed_task_id: set()}
 
 
 @pytest.mark.parametrize("reads_before_loss", [5, 10])
@@ -585,7 +803,8 @@ def test_reconstruction_stamp_survives_schema_divergence():
     from ray.data.block import BlockMetadata
 
     stamp = ReconstructionStamp(
-        lineage_task_id="child:0", reconstruction_plan_id="plan_a"
+        lineage_task_id="child:0",
+        reconstruction_plan_ids=frozenset({"plan_a"}),
     )
     meta = BlockMetadata(num_rows=2, size_bytes=16, exec_stats=None, input_files=None)
     # The same column comes back all nulls on the re-run, so it is inferred as null.
@@ -645,7 +864,8 @@ def test_reconstruction_input_passes_through_the_bundler(
     stamped = replace(
         make_ref_bundles([[2]])[0],
         reconstruction_stamp=ReconstructionStamp(
-            lineage_task_id="child:0", reconstruction_plan_id="plan_a"
+            lineage_task_id="child:0",
+            reconstruction_plan_ids=frozenset({"plan_a"}),
         ),
     )
     op._add_input_inner(stamped, 0)

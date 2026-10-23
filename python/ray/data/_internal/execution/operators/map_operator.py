@@ -686,9 +686,20 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                     lineage_task_id, output.block_refs[0].hex(), output_index
                 )
                 if sorted_reconstruction_plan_ids:
-                    # Whether any plan says this output is NEW.
-                    is_new_output = False
+                    # NEW only comes from the plan this task is the target of. That
+                    # plan is keyed by this task's own lineage task ID. Every other
+                    # plan either reuses the output or drops it.
+                    target_plan_id = lineage_task_id
+                    is_new_output = (
+                        target_plan_id in reconstruction_plan_ids
+                        and lineage_tracker.get_object_reuse_status(
+                            lineage_task_id, output_index, target_plan_id
+                        )
+                        is ObjectReuseStatus.OBJECT_NEW
+                    )
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
+                        if reconstruction_plan_id == target_plan_id:
+                            continue
                         status = lineage_tracker.get_object_reuse_status(
                             lineage_task_id, output_index, reconstruction_plan_id
                         )
@@ -697,6 +708,11 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                         # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
                         # child against part of its input.
                         if status is ObjectReuseStatus.OBJECT_REUSED:
+                            # An output is only REUSED if a child consumed it, and a child
+                            # only consumes a queued output. The target plan prunes every
+                            # output an earlier attempt queued, so no output is both NEW
+                            # and REUSED.
+                            assert not is_new_output, (lineage_task_id, output_index)
                             self._reconstruction_outputs.setdefault(
                                 reconstruction_plan_id, {}
                             )[
@@ -705,15 +721,12 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                                     output_index=output_index,
                                 )
                             ] = output
-                        elif status is ObjectReuseStatus.OBJECT_NEW:
-                            is_new_output = True
                     # PRUNED (a copy of the rows outlives the loss) or UNRELATED (the
-                    # plan already finished with this task).
+                    # plan already finished with this task) for every plan.
                     if not is_new_output:
                         return
-                    # Otherwise, the block is NEW
                     lineage_tracker.register_block_queued(
-                        lineage_task_id, output_index, lineage_task_id
+                        lineage_task_id, output_index, target_plan_id
                     )
                 else:
                     # This is a fresh task
@@ -754,10 +767,10 @@ class MapOperator(LineageReconstructionMixin, OneToOneOperator, ABC):
                 # Hand any child whose whole input set this completion completes
                 # downstream before reporting the completion itself.
                 if sorted_reconstruction_plan_ids:
+                    self._release_reconstruction_blocks_to_child(
+                        lineage_task_id, reconstruction_plan_ids, task_index
+                    )
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
-                        self._release_reconstruction_blocks_to_child(
-                            lineage_task_id, reconstruction_plan_id, task_index
-                        )
                         lineage_tracker.register_task_complete(
                             lineage_task_id, reconstruction_plan_id
                         )
