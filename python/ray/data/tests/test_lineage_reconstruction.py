@@ -165,58 +165,6 @@ def test_two_losses_under_one_seed_match_baseline(
     _assert_every_row_once((row["id"] for row in rows), [i + 1 for i in range(20)])
 
 
-def test_second_loss_joins_the_queued_seed_re_execution(
-    ray_start_regular_shared,  # noqa: F405
-):
-    """Two losses tracing back to one seed, before the seed's re-execution is
-    submitted, re-inject the seed once. The second plan joins the first.
-    """
-    from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-    from ray.data._internal.execution.util import make_ref_bundles
-
-    ctx = DataContext.get_current()
-    seed_input = make_ref_bundles([[1]])[0]
-    seed_op = MapOperator.create(
-        create_map_transformer_from_block_fn(lambda block, _: block),
-        input_op=InputDataBuffer(ctx, [seed_input]),
-        data_context=ctx,
-        name="Seed",
-    )
-    seed_task_id = seed_op._lineage_task_id_for(0)
-    tracker = LineageTracker()
-    seed_op._lineage_tracker = tracker
-    tracker.register_task_submission(seed_task_id, [])
-    tracker.register_seed_input(seed_task_id, seed_input)
-    lost_task_ids = ["child:0", "child:1"]
-    for output_index, child_task_id in enumerate(lost_task_ids):
-        block_id = f"{seed_task_id}/{output_index}"
-        tracker.register_block_output(seed_task_id, block_id, output_index)
-        tracker.register_block_queued(seed_task_id, output_index)
-        tracker.register_task_submission(
-            child_task_id, tracker.resolve_dependencies([block_id])
-        )
-
-    source_op = seed_op.input_dependencies[0]
-    topology = {source_op: MagicMock(), seed_op: MagicMock()}
-    for lost_task_id in lost_task_ids:
-        task = DataOpTask(
-            0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
-        )
-        _reconstruct_lost_object(
-            topology,
-            tracker,
-            MagicMock(),
-            task,
-            ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
-        )
-
-    (call,) = topology[source_op].add_output.call_args_list
-    assert call.args[0].reconstruction_stamp == ReconstructionStamp(
-        seed_task_id, frozenset({lost_task_ids[0]})
-    )
-    assert seed_op._batched_plans == {seed_task_id: {lost_task_ids[1]}}
-
-
 def _produced_bundles(simple_data):
     """``make_ref_bundles`` plus the per-block exec stats a real task output carries.
 
@@ -289,15 +237,35 @@ def _drain(op):
     return bundles
 
 
-def test_shared_seed_re_execution_serves_every_joined_plan(
+def _lose(topology: Dict, tracker: LineageTracker, lost_task_id: str) -> None:
+    """Report that ``lost_task_id``'s output was lost, the way the executor does.
+
+    Args:
+        topology: The operator topology to reconstruct in.
+        tracker: The lineage tracker the operators share.
+        lost_task_id: The lineage task ID of the task whose output was lost.
+    """
+    task = DataOpTask(
+        0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
+    )
+    _reconstruct_lost_object(
+        topology,
+        tracker,
+        MagicMock(),
+        task,
+        ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+    )
+
+
+def test_losses_before_the_seed_is_submitted_share_one_re_execution(
     ray_start_regular_shared,  # noqa: F405
 ):
-    """One re-execution of a seed, classified and released under two plans.
+    """Two children of one seed lose their output before the seed's re-execution is
+    submitted.
 
-    Two children fanned out from one seed are lost while the seed's re-execution is
-    still queued, so the second plan joins it. The single re-run must withhold each
-    re-produced output under the plan whose child needs it, and release each child
-    once under its own plan.
+    The executor re-injects the seed once and batches the second plan into it. The
+    one re-run then serves both plans. It withholds each re-produced output under the
+    plan whose child needs it, and releases each child once under its own plan.
     """
     from ray.data._internal.execution.interfaces.physical_operator import (
         TaskExecDriverStats,
@@ -312,6 +280,7 @@ def test_shared_seed_re_execution_serves_every_joined_plan(
     child_task_ids = [consumer._lineage_task_id_for(index) for index in range(2)]
     first_run = make_ref_bundles([[1], [2]])
     tracker.register_task_submission(seed_task_id, [])
+    tracker.register_seed_input(seed_task_id, seed_input)
     for output_index, (child_task_id, bundle) in enumerate(
         zip(child_task_ids, first_run)
     ):
@@ -323,19 +292,23 @@ def test_shared_seed_re_execution_serves_every_joined_plan(
         )
     tracker.register_task_complete(seed_task_id)
 
-    # Both children are lost. The first plan re-injects the seed, and the second
-    # finds that re-execution still queued and joins it.
-    plan_ids = [
-        tracker.register_task_failed(child_task_id)[1]
-        for child_task_id in child_task_ids
-    ]
-    stamped_seed_input = producer.stamp_seed_reexecution(
-        seed_task_id, {plan_ids[0]}, seed_input
+    # Both children are lost before the seed's re-execution is submitted. Each plan
+    # is keyed by its lost child. The first loss re-injects the seed, and the second
+    # is batched into that queued re-execution instead of re-injecting it again.
+    plan_ids = child_task_ids
+    source_op = producer.input_dependencies[0]
+    topology = {source_op: MagicMock(), producer: MagicMock(), consumer: MagicMock()}
+    for child_task_id in child_task_ids:
+        _lose(topology, tracker, child_task_id)
+    (call,) = topology[source_op].add_output.call_args_list
+    reinjected = call.args[0]
+    assert reinjected.reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, frozenset({plan_ids[0]})
     )
-    assert producer.join_queued_seed_reexecution(seed_task_id, {plan_ids[1]})
+    assert producer._batched_plans == {seed_task_id: {plan_ids[1]}}
 
     # The one re-execution is submitted under both plans.
-    producer._submit_data_task(MagicMock(), stamped_seed_input)
+    producer._submit_data_task(MagicMock(), reinjected)
     (task,) = producer._data_tasks.values()
     assert task.lineage_task_id == seed_task_id
     assert task.reconstruction_plan_ids == frozenset(plan_ids)
@@ -356,9 +329,7 @@ def test_shared_seed_re_execution_serves_every_joined_plan(
     task._task_done_callback(
         None, None, TaskExecDriverStats(task_output_backpressure_s=0.0)
     )
-    released = []
-    while producer.has_next():
-        released.append(producer.get_next())
+    released = _drain(producer)
     assert [bundle.block_refs for bundle in released] == [
         second_run[0].block_refs,
         second_run[1].block_refs,
@@ -626,26 +597,14 @@ def test_loss_after_the_seed_re_execution_is_submitted_re_injects_the_seed(
     source_op = producer.input_dependencies[0]
     topology = {source_op: MagicMock(), producer: MagicMock(), consumer: MagicMock()}
 
-    def lose(lost_task_id):
-        task = DataOpTask(
-            0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
-        )
-        _reconstruct_lost_object(
-            topology,
-            tracker,
-            MagicMock(),
-            task,
-            ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
-        )
-
     # The first loss re-injects the seed, and the re-execution is submitted.
-    lose(lost_task_ids[0])
+    _lose(topology, tracker, lost_task_ids[0])
     (first_call,) = topology[source_op].add_output.call_args_list
     producer._submit_data_task(MagicMock(), first_call.args[0])
     assert producer._batched_plans == {}
 
     # The second loss finds nothing queued to join, so it re-injects the seed again.
-    lose(lost_task_ids[1])
+    _lose(topology, tracker, lost_task_ids[1])
     first_call, second_call = topology[source_op].add_output.call_args_list
     assert first_call.args[0].reconstruction_stamp == ReconstructionStamp(
         seed_task_id, frozenset({lost_task_ids[0]})
