@@ -50,6 +50,13 @@ constexpr const char *kNoTokenErrorMessage =
     "with RAY_AUTH_MODE=disabled, set RAY_AUTH_MODE=disabled here too. See "
     "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
 
+// Keep in sync with K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py.
+constexpr const char *kK8sTokenAuthRequiresTokenModeErrorMessage =
+    "Kubernetes token authentication (ENABLE_K8S_TOKEN_AUTH) requires "
+    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or unset "
+    "RAY_ENABLE_K8S_TOKEN_AUTH to run with auth disabled.";
+
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
   std::vector<std::string> parts = absl::StrSplit(token, '.');
@@ -86,6 +93,11 @@ AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
 
 std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
+  // Every Ray process loads its token at startup, so this fails each one. A user
+  // config error, so no RAY_CHECK, whose message calls it a bug in Ray.
+  if (IsK8sTokenAuthEnabled() && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    RAY_LOG(FATAL) << kK8sTokenAuthRequiresTokenModeErrorMessage;
+  }
   absl::MutexLock lock(&token_mutex_);
 
   // If k8s token auth is enabled, revoke cached token as Kubelet

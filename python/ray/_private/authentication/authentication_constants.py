@@ -19,6 +19,14 @@ AUTH_MODE_MISMATCH_ERROR_MESSAGE = (
     "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client too"
 )
 
+# Keep in sync with kK8sTokenAuthRequiresTokenModeErrorMessage in
+# src/ray/rpc/authentication/authentication_token_loader.cc.
+K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE = (
+    "Kubernetes token authentication (ENABLE_K8S_TOKEN_AUTH) requires "
+    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or unset "
+    "RAY_ENABLE_K8S_TOKEN_AUTH to run with auth disabled."
+)
+
 TOKEN_INVALID_ERROR_MESSAGE = "Token authentication is enabled but the authentication token is invalid or incorrect."  # noqa: E501
 
 # HTTP header and cookie constants

@@ -999,30 +999,25 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
 
 
 @pytest.mark.parametrize(
-    "k8s_token_auth, headers, expected_status",
+    "headers, expected_status",
     [
-        (False, [("Authorization", "Bearer t")], 401),
-        (False, [("Authorization", "bearer t")], 401),
-        (False, [("X-Ray-Authorization", "Bearer t")], 401),
-        (
-            False,
-            [("Authorization", "Basic dXNlcjpwYXNz"), ("Authorization", "Bearer t")],
-            401,
-        ),
-        (False, [("Authorization", "Basic dXNlcjpwYXNz")], 200),
-        (False, [("X-Ray-Authorization", "")], 200),
-        (False, [("Cookie", "ray-authentication-token=t")], 200),
-        (False, [], 200),
-        (True, [("Authorization", "Bearer t")], 200),
+        ([("Authorization", "Bearer t")], 401),
+        ([("Authorization", "bearer t")], 401),
+        ([("Authorization", "Basic dXNlcjpwYXNz")], 401),
+        ([("X-Ray-Authorization", "Bearer t")], 401),
+        ([("Authorization", ""), ("Authorization", "Bearer t")], 401),
+        ([("Authorization", "")], 200),
+        ([("X-Ray-Authorization", "")], 200),
+        ([("Cookie", "ray-authentication-token=t")], 200),
+        ([], 200),
     ],
 )
 def test_token_auth_middleware_with_auth_disabled(
-    k8s_token_auth: bool,
     headers: List[Tuple[str, str]],
     expected_status: int,
 ):
-    """With auth disabled, the middleware rejects a Ray token header, except under
-    Kubernetes token auth."""
+    """With auth disabled, the middleware rejects a request with any auth header,
+    and ignores the token cookie."""
     import asyncio
     from unittest import mock
 
@@ -1043,8 +1038,6 @@ def test_token_auth_middleware_with_auth_disabled(
     request = make_mocked_request("GET", "/api/version", headers=CIMultiDict(headers))
     with mock.patch.object(
         authentication_utils, "is_token_auth_enabled", return_value=False
-    ), mock.patch.object(
-        authentication_utils, "is_k8s_token_auth_enabled", return_value=k8s_token_auth
     ):
         response = asyncio.run(middleware(request, handler))
 
@@ -1068,9 +1061,9 @@ _HTTP_CLIENT_CALLS = {
     reason="Uses subprocess ray start, not compatible with client mode",
 )
 def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
-    """A dashboard with RAY_AUTH_MODE=disabled rejects requests that carry a Ray
-    token in a header, so the jobs, state and Serve clients with a token file work
-    only if they set RAY_AUTH_MODE=disabled too."""
+    """A dashboard with RAY_AUTH_MODE=disabled rejects requests that carry an auth
+    header, so the jobs, state and Serve clients with a token file work only if they
+    set RAY_AUTH_MODE=disabled too."""
     import requests
 
     from ray._private.authentication.authentication_constants import (
@@ -1089,7 +1082,7 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
         ("/api/version", {"X-Ray-Authorization": f"Bearer {token}"}, None, True),
         ("/api/authentication_mode", {"Authorization": f"Bearer {token}"}, None, True),
         ("/api/version", None, {AUTHENTICATION_TOKEN_COOKIE_NAME: token}, False),
-        ("/api/version", {"Authorization": "Basic dXNlcjpwYXNz"}, None, False),
+        ("/api/version", {"Authorization": "Basic dXNlcjpwYXNz"}, None, True),
         ("/api/version", {"X-Ray-Authorization": ""}, None, False),
     ]:
         response = requests.get(
@@ -1125,6 +1118,54 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
                 assert result.returncode != 0, output
                 assert "AuthenticationError" in output, output
                 _assert_auth_mode_mismatch_only(output)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+@pytest.mark.parametrize("entry_point", ["ray start", "ray.init", "gcs_server"])
+def test_k8s_token_auth_with_auth_disabled_is_config_error(entry_point, tmp_path):
+    """RAY_AUTH_MODE=disabled with ENABLE_K8S_TOKEN_AUTH fails before starting any
+    process, with an error naming RAY_AUTH_MODE=token. A GCS started directly exits
+    with the same error."""
+    from ray._private.authentication.authentication_constants import (
+        K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE,
+    )
+    from ray._private.services import GCS_SERVER_EXECUTABLE
+
+    temp_dir = tmp_path / "ray"
+    command = {
+        "ray start": ["ray", "start", "--head", f"--temp-dir={temp_dir}"],
+        "ray.init": [
+            sys.executable,
+            "-c",
+            f"import ray; ray.init(_temp_dir='{temp_dir}')",
+        ],
+        "gcs_server": [
+            GCS_SERVER_EXECUTABLE,
+            "--gcs_server_port=0",
+            f"--log_dir={tmp_path}",
+            "--session_name=k8s_check",
+        ],
+    }[entry_point]
+    result = subprocess.run(
+        command,
+        env={
+            **os.environ,
+            "RAY_AUTH_MODE": "disabled",
+            "RAY_ENABLE_K8S_TOKEN_AUTH": "1",
+        },
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+    assert result.returncode != 0
+    assert K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in (
+        result.stdout + result.stderr
+    )
+    assert not list(temp_dir.glob("session_*"))
 
 
 def test_kill_raylet_on_auth_disabled_cluster_with_token_file():

@@ -11,7 +11,6 @@ from ray._private.authentication.authentication_constants import (
     AUTHORIZATION_HEADER_NAME,
 )
 from ray._private.authentication.authentication_utils import (
-    is_k8s_token_auth_enabled,
     is_token_auth_enabled,
     validate_request_token,
 )
@@ -38,7 +37,7 @@ def _authentication_error(metadata: tuple) -> Optional[str]:
 
     if not is_token_auth_enabled():
         # Reject clients that send a token so that they opt out too.
-        if auth_header is not None and not is_k8s_token_auth_enabled():
+        if auth_header is not None:
             logger.debug("Rejecting a request with a token because auth is disabled")
             return AUTH_MODE_MISMATCH_ERROR_MESSAGE
         return None

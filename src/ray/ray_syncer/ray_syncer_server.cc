@@ -64,7 +64,7 @@ RayServerBidiReactor::RayServerBidiReactor(
       server_context_(server_context),
       auth_token_(std::move(auth_token)),
       auth_token_validator_(auth_token_validator) {
-  if ((auth_token_ && !auth_token_->empty()) || ray::rpc::IsK8sTokenAuthEnabled()) {
+  if (ray::rpc::GetAuthenticationMode() == ray::rpc::AuthenticationMode::TOKEN) {
     // Validate authentication token
     const auto &metadata = server_context->client_metadata();
     auto it = metadata.find(kAuthTokenKey);

@@ -18,16 +18,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _carries_ray_token_header(headers: "CIMultiDictProxy[str]") -> bool:
-    """Whether a request carries a Ray token in a header. The token cookie doesn't
-    count: a browser can keep it from an earlier token-mode cluster at the same
-    address. Non-Bearer Authorization schemes, such as basic auth, don't count."""
-    bearer_prefix = authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+def _carries_auth_header(headers: "CIMultiDictProxy[str]") -> bool:
+    """Whether a request carries a non-empty Authorization header, of any scheme, or
+    X-Ray-Authorization header. The token cookie doesn't count: a browser can keep it
+    from an earlier token-mode cluster at the same address."""
     return any(
-        value.lower().startswith(bearer_prefix)
-        for value in headers.getall(
-            authentication_constants.AUTHORIZATION_HEADER_NAME, []
-        )
+        headers.getall(authentication_constants.AUTHORIZATION_HEADER_NAME, [])
     ) or bool(headers.get(authentication_constants.RAY_AUTHORIZATION_HEADER_NAME))
 
 
@@ -51,18 +47,14 @@ def get_token_auth_middleware(
         """Middleware to validate bearer tokens when token authentication is enabled.
 
         With auth disabled, or without ray._raylet (doc builds), it authenticates
-        nothing and only rejects requests that carry a Ray token in a header, with
+        nothing and only rejects requests that carry an auth header, with
         AuthModeMismatch, so token-mode clients opt out too.
         """
         if not auth_utils.is_token_auth_enabled():
-            if (
-                _carries_ray_token_header(request.headers)
-                # A Kubernetes service-account bearer token is not a Ray token.
-                and not auth_utils.is_k8s_token_auth_enabled()
-            ):
+            if _carries_auth_header(request.headers):
                 logger.debug(
-                    f"Rejecting {request.method} {request.path} with a token because "
-                    "auth is disabled"
+                    f"Rejecting {request.method} {request.path} with an auth header "
+                    "because auth is disabled"
                 )
                 return aiohttp_module.web.Response(
                     status=401,

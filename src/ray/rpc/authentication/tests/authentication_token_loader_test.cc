@@ -404,5 +404,18 @@ TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
       R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
 }
 
+TEST_F(AuthenticationTokenLoaderTest, TestK8sTokenAuthWithAuthDisabledFails) {
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "disabled", "ENABLE_K8S_TOKEN_AUTH": true})");
+  AuthenticationTokenLoader::instance().ResetCache();
+
+  EXPECT_DEATH(AuthenticationTokenLoader::instance().GetToken(),
+               "Kubernetes token authentication \\(ENABLE_K8S_TOKEN_AUTH\\) requires "
+               "RAY_AUTH_MODE=token");
+
+  RayConfig::instance().initialize(
+      R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
+}
+
 }  // namespace rpc
 }  // namespace ray
