@@ -1,10 +1,13 @@
 from unittest.mock import MagicMock, patch
 
+import collections
+
 import pyarrow as pa
 import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
+from ray.data._internal.stats import _OutputBlockStatsCollector
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
     DiskHashShuffleMapOp,
@@ -462,12 +465,25 @@ def test_shuffle_ops_report_per_task_exec_stats(
     disable_fallback_to_object_extension,
     restore_data_context,
     use_disk,
+    monkeypatch,
 ):
     """Shuffle map and reduce tasks build their exec stats worker-side, where
     the task index isn't known; the operators are responsible for stamping it.
     Without the stamp (or with the old zero-width reduce spans), shuffle
     operators silently vanish from per-task stats consumers."""
     DataContext.get_current().use_disk_based_hash_shuffle = use_disk
+
+    # metadata now holds _OutputBlockStatsCollector instances instead of
+    # per-block lists; record each collector's inputs so visit() below can
+    # still assert on per-block exec stats.
+    seen = collections.defaultdict(list)
+    orig_add = _OutputBlockStatsCollector.add
+
+    def recording_add(self, block_stats):
+        seen[id(self)].append(block_stats)
+        orig_add(self, block_stats)
+
+    monkeypatch.setattr(_OutputBlockStatsCollector, "add", recording_add)
 
     ds = ray.data.range(1000, override_num_blocks=4).groupby("id").count().materialize()
 
@@ -478,6 +494,8 @@ def test_shuffle_ops_report_per_task_exec_stats(
 
     def visit(s):
         for name, block_stats in s.metadata.items():
+            if isinstance(block_stats, _OutputBlockStatsCollector):
+                block_stats = seen[id(block_stats)]
             block_stats_by_op.setdefault(name, []).extend(block_stats)
         for parent in s.parents:
             visit(parent)
