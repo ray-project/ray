@@ -289,8 +289,10 @@ std::string AuthenticationTokenLoader::CreateTokenIfMissing() {
   if (created_dir) {
     std::filesystem::permissions(token_dir, std::filesystem::perms::owner_all, ec);
     if (ec) {
-      return "Failed to restrict " + token_dir.string() +
-             " to its owner: " + ec.message();
+      // Some filesystems (FAT, some network mounts) don't support Unix modes; the
+      // token file itself is still created with mode 0600.
+      RAY_LOG(WARNING) << "Failed to restrict " << token_dir.string()
+                       << " to its owner: " << ec.message();
     }
   }
 

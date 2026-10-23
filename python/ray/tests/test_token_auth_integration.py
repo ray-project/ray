@@ -731,6 +731,33 @@ def test_cluster_utils_head_start_failure_unsets_auth_mode(monkeypatch):
     client_test_enabled(),
     reason="Starts a new local cluster; not compatible with client mode",
 )
+def test_cluster_utils_connect_failure_unsets_auth_mode(monkeypatch):
+    """When Cluster(initialize_head=True, connect=True) fails to connect after
+    the head started, it unsets the RAY_AUTH_MODE it set."""
+    from ray.cluster_utils import Cluster
+
+    monkeypatch.delenv("RAY_AUTH_MODE", raising=False)
+    reset_auth_token_state()
+    started_clusters = []
+
+    def fail_connect(cluster, *args, **kwargs):
+        started_clusters.append(cluster)
+        raise RuntimeError("connect failed")
+
+    try:
+        with patch.object(Cluster, "connect", autospec=True, side_effect=fail_connect):
+            with pytest.raises(RuntimeError, match="connect failed"):
+                Cluster(initialize_head=True, connect=True)
+        assert "RAY_AUTH_MODE" not in os.environ
+    finally:
+        for cluster in started_clusters:
+            cluster.shutdown()
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Starts a new local cluster; not compatible with client mode",
+)
 def test_cluster_utils_head_creates_token(monkeypatch):
     """Cluster(enable_token_auth=True) with RAY_AUTH_MODE unset and no token
     creates ~/.ray/auth_token, starts the head with token auth on, and unsets

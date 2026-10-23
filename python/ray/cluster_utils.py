@@ -245,9 +245,15 @@ class Cluster:
 
         if initialize_head:
             head_node_args = head_node_args or {}
-            self.add_node(**head_node_args)
-            if connect:
-                self.connect()
+            try:
+                self.add_node(**head_node_args)
+                if connect:
+                    self.connect()
+            except BaseException:
+                # The constructor raised, leaving the caller no object to call
+                # shutdown() on.
+                self._auth_mode.restore()
+                raise
 
     @property
     def gcs_address(self):
@@ -301,18 +307,12 @@ class Cluster:
         with disable_client_hook():
             if self.head_node is None:
                 self._auth_mode.apply(ray_params._system_config)
-                try:
-                    node = ray._private.node.Node(
-                        ray_params,
-                        head=True,
-                        shutdown_at_exit=self._shutdown_at_exit,
-                        spawn_reaper=self._shutdown_at_exit,
-                    )
-                except BaseException:
-                    # Cluster(initialize_head=True) raises from its constructor,
-                    # leaving the caller no object to call shutdown() on.
-                    self._auth_mode.restore()
-                    raise
+                node = ray._private.node.Node(
+                    ray_params,
+                    head=True,
+                    shutdown_at_exit=self._shutdown_at_exit,
+                    spawn_reaper=self._shutdown_at_exit,
+                )
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
                 self.redis_username = node_args.get(
