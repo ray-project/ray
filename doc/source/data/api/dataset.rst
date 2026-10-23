@@ -46,7 +46,6 @@ Developer API
   :nosignatures:
   :toctree: doc/
 
-  Dataset.map_batches_internal
   Dataset.to_pandas_refs
   Dataset.to_numpy_refs
   Dataset.to_arrow_refs
