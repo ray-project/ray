@@ -208,7 +208,12 @@ message GetObjectStatusReply {
   enum ObjectStatus {
     CREATED = 0;
     OUT_OF_SCOPE = 1;
-    FREED = 2;
+    // 2 was FREED: the owner replied this when it had dropped the object's
+    // plasma copy on purpose. No borrower branches on it, so it lands in the
+    // catch-all like any unnamed value. Do not reuse the value: an owner on an
+    // older build can still send it.
+    reserved 2;
+    reserved "FREED";
   }
   ObjectStatus status = 1;
   // The Ray object: either a concrete value, an in-Plasma indicator, or an

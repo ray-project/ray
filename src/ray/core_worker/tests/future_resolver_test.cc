@@ -99,28 +99,13 @@ class FutureResolverTest : public ::testing::Test {
   FutureResolver resolver_;
 };
 
-// FREED is the one status named in this build that no branch handles, so it reaches the
-// catch-all without a cast.
-TEST_F(FutureResolverTest, ProcessResolvedObjectFreedStoresError) {
-  ObjectID object_id = NewObjectWithLocalRef();
-  rpc::GetObjectStatusReply reply;
-  reply.set_status(rpc::GetObjectStatusReply::FREED);
-
-  resolver_.ProcessResolvedObject(object_id, rpc::Address(), Status::OK(), reply);
-
-  auto object = memory_store_->GetIfExists(object_id);
-  ASSERT_NE(object, nullptr);
-  rpc::ErrorType error_type;
-  ASSERT_TRUE(object->IsException(&error_type));
-  ASSERT_EQ(error_type, rpc::ErrorType::OBJECT_LOST);
-}
-
 // A value this build has no name for. One case the catch-all exists for: proto3 enums
-// are open, so a reply can carry one.
+// are open, so a reply can carry one. 2 is such a value now that FREED is reserved, and
+// an owner on an older build can still send it.
 TEST_F(FutureResolverTest, ProcessResolvedObjectUnknownStatusStoresError) {
   ObjectID object_id = NewObjectWithLocalRef();
   rpc::GetObjectStatusReply reply;
-  reply.set_status(static_cast<rpc::GetObjectStatusReply::ObjectStatus>(99));
+  reply.set_status(static_cast<rpc::GetObjectStatusReply::ObjectStatus>(2));
 
   resolver_.ProcessResolvedObject(object_id, rpc::Address(), Status::OK(), reply);
 
