@@ -520,6 +520,10 @@ class WaitBlockPrefetcher(BlockPrefetcher):
                     )
             except Exception:
                 logger.exception("Error in prefetcher thread.")
+            finally:
+                # Drop the references before parking, so an idle prefetcher
+                # doesn't keep the blocks it last fetched alive.
+                blocks_to_fetch = []
 
         logger.debug("Exiting prefetcher's background thread")
 
@@ -539,6 +543,13 @@ class WaitBlockPrefetcher(BlockPrefetcher):
 
     def __del__(self):
         self.stop()
+
+
+class DisabledBlockPrefetcher(BlockPrefetcher):
+    """Block prefetcher for when prefetching is off. It starts no thread."""
+
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        pass
 
 
 class ActorBlockPrefetcher(BlockPrefetcher):
