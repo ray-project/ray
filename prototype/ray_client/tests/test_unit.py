@@ -1,6 +1,5 @@
 """Offline unit and mock-REST-server tests for ray_client."""
 
-import base64
 import copy
 import functools
 import inspect
@@ -8,38 +7,39 @@ import io
 import json
 import os
 import pickle
-import subprocess
 import sys
 import tempfile
 import threading
+import time
+import traceback
+import types
 import unittest
+import urllib.parse
+import uuid
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional
 from unittest.mock import patch
 
 from ray_client import (
-    JobResult,
+    ActorProxy,
     RayClient,
     RayClientError,
     RayClientSerializationError,
-    RayJobExecutionError,
-    RayJobTimeoutError,
+    RayExecutionError,
+    RemoteRef,
     packaging,
-    run_function_as_driver,
+    run,
+    stream,
 )
 from ray_client._ignore import _compile_ignore_rules, _is_ignored
 from ray_client.packaging import (
     IGNORE_GITIGNORE_ENV_VAR,
-    RESULT_LINE_PREFIX,
-    RUNNER_FILENAME,
-    RUNNER_SCRIPT_CONTENT,
-    USER_FN_FILENAME,
-    build_driver_package,
+    build_working_dir_package,
+    extract_class_source_and_globals,
     extract_function_source_and_globals,
-    parse_logs_and_result,
 )
 
 GLOBAL_SCALE = 42
@@ -53,11 +53,16 @@ class _MockClusterState:
     def __init__(self, tmp_root: str):
         self.tmp_root = Path(tmp_root)
         self.packages: Dict[str, bytes] = {}
-        self.jobs: Dict[str, Dict[str, Any]] = {}
-        self.counter = 0
-        self.fail_next_status_polls = 0
-        self.stopped_jobs: list = []
+        self.workspaces: Dict[str, Dict[str, Any]] = {}
+        self.fail_next_requests = 0
         self.lock = threading.Lock()
+
+    def check_ttls_locked(self) -> None:
+        now = time.monotonic()
+        for ws_name, ws in list(self.workspaces.items()):
+            ttl = ws.get("ttl_seconds")
+            if ttl is not None and ttl > 0 and (now - ws["last_active"]) >= ttl:
+                self.workspaces.pop(ws_name, None)
 
 
 class _MockJobServerHandler(BaseHTTPRequestHandler):
@@ -74,54 +79,194 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/api/jobs/":
-            with self.state.lock:
-                items = [
+    def _send_ndjson_stream(self, items: Any) -> None:
+        lines = []
+        try:
+            for item in items:
+                lines.append(
+                    json.dumps({"ok": True, "item": item}, allow_nan=False) + "\n"
+                )
+        except Exception as exc:
+            lines.append(
+                json.dumps(
                     {
-                        "submission_id": sid,
-                        "status": info["status"],
-                        "message": info.get("message", ""),
+                        "ok": False,
+                        "error": {
+                            "exc_type": type(exc).__name__,
+                            "exc_message": str(exc),
+                            "traceback": traceback.format_exc(),
+                        },
                     }
-                    for sid, info in self.state.jobs.items()
-                ]
-            self._send_json(200, items)
-            return
-        if self.path.startswith("/api/packages/gcs/"):
-            pkg_name = self.path.split("/api/packages/gcs/", 1)[1]
+                )
+                + "\n"
+            )
+        payload = "".join(lines).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _read_json(self) -> Any:
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0:
+            return {}
+        return json.loads(self.rfile.read(length).decode("utf-8"))
+
+    def _unpack_workspace_runtime_env_locked(
+        self, ws_name: str, ws: Dict[str, Any], runtime_env: Optional[Dict[str, Any]]
+    ) -> Optional[Path]:
+        if not runtime_env:
+            return ws.get("work_dir")
+        ws_dir = self.state.tmp_root / ws_name
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        wd_uri = runtime_env.get("working_dir")
+        if wd_uri and str(wd_uri).startswith("gcs://"):
+            pkg_name = str(wd_uri).split("gcs://", 1)[1]
+            if pkg_name not in self.state.packages:
+                raise KeyError(f"Package '{pkg_name}' not uploaded")
+            with zipfile.ZipFile(io.BytesIO(self.state.packages[pkg_name])) as zf:
+                zf.extractall(ws_dir)
+        for mod_uri in runtime_env.get("py_modules") or ():
+            if str(mod_uri).startswith("gcs://"):
+                pkg_name = str(mod_uri).split("gcs://", 1)[1]
+                if pkg_name in self.state.packages:
+                    with zipfile.ZipFile(
+                        io.BytesIO(self.state.packages[pkg_name])
+                    ) as zf:
+                        zf.extractall(ws_dir)
+        env_vars = dict(runtime_env.get("env_vars") or {})
+        ws["env_vars"] = env_vars
+        ws["work_dir"] = ws_dir
+        return ws_dir
+
+    def do_GET(self) -> None:  # noqa: N802
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        query = dict(urllib.parse.parse_qsl(parsed.query))
+
+        with self.state.lock:
+            if self.state.fail_next_requests > 0:
+                self.state.fail_next_requests -= 1
+                self._send_json(503, {"error": "temporary gateway error"})
+                return
+
+        if path.startswith("/api/packages/gcs/"):
+            pkg_name = path.split("/api/packages/gcs/", 1)[1]
             with self.state.lock:
                 exists = pkg_name in self.state.packages
             self._send_json(200 if exists else 404, {"exists": exists})
             return
-        if self.path.startswith("/api/jobs/") and self.path.endswith("/logs"):
-            sub_id = self.path[len("/api/jobs/") : -len("/logs")]
+        if path == "/api/workspaces":
             with self.state.lock:
-                job = self.state.jobs.get(sub_id)
-            if not job:
-                self._send_json(404, {"error": "not found"})
-                return
-            self._send_json(200, {"logs": job["logs"]})
+                self.state.check_ttls_locked()
+                items = [
+                    {
+                        "workspace": ws_name,
+                        "namespace": f"workspace:{ws_name}",
+                        "ttl_seconds": ws["ttl_seconds"],
+                        "actors": list(ws["actors"].keys()),
+                        "ref_count": len(ws["refs"]),
+                    }
+                    for ws_name, ws in self.state.workspaces.items()
+                ]
+            self._send_json(200, items)
             return
-        if self.path.startswith("/api/jobs/"):
-            sub_id = self.path[len("/api/jobs/") :]
+        if path.startswith("/api/workspaces/"):
+            parts = path[len("/api/workspaces/") :].split("/")
+            ws_name = parts[0]
             with self.state.lock:
-                if self.state.fail_next_status_polls > 0:
-                    self.state.fail_next_status_polls -= 1
-                    self._send_json(503, {"error": "temporary gateway error"})
+                self.state.check_ttls_locked()
+                ws = self.state.workspaces.get(ws_name)
+                if ws is None:
+                    self._send_json(404, {"error": "workspace not found"})
                     return
-                job = self.state.jobs.get(sub_id)
-            if not job:
-                self._send_json(404, {"error": "not found"})
-                return
-            self._send_json(
-                200,
-                {
-                    "submission_id": sub_id,
-                    "status": job["status"],
-                    "message": job.get("message", ""),
-                },
-            )
-            return
+                ws["last_active"] = time.monotonic()
+                if len(parts) == 1:
+                    self._send_json(
+                        200,
+                        {
+                            "workspace": ws_name,
+                            "namespace": f"workspace:{ws_name}",
+                            "ttl_seconds": ws["ttl_seconds"],
+                            "actors": [
+                                {"name": k, "lifetime": v["lifetime"]}
+                                for k, v in ws["actors"].items()
+                            ],
+                            "ref_count": len(ws["refs"]),
+                        },
+                    )
+                    return
+                if len(parts) == 2 and parts[1] == "actors":
+                    self._send_json(
+                        200,
+                        [
+                            {
+                                "name": k,
+                                "workspace": ws_name,
+                                "lifetime": v["lifetime"],
+                            }
+                            for k, v in ws["actors"].items()
+                        ],
+                    )
+                    return
+                if len(parts) == 3 and parts[1] == "actors":
+                    actor_name = parts[2]
+                    act = ws["actors"].get(actor_name)
+                    if act is None:
+                        self._send_json(404, {"error": "actor not found"})
+                        return
+                    self._send_json(
+                        200,
+                        {
+                            "name": actor_name,
+                            "workspace": ws_name,
+                            "lifetime": act["lifetime"],
+                        },
+                    )
+                    return
+                if len(parts) == 3 and parts[1] == "refs":
+                    ref_id = parts[2]
+                    if ref_id not in ws["refs"]:
+                        self._send_json(
+                            404,
+                            {
+                                "ok": False,
+                                "not_found": True,
+                                "error": {
+                                    "exc_type": "KeyError",
+                                    "exc_message": f"Ref '{ref_id}' not found",
+                                },
+                            },
+                        )
+                        return
+                    entry = ws["refs"][ref_id]
+                    if query.get("ready_only") in ("1", "true", "True"):
+                        self._send_json(
+                            200,
+                            {
+                                "ok": True,
+                                "ready": not entry.get("canceled", False),
+                            },
+                        )
+                        return
+                    if entry.get("canceled"):
+                        self._send_json(
+                            200,
+                            {
+                                "ok": False,
+                                "error": {
+                                    "exc_type": "TaskCancelledError",
+                                    "exc_message": f"Ref '{ref_id}' was cancelled",
+                                },
+                            },
+                        )
+                        return
+                    if entry.get("error"):
+                        self._send_json(200, {"ok": False, "error": entry["error"]})
+                        return
+                    self._send_json(200, {"ok": True, "result": entry["value"]})
+                    return
         self._send_json(404, {"error": "unknown endpoint"})
 
     def do_PUT(self) -> None:  # noqa: N802
@@ -131,7 +276,6 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
             body = self.rfile.read(length)
             with self.state.lock:
                 self.state.packages[pkg_name] = body
-            # Real Ray returns 200 with an empty body here.
             self.send_response(200)
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -139,88 +283,356 @@ class _MockJobServerHandler(BaseHTTPRequestHandler):
         self._send_json(404, {"error": "unknown endpoint"})
 
     def do_DELETE(self) -> None:  # noqa: N802
-        if self.path.startswith("/api/jobs/"):
-            sub_id = self.path[len("/api/jobs/") :]
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
+        if path.startswith("/api/workspaces/"):
+            parts = path[len("/api/workspaces/") :].split("/")
+            ws_name = parts[0]
             with self.state.lock:
-                existed = self.state.jobs.pop(sub_id, None) is not None
-            self._send_json(200 if existed else 404, {"deleted": existed})
-            return
+                self.state.check_ttls_locked()
+                if len(parts) == 1:
+                    existed = self.state.workspaces.pop(ws_name, None) is not None
+                    self._send_json(200 if existed else 404, {"closed": existed})
+                    return
+                ws = self.state.workspaces.get(ws_name)
+                if ws is None:
+                    self._send_json(404, {"error": "workspace not found"})
+                    return
+                ws["last_active"] = time.monotonic()
+                if len(parts) == 3 and parts[1] == "actors":
+                    existed = ws["actors"].pop(parts[2], None) is not None
+                    self._send_json(200 if existed else 404, {"killed": existed})
+                    return
+                if len(parts) == 3 and parts[1] == "refs":
+                    existed = ws["refs"].pop(parts[2], None) is not None
+                    self._send_json(200 if existed else 404, {"deleted": existed})
+                    return
         self._send_json(404, {"error": "unknown endpoint"})
 
+    @staticmethod
+    def _resolve_mock_refs(val: Any, refs: Dict[str, Any]) -> Any:
+        if isinstance(val, dict) and set(val.keys()) == {"$ray_ref"}:
+            ref_id = val["$ray_ref"]
+            if ref_id not in refs:
+                raise KeyError(f"RemoteRef '{ref_id}' not found")
+            entry = refs[ref_id]
+            if entry.get("error"):
+                raise RuntimeError(entry["error"]["exc_message"])
+            return entry["value"]
+        if isinstance(val, list):
+            return [_MockJobServerHandler._resolve_mock_refs(v, refs) for v in val]
+        if isinstance(val, dict):
+            return {
+                k: _MockJobServerHandler._resolve_mock_refs(v, refs)
+                for k, v in val.items()
+            }
+        return val
+
+    def _exec_in_workspace_env(
+        self, ws: Dict[str, Any], fn: Any, args: list, kwargs: dict
+    ) -> Any:
+        work_dir: Optional[Path] = ws.get("work_dir")
+        env_vars: Dict[str, str] = ws.get("env_vars") or {}
+        prev_cwd = os.getcwd()
+        prev_path = list(sys.path)
+        prev_env = {k: os.environ.get(k) for k in env_vars}
+        try:
+            if work_dir is not None:
+                os.chdir(work_dir)
+                sys.path.insert(0, str(work_dir))
+            for k, v in env_vars.items():
+                os.environ[k] = str(v)
+            out = fn(*args, **kwargs)
+            if inspect.iscoroutine(out):
+                import asyncio
+
+                out = asyncio.run(out)
+            return out
+        finally:
+            os.chdir(prev_cwd)
+            sys.path[:] = prev_path
+            for k, old_v in prev_env.items():
+                if old_v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = old_v
+
     def do_POST(self) -> None:  # noqa: N802
-        if self.path.startswith("/api/jobs/") and self.path.endswith("/stop"):
-            sub_id = self.path[len("/api/jobs/") : -len("/stop")]
-            with self.state.lock:
-                self.state.stopped_jobs.append(sub_id)
-                if sub_id in self.state.jobs:
-                    self.state.jobs[sub_id]["status"] = "STOPPED"
-            self._send_json(200, {"stopped": True})
-            return
-        if self.path == "/api/jobs/":
-            length = int(self.headers.get("Content-Length", "0"))
-            req = json.loads(self.rfile.read(length).decode("utf-8"))
-            with self.state.lock:
-                self.state.counter += 1
-                sub_id = req.get("submission_id") or f"raysubmit_{self.state.counter}"
-                pkg_uri = req["runtime_env"]["working_dir"]
-                pkg_name = pkg_uri.split("gcs://", 1)[1]
-                zip_bytes = self.state.packages[pkg_name]
-                py_mod_bytes = [
-                    self.state.packages[u.split("gcs://", 1)[1]]
-                    for u in (req["runtime_env"].get("py_modules") or ())
-                    if u.startswith("gcs://")
-                    and u.split("gcs://", 1)[1] in self.state.packages
-                ]
-                env_vars = dict(req["runtime_env"].get("env_vars", {}))
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path
 
-            work_dir = self.state.tmp_root / sub_id
-            work_dir.mkdir(parents=True, exist_ok=True)
-            (work_dir / "ray.py").write_text(
-                "_INIT_CALLS = []\n"
-                "def init(*a, **kw):\n"
-                "    _INIT_CALLS.append((a, kw))\n"
-                "    return None\n"
-                "def is_initialized(): return bool(_INIT_CALLS)\n"
-                "def shutdown(): _INIT_CALLS.clear()\n"
-                "class cloudpickle:\n"
-                "    @staticmethod\n"
-                "    def register_pickle_by_value(module): return None\n",
-                encoding="utf-8",
-            )
-            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-                zf.extractall(work_dir)
-            for mod_zip in py_mod_bytes:
-                with zipfile.ZipFile(io.BytesIO(mod_zip)) as zf:
-                    zf.extractall(work_dir)
-
-            env = os.environ.copy()
-            env.update(env_vars)
-            env["RAY_JOB_CONFIG_JSON_ENV_VAR"] = json.dumps(
-                {
-                    "runtime_env": req["runtime_env"],
-                    "metadata": req.get("metadata", {}),
-                }
-            )
-            proc = subprocess.run(
-                [sys.executable, "_ray_client_driver_runner.py"],
-                cwd=str(work_dir),
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                check=False,
-            )
-            status = "SUCCEEDED" if proc.returncode == 0 else "FAILED"
+        if path == "/api/workspaces":
+            body = self._read_json()
+            ws_name = body["workspace"]
             with self.state.lock:
-                self.state.jobs[sub_id] = {
-                    "status": status,
-                    "logs": proc.stdout,
-                    "message": ""
-                    if status == "SUCCEEDED"
-                    else f"entrypoint exited non-zero\n{proc.stdout[-200:]}",
-                }
-            self._send_json(200, {"submission_id": sub_id})
+                self.state.check_ttls_locked()
+                ws = self.state.workspaces.get(ws_name)
+                created = ws is None
+                if ws is None:
+                    ws = self.state.workspaces[ws_name] = {
+                        "ttl_seconds": body.get("ttl_seconds", 1800.0),
+                        "last_active": time.monotonic(),
+                        "actors": {},
+                        "refs": {},
+                        "work_dir": None,
+                        "env_vars": {},
+                    }
+                else:
+                    ws["last_active"] = time.monotonic()
+                    if "ttl_seconds" in body and body["ttl_seconds"] is not None:
+                        ws["ttl_seconds"] = body["ttl_seconds"]
+                if body.get("runtime_env"):
+                    self._unpack_workspace_runtime_env_locked(
+                        ws_name, ws, body["runtime_env"]
+                    )
+                self._send_json(
+                    200,
+                    {
+                        "created": created,
+                        "workspace": ws_name,
+                        "namespace": f"workspace:{ws_name}",
+                        "ttl_seconds": ws["ttl_seconds"],
+                        "actors": list(ws["actors"].keys()),
+                        "ref_count": len(ws["refs"]),
+                    },
+                )
             return
+
+        if path.startswith("/api/workspaces/"):
+            parts = path[len("/api/workspaces/") :].split("/")
+            ws_name = parts[0]
+            body = self._read_json()
+            with self.state.lock:
+                self.state.check_ttls_locked()
+                ws = self.state.workspaces.get(ws_name)
+                if ws is None:
+                    ws = self.state.workspaces[ws_name] = {
+                        "ttl_seconds": 1800.0,
+                        "last_active": time.monotonic(),
+                        "actors": {},
+                        "refs": {},
+                        "work_dir": None,
+                        "env_vars": {},
+                    }
+                ws["last_active"] = time.monotonic()
+                if body.get("runtime_env"):
+                    self._unpack_workspace_runtime_env_locked(
+                        ws_name, ws, body["runtime_env"]
+                    )
+
+                if len(parts) == 2 and parts[1] == "heartbeat":
+                    self._send_json(200, {"workspace": ws_name, "ok": True})
+                    return
+
+                if len(parts) == 4 and parts[1] == "refs" and parts[3] == "cancel":
+                    ref_id = parts[2]
+                    if ref_id not in ws["refs"]:
+                        self._send_json(404, {"canceled": False})
+                        return
+                    ws["refs"][ref_id]["canceled"] = True
+                    self._send_json(200, {"canceled": True})
+                    return
+
+                if len(parts) == 2 and parts[1] == "tasks":
+                    try:
+                        args = self._resolve_mock_refs(
+                            body.get("args") or [], ws["refs"]
+                        )
+                        kwargs = self._resolve_mock_refs(
+                            body.get("kwargs") or {}, ws["refs"]
+                        )
+                        if body.get("module_source") is not None:
+                            mod_name = f"_mock_task_{uuid.uuid4().hex[:8]}"
+                            mod = types.ModuleType(mod_name)
+                            sys.modules[mod_name] = mod
+                            mod.__dict__.update(body.get("captured_globals") or {})
+                            src = body["module_source"].replace("import ray", "pass")
+                            exec(compile(src, "<task>", "exec"), mod.__dict__)
+                            fn = getattr(mod, body["fn_name"])
+                            out = self._exec_in_workspace_env(ws, fn, args, kwargs)
+                        else:
+                            import importlib
+
+                            def _run_imported(*a: Any, **kw: Any) -> Any:
+                                importlib.invalidate_caches()
+                                m = importlib.import_module(body["module"])
+                                return getattr(m, body["fn_name"])(*a, **kw)
+
+                            out = self._exec_in_workspace_env(
+                                ws, _run_imported, args, kwargs
+                            )
+                        if body.get("stream"):
+                            self._send_ndjson_stream(out)
+                            return
+                        if not body.get("wait", True) or body.get("return_ref"):
+                            ref_id = f"ref_{uuid.uuid4().hex[:12]}"
+                            ws["refs"][ref_id] = {"value": out, "canceled": False}
+                            self._send_json(
+                                200, {"ok": True, "result": {"$ray_ref": ref_id}}
+                            )
+                            return
+                        self._send_json(200, {"ok": True, "result": out})
+                    except SystemExit as exc:
+                        code = exc.code
+                        if code in (None, 0):
+                            self._send_json(200, {"ok": True, "result": None})
+                        else:
+                            self._send_json(
+                                200,
+                                {
+                                    "ok": False,
+                                    "error": {
+                                        "exc_type": "SystemExit",
+                                        "exc_message": f"Task called sys.exit({code!r})",
+                                        "traceback": traceback.format_exc(),
+                                    },
+                                },
+                            )
+                    except Exception as exc:
+                        if not body.get("wait", True):
+                            ref_id = f"ref_{uuid.uuid4().hex[:12]}"
+                            ws["refs"][ref_id] = {
+                                "value": None,
+                                "canceled": False,
+                                "error": {
+                                    "exc_type": type(exc).__name__,
+                                    "exc_message": str(exc),
+                                    "traceback": traceback.format_exc(),
+                                },
+                            }
+                            self._send_json(
+                                200, {"ok": True, "result": {"$ray_ref": ref_id}}
+                            )
+                        else:
+                            self._send_json(
+                                200,
+                                {
+                                    "ok": False,
+                                    "error": {
+                                        "exc_type": type(exc).__name__,
+                                        "exc_message": str(exc),
+                                        "traceback": traceback.format_exc(),
+                                    },
+                                },
+                            )
+                    return
+
+                if len(parts) == 2 and parts[1] == "actors":
+                    name = body.get("name") or body["class_name"]
+                    if body.get("get_if_exists", True) and name in ws["actors"]:
+                        self._send_json(
+                            200,
+                            {
+                                "ok": True,
+                                "name": name,
+                                "workspace": ws_name,
+                                "created": False,
+                            },
+                        )
+                        return
+                    try:
+                        args = self._resolve_mock_refs(
+                            body.get("args") or [], ws["refs"]
+                        )
+                        kwargs = self._resolve_mock_refs(
+                            body.get("kwargs") or {}, ws["refs"]
+                        )
+                        if body.get("module_source") is not None:
+                            mod = types.ModuleType(f"_mock_actor_{name}")
+                            mod.__dict__.update(body.get("captured_globals") or {})
+                            src = body["module_source"].replace("import ray", "pass")
+                            exec(compile(src, "<actor>", "exec"), mod.__dict__)
+                            cls = getattr(mod, body["class_name"])
+                            instance = self._exec_in_workspace_env(
+                                ws, cls, args, kwargs
+                            )
+                        else:
+                            import importlib
+
+                            def _instantiate_imported(*a: Any, **kw: Any) -> Any:
+                                importlib.invalidate_caches()
+                                m = importlib.import_module(body["module"])
+                                return getattr(m, body["class_name"])(*a, **kw)
+
+                            instance = self._exec_in_workspace_env(
+                                ws, _instantiate_imported, args, kwargs
+                            )
+                        ws["actors"][name] = {
+                            "instance": instance,
+                            "lifetime": body.get("lifetime", "workspace"),
+                        }
+                        self._send_json(
+                            200,
+                            {
+                                "ok": True,
+                                "name": name,
+                                "workspace": ws_name,
+                                "created": True,
+                            },
+                        )
+                    except Exception as exc:
+                        self._send_json(
+                            400,
+                            {
+                                "ok": False,
+                                "error": {
+                                    "exc_type": type(exc).__name__,
+                                    "exc_message": str(exc),
+                                    "traceback": traceback.format_exc(),
+                                },
+                            },
+                        )
+                    return
+
+                if len(parts) == 5 and parts[1] == "actors" and parts[3] == "methods":
+                    actor_name, method_name = parts[2], parts[4]
+                    act = ws["actors"].get(actor_name)
+                    if act is None:
+                        self._send_json(
+                            404,
+                            {
+                                "ok": False,
+                                "not_found": True,
+                                "error": {
+                                    "exc_type": "ValueError",
+                                    "exc_message": f"Actor '{actor_name}' not found",
+                                },
+                            },
+                        )
+                        return
+                    try:
+                        args = self._resolve_mock_refs(
+                            body.get("args") or [], ws["refs"]
+                        )
+                        kwargs = self._resolve_mock_refs(
+                            body.get("kwargs") or {}, ws["refs"]
+                        )
+                        fn = getattr(act["instance"], method_name)
+                        out = self._exec_in_workspace_env(ws, fn, args, kwargs)
+                        if body.get("stream"):
+                            self._send_ndjson_stream(out)
+                            return
+                        if not body.get("wait", True) or body.get("return_ref"):
+                            ref_id = f"ref_{uuid.uuid4().hex[:12]}"
+                            ws["refs"][ref_id] = {"value": out, "canceled": False}
+                            self._send_json(
+                                200, {"ok": True, "result": {"$ray_ref": ref_id}}
+                            )
+                            return
+                        self._send_json(200, {"ok": True, "result": out})
+                    except Exception as exc:
+                        self._send_json(
+                            200,
+                            {
+                                "ok": False,
+                                "error": {
+                                    "exc_type": type(exc).__name__,
+                                    "exc_message": str(exc),
+                                    "traceback": traceback.format_exc(),
+                                },
+                            },
+                        )
+                    return
         self._send_json(404, {"error": "unknown endpoint"})
 
 
@@ -270,25 +682,22 @@ class TestPackagingAndExtraction(unittest.TestCase):
         _, _, nested_captured = extract_function_source_and_globals(nested_with_class)
         self.assertEqual(nested_captured, {"GLOBAL_SCALE": 42, "multiplier": 3})
 
-        def implicit_ray_driver(n: int) -> int:
+        def implicit_ray_task(n: int) -> int:
             return ray.get(n)  # noqa: F821
 
-        _, _, ray_captured = extract_function_source_and_globals(implicit_ray_driver)
+        _, _, ray_captured = extract_function_source_and_globals(implicit_ray_task)
         self.assertEqual(ray_captured, {})
 
     def test_rejects_decorated_functions_and_generated_module_compiles(self):
-        """Decorated functions are rejected (the wrapper's bytecode/closure no longer
-        match the shipped source); undecorated output and the runner must compile."""
-
         def my_deco(f):
             return f
 
         @my_deco
-        def decorated_driver(x: int) -> dict:
+        def decorated_task(x: int) -> dict:
             return {"x": x}
 
         with self.assertRaisesRegex(RayClientSerializationError, "is decorated"):
-            extract_function_source_and_globals(decorated_driver)
+            extract_function_source_and_globals(decorated_task)
 
         def wraps_deco(f):
             @functools.wraps(f)
@@ -298,28 +707,39 @@ class TestPackagingAndExtraction(unittest.TestCase):
             return wrapper
 
         @wraps_deco
-        def wrapped_driver(x: int) -> dict:
+        def wrapped_task(x: int) -> dict:
             return {"x": x}
 
         with self.assertRaisesRegex(RayClientSerializationError, "is decorated"):
-            extract_function_source_and_globals(wrapped_driver)
+            extract_function_source_and_globals(wrapped_task)
 
         _, source, _ = extract_function_source_and_globals(top_level_fn)
         self.assertIn("import ray", source)
         compile(source, "<test>", "exec")
-        compile(RUNNER_SCRIPT_CONTENT, "_ray_client_driver_runner.py", "exec")
 
     def test_actionable_errors_for_module_function_and_non_json_captures(self):
         with self.assertRaises(RayClientSerializationError):
             extract_function_source_and_globals(lambda x: x)
 
-        def uses_top_level_module() -> str:
-            return json.dumps({"ok": True})
+        def uses_top_level_imports() -> str:
+            return json.dumps({"ok": True, "cwd": Path(".").name})
+
+        _, mod_src, mod_captured = extract_function_source_and_globals(
+            uses_top_level_imports
+        )
+        self.assertIn("import json", mod_src)
+        self.assertIn("from pathlib import Path", mod_src)
+        self.assertEqual(mod_captured, {})
+
+        main_mod = sys.modules["__main__"]
+
+        def uses_unimportable_main_module() -> str:
+            return str(main_mod)
 
         with self.assertRaisesRegex(
-            RayClientSerializationError, "move 'import json' inside"
+            RayClientSerializationError, "is a module that cannot be imported"
         ):
-            extract_function_source_and_globals(uses_top_level_module)
+            extract_function_source_and_globals(uses_unimportable_main_module)
 
         def uses_helper_fn() -> dict:
             return top_level_fn(1)
@@ -352,18 +772,6 @@ class TestPackagingAndExtraction(unittest.TestCase):
             extract_function_source_and_globals(uses_unbound_closure)
         assigned_later = 1
 
-        with self.assertRaises(RayClientSerializationError):
-            build_driver_package(top_level_fn, (object(),), {})
-
-        with self.assertRaises(RayClientSerializationError):
-            build_driver_package(top_level_fn, (float("nan"),), {})
-
-        with self.assertRaises(TypeError):
-            build_driver_package(top_level_fn, (), {})
-
-        with self.assertRaises(TypeError):
-            build_driver_package(top_level_fn, (1,), {"unknown_kw": 2})
-
         with self.assertRaisesRegex(RayClientError, "is a local path"):
             RayClient(address="http://127.0.0.1:1")._prepare_runtime_env(
                 {"py_modules": ["./local_pkg"]}
@@ -375,26 +783,19 @@ class TestPackagingAndExtraction(unittest.TestCase):
         self.assertEqual(excludes, ["*.log", "*.bin"])
         self.assertNotIn("excludes", merged)
 
-        # A bare string would unpack into one-character patterns, and `*` among
-        # them excludes everything under gitignore semantics.
         with self.assertRaisesRegex(TypeError, "excludes.* must be a list"):
             RayClient(address="http://127.0.0.1:1")._prepare_runtime_env(
                 {"excludes": "*.log"}
             )
 
     def test_default_argument_from_enclosing_scope_fails_locally(self):
-        """A default-argument expression is re-evaluated when the shipped module is
-        imported, so a name that only an enclosing function or class scope could
-        resolve must be rejected on the client rather than NameError on the cluster;
-        builtin defaults need no capture."""
-
-        def make_driver():
+        def make_task():
             scale = 3
 
-            def driver(x: int, factor: int = scale) -> int:
+            def task(x: int, factor: int = scale) -> int:
                 return x * factor
 
-            return driver
+            return task
 
         class Config:
             FACTOR = 2
@@ -402,7 +803,7 @@ class TestPackagingAndExtraction(unittest.TestCase):
             def run(self, x: int, factor: int = FACTOR) -> int:
                 return x * factor
 
-        for fn in (make_driver(), Config.run):
+        for fn in (make_task(), Config.run):
             with self.assertRaisesRegex(
                 RayClientSerializationError, "Default argument .* enclosing"
             ):
@@ -414,10 +815,6 @@ class TestPackagingAndExtraction(unittest.TestCase):
         self.assertEqual(extract_function_source_and_globals(builtin_default)[2], {})
 
     def test_nested_annotations_recursion_and_class_bodies(self):
-        """Typing names used only in nested signatures are not captured (the
-        shipped module defers annotations); nested recursion and class bodies that
-        rebind a global both resolve correctly."""
-
         def nested_hints(items: List[int]) -> int:
             def total(xs: List[int]) -> Optional[int]:
                 return sum(xs)
@@ -448,10 +845,7 @@ class TestPackagingAndExtraction(unittest.TestCase):
         self.assertEqual(captured, {"GLOBAL_SCALE": 42})
 
     def test_indented_source_ships_verbatim(self):
-        """Method and nested-function source is shipped byte-for-byte: dedenting
-        would silently rewrite the contents of indented multi-line strings."""
-
-        class Driver:
+        class Task:
             def query(self) -> str:
                 sql = """
                 SELECT *
@@ -462,51 +856,14 @@ col0
 """
                 return sql + flush
 
-        expected = Driver().query()
-        fn_name, source, _ = extract_function_source_and_globals(Driver.query)
-        self.assertTrue(source.endswith(f"if True:\n{inspect.getsource(Driver.query)}"))
+        expected = Task().query()
+        fn_name, source, _ = extract_function_source_and_globals(Task.query)
+        self.assertTrue(source.endswith(f"if True:\n{inspect.getsource(Task.query)}"))
         namespace: Dict[str, Any] = {}
         exec(compile(source.replace("import ray", "pass"), "<src>", "exec"), namespace)
         self.assertEqual(namespace[fn_name](None), expected)
 
-    def test_deterministic_zip_hash_and_large_payload_fallback(self):
-        zip_1, uri_1, env_1 = build_driver_package(top_level_fn, (1,), {})
-        zip_2, uri_2, env_2 = build_driver_package(top_level_fn, (99,), {})
-        self.assertEqual(uri_1, uri_2)
-        self.assertEqual(zip_1, zip_2)
-        self.assertIsNotNone(env_1)
-        self.assertNotEqual(env_1, env_2)
-
-        # Payloads > 32 KiB keep the working_dir/driver zip 100% call-invariant
-        # and ship the payload in a separate content-addressed py_modules archive.
-        (
-            zip_big_a,
-            uri_big_a,
-            env_big_a,
-            payload_pkg_a,
-        ) = packaging.build_driver_and_payload_packages(
-            top_level_fn, ("x" * 50_000,), {}
-        )
-        (
-            zip_big_b,
-            uri_big_b,
-            env_big_b,
-            payload_pkg_b,
-        ) = packaging.build_driver_and_payload_packages(
-            top_level_fn, ("y" * 50_000,), {}
-        )
-        self.assertIsNone(env_big_a)
-        self.assertIsNone(env_big_b)
-        self.assertEqual(uri_big_a, uri_1)
-        self.assertEqual(uri_big_a, uri_big_b)
-        self.assertEqual(zip_big_a, zip_big_b)
-        self.assertIsNotNone(payload_pkg_a)
-        self.assertIsNotNone(payload_pkg_b)
-        assert payload_pkg_a is not None and payload_pkg_b is not None
-        self.assertNotEqual(payload_pkg_a[1], payload_pkg_b[1])
-        with zipfile.ZipFile(io.BytesIO(payload_pkg_a[0])) as zf:
-            self.assertEqual(zf.namelist(), ["_ray_client_payload.json"])
-
+    def test_deterministic_working_dir_zip_and_permissions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             (root / "keep.py").write_text("X = 1\n", encoding="utf-8")
@@ -515,14 +872,15 @@ col0
             (root / "debug.log").write_text("log\n", encoding="utf-8")
             (root / "data").mkdir()
             (root / "data" / "big.bin").write_bytes(b"123")
-            zbytes, _, _ = build_driver_package(
-                top_level_fn,
-                (1,),
-                {},
-                working_dir=root,
-                excludes=["*.log", "data/big.bin"],
+            zbytes_1, uri_1 = build_working_dir_package(
+                root, excludes=["*.log", "data/big.bin"]
             )
-            with zipfile.ZipFile(io.BytesIO(zbytes)) as zf:
+            zbytes_2, uri_2 = build_working_dir_package(
+                root, excludes=["*.log", "data/big.bin"]
+            )
+            self.assertEqual(uri_1, uri_2)
+            self.assertEqual(zbytes_1, zbytes_2)
+            with zipfile.ZipFile(io.BytesIO(zbytes_1)) as zf:
                 names = set(zf.namelist())
                 self.assertIn("keep.py", names)
                 self.assertIn("run.sh", names)
@@ -536,20 +894,19 @@ col0
                 )
                 self.assertEqual(zf.getinfo("run.sh").create_system, 3)
 
-    def test_strict_json_shadowed_defaults_and_conditional_globals(self):
-        # Rejects non-str dict keys, tuples, and generators locally; preserves dict order.
-        with self.assertRaisesRegex(RayClientSerializationError, "non-string dict key"):
-            build_driver_package(top_level_fn, ({1: "one"},), {})
-        with self.assertRaisesRegex(RayClientSerializationError, "is a tuple"):
-            build_driver_package(top_level_fn, ((1, 2),), {})
-
+    def test_generator_allowance_shadowed_defaults_and_conditional_globals(self):
         def gen_fn():
             yield 1
 
         with self.assertRaisesRegex(RayClientSerializationError, "generator function"):
-            extract_function_source_and_globals(gen_fn)
+            extract_function_source_and_globals(gen_fn, allow_generator=False)
 
-        # Enclosing class attribute shadowing a module-level global in a default arg is rejected.
+        fn_name, src, _ = extract_function_source_and_globals(
+            gen_fn, allow_generator=True
+        )
+        self.assertEqual(fn_name, "gen_fn")
+        self.assertIn("yield 1", src)
+
         class ShadowedConfig:
             GLOBAL_SCALE = 999
 
@@ -561,20 +918,6 @@ col0
         ):
             extract_function_source_and_globals(ShadowedConfig.run)
 
-        def make_comp_default():
-            local_items = [1, 2]
-
-            def fn(xs=[i + 1 for i in local_items]):  # noqa: B006
-                return xs
-
-            return fn
-
-        with self.assertRaisesRegex(
-            RayClientSerializationError, "Default argument .* enclosing"
-        ):
-            extract_function_source_and_globals(make_comp_default())
-
-        # Conditional `global` assignment inside `fn` does not hide reading the module global.
         def conditional_global(override: dict) -> int:
             global GLOBAL_SCALE
             if "scale" in override:
@@ -585,12 +928,6 @@ col0
         self.assertEqual(cond_captured, {"GLOBAL_SCALE": 42})
 
     def test_gitignore_pattern_semantics(self):
-        """Pattern forms follow https://git-scm.com/docs/gitignore (expectations
-        cross-checked against `git check-ignore`): an inner or leading slash
-        anchors, `**` spans directories while `*`/`?` do not, a trailing `/`
-        matches only directories, the last matching pattern wins, brackets take
-        POSIX classes and never match `/`, a reversed range keeps its start
-        character, and an unterminated `[` or a doubled slash matches nothing."""
         cases = [
             (
                 ["foo/**/bar", "abc/**", "**/node_modules/"],
@@ -632,28 +969,6 @@ col0
                     ("ab", False, False),
                 ],
             ),
-            (
-                ["[z-a]", "[[:digit:]]*", "[a[:space:]]b", "[[:nope:]]", "a[/]b"],
-                [
-                    ("z", False, True),
-                    ("a", False, False),
-                    ("0abc", False, True),
-                    ("ab", False, True),
-                    (" b", False, True),
-                    ("cb", False, False),
-                    ("a/b", False, False),
-                ],
-            ),
-            (
-                ["foo//", "//bar", "[a-c-e]", "[]x]"],
-                [
-                    ("foo", True, False),
-                    ("bar", False, False),
-                    ("-", False, True),
-                    ("d", False, False),
-                    ("]", False, True),
-                ],
-            ),
         ]
         for patterns, expectations in cases:
             rules = _compile_ignore_rules(patterns, "")
@@ -662,13 +977,6 @@ col0
                     self.assertEqual(_is_ignored(arcname, is_dir, rules), expected)
 
     def test_working_dir_ignore_files_symlinks_and_empty_dirs(self):
-        """working_dir packaging matches Ray's native behavior: nested .gitignore
-        and .rayignore files apply with git's precedence (.rayignore last), a
-        UTF-8 BOM on an ignore file is skipped, the
-        RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1 switch drops only .gitignore files,
-        `excludes` use gitignore syntax, symlinked directories are followed,
-        a symlink cycle is reported instead of recursed into, and empty
-        directories survive the round trip."""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "work"
             outside = Path(tmpdir) / "outside"
@@ -708,12 +1016,8 @@ col0
 
             def names_for(**env: str):
                 with patch.dict(os.environ, env, clear=False):
-                    zbytes, _, _ = build_driver_package(
-                        top_level_fn,
-                        (1,),
-                        {},
-                        working_dir=root,
-                        excludes=["*.md", "!/README.md"],
+                    zbytes, _ = build_working_dir_package(
+                        root, excludes=["*.md", "!/README.md"]
                     )
                 with zipfile.ZipFile(io.BytesIO(zbytes)) as zf:
                     self.assertTrue(zf.getinfo("empty_dir/").is_dir())
@@ -736,8 +1040,6 @@ col0
                     "sub/build",
                     "sub/notes.txt",
                     "sub/top_only/y.py",
-                    USER_FN_FILENAME,
-                    RUNNER_FILENAME,
                 },
             )
             self.assertEqual(zbytes, names_for()[0])
@@ -752,17 +1054,12 @@ col0
             with self.assertRaisesRegex(
                 RayClientError, "'loop' points to its own ancestor"
             ):
-                build_driver_package(top_level_fn, (1,), {}, working_dir=root)
-            zbytes, _, _ = build_driver_package(
-                top_level_fn, (1,), {}, working_dir=root, excludes=["loop"]
-            )
+                build_working_dir_package(root)
+            zbytes, _ = build_working_dir_package(root, excludes=["loop"])
             with zipfile.ZipFile(io.BytesIO(zbytes)) as zf:
                 self.assertIn("linked/mod.py", zf.namelist())
 
     def test_package_size_limit_fails_before_upload_and_names_largest_entries(self):
-        """A working_dir whose compressed archive reaches the Jobs HTTP server's
-        body limit is rejected while packaging, before any network I/O, with the
-        offending entries named so the user knows what to exclude."""
         with tempfile.TemporaryDirectory() as tmpdir, patch.object(
             packaging, "MAX_PACKAGE_BYTES", 256 * 1024
         ):
@@ -771,58 +1068,13 @@ col0
             (root / "data").mkdir()
             (root / "data" / "big.bin").write_bytes(os.urandom(512 * 1024))
             with self.assertRaisesRegex(RayClientError, "caps uploads at") as ctx:
-                build_driver_package(top_level_fn, (1,), {}, working_dir=root)
+                build_working_dir_package(root)
             self.assertIn("data/big.bin", str(ctx.exception))
             self.assertIn("runtime_env['excludes']", str(ctx.exception))
 
-            zbytes, _, _ = build_driver_package(
-                top_level_fn, (1,), {}, working_dir=root, excludes=["data/"]
-            )
+            zbytes, _ = build_working_dir_package(root, excludes=["data/"])
             with zipfile.ZipFile(io.BytesIO(zbytes)) as zf:
-                self.assertEqual(
-                    set(zf.namelist()), {"small.py", USER_FN_FILENAME, RUNNER_FILENAME}
-                )
-
-    def test_parse_logs_and_result_strips_marker_line(self):
-        payload = {"ok": True, "result": {"items": [1, 2, 3]}}
-        b64 = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
-        raw = f"line 1\n{RESULT_LINE_PREFIX}{b64}\nline 2\n"
-        clean, has_out, out, err = parse_logs_and_result(raw, final=True)
-        self.assertEqual(clean, "line 1\nline 2\n")
-        self.assertTrue(has_out)
-        self.assertEqual(out, {"items": [1, 2, 3]})
-        self.assertIsNone(err)
-
-        # Also handles user stdout written without a trailing newline before the marker.
-        raw_partial = f"partial{RESULT_LINE_PREFIX}{b64}\n"
-        clean_p, has_out_p, out_p, _ = parse_logs_and_result(raw_partial, final=True)
-        self.assertEqual(clean_p, "partial")
-        self.assertTrue(has_out_p)
-        self.assertEqual(out_p, {"items": [1, 2, 3]})
-
-        # Submission-ID-bound markers ignore foreign markers from nested jobs and
-        # late spoofed worker lines after the driver's own marker.
-        outer_payload = {"submission_id": "outer_1", "ok": True, "result": "OUTER-OK"}
-        outer_b64 = base64.b64encode(json.dumps(outer_payload).encode("utf-8")).decode(
-            "ascii"
-        )
-        spoof_payload = {"ok": True, "result": "SPOOFED"}
-        spoof_b64 = base64.b64encode(json.dumps(spoof_payload).encode("utf-8")).decode(
-            "ascii"
-        )
-        nested_raw = (
-            f"{{'message': 'err\\n{RESULT_LINE_PREFIX}inner_1:bad_b64'}}\n"
-            f"{RESULT_LINE_PREFIX}inner_1:{spoof_b64}\n"
-            f"{RESULT_LINE_PREFIX}outer_1:{outer_b64}\n"
-            f"{RESULT_LINE_PREFIX}{spoof_b64}\n"
-        )
-        clean_n, has_out_n, out_n, err_n = parse_logs_and_result(
-            nested_raw, final=True, submission_id="outer_1"
-        )
-        self.assertTrue(has_out_n)
-        self.assertEqual(out_n, "OUTER-OK")
-        self.assertIsNone(err_n)
-        self.assertIn("inner_1:bad_b64", clean_n)
+                self.assertEqual(set(zf.namelist()), {"small.py"})
 
     def test_auth_headers_and_address_resolution(self):
         env_overrides = {
@@ -838,7 +1090,8 @@ col0
             os.environ.pop("RAY_JOB_CONFIG_JSON_ENV_VAR", None)
             c_default = RayClient()
             self.assertEqual(c_default.address, "http://10.0.0.5:8265")
-            self.assertIsNone(c_default.namespace)
+            self.assertTrue(c_default.workspace.startswith("ws_"))
+            self.assertEqual(c_default.namespace, f"workspace:{c_default.workspace}")
             self.assertEqual(
                 c_default._headers["Authorization"], "Bearer env_secret_token"
             )
@@ -853,30 +1106,6 @@ col0
             self.assertEqual(c_custom.address, "https://127.0.0.1:8265")
             self.assertEqual(c_custom._headers["authorization"], "Bearer custom_lower")
             self.assertNotIn("Authorization", c_custom._headers)
-
-            with patch.dict(os.environ, {"RAY_AUTH_MODE": "disabled"}, clear=False):
-                c_disabled = RayClient(address="http://127.0.0.1:8265")
-                self.assertNotIn("Authorization", c_disabled._headers)
-
-            with patch.dict(
-                os.environ,
-                {
-                    "RAY_AUTH_TOKEN": "",
-                    "RAY_AUTH_TOKEN_PATH": "/nonexistent/token/file",
-                },
-                clear=False,
-            ):
-                os.environ.pop("RAY_AUTH_TOKEN", None)
-                with self.assertRaisesRegex(RayClientError, "RAY_AUTH_TOKEN_PATH"):
-                    RayClient(address="http://127.0.0.1:8265")
-
-            with patch.dict(
-                os.environ,
-                {"RAY_ADDRESS": "10.0.0.5:6379", "RAY_JOB_CONFIG_JSON_ENV_VAR": "{}"},
-                clear=False,
-            ):
-                with self.assertRaisesRegex(RayClientError, "GCS gRPC port"):
-                    RayClient()
 
 
 class TestMockJobServerEndToEnd(unittest.TestCase):
@@ -899,100 +1128,53 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
         self.server.server_close()
         self._tmp.cleanup()
 
-    def test_sync_async_caching_and_gc_reupload(self):
-        client = RayClient(address=self.address)
+    def test_stateless_tasks_async_refs_and_task_streaming(self):
+        with RayClient(address=self.address) as client:
 
-        def step(x: int) -> dict:
-            print(f"running step({x})")
-            return {"doubled": x * 2}
+            def step(x: int) -> dict:
+                return {"doubled": x * 2}
 
-        r1 = client.run_function_as_driver(step, 5)
-        self.assertTrue(r1.package_uploaded)
-        self.assertTrue(r1.done())
-        self.assertEqual(r1.status(), "SUCCEEDED")
-        self.assertEqual(r1.result(), {"doubled": 10})
-        self.assertEqual(r1.logs(), "running step(5)\n")
+            self.assertEqual(client.run(step, 5), {"doubled": 10})
+            self.assertEqual(client.run(step, 21), {"doubled": 42})
 
-        # Mutating info() copy must not corrupt cached status.
-        info_copy = r1.info()
-        info_copy.pop("status", None)
-        self.assertEqual(r1.status(), "SUCCEEDED")
+            # Non-blocking task (`wait=False`) returns RemoteRef
+            ref = client.run(step, 9, wait=False)
+            self.assertIsInstance(ref, RemoteRef)
+            self.assertTrue(ref.ready())
+            self.assertEqual(ref.get(), {"doubled": 18})
+            self.assertTrue(ref.delete())
 
-        r2 = client.run_function_as_driver(step, 21)
-        self.assertFalse(r2.package_uploaded)
-        self.assertEqual(r2.result(), {"doubled": 42})
-        self.assertTrue(r2.delete())
+            # Return ref (`return_ref=True`) pins result in workspace
+            pinned = client.run(step, 7, return_ref=True)
+            self.assertEqual(pinned.get(), {"doubled": 14})
 
-        # Simulate cluster GCS package expiration (#46625): client must re-upload cleanly.
-        with self.state.lock:
-            self.state.packages.clear()
-        r3 = client.run_function_as_driver(step, 9)
-        self.assertTrue(r3.package_uploaded)
-        self.assertEqual(r3.result(), {"doubled": 18})
+            async def async_step(msg: str) -> str:
+                return msg.upper()
 
-        async def async_step(msg: str) -> str:
-            return msg.upper()
+            self.assertEqual(run(async_step, "hello", address=self.address), "HELLO")
 
-        r4 = run_function_as_driver(
-            async_step,
-            "hello",
-            address=self.address,
-            headers={"X-Custom": "1"},
-            namespace="custom_ns",
-        )
-        self.assertEqual(r4.result(), "HELLO")
+            def stream_numbers(count: int) -> Iterator[dict]:
+                for i in range(count):
+                    yield {"i": i, "sq": i * i}
 
-    def test_large_payload_dataclass_annotations_and_dict_order(self):
-        client = RayClient(address=self.address)
+            self.assertEqual(
+                list(stream(stream_numbers, 3, address=self.address)),
+                [{"i": 0, "sq": 0}, {"i": 1, "sq": 1}, {"i": 2, "sq": 4}],
+            )
 
-        def big_and_ordered(blob: str, **kw: Any) -> dict:
-            from dataclasses import dataclass, fields
-            from typing import ClassVar, get_type_hints
-
-            class InnerPoint:
-                x: int
-
-            @dataclass
-            class LocalCfg:
-                pt: InnerPoint
-                registry: ClassVar[dict] = {}
-
-            hints = get_type_hints(LocalCfg, localns=locals())
-            return {
-                "len": len(blob),
-                "kw_keys": list(kw.keys()),
-                "fields": [f.name for f in fields(LocalCfg)],
-                "has_pt_hint": "pt" in hints,
-            }
-
-        res_a = client.run_function_as_driver(
-            big_and_ordered,
-            "a" * 40_000,
-            kwargs={"zeta": 1, "alpha": 2, "mid": 3},
-        )
-        self.assertTrue(res_a.package_uploaded)
-        self.assertEqual(
-            res_a.result(),
-            {
-                "len": 40_000,
-                "kw_keys": ["zeta", "alpha", "mid"],
-                "fields": ["pt"],
-                "has_pt_hint": True,
-            },
-        )
-        # Second >32 KiB call with different args reuses the driver/working_dir package!
-        res_b = client.run_function_as_driver(
-            big_and_ordered,
-            "b" * 40_000,
-            kwargs={"first": 1, "second": 2},
-        )
-        self.assertFalse(res_b.package_uploaded)
-        self.assertEqual(res_b.result()["kw_keys"], ["first", "second"])
-
-    def test_runtime_env_working_dir_immutability_and_reattach(self):
-        client = RayClient(address=self.address)
+    def test_working_dir_upload_caching_and_gc_reupload(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            (Path(tmpdir) / "helper_mod.py").write_text("VAL = 123\n", encoding="utf-8")
+            (Path(tmpdir) / "helper_mod.py").write_text(
+                "VAL = 123\n"
+                "def get_val(mult: int = 1) -> int:\n"
+                "    return VAL * mult\n"
+                "class HelperActor:\n"
+                "    def __init__(self, base: int = 0):\n"
+                "        self.base = base\n"
+                "    def compute(self, x: int) -> int:\n"
+                "        return self.base + VAL + x\n",
+                encoding="utf-8",
+            )
             (Path(tmpdir) / "big.bin").write_bytes(b"\0" * 1024)
             user_runtime_env = {
                 "working_dir": tmpdir,
@@ -1002,170 +1184,173 @@ class TestMockJobServerEndToEnd(unittest.TestCase):
             snapshot = copy.deepcopy(user_runtime_env)
 
             def read_helper() -> int:
-                import json as _json
-                import os as _os
-
                 import helper_mod  # type: ignore[import-not-found]
 
-                assert _os.environ["K"] == "V"
-                assert "RAY_CLIENT_PAYLOAD_B64" not in _os.environ
-                assert "RAY_CLIENT_SUBMISSION_ID" not in _os.environ
-                job_cfg = _json.loads(_os.environ["RAY_JOB_CONFIG_JSON_ENV_VAR"])
-                assert "RAY_CLIENT_PAYLOAD_B64" not in job_cfg["runtime_env"].get(
-                    "env_vars", {}
-                )
-                assert not _os.path.exists("big.bin")
+                assert os.environ["K"] == "V"
+                assert not os.path.exists("big.bin")
                 return helper_mod.VAL
 
-            detached = client.run_function_as_driver(
-                read_helper, runtime_env=user_runtime_env, wait=False
-            )
-            self.assertEqual(user_runtime_env, snapshot)
+            with RayClient(
+                address=self.address, default_runtime_env=user_runtime_env
+            ) as client:
+                self.assertEqual(client.run(read_helper), 123)
+                # Also verify module-path string entrypoints for tasks and actors:
+                self.assertEqual(client.run("helper_mod:get_val", 2), 246)
+                h_actor = client.actor("helper_mod:HelperActor", 10, name="h_act")
+                self.assertEqual(h_actor.compute(5), 138)
+                self.assertEqual(user_runtime_env, snapshot)
+                self.assertEqual(len(self.state.packages), 1)
 
-            reattached = client.get_job(detached.submission_id)
-            self.assertEqual(reattached.result(), 123)
-            self.assertTrue(
-                any(
-                    j["submission_id"] == detached.submission_id
-                    for j in client.list_jobs()
-                )
-            )
+                # Simulate cluster GCS package expiration: new workspace re-uploads cleanly
+                with self.state.lock:
+                    self.state.packages.clear()
 
-    def test_keyboard_interrupt_and_sync_timeout_stop_remote_job(self):
-        """Owned wait=True calls stop the remote job on Ctrl-C, timeout, or poll
-        failure and attach .job; detached (wait=False) and get_job() observer
-        handles never auto-stop on Ctrl-C or timeout."""
-        client = RayClient(address=self.address)
-
-        def nop() -> int:
-            return 1
-
-        # Observer / detached handles do NOT stop the job on Ctrl-C or timeout.
-        detached = client.run_function_as_driver(nop, wait=False)
-        with patch.object(detached, "_fetch_info", side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                detached.wait()
-        self.assertNotIn(detached.submission_id, self.state.stopped_jobs)
-
-        with patch.object(detached, "_fetch_info", return_value={"status": "RUNNING"}):
-            with self.assertRaises(RayJobTimeoutError) as ctx:
-                detached.wait(timeout=0)
-        self.assertIs(ctx.exception.job, detached)
-        # RayJobTimeoutError and its JobResult/RayClient are picklable across processes.
-        unpickled_timeout = pickle.loads(pickle.dumps(ctx.exception))
-        self.assertEqual(unpickled_timeout.job.submission_id, detached.submission_id)
-        self.assertNotIn(detached.submission_id, self.state.stopped_jobs)
-
-        # Owned wait=True calls stop the remote job on timeout, Ctrl-C, and poll errors.
-        with patch.object(JobResult, "_fetch_info", return_value={"status": "RUNNING"}):
-            with self.assertRaises(RayJobTimeoutError) as sync_ctx:
-                client.run_function_as_driver(nop, timeout=0)
-        self.assertIn(sync_ctx.exception.job.submission_id, self.state.stopped_jobs)
-
-        with patch.object(JobResult, "_fetch_info", side_effect=KeyboardInterrupt):
-            with self.assertRaises(KeyboardInterrupt):
-                client.run_function_as_driver(nop)
-        self.assertEqual(len(self.state.stopped_jobs), 2)
-
-        with patch.object(
-            JobResult, "_fetch_info", side_effect=RayClientError("503 gateway down")
-        ):
-            with self.assertRaises(RayClientError) as err_ctx:
-                client.run_function_as_driver(nop)
-        self.assertIsNotNone(err_ctx.exception.job)
-        self.assertIn(err_ctx.exception.submission_id, self.state.stopped_jobs)
+            with RayClient(
+                address=self.address, default_runtime_env=user_runtime_env
+            ) as client2:
+                self.assertEqual(client2.run(read_helper), 123)
+                self.assertEqual(len(self.state.packages), 1)
 
     def test_thread_safe_concurrent_submissions(self):
-        client = RayClient(address=self.address)
+        with RayClient(address=self.address) as client:
 
-        def square(n: int) -> int:
-            return n * n
+            def square(n: int) -> int:
+                return n * n
 
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            futures = [
-                pool.submit(
-                    lambda v=i: client.run_function_as_driver(square, v).result()
-                )
-                for i in range(8)
-            ]
-            results = [f.result() for f in futures]
-        self.assertEqual(results, [i * i for i in range(8)])
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                futures = [
+                    pool.submit(lambda v=i: client.run(square, v)) for i in range(8)
+                ]
+                results = [f.result() for f in futures]
+            self.assertEqual(results, [i * i for i in range(8)])
 
     def test_remote_exception_and_sys_exit_propagate_cleanly(self):
-        client = RayClient(address=self.address)
+        with RayClient(address=self.address) as client:
 
-        def failing_driver():
-            raise ValueError("invalid shard configuration")
+            def failing_task():
+                raise ValueError("invalid shard configuration")
 
-        with self.assertRaises(RayJobExecutionError) as ctx:
-            client.run_function_as_driver(failing_driver)
-        self.assertEqual(ctx.exception.exc_type, "ValueError")
-        self.assertIn("invalid shard configuration", str(ctx.exception))
-        # Must survive crossing a process boundary (e.g. ProcessPoolExecutor).
-        restored = pickle.loads(pickle.dumps(ctx.exception))
-        self.assertEqual(restored.exc_type, "ValueError")
-        self.assertEqual(str(restored), str(ctx.exception))
+            with self.assertRaises(RayExecutionError) as ctx:
+                client.run(failing_task)
+            self.assertEqual(ctx.exception.exc_type, "ValueError")
+            self.assertIn("invalid shard configuration", str(ctx.exception))
+            restored = pickle.loads(pickle.dumps(ctx.exception))
+            self.assertEqual(restored.exc_type, "ValueError")
 
-        def exiting_driver():
-            import sys as _sys
+            def exiting_task():
+                import sys as _sys
 
-            _sys.exit(2)
+                _sys.exit(2)
 
-        with self.assertRaises(RayJobExecutionError) as exit_ctx:
-            client.run_function_as_driver(exiting_driver)
-        self.assertEqual(exit_ctx.exception.exc_type, "SystemExit")
+            with self.assertRaises(RayExecutionError) as exit_ctx:
+                client.run(exiting_task)
+            self.assertEqual(exit_ctx.exception.exc_type, "SystemExit")
 
-        def clean_exit_driver():
-            import sys as _sys
+            def clean_exit_task():
+                import sys as _sys
 
-            _sys.exit(0)
+                _sys.exit(0)
 
-        self.assertIsNone(client.run_function_as_driver(clean_exit_driver).result())
-
-    def test_method_defined_driver_with_hints_runs_verbatim(self):
-        """A driver defined as a method, using typing hints in nested defs and an
-        indented multi-line string, runs on the (mock) cluster and returns the
-        string with its original indentation."""
-
-        class Pipeline:
-            def render(self, rows: List[int]) -> Dict[str, Any]:
-                def total(xs: List[int]) -> Optional[int]:
-                    return sum(xs)
-
-                template = """
-                SELECT {n}
-                  FROM t
-                """
-                return {"sql": template.format(n=total(rows)), "scale": GLOBAL_SCALE}
-
-        expected = Pipeline().render([1, 2])
-        client = RayClient(address=self.address)
-        self.assertEqual(
-            client.run_function_as_driver(Pipeline.render, None, [1, 2]).result(),
-            expected,
-        )
+            self.assertIsNone(client.run(clean_exit_task))
 
     def test_retries_transient_503_rejects_ray_scheme_and_non_json_bodies(self):
         with self.assertRaises(RayClientError):
             RayClient(address="ray://127.0.0.1:10001")
 
-        self.state.fail_next_status_polls = 2
-        client = RayClient(address=self.address)
+        self.state.fail_next_requests = 2
+        with RayClient(address=self.address) as client:
+            self.assertEqual(client.list_workspaces(), [])
 
-        def ok_fn() -> int:
-            return 7
+            def ok_fn() -> int:
+                return 7
 
-        self.assertEqual(client.run_function_as_driver(ok_fn).result(), 7)
+            self.assertEqual(client.run(ok_fn), 7)
 
         html_server = ThreadingHTTPServer(("127.0.0.1", 0), _HtmlLoginPageHandler)
         threading.Thread(target=html_server.serve_forever, daemon=True).start()
         try:
             html_address = f"http://127.0.0.1:{html_server.server_address[1]}"
             with self.assertRaisesRegex(RayClientError, "non-JSON response"):
-                RayClient(address=html_address).list_jobs()
+                RayClient(address=html_address).list_workspaces()
         finally:
             html_server.shutdown()
             html_server.server_close()
+
+    def test_live_actors_remote_refs_and_workspace_ttl(self):
+        offset = 5
+
+        class Accumulator:
+            scale = GLOBAL_SCALE
+
+            def __init__(self, init_val: int = 0):
+                self.val = init_val + offset
+
+            def make_batch(self, count: int) -> list:
+                return [self.val + i for i in range(count)]
+
+            def summarize(self, batch: list, tag: str = "default") -> dict:
+                return {"tag": tag, "sum": sum(batch), "scale": self.scale}
+
+            def stream_items(self, count: int):
+                for i in range(count):
+                    yield {"idx": i, "val": self.val + i}
+
+        cls_name, mod_src, captured = extract_class_source_and_globals(Accumulator)
+        self.assertEqual(cls_name, "Accumulator")
+        self.assertIn("class Accumulator", mod_src)
+        self.assertEqual(captured, {"GLOBAL_SCALE": 42, "offset": 5})
+
+        c1 = RayClient(address=self.address, workspace="ws_a", ttl_seconds=60.0)
+        c2 = RayClient(address=self.address, workspace="ws_b", ttl_seconds=60.0)
+        self.assertEqual(c1.workspace, "ws_a")
+        self.assertEqual(c1.namespace, "workspace:ws_a")
+
+        a1 = c1.actor(Accumulator, 10, name="acc")
+        a2 = c2.actor(Accumulator, 100, name="acc")
+        self.assertIsInstance(a1, ActorProxy)
+        self.assertTrue(a1.created)
+
+        # Reattaching to existing actor in ws_a
+        a1_re = c1.get_actor("acc")
+        self.assertFalse(a1_re.created)
+        self.assertEqual(len(c1.list_actors()), 1)
+
+        # In-cluster $ray_ref chaining between cell 1 and cell 2
+        batch_ref = a1.make_batch.ref(3)
+        self.assertIsInstance(batch_ref, RemoteRef)
+        self.assertEqual(batch_ref.get(), [15, 16, 17])
+
+        summary_a = a1_re.summarize(batch_ref, tag="a")
+        self.assertEqual(summary_a, {"tag": "a", "sum": 48, "scale": 42})
+
+        # Pass actor-created $ray_ref into a stateless workspace task (`c1.run`)
+        def count_items(items: list) -> int:
+            return len(items)
+
+        self.assertEqual(c1.run(count_items, batch_ref), 3)
+        self.assertTrue(batch_ref.delete())
+
+        # Tenant B is isolated from Tenant A
+        batch_ref_b = a2.make_batch.remote(2)
+        summary_b = a2.summarize(batch_ref_b, tag="b")
+        self.assertEqual(summary_b, {"tag": "b", "sum": 211, "scale": 42})
+
+        # Stream method on actor
+        chunks = list(a1.stream_items.stream(2))
+        self.assertEqual(chunks, [{"idx": 0, "val": 15}, {"idx": 1, "val": 16}])
+
+        self.assertTrue(a1.kill())
+        self.assertTrue(c1.close_workspace())
+        self.assertTrue(c2.close_workspace())
+
+        # Disconnect TTL cleanup test
+        c_ttl = RayClient(address=self.address, workspace="ws_ttl", ttl_seconds=0.15)
+        c_ttl.actor(Accumulator, 1, name="short_lived")
+        self.assertEqual(c_ttl.workspace_info()["workspace"], "ws_ttl")
+        time.sleep(0.25)
+        with RayClient(address=self.address) as probe:
+            active = [w["workspace"] for w in probe.list_workspaces()]
+        self.assertNotIn("ws_ttl", active)
 
 
 if __name__ == "__main__":

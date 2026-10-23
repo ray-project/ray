@@ -1,19 +1,31 @@
-"""Lightweight REST-only Ray Client (`run_function_as_driver`)."""
+"""Lightweight REST-only Ray Client (workspaces, live actors, and stateless tasks)."""
 
-from ray_client.client import JobResult, RayClient, run_function_as_driver
+from ray_client.client import (
+    ActorProxy,
+    RayClient,
+    RemoteRef,
+    run,
+    stream,
+)
 from ray_client.exceptions import (
     RayClientError,
     RayClientSerializationError,
+    RayExecutionError,
     RayJobExecutionError,
     RayJobTimeoutError,
+    RayTimeoutError,
 )
 
 __all__ = [
-    "JobResult",
+    "ActorProxy",
     "RayClient",
     "RayClientError",
     "RayClientSerializationError",
+    "RayExecutionError",
     "RayJobExecutionError",
     "RayJobTimeoutError",
-    "run_function_as_driver",
+    "RayTimeoutError",
+    "RemoteRef",
+    "run",
+    "stream",
 ]

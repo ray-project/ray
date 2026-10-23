@@ -12,16 +12,15 @@ lives in `_ignore.py`.
 import __future__
 
 import ast
-import base64
 import builtins
 import dis
 import hashlib
-import importlib.resources
 import inspect
 import io
 import json
 import math
 import os
+import sys
 import types
 import zipfile
 from pathlib import Path
@@ -47,21 +46,12 @@ from ray_client._ignore import (
 )
 from ray_client.exceptions import RayClientError, RayClientSerializationError
 
-# Linux caps a single environment variable at 128 KiB (MAX_ARG_STRLEN); above this
-# threshold the payload ships as a separate content-addressed package in py_modules.
-MAX_ENV_PAYLOAD_BYTES = 32 * 1024
 # The Ray dashboard's HTTP server (aiohttp `client_max_size`, see
 # ray_constants.DASHBOARD_CLIENT_MAX_SIZE) caps request bodies at 100 MiB, so a
-# larger package can never be uploaded through the Jobs API.
+# larger package can never be uploaded through the Dashboard API.
 MAX_PACKAGE_BYTES = 100 * 1024 * 1024
 RAY_PKG_PREFIX = "_ray_pkg_"
-RESULT_LINE_PREFIX = "__RAY_CLIENT_RESULT__:"
 USER_FN_FILENAME = "_ray_client_user_fn.py"
-RUNNER_FILENAME = "_ray_client_driver_runner.py"
-PAYLOAD_FILENAME = "_ray_client_payload.json"
-RESERVED_ARCHIVE_NAMES = frozenset(
-    {USER_FN_FILENAME, RUNNER_FILENAME, PAYLOAD_FILENAME}
-)
 # gitignore-syntax patterns applied to every working_dir, like Ray's
 # RAY_RUNTIME_ENV_DEFAULT_EXCLUDES plus the usual Python caches.
 DEFAULT_EXCLUDES = (
@@ -111,22 +101,22 @@ _LOAD_OPS = frozenset({"LOAD_GLOBAL", "LOAD_NAME", "LOAD_FROM_DICT_OR_GLOBALS"})
 _STORE_OPS = frozenset({"STORE_NAME"})
 
 
-def _load_runner_script() -> str:
-    try:
-        return (
-            importlib.resources.files("ray_client")
-            .joinpath("_driver_runner.py")
-            .read_text(encoding="utf-8")
-        )
-    except Exception:
-        return Path(__file__).with_name("_driver_runner.py").read_text(encoding="utf-8")
-
-
-RUNNER_SCRIPT_CONTENT = _load_runner_script()
+def normalize_json_refs(value: Any) -> Any:
+    """Converts `RemoteRef` instances inside `value` into `{"$ray_ref": "<ref_id>"}` dicts."""
+    if getattr(value, "__ray_client_ref__", False) is True:
+        return {"$ray_ref": value.ref_id}
+    val_type = type(value)
+    if val_type is list:
+        return [normalize_json_refs(item) for item in value]
+    if val_type is dict:
+        return {k: normalize_json_refs(v) for k, v in value.items()}
+    return value
 
 
 def _validate_strict_json(value: Any, path: str) -> None:
     """Validates that `value` round-trips losslessly through JSON with exact types."""
+    if getattr(value, "__ray_client_ref__", False) is True:
+        return
     if value is None or value is True or value is False:
         return
     val_type = type(value)
@@ -165,107 +155,13 @@ def _validate_strict_json(value: Any, path: str) -> None:
 def to_json(value: Any, context_name: str, *, sort_keys: bool = False) -> str:
     """Validates and serializes `value` to strict JSON (preserving dict key order by default)."""
     _validate_strict_json(value, context_name)
+    normalized = normalize_json_refs(value)
     try:
-        return json.dumps(value, allow_nan=False, sort_keys=sort_keys)
+        return json.dumps(normalized, allow_nan=False, sort_keys=sort_keys)
     except (TypeError, OverflowError, ValueError) as exc:
         raise RayClientSerializationError(
             f"{context_name} must be JSON-serializable (no NaN/Infinity): {exc}"
         ) from exc
-
-
-def parse_logs_and_result(
-    raw_logs: str,
-    final: bool = True,
-    submission_id: Optional[str] = None,
-) -> Tuple[str, bool, Any, Optional[Dict[str, str]]]:
-    """Splits raw job logs into `(user_logs, has_output, output, error_dict)`.
-
-    With `final=False` (live streaming), an incomplete marker line is skipped
-    instead of treated as malformed. When `submission_id` is provided, markers
-    from other jobs (e.g., nested `ray_client` calls whose `JobInfo.message` is
-    logged by an outer driver) or spoofed worker lines after the first valid
-    driver marker are ignored.
-    """
-    user_lines: List[str] = []
-    has_output = False
-    output: Any = None
-    error: Optional[Dict[str, str]] = None
-    has_tagged_match = False
-    malformed_exc: Optional[Exception] = None
-
-    for line in raw_logs.splitlines(keepends=True):
-        prefix, marker, rest = line.partition(RESULT_LINE_PREFIX)
-        if not marker:
-            user_lines.append(line)
-            continue
-        if not final and not line.endswith("\n"):
-            if prefix:
-                user_lines.append(prefix)
-            continue
-
-        body = rest.strip()
-        line_sub_id: Optional[str] = None
-        if ":" in body:
-            candidate_id, _, candidate_b64 = body.partition(":")
-            if candidate_id and all(c.isalnum() or c in "_-" for c in candidate_id):
-                line_sub_id = candidate_id
-                body = candidate_b64.strip()
-
-        if (
-            submission_id is not None
-            and line_sub_id is not None
-            and line_sub_id != submission_id
-        ):
-            # Foreign marker from a nested job's status/logs printed by this job.
-            user_lines.append(line)
-            continue
-
-        try:
-            payload = json.loads(base64.b64decode(body, validate=True))
-            if not isinstance(payload, dict) or "ok" not in payload:
-                raise ValueError("Result marker JSON is missing 'ok' field")
-        except Exception as exc:
-            if prefix:
-                # Marker substring appeared mid-line (e.g., inside a printed dict or JSON log).
-                user_lines.append(line)
-                continue
-            malformed_exc = exc
-            continue
-
-        effective_sub_id = line_sub_id or payload.get("submission_id")
-        if (
-            submission_id is not None
-            and effective_sub_id is not None
-            and effective_sub_id != submission_id
-        ):
-            user_lines.append(line)
-            continue
-
-        if prefix:
-            user_lines.append(prefix)
-        is_tagged = submission_id is not None and effective_sub_id == submission_id
-        if is_tagged:
-            # Authenticated driver marker (tagged with RAY_CLIENT_SUBMISSION_ID,
-            # which is scrubbed before user/worker code runs) overrides any
-            # earlier untagged worker spoof and locks in the first tagged match.
-            if not has_tagged_match:
-                has_tagged_match = True
-                if payload.get("ok"):
-                    has_output, output, error = True, payload.get("result"), None
-                else:
-                    has_output, output, error = False, None, payload.get("error")
-        elif not has_tagged_match and not has_output and error is None:
-            if payload.get("ok"):
-                has_output, output = True, payload.get("result")
-            else:
-                error = payload.get("error")
-
-    if final and not has_output and error is None and malformed_exc is not None:
-        raise RayClientError(
-            f"Malformed Ray Client result line: {malformed_exc}"
-        ) from malformed_exc
-
-    return "".join(user_lines), has_output, output, error
 
 
 def _referenced_global_names(module_code: types.CodeType) -> Set[str]:
@@ -311,11 +207,50 @@ def _definition_time_names(module_code: types.CodeType, fn_name: str) -> Set[str
     return names
 
 
+def _import_statement_for(
+    name: str, val: Any, owner_module: Optional[str]
+) -> Optional[str]:
+    """Returns a module header import statement if `val` is an imported module or symbol."""
+    if isinstance(val, types.ModuleType):
+        mod_name = getattr(val, "__name__", None)
+        if not isinstance(mod_name, str) or not mod_name or mod_name == "__main__":
+            return None
+        return (
+            f"import {mod_name}" if mod_name == name else f"import {mod_name} as {name}"
+        )
+
+    mod_name = getattr(val, "__module__", None)
+    obj_name = getattr(val, "__name__", None)
+    qual_name = getattr(val, "__qualname__", obj_name)
+    if (
+        isinstance(mod_name, str)
+        and mod_name
+        and mod_name not in ("__main__", owner_module)
+        and isinstance(obj_name, str)
+        and obj_name
+        and qual_name == obj_name
+    ):
+        candidates = [mod_name]
+        if "._" in mod_name:
+            public_mod = mod_name.split("._", 1)[0]
+            if public_mod and public_mod not in ("__main__", owner_module):
+                candidates = [public_mod, mod_name]
+        for candidate_mod in candidates:
+            mod_obj = sys.modules.get(candidate_mod)
+            if mod_obj is not None and getattr(mod_obj, obj_name, None) is val:
+                return (
+                    f"from {candidate_mod} import {obj_name}"
+                    if obj_name == name
+                    else f"from {candidate_mod} import {obj_name} as {name}"
+                )
+    return None
+
+
 def _validate_captured(name: str, val: Any, fn_name: str, kind: str) -> None:
     if isinstance(val, types.ModuleType):
         raise RayClientSerializationError(
-            f"{kind} '{name}' referenced by '{fn_name}' is a module; move "
-            f"'import {name}' inside '{fn_name}' so it is imported on the cluster."
+            f"{kind} '{name}' referenced by '{fn_name}' is a module that cannot "
+            f"be imported by name on the cluster; import it inside '{fn_name}'."
         )
     if callable(val):
         raise RayClientSerializationError(
@@ -424,7 +359,7 @@ def _extract_func_node_and_body(
         # A decorated `fn` is usually the decorator's wrapper: its bytecode,
         # closure, and __name__ no longer describe the source we would ship.
         raise RayClientSerializationError(
-            f"'{fn.__name__}' is decorated; run_function_as_driver requires a plain "
+            f"'{fn.__name__}' is decorated; client.run requires a plain "
             "`def` so the exact source can be executed on the cluster."
         )
     return func_node, body, indented
@@ -432,6 +367,8 @@ def _extract_func_node_and_body(
 
 def extract_function_source_and_globals(
     fn: Callable[..., Any],
+    *,
+    allow_generator: bool = False,
 ) -> Tuple[str, str, Dict[str, Any]]:
     """Returns `(fn_name, module_source, captured_globals)` for executing `fn` on the cluster.
 
@@ -441,12 +378,14 @@ def extract_function_source_and_globals(
     """
     if not inspect.isfunction(fn) or fn.__name__ == "<lambda>":
         raise RayClientSerializationError(
-            "run_function_as_driver requires a named Python `def` function."
+            "RayClient requires a named Python `def` function."
         )
-    if inspect.isgeneratorfunction(fn) or inspect.isasyncgenfunction(fn):
+    if not allow_generator and (
+        inspect.isgeneratorfunction(fn) or inspect.isasyncgenfunction(fn)
+    ):
         raise RayClientSerializationError(
-            f"'{fn.__name__}' is a generator function; run_function_as_driver "
-            "requires a regular or async function returning strict JSON."
+            f"'{fn.__name__}' is a generator function; use `client.stream(...)` "
+            "or provide a regular/async function returning strict JSON."
         )
 
     func_node, body, indented = _extract_func_node_and_body(fn)
@@ -473,26 +412,12 @@ def extract_function_source_and_globals(
     # `from __future__ import annotations`.
     hint_names = sorted((all_names - runtime_names) - set(dir(builtins)))
 
-    header_lines = ["import ray  # noqa: F401"]
-    if hint_names:
-        header_lines.append(f"{_HINT_HELPER_LINE}; {' = '.join(hint_names)} = _RayHint")
-    client_future_annotations = bool(
-        fn.__code__.co_flags & __future__.CO_FUTURE_ANNOTATIONS
-    )
-    if client_future_annotations:
-        header_lines.insert(0, "from __future__ import annotations")
-
-    header = "\n".join(header_lines) + "\n"
-    target_lineno = getattr(fn.__code__, "co_firstlineno", 1)
-    wrapper_lines = 1 if indented else 0
-    pad_lines = max(1, target_lineno - len(header_lines) - wrapper_lines)
-    module_source = header + ("\n" * (pad_lines - 1)) + body
-
     cells = dict(zip(fn.__code__.co_freevars, fn.__closure__ or ()))
     _check_shadowed_defaults(func_node, fn, cells)
     definition_time = _definition_time_names(deferred_code, fn.__name__)
 
     captured: Dict[str, Any] = {}
+    import_stmts: List[str] = []
     for name in sorted(runtime_names):
         if name in cells:
             try:
@@ -500,7 +425,7 @@ def extract_function_source_and_globals(
             except ValueError:
                 raise RayClientSerializationError(
                     f"Closure variable '{name}' referenced by '{fn.__name__}' is "
-                    "not assigned yet; assign it before calling run_function_as_driver."
+                    "not assigned yet; assign it before calling client.run."
                 ) from None
             kind = "Closure variable"
         elif name in fn.__globals__:
@@ -514,9 +439,173 @@ def extract_function_source_and_globals(
         else:
             # A builtin, or a NameError at call time on the client and cluster alike.
             continue
+        imp_stmt = _import_statement_for(name, value, getattr(fn, "__module__", None))
+        if imp_stmt is not None:
+            import_stmts.append(imp_stmt)
+            continue
         _validate_captured(name, value, fn.__name__, kind)
         captured[name] = value
+
+    header_lines = ["import ray  # noqa: F401"]
+    if import_stmts:
+        header_lines.append("; ".join(import_stmts))
+    if hint_names:
+        header_lines.append(f"{_HINT_HELPER_LINE}; {' = '.join(hint_names)} = _RayHint")
+    client_future_annotations = bool(
+        fn.__code__.co_flags & __future__.CO_FUTURE_ANNOTATIONS
+    )
+    if client_future_annotations:
+        header_lines.insert(0, "from __future__ import annotations")
+
+    header = "\n".join(header_lines) + "\n"
+    target_lineno = getattr(fn.__code__, "co_firstlineno", 1)
+    wrapper_lines = 1 if indented else 0
+    pad_lines = max(1, target_lineno - len(header_lines) - wrapper_lines)
+    module_source = header + ("\n" * (pad_lines - 1)) + body
     return fn.__name__, module_source, captured
+
+
+def unwrap_actor_class(cls: Any) -> type:
+    """Unwraps `@ray.remote` `ActorClass` if needed and returns the underlying Python class."""
+    meta = getattr(cls, "__ray_metadata__", None)
+    if meta is not None:
+        mod_cls = getattr(meta, "modified_class", None)
+        raw = getattr(mod_cls, "__ray_actor_class__", None)
+        if inspect.isclass(raw):
+            return raw
+    if inspect.isclass(cls):
+        return cls
+    raise RayClientSerializationError(
+        f"client.actor() requires a Python class or @ray.remote class, got {cls!r}."
+    )
+
+
+def _is_ray_remote_decorator(dec: ast.expr) -> bool:
+    target = dec.func if isinstance(dec, ast.Call) else dec
+    if isinstance(target, ast.Attribute) and target.attr == "remote":
+        if isinstance(target.value, ast.Name) and target.value.id == "ray":
+            return True
+    return False
+
+
+def extract_class_source_and_globals(
+    cls: Any,
+) -> Tuple[str, str, Dict[str, Any]]:
+    """Returns `(class_name, module_source, captured_globals)` for a live actor class."""
+    raw_cls = unwrap_actor_class(cls)
+    try:
+        raw_source = inspect.getsource(raw_cls)
+    except (OSError, TypeError) as exc:
+        raise RayClientSerializationError(
+            f"Could not extract source code for class '{raw_cls.__name__}': {exc}. "
+            "Define it in a .py file or a notebook cell."
+        ) from exc
+
+    indented = raw_source[0].isspace()
+    body = f"if True:\n{raw_source}" if indented else raw_source
+    if not body.endswith("\n"):
+        body += "\n"
+    try:
+        tree = ast.parse(body)
+    except SyntaxError as exc:
+        raise RayClientSerializationError(
+            f"Could not parse the source of '{raw_cls.__name__}': {exc}"
+        ) from exc
+
+    cls_node = tree.body[0]
+    if isinstance(cls_node, ast.If):
+        cls_node = cls_node.body[0]
+    if not isinstance(cls_node, ast.ClassDef) or cls_node.name != raw_cls.__name__:
+        raise RayClientSerializationError(
+            f"Expected the source of '{raw_cls.__name__}' to start with "
+            f"`class {raw_cls.__name__}`."
+        )
+
+    non_ray_decos = [
+        d for d in cls_node.decorator_list if not _is_ray_remote_decorator(d)
+    ]
+    if non_ray_decos:
+        raise RayClientSerializationError(
+            f"Class '{raw_cls.__name__}' has unsupported decorator(s); only "
+            "`@ray.remote` or undecorated classes are supported by client.actor()."
+        )
+    if cls_node.decorator_list:
+        # Strip `@ray.remote` decorator lines from the source while preserving the class body.
+        lines = raw_source.splitlines(keepends=True)
+        class_line_idx = next(
+            (
+                idx
+                for idx, ln in enumerate(lines)
+                if ln.lstrip().startswith(f"class {raw_cls.__name__}")
+            ),
+            0,
+        )
+        raw_source = "".join(lines[class_line_idx:])
+        indented = raw_source[0].isspace()
+        body = f"if True:\n{raw_source}" if indented else raw_source
+        if not body.endswith("\n"):
+            body += "\n"
+
+    try:
+        deferred_code = compile(
+            body,
+            USER_FN_FILENAME,
+            "exec",
+            flags=__future__.CO_FUTURE_ANNOTATIONS,
+            dont_inherit=True,
+        )
+        eager_code = compile(body, USER_FN_FILENAME, "exec", dont_inherit=True)
+    except SyntaxError as exc:
+        raise RayClientSerializationError(
+            f"'{raw_cls.__name__}' cannot run as a standalone module: {exc}"
+        ) from exc
+
+    runtime_names = _referenced_global_names(deferred_code) - {"ray"}
+    all_names = _referenced_global_names(eager_code) - {"ray"}
+    hint_names = sorted((all_names - runtime_names) - set(dir(builtins)))
+
+    cls_globals: Dict[str, Any] = {}
+    cls_cells: Dict[str, Any] = {}
+    sys_mod = sys.modules.get(raw_cls.__module__)
+    if sys_mod is not None:
+        cls_globals.update(sys_mod.__dict__)
+    for _, member in inspect.getmembers(raw_cls, inspect.isfunction):
+        unwrapped = inspect.unwrap(member)
+        if not cls_globals:
+            cls_globals.update(unwrapped.__globals__)
+        for k, cell in zip(unwrapped.__code__.co_freevars, unwrapped.__closure__ or ()):
+            cls_cells[k] = cell
+
+    captured: Dict[str, Any] = {}
+    import_stmts: List[str] = []
+    for name in sorted(runtime_names):
+        if name in cls_cells:
+            try:
+                value = cls_cells[name].cell_contents
+            except ValueError:
+                raise RayClientSerializationError(
+                    f"Closure variable '{name}' referenced by '{raw_cls.__name__}' is "
+                    "not assigned yet."
+                ) from None
+            kind = "Closure variable"
+        elif name in cls_globals:
+            value, kind = cls_globals[name], "Global"
+        else:
+            continue
+        imp_stmt = _import_statement_for(name, value, raw_cls.__module__)
+        if imp_stmt is not None:
+            import_stmts.append(imp_stmt)
+            continue
+        _validate_captured(name, value, raw_cls.__name__, kind)
+        captured[name] = value
+
+    header_lines = ["import ray  # noqa: F401"]
+    if import_stmts:
+        header_lines.append("; ".join(import_stmts))
+    if hint_names:
+        header_lines.append(f"{_HINT_HELPER_LINE}; {' = '.join(hint_names)} = _RayHint")
+    module_source = "\n".join(header_lines) + "\n\n" + body
+    return raw_cls.__name__, module_source, captured
 
 
 def _write_deterministic_entry(
@@ -572,10 +661,8 @@ def _iter_working_dir(
         for entry in entries:
             arcname = base + entry.name
             is_dir = entry.is_dir()
-            if (
-                arcname in RESERVED_ARCHIVE_NAMES
-                or _is_ignored(arcname, is_dir, exclude_rules)
-                or _is_ignored(arcname, is_dir, rules)
+            if _is_ignored(arcname, is_dir, exclude_rules) or _is_ignored(
+                arcname, is_dir, rules
             ):
                 continue
             if is_dir:
@@ -642,124 +729,26 @@ def _write_dir_entry(zf: zipfile.ZipFile, arcname: str) -> None:
     zf.writestr(info, b"")
 
 
-def build_payload_archive(payload_bytes: bytes) -> Tuple[bytes, str]:
-    """Packages `_ray_client_payload.json` into its own small content-addressed zip."""
-    buf = io.BytesIO()
-    entry_sizes: List[Tuple[int, str]] = []
-    with zipfile.ZipFile(buf, mode="w") as zf:
-        _write_deterministic_entry(zf, PAYLOAD_FILENAME, payload_bytes, entry_sizes)
-    zip_bytes = buf.getvalue()
-    if len(zip_bytes) >= MAX_PACKAGE_BYTES:
-        raise _package_too_large(len(zip_bytes), entry_sizes)
-    gcs_uri = f"gcs://{RAY_PKG_PREFIX}{hashlib.sha1(zip_bytes).hexdigest()}.zip"
-    return zip_bytes, gcs_uri
-
-
-def _encode_call_payload(
-    fn: Callable[..., Any],
-    fn_name: str,
-    args: Tuple[Any, ...],
-    kwargs: Dict[str, Any],
-    captured_globals: Dict[str, Any],
-) -> Tuple[bytes, Optional[str]]:
-    bound = inspect.signature(fn).bind(*args, **kwargs)
-    bound.apply_defaults()
-    to_json(list(bound.args), "Function positional arguments")
-    to_json(dict(bound.kwargs), "Function keyword arguments")
-    payload_bytes = to_json(
-        {
-            "fn_name": fn_name,
-            "args": list(bound.args),
-            "kwargs": dict(bound.kwargs),
-            "captured_globals": captured_globals,
-        },
-        "Function arguments",
-    ).encode("utf-8")
-    payload_b64 = base64.b64encode(payload_bytes).decode("ascii")
-    if len(payload_b64) <= MAX_ENV_PAYLOAD_BYTES:
-        return payload_bytes, payload_b64
-    return payload_bytes, None
-
-
-def _build_call_invariant_driver_zip(
-    user_fn_source: str,
-    working_dir: Optional[Union[str, Path]] = None,
+def build_working_dir_package(
+    working_dir: Union[str, Path],
     excludes: Optional[List[str]] = None,
 ) -> Tuple[bytes, str]:
+    """Packages a local `working_dir` into a deterministic zip and returns `(zip_bytes, gcs_uri)`."""
+    root = Path(working_dir).resolve()
+    if not root.is_dir():
+        raise ValueError(f"working_dir '{working_dir}' is not a directory.")
     buf = io.BytesIO()
     entry_sizes: List[Tuple[int, str]] = []
+    exclude_rules = _compile_ignore_rules([*_default_excludes(), *(excludes or ())], "")
+    include_gitignore = os.environ.get(IGNORE_GITIGNORE_ENV_VAR, "0") != "1"
     with zipfile.ZipFile(buf, mode="w") as zf:
-        if working_dir is not None:
-            root = Path(working_dir).resolve()
-            if not root.is_dir():
-                raise ValueError(f"working_dir '{working_dir}' is not a directory.")
-            exclude_rules = _compile_ignore_rules(
-                [*_default_excludes(), *(excludes or ())], ""
-            )
-            include_gitignore = os.environ.get(IGNORE_GITIGNORE_ENV_VAR, "0") != "1"
-            for arcname, path in _iter_working_dir(
-                root, exclude_rules, include_gitignore
-            ):
-                if path is None:
-                    _write_dir_entry(zf, arcname)
-                else:
-                    _write_file_entry(zf, buf, arcname, path, entry_sizes)
-        _write_deterministic_entry(
-            zf, USER_FN_FILENAME, user_fn_source.encode("utf-8"), entry_sizes
-        )
-        _write_deterministic_entry(
-            zf, RUNNER_FILENAME, RUNNER_SCRIPT_CONTENT.encode("utf-8"), entry_sizes
-        )
-
+        for arcname, path in _iter_working_dir(root, exclude_rules, include_gitignore):
+            if path is None:
+                _write_dir_entry(zf, arcname)
+            else:
+                _write_file_entry(zf, buf, arcname, path, entry_sizes)
     zip_bytes = buf.getvalue()
     if len(zip_bytes) >= MAX_PACKAGE_BYTES:
         raise _package_too_large(len(zip_bytes), entry_sizes)
     gcs_uri = f"gcs://{RAY_PKG_PREFIX}{hashlib.sha1(zip_bytes).hexdigest()}.zip"
     return zip_bytes, gcs_uri
-
-
-def build_driver_and_payload_packages(
-    fn: Callable[..., Any],
-    args: Tuple[Any, ...],
-    kwargs: Dict[str, Any],
-    working_dir: Optional[Union[str, Path]] = None,
-    excludes: Optional[List[str]] = None,
-) -> Tuple[bytes, str, Optional[str], Optional[Tuple[bytes, str]]]:
-    """Builds the call-invariant driver/`working_dir` package plus either an inline
-    `env_payload_b64` (`<= 32 KiB`) or a separate `(payload_zip_bytes, payload_uri)`
-    package (`> 32 KiB`) for `runtime_env["py_modules"]`."""
-    inspect.signature(fn).bind(*args, **kwargs)
-    fn_name, user_fn_source, captured_globals = extract_function_source_and_globals(fn)
-    payload_bytes, payload_b64 = _encode_call_payload(
-        fn, fn_name, args, kwargs, captured_globals
-    )
-    zip_bytes, gcs_uri = _build_call_invariant_driver_zip(
-        user_fn_source, working_dir, excludes
-    )
-    payload_pkg = (
-        None if payload_b64 is not None else build_payload_archive(payload_bytes)
-    )
-    return zip_bytes, gcs_uri, payload_b64, payload_pkg
-
-
-def build_driver_package(
-    fn: Callable[..., Any],
-    args: Tuple[Any, ...],
-    kwargs: Dict[str, Any],
-    working_dir: Optional[Union[str, Path]] = None,
-    excludes: Optional[List[str]] = None,
-) -> Tuple[bytes, str, Optional[str]]:
-    """Builds the call-invariant job package and returns `(zip_bytes, gcs_uri, env_payload_b64)`.
-
-    The zip holds only call-invariant content (user function source, the driver
-    runner, and `working_dir` files) with fixed timestamps and permissions, so
-    repeated calls with different arguments always hash to the same `gcs_uri` and
-    hit Ray's package cache. Per-call arguments up to MAX_ENV_PAYLOAD_BYTES travel
-    in `env_payload_b64`; larger payloads return `env_payload_b64=None` and are
-    shipped by `RayClient` as a separate `py_modules` package via
-    `build_driver_and_payload_packages`.
-    """
-    zip_bytes, gcs_uri, payload_b64, _ = build_driver_and_payload_packages(
-        fn, args, kwargs, working_dir, excludes
-    )
-    return zip_bytes, gcs_uri, payload_b64
