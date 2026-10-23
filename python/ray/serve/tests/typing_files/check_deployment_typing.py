@@ -2,7 +2,7 @@
 
 This file is used with mypy to verify that the bare, called and direct-call forms
 of the decorator produce a `Deployment`. Run with:
-    mypy python/ray/serve/tests/typing_files/check_deployment_typing.py python/ray/serve/api.py  \
+    mypy python/ray/serve/tests/typing_files/check_deployment_typing.py \
         --follow-imports=silent \
         --ignore-missing-imports
 
