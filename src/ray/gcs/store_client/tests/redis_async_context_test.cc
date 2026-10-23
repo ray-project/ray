@@ -1229,6 +1229,48 @@ TEST_F(RedisAsyncContextTest, RejectedSubmissionDoesNotRecordRequestMetrics) {
   request.reset();
 }
 
+TEST_F(RedisAsyncContextTest, RetryWaitingOnADestroyedContextIsDropped) {
+  auto local_io_service = std::make_unique<instrumented_io_context>(
+      /*emit_metrics=*/false, /*running_on_single_thread=*/true);
+  ray::Clock clock;
+  auto context = std::make_unique<RedisContext>(*local_io_service, clock);
+  ASSERT_TRUE(context
+                  ->Connect("127.0.0.1",
+                            TEST_REDIS_SERVER_PORTS.front(),
+                            /*username=*/"",
+                            /*password=*/"")
+                  .ok());
+  auto *raw_context = context->async_context().GetRawRedisAsyncContext();
+  ASSERT_NE(raw_context, nullptr);
+  context->async_context().ResetRawRedisAsyncContext();
+  redisAsyncFree(raw_context);
+
+  // The request owns itself. Its callback holds the only reference to the
+  // sentinel, so the sentinel goes away exactly when the request is deleted.
+  auto sentinel = std::make_shared<int>(0);
+  std::weak_ptr<int> request_alive = sentinel;
+  std::atomic<bool> answered = false;
+  auto *request = new RedisRequestContext(
+      *local_io_service,
+      [sentinel = std::move(sentinel), &answered](std::shared_ptr<CallbackReply>) {
+        answered = true;
+      },
+      &context->async_context(),
+      std::vector<std::string>{"HGET", "key"},
+      clock,
+      /*metrics=*/nullptr,
+      "NODE");
+  // Submission fails, so Run() schedules a retry. Destroy the context before
+  // the retry fires: the retry must drop the request instead of running it.
+  request->Run();
+  ASSERT_FALSE(request_alive.expired());
+  context.reset();
+
+  local_io_service->run_for(std::chrono::seconds(2));
+  EXPECT_TRUE(request_alive.expired());
+  EXPECT_FALSE(answered.load());
+}
+
 TEST_F(RedisAsyncContextTest, SubmissionNotificationHoldsReplyLock) {
   instrumented_io_context local_io_service;
   ray::Clock clock;
