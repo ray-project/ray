@@ -377,8 +377,6 @@ class PushSplitCoordinator:
         }
 
     def shutdown_executor(self):
-        # Stop the pushers first, so ones woken by the shutdown exit instead
-        # of sending end-of-epoch or errors to consumers that may be gone.
         with self._lock:
             stop_events = list(self._pusher_stop_events.values())
             executor = self._current_executor
