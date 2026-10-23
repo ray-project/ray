@@ -16,13 +16,37 @@ from ray._private.authentication.authentication_token_setup import (
     ensure_token_if_auth_enabled,
 )
 from ray._private.client_mode_hook import disable_client_hook
-from ray._raylet import GcsClientOptions
+from ray._raylet import (
+    AuthenticationMode,
+    AuthenticationTokenLoader,
+    GcsClientOptions,
+    get_authentication_mode,
+)
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 cluster_not_supported = os.name == "nt"
+
+
+def _ensure_head_token(
+    system_config: Optional[dict], create_auth_token_if_missing: bool
+) -> None:
+    """Make sure a token exists before a test cluster starts its head, so the GCS
+    doesn't crash on a missing token."""
+    if create_auth_token_if_missing:
+        ensure_token_if_auth_enabled(system_config, create_token_if_missing=True)
+        return
+    if get_authentication_mode() == AuthenticationMode.TOKEN and not (
+        AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True)
+    ):
+        raise RuntimeError(
+            "Token authentication is enabled but no authentication token was "
+            "found. Pass create_auth_token_if_missing=True to create one for this "
+            "cluster, or set RAY_AUTH_MODE=disabled."
+        )
+    ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
 
 @DeveloperAPI
@@ -37,6 +61,7 @@ class AutoscalingCluster:
         head_resources: dict,
         worker_node_types: dict,
         autoscaler_v2: bool = False,
+        create_auth_token_if_missing: bool = False,
         **config_kwargs,
     ):
         """Create the cluster.
@@ -46,6 +71,10 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
             autoscaler_v2: If True, enable autoscaler v2 features in the
                 generated config.
+            create_auth_token_if_missing: If True and token authentication is
+                enabled, create ~/.ray/auth_token when no token exists. If False,
+                ``start`` fails when token authentication is enabled and no
+                token exists.
             **config_kwargs: Additional configuration values merged into the
                 generated cluster config.
         """
@@ -57,6 +86,7 @@ class AutoscalingCluster:
             **config_kwargs,
         )
         self._autoscaler_v2 = autoscaler_v2
+        self._create_auth_token_if_missing = create_auth_token_if_missing
 
     def _generate_config(
         self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
@@ -131,8 +161,8 @@ class AutoscalingCluster:
             )
         if override_env:
             env.update(override_env)
-        # `ray start --head` never creates a token, so create it here first.
-        ensure_token_if_auth_enabled(_system_config, create_token_if_missing=True)
+        # `ray start --head` never creates a token, so check for one here first.
+        _ensure_head_token(_system_config, self._create_auth_token_if_missing)
         subprocess.check_call(cmd, env=env)
         ray._private.services.find_gcs_addresses.cache_clear()
 
@@ -150,6 +180,7 @@ class Cluster:
         connect: bool = False,
         head_node_args: dict = None,
         shutdown_at_exit: bool = True,
+        create_auth_token_if_missing: bool = False,
     ):
         """Initializes all services of a Ray cluster.
 
@@ -163,6 +194,10 @@ class Cluster:
                 `start_ray_head` via `self.add_node`.
             shutdown_at_exit: If True, registers an exit hook
                 for shutting down all started processes.
+            create_auth_token_if_missing: If True and token authentication is
+                enabled, create ~/.ray/auth_token when no token exists. If False,
+                starting the head fails when token authentication is enabled and
+                no token exists.
         """
         if cluster_not_supported:
             logger.warning(
@@ -177,6 +212,7 @@ class Cluster:
         # Create a new global state accessor for fetching GCS table.
         self.global_state = ray._private.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
+        self._create_auth_token_if_missing = create_auth_token_if_missing
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -237,8 +273,8 @@ class Cluster:
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
-                ensure_token_if_auth_enabled(
-                    ray_params._system_config, create_token_if_missing=True
+                _ensure_head_token(
+                    ray_params._system_config, self._create_auth_token_if_missing
                 )
                 node = ray._private.node.Node(
                     ray_params,
