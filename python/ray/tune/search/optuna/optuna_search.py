@@ -707,12 +707,14 @@ class OptunaSearch(Searcher):
                         domain.lower, domain.upper - 1, step=quantize or 1, log=True
                     )
                 elif isinstance(sampler, Uniform):
-                    # Upper bound should be inclusive for quantization and
-                    # exclusive otherwise
+                    # Tune samples the multiples of `q`, so snap both bounds to
+                    # them. The upper bound is inclusive for quantization with
+                    # `q > 1` and exclusive otherwise.
+                    q = quantize or 1
                     return ot.distributions.IntDistribution(
-                        domain.lower,
-                        domain.upper - int(bool(not quantize)),
-                        step=quantize or 1,
+                        -(-domain.lower // q) * q,
+                        domain.upper - 1 if q == 1 else domain.upper // q * q,
+                        step=q,
                     )
             elif isinstance(domain, Categorical):
                 if isinstance(sampler, Uniform):
