@@ -186,6 +186,13 @@ def test_ingress_refuses_to_start_without_a_token(monkeypatch) -> None:
     resolver_factory.assert_not_called()
 
 
+def test_build_app_refuses_to_run_unauthenticated(monkeypatch) -> None:
+    """allow_unauthenticated is a REST setting; the facade always checks."""
+    monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
+    with pytest.raises(ValueError, match="always requires the API token"):
+        grpc_app.build_app({"allow_unauthenticated": True})
+
+
 def test_build_app_runs_one_replica(monkeypatch) -> None:
     monkeypatch.setenv("RAY_SANDBOX_API_TOKEN", _TOKEN)
     with pytest.raises(ValueError, match="one replica"):

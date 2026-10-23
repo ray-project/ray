@@ -25,6 +25,7 @@ from ray.experimental.sandbox._internal.image_utils import (
     extract_tar_layer,
     get_platform_arch,
     get_registry_auth_headers,
+    image_cache_name,
     parse_image_ref,
     pull_and_extract_container_image,
     sanitize_image_name,
@@ -68,6 +69,93 @@ def test_sanitize_image_name():
         sanitize_image_name("")
     with pytest.raises(ValueError, match="cannot be safely sanitized"):
         sanitize_image_name("...")
+
+
+def test_image_cache_name_normalizes_registry_spellings():
+    spellings = (
+        "python:3.12-slim",
+        "library/python:3.12-slim",
+        "docker.io/library/python:3.12-slim",
+        "index.docker.io/library/python:3.12-slim",
+        "registry-1.docker.io/library/python:3.12-slim",
+        "Docker.io/python:3.12-slim",
+    )
+    # The normalized reference made safe for a file name, then its hash.
+    assert {image_cache_name(s) for s in spellings} == {
+        "docker.io_library_python_3.12-slim-ea59dc550ffd7fa7"
+    }
+    assert image_cache_name("busybox") == image_cache_name("busybox:latest")
+    assert image_cache_name("GHCR.io/org/repo:1.0") == image_cache_name(
+        "ghcr.io/org/repo:1.0"
+    )
+    assert image_cache_name("ghcr.io/org/repo:1.0").startswith("ghcr.io_org_repo_1.0-")
+    assert image_cache_name("quay.io/coreos/etcd@sha256:abcd").startswith(
+        "quay.io_coreos_etcd_sha256_abcd-"
+    )
+    assert image_cache_name("localhost:5000/app").startswith(
+        "localhost_5000_app_latest-"
+    )
+    # Local archives keep their file name.
+    assert (
+        image_cache_name("/tmp/ray/sandbox/images/ubuntu_22.04.tar") == "ubuntu_22.04"
+    )
+
+
+def test_image_cache_name_keeps_references_apart():
+    sha = "0" * 64
+    # Each pair looks the same once "/", ":" and "@" become "_".
+    for a, b in (
+        (f"repo@sha256:{sha}", f"repo:sha256_{sha}"),
+        ("ghcr.io/a/b_c:1", "ghcr.io/a/b/c:1"),
+        ("ghcr.io/a/b:c_1", "ghcr.io/a/b_c:1"),
+        ("localhost:5000/app", "localhost/5000_app"),
+    ):
+        assert image_cache_name(a) != image_cache_name(b)
+    # A long reference gets a name that leaves room for the ``.tmp.<uuid>``
+    # directory a pull stages it in, and the cut keeps names apart.
+    repo = "registry.example.com/" + "/".join(f"team{i}" for i in range(40))
+    names = {image_cache_name(f"{repo}@sha256:{c * 64}") for c in "01"}
+    assert len(names) == 2
+    assert all(len(f"{name}.tmp.{'0' * 32}") <= 255 for name in names)
+
+
+def _fake_registry(monkeypatch):
+    """Pulls write the reference they were given into the image instead of
+    fetching it. Returns the list of references pulled."""
+    pulled = []
+
+    def extract(image, rootfs_dir, *args):
+        pulled.append(image)
+        with open(os.path.join(rootfs_dir, "ref"), "w", encoding="utf-8") as f:
+            f.write(image)
+        return {}
+
+    monkeypatch.setattr(image_utils, "_extract_image_layers", extract)
+    return pulled
+
+
+def test_pull_reuses_the_cache_entry_of_another_spelling(tmp_path, monkeypatch):
+    pulled = _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    first = pull_and_extract_container_image("busybox", images_dir=images_dir)
+    for spelling in ("busybox:latest", "docker.io/library/busybox:latest"):
+        assert (
+            pull_and_extract_container_image(spelling, images_dir=images_dir) == first
+        )
+    assert pulled == ["busybox"]
+    entries = [
+        d for d in os.listdir(images_dir) if os.path.isdir(os.path.join(images_dir, d))
+    ]
+    assert entries == [os.path.basename(first)]
+
+
+def test_pull_keeps_a_digest_and_a_lookalike_tag_apart(tmp_path, monkeypatch):
+    """A tag spelled like a digest isn't served the digest's image."""
+    _fake_registry(monkeypatch)
+    images_dir = str(tmp_path / "images")
+    for image in (f"repo@sha256:{'0' * 64}", f"repo:sha256_{'0' * 64}"):
+        image_dir = pull_and_extract_container_image(image, images_dir=images_dir)
+        assert _image_file(image_dir, "ref") == image.encode()
 
 
 def test_parse_image_ref():
@@ -156,6 +244,14 @@ def test_parse_image_ref():
         "library/ubuntu",
         "sha256:12345",
     )
+    # Host names are case-insensitive; tags are not.
+    assert parse_image_ref("Docker.io/python:3.12-slim") == (
+        "registry-1.docker.io",
+        "library/python",
+        "3.12-slim",
+    )
+    assert parse_image_ref("GHCR.io/org/repo:V1") == ("ghcr.io", "org/repo", "V1")
+    assert parse_image_ref("LocalHost/app") == ("localhost", "app", "latest")
 
 
 def test_get_platform_arch():
@@ -440,7 +536,7 @@ def test_pull_and_extract_remote_image(tmp_path, fake_docker_hub):
     # Only the image is cached: no extracted tree, and no archive doubling
     # its footprint.
     assert not os.path.exists(os.path.join(image_dir, "rootfs"))
-    assert not os.path.exists(str(images_dir / "busybox_latest.tar"))
+    assert not os.path.exists(image_dir + ".tar")
 
 
 def test_pull_and_extract_docker_io_prefixed_image(tmp_path, fake_docker_hub):

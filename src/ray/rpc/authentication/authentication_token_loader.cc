@@ -39,12 +39,16 @@
 namespace ray {
 namespace rpc {
 
+// Keep in sync with TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py, so the Python
+// AuthenticationError recognizes the fix text and doesn't append it twice.
 constexpr const char *kNoTokenErrorMessage =
-    "Token authentication is enabled but Ray couldn't find an "
-    "authentication token. "
-    "Create a token file at ~/.ray/auth_token, "
-    "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
-    "or set the RAY_AUTH_TOKEN environment variable.";
+    "Token authentication is enabled but no authentication token was found. "
+    "To connect to a cluster with token authentication, run `ray get-auth-token` "
+    "on the head node and copy the token to ~/.ray/auth_token on this machine, "
+    "or to a file that RAY_AUTH_TOKEN_PATH points to. If the cluster was started "
+    "with RAY_AUTH_MODE=disabled, set RAY_AUTH_MODE=disabled here too. See "
+    "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
@@ -247,10 +251,13 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
     return "";
   }
 
-  std::string token;
-  std::getline(token_file, token);
-  token_file.close();
-  return token;
+  std::string line;
+  while (std::getline(token_file, line)) {
+    if (!TrimWhitespace(line).empty()) {
+      return line;
+    }
+  }
+  return "";
 }
 
 std::string AuthenticationTokenLoader::GetDefaultTokenPath() {

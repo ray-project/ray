@@ -17,6 +17,9 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray._common.utils import env_bool, env_integer
+from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_schema_from_files,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
     PathColumn,
     RowHashColumn,
@@ -53,9 +56,6 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 logger = logging.getLogger(__name__)
-
-# Bound submitted footer reads when full schema inference covers many files.
-_SCHEMA_READ_BATCH_SIZE = 256
 
 
 @DeveloperAPI
@@ -196,6 +196,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
             coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
+            small_shuffle_chunk_size=(
+                DataContext.get_current().small_shuffle_chunk_size
+            ),
         )
 
     def get_file_partitioner(self, **kwargs):
@@ -211,17 +214,30 @@ class ParquetDatasourceV2(FileDataSourceV2):
             "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
         )
         split_coalesced = env_bool("RAY_DATA_PARQUET_FOOTER_SPLIT_COALESCED", False)
+        # A row-group shuffle feeds runs from many files interleaved; per-file
+        # heavy bins would split them back apart, so pack everything shared.
+        isolate_heavy_files = not self._is_row_group_shuffle()
         logger.debug(
             "OnlineBinPacker(max_bin_bytes=%d, max_shared_open_bins=%d, "
-            "split_coalesced=%s)",
+            "split_coalesced=%s, isolate_heavy_files=%s)",
             max_bin_bytes,
             max_shared_open_bins,
             split_coalesced,
+            isolate_heavy_files,
         )
         return OnlineBinPacker(
             max_bin_bytes=max_bin_bytes,
             max_shared_open_bins=max_shared_open_bins,
             split_coalesced=split_coalesced,
+            isolate_heavy_files=isolate_heavy_files,
+        )
+
+    def _is_row_group_shuffle(self) -> bool:
+        from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+        return (
+            isinstance(self._shuffle, FileShuffleConfig)
+            and self._shuffle.small_chunks_shuffle
         )
 
     @override
@@ -279,11 +295,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         ``Partitioning`` can flow through ``_read_datasource_v2`` into
         :meth:`create_scanner` without side effects.
         """
-        from concurrent.futures import ThreadPoolExecutor
-
         import pyarrow.parquet as pq
-
-        from ray.data._internal.util import unify_schemas_with_validation
 
         # See ``resolve_partitioning``: ``None`` is reachable only for a
         # source that answers ``schema_needs_file_sample`` False.
@@ -324,32 +336,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
                 with filesystem.open_input_file(path) as handle:
                     return pq.read_schema(handle)
 
-            per_file_schemas: List[pa.Schema] = []
-            with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-                for start in range(0, len(sample_paths), _SCHEMA_READ_BATCH_SIZE):
-                    batch = sample_paths[start : start + _SCHEMA_READ_BATCH_SIZE]
-                    per_file_schemas.extend(executor.map(_read_schema, batch))
-            try:
-                schema = (
-                    unify_schemas_with_validation(per_file_schemas)
-                    or per_file_schemas[0]
-                )
-            except (pa.ArrowTypeError, pa.ArrowInvalid):
-                # Locate the first file that conflicts with the schema seen so
-                # far. This only runs on failure and reads no additional footers.
-                merged = per_file_schemas[0]
-                for path, file_schema in zip(sample_paths[1:], per_file_schemas[1:]):
-                    try:
-                        merged = (
-                            unify_schemas_with_validation([merged, file_schema])
-                            or merged
-                        )
-                    except (pa.ArrowTypeError, pa.ArrowInvalid) as cause:
-                        raise type(cause)(
-                            f"Failed to merge Parquet schema from {path!r}: {cause}"
-                        ) from cause
-                raise
-            assert isinstance(schema, pa.Schema)
+            schema = infer_schema_from_files(
+                sample_paths, _read_schema, format_name="Parquet"
+            )
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:

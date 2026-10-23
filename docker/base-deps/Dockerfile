@@ -105,14 +105,30 @@ rm /tmp/miniforge.sh
 # downgrades python to whatever patch release tolerates that libffi — on 3.14
 # that's 3.14.0, which fatally crashes Ray async actors running on fiber
 # stacks (python/cpython#141944, fixed upstream in 3.14.2).
-$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3.4.6"
+#
+# conda-forge certifi builds from 2026 on require python>=3.11. Downgrading the
+# Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
+# requests and conda itself, and the transaction fails with RemoveError.
+# conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
+# 3.10 installs it from PyPI after the conda step.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_PYTHON_EXTRA_SPECS=("certifi<2026")
+fi
+$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3.4.6" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
-wget -qO- https://astral.sh/uv/0.11.33/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+wget -qO- https://astral.sh/uv/0.13.4/install.sh | sudo -E env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Set up Conda as system Python
 export PATH=$HOME/anaconda3/bin:$PATH
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+fi
 
 # Some packages are on PyPI as well as other indices, but the latter
 # (unhelpfully) take precedence. We use `--index-strategy unsafe-best-match`

@@ -287,20 +287,17 @@ class Dataset:
     via the ``write_*()`` APIs.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            import ray
-            # Create dataset from synthetic data.
-            ds = ray.data.range(1000)
-            # Create dataset from in-memory data.
-            ds = ray.data.from_items(
-                [{"col1": i, "col2": i * 2} for i in range(1000)]
-            )
-            # Create dataset from external storage system.
-            ds = ray.data.read_parquet("s3://bucket/path")
-            # Save dataset back to external storage system.
-            ds.write_csv("s3://bucket/output")
+        >>> import ray
+        >>> # Create dataset from synthetic data.
+        >>> ds = ray.data.range(1000)
+        >>> # Create dataset from in-memory data.
+        >>> ds = ray.data.from_items(
+        ...     [{"col1": i, "col2": i * 2} for i in range(1000)]
+        ... )
+        >>> # Create dataset from external storage system.
+        >>> ds = ray.data.read_parquet("s3://bucket/path")  # doctest: +SKIP
+        >>> # Save dataset back to external storage system.
+        >>> ds.write_csv("s3://bucket/output")  # doctest: +SKIP
 
     Dataset has two kinds of operations: transformation, which takes in Dataset
     and outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption,
@@ -471,29 +468,22 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import os
-                from typing import Any, Dict
-                import ray
-
-                def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
-                    row["filename"] = os.path.basename(row["path"])
-                    return row
-
-                ds = (
-                    ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
-                    .map(parse_filename)
-                )
-                print(ds.schema())
-
-            .. testoutput::
-
-                Column    Type
-                ------    ----
-                image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
-                path      string
-                filename  string
+            >>> import os
+            >>> from typing import Any, Dict
+            >>> import ray
+            >>> def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
+            ...     row["filename"] = os.path.basename(row["path"])
+            ...     return row
+            >>> ds = (
+            ...     ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
+            ...     .map(parse_filename)
+            ... )
+            >>> print(ds.schema())
+            Column    Type
+            ------    ----
+            image     ArrowTensorTypeV2(shape=(32, 32, 3), dtype=uint8)
+            path      string
+            filename  string
 
         Time complexity: O(dataset size / parallelism)
 
@@ -704,82 +694,67 @@ class Dataset:
 
             Call :meth:`~Dataset.map_batches` to transform your data.
 
-            .. testcode::
-
-                from typing import Dict
-                import numpy as np
-                import ray
-
-                def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    batch["age_in_dog_years"] = 7 * batch["age"]
-                    return batch
-
-                ds = (
-                    ray.data.from_items([
-                        {"name": "Luna", "age": 4},
-                        {"name": "Rory", "age": 14},
-                        {"name": "Scout", "age": 9},
-                    ])
-                    .map_batches(add_dog_years, batch_size="auto")
-                )
-                ds.show()
-
-            .. testoutput::
-
-                {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
-                {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
-                {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import ray
+            >>> def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...     batch["age_in_dog_years"] = 7 * batch["age"]
+            ...     return batch
+            >>> ds = (
+            ...     ray.data.from_items([
+            ...         {"name": "Luna", "age": 4},
+            ...         {"name": "Rory", "age": 14},
+            ...         {"name": "Scout", "age": 9},
+            ...     ])
+            ...     .map_batches(add_dog_years, batch_size="auto")
+            ... )
+            >>> ds.show()
+            {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
+            {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
+            {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
 
             If your function returns large objects, yield outputs in chunks.
 
-            .. testcode::
-
-                from typing import Dict
-                import ray
-                import numpy as np
-
-                def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                    for i in range(3):
-                        yield {"large_output": np.ones((100, 1000))}
-
-                ds = (
-                    ray.data.from_items([1])
-                    .map_batches(map_fn_with_large_output, batch_size="auto")
-                )
+            >>> from typing import Dict
+            >>> import ray
+            >>> import numpy as np
+            >>> def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...     for i in range(3):
+            ...         yield {"large_output": np.ones((100, 1000))}
+            >>> ds = (
+            ...     ray.data.from_items([1])
+            ...     .map_batches(map_fn_with_large_output, batch_size="auto")
+            ... )
 
             If you require stateful transformation,
             use Python callable class. Here is an example showing how to use stateful transforms to create model inference workers, without having to reload the model on each call.
 
-            .. testcode::
-
-                from typing import Dict
-                import numpy as np
-                import torch
-                import ray
-
-                class TorchPredictor:
-
-                    def __init__(self):
-                        self.model = torch.nn.Identity().cuda()
-                        self.model.eval()
-
-                    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                        inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
-                        with torch.inference_mode():
-                            batch["output"] = self.model(inputs).detach().cpu().numpy()
-                        return batch
-
-                ds = (
-                    ray.data.from_numpy(np.ones((32, 100)))
-                    .map_batches(
-                        TorchPredictor,
-                        # Two workers with one GPU each
-                        compute=ray.data.ActorPoolStrategy(size=2),
-                        # Batch size is required if you're using GPUs.
-                        batch_size=4,
-                        num_gpus=1
-                    )
-                )
+            >>> from typing import Dict
+            >>> import numpy as np
+            >>> import torch
+            >>> import ray
+            >>> class TorchPredictor:
+            ...
+            ...     def __init__(self):
+            ...         self.model = torch.nn.Identity().cuda()
+            ...         self.model.eval()
+            ...
+            ...     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            ...         inputs = torch.as_tensor(batch["data"], dtype=torch.float32).cuda()
+            ...         with torch.inference_mode():
+            ...             batch["output"] = self.model(inputs).detach().cpu().numpy()
+            ...         return batch
+            >>> ds = (
+            ...     ray.data.from_numpy(np.ones((32, 100)))
+            ...     .map_batches(
+            ...         TorchPredictor,
+            ...         # Two workers with one GPU each
+            ...         compute=ray.data.ActorPoolStrategy(size=2),
+            ...         # Batch size is required if you're using GPUs.
+            ...         batch_size=4,
+            ...         num_gpus=1
+            ...     )
+            ... )
 
             To learn more, see
             :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
@@ -1947,23 +1922,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                from typing import Any, Dict, List
-                import ray
-
-                def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
-                    return [row] * 2
-
-                print(
-                    ray.data.range(3)
-                    .flat_map(duplicate_row)
-                    .take_all()
-                )
-
-            .. testoutput::
-
-                [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
+            >>> from typing import Any, Dict, List
+            >>> import ray
+            >>> def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+            ...     return [row] * 2
+            >>> print(
+            ...     ray.data.range(3)
+            ...     .flat_map(duplicate_row)
+            ...     .take_all()
+            ... )
+            [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2711,44 +2679,34 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.range(100)
-                it1, it2 = ds.streaming_split(2, equal=True)
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> it1, it2 = ds.streaming_split(2, equal=True)
 
             Consume data from iterators in parallel.
 
-            .. testcode::
-
-                @ray.remote
-                def consume(it):
-                    for batch in it.iter_batches():
-                       pass
-
-                ray.get([consume.remote(it1), consume.remote(it2)])
+            >>> @ray.remote
+            ... def consume(it):
+            ...     for batch in it.iter_batches():
+            ...         pass
+            >>> ray.get([consume.remote(it1), consume.remote(it2)])
+            [None, None]
 
             You can loop over the iterators multiple times (multiple epochs).
 
-            .. testcode::
-
-                @ray.remote
-                def train(it):
-                    NUM_EPOCHS = 2
-                    for _ in range(NUM_EPOCHS):
-                        for batch in it.iter_batches():
-                            pass
-
-                ray.get([train.remote(it1), train.remote(it2)])
+            >>> @ray.remote
+            ... def train(it):
+            ...     NUM_EPOCHS = 2
+            ...     for _ in range(NUM_EPOCHS):
+            ...         for batch in it.iter_batches():
+            ...             pass
+            >>> ray.get([train.remote(it1), train.remote(it2)])
+            [None, None]
 
             The following remote function call blocks waiting for a read on ``it2`` to
             start.
 
-            .. testcode::
-                :skipif: True
-
-                ray.get(train.remote(it1))
+            >>> ray.get(train.remote(it1))  # doctest: +SKIP
 
         Args:
             n: Number of output iterators to return.
@@ -2788,18 +2746,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                @ray.remote
-                class Worker:
-
-                    def train(self, data_iterator):
-                        for batch in data_iterator.iter_batches(batch_size=8):
-                            pass
-
-                workers = [Worker.remote() for _ in range(4)]
-                shards = ray.data.range(100).split(n=4, equal=True)
-                ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            >>> import ray
+            >>> @ray.remote
+            ... class Worker:
+            ...     def train(self, data_iterator):
+            ...         for batch in data_iterator.iter_batches(batch_size=8):
+            ...             pass
+            >>> workers = [Worker.remote() for _ in range(4)]
+            >>> shards = ray.data.range(100).split(n=4, equal=True)
+            >>> ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+            [None, None, None, None]
 
         Time complexity: O(1)
 
@@ -3672,85 +3628,56 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            :skipif: True
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> doubles_ds = ray.data.range(4).map(
+            ...     lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
+            ... )
+            >>> squares_ds = ray.data.range(4).map(
+            ...     lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
+            ... )
+            >>> # Inner join example
+            >>> joined_ds = doubles_ds.join(
+            ...     squares_ds,
+            ...     join_type="inner",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0, 'square': 0}
+            {'id': 1, 'double': 2, 'square': 1}
+            {'id': 2, 'double': 4, 'square': 4}
+            {'id': 3, 'double': 6, 'square': 9}
 
-            doubles_ds = ray.data.range(4).map(
-                lambda row: {"id": row["id"], "double": int(row["id"]) * 2}
-            )
+            >>> # Left anti-join example: find rows in doubles_ds that don't match squares_ds
+            >>> partial_squares_ds = ray.data.range(2).map(
+            ...     lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
+            ... )
+            >>> anti_joined_ds = doubles_ds.join(
+            ...     partial_squares_ds,
+            ...     join_type="left_anti",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0}
+            {'id': 1, 'double': 2}
 
-            squares_ds = ray.data.range(4).map(
-                lambda row: {"id": row["id"], "square": int(row["id"]) ** 2}
-            )
-
-            # Inner join example
-            joined_ds = doubles_ds.join(
-                squares_ds,
-                join_type="inner",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0, 'square': 0},
-                {'id': 1, 'double': 2, 'square': 1},
-                {'id': 2, 'double': 4, 'square': 4},
-                {'id': 3, 'double': 6, 'square': 9}
-            ]
-
-        .. testcode::
-            :skipif: True
-
-            # Left anti-join example: find rows in doubles_ds that don't match squares_ds
-            partial_squares_ds = ray.data.range(2).map(
-                lambda row: {"id": row["id"] + 2, "square": int(row["id"]) ** 2}
-            )
-
-            anti_joined_ds = doubles_ds.join(
-                partial_squares_ds,
-                join_type="left_anti",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(anti_joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0},
-                {'id': 1, 'double': 2}
-            ]
-
-        .. testcode::
-            :skipif: True
-
-            # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
-            # (only returns columns from left dataset)
-            semi_joined_ds = doubles_ds.join(
-                squares_ds,
-                join_type="left_semi",
-                num_partitions=2,
-                on=("id",),
-            )
-
-            print(sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]))
-
-        .. testoutput::
-            :options: +ELLIPSIS, +NORMALIZE_WHITESPACE
-
-            [
-                {'id': 0, 'double': 0},
-                {'id': 1, 'double': 2},
-                {'id': 2, 'double': 4},
-                {'id': 3, 'double': 6}
-            ]
+            >>> # Left semi-join example: find rows in doubles_ds that have matches in squares_ds
+            >>> # (only returns columns from left dataset)
+            >>> semi_joined_ds = doubles_ds.join(
+            ...     squares_ds,
+            ...     join_type="left_semi",
+            ...     num_partitions=2,
+            ...     on=("id",),
+            ... )
+            >>> for row in sorted(semi_joined_ds.take_all(), key=lambda item: item["id"]):
+            ...     print(row)
+            {'id': 0, 'double': 0}
+            {'id': 1, 'double': 2}
+            {'id': 2, 'double': 4}
+            {'id': 3, 'double': 6}
         """
 
         if not isinstance(on, (tuple, list)):
@@ -3822,21 +3749,17 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import pandas as pd
-                import ray
-
-                def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    for feature in group.drop(columns=["variety"]).columns:
-                        group[feature] = group[feature] / group[feature].abs().max()
-                    return group
-
-                ds = (
-                    ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-                    .groupby("variety")
-                    .map_groups(normalize_variety, batch_format="pandas")
-                )
+            >>> import pandas as pd
+            >>> import ray
+            >>> def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
+            ...     for feature in group.drop(columns=["variety"]).columns:
+            ...         group[feature] = group[feature] / group[feature].abs().max()
+            ...     return group
+            >>> ds = (
+            ...     ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            ...     .groupby("variety")
+            ...     .map_groups(normalize_variety, batch_format="pandas")
+            ... )
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -3925,25 +3848,19 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-                from ray.data.aggregate import AggregateFn
-
-                ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
-                aggregation = AggregateFn(
-                    init=lambda column: 1,
-                    # Apply this to each row to produce a partial aggregate result
-                    accumulate_row=lambda a, row: a * row["number"],
-                    # Apply this to merge partial aggregate results into a final result
-                    merge=lambda a1, a2: a1 * a2,
-                    name="prod"
-                )
-                print(ds.aggregate(aggregation))
-
-            .. testoutput::
-
-                {'prod': 362880}
+            >>> import ray
+            >>> from ray.data.aggregate import AggregateFn
+            >>> ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
+            >>> aggregation = AggregateFn(
+            ...     init=lambda column: 1,
+            ...     # Apply this to each row to produce a partial aggregate result
+            ...     accumulate_row=lambda a, row: a * row["number"],
+            ...     # Apply this to merge partial aggregate results into a final result
+            ...     merge=lambda a1, a2: a1 * a2,
+            ...     name="prod"
+            ... )
+            >>> print(ds.aggregate(aggregation))
+            {'prod': 362880}
 
         Time complexity: O(dataset size / parallelism)
 
@@ -5234,46 +5151,40 @@ class Dataset:
             - URI: https://py.iceberg.apache.org/
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-                from ray.data.expressions import col
-
-                # Basic append (default behavior)
-                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-
-                # Schema evolution is automatic - new columns are added automatically
-                enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
-                ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
-                ds_enriched.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"}
-                )
-                 # Upsert mode - update existing rows or insert new ones
-                updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
-                ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
-                ds_updates.write_iceberg(
-                    table_identifier="db_name.table_name",
-                    catalog_kwargs={"name": "default", "type": "sql"},
-                    mode=SaveMode.UPSERT,
-                    upsert_kwargs={"join_cols": ["id"]},
-                )
-
-                # Partial overwrite with Ray Data expressions
-                ds.write_iceberg(
-                    table_identifier="events.user_activity",
-                    catalog_kwargs={"name": "default", "type": "rest"},
-                    mode=SaveMode.OVERWRITE,
-                    overwrite_filter=col("date") >= "2024-10-28"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> from ray.data import SaveMode
+            >>> from ray.data.expressions import col
+            >>> # Basic append (default behavior)
+            >>> docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"}
+            ... )
+            >>> # Schema evolution is automatic - new columns are added automatically
+            >>> enriched_docs = [{"id": i, "title": f"Doc {i}", "category": "new"} for i in range(3)]
+            >>> ds_enriched = ray.data.from_pandas(pd.DataFrame(enriched_docs))
+            >>> ds_enriched.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"}
+            ... )
+            >>> # Upsert mode - update existing rows or insert new ones
+            >>> updated_docs = [{"id": 2, "title": "Updated Doc 2"}, {"id": 5, "title": "New Doc 5"}]
+            >>> ds_updates = ray.data.from_pandas(pd.DataFrame(updated_docs))
+            >>> ds_updates.write_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     catalog_kwargs={"name": "default", "type": "sql"},
+            ...     mode=SaveMode.UPSERT,
+            ...     upsert_kwargs={"join_cols": ["id"]},
+            ... )
+            >>> # Partial overwrite with Ray Data expressions
+            >>> ds.write_iceberg(
+            ...     table_identifier="events.user_activity",
+            ...     catalog_kwargs={"name": "default", "type": "rest"},
+            ...     mode=SaveMode.OVERWRITE,
+            ...     overwrite_filter=col("date") >= "2024-10-28"
+            ... )
 
         Args:
             table_identifier: Fully qualified table identifier (``db_name.table_name``)
@@ -5378,37 +5289,28 @@ class Dataset:
             ``deltalake`` Python library.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-                from ray.data import SaveMode
-
-                docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-
-                # Append (default) - creates the table if it doesn't exist.
-                ds.write_delta("/tmp/my_delta_table")
-
-                # Overwrite the table contents.
-                ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
-
-                # Partitioned write.
-                ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
-
-                # A later append with an extra column adds it to the table
-                # automatically (the default schema_mode="merge") -- existing
-                # rows read back with None for it.
-                more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
-                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
-                    "/tmp/my_delta_table"
-                )
-
-                # Reject that same write instead, leaving the table untouched.
-                ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
-                    "/tmp/my_delta_table", schema_mode="error"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> from ray.data import SaveMode
+            >>> docs = [{"id": i, "title": f"Doc {i}"} for i in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> # Append (default) - creates the table if it doesn't exist.
+            >>> ds.write_delta("/tmp/my_delta_table")
+            >>> # Overwrite the table contents.
+            >>> ds.write_delta("/tmp/my_delta_table", mode=SaveMode.OVERWRITE)
+            >>> # Partitioned write.
+            >>> ds.write_delta("/tmp/my_delta_table", partition_by=["id"])
+            >>> # A later append with an extra column adds it to the table
+            >>> # automatically (the default schema_mode="merge") -- existing
+            >>> # rows read back with None for it.
+            >>> more_docs = [{"id": 4, "title": "Doc 4", "views": 100}]
+            >>> ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+            ...     "/tmp/my_delta_table"
+            ... )
+            >>> # Reject that same write instead, leaving the table untouched.
+            >>> ray.data.from_pandas(pd.DataFrame(more_docs)).write_delta(
+            ...     "/tmp/my_delta_table", schema_mode="error"
+            ... )
 
         Args:
             path: URI of the Delta table (e.g. ``/tmp/my_table`` or
@@ -5634,7 +5536,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.write_csv("s3://bucket/folder/)  # doctest: +SKIP
+            >>> ds.write_csv("s3://bucket/folder/")  # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
@@ -5979,18 +5881,14 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.from_items(
-                    [
-                        {"__key__": f"{i:06d}", "txt": str(i)}
-                        for i in range(100)
-                    ]
-                )
-                ds.write_webdataset("s3://bucket/folder/")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.from_items(
+            ...     [
+            ...         {"__key__": f"{i:06d}", "txt": str(i)}
+            ...         for i in range(100)
+            ...     ]
+            ... )
+            >>> ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -6233,20 +6131,16 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                connection_parameters = dict(
-                    user=...,
-                    account="ABCDEFG-ABC12345",
-                    password=...,
-                    database="SNOWFLAKE_SAMPLE_DATA",
-                    schema="TPCDS_SF100TCL"
-                )
-                ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
-                ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> connection_parameters = dict(
+            ...     user=...,
+            ...     account="ABCDEFG-ABC12345",
+            ...     password=...,
+            ...     database="SNOWFLAKE_SAMPLE_DATA",
+            ...     schema="TPCDS_SF100TCL"
+            ... )
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
 
         Args:
             table: The name of the table to write to.
@@ -6312,17 +6206,13 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_mongo(
-                    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
-                    database="my_db",
-                    collection="my_collection"
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds.write_mongo(
+            ...     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+            ...     database="my_db",
+            ...     collection="my_collection"
+            ... )
 
         Args:
             uri: The URI to the destination MongoDB where the dataset is
@@ -6370,19 +6260,15 @@ class Dataset:
         before calling this method.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pandas as pd
-
-                docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                ds.write_bigquery(
-                    project_id="my_project_id",
-                    dataset="my_dataset_table",
-                    overwrite_table=True
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pandas as pd
+            >>> docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_bigquery(
+            ...     project_id="my_project_id",
+            ...     dataset="my_dataset_table",
+            ...     overwrite_table=True
+            ... )
 
         Args:
             project_id: The name of the associated Google Cloud Project that hosts
@@ -6449,31 +6335,27 @@ class Dataset:
         before calling this method.
 
         Examples:
-             .. testcode::
-                :skipif: True
-
-                import ray
-                import pyarrow as pa
-                import pandas as pd
-
-                docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
-                ds = ray.data.from_pandas(pd.DataFrame(docs))
-                user_schema = pa.schema(
-                    [
-                        ("id", pa.int64()),
-                        ("title", pa.string()),
-                    ]
-                )
-                ds.write_clickhouse(
-                    table="default.my_table",
-                    dsn="clickhouse+http://user:pass@localhost:8123/default",
-                    mode=ray.data.SinkMode.OVERWRITE,
-                    schema=user_schema,
-                    table_settings=ray.data.ClickHouseTableSettings(
-                        engine="ReplacingMergeTree()",
-                        order_by="id",
-                    ),
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> import pyarrow as pa
+            >>> import pandas as pd
+            >>> docs = [{"title": "ClickHouse Datasink test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> user_schema = pa.schema(
+            ...     [
+            ...         ("id", pa.int64()),
+            ...         ("title", pa.string()),
+            ...     ]
+            ... )
+            >>> ds.write_clickhouse(
+            ...     table="default.my_table",
+            ...     dsn="clickhouse+http://user:pass@localhost:8123/default",
+            ...     mode=ray.data.SinkMode.OVERWRITE,
+            ...     schema=user_schema,
+            ...     table_settings=ray.data.ClickHouseTableSettings(
+            ...         engine="ReplacingMergeTree()",
+            ...         order_by="id",
+            ...     ),
+            ... )
 
         Args:
             table: Fully qualified table identifier (e.g., "default.my_table").
@@ -6597,35 +6479,27 @@ class Dataset:
 
             Write to a single namespace:
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds = ds.map_batches(
-                    lambda batch: {
-                        "id": batch["id"],
-                        "vector": ...,
-                    }
-                )
-
-                ds.write_turbopuffer(
-                    namespace="my-namespace",
-                    api_key="<YOUR_API_KEY>",
-                    region="gcp-us-central1",
-                )
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds = ds.map_batches(
+            ...     lambda batch: {
+            ...         "id": batch["id"],
+            ...         "vector": ...,
+            ...     }
+            ... )
+            >>> ds.write_turbopuffer(
+            ...     namespace="my-namespace",
+            ...     api_key="<YOUR_API_KEY>",
+            ...     region="gcp-us-central1",
+            ... )
 
             Write to multiple namespaces driven by a column:
 
-            .. testcode::
-                :skipif: True
-
-                ds.write_turbopuffer(
-                    namespace_column="tenant",
-                    api_key="<YOUR_API_KEY>",
-                    region="gcp-us-central1",
-                )
+            >>> ds.write_turbopuffer(
+            ...     namespace_column="tenant",
+            ...     api_key="<YOUR_API_KEY>",
+            ...     region="gcp-us-central1",
+            ... )
 
         Args:
             namespace: Name of the Turbopuffer namespace to write into.
@@ -6777,13 +6651,9 @@ class Dataset:
         Convenience method to write Ray Dataset to Kafka.
 
         Examples:
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_kafka("my-topic", "localhost:9092")
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ds = ray.data.range(100)
+            >>> ds.write_kafka("my-topic", "localhost:9092")
 
         Args:
             topic: Kafka topic name
@@ -6955,21 +6825,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_images("example://image-datasets/simple")
-
-                for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
-                    print(batch)
-
-            .. testoutput::
-                :options: +MOCK
-
-                {'image': array([[[[...]]]], dtype=uint8)}
-                ...
-                {'image': array([[[[...]]]], dtype=uint8)}
+            >>> import ray
+            >>> ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            >>> for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
+            ...     print(batch)
+            {'image': array([[[[...]]]], dtype=uint8)}
+            {'image': array([[[[...]]]], dtype=uint8)}
 
         .. note::
 
@@ -7180,21 +7041,13 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-                jax_dataset = ds.iter_jax_batches(batch_size=2)
-                for batch in jax_dataset:
-                    print(batch["sepal length (cm)"], batch["target"])
-                    break
-
-            .. testoutput::
-                :options: +MOCK
-
-                [5.1 4.9] [0 0]
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> jax_dataset = ds.iter_jax_batches(batch_size=2)
+            >>> for batch in jax_dataset:
+            ...     print(batch["sepal length (cm)"], batch["target"])
+            ...     break
+            [5.1 4.9] [0 0]
 
         Args:
             prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
@@ -7279,25 +7132,13 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-
-                tf_dataset = ds.to_tf(
-                    feature_columns="sepal length (cm)",
-                    label_columns="target",
-                    batch_size=2
-                )
-                for features, labels in tf_dataset:
-                    print(features, labels)
-
-            .. testoutput::
-
-                tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
-                ...
-                tf.Tensor([6.2 5.9], shape=(2,), dtype=float64) tf.Tensor([2 2], shape=(2,), dtype=int64)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+            >>> tf_dataset = ds.iter_tf_batches(batch_size=2)
+            >>> for batch in tf_dataset:
+            ...     print(batch["sepal length (cm)"], batch["target"])
+            ...     break
+            tf.Tensor([5.1 4.9], shape=(2,), dtype=float64) tf.Tensor([0 0], shape=(2,), dtype=int64)
 
         Time complexity: O(1)
 
@@ -8040,26 +7881,14 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.range(10)
-            assert ds.stats() == ""
-
-            ds = ds.materialize()
-            print(ds.stats())
-
-        .. testoutput::
-            :options: +MOCK
-
-            Operator 0 Read: 1 tasks executed, 5 blocks produced in 0s
-            * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
-            * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
-            * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
-            * Output num rows: 0 min, 1 max, 0 mean, 10 total
-            * Output size bytes: 0 min, 8 max, 4 mean, 80 total
-            * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
+        >>> import ray
+        >>> ds = ray.data.range(10)
+        >>> ds.stats()
+        ''
+        >>> ds = ds.materialize()
+        >>> print(ds.stats())
+        Operator 1 ReadRange...: ... tasks executed, ... blocks produced in ...
+        * Remote wall time: ...
 
         Returns:
             A string containing execution timing information, or an empty string if
@@ -8073,34 +7902,29 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-
-            import ray
-            from ray.data import Dataset
-            ds: Dataset = ray.data.range(10,  override_num_blocks=10)
-            ds = ds.map(lambda x: x + 1)
-            ds.explain()
-
-        .. testoutput::
-
-            <BLANKLINE>
-            -------- Logical Plan --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Logical Plan (Optimized) --------
-            MapRows[Map(<lambda>)]
-            +- Read[ReadRange]
-            <BLANKLINE>
-            -------- Physical Plan --------
-            TaskPoolMapOperator[Map(<lambda>)]
-            +- TaskPoolMapOperator[ReadRange]
-               +- InputDataBuffer[Input]
-            <BLANKLINE>
-            -------- Physical Plan (Optimized) --------
-            TaskPoolMapOperator[ReadRange->Map(<lambda>)]
-            +- InputDataBuffer[Input]
-            <BLANKLINE>
+        >>> import ray
+        >>> from ray.data import Dataset
+        >>> ds: Dataset = ray.data.range(10,  override_num_blocks=10)
+        >>> ds = ds.map(lambda x: x + 1)
+        >>> ds.explain()
+        <BLANKLINE>
+        -------- Logical Plan --------
+        MapRows[Map(<lambda>)]
+        +- Read[ReadRange]
+        <BLANKLINE>
+        -------- Logical Plan (Optimized) --------
+        MapRows[Map(<lambda>)]
+        +- Read[ReadRange]
+        <BLANKLINE>
+        -------- Physical Plan --------
+        TaskPoolMapOperator[Map(<lambda>)]
+        +- TaskPoolMapOperator[ReadRange]
+           +- InputDataBuffer[Input]
+        <BLANKLINE>
+        -------- Physical Plan (Optimized) --------
+        TaskPoolMapOperator[ReadRange->Map(<lambda>)]
+        +- InputDataBuffer[Input]
+        <BLANKLINE>
         """
         print(explain_plan(self._logical_plan))
 
@@ -8211,18 +8035,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-                serialized_ds = ds.serialize_lineage()
-                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-                print(ds)
-
-            .. testoutput::
-
-                Dataset(num_rows=?, schema=...)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> serialized_ds = ds.serialize_lineage()
+            >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            >>> print(ds)
+            Dataset(num_rows=?, schema=...)
 
 
         Returns:
@@ -8281,18 +8099,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
-                serialized_ds = ds.serialize_lineage()
-                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-                print(ds)
-
-            .. testoutput::
-
-                Dataset(num_rows=?, schema=...)
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> serialized_ds = ds.serialize_lineage()
+            >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            >>> print(ds)
+            Dataset(num_rows=?, schema=...)
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
