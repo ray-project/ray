@@ -248,7 +248,7 @@ tuner = Tuner(
 
 During the tuning run, Tune [callbacks](tune-logging) can access every metric logged with `tune.report`. Ray Tune provides [built-in integrations](loggers-docstring) with popular frameworks, such as MLflow, Weights & Biases, and CometML. You can also create your own callbacks with the [Callback API](tune-callbacks-docs).
 
-Pass callbacks in the `callback` argument of the `RunConfig` that you pass to the `Tuner`.
+Pass callbacks in the `callbacks` argument of the `RunConfig` that you pass to the `Tuner`.
 
 In this example, use the MLflow callback to track the progress of the tuning run and the changing value of `metric`. To use this callback, install `mlflow`.
 
@@ -293,7 +293,7 @@ tuner = tune.Tuner(
 
 Besides metrics, you might want to save the state of your trained model and other artifacts, so you can resume after a training failure and inspect or use them later. You can't save these as metrics, because they're often far too large and might be hard to serialize. Persist them on disk or in cloud storage so you can access them after the Tune run is interrupted or terminated.
 
-Ray Train provides a {class}`Checkpoint <ray.tune.Checkpoint>` API for that purpose. You can create `Checkpoint` objects from various sources, such as dictionaries, directories, and cloud storage.
+Ray Train provides a {class}`Checkpoint <ray.tune.Checkpoint>` API for that purpose. You can create `Checkpoint` objects from various sources, such as local directories and cloud storage.
 
 In Ray Tune, you create `Checkpoint` objects in your function trainable and report them with the optional `checkpoint` argument of `tune.report`. A checkpoint can contain arbitrary data, and you can pass it freely around the Ray cluster. After a tuning run finishes, you can [get the checkpoints from the results](tune-analysis-guide).
 
@@ -303,7 +303,7 @@ You can also configure how Ray Tune handles checkpoints. For example, you can co
 Tune checkpoints the experiment state itself separately. For more details, see {ref}`tune-persisted-experiment-data`.
 ```
 
-In this example, you want to resume training from the latest checkpoint and save the `trained_model` in a checkpoint every iteration. To do this, use the `session` and `Checkpoint` APIs.
+In this example, you want to resume training from the latest checkpoint and save the `trained_model` in a checkpoint every iteration. To do this, use `tune.get_checkpoint()` and the `Checkpoint` API.
 
 ```python
 import os
