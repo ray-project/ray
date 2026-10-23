@@ -28,7 +28,8 @@ LABEL io.ray.ray-version="${RAY_VERSION}"
 COPY --from=wheel-source /opt/artifacts/*.whl /home/ray/
 
 # Install Ray wheel with all extras
-# Uses requirements_compiled.txt from base image (already at /home/ray/)
+# Uses requirements_compiled.txt from base image (already at /home/ray/), except
+# for ray-llm, whose base image is fully installed from the rayllm lock.
 RUN <<EOF
 #!/bin/bash
 set -euo pipefail
@@ -45,19 +46,51 @@ echo "Installing wheel: $WHEEL_FILE"
 
 if [[ "${IMAGE_TYPE}" == "ray-llm" ]]; then
   RAY_EXTRAS="default,data,serve"
+
+  # The ray-llm base image already holds Ray's dependencies, installed from the
+  # rayllm lock (python/deplocks/llm/). Resolving them again against
+  # requirements_compiled.txt would move packages off the versions in that lock,
+  # so install only the wheel and check that the lock covers ray[RAY_EXTRAS].
+  $HOME/anaconda3/bin/pip --no-cache-dir install --no-deps "${WHEEL_FILE}"
+
+  RAY_EXTRAS="${RAY_EXTRAS}" $HOME/anaconda3/bin/python - <<'PY'
+import os
+from importlib.metadata import PackageNotFoundError, requires, version
+
+from packaging.requirements import Requirement
+
+extras = os.environ["RAY_EXTRAS"].split(",")
+unsatisfied = []
+for spec in requires("ray") or []:
+    req = Requirement(spec)
+    if req.marker and not any(req.marker.evaluate({"extra": e}) for e in ["", *extras]):
+        continue
+    try:
+        installed = version(req.name)
+    except PackageNotFoundError:
+        unsatisfied.append(f"{req} (not installed)")
+        continue
+    if not req.specifier.contains(installed, prereleases=True):
+        unsatisfied.append(f"{req} (installed: {installed})")
+if unsatisfied:
+    raise SystemExit(
+        "The base image does not satisfy ray[" + ",".join(extras) + "]:\n  "
+        + "\n  ".join(unsatisfied)
+    )
+PY
 else
   RAY_EXTRAS="all"
-fi
 
-# TODO(cu130): ray[all]'s cgraph extra hard-pins cupy-cuda12x, so this install
-# always pulls the CUDA-12 build even on cu130 images (no PEP 508 marker exists
-# to select cupy by CUDA version). Until the cgraph extra can resolve cupy per
-# CUDA runtime (or cupy ships a unified package), we patch it up with the
-# uninstall/reinstall swap below. Drop that swap once this install can pick the
-# right cupy directly.
-$HOME/anaconda3/bin/pip --no-cache-dir install \
-    -c /home/ray/requirements_compiled.txt \
-    "${WHEEL_FILE}[${RAY_EXTRAS}]"
+  # TODO(cu130): ray[all]'s cgraph extra hard-pins cupy-cuda12x, so this install
+  # always pulls the CUDA-12 build even on cu130 images (no PEP 508 marker exists
+  # to select cupy by CUDA version). Until the cgraph extra can resolve cupy per
+  # CUDA runtime (or cupy ships a unified package), we patch it up with the
+  # uninstall/reinstall swap below. Drop that swap once this install can pick the
+  # right cupy directly.
+  $HOME/anaconda3/bin/pip --no-cache-dir install \
+      -c /home/ray/requirements_compiled.txt \
+      "${WHEEL_FILE}[${RAY_EXTRAS}]"
+fi
 
 # ray[all]'s cgraph extra hard-pins cupy-cuda12x (a CUDA-12 build), but cu130
 # images ship a CUDA-13 runtime where that build is broken. Swap it for the
