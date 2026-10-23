@@ -97,7 +97,7 @@ Distributed tuning with distributed training per trial.
 
 Learn more about the Tune library with the following talks and user guides.
 
-- {doc}`[Guide] Getting Started with Ray Tune </tune/getting-started>`
+- {doc}`[Guide] Get started with Ray Tune </tune/getting-started>`
 - [[Blog] How to distribute hyperparameter tuning with Ray Tune](https://www.anyscale.com/blog/how-to-distribute-hyperparameter-tuning-using-ray-tune)
 - [[Talk] Simple Distributed Hyperparameter Optimization](https://www.youtube.com/watch?v=KgYZtlbFYXE)
 - [[Blog] Hyperparameter Search with 🤗 Transformers](https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune)
