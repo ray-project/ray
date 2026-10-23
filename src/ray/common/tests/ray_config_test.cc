@@ -19,6 +19,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/common/grpc_util.h"
+#include "ray/util/env.h"
 
 namespace ray {
 class RayConfigTest : public ::testing::Test {};
@@ -29,6 +30,20 @@ TEST_F(RayConfigTest, ConvertValueTrimsVectorElements) {
   const std::vector<std::string> expected_output{"no_spaces", "with spaces"};
   auto output = ConvertValue<std::vector<std::string>>(type_string, input);
   ASSERT_EQ(output, expected_output);
+}
+
+TEST_F(RayConfigTest, InitializeRereadsJobIdFromEnv) {
+  SetEnv("RAY_JOB_ID", "01000000");
+  RayConfig::instance().initialize("");
+  EXPECT_EQ(RayConfig::instance().JOB_ID(), "01000000");
+
+  SetEnv("RAY_JOB_ID", "02000000");
+  RayConfig::instance().initialize("");
+  EXPECT_EQ(RayConfig::instance().JOB_ID(), "02000000");
+
+  UnsetEnv("RAY_JOB_ID");
+  RayConfig::instance().initialize("");
+  EXPECT_EQ(RayConfig::instance().JOB_ID(), "");
 }
 
 }  // namespace ray

@@ -15,7 +15,12 @@
 #include "ray/common/id.h"
 
 #include <gtest/gtest.h>
+#ifndef _WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -123,6 +128,44 @@ TEST(ObjectIDTest, TestObjectID) {
     TestRandomObjectId();
   }
 }
+
+#ifndef _WIN32
+TEST(ObjectIDTest, TestFromRandomForkSafety) {
+  // Initialize the thread-local PRNG before fork().
+  const ObjectID pre_fork_id = ObjectID::FromRandom();
+  ASSERT_FALSE(pre_fork_id.IsNil());
+
+  int pipefd[2];
+  ASSERT_EQ(pipe(pipefd), 0);
+
+  pid_t pid = fork();
+  ASSERT_GE(pid, 0);
+
+  if (pid == 0) {
+    close(pipefd[0]);
+    const std::string child_binary = ObjectID::FromRandom().Binary();
+    ssize_t written = write(pipefd[1], child_binary.data(), child_binary.size());
+    close(pipefd[1]);
+    _exit(written == static_cast<ssize_t>(child_binary.size()) ? 0 : 1);
+  }
+
+  close(pipefd[1]);
+  const ObjectID parent_id = ObjectID::FromRandom();
+
+  std::string child_binary(ObjectID::Size(), '\0');
+  ssize_t bytes_read = read(pipefd[0], child_binary.data(), child_binary.size());
+  close(pipefd[0]);
+
+  int status = 0;
+  ASSERT_EQ(waitpid(pid, &status, 0), pid);
+  ASSERT_TRUE(WIFEXITED(status));
+  ASSERT_EQ(WEXITSTATUS(status), 0);
+  ASSERT_EQ(bytes_read, static_cast<ssize_t>(ObjectID::Size()));
+
+  const ObjectID child_id = ObjectID::FromBinary(child_binary);
+  ASSERT_NE(parent_id, child_id);
+}
+#endif
 
 TEST(NilTest, TestIsNil) {
   ASSERT_TRUE(TaskID().IsNil());
