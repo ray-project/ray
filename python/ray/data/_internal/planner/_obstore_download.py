@@ -2,10 +2,13 @@ import asyncio
 import inspect
 import logging
 import os
+import random
 import re
 import threading
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from ray.util import log_once
@@ -129,6 +132,289 @@ def _obstore_client_options_from_env() -> Dict[str, Any]:
     if timeout_s <= 0:
         return {}
     return {"timeout": timedelta(seconds=timeout_s)}
+
+
+class DownloadError(OSError):
+    """A URI could not be downloaded after the retries were exhausted.
+
+    Raised by ``download()`` for transient or systemic failures (5xx,
+    throttling, timeouts, dropped connections, bad credentials) once obstore's
+    own retries and the block-level attempts
+    (``RAY_DATA_DOWNLOAD_MAX_ATTEMPTS``) are used up, so the task fails
+    instead of silently yielding ``None`` for the row. Missing objects,
+    access-denied objects and invalid URIs still yield ``None`` and are
+    counted in a per-block warning.
+
+    Also raised when every URI in a block is access-denied: one denied object
+    is row-local, a block in which nothing could be read points at the
+    credentials or the bucket permissions.
+
+    Match on ``"DownloadError"`` in ``DataContext.retried_map_errors`` (with
+    ``max_map_retries``) to retry the task, or set
+    ``DataContext.max_errored_blocks`` to tolerate the failure.
+    """
+
+
+try:
+    from obstore import exceptions as _obstore_exceptions
+except ImportError:  # obstore not installed, or too old to ship the module.
+    _obstore_exceptions = None
+
+
+def _permanent_download_error_types() -> Tuple[type, ...]:
+    """Exception types meaning "this URI can never be downloaded"."""
+    types: List[type] = [
+        # 404 from obstore (NotFound maps to the builtin) and from PyArrow.
+        FileNotFoundError,
+        # Local-filesystem permission denial; see PermissionDeniedError below.
+        PermissionError,
+        # Malformed URI, raised before any request is made (ArrowInvalid is a
+        # ValueError subclass).
+        ValueError,
+    ]
+    if _obstore_exceptions is not None:
+        for name in (
+            # Deprecated in favour of FileNotFoundError since obstore 0.7;
+            # keep it for older versions.
+            "NotFoundError",
+            # S3 answers 403 for a *missing* key when the caller lacks
+            # s3:ListBucket, so a permission denial has to stay row-local.
+            "PermissionDeniedError",
+            "InvalidPathError",
+            "NotSupportedError",
+        ):
+            exc_type = getattr(_obstore_exceptions, name, None)
+            if exc_type is not None:
+                types.append(exc_type)
+    return tuple(types)
+
+
+_PERMANENT_DOWNLOAD_ERROR_TYPES = _permanent_download_error_types()
+
+
+def _range_error_types_without_fallback() -> Tuple[type, ...]:
+    """Range-request failures that a whole-file GET would only repeat.
+
+    A missing, denied or unauthenticated object is refused the same way
+    whichever way it is requested, and ``GenericError`` means obstore already
+    spent its retry budget against the same store, so retrying the file as a
+    whole GET would spend it again. The fallback is kept for everything else,
+    in particular a store that does not honour range requests
+    (``NotSupportedError``) and a chunk of the wrong size.
+    """
+    types: List[type] = [FileNotFoundError, PermissionError]
+    if _obstore_exceptions is not None:
+        for name in (
+            "NotFoundError",
+            "PermissionDeniedError",
+            "UnauthenticatedError",
+            "GenericError",
+        ):
+            exc_type = getattr(_obstore_exceptions, name, None)
+            if exc_type is not None:
+                types.append(exc_type)
+    return tuple(types)
+
+
+_RANGE_ERROR_TYPES_WITHOUT_FALLBACK = _range_error_types_without_fallback()
+
+
+# S3 reports these with HTTP 403 just like a plain ``AccessDenied``, but they
+# mean the credentials themselves are bad and so affect every request. They
+# must fail the task rather than turn into a column of nulls. obstore puts the
+# S3 XML error body into the exception message for GET requests, which is
+# where the code is read from; S3 error codes are a stable, documented API.
+_CREDENTIAL_ERROR_CODES = frozenset(
+    {
+        "InvalidAccessKeyId",
+        "SignatureDoesNotMatch",
+        "ExpiredToken",
+        "InvalidToken",
+        "TokenRefreshRequired",
+        "AuthorizationHeaderMalformed",
+        "InvalidSecurity",
+    }
+)
+_S3_ERROR_CODE_RE = re.compile(r"<Code>([A-Za-z]+)</Code>")
+
+# PyArrow's S3FileSystem reports an access-denied object with this spelling.
+# A HEAD response carries no body, so the S3 error code is unknown there and
+# one 403 is treated as row-local, like obstore's ``AccessDenied``; a block in
+# which every object is denied raises instead (``_raise_if_all_denied``).
+# A 400 (``AWS Error UNKNOWN (HTTP status 400)``: expired or malformed
+# token) is deliberately not matched and so raises ``DownloadError``.
+_PYARROW_INACCESSIBLE_OBJECT_RE = re.compile(
+    r"AWS Error ACCESS_DENIED during (?:HeadObject|GetObject) operation"
+)
+
+# A URI whose download failed transiently is re-fetched this many times in
+# total within the task before ``DownloadError`` is raised; only the failed
+# URIs are re-fetched, bytes already downloaded are kept.
+_DEFAULT_DOWNLOAD_MAX_ATTEMPTS_INT = 2
+_DEFAULT_DOWNLOAD_RETRY_BACKOFF_MS_INT = 1000
+
+
+def _is_credential_error(exc: BaseException) -> bool:
+    """Whether ``exc`` carries an S3 error code that means bad credentials."""
+    match = _S3_ERROR_CODE_RE.search(str(exc))
+    return match is not None and match.group(1) in _CREDENTIAL_ERROR_CODES
+
+
+def _is_permanent_download_error(exc: BaseException) -> bool:
+    """Whether ``exc`` means the URI can never be downloaded (yield ``None``).
+
+    Everything else is transient or systemic and must raise ``DownloadError``
+    so task-level retry and ``max_errored_blocks`` apply instead of the row
+    being lost: ``obstore.exceptions.GenericError`` (what obstore raises once
+    its retries on 5xx / 429 / timeouts / dropped connections are exhausted),
+    ``UnauthenticatedError``, ``JoinError``, a 403 whose S3 error code says
+    the credentials are bad, and any other ``OSError``. ``GenericError`` is
+    deliberately not inspected further: the retry exhaustion text differs
+    across object_store versions, and a message gate would silently revert
+    to ``None`` on an upgrade.
+    """
+    if _is_credential_error(exc):
+        return False
+    if isinstance(exc, _PERMANENT_DOWNLOAD_ERROR_TYPES):
+        return True
+    return (
+        isinstance(exc, OSError)
+        and _PYARROW_INACCESSIBLE_OBJECT_RE.search(str(exc)) is not None
+    )
+
+
+def _skip_reason(exc: BaseException) -> str:
+    """Short label for a permanent failure, used in the per-block summary."""
+    if _obstore_exceptions is not None:
+        if isinstance(exc, getattr(_obstore_exceptions, "NotFoundError", ())):
+            return "missing"
+        if isinstance(exc, getattr(_obstore_exceptions, "InvalidPathError", ())):
+            return "invalid uri"
+        if isinstance(exc, getattr(_obstore_exceptions, "NotSupportedError", ())):
+            return "unsupported"
+    if isinstance(exc, FileNotFoundError):
+        return "missing"
+    if isinstance(exc, (ValueError, TypeError)):
+        return "invalid uri"
+    return "access denied"
+
+
+def _store_failure_reason(exc: BaseException) -> str:
+    """Label for a store that could not be built for one URI's store URL.
+
+    obstore reports an unrecognised scheme or host as ``GenericError``
+    ("Unable to recognise URL"); a malformed store URL or an option the
+    scheme rejects comes back as ``ValueError`` / ``InvalidPathError``.
+    """
+    if isinstance(exc, (ValueError, TypeError)):
+        return "invalid uri"
+    if _obstore_exceptions is not None and isinstance(
+        exc, getattr(_obstore_exceptions, "InvalidPathError", ())
+    ):
+        return "invalid uri"
+    return "unsupported"
+
+
+def _is_usable_uri(uri: Any) -> bool:
+    """A non-empty string. ``None``, NaN, ``pd.NA`` and ``""`` are not."""
+    return isinstance(uri, str) and uri.strip() != ""
+
+
+@dataclass
+class _DownloadFailure:
+    """Why one URI was not downloaded. ``permanent`` ones become ``None``."""
+
+    uri: Any
+    reason: str
+    error: BaseException
+    permanent: bool
+    # The store for this URI's store URL could not be built. Row-local on its
+    # own; if it happens to every URI in a block it points at the block's
+    # shared configuration instead and the first such error is raised.
+    store_failure: bool = False
+
+
+def _download_error(
+    uri: Any, uri_column_name: str, cause: BaseException, attempts: int = 1
+) -> DownloadError:
+    """Build the ``DownloadError`` for a transient failure on ``uri``."""
+    return DownloadError(
+        f"Failed to download {uri!r} (column {uri_column_name!r}) after "
+        f"{attempts} attempt(s): {type(cause).__name__}: {cause}. Missing or "
+        "inaccessible objects (404/403) yield null; other failures fail the "
+        "block. See the RAY_DATA_OBSTORE_RETRY_* and "
+        "RAY_DATA_DOWNLOAD_MAX_ATTEMPTS environment variables and "
+        "DataContext.max_errored_blocks."
+    )
+
+
+def _download_attempt_settings() -> Tuple[int, int]:
+    """``(max_attempts, backoff_ms)`` for re-fetching transient failures."""
+    attempts = max(
+        1,
+        _parse_obstore_int_env(
+            "RAY_DATA_DOWNLOAD_MAX_ATTEMPTS", _DEFAULT_DOWNLOAD_MAX_ATTEMPTS_INT
+        ),
+    )
+    backoff_ms = _parse_obstore_int_env(
+        "RAY_DATA_DOWNLOAD_RETRY_BACKOFF_MS", _DEFAULT_DOWNLOAD_RETRY_BACKOFF_MS_INT
+    )
+    return attempts, backoff_ms
+
+
+def _retry_backoff_s(attempt: int, backoff_ms: int) -> float:
+    """Jittered, doubling delay before re-fetching after ``attempt`` failed."""
+    if backoff_ms <= 0:
+        return 0.0
+    return (
+        min(backoff_ms * 2 ** (attempt - 1), 30_000) * random.uniform(0.8, 1.2) / 1000
+    )
+
+
+def _log_skipped_uris(
+    uri_column_name: str, skipped: "Counter[str]", num_uris: int
+) -> None:
+    """One warning per block listing how many URIs yielded null and why."""
+    if not skipped:
+        return
+    breakdown = ", ".join(
+        f"{count} {reason}" for reason, count in sorted(skipped.items())
+    )
+    logger.warning(
+        "Skipped %d of %d URIs for column %r; their bytes are null: %s. "
+        "A missing object (404) or an access-denied object (403) is reported "
+        "per row; bad credentials and other errors fail the task instead.",
+        sum(skipped.values()),
+        num_uris,
+        uri_column_name,
+        breakdown,
+    )
+
+
+def _raise_if_all_denied(
+    uri_column_name: str, uris: List[Any], denied: List[_DownloadFailure]
+) -> None:
+    """Fail the block when every downloadable URI in it was access-denied.
+
+    One denied object stays row-local: S3 answers 403 for a *missing* key
+    when the caller lacks ``s3:ListBucket``. A block in which nothing at all
+    could be read points at the credentials or the bucket policy instead,
+    and a column of nulls would hide that. On the PyArrow backend this is
+    the only credential signal, because a HEAD response carries no S3 error
+    code to tell ``AccessDenied`` from ``InvalidAccessKeyId``.
+    """
+    num_usable = sum(1 for uri in uris if _is_usable_uri(uri))
+    if num_usable == 0 or len(denied) < num_usable:
+        return
+    first = denied[0]
+    raise DownloadError(
+        f"Access denied for all {num_usable} URIs of column {uri_column_name!r} "
+        f"(first: {first.uri!r}: {type(first.error).__name__}: {first.error}). "
+        "A single denied object yields null, but a block in which every "
+        "object is denied points at the credentials or the bucket "
+        "permissions, so the task fails instead of yielding a column of "
+        "nulls. See DataContext.max_errored_blocks to tolerate it."
+    ) from first.error
 
 
 # Constants & configuration
@@ -922,7 +1208,7 @@ def download_bytes_async(
 
 # Core async download logic
 async def _download_uris_with_obstore(
-    uris: List[str],
+    uris: List[Any],
     uri_column_name: str,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     file_sizes: Optional[List[Optional[int]]] = None,
@@ -941,7 +1227,9 @@ async def _download_uris_with_obstore(
     GET, which avoids a full-batch HEAD pass for large URI lists.
 
     Args:
-        uris: URIs to download.
+        uris: URIs to download. ``None`` entries stay ``None``; other
+            non-string entries (NaN, ``pd.NA``, ``""``) yield ``None`` and are
+            counted as invalid in the per-block warning.
         uri_column_name: Column name (used only for error logging).
         filesystem: Optional PyArrow filesystem whose credentials are
             forwarded to the obstore store. Ignored when *fs_kwargs* is given.
@@ -953,8 +1241,11 @@ async def _download_uris_with_obstore(
             from inside the event loop (aiobotocore sessions need ``asyncio.run``).
 
     Returns:
-        Downloaded bytes in the same order as *uris*.  ``None`` entries
-        indicate failed downloads.
+        Downloaded bytes in the same order as *uris*.  ``None`` entries are
+        URIs that can never be downloaded (missing object, permission denied,
+        invalid URI). A transient failure that outlasts the retries raises
+        ``DownloadError`` for the whole call, as does a block in which every
+        URI is permission denied.
     """
     if fs_kwargs is None:
         # Direct-caller path (tests, internal helpers). Session-backed fsspec
@@ -1000,35 +1291,105 @@ async def _download_uris_with_obstore(
 
     registry = StoreRegistry(**fs_kwargs)
 
+    # 0 = unknown size. Unknown entries intentionally stay unknown so large
+    # batches do not pay one HEAD request per URI before downloading.
+    sizes = [0] * len(uris)
+    if range_threshold > 0 and file_sizes is not None:
+        for i, size in enumerate(file_sizes[: len(uris)]):
+            sizes[i] = size if size is not None and size > 0 else 0
     if range_threshold <= 0:
         logger.debug(
             "Range splitting disabled (threshold=%d); downloading %d URIs via simple GET.",
             range_threshold,
             len(uris),
         )
-        tasks = [_fetch_whole(uri, registry, uri_column_name, sem) for uri in uris]
-        return list(await asyncio.gather(*tasks))
 
-    # --- Range-split path ---
-    assert sem is not None
-    # 0 = unknown size. Unknown entries intentionally stay unknown so large
-    # batches do not pay one HEAD request per URI before downloading.
-    sizes = [0] * len(uris)
-    if file_sizes is not None:
-        for i, size in enumerate(file_sizes[: len(uris)]):
-            sizes[i] = size if size is not None and size > 0 else 0
-
-    tasks = []
-    for uri, size in zip(uris, sizes):
-        if size and size > range_threshold:
-            tasks.append(
-                _fetch_ranged(
-                    uri, size, registry, uri_column_name, sem, range_chunk_size
-                )
+    def fetch(index: int):
+        uri = uris[index]
+        if range_threshold > 0 and sizes[index] > range_threshold:
+            assert sem is not None
+            return _fetch_ranged(
+                uri, sizes[index], registry, uri_column_name, sem, range_chunk_size
             )
+        return _fetch_whole(uri, registry, uri_column_name, sem)
+
+    results: List[Optional[bytes]] = [None] * len(uris)
+    skipped: "Counter[str]" = Counter()
+    pending: List[int] = []
+    for index, uri in enumerate(uris):
+        if uri is None:
+            # A null input is a legitimate "no value"; it stays null quietly.
+            continue
+        if _is_usable_uri(uri):
+            pending.append(index)
         else:
-            tasks.append(_fetch_whole(uri, registry, uri_column_name, sem))
-    return list(await asyncio.gather(*tasks))
+            skipped["invalid uri"] += 1
+
+    # Permanent failures (missing object, access denied, invalid URI,
+    # unrecognised store URL) become ``None``. Transient failures are
+    # re-fetched a bounded number of times, re-using the bytes already
+    # downloaded; if any still fail, raise.
+    denied: List[_DownloadFailure] = []
+    max_attempts, backoff_ms = _download_attempt_settings()
+    for attempt in range(1, max_attempts + 1):
+        outcomes = await asyncio.gather(*[fetch(index) for index in pending])
+        # Every store in the block shares ``fs_kwargs``. If not a single store
+        # could be built, the problem is that configuration (an option the
+        # store rejects, bad credential settings, a negative duration) rather
+        # than one URI, and it must surface as the real error instead of a
+        # column of nulls. A store failing for some URIs is row-local. This
+        # does not depend on URI order, unlike probing the first URI would.
+        store_failures = [
+            outcome
+            for outcome in outcomes
+            if isinstance(outcome, _DownloadFailure) and outcome.store_failure
+        ]
+        if pending and len(store_failures) == len(outcomes):
+            raise store_failures[0].error
+        transient: List[Tuple[int, _DownloadFailure]] = []
+        for index, outcome in zip(pending, outcomes):
+            if not isinstance(outcome, _DownloadFailure):
+                results[index] = outcome
+            elif outcome.permanent:
+                skipped[outcome.reason] += 1
+                if outcome.reason == "access denied":
+                    denied.append(outcome)
+                logger.debug(
+                    "Skipping uri %r for column %r: %s",
+                    outcome.uri,
+                    uri_column_name,
+                    outcome.error,
+                )
+            else:
+                transient.append((index, outcome))
+        if not transient:
+            break
+        first = transient[0][1]
+        if attempt == max_attempts:
+            _log_skipped_uris(uri_column_name, skipped, len(uris))
+            raise _download_error(
+                first.uri, uri_column_name, first.error, attempts=attempt
+            ) from first.error
+        delay = _retry_backoff_s(attempt, backoff_ms)
+        logger.warning(
+            "Re-fetching %d of %d URIs for column %r after transient download "
+            "failures (attempt %d of %d, waiting %.1fs). First failure: %r: %s",
+            len(transient),
+            len(uris),
+            uri_column_name,
+            attempt,
+            max_attempts,
+            delay,
+            first.uri,
+            first.error,
+        )
+        if delay > 0:
+            await asyncio.sleep(delay)
+        pending = [index for index, _ in transient]
+
+    _raise_if_all_denied(uri_column_name, uris, denied)
+    _log_skipped_uris(uri_column_name, skipped, len(uris))
+    return results
 
 
 # Async helpers
@@ -1037,27 +1398,44 @@ async def _fetch_whole(
     registry: StoreRegistry,
     uri_column_name: str,
     semaphore: Optional[asyncio.Semaphore] = None,
-) -> Optional[bytes]:
-    """Download a single URI, returning ``None`` on failure."""
+) -> Union[bytes, _DownloadFailure]:
+    """Download a single URI as a whole-file GET.
+
+    Returns the bytes, or a :class:`_DownloadFailure` saying why not. A
+    permanent failure (missing object, access denied, invalid URI,
+    unrecognised store URL) becomes ``None`` for the row; a transient one is
+    re-fetched by the caller and raises ``DownloadError`` once the attempts
+    are used up. A store that cannot be built for this URI's store URL (an
+    unrecognised or malformed store URL, or a scheme the block's shared
+    options don't fit) is reported as a permanent ``store_failure``; the
+    caller raises it only if no store in the block could be built, which
+    points at the shared configuration rather than at one URI.
+    """
+    import obstore as obs
+
+    try:
+        store_url, path = _split_obstore_uri(uri)
+    except Exception as e:
+        return _DownloadFailure(uri, "invalid uri", e, permanent=True)
+    try:
+        store = registry.get(store_url)
+    except Exception as e:
+        return _DownloadFailure(
+            uri, _store_failure_reason(e), e, permanent=True, store_failure=True
+        )
     try:
         if semaphore is not None:
             async with semaphore:
-                return await _fetch(uri, registry)
+                result = await obs.get_async(store, path)
+                return bytes(await result.bytes_async())
         # No semaphore (RAY_DATA_OBSTORE_MAX_CONCURRENCY=0).
         # Concurrency is bounded only by the partition actor batch size.
-        return await _fetch(uri, registry)
-    except OSError as e:
-        logger.debug(
-            "OSError reading uri %r for column %r: %s", uri, uri_column_name, e
-        )
+        result = await obs.get_async(store, path)
+        return bytes(await result.bytes_async())
     except Exception as e:
-        logger.warning(
-            "Unexpected error reading uri %r for column %r: %s",
-            uri,
-            uri_column_name,
-            e,
+        return _DownloadFailure(
+            uri, _skip_reason(e), e, permanent=_is_permanent_download_error(e)
         )
-    return None
 
 
 async def _fetch_ranged(
@@ -1067,47 +1445,61 @@ async def _fetch_ranged(
     uri_column_name: str,
     semaphore: asyncio.Semaphore,
     range_chunk_size: int,
-) -> Optional[bytes]:
+) -> Union[bytes, _DownloadFailure]:
     """Download a single large file using parallel range requests.
 
-    Falls back to a simple GET if any range chunk fails, so the
-    pipeline never loses a file due to a transient range error.
+    Classifies failures like :func:`_fetch_whole`. A failed chunk falls back
+    to a simple GET only when the whole-file request could succeed where the
+    range request did not (a store that does not honour range requests, a
+    chunk of the wrong size). A missing, denied or unauthenticated object,
+    or a chunk on which obstore already spent its retry budget
+    (``GenericError``), is reported directly: the fallback would only repeat
+    the same request against the same store, doubling the time to fail.
     """
     try:
         store_url, path = _split_obstore_uri(uri)
-        store = registry.get(store_url)
-        result = bytearray(size)
-
-        tasks = [
-            asyncio.ensure_future(
-                _fetch_chunk(
-                    uri,
-                    store,
-                    path,
-                    chunk_start,
-                    min(chunk_start + range_chunk_size, size),
-                    result,
-                    semaphore,
-                )
-            )
-            for chunk_start in range(0, size, range_chunk_size)
-        ]
-
-        try:
-            await asyncio.gather(*tasks)
-        except Exception:
-            # Cancel remaining chunk tasks to release semaphore permits
-            # and avoid wasted downloads into a bytearray we'll discard.
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            raise
-        return bytes(result)
     except Exception as e:
+        return _DownloadFailure(uri, "invalid uri", e, permanent=True)
+    try:
+        store = registry.get(store_url)
+    except Exception as e:
+        return _DownloadFailure(
+            uri, _store_failure_reason(e), e, permanent=True, store_failure=True
+        )
+    result = bytearray(size)
+
+    tasks = [
+        asyncio.ensure_future(
+            _fetch_chunk(
+                uri,
+                store,
+                path,
+                chunk_start,
+                min(chunk_start + range_chunk_size, size),
+                result,
+                semaphore,
+            )
+        )
+        for chunk_start in range(0, size, range_chunk_size)
+    ]
+
+    try:
+        await asyncio.gather(*tasks)
+    except Exception as e:
+        # Cancel remaining chunk tasks to release semaphore permits
+        # and avoid wasted downloads into a bytearray we'll discard.
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        if isinstance(e, _RANGE_ERROR_TYPES_WITHOUT_FALLBACK):
+            return _DownloadFailure(
+                uri, _skip_reason(e), e, permanent=_is_permanent_download_error(e)
+            )
         logger.debug(
             "Ranged download failed for %r, falling back to simple GET: %s", uri, e
         )
         return await _fetch_whole(uri, registry, uri_column_name, semaphore)
+    return bytes(result)
 
 
 async def _fetch_chunk(
@@ -1131,12 +1523,3 @@ async def _fetch_chunk(
                 f"bytes, expected {expected}"
             )
         result[start:end] = bytes(chunk)
-
-
-async def _fetch(uri: str, registry: StoreRegistry) -> bytes:
-    """Download a single URI as a whole-file GET and return raw bytes."""
-    import obstore as obs
-
-    store_url, path = _split_obstore_uri(uri)
-    result = await obs.get_async(registry.get(store_url), path)
-    return bytes(await result.bytes_async())
