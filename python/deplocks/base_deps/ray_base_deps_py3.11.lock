@@ -241,9 +241,9 @@ cachetools==5.5.2 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.11.lock
     #   google-auth
-certifi==2026.4.22 \
-    --hash=sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a \
-    --hash=sha256:8d455352a37b71bf76a79caa83a3d6c25afee4a385d632127b6afb3963f1c580
+certifi==2026.10.19 \
+    --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \
+    --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.11.lock
     #   requests
@@ -1301,9 +1301,9 @@ smart-open==6.2.0 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.11.lock
     #   -r docker/base-deps/requirements.in
-typing-extensions==4.15.0 \
-    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
-    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
+    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-base_extra_testdeps_py3.11.lock
     #   aiohttp

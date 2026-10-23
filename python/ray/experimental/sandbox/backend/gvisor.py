@@ -16,6 +16,10 @@ import uuid
 from typing import IO, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.experimental.sandbox._internal import egress_guard
+from ray.experimental.sandbox._internal.cgroup import (
+    SandboxCgroup,
+    SandboxCgroupManager,
+)
 from ray.experimental.sandbox.backend.base import (
     BaseSandboxBackend,
     ExecResult,
@@ -30,6 +34,7 @@ from ray.experimental.sandbox.config import (
     SandboxConfig,
     normalize_cidr_allowlist,
     parse_cidr_allowlist_entry,
+    parse_memory_bytes,
 )
 from ray.experimental.sandbox.exceptions import (
     SandboxCreationError,
@@ -59,6 +64,10 @@ _BUNDLE_NAME = re.compile(r"ray-sandbox-[0-9a-f]{12}")
 _RECLAIM_INTERVAL_SECONDS = 60.0
 _reclaim_lock = threading.Lock()
 _last_reclaim = float("-inf")
+# A backend holds this lock in _RAY_SANDBOX_DIR while it picks the CPUs of a
+# sandbox with a CPU limit and records them in the sandbox's owner file, so
+# that sandboxes created at the same time spread over the node's CPUs too.
+_CPUS_LOCK_FILE = "cpus.lock"
 
 # Directory for sandbox bundles, cached container images, and per-sandbox
 # overlay state.
@@ -435,6 +444,27 @@ def _exec_processes(procfs_dump: str, root_pid: int) -> List[int]:
     return sorted(found)
 
 
+def _release_cgroup(sandbox_id: str, cgroup: Optional[SandboxCgroup]) -> bool:
+    """Remove a sandbox's cgroup, if it has one, and return whether that worked.
+
+    A cgroup that can't be removed may still hold processes. Then the caller
+    leaves the bundle, owner file and image pin included, to the reclaim
+    pass, which removes the cgroup before it deletes the rest.
+    """
+    if cgroup is None:
+        return True
+    try:
+        cgroup.release()
+    except Exception as err:
+        logger.warning(
+            "Couldn't remove the cgroup of sandbox %s, so a reclaim pass will: %s",
+            sandbox_id,
+            err,
+        )
+        return False
+    return True
+
+
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
@@ -465,17 +495,94 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "build from github.com/rootless-containers/slirp4netns), "
                     "util-linux, and nftables on the node image."
                 )
+        memory = parse_memory_bytes(config.memory) or 0
+        cgroups = None
+        if config.cpu > 0 or memory > 0:
+            cgroups = SandboxCgroupManager()
+            try:
+                cgroups.check(config.cpu, memory)
+            except Exception as err:
+                raise SandboxCreationError(
+                    f"Cannot enforce sandbox resources: {err}"
+                ) from err
 
         self._maybe_reclaim_unowned_bundles()
         sandbox_uuid = uuid.uuid4().hex[:12]
         sandbox_id = f"ray-sandbox-{sandbox_uuid}"
         root_dir = os.path.join(_RAY_SANDBOX_DIR, sandbox_id)
 
+        # Until the sandbox is registered, nothing else deletes what this
+        # create makes, so the handler below does: the cgroup, the image pin,
+        # and the bundle with its owner file. _start_sandbox stops the
+        # processes it starts.
         owner_file = None
+        cgroup = None
         try:
             os.makedirs(root_dir, mode=0o777, exist_ok=True)
-            owner_file = self._own_bundle(config, root_dir)
+            if cgroups is None:
+                owner_file = self._own_bundle(config, root_dir)
+            else:
+                lock_path = os.path.join(_RAY_SANDBOX_DIR, _CPUS_LOCK_FILE)
+                with open(lock_path, "a", encoding="utf-8") as lock:
+                    fcntl.flock(lock, fcntl.LOCK_EX)
+                    cpus = cgroups.choose_cpus(config.cpu, self._cpus_in_use())
+                    owner_file = self._own_bundle(config, root_dir, cpus)
+                # After the owner file, so that a reclaim removes the cgroup
+                # of an owner that dies before it starts the sandbox.
+                cgroup = cgroups.allocate(sandbox_id, config.cpu, memory, cpus)
+            self._start_sandbox(config, sandbox_id, root_dir, owner_file, cgroup)
+        except Exception as err:
+            if _release_cgroup(sandbox_id, cgroup):
+                self._image_manager.release_image(config.image, sandbox_id)
+                shutil.rmtree(root_dir, ignore_errors=True)
+            if owner_file is not None:
+                owner_file.close()
+            if isinstance(err, SandboxError):
+                raise
+            raise SandboxCreationError(f"Failed to create sandbox: {err}") from err
 
+        if config.network == "public" and config.dns:
+            # The filter drops a resolver it can't match, such as a
+            # Service IP that the cluster's network translates when a
+            # connection opens, and the sandbox has no IPv6 route. Either
+            # way every lookup would fail, so fail the create instead.
+            unreachable = self._unreachable_resolver(sandbox_id, config.dns)
+            if unreachable is not None:
+                self.delete_sandbox(sandbox_id)
+                server, reason = unreachable
+                raise SandboxCreationError(
+                    f"dns resolver {server} isn't reachable from a "
+                    f"network='public' sandbox: {reason}. The sandbox "
+                    "has no IPv6 route, and on Kubernetes clusters that "
+                    "translate Service IPs when a connection opens, such "
+                    "as Cilium clusters, its egress filter drops a "
+                    "Service IP such as the cluster DNS Service's. Use an "
+                    "IPv4 resolver that isn't a Service IP."
+                )
+        return sandbox_id
+
+    def _start_sandbox(
+        self,
+        config: SandboxConfig,
+        sandbox_id: str,
+        root_dir: str,
+        owner_file: IO[str],
+        cgroup: Optional[SandboxCgroup],
+    ) -> None:
+        """Start a sandbox in its new bundle and register it.
+
+        If the sandbox doesn't come up, this stops the processes it started
+        and deletes runsc's state for them. ``create_sandbox`` deletes the
+        rest.
+
+        Args:
+            config: The sandbox's configuration.
+            sandbox_id: The sandbox's ID, which also names its bundle.
+            root_dir: The sandbox's bundle directory.
+            owner_file: The bundle's owner file, which this backend holds.
+            cgroup: The sandbox's cgroup, or None if it has no limits.
+        """
+        try:
             # The instance id pins the image in the cache while this sandbox
             # lives (its EROFS image is the sandbox's root filesystem).
             self._image_manager.pull_image(
@@ -507,36 +614,26 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 os.makedirs(workdir_path, mode=0o777, exist_ok=True)
         except Exception as err:
-            shutil.rmtree(root_dir, ignore_errors=True)
-            self._image_manager.release_image(config.image, sandbox_id)
-            if owner_file:
-                owner_file.close()
             raise SandboxCreationError(
                 f"Failed to initialize local sandbox directory '{root_dir}': {err}"
             ) from err
 
         # Prepare OCI bundle config for long-running container process
-        try:
-            self._image_manager.prepare_oci_bundle(
-                root_dir=root_dir,
-                workdir_path=workdir_path,
-                container_cwd=container_cwd,
-                image=config.image,
-                env_dict=config.env,
-                cpu=config.cpu,
-                memory=config.memory,
-                readonly=config.readonly,
-                capabilities=config.capabilities,
-                network=config.network,
-                dns=config.dns,
-                _oci_spec_transform_fn=config._oci_spec_transform_fn,
-                disk=config.disk,
-            )
-        except Exception:
-            shutil.rmtree(root_dir, ignore_errors=True)
-            self._image_manager.release_image(config.image, sandbox_id)
-            owner_file.close()
-            raise
+        self._image_manager.prepare_oci_bundle(
+            root_dir=root_dir,
+            workdir_path=workdir_path,
+            container_cwd=container_cwd,
+            image=config.image,
+            env_dict=config.env,
+            cpu=config.cpu,
+            memory=config.memory,
+            readonly=config.readonly,
+            capabilities=config.capabilities,
+            network=config.network,
+            dns=config.dns,
+            _oci_spec_transform_fn=config._oci_spec_transform_fn,
+            disk=config.disk,
+        )
         egress_allowlist = None
         if config.network == "public":
             egress_allowlist = list(
@@ -549,13 +646,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             try:
                 _write_egress_ruleset(root_dir, egress_allowlist, config.dns)
             except Exception as err:
-                shutil.rmtree(root_dir, ignore_errors=True)
-                self._image_manager.release_image(config.image, sandbox_id)
-                owner_file.close()
                 raise SandboxCreationError(
                     f"Failed to write the egress ruleset for '{root_dir}': {err}"
                 ) from err
         run_args = self._build_run_command(config, root_dir, sandbox_id)
+        if cgroup is not None:
+            run_args = cgroup.wrap(run_args)
 
         stderr_log_path = os.path.join(root_dir, "runsc.stderr.log")
         stderr_file = open(stderr_log_path, "w+", encoding="utf-8")
@@ -568,12 +664,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # doesn't stop it (see _IGNORE_INTERRUPTS). The tree shares the stderr
         # log so startup failures (missing /dev/net/tun, no uplink) surface
         # through the SandboxCreationError path below.
-        proc = subprocess.Popen(
-            run_args,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=stderr_file,
-        )
+        try:
+            proc = subprocess.Popen(
+                run_args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+            )
+        except Exception:
+            stderr_file.close()
+            raise
         start_time = time.time()
         timeout = config.timeout_seconds
 
@@ -593,6 +693,13 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                         state_data = json.loads(res.stdout)
                         status = state_data.get("status")
                         if status == "running":
+                            if cgroup is not None:
+                                try:
+                                    cgroup.verify(proc.pid)
+                                except Exception as err:
+                                    raise SandboxCreationError(
+                                        f"Sandbox resource verification failed: {err}"
+                                    ) from err
                             break
                         elif status in ("stopped", "error"):
                             raise SandboxCreationError(
@@ -618,11 +725,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             self._delete_container_state(config, sandbox_id)
             self._terminate_tree(proc)
             stderr_file.close()
-            shutil.rmtree(root_dir, ignore_errors=True)
-            # The sandbox never registered, so delete_sandbox will not run
-            # for it: release the image here to keep it evictable.
-            self._image_manager.release_image(config.image, sandbox_id)
-            owner_file.close()
             raise
 
         # The namespaces set_egress_allowlist must find behind netns.pid,
@@ -644,6 +746,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # The sandbox's user and network namespaces (None if unknown,
             # which makes set_egress_allowlist refuse).
             "netns_ids": netns_ids,
+            "cgroup": cgroup,
             # The launch process whose tree holds the sandbox and, for
             # network="public", the namespace holder and slirp4netns.
             "proc": proc,
@@ -651,26 +754,6 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             "owner_file": owner_file,
             "status": SandboxStatus.RUNNING,
         }
-        if egress_allowlist is not None:
-            if config.dns:
-                # The filter drops a resolver it can't match, such as a
-                # Service IP that the cluster's network translates when a
-                # connection opens, and the sandbox has no IPv6 route. Either
-                # way every lookup would fail, so fail the create instead.
-                unreachable = self._unreachable_resolver(sandbox_id, config.dns)
-                if unreachable is not None:
-                    self.delete_sandbox(sandbox_id)
-                    server, reason = unreachable
-                    raise SandboxCreationError(
-                        f"dns resolver {server} isn't reachable from a "
-                        f"network='public' sandbox: {reason}. The sandbox "
-                        "has no IPv6 route, and on Kubernetes clusters that "
-                        "translate Service IPs when a connection opens, such "
-                        "as Cilium clusters, its egress filter drops a "
-                        "Service IP such as the cluster DNS Service's. Use an "
-                        "IPv4 resolver that isn't a Service IP."
-                    )
-        return sandbox_id
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
@@ -701,9 +784,12 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 except Exception:
                     pass
 
-            shutil.rmtree(root_dir, ignore_errors=True)
-            # Only now is the cached image unused.
-            self._image_manager.release_image(config.image, sandbox_id)
+            # The cgroup holds every process the sandbox ran, including any
+            # that outlived the launch process, and removing it kills them.
+            if _release_cgroup(sandbox_id, meta.get("cgroup")):
+                shutil.rmtree(root_dir, ignore_errors=True)
+                # Only now is the cached image unused.
+                self._image_manager.release_image(config.image, sandbox_id)
             # Last, so no other backend reclaims the bundle while it's
             # being deleted.
             if meta.get("owner_file"):
@@ -962,6 +1048,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             runsc_args.extend([sandbox_id, exec_shell, "-c", command])
 
         start_time = time.time()
+        runsc_args = self._wrap_workload(meta, runsc_args)
 
         try:
             proc = subprocess.Popen(
@@ -1081,15 +1168,18 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                 sandbox_id,
                 "/bin/sh",
                 "-c",
-                'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
-                if append
-                else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"',
+                (
+                    'mkdir -p -- "$(dirname -- "$1")" && cat >> "$1"'
+                    if append
+                    else 'mkdir -p -- "$(dirname -- "$1")" && cat > "$1"'
+                ),
                 "--",
                 path,
             ]
         )
 
         content_bytes = content.encode("utf-8") if isinstance(content, str) else content
+        runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
@@ -1111,6 +1201,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         runsc_args = self._runsc_base_args(config)
         exec_cwd = meta["cwd"]
         runsc_args.extend(["exec", "-cwd", exec_cwd, sandbox_id, "cat", "--", path])
+        runsc_args = self._wrap_workload(meta, runsc_args)
 
         proc = subprocess.Popen(
             runsc_args,
@@ -1130,18 +1221,39 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Get operational status of the gVisor sandbox."""
         meta = self._sandbox_metadata.get(sandbox_id)
         if meta and os.path.exists(meta["root_dir"]):
+            proc = meta.get("proc")
+            if proc is not None and proc.poll() is not None:
+                return SandboxStatus.TERMINATED
             return SandboxStatus.RUNNING
         return SandboxStatus.TERMINATED
+
+    def get_termination_reason(self, sandbox_id: str) -> Optional[str]:
+        meta = self._sandbox_metadata.get(sandbox_id)
+        if meta is not None and self.get_status(sandbox_id) == SandboxStatus.TERMINATED:
+            cgroup = meta.get("cgroup")
+            return (
+                cgroup.termination_reason() if cgroup is not None else None
+            ) or "Sandbox runtime stopped unexpectedly"
+        return None
 
     def _runsc_base_args(self, config: SandboxConfig) -> List[str]:
         """Build the runsc global flags shared by run/exec/kill/delete."""
         return _runsc_args(
             rootless=config.rootless,
+            # Ray puts a sandbox with limits in a cgroup of its own, so runsc
+            # must leave cgroups alone.
             ignore_cgroups=(
-                getattr(config, "_ignore_cgroups", False)
+                config.cpu > 0
+                or (parse_memory_bytes(config.memory) or 0) > 0
+                or getattr(config, "_ignore_cgroups", False)
                 or os.environ.get("RAY_SANDBOX_IGNORE_CGROUPS") == "1"
             ),
         )
+
+    @staticmethod
+    def _wrap_workload(meta, args):
+        cgroup = meta.get("cgroup")
+        return cgroup.wrap(args) if cgroup is not None else args
 
     def _delete_container_state(self, config: SandboxConfig, sandbox_id: str) -> None:
         """Best-effort ``runsc delete -force`` for teardown paths.
@@ -1268,13 +1380,16 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         except (subprocess.TimeoutExpired, ValueError):
             pass
 
-    def _own_bundle(self, config: SandboxConfig, root_dir: str) -> IO[str]:
+    def _own_bundle(
+        self, config: SandboxConfig, root_dir: str, cpus: Optional[List[int]] = None
+    ) -> IO[str]:
         """Lock a new bundle's owner file for this backend and return it open.
 
         The backend keeps the file, and so its lock, until it deletes the
         sandbox. The file is locked before it takes its name, so a backend
         looking for unowned bundles never takes one that's being created. It
-        also records what reclaiming the bundle takes.
+        also records what reclaiming the bundle takes, and the CPUs that the
+        sandbox runs on, for ``_cpus_in_use``.
         """
         path = os.path.join(root_dir, _OWNER_FILE)
         runsc_args = self._runsc_base_args(config)
@@ -1289,6 +1404,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     "image": config.image,
                     "rootless": "--rootless" in runsc_args,
                     "ignore_cgroups": "--ignore-cgroups" in runsc_args,
+                    "cpus": cpus or [],
                 },
                 owner_file,
             )
@@ -1298,6 +1414,31 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             owner_file.close()
             raise
         return owner_file
+
+    def _cpus_in_use(self) -> List[List[int]]:
+        """The CPUs that each sandbox on this node with a live owner runs on.
+
+        A bundle counts while its owner holds the owner file's lock, so a
+        sandbox stops counting as soon as its owner dies.
+        """
+        used = []
+        for root_dir in glob.glob(os.path.join(_RAY_SANDBOX_DIR, "ray-sandbox-*")):
+            if not _BUNDLE_NAME.fullmatch(os.path.basename(root_dir)):
+                continue
+            try:
+                with open(os.path.join(root_dir, _OWNER_FILE), encoding="utf-8") as f:
+                    try:
+                        fcntl.flock(f, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        owner = json.load(f)  # Its owner holds the lock.
+                    else:
+                        continue  # Nobody owns it.
+            except (OSError, ValueError):
+                continue
+            cpus = owner.get("cpus") if isinstance(owner, dict) else None
+            if isinstance(cpus, list):
+                used.append([c for c in cpus if type(c) is int])
+        return used
 
     def _maybe_reclaim_unowned_bundles(self) -> None:
         """Start ``_reclaim_unowned_bundles`` in the background, at most once a
@@ -1384,6 +1525,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     )
                 except (OSError, subprocess.TimeoutExpired):
                     pass
+            # A sandbox with limits ran in a cgroup of its own. One that
+            # can't be removed raises, which leaves the bundle to a later pass.
+            SandboxCgroupManager().remove(sandbox_id)
             # The owner file goes last: a pass that's cut short, say with the
             # process that runs it, leaves it, and a later pass finishes.
             with os.scandir(root_dir) as entries:
@@ -1409,6 +1553,9 @@ class GVisorSandboxBackend(BaseSandboxBackend):
     def _get_metadata_or_raise(self, sandbox_id: str) -> Dict:
         if sandbox_id not in self._sandbox_metadata:
             raise SandboxNotFoundError(f"Sandbox ID '{sandbox_id}' not found.")
+        reason = self.get_termination_reason(sandbox_id)
+        if reason is not None:
+            raise SandboxError(reason)
         return self._sandbox_metadata[sandbox_id]
 
     def _pull_and_extract_image(self, image: str) -> str:
