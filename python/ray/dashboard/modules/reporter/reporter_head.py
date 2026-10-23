@@ -163,10 +163,6 @@ class ReportHead(SubprocessModule):
             thread_name_prefix="reporter_head_executor",
         )
 
-        # Fetched from GCS only once on startup in run(). It's static throughout the
-        # the cluster's lifetime.
-        self.cluster_metadata = None
-
         self._health_checker = HealthChecker(self.gcs_client)
 
     def _profiling_disabled_response(self) -> aiohttp.web.Response:
@@ -222,7 +218,7 @@ class ReportHead(SubprocessModule):
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="",
-            **self.cluster_metadata,
+            **(await self._get_cluster_metadata()),
         )
 
     @routes.get("/api/cluster_status")
@@ -1231,8 +1227,14 @@ class ReportHead(SubprocessModule):
         self.service_discovery.daemon = True
         self.service_discovery.start()
 
+    async def _get_cluster_metadata(self) -> dict:
+        """Read the cluster metadata, empty until some head has stored it.
+
+        Read per request rather than cached at startup: no head stores it while
+        its GCS is passive, and a promoted one rewrites it.
+        """
         cluster_metadata = await self.gcs_client.async_internal_kv_get(
             CLUSTER_METADATA_KEY,
             namespace=KV_NAMESPACE_CLUSTER,
         )
-        self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
+        return json.loads(cluster_metadata.decode("utf-8")) if cluster_metadata else {}

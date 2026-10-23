@@ -1,9 +1,24 @@
 import os
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 
-from ray._private.log_monitor import LogFileInfo
+import ray._private.ray_constants as ray_constants
+from ray._private import log_monitor as log_monitor_module
+from ray._private.log_monitor import (
+    PASSIVE_GCS_POLL_INTERVAL_S,
+    LogFileInfo,
+    LogMonitor,
+)
+from ray._raylet import GRPC_STATUS_CODE_UNAVAILABLE
+from ray.exceptions import RpcError
+from ray.tests.unit.passive_test_utils import (
+    count_logged as _count_logged,
+    passive_gcs_rejection as _passive_gcs_rejection,
+)
+
+LOG_MONITOR_LOGGER = "ray._private.log_monitor"
 
 
 def _create_file_info(log_path):
@@ -126,6 +141,177 @@ def test_reopen_same_inode_growth_keeps_size_when_last_opened(tmp_path):
 
     assert file_info.size_when_last_opened == original_size
     file_info.file_handle.close()
+
+
+@pytest.fixture
+def make_log_monitor(tmp_path, monkeypatch):
+    monitors = []
+
+    def factory(*, leader_election=True):
+        monkeypatch.setattr(
+            ray_constants, "RAY_ENABLE_GCS_LEADER_ELECTION", leader_election
+        )
+        monitor = LogMonitor(
+            node_ip_address="127.0.0.1",
+            logs_dir=str(tmp_path),
+            gcs_client=MagicMock(),
+            is_proc_alive_fn=lambda pid: True,
+        )
+        monitors.append(monitor)
+        return monitor
+
+    yield factory
+    for monitor in monitors:
+        for file_info in monitor.open_file_infos:
+            if file_info.file_handle is not None:
+                file_info.file_handle.close()
+
+
+@pytest.fixture
+def log_monitor(make_log_monitor):
+    return make_log_monitor()
+
+
+def _write_worker_log(monitor, line):
+    with open(os.path.join(monitor.logs_dir, "worker-01000000-1234.out"), "a") as f:
+        print(line, file=f)
+
+
+def _log_and_drain(monitor, line):
+    """Write one worker log line and run a single pass of the monitor's loop."""
+    _write_worker_log(monitor, line)
+    monitor.update_log_filenames()
+    monitor.open_closed_files()
+    return monitor.check_log_files_and_publish_updates()
+
+
+def _published_lines(monitor):
+    return [
+        line
+        for call in monitor.gcs_client.publish_logs.call_args_list
+        for line in call.args[0]["lines"]
+    ]
+
+
+@pytest.fixture
+def monitor_logs(caplog, capture_logger):
+    capture_logger(LOG_MONITOR_LOGGER)
+    return caplog
+
+
+def test_passive_head_drops_log_lines_instead_of_replaying_them_on_promotion(
+    log_monitor,
+):
+    # Nothing subscribes to a passive GCS, so a backlog would only flood drivers
+    # with stale lines the moment this head is promoted.
+    log_monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
+    assert _log_and_drain(log_monitor, "written while passive") is True
+
+    log_monitor.gcs_client.publish_logs.side_effect = None
+    assert _log_and_drain(log_monitor, "written after promotion") is True
+
+    delivered = log_monitor.gcs_client.publish_logs.call_args_list[-1].args[0]
+    assert delivered["lines"] == ["written after promotion"]
+
+
+def test_a_passive_gcs_is_reported_once_not_once_per_batch(log_monitor, monitor_logs):
+    log_monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
+
+    for i in range(3):
+        _log_and_drain(log_monitor, f"line {i}")
+
+    assert len(_published_lines(log_monitor)) == 3
+    assert _count_logged(monitor_logs, "GCS is in passive mode") == 1
+
+
+def test_each_leadership_change_is_reported_once(log_monitor, monitor_logs):
+    log_monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
+    _log_and_drain(log_monitor, "passive")
+    _log_and_drain(log_monitor, "still passive")
+
+    log_monitor.gcs_client.publish_logs.side_effect = None
+    _log_and_drain(log_monitor, "promoted")
+    _log_and_drain(log_monitor, "still active")
+
+    log_monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
+    _log_and_drain(log_monitor, "demoted")
+
+    assert _count_logged(monitor_logs, "GCS is in passive mode") == 2
+    assert _count_logged(monitor_logs, "Resuming publishing") == 1
+    assert log_monitor._publish_passive_latch.waiting_for_promotion
+
+
+class _StopLoop(Exception):
+    pass
+
+
+@pytest.mark.parametrize(
+    "passive, expected_sleep",
+    [(True, PASSIVE_GCS_POLL_INTERVAL_S), (False, 0.1)],
+)
+def test_poll_interval_adapts_to_leadership(
+    log_monitor, monkeypatch, passive, expected_sleep
+):
+    if passive:
+        log_monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
+    else:
+        log_monitor.gcs_client.publish_logs.side_effect = None
+        log_monitor._publish_passive_latch.waiting_for_promotion = False
+
+    _write_worker_log(log_monitor, "line")
+
+    slept = []
+
+    def stop_at_first_sleep(seconds):
+        slept.append(seconds)
+        raise _StopLoop()
+
+    monkeypatch.setattr(log_monitor_module.time, "sleep", stop_at_first_sleep)
+
+    with pytest.raises(_StopLoop):
+        log_monitor.run()
+
+    assert slept == [expected_sleep]
+    if passive:
+        # Backing off must not turn into hoarding: the line was still consumed.
+        assert _published_lines(log_monitor) == ["line"]
+
+
+def test_other_publish_failures_are_still_reported(log_monitor, monitor_logs):
+    # An unreachable GCS also yields UNAVAILABLE; only the passive one is benign.
+    log_monitor.gcs_client.publish_logs.side_effect = RpcError(
+        "Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
+    )
+
+    _log_and_drain(log_monitor, "written while the GCS is down")
+
+    assert _count_logged(monitor_logs, "Failed to publish log messages") == 1
+    assert not log_monitor._publish_passive_latch.waiting_for_promotion
+
+
+def test_the_feature_flag_makes_the_passive_handling_unreachable(
+    make_log_monitor, monitor_logs, monkeypatch
+):
+    monitor = make_log_monitor(leader_election=False)
+    monitor.gcs_client.publish_logs.side_effect = _passive_gcs_rejection()
+    _write_worker_log(monitor, "written on a cluster without leader election")
+
+    slept = []
+
+    def stop_at_first_sleep(seconds):
+        slept.append(seconds)
+        raise _StopLoop()
+
+    monkeypatch.setattr(log_monitor_module.time, "sleep", stop_at_first_sleep)
+
+    with pytest.raises(_StopLoop):
+        monitor.run()
+
+    # Every new branch stays out of the way: generic handling, no latch, no backoff.
+    assert _count_logged(monitor_logs, "Failed to publish log messages") == 1
+    assert _count_logged(monitor_logs, "GCS is in passive mode") == 0
+    assert not monitor._publish_passive_latch.waiting_for_promotion
+    assert slept == [0.1]
 
 
 if __name__ == "__main__":
