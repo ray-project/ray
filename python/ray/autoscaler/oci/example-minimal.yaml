@@ -1,0 +1,12 @@
+# A unique identifier for the head node and workers of this cluster.
+cluster_name: minimal
+
+# Cloud-provider specific configuration.
+provider:
+    type: oci
+    region: us-ashburn-1
+    compartment_id: ocid1.compartment.oc1..YOUR_COMPARTMENT
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: ubuntu
