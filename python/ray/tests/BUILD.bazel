@@ -85,6 +85,7 @@ py_test_module_list(
         "test_task_events_3.py",
         "test_unavailable_actors.py",
         "test_util_helpers.py",
+        "test_worker_teardown.py",
     ],
     tags = [
         "exclusive",
