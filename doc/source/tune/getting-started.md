@@ -10,7 +10,7 @@ myst:
 
 # Get started with Ray Tune
 
-This tutorial walks you through setting up a Ray Tune experiment. Starting from a PyTorch model, you use Tune to optimize the model's hyperparameters with early stopping and with Bayesian optimization through Hyperopt.
+This tutorial walks you through setting up a Ray Tune experiment. Starting from a PyTorch model, you use Tune to optimize the model's hyperparameters with early stopping and Bayesian optimization through Hyperopt.
 
 :::{tip}
 If you have suggestions on how to improve this tutorial, [open an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).

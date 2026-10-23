@@ -162,7 +162,7 @@ To allocate specific resources to a trial, you can wrap your trainable in `tune.
 
 The preceding example shows three things:
 
-1. The `cpu` and `gpu` options set how many CPUs and GPUs are available for each trial. Trials can't request more resources than these, except as described in item 3.
+1. The `cpu` and `gpu` options set how many CPUs and GPUs are available for each trial. Trials can't request more resources than these, except when requesting custom resources, as described in the third item.
 1. You can request fractional GPUs. A value of 0.5 means that half of the GPU's memory is available to the trial. Make sure that your model still fits in the fractional memory.
 1. You can request custom resources that you supplied to Ray when starting the cluster. A trial is scheduled only on a single node that can provide all the resources you requested.
 
