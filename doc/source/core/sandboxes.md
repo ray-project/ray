@@ -366,7 +366,48 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API (anonymously, with no Docker daemon and no credentials), flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. One consequence: a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image; its writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, flattens its layers, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Sandboxes with write access to the filesystem get their own private writable overlay on top of the cached root filesystem. As a result, a `readonly=True` sandbox with an explicit `workdir` runs on a private writable overlay, because runsc drops the rootfs overlay for read-only roots and can't create the workdir mount point in an immutable image. The overlay's writes are discarded with the sandbox. A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
+
+### Pull from private registries
+
+Ray pulls a private image with the credentials that the node's Docker configuration file holds for its registry. A sandbox can boot from any private image named at its creation, with no Docker installation and no preloading. Ray reads `$DOCKER_CONFIG/config.json`, by default `~/.docker/config.json` of the user that runs Ray, and looks up a registry's credentials the way the Docker CLI does:
+
+1. `credHelpers` maps a registry to a [credential helper](https://github.com/docker/docker-credential-helpers). Ray runs that `docker-credential-<name>` program from the `$PATH` to get the registry's credentials. A helper such as [`docker-credential-ecr-login`](https://github.com/awslabs/amazon-ecr-credential-helper) mints short-lived credentials from the node's cloud identity at pull time, so no secret sits on disk.
+1. `credsStore` names the helper for every registry that `credHelpers` doesn't list.
+1. `auths` holds static credentials, in the format that `docker login` writes and that a Kubernetes `kubernetes.io/dockerconfigjson` Secret stores. Mount such a Secret's `.dockerconfigjson` key as `config.json`.
+
+Ray reads the file only when a registry asks a pull to authenticate. It handles both the token authentication that Docker Hub, GHCR, and Artifact Registry use and the HTTP basic authentication that Amazon ECR uses. Docker Hub and GHCR ask every pull to authenticate, including pulls of public images. When the file holds credentials for Docker Hub or GHCR, Ray uses them for public images too. If that registry's credential helper fails, public image pulls from it fail too, as they do with `docker pull`.
+
+The credentials stay out of sandboxes. The Ray worker that pulls an image holds them in memory for the pull and sends them only to the registry and to the token service that the registry names, not to the object storage that serves the image's layers. Ray never writes them to the image cache or its logs, and a sandbox's processes see only the image's files and the environment variables that you pass. Keep the following in mind:
+
+* **Ray checks credentials when it pulls, not when a sandbox starts.** Every sandbox on a node can use any image that the node already holds in its cache.
+* **A sandbox with network access can reach whatever its node can.** That can include the source a credential helper draws on, such as a cloud's instance metadata service. On Amazon EKS, require Instance Metadata Service Version 2 (IMDSv2) with a hop limit of 1 so that Pods and the sandboxes they run can't reach it.
+
+For example, to pull from Amazon ECR with the IAM role of the Ray Pods, through IAM roles for service accounts (IRSA) or EKS Pod Identity, add `docker-credential-ecr-login` to the Ray image. Then give every Ray container that runs sandboxes the following configuration:
+
+```json
+{"credHelpers": {"<acct>.dkr.ecr.<region>.amazonaws.com": "ecr-login"}}
+```
+
+One way to provide the file is a ConfigMap. The following example mounts a ConfigMap named `ray-docker-config`, which holds the file as `config.json`, into each Ray container and points `DOCKER_CONFIG` at the mount:
+
+```yaml
+containers:
+  - name: ray-worker
+    env:
+      - name: DOCKER_CONFIG
+        value: /etc/ray-docker
+    volumeMounts:
+      - name: docker-config
+        mountPath: /etc/ray-docker
+        readOnly: true
+volumes:
+  - name: docker-config
+    configMap:
+      name: ray-docker-config
+```
+
+The role needs `ecr:GetAuthorizationToken`, `ecr:BatchGetImage`, and `ecr:GetDownloadUrlForLayer`, all of which the `AmazonEC2ContainerRegistryReadOnly` managed policy grants.
 
 `image` can also point to a local archive on the node. For `docker save` and OCI image layout archives, Ray applies the layers in order and reads the environment variables and working directory from the image config. Each archive must contain a single image built for the node's architecture. Leave `docker save` output uncompressed, since Ray reads the layers directly from the archive and that's much slower from a gzipped one. Other tar archives, such as those created by `docker export`, are treated as flat root filesystems. These have no image config, so pass any required environment variables, including `PATH`, through `env`.
 
@@ -376,7 +417,7 @@ The cache is bounded so that a node that runs many distinct images doesn't fill 
 
 ### Route Docker Hub pulls through a mirror
 
-Because image pulls are anonymous, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.
+Unless the nodes hold Docker Hub credentials, every node pulling from Docker Hub consumes the anonymous pull-rate limit and downloads the image over the WAN. In a large cluster, concurrent pulls of multi-GB images can quickly hit the rate limit or saturate network bandwidth, causing image pulls to fail or become slow.
 
 Set `RAY_SANDBOX_REGISTRY_MIRROR` to route Docker Hub pulls through a registry mirror. Ray rewrites only Docker Hub image references. Pulls from other registries, such as GHCR or a private registry, are left unchanged.
 
@@ -392,7 +433,7 @@ Keep the following in mind:
 
 * **A bare host means HTTPS.** Write an explicit `http://` prefix for a plain-HTTP mirror, which an in-cluster `registry:2` proxy typically is.
 * **The mirror is authoritative.** Unlike Docker's registry-mirrors behavior, Ray does not fall back to Docker Hub. If the mirror is unreachable or does not contain the image, the pull fails.
-* **The mirror must allow anonymous pulls.** Ray talks to a mirror exactly as it talks to any registry, over the same anonymous bearer-token flow. If your mirror normally requires authentication, expose it to Ray through network-level access instead, such as a VPC endpoint or cluster-internal service.
+* **The mirror authenticates like any registry.** Ray uses the credentials that the node's Docker configuration holds for the mirror's host, so an ECR pull-through cache works with a `credHelpers` entry for it. See [Pull from private registries](#pull-from-private-registries).
 
 ## Networking and DNS
 
@@ -620,7 +661,7 @@ Ray Sandboxes implement multi-layered defense-in-depth isolation:
 * **Read-only root filesystem**: Ray mounts base container filesystems read-only (`readonly=True`) with an isolated copy-on-write overlay directory per sandbox.
 * **Restricted working directory**: Only the explicit `workdir`, such as `/workspace`, is mounted read-write for application artifacts.
 * **Network containment**: By default, `network="none"` disables all outbound network interfaces, which prevents untrusted code from making external API calls or scanning the internal cluster network. When code needs the internet, `network="public"` gives it the public internet without the node's resolver configuration or network identity. Its egress filter keeps instance metadata and the Kubernetes API Service closed whatever the allowlist says, and its default allowlist leaves out internal addresses as a best effort. See [What can a public sandbox reach?](#what-can-a-public-sandbox-reach)
-* **Resource quotas**: cgroups enforce CPU quotas and memory limits, which prevents CPU starvation and out-of-memory (OOM) conditions from affecting other Ray actors. A `disk` cap bounds a sandbox's writable overlay on the node's disk.
+* **Resource quotas**: Ray configures a host cgroup v2 for each limited sandbox. CPU bandwidth and memory limits apply to the sandbox runtime and its helpers. A `disk` cap bounds a sandbox's writable overlay on the node's disk.
 
 ### How does Ray filter a public sandbox's traffic?
 
@@ -642,6 +683,20 @@ The egress filter matches IP addresses only. Keep the following gaps in mind:
 
 :::{tip}
 For defense in depth, turn on Ray's token authentication with `RAY_AUTH_MODE=token` on clusters that host sandboxes, so that Ray's own ports refuse callers without the cluster's token. On Kubernetes, also set `automountServiceAccountToken: false` on worker Pods that don't call the Kubernetes API.
+:::
+
+### Enforce resource limits
+
+Provision a writable cgroup v2 subtree on each eligible worker node and set `RAY_SANDBOX_CGROUP_PATH` to its mount path. Enable the `cpu` and `memory` controllers in the subtree's `cgroup.subtree_control`, and keep processes in separate leaf cgroups. Ray requires `cgroup.kill` support and permission to write it. Grant the worker permission to create child cgroups and to move its launch helpers from the worker cgroup into them. See [Linux cgroup v2 delegation](https://docs.kernel.org/admin-guide/cgroup-v2.html#delegation) for the directory, controller, and common-ancestor permissions.
+
+Every positive `cpu` or `memory` limit requires this configuration. Without it, creation fails before the image pull. Ray writes `cpu.max`, `memory.max`, and `memory.swap.max` before starting runsc or the network wrapper. Fractional CPU limits remain bandwidth limits: `cpu=0.25` gives the whole sandbox one quarter of a CPU. A sandbox with a CPU limit also runs on `max(2, ceil(cpu))` of the pool's CPUs, which Ray picks so that sandboxes spread across the pool. gVisor sizes a sandbox's CPUs from the CPUs it can run on, so `nproc`, and tools that size worker pools by CPU count, see the limit instead of the whole node. Two is gVisor's minimum. Memory limits include Sentry, Gofer, and network helpers, and limited sandboxes can't use swap. Memory exhaustion terminates the sandbox and leaves its hosting Ray worker alive.
+
+Ray owns the cgroup, so `--ignore-cgroups` disables runsc's own cgroup management without disabling Ray's limits. `RAY_SANDBOX_IGNORE_CGROUPS=1` can't bypass a requested limit. Passing zero means no limit. Passing `cpu=None` to the sandbox actor derives a limit from its assigned Ray CPU resources.
+
+Ray picks a sandbox's CPUs under a file lock in `/tmp/ray/sandbox` and records them in the sandbox's directory there, so sandboxes created at the same time spread across the pool too. Every worker on a node must see the same `/tmp/ray/sandbox` and the same cgroup mount path. When a worker exits or crashes, its sandboxes stop with it, and the cleanup that sandbox creation runs on the node also removes their cgroups. See [Manage sandboxes inside custom actors with SandboxRuntime](#manage-sandboxes-inside-custom-actors-with-sandboxruntime).
+
+:::{note}
+A CPU limit caps what a sandbox uses but doesn't reserve CPU time for it. Other work on the node still affects how long a task takes, so resource limits don't guarantee a wall-clock deadline.
 :::
 
 ## HTTP API service
@@ -671,7 +726,7 @@ Errors use a JSON envelope of the form `{"error": {"code": "...", "message": "..
 Keep this server behavior in mind:
 
 * **TTL**: Every sandbox gets a TTL that reclaims both the sandbox and its hosting actor. Request it with `ttl_seconds`, capped and defaulted by the server's `max_ttl_seconds`.
-* **Resources**: `resources` separates cluster reservations from in-sandbox cgroup caps. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become cgroup caps. Requests default to the limits. `disk_limit_mb` caps the writable root filesystem (see [Cap disk use](#cap-disk-use)) and requires `readonly: false` or a `workdir`.
+* **Resources**: `resources` separates cluster reservations from enforced sandbox budgets. `cpu_request`, `memory_request_mb`, and `custom` Ray resources reserve cluster capacity, and custom resources such as `{"gvisor": 1}` pin sandboxes to runsc-equipped nodes. `cpu_limit` and `memory_limit_mb` become host cgroup caps on provisioned nodes, and creation fails if the node can't enforce them. Requests default to the limits. `disk_limit_mb` caps the writable root filesystem (see [Cap disk use](#cap-disk-use)) and requires `readonly: false` or a `workdir`.
 * **Capabilities**: By default sandboxes get Docker's default Linux capability set so images behave the way they do under Docker. Ray's own default is far narrower and breaks `apt-get` and `tar`. The sets are written exactly, so `capabilities: []` runs the sandbox with no capabilities at all.
 * **Network modes**: The server accepts `none`, the default, and `public`. It answers `403 forbidden` to `host` and `sandbox` unless its `allowed_network_modes` setting lists them, and to `rootless: false` unless you set `allow_rootful`. `host` gives a sandbox the node's network and every Ray port on it, and `sandbox` needs a rootful runsc, so allow them only for trusted clients. See [Networking and DNS](#networking-and-dns).
 * **Egress allowlists**: A `public` sandbox takes `cidr_allowlist` at creation, with the same entries and defaults as the Python API. See [Restrict egress to an allowlist](#restrict-egress-to-an-allowlist). The HTTP API can't change the allowlist afterward.
@@ -794,7 +849,7 @@ The token isn't scoped to a client. Anyone who has it controls every sandbox in 
 
 Keep these limits in mind:
 
-* **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step.
+* **Images**: The facade runs prebuilt registry images only. It rejects image definitions that need a server-side build step. Nodes pull images with their own registry credentials, so the facade ignores registry secrets that clients attach to images. See [Pull from private registries](#pull-from-private-registries).
 * **Names**: Sandbox names are scoped to the client app. Creating a sandbox under a live name returns the existing sandbox.
 * **State**: The facade keeps exec state in memory, so run one facade process per cluster.
 * **Network**: The facade maps the client SDK's network settings onto network modes and egress allowlists.
@@ -878,9 +933,9 @@ For detailed signatures, parameters, and return types, see {ref}`ray-sandbox-ref
 * **`gVisor container failed to start: WARNING: host page size mismatch - running on non-4K host`**: The node's kernel uses 64 KiB pages, and gVisor's prebuilt `runsc` only supports 4 KiB pages. Build `runsc` from source with `--define=pagesize=64k` (see [Requirements](#requirements)).
 * **`mkfs.erofs` not found or too old**: Sandbox creation fails with an error naming erofs-utils 1.7. Install erofs-utils 1.7 or later on every worker node; Ubuntu 22.04's packaged 1.4 predates the `--tar` option Ray relies on.
 * **`mkfs.erofs failed: ... invalid block size 65536`**: The node's kernel uses 64 KiB pages, and its erofs-utils package can only build 4 KiB blocks. Build erofs-utils from source with `./configure MAX_BLOCK_SIZE=65536` (see [Requirements](#requirements)).
-* **cgroup or permission errors**: In containerized environments such as Kubernetes without root permissions, keep the default `rootless=True`. Where cgroups are restricted, set `RAY_SANDBOX_IGNORE_CGROUPS=1`.
+* **cgroup or permission errors**: Keep `rootless=True` for unprivileged runsc. Positive CPU or memory limits also require a delegated cgroup v2 subtree configured through `RAY_SANDBOX_CGROUP_PATH`. `RAY_SANDBOX_IGNORE_CGROUPS=1` disables runsc's cgroup setup but doesn't remove this requirement. See [Enforce resource limits](#enforce-resource-limits).
 * **Node disk filling up with images**: The image cache is capped at half of its filesystem by default. Lower the cap with `RAY_SANDBOX_IMAGE_CACHE_MAX_BYTES` (bytes) on worker nodes, or move the cache to a larger volume. Images that running sandboxes use are never evicted, so many concurrent sandboxes on distinct large images still need that much disk.
-* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause; see [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror).
+* **Image pull failures**: Verify that the node can reach the container registry, such as Docker Hub or GHCR, or pre-populate the image cache directory at `/tmp/ray/sandbox/images`. When many nodes pull large images at once, Docker Hub's anonymous rate limits are a likely cause. See [Route Docker Hub pulls through a mirror](#route-docker-hub-pulls-through-a-mirror). An error that a registry requires credentials, or that a `docker-credential-*` helper failed, points at the node's Docker configuration. See [Pull from private registries](#pull-from-private-registries).
 * **`slirp4netns` not found for `network="public"`**: Install the slirp4netns package (or a [static build](https://github.com/rootless-containers/slirp4netns/releases)) on worker nodes.
 * **`public` sandboxes fail to start with a tap or namespace error**: slirp4netns needs `/dev/net/tun` in the worker's environment and a seccomp policy that allows unprivileged user+network namespace creation (`unshare -Un true` must succeed as the Ray user). The slirp4netns error appears in the sandbox's `runsc.stderr.log` and in the creation error message.
 * **`nft` not found for `network="public"`**: Install nftables in the image or on the node that runs Ray, such as with `apt-get install nftables`. See [Requirements](#requirements).
