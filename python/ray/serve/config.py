@@ -177,8 +177,42 @@ class AutoscalingContext:
         return max(0.0, self.total_num_requests - self.total_queued_requests)
 
 
+class _ForwardCompatModel(BaseModel):
+    """Fills in fields that are missing when an older pickle is loaded.
+
+    The Serve controller checkpoint in the GCS stores these models pickled.
+    With GCS fault tolerance, the checkpoint outlives a Ray upgrade, and the
+    new controller unpickles objects written by the old version. pydantic
+    restores the pickled ``__dict__`` as is, so a field added in between is
+    not set on the restored object, and reading it raises ``AttributeError``.
+
+    Example: ``DeploymentConfig.deployment_actors`` was added in Ray 2.55.
+    A controller on 2.55 that recovers a checkpoint written by 2.54 fails in
+    ``__init__`` on the first read of that field, and keeps failing on every
+    restart.
+
+    ``__setstate__`` sets each missing field and private attribute to its
+    default.
+    """
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        for name, field in type(self).model_fields.items():
+            if name not in self.__dict__:
+                object.__setattr__(
+                    self, name, field.get_default(call_default_factory=True)
+                )
+        private_attributes = type(self).__private_attributes__
+        if private_attributes:
+            if self.__pydantic_private__ is None:
+                object.__setattr__(self, "__pydantic_private__", {})
+            for name, attr in private_attributes.items():
+                if name not in self.__pydantic_private__:
+                    self.__pydantic_private__[name] = attr.get_default()
+
+
 @PublicAPI(stability="alpha")
-class RequestRouterConfig(BaseModel):
+class RequestRouterConfig(_ForwardCompatModel):
     """Config for the Serve request router.
 
     This class configures how Ray Serve routes requests to deployment replicas. The router is
@@ -422,7 +456,7 @@ class AggregationFunction(str, Enum):
 
 
 @PublicAPI(stability="stable")
-class AutoscalingPolicy(BaseModel):
+class AutoscalingPolicy(_ForwardCompatModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
     # Cached deserialized policy to avoid repeated cloudpickle.loads() calls.
@@ -548,7 +582,7 @@ class AutoscalingPolicy(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class BackpressureConfig(BaseModel):
+class BackpressureConfig(_ForwardCompatModel):
     """Config for the HTTP response returned on backpressure rejections.
 
     When a deployment's ``max_queued_requests`` limit is reached, additional
@@ -591,7 +625,7 @@ class BackpressureConfig(BaseModel):
 
 
 @PublicAPI(stability="stable")
-class AutoscalingConfig(BaseModel):
+class AutoscalingConfig(_ForwardCompatModel):
     """Config for the Serve Autoscaler.
 
     This class configures how Ray Serve scales a deployment's replicas up and down
@@ -1103,7 +1137,7 @@ class GangRuntimeFailurePolicy(str, Enum):
 
 
 @PublicAPI(stability="alpha")
-class DeploymentActorConfig(BaseModel):
+class DeploymentActorConfig(_ForwardCompatModel):
     """Configuration for a deployment-scoped actor.
 
     Deployment-scoped actors are long-lived actors managed by the Serve controller
@@ -1241,7 +1275,7 @@ class DeploymentActorConfig(BaseModel):
 
 
 @PublicAPI(stability="alpha")
-class GangSchedulingConfig(BaseModel):
+class GangSchedulingConfig(_ForwardCompatModel):
     """Configuration for gang scheduling of deployment replicas."""
 
     # Please keep these options in sync with those in `src/ray/protobuf/serve.proto`.
