@@ -534,7 +534,7 @@ void RedisStoreClient::AsyncCheckHealth(Postable<void(Status)> callback) {
         if (reply->IsNil()) {
           status = Status::IOError("Unexpected connection error.");
         } else if (reply->IsError()) {
-          status = reply->ReadAsStatus();
+          status = Status::RedisError(reply->ReadAsError());
         }
         std::vector<Postable<void(Status)>> callbacks;
         {

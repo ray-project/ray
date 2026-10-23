@@ -867,6 +867,22 @@ TEST_F(RedisAsyncContextTest, TestFirstMarkerCoversDataFromBeforeAnyWrite) {
   EXPECT_TRUE(h.WaitForWritesLost().has_value());
 }
 
+#if !defined(_WIN32)
+// A Redis that rejects the startup marker stops gcs_server, and the message
+// carries Redis's own error.
+TEST_F(RedisAsyncContextTest, TestRejectedStartupMarkerReportsTheRedisError) {
+  // Fork without re-running the test: a re-run would start its own Redis,
+  // which inherits the pipe the parent reads to the end. Windows has only
+  // the re-running style, hence the guard.
+  GTEST_FLAG_SET(death_test_style, "fast");
+  ReconnectCheckHarness h;
+  // HSET on a string key fails with WRONGTYPE.
+  ASSERT_EQ(h.Admin({"SET", kWatermarkKey, "not a hash"}), "OK");
+  EXPECT_DEATH(h.EnableWatermark(),
+               "Failed to write the Redis write watermark: WRONGTYPE");
+}
+#endif
+
 // Without a watermark, as for contexts outside gcs_server, a reconnect only
 // needs Redis to answer.
 TEST_F(RedisAsyncContextTest, TestReconnectWithoutWatermarkOnlyNeedsAnAnswer) {

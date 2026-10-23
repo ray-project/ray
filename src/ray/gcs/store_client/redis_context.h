@@ -63,6 +63,9 @@ class CallbackReply {
   /// Read this reply data as a status.
   Status ReadAsStatus() const;
 
+  /// Read the message of an error reply.
+  const std::string &ReadAsError() const;
+
   /// Read this reply data as a string.
   ///
   /// Note that this will return an empty string if

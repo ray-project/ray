@@ -251,6 +251,11 @@ Status CallbackReply::ReadAsStatus() const {
   return status_reply_;
 }
 
+const std::string &CallbackReply::ReadAsError() const {
+  RAY_CHECK(reply_type_ == REDIS_REPLY_ERROR) << "Unexpected type: " << reply_type_;
+  return error_reply_;
+}
+
 const std::string &CallbackReply::ReadAsString() const {
   RAY_CHECK(reply_type_ == REDIS_REPLY_STRING) << "Unexpected type: " << reply_type_;
   return string_reply_;
@@ -1749,7 +1754,7 @@ void RedisContext::EnableWriteWatermark(std::string key, std::string field) {
   auto reply = RunArgvSync({"HSET", key, field, absl::StrCat(incarnation, ":1")});
   RAY_CHECK(reply != nullptr && !reply->IsError())
       << "Failed to write the Redis write watermark: "
-      << (reply != nullptr ? reply->ReadAsStatus().ToString() : std::string("no reply"));
+      << (reply != nullptr ? reply->ReadAsError() : std::string("no reply"));
   redis_async_context_->EnableWriteWatermark(RedisAsyncContext::WriteWatermark{
       std::move(key), std::move(field), std::move(incarnation)});
 }
