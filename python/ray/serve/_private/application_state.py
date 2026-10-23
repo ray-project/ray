@@ -15,6 +15,7 @@ from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import (
     CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR,
+    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR,
     BuiltApplication,
     build_app,
 )
@@ -205,6 +206,19 @@ class StatusOverview:
 
 
 @dataclass
+class AppBuild:
+    """Application build results before config overrides.
+
+    Keep the original values so removing an override restores what the code defines.
+    """
+
+    deployment_infos: Dict[str, DeploymentInfo]
+    serialized_autoscaling_policy_defs: Dict[str, bytes]
+    serialized_request_router_classes: Dict[str, bytes]
+    serialized_deployment_actors: Dict[str, Dict[str, bytes]]
+
+
+@dataclass
 class ApplicationTargetState:
     """Defines target state of application.
 
@@ -227,6 +241,8 @@ class ApplicationTargetState:
     external_scaler_enabled: whether external autoscaling is enabled for
         this application.
     serialized_application_autoscaling_policy_def: Optional[bytes]
+    build: original build results before config overrides. None for imperative
+        apps and pending builds; set whenever `code_version` is set.
     """
 
     deployment_infos: Optional[Dict[str, DeploymentInfo]]
@@ -238,6 +254,7 @@ class ApplicationTargetState:
     api_type: APIType
     serialized_application_autoscaling_policy_def: Optional[bytes]
     external_scaler_enabled: bool
+    build: Optional[AppBuild] = None
 
 
 class ApplicationState:
@@ -273,6 +290,7 @@ class ApplicationState:
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
         self._ingress_request_router_deployment_name: Optional[str] = None
+        self._is_router_application = False
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -350,6 +368,10 @@ class ApplicationState:
         return self._ingress_request_router_deployment_name
 
     @property
+    def is_router_application(self) -> bool:
+        return self._is_router_application
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -368,6 +390,8 @@ class ApplicationState:
             target_capacity_direction=checkpoint_data.target_capacity_direction,
             deleting=checkpoint_data.deleting,
             external_scaler_enabled=checkpoint_data.external_scaler_enabled,
+            serialized_application_autoscaling_policy_def=checkpoint_data.serialized_application_autoscaling_policy_def,
+            build=checkpoint_data.build,
         )
 
         # Restore route prefix and docs path from checkpointed deployments when
@@ -400,6 +424,7 @@ class ApplicationState:
         deleting: bool = False,
         external_scaler_enabled: bool = False,
         serialized_application_autoscaling_policy_def: Optional[bytes] = None,
+        build: Optional[AppBuild] = None,
     ):
         """Set application target state.
 
@@ -417,11 +442,13 @@ class ApplicationState:
 
         ingress_deployment_name = None
         ingress_request_router_deployment_name = None
+        is_router_application = False
 
         if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     ingress_deployment_name = name
+                    is_router_application = info.router_application
                 if info.ingress_request_router:
                     ingress_request_router_deployment_name = name
 
@@ -435,22 +462,29 @@ class ApplicationState:
             api_type=api_type,
             external_scaler_enabled=external_scaler_enabled,
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
+            build=build,
         )
 
-        if (
-            ingress_request_router_deployment_name is not None
-            and ingress_request_router_deployment_name
-            != self._ingress_request_router_deployment_name
-        ):
-            logger.info(
-                f"Application '{self._name}' has ingress request router "
-                f"deployment '{ingress_request_router_deployment_name}' configured."
+        if deployment_infos is not None:
+            if (
+                ingress_request_router_deployment_name is not None
+                and ingress_request_router_deployment_name
+                != self._ingress_request_router_deployment_name
+            ):
+                logger.info(
+                    f"Application '{self._name}' has ingress request router "
+                    f"deployment '{ingress_request_router_deployment_name}' configured."
+                )
+
+            # A declarative redeploy temporarily sets deployment_infos=None while
+            # the replacement application is building, but the previous
+            # deployments continue serving. Keep describing that live application
+            # until a completed build (or deletion, represented by {}) replaces it.
+            self._ingress_deployment_name = ingress_deployment_name
+            self._ingress_request_router_deployment_name = (
+                ingress_request_router_deployment_name
             )
-
-        self._ingress_deployment_name = ingress_deployment_name
-        self._ingress_request_router_deployment_name = (
-            ingress_request_router_deployment_name
-        )
+            self._is_router_application = is_router_application
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -672,13 +706,19 @@ class ApplicationState:
 
         config_version = get_app_code_version(config)
         if config_version == self._target_state.code_version:
-            # `deployment_infos` is non-None whenever `code_version` is
-            # non-None (they are always set together in the target state).
-            assert self._target_state.deployment_infos is not None
+            # `build` is non-None whenever `code_version` is non-None (they are
+            # always set together in the target state). Applying overrides onto
+            # the build rather than the previous target restores the values in
+            # code for options the new config no longer sets.
+            build = self._target_state.build
+            assert build is not None
             try:
                 overrided_infos = override_deployment_info(
-                    self._target_state.deployment_infos,
+                    build.deployment_infos,
                     config,
+                    build.serialized_autoscaling_policy_defs,
+                    build.serialized_request_router_classes,
+                    build.serialized_deployment_actors,
                 )
                 self._route_prefix = self._check_routes(overrided_infos)
                 self._set_target_state(
@@ -691,6 +731,10 @@ class ApplicationState:
                     target_capacity=target_capacity,
                     target_capacity_direction=target_capacity_direction,
                     external_scaler_enabled=config.external_scaler_enabled,
+                    # The code version is unchanged, so the build task's
+                    # serialized policy is still the right one.
+                    serialized_application_autoscaling_policy_def=self._target_state.serialized_application_autoscaling_policy_def,
+                    build=build,
                 )
             except (TypeError, ValueError, RayServeException):
                 self._clear_target_state_and_store_config(config)
@@ -859,7 +903,9 @@ class ApplicationState:
 
     def _reconcile_build_app_task(
         self,
-    ) -> Tuple[Optional[bytes], Optional[Dict], BuildAppStatus, str]:
+    ) -> Tuple[
+        Optional[bytes], Optional[Dict], BuildAppStatus, str, Optional[AppBuild]
+    ]:
         """If necessary, reconcile the in-progress build task.
 
         Returns:
@@ -876,12 +922,15 @@ class ApplicationState:
                 IN_PROGRESS: Task hasn't finished yet.
             Error message (str):
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
+            Build (AppBuild):
+                The original build results before config overrides if the
+                task finished successfully, otherwise None.
         """
         if self._build_app_task_info is None or self._build_app_task_info.finished:
-            return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, ""
+            return None, None, BuildAppStatus.NO_TASK_IN_PROGRESS, "", None
 
         if not check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
-            return None, None, BuildAppStatus.IN_PROGRESS, ""
+            return None, None, BuildAppStatus.IN_PROGRESS, "", None
 
         # Retrieve build app task result
         self._build_app_task_info.finished = True
@@ -899,13 +948,14 @@ class ApplicationState:
                     None,
                     BuildAppStatus.FAILED,
                     f"Deploying app '{self._name}' failed with exception:\n{err}",
+                    None,
                 )
         except RuntimeEnvSetupError:
             error_msg = (
                 f"Runtime env setup for app '{self._name}' failed:\n"
                 + traceback.format_exc()
             )
-            return None, None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg, None
         except RayTaskError:
             return (
                 None,
@@ -913,13 +963,14 @@ class ApplicationState:
                 BuildAppStatus.FAILED,
                 f"Deploying app '{self._name}' failed with exception:\n"
                 f"{traceback.format_exc()}",
+                None,
             )
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg, None
 
         # Convert serialized deployment args (returned by build app task)
         # to deployment infos and apply option overrides from config
@@ -956,12 +1007,18 @@ class ApplicationState:
                     deployment_to_serialized_deployment_actors.setdefault(
                         dep_name, {}
                     ).update(params["serialized_deployment_actors"])
+            build = AppBuild(
+                deployment_infos=deployment_infos,
+                serialized_autoscaling_policy_defs=deployment_to_serialized_autoscaling_policy_def,
+                serialized_request_router_classes=deployment_to_serialized_request_router_cls,
+                serialized_deployment_actors=deployment_to_serialized_deployment_actors,
+            )
             overrided_infos = override_deployment_info(
-                deployment_infos,
+                build.deployment_infos,
                 self._build_app_task_info.config,
-                deployment_to_serialized_autoscaling_policy_def,
-                deployment_to_serialized_request_router_cls,
-                deployment_to_serialized_deployment_actors,
+                build.serialized_autoscaling_policy_defs,
+                build.serialized_request_router_classes,
+                build.serialized_deployment_actors,
             )
             self._route_prefix = self._check_routes(overrided_infos)
             return (
@@ -969,15 +1026,16 @@ class ApplicationState:
                 overrided_infos,
                 BuildAppStatus.SUCCEEDED,
                 "",
+                build,
             )
         except (TypeError, ValueError, RayServeException):
-            return None, None, BuildAppStatus.FAILED, traceback.format_exc()
+            return None, None, BuildAppStatus.FAILED, traceback.format_exc(), None
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while applying config for application "
                 f"'{self._name}': \n{traceback.format_exc()}"
             )
-            return None, None, BuildAppStatus.FAILED, error_msg
+            return None, None, BuildAppStatus.FAILED, error_msg, None
 
     def _check_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
@@ -1120,6 +1178,7 @@ class ApplicationState:
                 infos,
                 task_status,
                 msg,
+                build,
             ) = self._reconcile_build_app_task()
             if task_status == BuildAppStatus.SUCCEEDED:
                 target_state_changed = True
@@ -1138,6 +1197,7 @@ class ApplicationState:
                     ),
                     external_scaler_enabled=self._target_state.external_scaler_enabled,
                     serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
+                    build=build,
                 )
                 # Handling the case where the user turns off/turns on app-level autoscaling policy,
                 # between app deployment.
@@ -1456,6 +1516,12 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_request_router_deployment
 
+    def is_router_application(self, name: str) -> bool:
+        if name not in self._application_states:
+            return False
+
+        return self._application_states[name].is_router_application
+
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
 
@@ -1691,6 +1757,17 @@ def build_serve_application(
             import_attr(import_path), args
         )
 
+        ingress_name = app._bound_deployment.name
+        if (
+            RAY_SERVE_ENABLE_HA_PROXY
+            and app._ingress_request_router is None
+            and deployment_to_request_router_cls.get(
+                ingress_name, DEFAULT_REQUEST_ROUTER_PATH
+            )
+            != DEFAULT_REQUEST_ROUTER_PATH
+        ):
+            raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
+
         deploy_args_list = []
         built_app: BuiltApplication = build_app(
             app,
@@ -1760,6 +1837,7 @@ def build_serve_application(
                     uses_multiplexing=_callable_uses_multiplexing(
                         deployment.func_or_class
                     ),
+                    router_application=is_ingress and built_app.is_router_application,
                 )
             )
 
@@ -2024,16 +2102,12 @@ def override_deployment_info(
             app_route_prefix is not DEFAULT.VALUE
             and deployment.route_prefix is not None
         ):
+            if deployment.router_application and app_route_prefix is None:
+                raise RayServeException(
+                    ROUTER_APPLICATION_REQUIRES_ROUTE_PREFIX_ERROR.format(
+                        name=override_config.name
+                    )
+                )
             deployment.route_prefix = app_route_prefix
-
-    # build_app cannot see config overrides, so re-check the post-override
-    # ingress router here.
-    if RAY_SERVE_ENABLE_HA_PROXY and not any(
-        info.ingress_request_router for info in deployment_infos.values()
-    ):
-        for info in deployment_infos.values():
-            request_router_config = info.deployment_config.request_router_config
-            if info.ingress and not request_router_config.is_default_request_router():
-                raise RayServeException(CUSTOM_INGRESS_REQUEST_ROUTER_UNSUPPORTED_ERROR)
 
     return deployment_infos

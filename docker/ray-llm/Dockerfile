@@ -4,12 +4,14 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 COPY python/deplocks/llm/rayllm_*.lock ./
-COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch ./
+COPY python/requirements/llm/patches/vllm-device-aware-compile-cache.patch \
+    python/requirements/llm/patches/vllm-preserve-model-eos-tokens.patch \
+    python/requirements/llm/patches/vllm-defer-triton-validation.patch ./
 COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.27.0"
+ARG VLLM_SCRIPTS_REF="v0.31.0"
 
 # Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
 # DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
@@ -47,6 +49,8 @@ uv pip install --system --no-cache-dir --no-deps \
 # reloads a torch.compile artifact built for a different physical GPU.
 # TODO (jeffreywang): Remove this patch once https://github.com/vllm-project/vllm/pull/38962 lands.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
+VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
+VLLM_DEFER_TRITON_PATCH="$(pwd)/vllm-defer-triton-validation.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
 import site
 import sysconfig
@@ -70,6 +74,12 @@ PY
 (
     cd "${VLLM_SITE_PACKAGES}"
     git apply "${VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH}"
+    # TODO (jeffreywang): Remove this patch when https://github.com/vllm-project/vllm/pull/52153 is merged.
+    git apply "${VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH}"
+    # Validate Triton on inference workers so CPU frontends can build configs.
+    # TODO (jeffreywang): Remove this patch once vLLM PR #62576 is included in Ray's pinned version.
+    # https://github.com/vllm-project/vllm/pull/62576
+    git apply "${VLLM_DEFER_TRITON_PATCH}"
 )
 
 sudo apt-get update -y && sudo apt-get install -y curl kmod pkg-config librdmacm-dev cmake
@@ -95,9 +105,6 @@ export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
     bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
 
-# Install DeepGEMM
-curl -fsSL "${VLLM_RAW}/tools/install_deepgemm.sh" | bash
-
 # DeepEP V2 links against NCCL's GIN API, so a downgrade slipped in by one of the
 # scripts above breaks it at runtime even when the build succeeded. Fail here
 # instead.
@@ -113,6 +120,11 @@ if tuple(int(part) for part in installed.split(".")[:3]) < MINIMUM:
     )
 PY
 
+# uv skips bytecode compilation, so every new container recompiles vLLM and its
+# deps on startup. Precompile all of site-packages here; UV_COMPILE_BYTECODE would
+# miss packages from the base image and the vLLM files patched above.
+python -m compileall -q -j 0 "${VLLM_SITE_PACKAGES}"
+
 # Export installed packages
 $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
@@ -127,3 +139,6 @@ EOF
 # introduces longer adds a large one-time engine initialization cost. To avoid performance
 # surprises, we disable the FlashInfer sampler by default.
 ENV VLLM_USE_FLASHINFER_SAMPLER=0
+
+# Precompile packages installed at runtime (e.g. via runtime_env).
+ENV UV_COMPILE_BYTECODE=1

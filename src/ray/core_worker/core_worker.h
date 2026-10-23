@@ -16,7 +16,9 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <cstdint>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <string>
@@ -59,6 +61,14 @@
 #include "src/ray/protobuf/pubsub.pb.h"
 
 namespace ray::core {
+
+/**
+ * @brief In-flight WaitAsync table.
+ *
+ * Defined in core_worker.cc. Posted GetAsync callbacks hold a shared_ptr to
+ * this so they can outlive ``CoreWorker``.
+ */
+struct WaitAsyncRegistry;
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -245,7 +255,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Get the Plasma Store Usage.
   ///
-  /// \param output[out] memory usage from the plasma store
+  /// \param[out] output memory usage from the plasma store
   /// \return error status if unable to get response from the plasma store
   Status GetPlasmaUsage(std::string &output);
 
@@ -336,7 +346,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.node_id()); }
 
-  /// Read the next index of a ObjectRefStream of generator_id.
+  /// Read the next index of an ObjectRefStream of generator_id.
   /// This API always return immediately.
   ///
   /// \param[in] generator_id The object ref id of the streaming
@@ -369,11 +379,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Return True if there's no more object to read. False otherwise.
   bool StreamingGeneratorIsFinished(const ObjectID &generator_id) const;
 
-  /// Read the next index of a ObjectRefStream of generator_id without
+  /// Read the next index of an ObjectRefStream of generator_id without
   /// consuming an index.
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
-  /// \return A object reference of the next index and if the object is already ready
+  /// \return An object reference of the next index and if the object is already ready
   /// (meaning if the object's value if retrievable).
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
@@ -791,6 +801,55 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               const int64_t timeout_ms,
               std::vector<bool> *results,
               bool fetch_local);
+
+  /**
+   * Asynchronously wait for one object to become ready without blocking the
+   * calling thread. Invokes ``callback`` once when it is ready.
+   *
+   * An object is ready when it is in the in-process memory store or a plasma
+   * marker is present. This does not pull plasma objects locally.
+   *
+   * The callback is invoked at most once. Completions from the memory store
+   * run on ``io_service_`` (same as ``GetAsync``), even when the object is
+   * already present. Cancel and shutdown invoke the callback on the caller.
+   * ``Status::OK`` means the object is ready.
+   *
+   * WaitAsync does not hold a reference and does not subscribe to the
+   * reference counter. Dropping the ``ObjectRef`` leaves the callback
+   * pending, same as ``GetAsync``. It runs when the object is ready, when
+   * ``CancelWaitAsync`` runs, or on shutdown. If the object has no owner,
+   * the callback is invoked immediately with ``ObjectUnknownOwner``.
+   *
+   * \param[in] object_id ID of the object to wait for.
+   * \param[in] callback Invoked with status and ``callback_arg``.
+   * \param[in] callback_arg Opaque pointer passed through to ``callback``.
+   * \return Non-zero handle for ``CancelWaitAsync``, or 0 if ``callback`` was
+   * already invoked synchronously on the calling thread (unknown owner, or the
+   * worker is shutting down).
+   */
+  uint64_t WaitAsync(const ObjectID &object_id,
+                     void (*callback)(Status status, void *callback_arg),
+                     void *callback_arg);
+
+  /**
+   * Cancel an in-flight ``WaitAsync`` identified by its handle.
+   *
+   * Completes a pending request (callback once with a cancelled status).
+   * No-op if ``handle`` is 0 or the request already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   */
+  void CancelWaitAsync(uint64_t handle);
+
+  /**
+   * Complete every in-flight ``WaitAsync`` with a shutdown error.
+   *
+   * Invokes each pending callback once. Safe to call more than once. Also
+   * latches the shutdown, so any later ``WaitAsync`` fails fast rather than
+   * registering a wait that the stopped ``io_service_`` can never complete.
+   * The embedding runtime must still be alive — see ``~CoreWorker``.
+   */
+  void CancelAllWaitAsync();
 
   /// Get the locations of a list objects from the local core worker. Locations that
   /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
@@ -1483,7 +1542,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Add task log info for a task when it starts executing.
   ///
-  /// It's an no-op in local mode.
+  /// It's a no-op in local mode.
   ///
   /// \param stdout_path Path to stdout log file.
   /// \param stderr_path Path to stderr log file.
@@ -1498,7 +1557,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Add task log info for a task when it finishes executing.
   ///
-  /// It's an no-op in local mode.
+  /// It's a no-op in local mode.
   ///
   /// \param stdout_end_offset End offset of the stdout for this task.
   /// \param stderr_end_offset End offset of the stderr for this task.
@@ -1672,22 +1731,24 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Execute a task.
   ///
-  /// \param task_spec[in] Task specification.
-  /// \param resource_ids[in] Resource IDs of resources assigned to this
+  /// \param[in] task_spec Task specification.
+  /// \param[in] resource_ids Resource IDs of resources assigned to this
   /// worker. If nullopt, reuse the previously assigned resources.
-  /// \param return_objects[out] Result objects that should be returned
+  /// \param[out] return_objects Result objects that should be returned
   /// to the caller.
-  /// \param dynamic_return_objects[out]  Result objects whose ObjectRefs were dynamically
+  /// \param[out] dynamic_return_objects Result objects whose ObjectRefs were dynamically
   /// allocated during task execution by using a generator. The language-level ObjectRefs
   /// should be returned inside the statically allocated return_objects.
-  /// \param borrowed_refs[out]  Refs that this task (or a nested task) was or is still
+  /// \param[out] borrowed_refs Refs that this task (or a nested task) was or is still
   /// borrowing. This includes all objects whose IDs we passed to the task in its
   /// arguments and recursively, any object IDs that were contained in those objects.
-  /// \param is_retryable_error[out] Whether the task failed with a retryable
+  /// \param[out] is_retryable_error Whether the task failed with a retryable
   /// error.
-  /// \param actor_repr_name[out] The user-specified repr name for the actor in this
-  /// process if one has been set. \param application_error[out] The error message if the
-  /// task failed during execution or cancelled. \return Status.
+  /// \param[out] actor_repr_name The user-specified repr name for the actor in this
+  /// process if one has been set.
+  /// \param[out] application_error The error message if the task failed during execution
+  /// or was cancelled.
+  /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
       std::optional<ResourceMappingType> resource_ids,
@@ -1730,16 +1791,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// being borrowed by this process. The IDs should be unpinned once the task
   /// completes.
   ///
-  /// \param spec[in] task Task specification.
-  /// \param args[out] args Argument data as RayObjects.
-  /// \param args[out] arg_reference_ids ObjectIDs corresponding to each by
+  /// \param[in] task Task specification.
+  /// \param[out] args Argument data as RayObjects.
+  /// \param[out] arg_refs ObjectIDs corresponding to each by
   ///                  reference argument. The length of this vector will be
   ///                  the same as args, and by value arguments will have
   ///                  ObjectID::Nil().
   ///                  // TODO(edoakes): this is a bit of a hack that's necessary because
   ///                  we have separate serialization paths for by-value and by-reference
   ///                  arguments in Python. This should ideally be handled better there.
-  /// \param args[out] pinned_ids ObjectIDs that should be unpinned once the
+  /// \param[out] pinned_ids ObjectIDs that should be unpinned once the
   ///                  task completes execution.  This vector will be populated
   ///                  with all argument IDs that were passed by reference and
   ///                  any ObjectIDs that were included in the task spec's
@@ -1907,6 +1968,18 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                       const std::shared_ptr<RayObject> &ray_object,
                       ObjectID object_id,
                       void *py_future);
+
+  /**
+   * Complete a ``WaitAsync`` request and invoke its callback at most once.
+   *
+   * Looks the handle up in ``wait_async_``. Unregisters it, cancels the
+   * memory-store wait, then runs the callback. No-op if the handle is
+   * unknown or already completed.
+   *
+   * \param[in] handle Value returned by ``WaitAsync``.
+   * \param[in] status Status passed to the user callback.
+   */
+  void FinishWaitAsync(uint64_t handle, Status status);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -2125,6 +2198,10 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   // Callbacks for when when a plasma object becomes ready.
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
+
+  // In-flight WaitAsync table. Shared so a posted GetAsync can look up a
+  // handle after this worker is destroyed (the lookup misses and returns).
+  std::shared_ptr<WaitAsyncRegistry> wait_async_;
 
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.

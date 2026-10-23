@@ -39,7 +39,7 @@
 namespace ray {
 
 struct GcsServerMocker {
-  class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+  class FakeWorkerClient : public rpc::CoreWorkerClientInterface {
    public:
     void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,
@@ -76,7 +76,7 @@ struct GcsServerMocker {
     absl::Mutex mutex_;
   };
 
-  class MockRayletClient : public rpc::FakeRayletClient {
+  class FakeRayletClient : public rpc::FakeRayletClient {
    public:
     void ReturnWorkerLease(int worker_port,
                            const LeaseID &lease_id,
@@ -282,7 +282,7 @@ struct GcsServerMocker {
       drain_raylet_callbacks.push_back(callback);
     };
 
-    ~MockRayletClient() {}
+    ~FakeRayletClient() {}
 
     int num_workers_requested = 0;
     int num_workers_returned = 0;
@@ -308,7 +308,7 @@ struct GcsServerMocker {
         remove_pg_bundles_callbacks = {};
   };
 
-  class MockedGcsActorScheduler : public gcs::GcsActorScheduler {
+  class FakeGcsActorScheduler : public gcs::GcsActorScheduler {
    public:
     using gcs::GcsActorScheduler::GcsActorScheduler;
 
@@ -337,7 +337,7 @@ struct GcsServerMocker {
     int num_retry_creating_count_ = 0;
   };
 
-  class MockedGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
+  class FakeGcsPlacementGroupScheduler : public gcs::GcsPlacementGroupScheduler {
    public:
     using gcs::GcsPlacementGroupScheduler::GcsPlacementGroupScheduler;
 
@@ -353,12 +353,11 @@ struct GcsServerMocker {
 
    protected:
     friend class GcsPlacementGroupSchedulerTest;
-    FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
   };
-  class MockedGcsActorTable : public gcs::GcsActorTable {
+  class FakeGcsActorTable : public gcs::GcsActorTable {
    public:
     // The store_client and io_context args are NOT used.
-    explicit MockedGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
+    explicit FakeGcsActorTable(std::shared_ptr<gcs::StoreClient> store_client)
         : GcsActorTable(store_client) {}
 
     Status Put(const ActorID &key,

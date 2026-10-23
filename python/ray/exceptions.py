@@ -562,7 +562,7 @@ class RaySystemError(RayError):
 
 
 @PublicAPI
-class AuthenticationError(RayError):
+class AuthenticationError(RayError, ConnectionError):
     """Indicates that an authentication error occurred.
 
     Most commonly, this is caused by a missing or mismatching token set on the client
@@ -579,6 +579,14 @@ class AuthenticationError(RayError):
         super().__init__(message)
 
     def __str__(self) -> str:
+        from ray._private.authentication.authentication_constants import (
+            AUTH_MODE_MISMATCH_ERROR_MESSAGE,
+        )
+
+        # The fix is to opt out of auth, so the help on getting a token would mislead.
+        if AUTH_MODE_MISMATCH_ERROR_MESSAGE in self.message:
+            return self.message
+
         # Check if RAY_AUTH_MODE is set to token and add a heads-up if not
         auth_mode_note = ""
 
@@ -594,14 +602,14 @@ class AuthenticationError(RayError):
                 f" Note: RAY_AUTH_MODE is currently '{mode_name}' (not 'token')."
             )
 
-        help_text = (
-            " Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via "
-            "RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. "
-            "To generate a token for local development, use `ray get-auth-token --generate` "
-            "For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. "
-            "For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html"
+        from ray._private.authentication.authentication_constants import (
+            TOKEN_AUTH_FIX_MESSAGE,
         )
-        return self.message + "." + auth_mode_note + help_text
+
+        help_text = ""
+        if TOKEN_AUTH_FIX_MESSAGE not in self.message:
+            help_text = " " + TOKEN_AUTH_FIX_MESSAGE
+        return self.message.rstrip(".") + "." + auth_mode_note + help_text
 
 
 @DeveloperAPI

@@ -17,6 +17,7 @@ from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.parquet_datasource import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
+from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
@@ -371,6 +372,9 @@ def _get_read_task(
             yield table
 
     for table in _generate_tables():
+        # Unpickling untrusted data can execute arbitrary code. Reject object
+        # columns unless the user has explicitly opted in.
+        raise_on_pickle_object_columns(table)
         if empty_projection:
             # The scan read a boolean-typed stub, see
             # ``_get_empty_projection_schema``. Re-derive it through Ray's own

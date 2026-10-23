@@ -104,6 +104,23 @@ def _callable_uses_multiplexing(callable_obj: Any) -> bool:
     return False
 
 
+# Set by `serve._router_application`.
+ROUTER_APPLICATION_MARKER_ATTR = "_serve_router_application"
+
+
+def _is_router_application_class(obj: Any) -> bool:
+    """Whether `obj` is a class marked with `@serve._router_application`."""
+    if not isinstance(obj, type):
+        return False
+    # Walks the MRO, so the marker survives `@serve.ingress`'s wrapper subclass.
+    try:
+        return (
+            inspect.getattr_static(obj, ROUTER_APPLICATION_MARKER_ATTR, False) is True
+        )
+    except Exception:
+        return False
+
+
 def asyncio_grpc_exception_handler(loop, context):
     """Exception handler to filter out false positive BlockingIOErrors from gRPC."""
     exc = context.get("exception")
@@ -801,9 +818,12 @@ async def resolve_deployment_response(obj: Any, request_metadata: RequestMetadat
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
         if request_metadata._by_reference and obj.by_reference:
-            # If sending requests by reference, launch async task to
-            # convert DeploymentResponse to an object ref
-            return asyncio.create_task(obj._to_object_ref())
+
+            # Peek, then wait for presence only. Downstream fetches the value.
+            async def to_ready_ref():
+                return await (await obj._to_object_ref())._ready()
+
+            return asyncio.create_task(to_ready_ref())
         else:
             # Otherwise, resolve DeploymentResponse directly to result
             return asyncio.create_task(await_deployment_response(obj))

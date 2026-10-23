@@ -6,11 +6,13 @@ import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
+from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
     SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
 )
+from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.gang_scheduling_autoscaling_policy import (
     GangSchedulingAutoscalingPolicy,
 )
@@ -69,7 +71,6 @@ def create_context_with_overrides(
         "last_scale_up_time": base_ctx.last_scale_up_time,
         "last_scale_down_time": base_ctx.last_scale_down_time,
         "current_time": base_ctx.current_time,
-        "total_pending_async_requests": base_ctx.total_pending_async_requests,
     }
 
     # Override with provided kwargs
@@ -441,7 +442,6 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
 
@@ -498,7 +498,6 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
         # Downscaling to 0 first stops at 1
@@ -570,7 +569,6 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
@@ -618,7 +616,6 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
         # new_num_replicas = policy_manager.get_decision_num_replicas(1, 100, 1)
@@ -701,7 +698,6 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
         new_num_replicas = None
@@ -768,7 +764,6 @@ class TestReplicaQueueLengthPolicy:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
         new_num_replicas, _ = wrapped_replica_queue_length_autoscaling_policy(ctx=ctx)
@@ -812,7 +807,6 @@ class TestReplicaQueueLengthPolicy:
             last_scale_up_time=None,
             last_scale_down_time=None,
             current_time=None,
-            total_pending_async_requests=0,
         )
 
         # Callables not executed until accessed
@@ -851,7 +845,6 @@ class TestReplicaQueueLengthPolicy:
             last_scale_up_time=None,
             last_scale_down_time=None,
             current_time=None,
-            total_pending_async_requests=0,
         )
 
         assert ctx2.total_num_requests == 100.0
@@ -940,7 +933,6 @@ class TestAutoscalingConfigParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
         # Simulate wall-clock time advancing by actual_iteration_s per call.
@@ -1007,7 +999,6 @@ class TestAutoscalingConfigParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
         base_time = 1000.0
         # Simulate calls before the delay elapses — should not scale up.
@@ -1058,7 +1049,6 @@ class TestAutoscalingConfigParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
         base_time = 1000.0
         # Downscale from 4->1: calls before downscale_delay_s (0.3s) elapses
@@ -1163,7 +1153,6 @@ class TestCustomPolicyWithDefaultParameters:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
         # Scale up when there are 0 replicas and current_handle_queued_queries > 0
@@ -1233,7 +1222,6 @@ class TestCustomPolicyWithDefaultParameters:
             last_scale_up_time=None,
             last_scale_down_time=None,
             current_time=None,
-            total_pending_async_requests=0,
         )
         ctx = create_context_with_overrides(ctx, total_num_requests=total_requests)
         num_replicas, _ = simple_custom_policy(ctx)
@@ -1273,7 +1261,6 @@ class TestAppLevelPolicyWithDefaultParameters:
                 last_scale_up_time=None,
                 last_scale_down_time=None,
                 current_time=None,
-                total_pending_async_requests=0,
             ),
             d2: AutoscalingContext(
                 config=config,
@@ -1293,7 +1280,6 @@ class TestAppLevelPolicyWithDefaultParameters:
                 last_scale_up_time=None,
                 last_scale_down_time=None,
                 current_time=None,
-                total_pending_async_requests=0,
             ),
         }
 
@@ -1331,7 +1317,6 @@ class TestGangSchedulingAutoscalingPolicy:
             last_scale_down_time=None,
             current_time=None,
             config=None,
-            total_pending_async_requests=0,
         )
 
     @pytest.mark.parametrize(
@@ -1498,7 +1483,6 @@ class TestWarmupScalingFeedbackLoop:
                 raw_metrics=None,
                 last_scale_up_time=None,
                 last_scale_down_time=None,
-                total_pending_async_requests=0,
             )
 
             new_target, policy_state = wrapped_replica_queue_length_autoscaling_policy(
@@ -1546,7 +1530,6 @@ class TestAppLevelPolicyStateIsolation:
             raw_metrics=None,
             last_scale_up_time=None,
             last_scale_down_time=None,
-            total_pending_async_requests=0,
         )
 
     def test_shared_user_state_does_not_contaminate_internal_state(self):
@@ -1594,6 +1577,33 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
         assert final_state[d2]["counter"] == 5
+
+
+def test_last_decision_total_num_requests_reuses_decision_value():
+    """record_autoscaling_metrics stashes the decision's total; the getter returns it
+    verbatim.
+    """
+    st = DeploymentAutoscalingState(DeploymentID("D", "default"))
+    st.register(
+        DeploymentInfo(
+            deployment_config=DeploymentConfig(
+                autoscaling_config=AutoscalingConfig(
+                    min_replicas=1, max_replicas=100, target_ongoing_requests=1
+                )
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        ),
+        curr_target_num_replicas=1,
+    )
+    st.record_autoscaling_metrics(
+        decision_num_replicas=3,
+        total_num_requests=42.0,
+        policy_execution_time_ms=1.0,
+        policy_scope="deployment",
+    )
+    assert st.get_last_decision_total_num_requests() == 42.0
 
 
 if __name__ == "__main__":

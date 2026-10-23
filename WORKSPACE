@@ -18,6 +18,26 @@ http_archive(
     ],
 )
 
+# rules_python arrives transitively at 0.9.0 (from rules_foreign_cc 0.9.0), which
+# predates bzlmod and pins pip 22.0.4. 0.40.0 is deliberate, not the newest: it is
+# the last release that still ships python/pip_install/repositories.bzl (loaded
+# below) and still accepts py_runtime_pair(py2_runtime = ...) (bazel/BUILD.bazel).
+# Both are gone in 1.0.0. Declared here so the maybe() in grpc_deps(),
+# protobuf_deps() and rules_foreign_cc_dependencies() skips theirs.
+http_archive(
+    name = "rules_python",
+    sha256 = "690e0141724abb568267e003c7b6d9a54925df40c275a870a4d934161dc9dd53",
+    strip_prefix = "rules_python-0.40.0",
+    urls = [
+        "https://github.com/bazelbuild/rules_python/releases/download/0.40.0/rules_python-0.40.0.tar.gz",
+    ],
+)
+
+# rules_python >= ~0.23 needs this to create @rules_python_internal; 0.9.0 did not.
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
+
 load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
 
 rules_java_dependencies()
@@ -41,11 +61,10 @@ grpc_extra_deps()
 
 load("@bazel_skylib//lib:versions.bzl", "versions")
 
-# Please keep this in sync with the .bazelversion file.
-versions.check(
-    maximum_bazel_version = "7.5.0",
-    minimum_bazel_version = "7.5.0",
-)
+# Floor only: .bazelversion is the exact pin, and bazelisk applies it before this
+# file is evaluated. A maximum here is a second, redundant gate that additionally
+# blocks running a newer Bazel against the tree to find out what it breaks.
+versions.check(minimum_bazel_version = "7.5.0")
 
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
@@ -55,6 +74,12 @@ load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
 python_register_toolchains(
     name = "python3_10",
+    # rules_python >= ~0.23 chmods the hermetic interpreter read-only and then fails
+    # if the current user can still write to it. Ray's CI containers run as root, so
+    # that check fires on every job. The read-only install exists to keep .pyc writes
+    # out of the fetched tree; this toolchain is CI-infra only (see bazel/BUILD.bazel)
+    # and the containers are ephemeral, so the determinism it protects is not at risk.
+    ignore_root_user_error = True,
     python_version = "3.10",
     register_toolchains = False,
 )

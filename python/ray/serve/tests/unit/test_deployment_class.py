@@ -183,6 +183,19 @@ class TestDeploymentOptions:
             def f():
                 pass
 
+    def test_options_max_surge_percent(self):
+        @serve.deployment
+        def f():
+            pass
+
+        assert f._deployment_config.max_surge_percent == 0
+        g = f.options(max_surge_percent=25)
+        assert g._deployment_config.max_surge_percent == 25
+        assert "max_surge_percent" in g._deployment_config.user_configured_option_names
+        assert f._deployment_config.max_surge_percent == 0
+        with pytest.raises(ValueError):
+            f.options(max_surge_percent=101)
+
     def test_deployment_options_version_removed(self):
         @serve.deployment
         def f():

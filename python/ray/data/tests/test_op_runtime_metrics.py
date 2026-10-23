@@ -494,6 +494,61 @@ def test_obj_store_mem_estimation(
     ), f"Expected {test_property} to be {expected}, got {actual}"
 
 
+def _metrics_for_one_output(**phases):
+    """An `OpRuntimeMetrics` fed one output block with the given phase times."""
+    op = MagicMock()
+    op.data_context.enable_get_object_locations_for_metrics = False
+    metrics = OpRuntimeMetrics(op)
+
+    stats = BlockExecStats(
+        wall_time_s=1.0,
+        block_ser_time_s=0.0,
+        block_transform_time_s=0.5,
+        **phases,
+    )
+    metadata = BlockMetadata(
+        num_rows=1, size_bytes=0, input_files=None, exec_stats=stats
+    )
+    output = RefBundle(
+        [BlockEntry(ray.put(pa.Table.from_pydict({})), metadata)],
+        owns_blocks=False,
+        schema=None,
+    )
+
+    metrics.on_task_submitted(0, RefBundle([], owns_blocks=False, schema=None))
+    metrics.on_task_output_generated(0, output)
+    return metrics
+
+
+def test_phase_metrics_stay_none_when_unmeasured():
+    """A chain timed only as a whole must not export three zeros.
+
+    A row transform reports no phase breakdown unless
+    `DataContext.accurate_map_phase_timing` is set. Summing those `None`s as
+    zero would put three zeros beside a non-zero `block_transform_time_s`,
+    which a dashboard can't tell from "these phases took no time".
+    """
+    metrics = _metrics_for_one_output()
+
+    assert metrics.block_transform_time_s == pytest.approx(0.5)
+    assert metrics.input_prep_time_s is None
+    assert metrics.function_body_time_s is None
+    assert metrics.output_build_time_s is None
+
+
+def test_phase_metrics_accumulate_when_measured():
+    """The `None` default must not swallow a measured phase."""
+    metrics = _metrics_for_one_output(
+        input_prep_time_s=0.1,
+        function_body_time_s=0.3,
+        output_build_time_s=0.1,
+    )
+
+    assert metrics.input_prep_time_s == pytest.approx(0.1)
+    assert metrics.function_body_time_s == pytest.approx(0.3)
+    assert metrics.output_build_time_s == pytest.approx(0.1)
+
+
 if __name__ == "__main__":
     import sys
 

@@ -259,6 +259,7 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
+      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            IsLocalhost(config.node_manager_address)),
@@ -278,7 +279,6 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
-      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
@@ -306,9 +306,11 @@ NodeManager::NodeManager(
   // Run the node manager rpc server.
   node_manager_server_.RegisterService(
       std::make_unique<rpc::NodeManagerGrpcService>(io_service, *this), false);
-  // Pass auth token from the RPC server to the syncer service
-  node_manager_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
-      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
+  // Pass auth token from the RPC server to the syncer service.
+  ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(
+      ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken());
+  node_manager_server_.RegisterService(
+      std::make_unique<syncer::RaySyncerGrpcService>(*ray_syncer_service_));
   node_manager_server_.Run();
   // GCS will check the health of the service named with the node id.
   // Fail to setup this will lead to the health check failure.
@@ -331,7 +333,6 @@ NodeManager::NodeManager(
         return execute_after(
             io_service_, std::move(task), std::chrono::milliseconds(delay_ms));
       },
-      shutdown_raylet_gracefully_,
       clock_);
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
@@ -390,7 +391,7 @@ void NodeManager::RegisterGcs() {
     // the local Raylet's usage to broadcast to others (via the GCS). The updates are
     // versioned inside of `LocalResourceManager` to avoid unnecessary broadcasts.
     //
-    // NodeManager::ConsumeSyncMessage will be called when a sync message containing
+    // NodeManager::ConsumeSyncMessages will be called when a sync message containing
     // other Raylets' resource usage is received.
     ray_syncer_.Register(
         /* message_type */ syncer::MessageType::RESOURCE_VIEW,
@@ -405,7 +406,7 @@ void NodeManager::RegisterGcs() {
     // Periodic collection is disabled, so this command is only broadcasted via
     // `BroadcastMessageIfNewVersion` (which will call NodeManager::CreateSyncMessage).
     //
-    // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
+    // NodeManager::ConsumeSyncMessages is called to execute the GC command from other
     // Raylets.
     ray_syncer_.Register(
         /* message_type */ syncer::MessageType::COMMANDS,
@@ -947,9 +948,7 @@ void NodeManager::NodeAdded(const rpc::GcsNodeAddressAndLiveness &node_info) {
   // Update the resource view if a new message has been sent.
   if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
                                                  syncer::MessageType::RESOURCE_VIEW)) {
-    if (sync_msg) {
-      ConsumeSyncMessage(sync_msg);
-    }
+    ConsumeSyncMessages(syncer::MessageType::RESOURCE_VIEW, {sync_msg});
   }
 }
 
@@ -1088,35 +1087,6 @@ bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
         createUpdatedResources.Get(resource_id).Double());
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-  return true;
-}
-
-bool NodeManager::ResourceDeleted(const NodeID &node_id,
-                                  const std::vector<std::string> &resource_names) {
-  if (RAY_LOG_ENABLED(DEBUG)) {
-    std::ostringstream oss;
-    for (auto &resource_name : resource_names) {
-      oss << resource_name << ", ";
-    }
-    RAY_LOG(DEBUG).WithField(node_id)
-        << "[ResourceDeleted] received callback from node with deleted resources: "
-        << oss.str() << ". Updating resource map. skip=" << (node_id == self_node_id_);
-  }
-
-  // Skip updating local node since local node always has the latest information.
-  // Updating local node could result in a inconsistence view in cluster resource
-  // scheduler which could make task hang.
-  if (node_id == self_node_id_) {
-    return false;
-  }
-
-  std::vector<scheduling::ResourceID> resource_ids;
-  resource_ids.reserve(resource_names.size());
-  for (const auto &resource_label : resource_names) {
-    resource_ids.emplace_back(resource_label);
-  }
-  cluster_resource_scheduler_.GetClusterResourceManager().DeleteResources(
-      scheduling::NodeID(node_id.Binary()), resource_ids);
   return true;
 }
 
@@ -2246,9 +2216,14 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
       HandleNotifyWorkerUnblocked(worker);
     }
     local_lease_manager_.ReleaseWorkerResources(worker);
-    // If the worker is exiting, don't add it to our pool. The worker will cleanup
-    // and terminate itself.
-    if (!request.worker_exiting()) {
+    RAY_CHECK(!worker->GetGrantedLeaseId().IsNil());
+    if (request.worker_exiting()) {
+      // The worker will not return to the pool, and one that hangs in shutdown
+      // never triggers DisconnectClient, so release the lease (and its pinned
+      // args) here instead of deferring.
+      CleanupLease(worker);
+    } else {
+      // Cleans up the lease and returns the worker to the pool.
       HandleWorkerAvailable(worker);
     }
   }
@@ -3088,31 +3063,50 @@ void NodeManager::RecordMetrics() {
   lease_dependency_manager_.RecordMetrics();
 }
 
-void NodeManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
-  if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-    syncer::ResourceViewSyncMessage resource_view_sync_message;
-    resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
-    // Set node labels when node added.
-    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-    ResourceRequest resources;
-    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-      resources.Set(scheduling::ResourceID(resource_entry.first),
-                    FixedPoint(resource_entry.second));
+void NodeManager::ConsumeSyncMessages(
+    syncer::MessageType message_type,
+    std::vector<std::shared_ptr<const syncer::RaySyncMessage>> messages) {
+  if (message_type == syncer::MessageType::RESOURCE_VIEW) {
+    bool resource_view_updated = false;
+    for (const auto &message : messages) {
+      const NodeID node_id = NodeID::FromBinary(message->node_id());
+      // Resource sync and node liveness notifications can arrive out of order.
+      // SetNodeLabels/ResourceCreateUpdated below can recreate a removed node, so
+      // reject late resource views before mutating any resource-manager state.
+      // Do not require IsNodeAlive(): a new node's resource view may arrive before
+      // its ALIVE notification. Only an explicitly observed DEAD is terminal.
+      if (failed_nodes_cache_.contains(node_id)) {
+        RAY_LOG(DEBUG).WithField(node_id)
+            << "Ignoring resource view from a node already marked dead.";
+        continue;
+      }
+      syncer::ResourceViewSyncMessage resource_view_sync_message;
+      resource_view_sync_message.ParseFromString(message->sync_message());
+      // Set node labels when node added.
+      absl::flat_hash_map<std::string, std::string> node_labels =
+          MapFromProtobuf(resource_view_sync_message.labels());
+      cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
+          scheduling::NodeID(node_id.Binary()), std::move(node_labels));
+      ResourceRequest resources;
+      for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+        resources.Set(scheduling::ResourceID(resource_entry.first),
+                      FixedPoint(resource_entry.second));
+      }
+      const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+      const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+      resource_view_updated |= capacity_updated || usage_update;
     }
-    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-    if (capacity_updated || usage_update) {
+    // One scheduling pass for the whole batch.
+    if (resource_view_updated) {
       cluster_lease_manager_.ScheduleAndGrantLeases();
     }
-  } else if (message->message_type() == syncer::MessageType::COMMANDS) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.ParseFromString(message->sync_message());
-    if (commands_sync_message.should_global_gc()) {
-      local_gc_triggered_by_global_gc_ = true;
+  } else if (message_type == syncer::MessageType::COMMANDS) {
+    for (const auto &message : messages) {
+      syncer::CommandsSyncMessage commands_sync_message;
+      commands_sync_message.ParseFromString(message->sync_message());
+      if (commands_sync_message.should_global_gc()) {
+        local_gc_triggered_by_global_gc_ = true;
+      }
     }
   }
 }

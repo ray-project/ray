@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import secrets
 import signal
 import sys
 import tempfile
@@ -10,6 +11,12 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+
+# RayConfig reads the auth mode once at import, so set the mode before importing
+# ray. A per-process random token, inherited by subprocesses, lets the cluster
+# and this process agree without a hard-coded secret.
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import ray
 from ray._common.network_utils import build_address, get_localhost_ip
@@ -987,24 +994,30 @@ class TestRuntimeEnv:
         [
             {},
             {"entrypoint_num_cpus": 1},
-            {"entrypoint_num_gpus": 1},
+            pytest.param(
+                {"entrypoint_num_gpus": 1},
+                marks=pytest.mark.skipif(
+                    sys.platform == "darwin",
+                    reason="Apple exposes a single unified GPU with no per device IDs to distinguish.",  # noqa: E501
+                ),
+            ),
             {"entrypoint_memory": 4},
             {"entrypoint_resources": {"Custom": 1}},
         ],
     )
-    async def test_cuda_visible_devices(self, job_manager, resource_kwarg, env_vars):
-        """Check CUDA_VISIBLE_DEVICES behavior introduced in #24546.
+    async def test_visible_devices(self, job_manager, resource_kwarg, env_vars):
+        """Check the visible devices env var behavior introduced in #24546.
 
         Should not be set in the driver, but should be set in tasks.
         We test a variety of `env_vars` parameters due to custom parsing logic
         that caused https://github.com/ray-project/ray/issues/25086.
 
-        If the user specifies a resource, we should not use the CUDA_VISIBLE_DEVICES
-        logic. Instead, the behavior should match that of the user specifying
-        resources for any other actor. So CUDA_VISIBLE_DEVICES should be set in the
-        driver and tasks.
+        If the user specifies a resource, we should not use the NOSET logic.
+        Instead, the behavior should match that of the user specifying
+        resources for any other actor. So the visible devices env var should be
+        set in the driver and tasks.
         """
-        run_cmd = f"python {_driver_script_path('check_cuda_devices.py')}"
+        run_cmd = f"python {_driver_script_path('check_visible_devices.py')}"
         runtime_env = {"env_vars": env_vars}
         if resource_kwarg:
             run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd

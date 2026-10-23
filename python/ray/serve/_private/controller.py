@@ -5,6 +5,7 @@ import pickle
 import time
 from typing import (
     Any,
+    Callable,
     Dict,
     Iterable,
     List,
@@ -21,13 +22,14 @@ from ray._common.network_utils import build_address, get_all_interfaces_ip
 from ray._common.utils import run_background_task
 from ray._raylet import GcsClient  # type: ignore[attr-defined]
 from ray.actor import ActorHandle
+from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
-    AsyncInferenceTaskQueueMetricReport,
     DeploymentID,
     HandleMetricReport,
     NodeId,
+    ReplicaID,
     ReplicaMetricReport,
     RequestProtocol,
     RequestRoutingInfo,
@@ -80,6 +82,10 @@ from ray.serve._private.long_poll import KeyType, LongPollHost, LongPollNamespac
 from ray.serve._private.node_port_manager import NodePortManager
 from ray.serve._private.proxy import ProxyActor
 from ray.serve._private.proxy_state import ProxyStateManager
+from ray.serve._private.routing_config import (
+    RoutingConfigSnapshot,
+    RoutingConfigVersion,
+)
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -128,6 +134,8 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
 SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
+# Retained across Serve shutdowns so generations are not reused within a cluster.
+ROUTING_CONFIG_GENERATION_KEY = "serve-routing-config-generation"
 
 
 class ServeController:
@@ -178,6 +186,12 @@ class ServeController:
         self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
         kv_store_namespace = f"ray-serve-{self.ray_worker_namespace}"
         self.kv_store = RayInternalKVStore(kv_store_namespace, self.gcs_client)
+        self._routing_config_generation = self._get_next_routing_config_generation()
+        self._routing_config_sequence = 0
+        self._routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host = LongPollHost()
         self.done_recovering_event = asyncio.Event()
@@ -385,77 +399,121 @@ class ServeController:
     def get_pid(self) -> int:
         return os.getpid()
 
+    def _record_metrics_delay(
+        self,
+        timestamp: float,
+        deployment_id: DeploymentID,
+        report_delay: Callable[..., None],
+        record_delay: Optional[Callable[[float], None]] = None,
+    ) -> None:
+        """Report ingest delay. Only deployment/application tags are set, so these
+        metrics stay bounded no matter how many sources report."""
+        delay_ms = (time.time() - timestamp) * 1000
+        report_delay(
+            delay_ms,
+            tags={
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+            },
+        )
+        if record_delay is not None:
+            record_delay(delay_ms)
+
+    def record_replica_health(
+        self,
+        replica_id: ReplicaID,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ):
+        """Self-health heartbeat from a replica, standing in for a pull probe."""
+        self.deployment_state_manager.record_replica_health(
+            replica_id, checked_at, healthy, consecutive_failures
+        )
+
     def record_autoscaling_metrics_from_replica(
         self, replica_metric_report: Union[ReplicaMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(replica_metric_report, bytes):
+            decompress_start = time.monotonic()
             replica_metric_report = decompress_metric_report(replica_metric_report)
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
         # Decompression (above) always yields a ReplicaMetricReport.
         replica_metric_report = cast(ReplicaMetricReport, replica_metric_report)
-        latency = time.time() - replica_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = replica_metric_report.replica_id.deployment_id.name
-        application = replica_metric_report.replica_id.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all replicas of a deployment, so we omit the
-        # per-replica tag to keep cardinality bounded.
-        self.replica_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+        self._record_metrics_delay(
+            replica_metric_report.timestamp,
+            replica_metric_report.replica_id.deployment_id,
+            self.replica_metrics_delay_histogram.observe,
+            self._health_metrics_tracker.record_replica_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_replica_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_metric_report
+        )
+        self._health_metrics_tracker.record_replica_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
 
     def record_autoscaling_metrics_from_handle(
         self, handle_metric_report: Union[HandleMetricReport, bytes]
     ):
+        ingest_start = time.monotonic()
         if isinstance(handle_metric_report, bytes):
-            handle_metric_report = decompress_metric_report(handle_metric_report)
+            if autoscaling_metrics_codec.is_columnar(handle_metric_report):
+                # Wire-detected on the frame magic rather than assumed, so this
+                # path works whether or not routers emit columnar yet. Timed apart
+                # from decompress: separating the two codecs is the point of the
+                # metric.
+                decode_start = time.monotonic()
+                try:
+                    d = autoscaling_metrics_codec.decode_handle_flat(
+                        handle_metric_report
+                    )
+                except Exception:
+                    # The sender never reads this call's ObjectRef, so an unparseable
+                    # report would otherwise vanish with no trace on either side. The
+                    # handle keeps its last good data until the drop path times it out.
+                    logger.exception("Dropping an undecodable columnar metric report.")
+                    return
+                self._health_metrics_tracker.record_columnar_decode(
+                    (time.monotonic() - decode_start) * 1000
+                )
+                self._record_metrics_delay(
+                    d["timestamp"],
+                    d["deployment_id"],
+                    self.handle_metrics_delay_histogram.observe,
+                    self._health_metrics_tracker.record_handle_metrics_delay,
+                )
+                self.autoscaling_state_manager.record_columnar_metrics_for_handle(d)
+                self._health_metrics_tracker.record_handle_ingest(
+                    (time.monotonic() - ingest_start) * 1000
+                )
+                return
+            decompress_start = time.monotonic()
+            try:
+                handle_metric_report = decompress_metric_report(handle_metric_report)
+            except Exception:
+                logger.exception("Dropping an undecompressible handle metric report.")
+                return
+            self._health_metrics_tracker.record_decompress(
+                (time.monotonic() - decompress_start) * 1000
+            )
         # Decompression (above) always yields a HandleMetricReport.
         handle_metric_report = cast(HandleMetricReport, handle_metric_report)
-        latency = time.time() - handle_metric_report.timestamp
-        latency_ms = latency * 1000
-        deployment = handle_metric_report.deployment_id.name
-        application = handle_metric_report.deployment_id.app_name
-
-        # Record the metrics delay for observability. A histogram lets Prometheus
-        # aggregate reports from all handles of a deployment, so we omit the
-        # per-handle tag to keep cardinality bounded.
-        self.handle_metrics_delay_histogram.observe(
-            latency_ms,
-            tags={
-                "deployment": deployment,
-                "application": application,
-            },
+        self._record_metrics_delay(
+            handle_metric_report.timestamp,
+            handle_metric_report.deployment_id,
+            self.handle_metrics_delay_histogram.observe,
+            self._health_metrics_tracker.record_handle_metrics_delay,
         )
-        # Track in health metrics
-        self._health_metrics_tracker.record_handle_metrics_delay(latency_ms)
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             handle_metric_report
         )
-
-    def record_autoscaling_metrics_from_async_inference_task_queue(
-        self, report: AsyncInferenceTaskQueueMetricReport
-    ):
-        """Record async inference task queue metrics pushed from QueueMonitor."""
-        latency = time.time() - report.timestamp_s
-        latency_ms = latency * 1000
-        # Record the metrics delay for observability
-        self.async_inference_task_queue_metrics_delay_gauge.set(
-            latency_ms,
-            tags={
-                "deployment": report.deployment_id.name,
-                "application": report.deployment_id.app_name,
-            },
+        self._health_metrics_tracker.record_handle_ingest(
+            (time.monotonic() - ingest_start) * 1000
         )
-        self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
@@ -466,6 +524,11 @@ class ServeController:
 
     def _get_metrics_for_deployment_for_testing(self, deployment_id: DeploymentID):
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
+
+    def _should_autoscale_deployment_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> bool:
+        return self.autoscaling_state_manager.should_autoscale_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._dump_replica_states_for_testing(
@@ -749,7 +812,17 @@ class ServeController:
             # control loop retries the reconcile next tick instead of skipping it.
             self._last_ingress_membership_version = version
 
-    def broadcast_target_groups_if_changed(self) -> None:
+    def _get_next_routing_config_generation(self) -> int:
+        """Persist and return the generation for this controller process."""
+        checkpoint = self.kv_store.get(ROUTING_CONFIG_GENERATION_KEY)
+        generation = int(checkpoint) + 1 if checkpoint is not None else 1
+        self.kv_store.put(
+            ROUTING_CONFIG_GENERATION_KEY,
+            str(generation).encode(),
+        )
+        return generation
+
+    def broadcast_target_groups_if_changed(self) -> RoutingConfigVersion:
         """Broadcast target groups over long poll if they have changed.
 
         Keeps an in-memory record of the last target groups that were broadcast
@@ -761,12 +834,34 @@ class ServeController:
 
         # Check if target groups have changed by comparing the objects directly
         if self._last_broadcasted_target_groups == target_groups:
-            return
+            return self._routing_config_version
+
+        self._routing_config_sequence += 1
+        routing_config_version = RoutingConfigVersion(
+            generation=self._routing_config_generation,
+            sequence=self._routing_config_sequence,
+        )
 
         self.long_poll_host.notify_changed(
-            {LongPollNamespace.TARGET_GROUPS: target_groups}
+            {
+                LongPollNamespace.TARGET_GROUPS: RoutingConfigSnapshot(
+                    target_groups=target_groups,
+                    version=routing_config_version,
+                )
+            }
         )
         self._last_broadcasted_target_groups = target_groups
+        self._routing_config_version = routing_config_version
+        return routing_config_version
+
+    async def get_routing_config_version(self) -> RoutingConfigVersion:
+        """Return the version containing the controller's current routing state.
+
+        Broadcast before returning so the version is guaranteed to cover target
+        groups generated from the latest reconciled application state.
+        """
+        await self.done_recovering_event.wait()
+        return self.broadcast_target_groups_if_changed()
 
     def broadcast_fallback_targets_if_changed(self) -> None:
         """Broadcast the fallback targets over long poll if they have changed."""
@@ -836,14 +931,6 @@ class ServeController:
                 "High values may indicate a busy controller."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
-            tag_keys=("deployment", "application"),
-        )
-        self.async_inference_task_queue_metrics_delay_gauge = metrics.Gauge(
-            "serve_autoscaling_async_inference_task_queue_metrics_delay_ms",
-            description=(
-                "Time taken for the async inference task queue metrics to be reported "
-                "to the controller. High values may indicate a busy controller."
-            ),
             tag_keys=("deployment", "application"),
         )
 
@@ -1166,6 +1253,7 @@ class ServeController:
                         "ingress": args.ingress,
                         "ingress_request_router": args.ingress_request_router,
                         "uses_multiplexing": args.uses_multiplexing,
+                        "router_application": args.router_application,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1456,6 +1544,8 @@ class ServeController:
             applications=applications,
             target_groups=self.get_target_groups(),
             controller_health_metrics=self._health_metrics_tracker.collect_metrics(),
+            # Set this explicitly so exclude_unset includes it in the response.
+            restores_unset_config_options=True,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
     def _get_proxy_target_groups(self) -> List[TargetGroup]:
@@ -1473,6 +1563,7 @@ class ServeController:
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
                     ingress_request_router_targets=[],
+                    ingress_router_fallback=False,
                     ingress_deployment_name="",
                 )
             )
@@ -1631,6 +1722,9 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
+        )
 
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
@@ -1650,6 +1744,8 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
+        ingress_router_fallback = ingress_request_router_deployment_name is not None
+
         target_groups = []
 
         # Create targets for each protocol
@@ -1664,7 +1760,9 @@ class ServeController:
                     targets=http_targets,
                     app_name=app_name,
                     ingress_request_router_targets=ingress_request_router_targets,
+                    ingress_router_fallback=ingress_router_fallback,
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
 
@@ -1700,6 +1798,10 @@ class ServeController:
         ingress_deployment_name = (
             self.application_state_manager.get_ingress_deployment_name(app_name) or ""
         )
+        # Needed at zero replicas too, else clients receive the router's decisions.
+        is_router_application = self.application_state_manager.is_router_application(
+            app_name
+        )
 
         if self._ha_proxy_enabled:
             http_targets = []
@@ -1722,6 +1824,7 @@ class ServeController:
                     app_name=app_name,
                     ingress_request_router_targets=[],
                     ingress_deployment_name=ingress_deployment_name,
+                    is_router_application=is_router_application,
                 )
             )
         if include_grpc:

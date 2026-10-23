@@ -280,7 +280,7 @@ class RayActorOptionsSchema(BaseModel):
         default={},
         description=(
             "This deployment's runtime_env. working_dir and "
-            "py_modules may contain only remote URIs."
+            "py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     num_cpus: Optional[float] = Field(
@@ -359,8 +359,9 @@ class RayActorOptionsSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -416,7 +417,7 @@ class DeploymentSchema(BaseModel):
             "default, or 429) and an optional `Retry-After` header."
         ),
     )
-    user_config: Optional[Dict] = Field(
+    user_config: Any = Field(
         default=DEFAULT.VALUE,
         description=(
             "Config to pass into this deployment's "
@@ -549,6 +550,22 @@ class DeploymentSchema(BaseModel):
         ),
         gt=0.0,
         le=1.0,
+    )
+    max_surge_percent: int = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "Extra replicas allowed during a rolling restart, as a percentage "
+            "of the target count, rounded up to whole replicas or gangs. "
+            "Must be in [0, 100]. When positive, replacements start before old "
+            "replicas stop. If capacity is unavailable, old replicas keep serving "
+            "while replacements wait. Stopping replicas do not count toward the "
+            "limit, so live actors can exceed the target plus surge while old "
+            "replicas drain. Lightweight configuration changes to replicas on "
+            "the new code wait until restarts finish. Defaults to 0, which stops "
+            "old replicas before starting replacements."
+        ),
+        ge=0,
+        le=100,
     )
 
     @model_validator(mode="before")
@@ -746,6 +763,7 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         ray_actor_options=info.replica_config.ray_actor_options,
         request_router_config=info.deployment_config.request_router_config,
         rolling_update_percentage=info.deployment_config.rolling_update_percentage,
+        max_surge_percent=info.deployment_config.max_surge_percent,
     )
 
     if info.deployment_config.autoscaling_config is not None:
@@ -816,7 +834,7 @@ class ServeApplicationSchema(BaseModel):
         description=(
             "The runtime_env that the deployment graph will be run in. "
             "Per-deployment runtime_envs will inherit from this. working_dir "
-            "and py_modules may contain only remote URIs."
+            "and py_modules may contain only remote URIs, or 'local://' URIs."
         ),
     )
     host: str = Field(
@@ -897,8 +915,9 @@ class ServeApplicationSchema(BaseModel):
                 except ValueError as e:
                     raise ValueError(
                         "runtime_envs in the Serve config support only "
-                        "remote URIs in working_dir and py_modules. Got "
-                        f"error when parsing URI: {e}"
+                        "remote URIs in working_dir and py_modules, or "
+                        '"local://" URIs for directories that already exist on '
+                        f"every node. Got error when parsing URI: {e}"
                     )
 
         return v
@@ -1000,6 +1019,14 @@ class gRPCOptionsSchema(BaseModel):
         default=None,
         description="The timeout for gRPC requests. Defaults to no timeout.",
     )
+    enable_reflection: bool = Field(
+        default=True,
+        description=(
+            "Enable the gRPC server reflection protocol on Serve's gRPC proxy "
+            "so tools such as grpcurl and grpcui can discover and call the "
+            "registered gRPC services. Defaults to True."
+        ),
+    )
 
 
 @PublicAPI(stability="stable")
@@ -1031,8 +1058,11 @@ class HTTPOptionsSchema(BaseModel):
     root_path: str = Field(
         default="",
         description=(
-            'Root path to mount the serve application (for example, "/serve"). All '
-            'deployment routes will be prefixed with this path. Defaults to "".'
+            "ASGI root path that the serve application is mounted at (for "
+            'example, "/serve"), for when Serve runs behind a proxy that strips '
+            "this prefix before forwarding. Requests reach Serve without the "
+            "prefix, and applications see it in the ASGI scope's root_path and "
+            'path. Defaults to "".'
         ),
     )
     request_timeout_s: Optional[float] = Field(
@@ -1655,11 +1685,23 @@ class TargetGroup(BaseModel):
             "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
     )
+    ingress_router_fallback: bool = Field(
+        False,
+        description=(
+            "Whether an HTTP ingress router is configured. HAProxy uses this to "
+            "enable fallback even when no router replicas are running."
+        ),
+    )
     # Name of the application's ingress deployment (the deployment that serves
     # the data-plane traffic). Empty when not applicable (e.g. proxy target groups).
     ingress_deployment_name: str = Field(
         "",
         description="Name of the application's ingress deployment.",
+    )
+    is_router_application: bool = Field(
+        False,
+        description="Whether the ingress routes requests to other applications' "
+        "replicas. HTTP target groups only.",
     )
 
 
@@ -1753,6 +1795,56 @@ class ControllerHealthMetrics(BaseModel):
         default=0, description="Number of pending asyncio tasks."
     )
 
+    # Ingestion-path metrics (autoscaling metrics fan-in)
+    handle_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_handle (rolling window, ms)."
+        ),
+    )
+    replica_ingest_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call processing time inside "
+            "record_autoscaling_metrics_from_replica (rolling window, ms)."
+        ),
+    )
+    metrics_decompress_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decompress time for cloudpickle metric reports "
+            "(rolling window, ms)."
+        ),
+    )
+
+    columnar_decode_duration_ms: Optional[DurationStats] = Field(
+        default=None,
+        description=(
+            "Per-call decode time for columnar metric reports (rolling window, ms). "
+            "Separate from metrics_decompress_duration_ms so the two wire formats "
+            "stay comparable."
+        ),
+    )
+    handle_reports_received: int = Field(
+        default=0, description="Total handle metric reports ingested since start."
+    )
+    replica_reports_received: int = Field(
+        default=0, description="Total replica metric reports ingested since start."
+    )
+    ingest_reports_received: int = Field(
+        default=0,
+        description="Total autoscaling metric reports ingested since start.",
+    )
+    ingest_cpu_fraction: float = Field(
+        default=0.0,
+        description=(
+            "Fraction of one event-loop core consumed by the metrics ingestion "
+            "path over the recent sampling window. Approaches 1.0 as ingestion "
+            "monopolizes the single control-loop thread."
+        ),
+    )
+
     # Component update durations (rolling window stats)
     deployment_state_update_duration_s: Optional[DurationStats] = Field(
         default=None,
@@ -1844,6 +1936,14 @@ class ServeInstanceDetails(BaseModel):
     controller_health_metrics: ControllerHealthMetrics = Field(
         default_factory=ControllerHealthMetrics,
         description="Health metrics for the Ray Serve controller.",
+    )
+
+    restores_unset_config_options: bool = Field(
+        default=False,
+        description=(
+            "Whether removing a deployment config override restores the value "
+            "defined in code. Older versions omit this field and keep the override."
+        ),
     )
 
     @staticmethod

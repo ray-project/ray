@@ -14,7 +14,7 @@ To start a vSphere Ray cluster, you will use the Ray cluster launcher along with
 
 If you don't already have a vSphere deployment, you can learn more about it by reading the [vSphere documentation](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere-supervisor/7-0/vsphere-with-tanzu-configuration-and-management-7-0/configuring-and-managing-a-supervisor-cluster/deploy-a-supervisor-with-nsx-networking.html). The vSphere Ray cluster launcher requires vSphere version 9.0 or later, along with the following prerequisites for creating Ray clusters.
 
-* [A vSphere cluster with Workload Control Plane (WCP) enabled ](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere-supervisor/7-0/vsphere-with-tanzu-configuration-and-management-7-0/configuring-and-managing-a-supervisor-cluster/deploy-a-supervisor-with-nsx-networking.html)
+* [A vSphere cluster with Workload Control Plane (WCP) enabled](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere-supervisor/7-0/vsphere-with-tanzu-configuration-and-management-7-0/configuring-and-managing-a-supervisor-cluster/deploy-a-supervisor-with-nsx-networking.html)
 
 ## Installing supervisor service for Ray on vSphere
 

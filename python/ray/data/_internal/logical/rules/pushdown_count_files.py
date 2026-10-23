@@ -2,19 +2,13 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING, Optional
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
-    NonSamplingFileIndexer,
-)
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.readers.supports_metadata import (
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
     SupportsMetadata,
-)
-from ray.data._internal.datasource_v2.scanners.arrow_file_scanner import (
-    ArrowFileScanner,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan, Rule
 from ray.data._internal.logical.operators.count_operator import Count
@@ -32,7 +26,7 @@ class PushdownCountFiles(Rule):
 
     When a ``Count`` sits directly on top of a bare DataSourceV2 ``ReadFiles``
     (optionally through a row-preserving ``Project``) whose reader implements
-    :class:`~ray.data._internal.datasource_v2.readers.supports_metadata.SupportsMetadata`,
+    :class:`~ray.data._internal.datasource_v2.interfaces.supports_metadata.SupportsMetadata`,
     this rule rewrites the plan to::
 
         Count(ReadFiles(ListFiles))  ->  MapBatches(count_rows, ListFiles)
@@ -42,6 +36,12 @@ class PushdownCountFiles(Rule):
     plain whole-file indexer and no partitioner, so (a) each file appears in
     exactly one manifest row -- no over-counting -- and (b) listing does no
     metadata IO of its own: footers are read once, in the parallel count pass.
+
+    Two things must hold, and each component is asked rather than type-tested.
+    The scan's row count must be answerable from file metadata
+    (``metadata_row_count_is_exact``), and the listing must emit each file
+    exactly once (``as_whole_file_indexer``). Both hooks default to "no": a
+    wrong count is silent, while declining just falls back to a real read.
 
     Note this *replaces* metadata-aware indexers such as the footer-based
     Parquet one, rather than reconfiguring them: those override ``list_files``
@@ -70,16 +70,11 @@ class PushdownCountFiles(Rule):
         if not isinstance(read_files, ReadFiles) or read_files.block_udf is not None:
             return plan
 
-        # A row-reducing pushdown on the scanner would make the footer's
-        # ``num_rows`` an overcount. Column projection is fine (rows unaffected).
+        # A limit, or a filter the source cannot account for in its metadata,
+        # would make the metadata ``num_rows`` an overcount. Column projection
+        # is fine: it changes width, not row count.
         scanner = read_files.scanner
-        if not isinstance(scanner, ArrowFileScanner):
-            return plan
-        if (
-            scanner.predicate is not None
-            or scanner.partition_predicate is not None
-            or scanner.limit is not None
-        ):
+        if not scanner.metadata_row_count_is_exact():
             return plan
 
         reader = scanner.create_reader()
@@ -102,12 +97,13 @@ class PushdownCountFiles(Rule):
         # and ignores its chunker, so it would keep footer-sweeping during
         # listing and could emit a path once per bin, over-counting it.
         base_indexer = list_files.file_indexer
-        if not isinstance(base_indexer, NonSamplingFileIndexer):
-            # A third-party indexer may chunk files or do its own metadata IO;
-            # we can't prove one-row-per-file, so leave the plan alone and let
+        whole_file_indexer = base_indexer.as_whole_file_indexer()
+        if whole_file_indexer is None:
+            # The indexer can't promise one manifest row per file -- it may chunk
+            # files or do its own metadata IO -- so leave the plan alone and let
             # ``count()`` fall back to the regular read path.
             logger.debug(
-                "Skipping count pushdown: %s is not a NonSamplingFileIndexer",
+                "Skipping count pushdown: %s cannot provide a whole-file indexer",
                 type(base_indexer).__name__,
             )
             return plan
@@ -116,7 +112,7 @@ class PushdownCountFiles(Rule):
         list_files = dataclasses.replace(
             list_files,
             file_partitioner=None,
-            file_indexer=base_indexer.as_whole_file_indexer(),
+            file_indexer=whole_file_indexer,
         )
 
         # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above, but

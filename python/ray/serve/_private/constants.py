@@ -85,6 +85,13 @@ HTTP_PROXY_TIMEOUT = 60
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
 
+# Stop rolling updates at the startup failure threshold, including health check
+# failures. Keep surviving replicas until a deploy changes the target.
+# Set to "0" to keep retrying after any new replica has started.
+RAY_SERVE_STOP_FAILED_ROLLING_UPDATES = get_env_bool(
+    "RAY_SERVE_STOP_FAILED_ROLLING_UPDATES", "1"
+)
+
 #: Max processing latency metric configuration.
 #: Rolling window duration for calculating max processing latency (in seconds).
 RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
@@ -443,8 +450,30 @@ SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id"
 # returned by /internal/route.
 SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
+# Marks a router-application response that HAProxy should return directly to
+# the client instead of interpreting as an application/replica decision.
+SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
+
+# Original client method forwarded to a router application's internal decision
+# request. The decision transport itself always uses POST so it can carry a body.
+SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
+)
+
+# Original client request target forwarded by HAProxy to /internal/route. Router
+# applications receive the path and query; ingress request routers receive the path.
+SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
+)
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
+
+# Kill switch for the columnar handle-metric wire format. On by default; set to 0 to
+# fall back to cloudpickle without a redeploy. The controller reads either format.
+RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS = get_env_bool(
+    "RAY_SERVE_COLUMNAR_AUTOSCALING_METRICS", "1"
+)
 
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
@@ -485,11 +514,6 @@ RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S",
     10.0,
-)
-
-# Async inference task queue metrics push interval.
-RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S = get_env_float(
-    "RAY_SERVE_ASYNC_INFERENCE_TASK_QUEUE_METRIC_PUSH_INTERVAL_S", 10.0
 )
 
 # Serve multiplexed matching timeout.
@@ -613,6 +637,19 @@ RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
+# Cancel an in-progress node compaction after this long.
+RAY_SERVE_COMPACTION_TIMEOUT_S = get_env_float("RAY_SERVE_COMPACTION_TIMEOUT_S", 1800.0)
+
+# Deployments must be stable for this long before a new compaction starts.
+RAY_SERVE_NODE_COMPACTION_DELAY_S = get_env_float(
+    "RAY_SERVE_NODE_COMPACTION_DELAY_S", 300.0
+)
+
+# Cap on the exponential backoff between failed compaction attempts.
+RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S = get_env_float(
+    "RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S", 3600.0
+)
+
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
@@ -626,14 +663,12 @@ RAY_SERVE_FORCE_LOCAL_TESTING_MODE = get_env_bool(
 )
 
 # Run sync methods defined in the replica in a thread pool by default.
-RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0")
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1")
 
 RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
-    "Calling sync method '{method_name}' directly on the "
-    "asyncio loop. In a future version, sync methods will be run in a "
-    "threadpool by default. Ensure your sync methods are thread safe "
-    "or keep the existing behavior by making them `async def`. Opt "
-    "into the new behavior by setting "
+    "Calling sync method '{method_name}' directly on the asyncio loop because "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0. This can block other requests. Make "
+    "the method `async def` or restore threadpool dispatch by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
 )
 
@@ -749,7 +784,7 @@ RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
-RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
+RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "4096"))
 
 # Number of threads for HAProxy
 RAY_SERVE_HAPROXY_NBTHREAD = int(os.environ.get("RAY_SERVE_HAPROXY_NBTHREAD", "4"))
@@ -850,12 +885,16 @@ RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S = (
     else None
 )
 
-RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = (
-    # Guarded by the truthiness check below; the two get() calls can't be
-    # narrowed by mypy.
-    int(os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S"))  # type: ignore[arg-type]
-    if os.environ.get("RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S")
-    else None
+# Connection timeout to a replica, in seconds. Replicas are in-cluster, so a
+# connect that takes seconds means the node is gone rather than busy; bounding
+# it lets `retry-on conn-failure` + `option redispatch` reach another replica
+# while the request still has budget.
+#
+# Set to 0 to disable. HAProxy stores an unset timeout as 0, so `timeout
+# connect 0s` is indistinguishable from omitting the directive: an infinite
+# connect timeout, plus HAProxy's "missing timeouts" startup warning.
+RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S = get_env_int_non_negative(
+    "RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S", 5
 )
 
 # When enabled, adds 'option http-no-delay' to the HAProxy config defaults,
@@ -908,7 +947,7 @@ RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER = os.environ.get(
 # redispatch + the `backup` fallback take over. Health checks revive a false
 # positive in ~0.5s. Backup/fallback servers are never observed.
 RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED = get_env_bool(
-    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "0"
+    "RAY_SERVE_HAPROXY_OBSERVE_MARK_DOWN_ENABLED", "1"
 )
 
 # Consecutive observed layer4 errors before a server is marked DOWN. Only
@@ -958,7 +997,7 @@ RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
 # do best-effort prefix matching. Memory cost is ~2 * bufsize * maxconn.
 # Only consulted when RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1.
 RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE = get_env_int(
-    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 262144
+    "RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE", 8 * 1024 * 1024
 )
 
 # HAProxy tuning flags
@@ -1022,17 +1061,19 @@ RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
+# Both ranges sit below the Linux ephemeral range (32768-60999), where Ray
+# workers bind their own listen ports.
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
 RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "31500")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "32500")
 )
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")
@@ -1117,11 +1158,6 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 
 if RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED:
     RAY_SERVE_HAPROXY_METRICS_ENABLED = True
-
-# Feature flag to aggregate metrics at the controller instead of the replicas or handles.
-RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
-    "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
-)
 
 # Feature flag to include high-cardinality source tags on Serve controller metrics.
 # Disable this to keep deployment/application tags while dropping source identifiers

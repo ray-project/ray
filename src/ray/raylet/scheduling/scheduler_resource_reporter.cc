@@ -30,12 +30,6 @@ namespace raylet {
 
 namespace {
 
-bool HasHardNodeAffinity(const LabelSelector &label_selector) {
-  const std::optional<absl::flat_hash_set<std::string>> hard_node_affinity_values =
-      GetHardNodeAffinityValues(label_selector);
-  return hard_node_affinity_values.has_value() && !hard_node_affinity_values->empty();
-}
-
 bool AllLabelSelectorsAreHardNodeAffinity(
     const SchedulingClassDescriptor &scheduling_class_descriptor) {
   if (!HasHardNodeAffinity(scheduling_class_descriptor.label_selector)) {

@@ -15,15 +15,17 @@ import timeit
 import traceback
 import uuid
 from collections.abc import Hashable
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type
+from unittest.mock import patch
 from urllib.parse import quote, urlparse
 
 import requests
 import yaml
 
 import ray
+import ray._private.accelerators
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.services as services
@@ -66,6 +68,108 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
+
+
+def _auth_token_header():
+    from ray._raylet import AuthenticationTokenLoader
+
+    return AuthenticationTokenLoader.instance().get_token_for_http_header(
+        ignore_auth_mode=True
+    )
+
+
+def request_with_auth_token(method, url, **kwargs):
+    """Like ``requests.request`` but attaches the cluster's auth token."""
+    kwargs["headers"] = {**_auth_token_header(), **(kwargs.get("headers") or {})}
+    return requests.request(method, url, **kwargs)
+
+
+def auth_token_grpc_metadata():
+    """gRPC metadata carrying the cluster's auth token, empty when there is none."""
+    return tuple(_auth_token_header().items())
+
+
+def call_with_auth_token(rpc, request, **kwargs):
+    """Call a gRPC stub method with the auth token this process has, if any."""
+    import grpc
+
+    from ray._private.authentication.authentication_constants import (
+        AUTH_MODE_MISMATCH_ERROR_MESSAGE,
+    )
+
+    try:
+        return rpc(request, metadata=auth_token_grpc_metadata(), **kwargs)
+    except grpc.RpcError as e:
+        # The token comes from this process's token file whatever the cluster's
+        # mode, and a cluster with auth disabled rejects it.
+        if AUTH_MODE_MISMATCH_ERROR_MESSAGE not in (e.details() or ""):
+            raise
+        return rpc(request, **kwargs)
+
+
+def _shutdown_raylet(raylet_address, graceful):
+    import grpc
+    from grpc._channel import _InactiveRpcError
+
+    from ray.core.generated import node_manager_pb2_grpc
+
+    stub = node_manager_pb2_grpc.NodeManagerServiceStub(
+        grpc.insecure_channel(raylet_address)
+    )
+    try:
+        call_with_auth_token(
+            stub.ShutdownRaylet,
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful),
+        )
+    except _InactiveRpcError:
+        assert not graceful
+
+
+def get_gpu_visible_devices_env_var() -> Optional[str]:
+    """Name of the visible devices env var for this node's GPU family, or None.
+
+    The name differs per family (CUDA_VISIBLE_DEVICES on NVIDIA, HIP_VISIBLE_DEVICES
+    on AMD), and Apple Silicon has none at all, so callers must handle None.
+    """
+    return ray._private.accelerators.get_accelerator_manager_for_resource(
+        "GPU"
+    ).get_visible_accelerator_ids_env_var()
+
+
+@contextmanager
+def mock_accelerator_detection(manager, num_accelerators: Optional[int] = None):
+    resource_name = manager.get_resource_name()
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_all_accelerator_resource_names",
+                return_value=[resource_name],
+            )
+        )
+        stack.enter_context(
+            patch(
+                "ray._private.accelerators.get_accelerator_manager_for_resource",
+                side_effect=lambda name: manager if name == resource_name else None,
+            )
+        )
+        if num_accelerators is not None:
+            stack.enter_context(
+                patch.object(
+                    manager,
+                    "get_current_node_num_accelerators",
+                    return_value=num_accelerators,
+                )
+            )
+        yield
+
+
+@contextmanager
+def mock_no_accelerators():
+    with patch(
+        "ray._private.accelerators.get_all_accelerator_resource_names",
+        return_value=[],
+    ):
+        yield
 
 
 def make_global_state_accessor(ray_context):
@@ -1545,20 +1649,7 @@ class RayletKiller(NodeKillerBase):
         return True
 
     def _kill_raylet(self, ip, port, graceful=False):
-        import grpc
-        from grpc._channel import _InactiveRpcError
-
-        from ray.core.generated import node_manager_pb2_grpc
-
-        raylet_address = build_address(ip, port)
-        channel = grpc.insecure_channel(raylet_address)
-        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-        try:
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
-            )
-        except _InactiveRpcError:
-            assert not graceful
+        _shutdown_raylet(build_address(ip, port), graceful)
 
 
 @ray.remote(num_cpus=0)
@@ -1912,20 +2003,10 @@ def get_load_metrics_report(webui_url):
 
 # Send a RPC to the raylet to have it self-destruct its process.
 def kill_raylet(raylet, graceful=False):
-    import grpc
-    from grpc._channel import _InactiveRpcError
-
-    from ray.core.generated import node_manager_pb2_grpc
-
-    raylet_address = build_address(
-        raylet["NodeManagerAddress"], raylet["NodeManagerPort"]
+    _shutdown_raylet(
+        build_address(raylet["NodeManagerAddress"], raylet["NodeManagerPort"]),
+        graceful,
     )
-    channel = grpc.insecure_channel(raylet_address)
-    stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-    try:
-        stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
-    except _InactiveRpcError:
-        assert not graceful
 
 
 def get_gcs_memory_used():

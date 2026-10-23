@@ -23,23 +23,32 @@
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
+#include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
+#include "ray/util/env.h"
 #include "ray/util/logging.h"
 
 #ifdef _WIN32
 #include <Windows.h>  // Force inclusion of WinGDI here to resolve name conflict
+#else
+#include <pwd.h>
+#include <unistd.h>
 #endif
 
 namespace ray {
 namespace rpc {
 
+// Keep in sync with TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE in
+// python/ray/_private/authentication/authentication_constants.py, so the Python
+// AuthenticationError recognizes the fix text and doesn't append it twice.
 constexpr const char *kNoTokenErrorMessage =
-    "Token authentication is enabled but Ray couldn't find an "
-    "authentication token. "
-    "Create a token file at ~/.ray/auth_token, "
-    "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
-    "or set the RAY_AUTH_TOKEN environment variable.";
+    "Token authentication is enabled but no authentication token was found. "
+    "To connect to a cluster with token authentication, run `ray get-auth-token` "
+    "on the head node and copy the token to ~/.ray/auth_token on this machine, "
+    "or to a file that RAY_AUTH_TOKEN_PATH points to. If the cluster was started "
+    "with RAY_AUTH_MODE=disabled, set RAY_AUTH_MODE=disabled here too. See "
+    "https://docs.ray.io/en/latest/ray-security/token-auth.html for more information.";
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
@@ -242,10 +251,13 @@ std::string AuthenticationTokenLoader::ReadTokenFromFile(const std::string &file
     return "";
   }
 
-  std::string token;
-  std::getline(token_file, token);
-  token_file.close();
-  return token;
+  std::string line;
+  while (std::getline(token_file, line)) {
+    if (!TrimWhitespace(line).empty()) {
+      return line;
+    }
+  }
+  return "";
 }
 
 std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
@@ -266,8 +278,19 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
 #else
   const char *path_separator = "/";
   const char *home = std::getenv("HOME");
-  if (home != nullptr) {
+  if (home != nullptr && home[0] != '\0') {
     home_dir = home;
+  } else {
+    // Match Python's Path.home(): when HOME is unset (e.g. CI running as root
+    // without HOME), fall back to the passwd database so the C++ and Python
+    // sides resolve the same ~/.ray/auth_token path.
+    struct passwd pwd;
+    struct passwd *result = nullptr;
+    char buf[4096];  // A home-dir path fits comfortably; no ERANGE retry needed.
+    if (getpwuid_r(getuid(), &pwd, buf, sizeof(buf), &result) == 0 && result != nullptr &&
+        result->pw_dir != nullptr) {
+      home_dir = result->pw_dir;
+    }
   }
 #endif
 
@@ -275,8 +298,10 @@ std::string AuthenticationTokenLoader::GetDefaultTokenPath() {
       std::string(path_separator) + ".ray" + std::string(path_separator) + "auth_token";
 
   if (home_dir.empty()) {
+    // No resolvable home: return an empty path rather than an invalid relative
+    // "./.ray/auth_token". ReadTokenFromFile("") simply finds no token.
     RAY_LOG(WARNING) << "Cannot determine home directory for token storage";
-    return "." + token_subpath;
+    return "";
   }
 
   return home_dir + token_subpath;
@@ -294,6 +319,22 @@ std::string AuthenticationTokenLoader::TrimWhitespace(const std::string &str) {
 
   trimmed_str.erase(trimmed_str.find_last_not_of(whitespace) + 1);
   return trimmed_str;
+}
+
+void MaybeEnableTokenAuthIfTokenAvailable() {
+  if (std::getenv("RAY_AUTH_MODE") != nullptr) {
+    return;
+  }
+  auto result =
+      AuthenticationTokenLoader::instance().TryLoadToken(/*ignore_auth_mode=*/true);
+  if (result.hasError() || !result.token.has_value() || result.token->empty()) {
+    return;
+  }
+  SetEnv("RAY_AUTH_MODE", "token");
+  RayConfig::instance().initialize("");
+  RAY_LOG(WARNING) << "Token authentication is enabled for this Ray cluster. Set "
+                      "RAY_AUTH_MODE=disabled to opt out. For more information, see "
+                      "https://docs.ray.io/en/latest/ray-security/token-auth.html";
 }
 
 }  // namespace rpc
