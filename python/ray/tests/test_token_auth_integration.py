@@ -474,11 +474,12 @@ def test_ray_start_head_reports_a_missing_token_path_file(tmp_path: Path) -> Non
     "multi-node provider, which don't run in client mode or on Windows",
 )
 def test_autoscaling_cluster_creates_token() -> None:
-    """AutoscalingCluster() creates the token
-    before its `ray start --head`, so it comes up with auth on in an empty HOME."""
+    """AutoscalingCluster() creates the token before its `ray start --head` and
+    runs with auth on in an empty HOME, even when the test process set
+    RAY_AUTH_MODE=disabled, which shutdown() then restores."""
     from ray.cluster_utils import AutoscalingCluster
 
-    set_auth_mode("token")
+    set_auth_mode("disabled")
     reset_auth_token_state()
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
@@ -489,6 +490,7 @@ def test_autoscaling_cluster_creates_token() -> None:
     )
     try:
         cluster.start()
+        assert os.environ["RAY_AUTH_MODE"] == "token"
         assert default_token_path.exists()
         reset_auth_token_state()
         ray.init(address="auto")
@@ -501,6 +503,7 @@ def test_autoscaling_cluster_creates_token() -> None:
     finally:
         ray.shutdown()
         cluster.shutdown()
+    assert os.environ["RAY_AUTH_MODE"] == "disabled"
 
 
 @pytest.mark.parametrize("leftover_file_content", [None, b"", b" \t\n\x0b\x0c\r\n"])
