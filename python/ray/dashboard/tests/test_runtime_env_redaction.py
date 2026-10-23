@@ -14,6 +14,9 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.runtime_env_redaction import (
     REDACTED_PLACEHOLDER,
+    RUNTIME_ENV_DICT_KEYS,
+    RUNTIME_ENV_INFO_KEYS,
+    SERIALIZED_RUNTIME_ENV_KEYS,
     redact_runtime_env,
     redact_runtime_env_deep,
     redact_runtime_env_info,
@@ -109,6 +112,20 @@ def test_redact_serialized_runtime_env():
 def test_redact_serialized_runtime_env_fails_closed(serialized):
     """Anything we can't parse into a dict could hold secrets, so redact it whole."""
     assert redact_serialized_runtime_env(serialized) == REDACTED_PLACEHOLDER
+
+
+@pytest.mark.parametrize(
+    "serialized",
+    [
+        "{}",
+        '{"working_dir":"gcs://_ray_pkg_abc123.zip","pip":["requests"]}',
+        '{"pip": ["requests"], "env_vars": {}}',
+        '{"env_vars": null}',
+    ],
+)
+def test_redact_serialized_runtime_env_keeps_string_without_secrets(serialized):
+    """With nothing to mask, the exact input string is returned, not a re-dump."""
+    assert redact_serialized_runtime_env(serialized) == serialized
 
 
 @pytest.mark.parametrize("serialized", ["", None])
@@ -300,7 +317,7 @@ def test_should_not_redact_for_non_browser_requests(headers):
 @pytest.mark.parametrize("headers", BROWSER_HEADERS + NON_BROWSER_HEADERS)
 def test_flag_disables_redaction_entirely(headers, monkeypatch):
     monkeypatch.setattr(
-        "ray.dashboard.runtime_env_redaction.RAY_DASHBOARD_REDACT_RUNTIME_ENV", False
+        "ray._common.ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV", False
     )
     assert should_redact_runtime_env(_mock_request(headers)) is False
 
@@ -551,6 +568,96 @@ def test_flag_off_serves_plaintext_to_browsers(redaction_disabled, dashboard_url
         lambda: SECRET in _runtime_envs(dashboard_url, BROWSER_HEADERS[0]),
         timeout=30,
     )
+
+
+"""
+Unit tests for runtime envs sent to an external HTTP endpoint by the event
+aggregator's publisher.
+"""
+
+
+def test_redact_runtime_env_deep_covers_ray_event_json():
+    """Ray event protos converted to JSON use camelCase field names."""
+    payload = [
+        {
+            "taskDefinitionEvent": {
+                "serializedRuntimeEnv": json.dumps(_make_runtime_env())
+            }
+        },
+        {
+            "driverJobDefinitionEvent": {
+                "config": {"serializedRuntimeEnv": json.dumps(_make_runtime_env())}
+            }
+        },
+    ]
+
+    redacted = redact_runtime_env_deep(payload)
+
+    assert SECRET not in json.dumps(redacted)
+    task_runtime_env = json.loads(
+        redacted[0]["taskDefinitionEvent"]["serializedRuntimeEnv"]
+    )
+    assert task_runtime_env["env_vars"]["DB_PASSWORD"] == REDACTED_PLACEHOLDER
+
+
+@pytest.mark.parametrize("preserve_proto_field_name", [True, False])
+@pytest.mark.parametrize("redact", [True, False])
+def test_http_event_publisher_redacts_runtime_env(
+    monkeypatch, redact, preserve_proto_field_name
+):
+    """Events sent to an external HTTP service follow the redaction setting."""
+    from ray._common import ray_constants
+    from ray.core.generated import events_base_event_pb2
+    from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+        AsyncHttpPublisherClient,
+    )
+
+    monkeypatch.setattr(ray_constants, "RAY_DASHBOARD_REDACT_RUNTIME_ENV", redact)
+    event = events_base_event_pb2.RayEvent(
+        event_type=events_base_event_pb2.RayEvent.EventType.TASK_DEFINITION_EVENT
+    )
+    event.task_definition_event.serialized_runtime_env = json.dumps(_make_runtime_env())
+    client = AsyncHttpPublisherClient(
+        endpoint="http://localhost:1",
+        executor=MagicMock(),
+        preserve_proto_field_name=preserve_proto_field_name,
+    )
+
+    event_json = client._event_to_json(event)
+
+    assert (SECRET in json.dumps(event_json)) is not redact
+    assert "_ray_pkg_abc123.zip" in json.dumps(event_json)
+
+
+def test_http_event_publisher_skipped_event_types_have_no_runtime_env():
+    """The HTTP publisher doesn't redact these types, so none may gain a field that
+    `redact_runtime_env_deep` would mask."""
+    from ray.core.generated import events_base_event_pb2
+    from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
+        _EVENT_TYPES_WITHOUT_RUNTIME_ENV,
+    )
+
+    redacted_keys = (
+        set(RUNTIME_ENV_DICT_KEYS)
+        | set(SERIALIZED_RUNTIME_ENV_KEYS)
+        | set(RUNTIME_ENV_INFO_KEYS)
+    )
+
+    def runtime_env_fields(descriptor, seen):
+        if descriptor.full_name in seen:
+            return []
+        seen.add(descriptor.full_name)
+        found = [f.name for f in descriptor.fields if f.name in redacted_keys]
+        for field in descriptor.fields:
+            if field.message_type is not None:
+                found += runtime_env_fields(field.message_type, seen)
+        return found
+
+    ray_event_fields = events_base_event_pb2.RayEvent.DESCRIPTOR.fields_by_name
+    for event_type in _EVENT_TYPES_WITHOUT_RUNTIME_ENV:
+        name = events_base_event_pb2.RayEvent.EventType.Name(event_type).lower()
+        field = ray_event_fields.get(name) or ray_event_fields[name + "s"]
+        assert runtime_env_fields(field.message_type, set()) == [], name
 
 
 if __name__ == "__main__":

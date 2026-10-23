@@ -13,6 +13,7 @@ import yaml
 from filelock import FileLock
 
 import ray
+from ray._common.runtime_env_redaction import redact_runtime_env
 from ray._common.runtime_env_uri import parse_uri
 from ray._common.utils import (
     get_or_create_event_loop,
@@ -28,7 +29,6 @@ from ray._private.runtime_env.conda_utils import (
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
-from ray._private.runtime_env.redaction import redact_runtime_env
 from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
@@ -345,8 +345,8 @@ class CondaPlugin(RuntimeEnvPlugin):
                 if not any(result == env[0] or result == env[1] for env in envs):
                     raise ValueError(
                         f"The given conda environment '{result}' "
-                        f"from the runtime env {runtime_env} doesn't "
-                        "exist from the output of `conda info --json`. "
+                        f"from the runtime env {redact_runtime_env(runtime_env)} "
+                        "doesn't exist from the output of `conda info --json`. "
                         "You can only specify an env that already exists. "
                         f"Please make sure to create an env {result} "
                     )

@@ -60,6 +60,7 @@ from ray import ActorID, JobID, Language, ObjectRef
 from ray._common import ray_option_utils
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._common.network_utils import get_localhost_ip
+from ray._common.runtime_env_redaction import redact_runtime_env
 from ray._common.utils import load_class
 from ray._private.authentication.authentication_token_setup import (
     enable_token_auth_by_default,
@@ -1804,9 +1805,10 @@ def init(
             # None means there was a conflict.
             raise ValueError(
                 "Failed to merge the Job's runtime env "
-                f"{injected_job_config.runtime_env} with "
-                f"a ray.init's runtime env {driver_runtime_env} because "
-                "of a conflict. Specifying the same runtime_env fields "
+                f"{redact_runtime_env(injected_job_config.runtime_env)} with "
+                f"a ray.init's runtime env {redact_runtime_env(driver_runtime_env)} "
+                "because of a conflict."
+                "Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
                 "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "
                 "combine Job and Driver's runtime environment in the event of "

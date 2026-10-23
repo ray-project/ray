@@ -26,6 +26,7 @@ import ray._private.prometheus_exporter as prometheus_exporter
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._common.network_utils import get_localhost_ip, is_localhost
+from ray._common.runtime_env_redaction import redact_serialized_runtime_env
 from ray._common.utils import (
     get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
@@ -38,7 +39,6 @@ from ray._private.ray_constants import (
     env_bool,
     env_integer,
 )
-from ray._private.runtime_env.redaction import redact_serialized_runtime_env
 from ray._private.telemetry.open_telemetry_metric_recorder import (
     OpenTelemetryMetricRecorder,
 )
