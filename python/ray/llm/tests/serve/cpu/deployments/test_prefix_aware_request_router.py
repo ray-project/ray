@@ -368,6 +368,21 @@ class TestMultiplexedRouting:
     """Tests for multiplexed requests, e.g. ones for LoRA adapters."""
 
     @pytest.mark.asyncio
+    async def test_prefix_match_within_model(self, prefix_request_router):
+        """A prefix cached under a model counts for requests for that model."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello world", "m1")
+
+        # r2 has less cached text, but only r1 has the prompt cached for m1.
+        req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r1]]
+
+    @pytest.mark.asyncio
     async def test_prefix_match_is_per_model(self, prefix_request_router):
         """A prefix cached under one model doesn't count for another."""
         r1 = FakeRunningReplica("r1")
