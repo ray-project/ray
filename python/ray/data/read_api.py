@@ -2355,7 +2355,7 @@ def read_json(
         }
         for param, value in incompatible_params.items():
             if value:
-                raise ValueError(f"`{param}` is not supported when `lines=True`. ")
+                raise ValueError(f"`{param}` is not supported when `lines=True`.")
 
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
