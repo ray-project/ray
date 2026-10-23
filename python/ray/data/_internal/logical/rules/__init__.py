@@ -11,7 +11,7 @@ from .derive_list_files_pushdown import DeriveListFilesPushdown
 from .inherit_target_max_block_size import InheritTargetMaxBlockSizeRule
 from .limit_pushdown import LimitPushdownRule
 from .operator_fusion import FuseOperators, are_remote_args_compatible
-from .predicate_pushdown import PredicatePushdown
+from .predicate_pushdown import DeriveJoinSidePredicates, PredicatePushdown
 from .projection_pushdown import ProjectionPushdown
 from .pushdown_count_files import PushdownCountFiles
 from .set_read_parallelism import (
@@ -25,6 +25,7 @@ __all__ = [
     "CommonSubExprElimination",
     "ConfigureMapTaskMemoryRule",
     "ConfigureMapTaskMemoryUsingOutputSize",
+    "DeriveJoinSidePredicates",
     "DeriveListFilesPushdown",
     "FuseOperators",
     "InheritTargetMaxBlockSizeRule",

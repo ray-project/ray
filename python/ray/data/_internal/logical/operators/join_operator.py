@@ -1,3 +1,4 @@
+import functools
 from dataclasses import InitVar, dataclass, field, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple, Union
@@ -149,53 +150,35 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
     def which_side_to_push_predicate(
         self, predicate_expr: "Expr"
     ) -> Optional[JoinSide]:
-        """Determine which side of the join to push a predicate to.
-
-        Returns the side to push to, or None if pushdown is not safe.
-
-        Predicate pushdown is safe for:
-        - INNER: Can push to either side
-        - LEFT_OUTER/SEMI/ANTI: Can push to left side (preserved/output side)
-        - RIGHT_OUTER/SEMI/ANTI: Can push to right side (preserved/output side)
-        - FULL_OUTER: Cannot push (both sides can generate nulls)
-
-        The predicate must reference columns from exactly one side of the join,
-        OR reference only join key columns that all exist on one side.
-        """
-        # Get predicate columns and schemas
-        predicate_columns = self._get_referenced_columns(predicate_expr)
-        left_schema = self.input_dependencies[0].infer_schema()
-        right_schema = self.input_dependencies[1].infer_schema()
-
-        if not left_schema or not right_schema:
-            return None
-
-        # Get column sets for each side
-        left_columns = set(left_schema.names)
-        right_columns = set(right_schema.names)
-        left_join_keys = set(self.left_key_columns)
-        right_join_keys = set(self.right_key_columns)
-
-        # Get pushdown rules for this join type
-        can_push_left, can_push_right = self._get_pushdown_rules()
-
-        # Check if predicate can be evaluated on left side
-        # Condition: ALL predicate columns must exist on left (either as regular columns or join keys)
-        can_evaluate_on_left = predicate_columns.issubset(
-            left_columns
-        ) or predicate_columns.issubset(left_join_keys)
-        if can_evaluate_on_left and can_push_left:
-            return JoinSide.LEFT
-
-        # Check if predicate can be evaluated on right side
-        can_evaluate_on_right = predicate_columns.issubset(
-            right_columns
-        ) or predicate_columns.issubset(right_join_keys)
-        if can_evaluate_on_right and can_push_right:
-            return JoinSide.RIGHT
-
-        # Cannot push down
+        """The first side that accepts ``predicate_expr``, or ``None``."""
+        for side in JoinSide:
+            if self.can_push_predicate_to_side(predicate_expr, side):
+                return side
         return None
+
+    def can_push_predicate_to_side(
+        self, predicate_expr: "Expr", side: JoinSide
+    ) -> bool:
+        """Whether ``predicate_expr`` (over the join's output) can be applied to
+        ``side``'s input: the join type allows it and ``side`` produces every column
+        it references. Rebind via :meth:`get_column_substitutions_for_side`.
+        """
+        side_columns = self._output_to_input_columns
+        if side_columns is None or not self._get_pushdown_rules()[side.value]:
+            return False
+        referenced = self._get_referenced_columns(predicate_expr)
+        return referenced.issubset(side_columns[side.value].keys())
+
+    def get_column_substitutions_for_side(self, side: JoinSide) -> Dict[str, str]:
+        """Input -> output column name for the columns of ``side`` the join renames."""
+        side_columns = self._output_to_input_columns
+        if side_columns is None:
+            return {}
+        return {
+            input_name: output_name
+            for output_name, input_name in side_columns[side.value].items()
+            if input_name != output_name
+        }
 
     def _get_pushdown_rules(self) -> Tuple[bool, bool]:
         """Get pushdown rules for the current join type.
@@ -215,6 +198,118 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             JoinType.FULL_OUTER: (False, False),
         }
         return pushdown_rules.get(self.join_type, (False, False))
+
+    def __copy__(self) -> "Join":
+        # A copy swaps inputs; drop the cached mapping derived from them.
+        clone = object.__new__(type(self))
+        clone.__dict__.update(self.__dict__)
+        clone.__dict__.pop("_output_to_input_columns", None)
+        return clone
+
+    @functools.cached_property
+    def _output_to_input_columns(
+        self,
+    ) -> Optional[Tuple[Dict[str, str], Dict[str, str]]]:
+        """Per side, output column name -> the input column it comes from, mirroring
+        the naming in ``execution/operators/join.py``; ``None`` if a schema is unknown.
+        Without an output schema to check against (non-Arrow inputs) only names
+        unique to one input and shared keys are mapped. Cached: ``infer_schema``
+        is not.
+        """
+        left_schema = self.input_dependencies[0].infer_schema()
+        right_schema = self.input_dependencies[1].infer_schema()
+        if not left_schema or not right_schema:
+            return None
+        left_columns = list(left_schema.names)
+        right_columns = list(right_schema.names)
+        left_keys = set(self.left_key_columns)
+        right_keys = set(self.right_key_columns)
+
+        if self.join_type in (JoinType.LEFT_SEMI, JoinType.LEFT_ANTI):
+            return {c: c for c in left_columns}, {}
+        if self.join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI):
+            return {}, {c: c for c in right_columns}
+
+        shared_keys = {
+            left_key
+            for left_key, right_key in zip(
+                self.left_key_columns, self.right_key_columns
+            )
+            if left_key == right_key
+        }
+
+        output_schema = self.infer_schema()
+        if not output_schema:
+            # A right column named like a suffixed left collision (``v_l``) is
+            # suffixed again by Polars, so it is not the right's to claim.
+            left_set, right_set = set(left_columns), set(right_columns)
+            is_right_outer = self.join_type is JoinType.RIGHT_OUTER
+            left_renamed = (
+                {
+                    f"{c}{self.left_columns_suffix}"
+                    for c in (left_set & (right_set - right_keys)) - left_keys
+                }
+                if self.left_columns_suffix
+                else set()
+            )
+            return (
+                {
+                    c: c
+                    for c in left_columns
+                    if c in shared_keys
+                    or (c not in right_set and not (is_right_outer and c in left_keys))
+                },
+                {
+                    c: c
+                    for c in right_columns
+                    if c in shared_keys
+                    or (
+                        c not in left_set
+                        and c not in left_renamed
+                        and (c not in right_keys or is_right_outer)
+                    )
+                },
+            )
+        # Right keys are coalesced away, so only right payload can collide.
+        collisions = set(left_columns) & (set(right_columns) - right_keys)
+        left_suffix = self.left_columns_suffix
+        right_suffix = self.right_columns_suffix
+        is_right_outer = self.join_type is JoinType.RIGHT_OUTER
+
+        left: Dict[str, str] = {}
+        for c in left_columns:
+            if c in left_keys:
+                if not is_right_outer or c in shared_keys:
+                    left[c] = c
+            elif c in collisions and left_suffix:
+                left[f"{c}{left_suffix}"] = c
+            else:
+                left[c] = c
+        right: Dict[str, str] = {}
+        for c in right_columns:
+            if c in right_keys:
+                if c in shared_keys or (is_right_outer and c not in left_columns):
+                    right[c] = c
+            elif c in collisions:
+                if right_suffix:
+                    right[f"{c}{right_suffix}"] = c
+                elif c in left_keys:
+                    # The left key keeps its name, so Polars suffixes this one.
+                    right[f"{c}_right"] = c
+                else:
+                    # The left column was suffixed instead; this one keeps its name.
+                    right[c] = c
+            else:
+                right[c] = c
+
+        # Only names the join emits; a non-key both sides claim goes to neither.
+        output_names = set(output_schema.names)
+        left = {o: i for o, i in left.items() if o in output_names}
+        right = {o: i for o, i in right.items() if o in output_names}
+        for name in (left.keys() & right.keys()) - shared_keys:
+            del left[name]
+            del right[name]
+        return left, right
 
     def _get_referenced_columns(self, expr: "Expr") -> set[str]:
         """Extract all column names referenced in an expression."""

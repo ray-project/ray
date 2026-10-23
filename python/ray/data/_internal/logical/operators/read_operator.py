@@ -4,13 +4,21 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
 from ray.data._internal.compute import ComputeStrategy
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
+from ray.data._internal.datasource_v2.interfaces.pushdown import (
+    SupportsFilterPushdown,
+    SupportsPartitionPruning,
+)
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
     SourceOperator,
 )
-from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data._internal.logical.operators.map_operator import AbstractMap, Filter
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -364,11 +372,6 @@ class ReadFiles(
         return replace(self, scanner=new_scanner)
 
     def supports_predicate_pushdown(self) -> bool:
-        from ray.data._internal.datasource_v2.interfaces.pushdown import (
-            SupportsFilterPushdown,
-            SupportsPartitionPruning,
-        )
-
         # Either mixin is enough: a scanner that only prunes partitions still
         # takes the partition-column conjuncts, and ``apply_predicate`` keeps
         # the rest in a ``Filter``.
@@ -377,19 +380,20 @@ class ReadFiles(
         )
 
     def get_current_predicate(self) -> Optional[Expr]:
-        return getattr(self.scanner, "predicate", None)
+        # Scanner predicate plus partition pruning: all this read enforces.
+        predicate = (
+            self.scanner.pushed_predicate()
+            if isinstance(self.scanner, SupportsFilterPushdown)
+            else None
+        )
+        partition_predicate = (
+            self.scanner.pushed_partition_predicate()
+            if isinstance(self.scanner, SupportsPartitionPruning)
+            else None
+        )
+        return combine_predicates(predicate, partition_predicate)
 
     def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        from ray.data._internal.datasource_v2.common.pushdown_utils import (
-            _split_predicate_by_columns,
-            combine_predicates,
-        )
-        from ray.data._internal.datasource_v2.interfaces.pushdown import (
-            SupportsFilterPushdown,
-            SupportsPartitionPruning,
-        )
-        from ray.data._internal.logical.operators.map_operator import Filter
-
         pushes_filters = isinstance(self.scanner, SupportsFilterPushdown)
         partition_cols: Set[str] = (
             self.scanner.partition_columns
