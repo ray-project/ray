@@ -745,6 +745,7 @@ By default, controller-emitted replica lifecycle metrics include source identifi
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
+| `ray_serve_replica_state` | Gauge | `deployment`, `replica`, `application` | Current state of the replica as a numeric value: `1` = STARTING, `2` = UPDATING, `3` = RECOVERING, `4` = RUNNING, `5` = STOPPING, `6` = PENDING_MIGRATION. Use for state timeline visualization and debugging replica lifecycle transitions. |
 | `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `application`, `replica` by default; `deployment`, `application` when `RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS=0` | Tracks healthy replicas. With `replica`, each replica series is `1` for healthy and `0` for unhealthy. Without `replica`, the deployment/application series is the healthy replica count. |
 | `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
 | `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
