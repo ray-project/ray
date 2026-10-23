@@ -38,6 +38,14 @@ def redact_state_rows(
     a plain dict (`RuntimeEnvState.runtime_env`), a serialized JSON string
     (`ActorState.serialized_runtime_env`), and a `RuntimeEnvInfo` dict holding a
     serialized string (`TaskState.runtime_env_info`).
+
+    Args:
+        rows: State API rows as dicts. Rows that aren't dicts pass through
+            unchanged, and an empty or None value is returned as-is.
+
+    Returns:
+        A new list in which each row holding a `runtime_env` field is replaced by
+        a redacted shallow copy. Rows without one are the original objects.
     """
     if not rows:
         return rows

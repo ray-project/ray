@@ -26,6 +26,12 @@ namespace {
 
 constexpr std::string_view kSecret = "supersecretvalue";
 
+/**
+ * @brief Builds a serialized runtime env holding secrets under `env_vars`.
+ *
+ * @return A JSON runtime env with two `env_vars` set to `kSecret` and a
+ *         `working_dir` that redaction must leave alone.
+ */
 std::string MakeSerializedRuntimeEnv() {
   return nlohmann::json{
       {"env_vars",

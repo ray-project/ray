@@ -33,6 +33,11 @@ def is_runtime_env_redaction_enabled() -> bool:
     Dashboard responses to browser requests and events sent to an external HTTP
     endpoint follow this setting. The runtime env agent logs, worker process
     command lines, and error messages are always redacted.
+
+    Returns:
+        True unless `RAY_DASHBOARD_REDACT_RUNTIME_ENV` was set to anything other
+        than `1` or `true` (case-insensitive) when `ray._common.ray_constants`
+        was imported.
     """
     return ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV
 
@@ -45,6 +50,14 @@ def redact_runtime_env(
     Keys are preserved so the response still shows which variables are set.
     The input is never mutated: the same `RuntimeEnv` dicts are used to actually
     launch drivers and workers, so redaction must stay confined to the response.
+
+    Args:
+        runtime_env: A `runtime_env` dict or `RuntimeEnv`. Any other value,
+            including None, is returned as-is.
+
+    Returns:
+        A shallow copy of `runtime_env` with every `env_vars` value replaced by
+        `REDACTED_PLACEHOLDER`, or `runtime_env` itself if it isn't a dict.
     """
     if not isinstance(runtime_env, dict):
         return runtime_env
@@ -66,8 +79,18 @@ def redact_serialized_runtime_env(
     the top level too.
 
     Fails closed: anything we can't parse into a `runtime_env` dict is replaced
-    wholesale, since we can't rule out that it holds secrets. A string with no
-    secret values to mask is returned as-is.
+    wholesale, since we can't rule out that it holds secrets. Malformed JSON
+    never raises.
+
+    Args:
+        serialized_runtime_env: A JSON-serialized runtime env or runtime env
+            context. A non-string or empty value is returned as-is.
+
+    Returns:
+        The input unchanged if it's empty, not a string, or has no secret values
+        to mask; `REDACTED_PLACEHOLDER` if it doesn't parse into a JSON object;
+        and otherwise the re-serialized JSON, with sorted keys and every
+        `env_vars` value masked.
     """
     if not isinstance(serialized_runtime_env, str) or not serialized_runtime_env:
         return serialized_runtime_env
@@ -91,7 +114,17 @@ def redact_serialized_runtime_env(
 def redact_runtime_env_info(
     runtime_env_info: Optional[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
-    """Return a copy of a `RuntimeEnvInfo` dict with secret values masked."""
+    """Return a copy of a `RuntimeEnvInfo` dict with secret values masked.
+
+    Args:
+        runtime_env_info: A `RuntimeEnvInfo` proto converted to a dict. Any other
+            value, including None, is returned as-is.
+
+    Returns:
+        A shallow copy of `runtime_env_info` whose serialized runtime env is
+        redacted with `redact_serialized_runtime_env`, or `runtime_env_info`
+        itself if it isn't a dict.
+    """
     if not isinstance(runtime_env_info, dict):
         return runtime_env_info
 
@@ -117,6 +150,10 @@ def redact_runtime_env_deep(payload: Any) -> Any:
     Returns:
         A copy with secret values masked. Non-container values are returned
         as-is.
+
+    Raises:
+        RecursionError: If `payload` is nested deeper than Python's recursion
+            limit.
     """
     if isinstance(payload, dict):
         redacted = {}

@@ -185,6 +185,17 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             )
 
     def _event_to_json(self, event: events_base_event_pb2.RayEvent) -> dict:
+        """Convert `event` to the JSON dict sent to the external HTTP endpoint.
+
+        Args:
+            event: The event to convert. It isn't mutated, because the other
+                publishers send the same event objects with plaintext values.
+
+        Returns:
+            The event as a JSON dict. When redaction is enabled, every `env_vars`
+            value in its serialized runtime env is masked, unless the event type
+            is in `_EVENT_TYPES_WITHOUT_RUNTIME_ENV`.
+        """
         event_json = json.loads(
             message_to_json(
                 event,
