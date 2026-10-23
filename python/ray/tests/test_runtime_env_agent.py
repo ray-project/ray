@@ -26,12 +26,13 @@ from ray._private.runtime_env.agent.runtime_env_agent import (
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.image_uri import (
     _CACHE_SCHEMA_VERSION,
+    _INSTALL_ENV_PATH,
     ImageMetadata,
     ImageURIPlugin,
     _canonical_pip_config,
     _check_host_compatibility,
     _get_image_uri_cache_key,
-    _write_podman_env_file,
+    _write_install_env,
 )
 from ray._private.runtime_env.plugin import create_for_plugin_if_needed
 from ray._private.runtime_env.uri_cache import URICache
@@ -365,9 +366,10 @@ async def test_image_uri_uses_stdlib_venv(tmp_path, monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="image_uri is Linux-only.")
+@pytest.mark.parametrize("outcome", ["success", "failure", "cancelled"])
 @pytest.mark.asyncio
-async def test_image_uri_install_env_reaches_podman_through_env_file(
-    tmp_path, monkeypatch
+async def test_image_uri_install_env_reaches_podman_through_json(
+    tmp_path, monkeypatch, outcome
 ):
     plugin = ImageURIPlugin(str(tmp_path / "ray"))
     uri = "image-pip://cache-key"
@@ -376,39 +378,77 @@ async def test_image_uri_install_env_reaches_podman_through_env_file(
         "BUILD_TOKEN": "secret",
         "LD_PRELOAD": "/job.so",
         "PATH": "/image/bin",
+        "MULTILINE": "first\nsecond\r\n",
+        "LONG": "x" * 70000,
+        "QUOTED": "\"'$VALUE`command`中文",
+        "EMPTY": "",
+        "# NAME\n": "valid OS name",
     }
     calls = []
 
     async def check_output(command, logger, **kwargs):
-        env_file = command[command.index("--env-file") + 1]
+        mount = next(
+            arg for arg in command if arg.endswith(f":{_INSTALL_ENV_PATH}:ro,z")
+        )
+        env_file = mount.removesuffix(f":{_INSTALL_ENV_PATH}:ro,z")
         with open(env_file, encoding="utf-8") as file:
-            contents = file.read()
+            contents = json.load(file)
         env_dir_mode = stat.S_IMODE(os.stat(os.path.dirname(env_file)).st_mode)
-        calls.append((command, kwargs, env_file, contents, env_dir_mode))
+        env_file_mode = stat.S_IMODE(os.stat(env_file).st_mode)
+        calls.append((command, kwargs, env_file, contents, env_dir_mode, env_file_mode))
+        if outcome == "failure":
+            raise RuntimeError("installation failed")
+        if outcome == "cancelled":
+            raise asyncio.CancelledError()
         return f"RAY_VERSION={metadata.ray_version}\n"
 
+    async def cleanup(*args):
+        pass
+
+    monkeypatch.setattr(
+        "ray._private.runtime_env.image_uri._cleanup_container", cleanup
+    )
     monkeypatch.setattr(
         "ray._private.runtime_env.image_uri.check_output_cmd", check_output
     )
     staging_path = str(tmp_path / "staging")
     os.makedirs(staging_path)
-    await plugin._prepare_pip_environment(
-        uri,
-        RuntimeEnv(image_uri="example/image", pip=["package==1"]),
-        metadata,
-        staging_path,
-        str(tmp_path / "final"),
-        logger,
-    )
+
+    async def prepare():
+        await plugin._prepare_pip_environment(
+            uri,
+            RuntimeEnv(
+                image_uri="example/image",
+                pip={
+                    "packages": ["package==1"],
+                    "pip_version": "==25.0",
+                    "pip_check": True,
+                },
+            ),
+            metadata,
+            staging_path,
+            str(tmp_path / "final"),
+            logger,
+        )
+
+    if outcome == "success":
+        await prepare()
+        assert len(calls) == 5
+    else:
+        error = RuntimeError if outcome == "failure" else asyncio.CancelledError
+        with pytest.raises(error):
+            await prepare()
 
     assert calls
-    for command, kwargs, _, contents, env_dir_mode in calls:
+    for command, kwargs, _, contents, env_dir_mode, env_file_mode in calls:
         # podman runs with the agent's environment, and the logged argv
         # carries no values.
         assert kwargs == {}
         assert not any("secret" in arg or "/job.so" in arg for arg in command)
-        assert contents == ("BUILD_TOKEN=secret\nLD_PRELOAD=/job.so\nPATH=/image/bin\n")
+        assert contents == plugin._install_env_by_uri[uri]
         assert env_dir_mode == 0o700
+        assert env_file_mode == 0o600
+        assert command[command.index("--entrypoint") + 1] == metadata.python_executable
     # The file only exists while the installation runs.
     assert not os.path.exists(calls[0][2])
 
@@ -416,18 +456,15 @@ async def test_image_uri_install_env_reaches_podman_through_env_file(
 @pytest.mark.parametrize(
     "name,value",
     [
-        # A line without "=" would make podman copy the host's variable.
-        ("NAME", "secret\nRAY_AUTH_TOKEN"),
-        ("NAME", "secret\r"),
+        ("NAME", "secret\0"),
         ("NAME=X", "secret"),
-        ("#NAME", "secret"),
-        (" NAME", "secret"),
+        ("NAME\0", "secret"),
         ("", "secret"),
     ],
 )
-def test_image_uri_install_env_file_rejects_unparseable_entries(tmp_path, name, value):
+def test_image_uri_install_env_rejects_invalid_os_entries(tmp_path, name, value):
     with pytest.raises(ValueError, match="can't be passed") as error:
-        _write_podman_env_file(str(tmp_path / "env"), {name: value})
+        _write_install_env(str(tmp_path / "env"), {name: value})
     # Values can be secret, so the error names only the variable.
     assert "secret" not in str(error.value)
 
