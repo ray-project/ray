@@ -43,7 +43,7 @@ def _parse_obstore_int_env(var_name: str, default: int) -> int:
     if raw is None or not str(raw).strip():
         return default
     try:
-        return int(str(raw).strip(), 10)
+        value = int(str(raw).strip(), 10)
     except ValueError:
         logger.warning(
             "Ignoring invalid integer for %s=%r — using default %s",
@@ -52,6 +52,83 @@ def _parse_obstore_int_env(var_name: str, default: int) -> int:
             default,
         )
         return default
+    if value < 0:
+        # A negative count or duration can't be handed to obstore (Rust
+        # durations are unsigned); treat it like a malformed value.
+        logger.warning(
+            "Ignoring negative value for %s=%r — using default %s",
+            var_name,
+            raw,
+            default,
+        )
+        return default
+    return value
+
+
+# Retry budget for the obstore GET/HEAD clients. obstore retries 5xx, 429 and
+# connection errors itself and sleeps between attempts using decorrelated
+# jitter: each sleep is drawn from ``[init_backoff, base * previous)`` and
+# capped at ``max_backoff``, so in expectation the sleep grows by about
+# ``init_backoff / 2`` per retry (near-linear, not exponential). ``init_backoff``
+# is therefore the lever that decides how long a sustained S3 SlowDown burst
+# can be ridden out: with obstore's 100 ms default, 10 retries completed in
+# ~2 s and a transient 503 in the read_from_uris release test became a failed
+# download. These are read at call time, not import time, so a job can
+# override them through ``runtime_env`` env vars.
+_DEFAULT_RETRY_MAX_RETRIES_INT = 10
+_DEFAULT_RETRY_INIT_BACKOFF_MS_INT = 1000
+_DEFAULT_RETRY_MAX_BACKOFF_MS_INT = 20_000
+_DEFAULT_RETRY_TIMEOUT_S_INT = 120
+
+
+def _obstore_retry_config_from_env() -> Dict[str, Any]:
+    """Build the obstore ``retry_config`` for download GET/HEAD clients.
+
+    With the defaults the expected sleeps are 1.0, 1.5, 2.0, ... 5.5 s, about
+    30 s in total over 10 retries and never more than ``retry_timeout``,
+    instead of the ~2 s that obstore's own defaults allow. Backoff sleeps are
+    async inside obstore, so a throttled object only holds its concurrency
+    slot; other URIs keep downloading.
+    """
+    return {
+        "max_retries": _parse_obstore_int_env(
+            "RAY_DATA_OBSTORE_RETRY_MAX_RETRIES", _DEFAULT_RETRY_MAX_RETRIES_INT
+        ),
+        "retry_timeout": timedelta(
+            seconds=_parse_obstore_int_env(
+                "RAY_DATA_OBSTORE_RETRY_TIMEOUT_S", _DEFAULT_RETRY_TIMEOUT_S_INT
+            )
+        ),
+        "backoff": {
+            "init_backoff": timedelta(
+                milliseconds=_parse_obstore_int_env(
+                    "RAY_DATA_OBSTORE_RETRY_INIT_BACKOFF_MS",
+                    _DEFAULT_RETRY_INIT_BACKOFF_MS_INT,
+                )
+            ),
+            "max_backoff": timedelta(
+                milliseconds=_parse_obstore_int_env(
+                    "RAY_DATA_OBSTORE_RETRY_MAX_BACKOFF_MS",
+                    _DEFAULT_RETRY_MAX_BACKOFF_MS_INT,
+                )
+            ),
+            "base": 2,
+        },
+    }
+
+
+def _obstore_client_options_from_env() -> Dict[str, Any]:
+    """Optional obstore ``client_options`` overrides from the environment.
+
+    ``RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S`` sets the per-request timeout
+    (obstore's default is 30 s). Large whole-file GETs can legitimately take
+    longer than that, and a timed-out request consumes the same retry budget
+    as a 5xx. Unset or ``0`` keeps obstore's default.
+    """
+    timeout_s = _parse_obstore_int_env("RAY_DATA_OBSTORE_REQUEST_TIMEOUT_S", 0)
+    if timeout_s <= 0:
+        return {}
+    return {"timeout": timedelta(seconds=timeout_s)}
 
 
 # Constants & configuration
@@ -634,10 +711,23 @@ class StoreRegistry:
         retry_config: Optional[Dict[str, Any]] = None,
         **filesystem_kwargs: Any,
     ):
+        """Create the registry.
+
+        Args:
+            retry_config: obstore ``RetryConfig`` for every store created by
+                this registry. ``None`` (the default) uses the env-configurable
+                budget from ``_obstore_retry_config_from_env``; pass an explicit
+                dict to override it.
+            **filesystem_kwargs: Forwarded to ``obstore.store.from_url``.
+        """
         from obstore.store import from_url
 
         self._from_url = from_url
-        self._retry_config = retry_config or {}
+        self._retry_config = (
+            retry_config
+            if retry_config is not None
+            else _obstore_retry_config_from_env()
+        )
         self._filesystem_kwargs = filesystem_kwargs
         self._cache: Dict[str, Any] = {}
 
@@ -661,12 +751,20 @@ class StoreRegistry:
                     region = _discover_aws_bucket_region(bucket)
                     if region:
                         kwargs["region"] = region
+            env_client_options = _obstore_client_options_from_env()
+            if env_client_options:
+                # Caller-supplied options (e.g. from a user filesystem) win
+                # over the environment defaults.
+                kwargs["client_options"] = {
+                    **env_client_options,
+                    **(kwargs.get("client_options") or {}),
+                }
             if store_url.startswith("http://"):
                 # obstore's reqwest client rejects http:// by default. Auto-enable it
                 # to maintain parity with PyArrow (which accepts http:// via fsspec),
                 # but warn about unencrypted traffic.
                 client_options = {
-                    **kwargs.get("client_options", {}),
+                    **(kwargs.get("client_options") or {}),
                     "allow_http": True,
                 }
                 kwargs["client_options"] = client_options
@@ -900,7 +998,7 @@ async def _download_uris_with_obstore(
             range_threshold = 0
     sem = asyncio.Semaphore(max_conc) if max_conc > 0 else None
 
-    registry = StoreRegistry(retry_config={"max_retries": 10}, **fs_kwargs)
+    registry = StoreRegistry(**fs_kwargs)
 
     if range_threshold <= 0:
         logger.debug(

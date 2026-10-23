@@ -97,6 +97,8 @@ message NetworkAccess {
     ALLOWLIST = 3;
   }
   NetworkAccessType network_access_type = 1;
+  repeated string allowed_cidrs = 2;
+  repeated string allowed_domains = 3;
 }
 
 message Resources {
@@ -118,6 +120,7 @@ message Sandbox {
   Resources resources = 5;
   uint32 timeout_secs = 7;
   optional string workdir = 8;
+  bool block_network = 11;  // Deprecated by network_access; honored when set.
   NetworkAccess network_access = 22;
   optional string name = 30;
 }

@@ -1,13 +1,15 @@
-import logging
+import socket
+import threading
+from http.cookies import CookieError, SimpleCookie
+from socketserver import ThreadingMixIn
 from types import ModuleType
 from typing import Dict, List, Optional
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from ray._private.authentication import (
     authentication_constants,
     authentication_utils as auth_utils,
 )
-
-logger = logging.getLogger(__name__)
 
 
 def get_token_auth_middleware(
@@ -82,6 +84,85 @@ def get_token_auth_middleware(
     return token_auth_middleware
 
 
+def get_token_auth_wsgi_app(app):
+    """Wrap a metrics WSGI app so it requires the token when token auth is on,
+    unless RAY_AUTH_SKIP_METRICS is set.
+
+    Accepts the same token sources as the dashboard. A missing token gets 401
+    with ``WWW-Authenticate: Bearer``, a wrong one 403.
+    """
+
+    def token_auth_app(environ, start_response):
+        if (
+            not auth_utils.is_token_auth_enabled()
+            or auth_utils.is_metrics_auth_skipped()
+        ):
+            return app(environ, start_response)
+
+        auth_header = environ.get("HTTP_AUTHORIZATION") or environ.get(
+            "HTTP_X_RAY_AUTHORIZATION"
+        )
+        if not auth_header:
+            try:
+                cookie = SimpleCookie(environ.get("HTTP_COOKIE", "")).get(
+                    authentication_constants.AUTHENTICATION_TOKEN_COOKIE_NAME
+                )
+            except CookieError:
+                cookie = None
+            if cookie and cookie.value:
+                auth_header = (
+                    authentication_constants.AUTHORIZATION_BEARER_PREFIX + cookie.value
+                )
+
+        if not auth_header:
+            start_response(
+                "401 Unauthorized",
+                [("Content-Type", "text/plain"), ("WWW-Authenticate", "Bearer")],
+            )
+            return [b"Unauthorized: Missing authentication token"]
+
+        if not auth_utils.validate_request_token(auth_header):
+            start_response("403 Forbidden", [("Content-Type", "text/plain")])
+            return [b"Forbidden: Invalid authentication token"]
+
+        return app(environ, start_response)
+
+    return token_auth_app
+
+
+# prometheus_client.exposition.ThreadingWSGIServer doesn't exist in the
+# declared minimum prometheus_client 0.7.1.
+class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
+
+
+class _SilentHandler(WSGIRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+
+def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> None:
+    """Serve ``registry`` on ``addr:port`` from a daemon thread, like
+    ``prometheus_client.start_http_server``, but requiring the token when token
+    auth is on."""
+    from prometheus_client import make_wsgi_app
+
+    family, _, _, _, sockaddr = socket.getaddrinfo(
+        addr, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
+    )[0]
+    server_class = type(
+        "_MetricsWSGIServer", (_ThreadingWSGIServer,), {"address_family": family}
+    )
+    httpd = make_server(
+        sockaddr[0],
+        port,
+        get_token_auth_wsgi_app(make_wsgi_app(registry)),
+        server_class,
+        _SilentHandler,
+    )
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+
 def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, str]:
 
     if not auth_utils.is_token_auth_enabled():
@@ -102,10 +183,10 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
     auth_headers = token_loader.get_token_for_http_header()
 
     if not auth_headers:
-        # Token auth enabled but no token found
-        logger.warning(
-            "Token authentication is enabled but no token was found. "
-            "Requests to authenticated clusters will fail."
+        from ray.exceptions import AuthenticationError
+
+        raise AuthenticationError(
+            authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE
         )
 
     return auth_headers

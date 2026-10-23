@@ -16,6 +16,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
 from ray.autoscaler._private.monitor import BASE_READONLY_CONFIG
@@ -402,6 +403,14 @@ class AutoscalingConfig:
         """
         idle_timeout_s = self.get_config("idle_timeout_minutes", None)
         return idle_timeout_s * 60 if idle_timeout_s is not None else None
+
+    def get_pending_idle_timeout_s(self) -> Optional[float]:
+        """
+        Returns the idle timeout in seconds for the pending nodes not needed by any
+        resource demands, or None if they should never be terminated for it.
+        """
+        timeout_s = RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S
+        return float(timeout_s) if timeout_s >= 0 else None
 
     def disable_launch_config_check(self) -> bool:
         provider_config = self.get_provider_config()
