@@ -172,13 +172,19 @@ class ServeHead(SubprocessModule):
         grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
-            client = await serve_start_async(
-                http_options=full_http_options,
-                proxy_location=config.proxy_location,
-                grpc_options=grpc_options,
-                global_logging_config=config.logging_config,
-                controller_options=config.controller_options,
-            )
+            try:
+                client = await serve_start_async(
+                    http_options=full_http_options,
+                    proxy_location=config.proxy_location,
+                    grpc_options=grpc_options,
+                    global_logging_config=config.logging_config,
+                    global_tracing_config=config.tracing_config,
+                    controller_options=config.controller_options,
+                )
+            except ValueError as e:
+                # Invalid config (e.g. a bad tracing exporter or a tracing
+                # change on a running cluster): a client error, not a 500.
+                return Response(status=400, text=str(e))
 
         # Serve ignores HTTP options if it was already running when
         # serve_start_async() is called. Therefore we validate that no
