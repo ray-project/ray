@@ -85,10 +85,9 @@ The plugin entry point registers the architecture in the vLLM engine and worker 
 
 ### Enable direct streaming
 
-Serve with {doc}`direct streaming <direct-streaming>` so vLLM's native `/classify` route is exposed. Export both environment variables before starting Serve:
+Serve with {doc}`direct streaming <direct-streaming>` so vLLM's native `/classify` route is exposed. Export the environment variable before starting Serve:
 
 ```bash
-export RAY_SERVE_ENABLE_HA_PROXY=1
 export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 ```
 
