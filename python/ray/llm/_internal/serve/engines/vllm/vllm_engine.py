@@ -54,6 +54,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.engines.vllm.model_express import (
+    is_model_express,
+    mark_engine_ready,
+    setup_model_express,
+)
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware import (
@@ -325,6 +330,8 @@ class VLLMEngine(LLMEngine):
             )
         assign_replica_kv_events_endpoint(self.llm_config)
         self.llm_config.setup_engine_backend()
+        if is_model_express(self.llm_config):
+            setup_model_express(self.llm_config)
 
         self._running = False
         # Routing stats advertised to Serve's request router; populated in
@@ -483,6 +490,8 @@ class VLLMEngine(LLMEngine):
         self._routing_stats.update(prompt_token_stats)
 
         self._running = True
+        if is_model_express(self.llm_config):
+            mark_engine_ready()
 
         logger.info("Started vLLM engine.")
 
