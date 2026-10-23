@@ -79,7 +79,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
     };
 
     gcs_server_ = std::make_unique<gcs::GcsServer>(
-        config_, gcs_server_metrics, *server_io_service_);
+        config_, gcs_server_metrics, *server_io_service_, metric_context_);
     gcs_server_->Start();
     server_io_service_thread_ = std::make_unique<std::thread>([this] {
       boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
@@ -193,6 +193,7 @@ class GcsClientReconnectionTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> server_io_service_thread_;
   std::unique_ptr<instrumented_io_context> server_io_service_;
+  boost::asio::io_context metric_context_;
   // Fake metrics for testing
   observability::FakeGauge actor_by_state_gauge_;
   observability::FakeGauge gcs_actor_by_state_gauge_;

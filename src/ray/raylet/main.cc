@@ -56,6 +56,7 @@
 #include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
+#include "ray/util/joinable_thread.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process.h"
 #include "ray/util/raii.h"
@@ -311,11 +312,21 @@ int main(int argc, char *argv[]) {
 
   absl::flat_hash_map<std::string, double> static_resource_conf;
   SetThreadName("raylet");
+
+  boost::asio::io_context metric_context;
+  auto metric_thread = ray::JoinableThread(std::thread([&metric_context] {
+    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
+        metric_context.get_executor());
+    SetThreadName("metric_recorder");
+    metric_context.run();
+  }));
+
   // IO Service for node manager.
   instrumented_io_context main_service{
       /*emit_metrics=*/RayConfig::instance().emit_main_service_metrics(),
       /*running_on_single_thread=*/true,
-      "raylet_main_io_context"};
+      "raylet_main_io_context",
+      metric_context};
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
@@ -324,7 +335,8 @@ int main(int argc, char *argv[]) {
 
   instrumented_io_context object_manager_rpc_service{/*emit_metrics=*/false,
                                                      /*running_on_single_thread=*/false,
-                                                     "object_manager_rpc_io_context"};
+                                                     "object_manager_rpc_io_context",
+                                                     metric_context};
   boost::asio::executor_work_guard<boost::asio::io_context::executor_type>
       object_manager_rpc_work(object_manager_rpc_service.get_executor());
 
@@ -469,6 +481,7 @@ int main(int argc, char *argv[]) {
        &node_manager,
        &object_directory,
        &main_service,
+       &metric_context,
        &raylet_socket_name,
        &gcs_client,
        &object_manager_rpc_threads](const ray::rpc::NodeDeathInfo &node_death_info) {
@@ -513,6 +526,8 @@ int main(int argc, char *argv[]) {
 
         gcs_client->Nodes().UnregisterSelf(
             raylet_node_id, node_death_info, std::move(unregister_done_callback));
+
+        metric_context.stop();
       };
 
   gcs_client->InternalKV().AsyncGetInternalConfig([&](::ray::Status status,
@@ -892,7 +907,8 @@ int main(int argc, char *argv[]) {
           return std::make_shared<ray::rpc::ObjectManagerClient>(
               address, port, call_manager);
         },
-        object_manager_rpc_service);
+        object_manager_rpc_service,
+        metric_context);
 
     local_object_manager = std::make_unique<ray::raylet::LocalObjectManager>(
         raylet_node_id,
@@ -1077,7 +1093,8 @@ int main(int argc, char *argv[]) {
         std::move(socket),
         memory_manager_worker_eviction_total_count,
         node_manager_unexpected_worker_failure_total_count,
-        clock);
+        clock,
+        metric_context);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
