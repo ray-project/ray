@@ -2223,7 +2223,7 @@ class TestPlacementGroup:
     def test_requires_actor_pool(self, ray_start_regular_shared):
         # A function UDF resolves to a task pool, which can't carry a PG.
         with pytest.raises(ValueError, match="only supported for actor-based"):
-            ray.data.range(10).map_batches_internal(
+            ray.data.range(1).map_batches_internal(
                 lambda batch: batch, placement_group_bundles=[{"CPU": 1}]
             )
 
@@ -2231,7 +2231,7 @@ class TestPlacementGroup:
         with pytest.raises(
             ValueError, match="`placement_group_bundles` must also be provided"
         ):
-            ray.data.range(10).map_batches_internal(
+            ray.data.range(1).map_batches_internal(
                 lambda batch: batch, placement_group_strategy="PACK"
             )
 
@@ -2241,7 +2241,7 @@ class TestPlacementGroup:
                 return batch
 
         with pytest.raises(ValueError, match="Manually setting `scheduling_strategy`"):
-            ray.data.range(10).map_batches_internal(
+            ray.data.range(1).map_batches_internal(
                 UDFClass,
                 compute=ray.data.ActorPoolStrategy(size=1),
                 placement_group_bundles=[{"CPU": 1}],
@@ -2254,7 +2254,7 @@ class TestPlacementGroup:
                 return batch
 
         with pytest.raises(ValueError, match="Invalid placement group strategy"):
-            ray.data.range(10).map_batches_internal(
+            ray.data.range(1).map_batches_internal(
                 UDFClass,
                 compute=ray.data.ActorPoolStrategy(size=1),
                 placement_group_bundles=[{"CPU": 1}],
@@ -2266,9 +2266,9 @@ class TestPlacementGroup:
             def __call__(self, batch):
                 return batch
 
-        # Map workers default to 1 CPU when no resources are specified.
+        # Map workers default to 1 CPU, so a bundle with 0.5 CPUs cannot fit one.
         with pytest.raises(ValueError, match="subset of the first bundle"):
-            ray.data.range(10).map_batches_internal(
+            ray.data.range(1).map_batches_internal(
                 UDFClass,
                 compute=ray.data.ActorPoolStrategy(size=1),
                 placement_group_bundles=[{"CPU": 0.5}],
@@ -2280,7 +2280,7 @@ class TestPlacementGroup:
                 return batch
 
         with pytest.raises(ValueError, match="subset of the first bundle"):
-            ray.data.range(10).map_batches_internal(
+            ray.data.range(1).map_batches_internal(
                 UDFClass,
                 compute=ray.data.ActorPoolStrategy(size=1),
                 placement_group_bundles=[{"CPU": 1}],
@@ -2297,7 +2297,7 @@ class TestPlacementGroup:
                 return batch
 
         ds = (
-            ray.data.range(10)
+            ray.data.range(1)
             .map_batches(lambda batch: batch)
             .map_batches_internal(
                 UDFClass,
