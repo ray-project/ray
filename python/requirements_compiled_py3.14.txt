@@ -37,9 +37,10 @@ aiobotocore==2.8.0
     #   s3fs
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   aiobotocore
@@ -2456,7 +2457,7 @@ xxhash==3.6.0
     #   evaluate
 xyzservices==2026.3.0
     # via bokeh
-yarl==1.23.0
+yarl==1.25.1
     # via
     #   aiohttp
     #   delta-sharing
