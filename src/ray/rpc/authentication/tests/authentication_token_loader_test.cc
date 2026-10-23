@@ -338,7 +338,7 @@ TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingWritesOwnerOnlyTok
   std::string token = ReadWholeFile(default_token_path_);
   EXPECT_EQ(token.size(), 64);
   EXPECT_TRUE(std::all_of(token.begin(), token.end(), [](char c) {
-    return std::isdigit(c) || (c >= 'a' && c <= 'f');
+    return std::isdigit(static_cast<unsigned char>(c)) || (c >= 'a' && c <= 'f');
   }));
 #ifndef _WIN32
   struct stat file_stat;
@@ -372,7 +372,9 @@ TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReplacesBlankFile)
 TEST_F(AuthenticationTokenLoaderTest, TestCreateTokenIfMissingReportsBadTokenPath) {
   set_env_var("RAY_AUTH_TOKEN_PATH", "/nonexistent/ray_test_token");
 
-  EXPECT_NE(AuthenticationTokenLoader::instance().CreateTokenIfMissing(), "");
+  EXPECT_NE(AuthenticationTokenLoader::instance().CreateTokenIfMissing().find(
+                "/nonexistent/ray_test_token"),
+            std::string::npos);
   EXPECT_FALSE(std::ifstream(default_token_path_).good());
 }
 

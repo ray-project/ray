@@ -33,7 +33,8 @@ cluster_not_supported = os.name == "nt"
 def _ensure_head_token(
     system_config: Optional[dict], create_auth_token_if_missing: bool
 ) -> None:
-    """Make sure a token exists before a test cluster starts its head, so the GCS
+    """Before a test cluster starts its head: create a missing token when asked
+    to, and otherwise raise if token auth is on and no token exists, so the GCS
     doesn't crash on a missing token."""
     if create_auth_token_if_missing:
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=True)
@@ -46,6 +47,7 @@ def _ensure_head_token(
             "found. Pass create_auth_token_if_missing=True to create one for this "
             "cluster, or set RAY_AUTH_MODE=disabled."
         )
+    # Only for its _system_config AUTH_MODE check; the token is known to exist.
     ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
 
@@ -120,6 +122,9 @@ class AutoscalingCluster:
         After this call returns, you can connect to the cluster with
         ray.init("auto").
         """
+        # `ray start --head` never creates a token, so check for one before
+        # stopping any running cluster.
+        _ensure_head_token(_system_config, self._create_auth_token_if_missing)
         subprocess.check_call(["ray", "stop", "--force"])
         _, fake_config = tempfile.mkstemp()
         with open(fake_config, "w") as f:
@@ -161,8 +166,6 @@ class AutoscalingCluster:
             )
         if override_env:
             env.update(override_env)
-        # `ray start --head` never creates a token, so check for one here first.
-        _ensure_head_token(_system_config, self._create_auth_token_if_missing)
         subprocess.check_call(cmd, env=env)
         ray._private.services.find_gcs_addresses.cache_clear()
 

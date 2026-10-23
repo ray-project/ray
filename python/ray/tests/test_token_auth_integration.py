@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 
@@ -614,6 +615,22 @@ def test_cluster_utils_rejects_auth_mode_in_system_config():
             initialize_head=True,
             head_node_args={"_system_config": {"AUTH_MODE": "token"}},
         )
+
+
+def test_autoscaling_cluster_without_token_fails_before_stopping_ray():
+    """AutoscalingCluster.start() without create_auth_token_if_missing, token auth
+    on and no token, raises before `ray stop --force` or `ray start --head` runs."""
+    from ray.cluster_utils import AutoscalingCluster
+
+    set_auth_mode("token")
+    reset_auth_token_state()
+    cluster = AutoscalingCluster(head_resources={"CPU": 1}, worker_node_types={})
+
+    with patch("subprocess.check_call") as check_call:
+        with pytest.raises(RuntimeError, match="create_auth_token_if_missing=True"):
+            cluster.start()
+    check_call.assert_not_called()
+    assert not (Path.home() / ".ray" / "auth_token").exists()
 
 
 @pytest.mark.skipif(
