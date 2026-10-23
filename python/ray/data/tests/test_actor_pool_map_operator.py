@@ -124,6 +124,7 @@ def _make_actor_pool(
     map_worker_cls_name="MapWorker",
     placement_group_bundles=None,
     placement_group_strategy=None,
+    get_actor_state_fn=None,
 ) -> _ActorPool:
     config = AutoscalingActorConfig(
         min_size=min_size,
@@ -139,6 +140,7 @@ def _make_actor_pool(
         map_worker_cls_name=map_worker_cls_name,
         placement_group_bundles=placement_group_bundles,
         placement_group_strategy=placement_group_strategy,
+        get_actor_state_fn=get_actor_state_fn,
     )
 
 
@@ -2022,12 +2024,8 @@ class TestPlacementGroup:
             placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
             placement_group_strategy="STRICT_PACK",
         )
-        op._metrics = MagicMock(obj_store_mem_max_pending_output_per_task=0)
-
         # Per-actor usage is the sum of all bundles (2 CPU, 2 GPU)
         bundle_sum = ExecutionResources(cpu=2, gpu=2)
-        assert op._placement_group_resource_usage == bundle_sum
-        assert op._actor_pool.per_actor_resource_usage() == bundle_sum
         assert op.min_scheduling_resources() == bundle_sum
         assert op.per_task_resource_allocation() == bundle_sum
 
@@ -2107,10 +2105,12 @@ class TestPlacementGroup:
         ray.shutdown()
         ray.init(num_cpus=1)
 
+        actor_states = {}
         pool = _make_actor_pool(
             _create_actor_in_pg_fn,
             placement_group_bundles=[{"CPU": 1}],
             placement_group_strategy="PACK",
+            get_actor_state_fn=actor_states.__getitem__,
         )
         pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
         ready_ref = pool.get_pending_actor_refs()[0]
@@ -2119,15 +2119,16 @@ class TestPlacementGroup:
         [pg_id] = list(get_pg_states())
 
         # Simulate a transient restart of the running actor.
-        with patch.object(
-            actor,
-            "_get_local_state",
-            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
-        ):
-            pool.refresh_actor_state()
+        actor_states[actor] = gcs_pb2.ActorTableData.ActorState.RESTARTING
+        pool.refresh_actor_state()
         assert pool.num_restarting_actors() == 1
 
-        # The placement group is retained across the restart (not removed).
+        # The placement group is retained while restarting and after recovery.
+        assert get_pg_states()[pg_id] == "CREATED"
+        actor_states[actor] = gcs_pb2.ActorTableData.ActorState.ALIVE
+        pool.refresh_actor_state()
+        assert pool.num_restarting_actors() == 0
+        assert pool.can_schedule_task()
         assert get_pg_states()[pg_id] == "CREATED"
 
     def test_idle_downscale_skips_restarting_actor(self, shutdown_only):
@@ -2137,10 +2138,12 @@ class TestPlacementGroup:
         ray.shutdown()
         ray.init(num_cpus=1)
 
+        actor_states = {}
         pool = _make_actor_pool(
             _create_actor_in_pg_fn,
             placement_group_bundles=[{"CPU": 1}],
             placement_group_strategy="PACK",
+            get_actor_state_fn=actor_states.__getitem__,
         )
         pool.scale(ActorPoolScalingRequest(delta=1, reason="test"))
         ready_ref = pool.get_pending_actor_refs()[0]
@@ -2148,19 +2151,15 @@ class TestPlacementGroup:
         actor = pool.pending_to_running(ready_ref)
         [pg_id] = list(get_pg_states())
 
-        # Mark the idle actor as restarting
-        with patch.object(
-            actor,
-            "_get_local_state",
-            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
-        ):
-            pool.refresh_actor_state()
-            assert pool.num_restarting_actors() == 1
-            # Nothing is released: the only idle actor is restarting, so it's skipped.
-            released = pool.scale(
-                ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
-            )
-            assert released == 0
+        # Mark the idle actor as restarting.
+        actor_states[actor] = gcs_pb2.ActorTableData.ActorState.RESTARTING
+        pool.refresh_actor_state()
+        assert pool.num_restarting_actors() == 1
+        # Nothing is released: the only idle actor is restarting, so it's skipped.
+        released = pool.scale(
+            ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
+        )
+        assert released == 0
 
         assert pool.num_running_actors() == 1
         assert get_pg_states()[pg_id] == "CREATED"
@@ -2312,11 +2311,11 @@ class TestPlacementGroup:
         physical_plan, _ = get_execution_plan(ds._logical_plan)
         op = physical_plan.dag
 
-        assert op._placement_group_bundles == [{"CPU": 1}, {"CPU": 1}]
-        assert op._placement_group_strategy == "SPREAD"
+        assert op.placement_group_bundles == [{"CPU": 1}, {"CPU": 1}]
+        assert op.placement_group_strategy == "SPREAD"
         # The fused operator's resource accounting also reflects the bundle sum,
         # so the config survives fusion down to budgeting/autoscaling.
-        assert op._actor_pool.per_actor_resource_usage() == ExecutionResources(cpu=2)
+        assert op.min_scheduling_resources() == ExecutionResources(cpu=2)
 
     def test_removed_after_execution(self, shutdown_only):
         """End-to-end: Ray Data spawns the map worker actor into its placement

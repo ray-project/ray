@@ -243,6 +243,16 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
+    @property
+    def placement_group_bundles(self) -> Optional[List[Dict[str, float]]]:
+        """Bundles reserved by each actor's placement group, if configured."""
+        return self._placement_group_bundles
+
+    @property
+    def placement_group_strategy(self) -> Optional[str]:
+        """Configured placement strategy for each actor's placement group."""
+        return self._placement_group_strategy
+
     def _create_actor_pool(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
@@ -899,6 +909,7 @@ class _ActorPool(AutoscalingActorPool):
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        get_actor_state_fn: Optional[Callable[[ActorHandle], Optional[int]]] = None,
     ):
         """Initialize the actor pool.
 
@@ -921,10 +932,15 @@ class _ActorPool(AutoscalingActorPool):
                 the actor.
             placement_group_strategy: The strategy of the placement groups
                 created from ``placement_group_bundles``. Defaults to ``PACK``.
+            get_actor_state_fn: Test seam for injecting an actor-state reader.
+                Defaults to the actor handle's locally cached state.
         """
         super().__init__(config=config)
 
         self._create_actor_fn = create_actor_fn
+        self._get_actor_state_fn = get_actor_state_fn or (
+            lambda actor: actor._get_local_state()
+        )
         self._map_worker_cls_name = map_worker_cls_name
         self._debounce_period_s = debounce_period_s
         self._placement_group_bundles = placement_group_bundles
@@ -1300,7 +1316,7 @@ class _ActorPool(AutoscalingActorPool):
         Returns:
             True if the actor is dead (and should be released from the pool).
         """
-        actor_state = actor._get_local_state()
+        actor_state = self._get_actor_state_fn(actor)
 
         # 1) Check if actor is restarting
         running_actor_state = self._running_actors[actor]
