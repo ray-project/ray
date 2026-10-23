@@ -959,6 +959,10 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     tmp_path, restore_ctx, monkeypatch
 ):
     from ray.data._internal.datasource_v2.common import listing_utils
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
+        FILE_METADATA_TYPE,
+    )
 
     monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
     first = tmp_path / "a.parquet"
@@ -988,7 +992,13 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     source = discovered_file_info_tables[0]
 
     assert len(blocks) == 2
-    assert all(block.schema == source.schema for block in blocks)
+    assert all(
+        block.select(source.column_names).schema == source.schema for block in blocks
+    )
+    assert all(
+        block.schema.field(FILE_METADATA_COLUMN_NAME).type == FILE_METADATA_TYPE
+        for block in blocks
+    )
     assert [path for block in blocks for path in block["__path"].to_pylist()] == source[
         "__path"
     ].to_pylist()

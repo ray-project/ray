@@ -57,6 +57,7 @@ class OrcScanner(ArrowFileScanner):
     """
 
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
+    reuse_file_metadata: bool = False
 
     @override
     def prune_partitions(self, predicate: Expr) -> "OrcScanner":
@@ -157,4 +158,5 @@ class OrcScanner(ArrowFileScanner):
             ignore_prefixes=self.ignore_prefixes,
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
+            reuse_file_metadata=self.reuse_file_metadata,
         )

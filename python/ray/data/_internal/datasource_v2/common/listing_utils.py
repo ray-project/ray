@@ -8,9 +8,12 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FILE_METADATA_COLUMN_NAME,
+    FILE_MTIME_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
     FileManifest,
+    FileMetadata,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import FilePartitioner
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
@@ -119,14 +122,29 @@ def list_files_for_each_block(
         def _file_infos() -> Iterable[FileInfo]:
             for block in blocks:
                 assert isinstance(block, pa.Table)
-                for path, size in zip(
-                    block[PATH_COLUMN_NAME].to_pylist(),
-                    block[FILE_SIZE_COLUMN_NAME].to_pylist(),
+                metadatas = (
+                    block[FILE_METADATA_COLUMN_NAME].to_pylist()
+                    if FILE_METADATA_COLUMN_NAME in block.column_names
+                    else None
+                )
+                for index, (path, size) in enumerate(
+                    zip(
+                        block[PATH_COLUMN_NAME].to_pylist(),
+                        block[FILE_SIZE_COLUMN_NAME].to_pylist(),
+                    )
                 ):
                     if partition_pruner is None or partition_pruner.should_include(
                         path
                     ):
-                        yield FileInfo(path=path, size=size)
+                        yield FileInfo(
+                            path=path,
+                            size=size,
+                            metadata=(
+                                FileMetadata.from_metadata(metadatas[index])
+                                if metadatas is not None
+                                else None
+                            ),
+                        )
 
         for manifest in indexer.list_files_from_file_infos(
             _file_infos(),
@@ -185,6 +203,7 @@ def sample_files(
     paths_column = pa.array(paths, type=pa.string())
     sampled_paths: List[str] = []
     sampled_sizes: List[int] = []
+    sampled_mtimes: List[Optional[int]] = []
     for file_info in indexer.list_file_infos(
         paths_column,
         filesystem=filesystem,
@@ -195,10 +214,21 @@ def sample_files(
             continue
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
+        if max_files is None:
+            sampled_mtimes.append(file_info.mtime_ns)
         if max_files is not None and len(sampled_paths) >= max_files:
             break
-    return FileManifest.construct_manifest(
+    manifest = FileManifest.construct_manifest(
         paths=sampled_paths,
         sizes=sampled_sizes,
         chunk_metadatas=[None] * len(sampled_paths),
     )
+    if max_files is None:
+        block = manifest.as_block()
+        assert isinstance(block, pa.Table)
+        return FileManifest(
+            block.append_column(
+                FILE_MTIME_COLUMN_NAME, pa.array(sampled_mtimes, type=pa.int64())
+            )
+        )
+    return manifest

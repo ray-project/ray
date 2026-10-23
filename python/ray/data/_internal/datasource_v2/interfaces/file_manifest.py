@@ -69,6 +69,34 @@ class FileChunk:
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 FILE_CHUNK_METADATA_COLUMN_NAME = "__file_chunk_metadata"
+FILE_METADATA_COLUMN_NAME = "__file_metadata"
+FILE_MTIME_COLUMN_NAME = "__file_mtime_ns"
+FILE_METADATA_TYPE = pa.struct(
+    [
+        pa.field("num_rows", pa.int64()),
+        pa.field("parquet_footer", pa.binary()),
+        pa.field("mtime_ns", pa.int64()),
+    ]
+)
+
+
+@dataclass(frozen=True)
+class FileMetadata:
+    """Optional planning metadata for one whole file, independent of chunks."""
+
+    num_rows: Optional[int] = None
+    parquet_footer: Optional[bytes] = None
+    mtime_ns: Optional[int] = None
+
+    def to_metadata(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    @classmethod
+    def from_metadata(cls, value: Optional[Mapping[str, Any]]) -> "FileMetadata":
+        return cls(**value) if value is not None else cls()
+
+    def without_footer(self) -> "FileMetadata":
+        return FileMetadata(num_rows=self.num_rows, mtime_ns=self.mtime_ns)
 
 
 class FileManifest:
@@ -128,6 +156,19 @@ class FileManifest:
     @cached_property
     def file_chunk_metadatas(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_chunk_metadatas).to_numpy()
+
+    @cached_property
+    def file_metadatas(self) -> Optional[List[FileMetadata]]:
+        """Whole-file metadata, or None when this stream has no metadata column."""
+        accessor = BlockAccessor.for_block(self._block)
+        assert isinstance(accessor, TableBlockAccessor)
+        if FILE_METADATA_COLUMN_NAME not in accessor.column_names():
+            return None
+        block = accessor.to_arrow()
+        return [
+            FileMetadata.from_metadata(value)
+            for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()
+        ]
 
     def as_block(self) -> Block:
         """Return the underlying block for the `FileManifest`.
@@ -192,6 +233,7 @@ class FileManifest:
         paths: List[str],
         sizes: List[int],
         chunk_metadatas: List[Optional[ChunkMetadata]],
+        file_metadatas: Optional[List[FileMetadata]] = None,
     ) -> "FileManifest":
         assert len(paths) == len(sizes) == len(chunk_metadatas)
 
@@ -202,4 +244,13 @@ class FileManifest:
                 FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
             }
         )
+        if file_metadatas is not None:
+            assert len(file_metadatas) == len(paths)
+            block = block.append_column(
+                FILE_METADATA_COLUMN_NAME,
+                pa.array(
+                    [metadata.to_metadata() for metadata in file_metadatas],
+                    type=FILE_METADATA_TYPE,
+                ),
+            )
         return cls(block)
