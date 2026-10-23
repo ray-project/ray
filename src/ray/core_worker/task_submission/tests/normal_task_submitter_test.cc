@@ -1741,6 +1741,42 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
+// Tests that the first task always runs on a newly granted lease and the lease timeout
+// only applies to reuse.
+TEST_F(NormalTaskSubmitterTest, TestLeaseTimeoutOnlyAppliesToReuse) {
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(1),
+                                WorkerType::WORKER,
+                                /*raylet_client_factory=*/nullptr,
+                                /*custom_memory_store=*/nullptr,
+                                /*lease_timeout_ms=*/0);
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 1);
+
+  // Task 1 is pushed to the new worker although the lease timeout is 0.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, local_node_id));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+
+  // Task 1 finishes; the worker is returned instead of being reused for task 2.
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(raylet_client->num_workers_returned, 1);
+
+  // Task 2 runs on a second worker.
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1001, local_node_id));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(raylet_client->num_workers_returned, 2);
+  ASSERT_EQ(task_manager->num_tasks_complete, 2);
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
 TEST_F(NormalTaskSubmitterTest, TestKillExecutingTask) {
   rpc::GcsNodeAddressAndLiveness node_info;
   node_info.set_node_id(local_node_id.Binary());
