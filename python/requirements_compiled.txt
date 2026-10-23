@@ -51,10 +51,11 @@ aiofiles==25.1.0
     # via aim
 aiohappyeyeballs==2.6.1
     # via aiohttp
-aiohttp==3.14.3
+aiohttp==3.14.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aiobotocore
     #   aiohttp-cors
@@ -2699,7 +2700,7 @@ xyzservices==2026.3.0
     # via bokeh
 yahp==0.1.1
     # via mosaicml
-yarl==1.23.0
+yarl==1.25.1
     # via
     #   aiohttp
     #   delta-sharing
