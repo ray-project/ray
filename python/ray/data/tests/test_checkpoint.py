@@ -486,6 +486,29 @@ def test_generated_id_schema_cached_before_config_is_refreshed(
     assert "generated_id" in ds.take(1)[0]
 
 
+def test_generated_id_schema_cache_invalidated_when_config_cleared(
+    ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
+):
+    """The mirror image of the refresh test above: a schema cached while the
+    config was in effect carries the generated ID column, so clearing the
+    config must invalidate it too — execution no longer produces the column."""
+    ds = ray.data.read_parquet(generate_sample_data_parquet())
+    ds.context.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"), generated_id_column="generated_id"
+    )
+    assert "generated_id" in ds.schema().names
+    assert "generated_id" in ds.schema(fetch_if_missing=False).names
+
+    ds.context.checkpoint_config = None
+
+    # The cache entry bound to "generated_id" no longer answers; the schema
+    # is re-inferred from the (now unbound) plan and matches the rows
+    # execution produces: no generated ID column.
+    assert "generated_id" not in ds.schema(fetch_if_missing=False).names
+    assert "generated_id" not in ds.schema().names
+    assert "generated_id" not in ds.take(1)[0]
+
+
 def test_generated_id_plans_skip_at_the_source(
     ray_start_10_cpus_shared, generate_sample_data_parquet, tmp_path
 ):

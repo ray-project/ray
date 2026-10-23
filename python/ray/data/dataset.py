@@ -9090,10 +9090,10 @@ class _ExecutionCache:
         """Return the cached schema, or ``None`` on a miss.
 
         ``generated_id`` is the ``CheckpointConfig.generated_id_column``
-        currently in effect. A schema cached under a different binding that
-        lacks the column predates the config (Ray Train sets
-        ``checkpoint_config`` on built datasets) and no longer matches the
-        rows execution produces, so it's treated as a miss.
+        currently in effect. The column appears and disappears with the
+        config (Ray Train sets ``checkpoint_config`` on built datasets), so
+        a cached schema is valid only under the binding it was computed
+        with; any other binding is a miss.
         """
         if not self._cache_is_fresh(dag):
             return None
@@ -9102,12 +9102,7 @@ class _ExecutionCache:
             # re-execution happens — so its schema holds regardless of any
             # config set afterwards.
             return self._bundle.schema
-        if (
-            self._schema is not None
-            and generated_id is not None
-            and generated_id != self._schema_generated_id
-            and generated_id not in (getattr(self._schema, "names", None) or ())
-        ):
+        if generated_id != self._schema_generated_id:
             return None
         return self._schema
 
