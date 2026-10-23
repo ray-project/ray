@@ -313,8 +313,8 @@ def test_connect_without_token_raises_error(setup_cluster_with_token_auth):
 
 
 def test_ray_init_address_without_token_does_not_create_token(
-    setup_cluster_with_token_auth,
-):
+    setup_cluster_with_token_auth: dict,
+) -> None:
     """ray.init(address=...) with token auth on and no token fails, and no token
     file gets created."""
     cluster = setup_cluster_with_token_auth["cluster"]
@@ -403,17 +403,31 @@ def test_cluster_token_authentication(tokens_match, setup_cluster_with_token_aut
         assert isinstance(exc_info.value, AuthenticationError)
 
 
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Uses subprocess ray start, not compatible with client mode",
-)
-def test_ray_start_head_without_token_fails(tmp_path):
-    """ray start --head with token auth on and no token fails before starting
-    any process, tells the user to generate a token, and creates none."""
+def _token_mode_env_without_token() -> dict:
+    """This process's env with token auth on and no token source."""
     env = os.environ.copy()
     env["RAY_AUTH_MODE"] = "token"
     env.pop("RAY_AUTH_TOKEN", None)
     env.pop("RAY_AUTH_TOKEN_PATH", None)
+    return env
+
+
+@pytest.fixture
+def token_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Point HOME at an empty temp dir and return the default token path in it."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    return tmp_path / ".ray" / "auth_token"
+
+
+@pytest.mark.skipif(
+    client_test_enabled(),
+    reason="Uses subprocess ray start, not compatible with client mode",
+)
+def test_ray_start_head_without_token_fails(tmp_path: Path) -> None:
+    """ray start --head with token auth on and no token fails before starting
+    any process, tells the user to generate a token, and creates none."""
+    env = _token_mode_env_without_token()
 
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
@@ -437,12 +451,10 @@ def test_ray_start_head_without_token_fails(tmp_path):
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-def test_ray_start_head_reports_a_missing_token_path_file(tmp_path):
+def test_ray_start_head_reports_a_missing_token_path_file(tmp_path: Path) -> None:
     """ray start --head with RAY_AUTH_TOKEN_PATH naming a missing file reports
     that file, not the head no-token error."""
-    env = os.environ.copy()
-    env["RAY_AUTH_MODE"] = "token"
-    env.pop("RAY_AUTH_TOKEN", None)
+    env = _token_mode_env_without_token()
     env["RAY_AUTH_TOKEN_PATH"] = str(tmp_path / "missing_token")
 
     try:
@@ -461,7 +473,7 @@ def test_ray_start_head_reports_a_missing_token_path_file(tmp_path):
     reason="AutoscalingCluster uses subprocess ray start and the fake "
     "multi-node provider, which don't run in client mode or on Windows",
 )
-def test_autoscaling_cluster_creates_token():
+def test_autoscaling_cluster_creates_token() -> None:
     """AutoscalingCluster() creates the token
     before its `ray start --head`, so it comes up with auth on in an empty HOME."""
     from ray.cluster_utils import AutoscalingCluster
@@ -492,12 +504,12 @@ def test_autoscaling_cluster_creates_token():
 
 
 @pytest.mark.parametrize("leftover_file_content", [None, b"", b" \t\n\x0b\x0c\r\n"])
-def test_create_token_if_missing(leftover_file_content, tmp_path, monkeypatch):
+def test_create_token_if_missing(
+    leftover_file_content: Optional[bytes], token_home: Path
+) -> None:
     """Token creation writes an owner-only token, overwriting a leftover token
     file that holds no token."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    token_path = tmp_path / ".ray" / "auth_token"
+    token_path = token_home
     if leftover_file_content is not None:
         token_path.parent.mkdir()
         token_path.write_bytes(leftover_file_content)
@@ -514,11 +526,12 @@ def test_create_token_if_missing(leftover_file_content, tmp_path, monkeypatch):
     sys.platform == "win32" or os.geteuid() == 0,
     reason="Needs POSIX permissions that apply to the current user",
 )
-def test_create_token_if_missing_overwrites_an_unreadable_file(tmp_path, monkeypatch):
+def test_create_token_if_missing_overwrites_an_unreadable_file(
+    token_home: Path,
+) -> None:
     """A leftover token file the owner can write but not read is overwritten,
     as before this change, instead of crashing token creation."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    token_path = tmp_path / ".ray" / "auth_token"
+    token_path = token_home
     token_path.parent.mkdir()
     token_path.write_bytes(b"")
     token_path.chmod(0o200)
@@ -534,11 +547,12 @@ def test_create_token_if_missing_overwrites_an_unreadable_file(tmp_path, monkeyp
     sys.platform == "win32" or os.geteuid() == 0,
     reason="Needs POSIX permissions that apply to the current user",
 )
-def test_create_token_if_missing_reports_an_unwritable_home(tmp_path, monkeypatch):
+def test_create_token_if_missing_reports_an_unwritable_home(
+    token_home: Path,
+) -> None:
     """A token file that can't be written raises RuntimeError naming the file,
     not an AuthenticationError telling the user to copy a token from a head."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    token_dir = tmp_path / ".ray"
+    token_dir = token_home.parent
     token_dir.mkdir()
     token_dir.chmod(0o500)
     reset_auth_token_state()
@@ -560,17 +574,15 @@ def test_create_token_if_missing_reports_an_unwritable_home(tmp_path, monkeypatc
     ],
 )
 def test_token_creation_keeps_an_existing_token(
-    token_file_content, loaded_token, tmp_path, monkeypatch
-):
+    token_file_content: bytes, loaded_token: Optional[str], token_home: Path
+) -> None:
     """A token file that holds a token, on its first non-blank line as the token
     loader reads it, is left unchanged by token creation."""
     from ray._private.authentication.authentication_token_setup import (
         ensure_token_if_auth_enabled,
     )
 
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("USERPROFILE", str(tmp_path))
-    token_path = tmp_path / ".ray" / "auth_token"
+    token_path = token_home
     token_path.parent.mkdir()
     token_path.write_bytes(token_file_content)
     set_auth_mode("token")
@@ -582,7 +594,7 @@ def test_token_creation_keeps_an_existing_token(
     # The CLI returns at has_token here; this checks only the user-facing path.
     cli = subprocess.run(
         ["ray", "get-auth-token", "--generate"],
-        env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
+        env=os.environ.copy(),
         capture_output=True,
         text=True,
         errors="replace",
@@ -592,8 +604,14 @@ def test_token_creation_keeps_an_existing_token(
         assert cli.returncode == 0, cli.stderr
         assert cli.stdout == loaded_token
 
+    if loaded_token is not None and not client_test_enabled():
+        from ray.cluster_utils import Cluster
+
+        Cluster(initialize_head=True).shutdown()
+
     assert token_path.read_bytes() == token_file_content
     if loaded_token is not None:
+        reset_auth_token_state()
         assert AuthenticationTokenLoader.instance().get_raw_token() == loaded_token
 
 
@@ -601,10 +619,16 @@ def test_token_creation_keeps_an_existing_token(
     client_test_enabled(),
     reason="Starts a new local cluster; not compatible with client mode",
 )
-def test_cluster_utils_rejects_auth_mode_in_system_config():
-    """Cluster(enable_token_auth=False) rejects AUTH_MODE in _system_config, as
-    ray.init() does: the mode can only be set with the RAY_AUTH_MODE environment
-    variable. The earlier RAY_AUTH_MODE comes back after the failure."""
+@pytest.mark.parametrize(
+    "cluster_kwargs,config_mode",
+    [({"enable_token_auth": False}, "token"), ({}, "disabled")],
+)
+def test_cluster_utils_rejects_auth_mode_in_system_config(
+    cluster_kwargs: dict, config_mode: str
+) -> None:
+    """Cluster() rejects an AUTH_MODE in _system_config that disagrees with its
+    mode, as ray.init() does: the mode can only be set with RAY_AUTH_MODE or
+    enable_token_auth. The earlier RAY_AUTH_MODE comes back after the failure."""
     from ray.cluster_utils import Cluster
 
     set_auth_mode("token")
@@ -613,13 +637,13 @@ def test_cluster_utils_rejects_auth_mode_in_system_config():
     with pytest.raises(RuntimeError, match="RAY_AUTH_MODE"):
         Cluster(
             initialize_head=True,
-            enable_token_auth=False,
-            head_node_args={"_system_config": {"AUTH_MODE": "token"}},
+            head_node_args={"_system_config": {"AUTH_MODE": config_mode}},
+            **cluster_kwargs,
         )
     assert os.environ["RAY_AUTH_MODE"] == "token"
 
 
-def test_autoscaling_cluster_enable_token_auth_false_disables_auth():
+def test_autoscaling_cluster_enable_token_auth_false_disables_auth() -> None:
     """AutoscalingCluster(enable_token_auth=False) starts its head with
     RAY_AUTH_MODE=disabled even when the test process set token mode, creates no
     token, and restores the earlier mode on shutdown."""
@@ -641,21 +665,44 @@ def test_autoscaling_cluster_enable_token_auth_false_disables_auth():
     assert not (Path.home() / ".ray" / "auth_token").exists()
 
 
+def test_autoscaling_cluster_start_failure_restores_auth_mode() -> None:
+    """When AutoscalingCluster.start() fails after setting RAY_AUTH_MODE, it puts
+    back the earlier mode."""
+    from ray.cluster_utils import AutoscalingCluster
+
+    set_auth_mode("token")
+    reset_auth_token_state()
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 1}, worker_node_types={}, enable_token_auth=False
+    )
+
+    with patch(
+        "subprocess.check_call",
+        side_effect=subprocess.CalledProcessError(1, "ray start --head"),
+    ):
+        with pytest.raises(subprocess.CalledProcessError):
+            cluster.start()
+    assert os.environ["RAY_AUTH_MODE"] == "token"
+
+
 @pytest.mark.skipif(
     client_test_enabled(),
     reason="Starts a new local cluster; not compatible with client mode",
 )
 @pytest.mark.parametrize(
     "earlier_mode,enable_token_auth",
-    [(None, True), ("disabled", True), (None, False), ("token", False)],
+    [(None, None), ("disabled", None), (None, True), (None, False), ("token", False)],
 )
 def test_cluster_utils_enable_token_auth_overrides_auth_mode(
-    earlier_mode, enable_token_auth, monkeypatch
-):
+    earlier_mode: Optional[str],
+    enable_token_auth: Optional[bool],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Cluster()'s enable_token_auth decides the auth mode whatever RAY_AUTH_MODE
-    the test process had: True creates ~/.ray/auth_token and runs with auth on,
-    False creates none and runs with auth off. A driver from the test process
-    connects either way, and shutdown() restores the earlier RAY_AUTH_MODE."""
+    the test process had: True, the default (None here omits the argument),
+    creates ~/.ray/auth_token and runs with auth on, False creates none and runs
+    with auth off. A driver from the test process connects either way, and
+    shutdown() restores the earlier RAY_AUTH_MODE."""
     from ray.cluster_utils import Cluster
 
     if earlier_mode is None:
@@ -666,12 +713,16 @@ def test_cluster_utils_enable_token_auth_overrides_auth_mode(
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()
 
-    cluster = Cluster(initialize_head=True, enable_token_auth=enable_token_auth)
+    cluster_kwargs = (
+        {} if enable_token_auth is None else {"enable_token_auth": enable_token_auth}
+    )
+    expect_token_auth = enable_token_auth is not False
+    cluster = Cluster(initialize_head=True, **cluster_kwargs)
     try:
         assert os.environ["RAY_AUTH_MODE"] == (
-            "token" if enable_token_auth else "disabled"
+            "token" if expect_token_auth else "disabled"
         )
-        assert default_token_path.exists() == enable_token_auth
+        assert default_token_path.exists() == expect_token_auth
         ray.init(address=cluster.address)
 
         @ray.remote
@@ -685,9 +736,11 @@ def test_cluster_utils_enable_token_auth_overrides_auth_mode(
     assert os.environ.get("RAY_AUTH_MODE") == earlier_mode
 
 
-def test_cluster_utils_head_start_failure_unsets_auth_mode(monkeypatch):
-    """When Cluster(initialize_head=True) fails to start the head, it unsets the
-    RAY_AUTH_MODE it set, since the caller has no object to shut down."""
+def test_cluster_utils_head_start_failure_unsets_auth_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When starting the head fails, in Cluster(initialize_head=True) or a later
+    add_node(), the cluster unsets the RAY_AUTH_MODE it set."""
     from ray.cluster_utils import Cluster
 
     monkeypatch.delenv("RAY_AUTH_MODE", raising=False)
@@ -696,6 +749,9 @@ def test_cluster_utils_head_start_failure_unsets_auth_mode(monkeypatch):
     with patch("ray._private.node.Node", side_effect=RuntimeError("head failed")):
         with pytest.raises(RuntimeError, match="head failed"):
             Cluster(initialize_head=True)
+        cluster = Cluster()
+        with pytest.raises(RuntimeError, match="head failed"):
+            cluster.add_node()
     assert "RAY_AUTH_MODE" not in os.environ
 
 
@@ -703,7 +759,9 @@ def test_cluster_utils_head_start_failure_unsets_auth_mode(monkeypatch):
     client_test_enabled(),
     reason="Starts a new local cluster; not compatible with client mode",
 )
-def test_cluster_utils_connect_failure_unsets_auth_mode(monkeypatch):
+def test_cluster_utils_connect_failure_unsets_auth_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """When Cluster(initialize_head=True, connect=True) fails to connect after
     the head started, it unsets the RAY_AUTH_MODE it set."""
     from ray.cluster_utils import Cluster
@@ -730,16 +788,15 @@ def test_cluster_utils_connect_failure_unsets_auth_mode(monkeypatch):
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-def test_ray_start_address_without_token_raises_error(setup_cluster_with_token_auth):
+def test_ray_start_address_without_token_raises_error(
+    setup_cluster_with_token_auth: dict,
+) -> None:
     """ray start --address with token auth on and no token fails, and no token
     file gets created."""
     cluster = setup_cluster_with_token_auth["cluster"]
     ray.shutdown()
 
-    env = os.environ.copy()
-    env["RAY_AUTH_MODE"] = "token"
-    env.pop("RAY_AUTH_TOKEN", None)
-    env.pop("RAY_AUTH_TOKEN_PATH", None)
+    env = _token_mode_env_without_token()
 
     default_token_path = Path.home() / ".ray" / "auth_token"
     assert not default_token_path.exists()

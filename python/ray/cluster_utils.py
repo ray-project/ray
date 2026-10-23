@@ -39,12 +39,21 @@ class _TestClusterAuthMode:
 
     def apply(self, system_config: Optional[dict]) -> None:
         """Set the mode, and create a missing token in token mode."""
+        mode = "token" if self._enable_token_auth else "disabled"
+        # ensure_token_if_auth_enabled checks _system_config only outside token mode.
+        config_mode = (system_config or {}).get("AUTH_MODE")
+        if config_mode is not None and str(config_mode).lower() != mode:
+            raise RuntimeError(
+                f"_system_config sets AUTH_MODE={config_mode!r}, but "
+                f"enable_token_auth={self._enable_token_auth} runs the cluster in "
+                f"{mode!r} mode. The authentication mode can only be set with "
+                "enable_token_auth or the RAY_AUTH_MODE environment variable; remove "
+                "AUTH_MODE from _system_config."
+            )
         if not self._applied:
             self._previous_mode = os.environ.get(AUTH_MODE_ENV_VAR)
             self._applied = True
-        os.environ[AUTH_MODE_ENV_VAR] = (
-            "token" if self._enable_token_auth else "disabled"
-        )
+        os.environ[AUTH_MODE_ENV_VAR] = mode
         # RayConfig may have read the mode before this process set it.
         reset_auth_token_state()
         try:
@@ -138,49 +147,53 @@ class AutoscalingCluster:
         ray.init("auto").
         """
         self._auth_mode.apply(_system_config)
-        subprocess.check_call(["ray", "stop", "--force"])
-        _, fake_config = tempfile.mkstemp()
-        with open(fake_config, "w") as f:
-            f.write(json.dumps(self._config))
-        cmd = [
-            "ray",
-            "start",
-            "--autoscaling-config={}".format(fake_config),
-            "--head",
-        ]
-        if "CPU" in self._head_resources:
-            cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
-        if "GPU" in self._head_resources:
-            cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
-        if "object_store_memory" in self._head_resources:
-            cmd.append(
-                "--object-store-memory={}".format(
-                    self._head_resources.pop("object_store_memory")
+        try:
+            subprocess.check_call(["ray", "stop", "--force"])
+            _, fake_config = tempfile.mkstemp()
+            with open(fake_config, "w") as f:
+                f.write(json.dumps(self._config))
+            cmd = [
+                "ray",
+                "start",
+                "--autoscaling-config={}".format(fake_config),
+                "--head",
+            ]
+            if "CPU" in self._head_resources:
+                cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
+            if "GPU" in self._head_resources:
+                cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+            if "object_store_memory" in self._head_resources:
+                cmd.append(
+                    "--object-store-memory={}".format(
+                        self._head_resources.pop("object_store_memory")
+                    )
                 )
-            )
-        if self._head_resources:
-            cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
-        if _system_config is not None:
-            cmd.append(
-                "--system-config={}".format(
-                    json.dumps(_system_config, separators=(",", ":"))
+            if self._head_resources:
+                cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
+            if _system_config is not None:
+                cmd.append(
+                    "--system-config={}".format(
+                        json.dumps(_system_config, separators=(",", ":"))
+                    )
                 )
-            )
-        env = os.environ.copy()
-        env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
-        if self._autoscaler_v2:
-            # Set the necessary environment variables for autoscaler v2.
-            env.update(
-                {
-                    "RAY_enable_autoscaler_v2": "1",
-                    "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
-                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
-                }
-            )
-        if override_env:
-            env.update(override_env)
-        subprocess.check_call(cmd, env=env)
-        ray._private.services.find_gcs_addresses.cache_clear()
+            env = os.environ.copy()
+            env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
+            if self._autoscaler_v2:
+                # Set the necessary environment variables for autoscaler v2.
+                env.update(
+                    {
+                        "RAY_enable_autoscaler_v2": "1",
+                        "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+                        "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+                    }
+                )
+            if override_env:
+                env.update(override_env)
+            subprocess.check_call(cmd, env=env)
+            ray._private.services.find_gcs_addresses.cache_clear()
+        except BaseException:
+            self._auth_mode.restore()
+            raise
 
     def shutdown(self):
         """Terminate the cluster."""
@@ -237,15 +250,15 @@ class Cluster:
 
         if initialize_head:
             head_node_args = head_node_args or {}
-            try:
-                self.add_node(**head_node_args)
-                if connect:
+            self.add_node(**head_node_args)
+            if connect:
+                try:
                     self.connect()
-            except BaseException:
-                # The constructor raised, leaving the caller no object to call
-                # shutdown() on.
-                self._auth_mode.restore()
-                raise
+                except BaseException:
+                    # The constructor raised, leaving the caller no object to call
+                    # shutdown() on.
+                    self._auth_mode.restore()
+                    raise
 
     @property
     def gcs_address(self):
@@ -299,33 +312,37 @@ class Cluster:
         with disable_client_hook():
             if self.head_node is None:
                 self._auth_mode.apply(ray_params._system_config)
-                node = ray._private.node.Node(
-                    ray_params,
-                    head=True,
-                    shutdown_at_exit=self._shutdown_at_exit,
-                    spawn_reaper=self._shutdown_at_exit,
-                )
-                self.head_node = node
-                self.redis_address = self.head_node.redis_address
-                self.redis_username = node_args.get(
-                    "redis_username", ray_constants.REDIS_DEFAULT_USERNAME
-                )
-                self.redis_password = node_args.get(
-                    "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
-                )
-                self.webui_url = self.head_node.webui_url
-                # Init global state accessor when creating head node.
-                gcs_options = GcsClientOptions.create(
-                    node.gcs_address,
-                    None,
-                    allow_cluster_id_nil=True,
-                    fetch_cluster_id_if_nil=False,
-                )
-                self.global_state._initialize_global_state(gcs_options)
-                # Write the Ray cluster address for convenience in unit
-                # testing. ray.init() and ray.init(address="auto") will connect
-                # to the local cluster.
-                ray._private.utils.write_ray_address(self.head_node.gcs_address)
+                try:
+                    node = ray._private.node.Node(
+                        ray_params,
+                        head=True,
+                        shutdown_at_exit=self._shutdown_at_exit,
+                        spawn_reaper=self._shutdown_at_exit,
+                    )
+                    self.head_node = node
+                    self.redis_address = self.head_node.redis_address
+                    self.redis_username = node_args.get(
+                        "redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+                    )
+                    self.redis_password = node_args.get(
+                        "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
+                    )
+                    self.webui_url = self.head_node.webui_url
+                    # Init global state accessor when creating head node.
+                    gcs_options = GcsClientOptions.create(
+                        node.gcs_address,
+                        None,
+                        allow_cluster_id_nil=True,
+                        fetch_cluster_id_if_nil=False,
+                    )
+                    self.global_state._initialize_global_state(gcs_options)
+                    # Write the Ray cluster address for convenience in unit
+                    # testing. ray.init() and ray.init(address="auto") will connect
+                    # to the local cluster.
+                    ray._private.utils.write_ray_address(self.head_node.gcs_address)
+                except BaseException:
+                    self._auth_mode.restore()
+                    raise
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 ray_params.update_if_absent(gcs_address=self.gcs_address)
