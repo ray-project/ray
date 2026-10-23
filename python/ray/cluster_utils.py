@@ -13,15 +13,11 @@ import ray
 import ray._private.services
 from ray._private import ray_constants
 from ray._private.authentication.authentication_token_setup import (
+    AUTH_MODE_ENV_VAR,
     ensure_token_if_auth_enabled,
 )
 from ray._private.client_mode_hook import disable_client_hook
-from ray._raylet import (
-    AuthenticationMode,
-    AuthenticationTokenLoader,
-    GcsClientOptions,
-    get_authentication_mode,
-)
+from ray._raylet import AuthenticationTokenLoader, Config, GcsClientOptions
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI
 
@@ -30,25 +26,56 @@ logger = logging.getLogger(__name__)
 cluster_not_supported = os.name == "nt"
 
 
-def _ensure_head_token(
-    system_config: Optional[dict], create_auth_token_if_missing: bool
-) -> None:
-    """Before a test cluster starts its head: create a missing token when asked
-    to, and otherwise raise if token auth is on and no token exists, so the GCS
-    doesn't crash on a missing token."""
-    if create_auth_token_if_missing:
-        ensure_token_if_auth_enabled(system_config, create_token_if_missing=True)
-        return
-    if get_authentication_mode() == AuthenticationMode.TOKEN and not (
-        AuthenticationTokenLoader.instance().has_token(ignore_auth_mode=True)
-    ):
-        raise RuntimeError(
-            "Token authentication is enabled but no authentication token was "
-            "found. Pass create_auth_token_if_missing=True to create one for this "
-            "cluster, or set RAY_AUTH_MODE=disabled."
-        )
-    # Only for its _system_config AUTH_MODE check; the token is known to exist.
-    ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
+class _TestClusterAuthMode:
+    """Gives a test cluster the auth mode its ``enable_token_auth`` asks for.
+
+    When RAY_AUTH_MODE is unset, sets it in this process for the cluster's
+    lifetime, so its nodes, the test's own driver and the drivers it starts all
+    agree on the mode. When it is set, it must agree with ``enable_token_auth``.
+    """
+
+    def __init__(self, enable_token_auth: bool):
+        self._enable_token_auth = enable_token_auth
+        self._set_mode = False
+
+    def apply(self, system_config: Optional[dict]) -> None:
+        """Set or check the mode, and create a missing token in token mode."""
+        current_mode = os.environ.get(AUTH_MODE_ENV_VAR)
+        if current_mode is None:
+            os.environ[AUTH_MODE_ENV_VAR] = (
+                "token" if self._enable_token_auth else "disabled"
+            )
+            self._set_mode = True
+        elif (current_mode.lower() == "token") != self._enable_token_auth:
+            raise RuntimeError(
+                f"{AUTH_MODE_ENV_VAR}={current_mode} is set, but the cluster was "
+                f"created with enable_token_auth={self._enable_token_auth}. Pass "
+                f"enable_token_auth={not self._enable_token_auth}, or unset "
+                f"{AUTH_MODE_ENV_VAR}."
+            )
+        # Also when the mode was already set: RayConfig may have been read before
+        # the test set it.
+        _reset_auth_state()
+        try:
+            ensure_token_if_auth_enabled(system_config, create_token_if_missing=True)
+        except BaseException:
+            self.restore()
+            raise
+
+    def restore(self) -> None:
+        """Unset RAY_AUTH_MODE again if ``apply`` set it."""
+        if not self._set_mode:
+            return
+        os.environ.pop(AUTH_MODE_ENV_VAR, None)
+        self._set_mode = False
+        _reset_auth_state()
+
+
+def _reset_auth_state() -> None:
+    # Refresh the config before dropping the token cache, so nothing reloads the
+    # token under the old mode.
+    Config.initialize("")
+    AuthenticationTokenLoader.instance().reset_cache()
 
 
 @DeveloperAPI
@@ -63,7 +90,7 @@ class AutoscalingCluster:
         head_resources: dict,
         worker_node_types: dict,
         autoscaler_v2: bool = False,
-        create_auth_token_if_missing: bool = False,
+        enable_token_auth: bool = False,
         **config_kwargs,
     ):
         """Create the cluster.
@@ -73,10 +100,12 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
             autoscaler_v2: If True, enable autoscaler v2 features in the
                 generated config.
-            create_auth_token_if_missing: If True and token authentication is
-                enabled, create ~/.ray/auth_token when no token exists. If False,
-                ``start`` fails when token authentication is enabled and no
-                token exists.
+            enable_token_auth: If True, run the cluster with token
+                authentication and create ~/.ray/auth_token when no token
+                exists. If False, run it with authentication disabled. When
+                RAY_AUTH_MODE is unset, ``start`` sets it in this process and
+                ``shutdown`` unsets it. When it is set and disagrees with this
+                argument, ``start`` raises ``RuntimeError``.
             **config_kwargs: Additional configuration values merged into the
                 generated cluster config.
         """
@@ -88,7 +117,7 @@ class AutoscalingCluster:
             **config_kwargs,
         )
         self._autoscaler_v2 = autoscaler_v2
-        self._create_auth_token_if_missing = create_auth_token_if_missing
+        self._auth_mode = _TestClusterAuthMode(enable_token_auth)
 
     def _generate_config(
         self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
@@ -122,9 +151,7 @@ class AutoscalingCluster:
         After this call returns, you can connect to the cluster with
         ray.init("auto").
         """
-        # `ray start --head` never creates a token, so check for one before
-        # stopping any running cluster.
-        _ensure_head_token(_system_config, self._create_auth_token_if_missing)
+        self._auth_mode.apply(_system_config)
         subprocess.check_call(["ray", "stop", "--force"])
         _, fake_config = tempfile.mkstemp()
         with open(fake_config, "w") as f:
@@ -173,6 +200,7 @@ class AutoscalingCluster:
         """Terminate the cluster."""
         subprocess.check_call(["ray", "stop", "--force"])
         ray._private.services.find_gcs_addresses.cache_clear()
+        self._auth_mode.restore()
 
 
 @DeveloperAPI
@@ -183,7 +211,7 @@ class Cluster:
         connect: bool = False,
         head_node_args: dict = None,
         shutdown_at_exit: bool = True,
-        create_auth_token_if_missing: bool = False,
+        enable_token_auth: bool = False,
     ):
         """Initializes all services of a Ray cluster.
 
@@ -197,10 +225,12 @@ class Cluster:
                 `start_ray_head` via `self.add_node`.
             shutdown_at_exit: If True, registers an exit hook
                 for shutting down all started processes.
-            create_auth_token_if_missing: If True and token authentication is
-                enabled, create ~/.ray/auth_token when no token exists. If False,
-                starting the head fails when token authentication is enabled and
-                no token exists.
+            enable_token_auth: If True, run the cluster with token
+                authentication and create ~/.ray/auth_token when no token
+                exists. If False, run it with authentication disabled. When
+                RAY_AUTH_MODE is unset, starting the head sets it in this process and
+                ``shutdown`` unsets it. When it is set and disagrees with this
+                argument, starting the head raises ``RuntimeError``.
         """
         if cluster_not_supported:
             logger.warning(
@@ -215,7 +245,7 @@ class Cluster:
         # Create a new global state accessor for fetching GCS table.
         self.global_state = ray._private.state.GlobalState()
         self._shutdown_at_exit = shutdown_at_exit
-        self._create_auth_token_if_missing = create_auth_token_if_missing
+        self._auth_mode = _TestClusterAuthMode(enable_token_auth)
         if not initialize_head and connect:
             raise RuntimeError("Cannot connect to uninitialized cluster.")
 
@@ -276,9 +306,7 @@ class Cluster:
         ray_params.update_if_absent(**default_kwargs)
         with disable_client_hook():
             if self.head_node is None:
-                _ensure_head_token(
-                    ray_params._system_config, self._create_auth_token_if_missing
-                )
+                self._auth_mode.apply(ray_params._system_config)
                 node = ray._private.node.Node(
                     ray_params,
                     head=True,
@@ -473,3 +501,4 @@ class Cluster:
         # Delete the cluster address.
         ray._common.utils.reset_ray_address()
         ray._private.services.find_gcs_addresses.cache_clear()
+        self._auth_mode.restore()

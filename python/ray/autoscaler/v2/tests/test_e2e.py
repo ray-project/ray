@@ -44,6 +44,7 @@ def test_autoscaler_no_churn(autoscaler_v2):
     num_cpus_per_node = 4
     expected_nodes = 6
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": num_cpus_per_node},
         worker_node_types={
             "type-1": {
@@ -132,6 +133,7 @@ def test_scheduled_task_no_pending_demand(mode, autoscaler_v2):
     num_head_cpu = 0 if mode == "multi_node" else 1
 
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": num_head_cpu},
         worker_node_types={
             "type-1": {
@@ -200,6 +202,7 @@ def test_placement_group_consistent(autoscaler_v2):
     import time
 
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 0},
         worker_node_types={
             "type-1": {
@@ -267,6 +270,7 @@ def test_autoscaler_v2_usage_report():
 
     # Test that nodes become idle after placement group removal.
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 2},
         worker_node_types={
             "type-1": {
@@ -299,6 +303,7 @@ def test_autoscaler_v2_usage_report():
 def test_placement_group_removal_idle_node(autoscaler_v2):
     # Test that nodes become idle after placement group removal.
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 2},
         worker_node_types={
             "type-1": {
@@ -347,6 +352,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
     # Note that it should only provision nodes for the bundles that haven't been placed.
 
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 0},
         worker_node_types={
             "type-1": {
@@ -472,6 +478,7 @@ def test_non_corrupted_resources(autoscaler_v2):
     """
     num_worker_nodes = 5
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 2, "object_store_memory": 100 * 1024 * 1024},
         worker_node_types={
             "type-1": {
@@ -574,6 +581,7 @@ def _verify_node_labels_for_selector(
 @pytest.mark.parametrize("autoscaler_v2", [True])
 def test_task_scheduled_on_node_with_label_selector(autoscaler_v2):
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 0},
         worker_node_types={
             "node1": {
@@ -707,6 +715,7 @@ assert all(ray.get(results))
 @pytest.mark.parametrize("autoscaler_v2", [True])
 def test_actor_scheduled_on_node_with_label_selector(autoscaler_v2):
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 0},
         worker_node_types={
             "node1": {
@@ -852,6 +861,7 @@ ray.get([a.ready.remote() for a in actors])
 @pytest.mark.parametrize("autoscaler_v2", [True])
 def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 0},
         worker_node_types={
             "unlabelled_node": {
@@ -973,6 +983,7 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
 
 def test_priority_selection_e2e():
     cluster = AutoscalingCluster(
+        enable_token_auth=True,
         head_resources={"CPU": 0},
         worker_node_types={
             "high-priority": {
