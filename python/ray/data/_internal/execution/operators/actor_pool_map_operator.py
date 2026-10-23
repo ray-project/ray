@@ -1438,10 +1438,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def _try_remove_idle_actor(self) -> bool:
         for actor, state in self._running_actors.items():
-            # Skip restarting actors: they're idle (0 in-flight) only because Ray
-            # is recovering them. Releasing one removes its placement group and
-            # force-kills the actor mid-restart.
-            if state.num_tasks_in_flight == 0 and not state.is_restarting:
+            if state.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
                 # NOTE: This is a fire-and-forget op
                 self._release_running_actor(actor)

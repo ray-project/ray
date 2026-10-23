@@ -2130,10 +2130,8 @@ class TestPlacementGroup:
         assert pool.can_schedule_task()
         assert get_pg_states()[pg_id] == "CREATED"
 
-    def test_idle_downscale_skips_restarting_actor(self, shutdown_only):
-        """Idle downscale must skip a restarting actor: it has 0 in-flight tasks
-        but Ray is recovering it, and releasing it would remove its PG and kill
-        it mid-restart."""
+    def test_idle_downscale_releases_restarting_actor(self, shutdown_only):
+        """Idle downscale releases a restarting actor and its placement group."""
         ray.shutdown()
         ray.init(num_cpus=1)
 
@@ -2154,14 +2152,14 @@ class TestPlacementGroup:
         actor_states[actor] = gcs_pb2.ActorTableData.ActorState.RESTARTING
         pool.refresh_actor_state()
         assert pool.num_restarting_actors() == 1
-        # Nothing is released: the only idle actor is restarting, so it's skipped.
         released = pool.scale(
             ActorPoolScalingRequest.downscale(delta=-1, reason="test", force=True)
         )
-        assert released == 0
+        assert released == -1
 
-        assert pool.num_running_actors() == 1
-        assert get_pg_states()[pg_id] == "CREATED"
+        assert pool.current_size() == 0
+        assert pool.num_restarting_actors() == 0
+        wait_for_condition(lambda: get_pg_states()[pg_id] == "REMOVED")
 
     def test_removed_when_creation_fails(self, shutdown_only):
         """If the actor factory raises, the PG created for it is removed, not
