@@ -54,7 +54,7 @@ This quickstart example minimizes a function of the form `f(x) = a**2 + b`, the 
 
 ::::{tab-item} Keras and Hyperopt
 
-To tune a Keras model with Hyperopt, wrap the model in an objective function and use the function's `config` to select hyperparameters. This example tunes only the `activation` parameter of the model's first layer, but you can tune any model parameter. After you define the search space, initialize the `HyperOptSearch` object and pass it to `Tuner` as the `search_alg` argument of `tune.TuneConfig`. Tell Ray Tune which metric to optimize and whether to maximize or minimize it.
+To tune a Keras model with Hyperopt, wrap the model in an objective function and use the function's `config` to select hyperparameters. This example tunes only the `activation` parameter of the model's first layer, but you can tune any model parameter. After you define the search space, initialize the `HyperOptSearch` object and pass it to `run`. Tell Ray Tune which metric to optimize and whether to maximize or minimize it.
 
 :::{callout}
 ```{literalinclude} doc_code/keras_hyperopt.py
@@ -75,7 +75,7 @@ To tune a Keras model with Hyperopt, wrap the model in an objective function and
 
 ::::{tab-item} PyTorch and Optuna
 
-To tune a PyTorch model with Optuna, wrap the model in an objective function and use the function's `config` to select hyperparameters. This example tunes only the `momentum` and `lr` parameters of the model's optimizer, where `lr` is the learning rate, but you can tune any other model parameter. After you define the search space, initialize the `OptunaSearch` object and pass it to `Tuner` as the `search_alg` argument of `tune.TuneConfig`. Tell Ray Tune which metric to optimize and whether to maximize or minimize it. This example stops each trial after five iterations, but you can define other stopping rules.
+To tune a PyTorch model with Optuna, wrap the model in an objective function and use the function's `config` to select hyperparameters. This example tunes only the `momentum` and `lr` parameters of the model's optimizer, where `lr` is the learning rate, but you can tune any other model parameter. After you define the search space, initialize the `OptunaSearch` object and pass it to `run`. Tell Ray Tune which metric to optimize and whether to maximize or minimize it. This example stops this training run after five iterations, but you can define other stopping rules.
 
 :::{callout}
 ```{literalinclude} doc_code/pytorch_optuna.py
@@ -230,7 +230,7 @@ With Tune, you can transparently {ref}`parallelize across multiple GPUs and mult
 :::{dropdown} Coming from another hyperparameter optimization tool?
 :animate: fade-in-slide-down
 
-You might already use a hyperparameter tuning tool such as Hyperopt or `bayesian-optimization`.
+You might already use a hyperparameter tuning tool such as Hyperopt or Bayesian Optimization.
 
 If so, you can use Tune to power up your existing workflow. Tune's {ref}`search algorithms <tune-search-alg>` integrate with a variety of popular hyperparameter tuning libraries, so you can scale up your optimization process without sacrificing performance. For integration code, see the {ref}`examples <tune-examples-ref>`.
 :::
