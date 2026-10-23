@@ -19,7 +19,7 @@ If you have suggestions on how to improve this tutorial, [open an issue on GitHu
 To run this example, install the following packages:
 
 ```bash
-$ pip install "ray[tune]" torch torchvision
+pip install "ray[tune]" torch torchvision
 ```
 
 ## Set up a PyTorch model to tune
@@ -115,14 +115,14 @@ To visualize trial progress, you can run the following code in a Jupyter noteboo
 You can also visualize results with {ref}`TensorBoard <tensorboard>`.
 
 ```bash
-$ tensorboard --logdir {logdir}
+tensorboard --logdir {logdir}
 ```
 
 ## Use search algorithms in Tune
 
 In addition to trial schedulers, you can further optimize your hyperparameters with an intelligent search technique such as Bayesian optimization. To do this, you can use a Tune {ref}`search algorithm <tune-search-alg>`. Search algorithms use optimization algorithms to navigate the given hyperparameter space intelligently.
 
-Each library has its own way of defining the search space.
+Each search library has its own way of defining the search space. This example uses Hyperopt's `hp` functions with `HyperOptSearch`.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python

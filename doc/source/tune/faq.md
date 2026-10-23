@@ -269,7 +269,7 @@ Before you rely on reproducibility for larger experiments, try it on smaller toy
 ## How can I avoid bottlenecks?
 Sometimes you might see a message such as the following:
 
-```
+```text
 The `experiment_checkpoint` operation took 2.43 seconds to complete, which may be a performance bottleneck
 ```
 

@@ -74,9 +74,9 @@ import ray
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--address")
+parser.add_argument("--ray-address")
 args = parser.parse_args()
-ray.init(address=args.address)
+ray.init(address=args.ray_address)
 
 tuner = tune.Tuner(...)
 tuner.fit()
@@ -84,7 +84,7 @@ tuner.fit()
 
 ```bash
 # On the head node, connect to an existing ray cluster
-$ python tune_script.py --ray-address=localhost:XXXX
+python tune_script.py --ray-address=localhost:XXXX
 ```
 
 If you started the cluster from a cluster configuration with `ray up` or `ray submit --start`, run the following command:
@@ -173,7 +173,7 @@ The following steps run Tune on spot instances. They assume you've already set u
 1. Download {download}`mnist_pytorch_trainable.py </../../python/ray/tune/examples/mnist_pytorch_trainable.py>`, a full example Tune experiment script that includes a trainable with checkpointing. To run this example, install the following packages:
 
    ```bash
-   $ pip install ray torch torchvision filelock
+   pip install ray torch torchvision filelock
    ```
 
 1. Download the example cluster configuration file, {download}`tune-default.yaml </../../python/ray/tune/examples/tune-default.yaml>`.
@@ -186,7 +186,7 @@ The following steps run Tune on spot instances. They assume you've already set u
 1. Optionally, to test on AWS or GCP, run the following command to kill a random worker node after all the worker nodes are up:
 
    ```bash
-   $ ray kill-random-node tune-default.yaml --hard
+   ray kill-random-node tune-default.yaml --hard
    ```
 
 To summarize, run the following commands:
@@ -227,39 +227,39 @@ For more comprehensive documentation of commands, see the {ref}`Clusters page <c
 ```bash
 # Upload `tune_experiment.py` from your local machine onto the cluster. Then,
 # run `python tune_experiment.py --address=localhost:6379` on the remote machine.
-$ ray submit CLUSTER.YAML tune_experiment.py -- --address=localhost:6379
+ray submit CLUSTER.YAML tune_experiment.py -- --address=localhost:6379
 
 # Start a cluster and run an experiment in a detached tmux session,
 # and shut down the cluster as soon as the experiment completes.
 # In `tune_experiment.py`, set `RunConfig(storage_path="s3://...")`
 # to persist results
-$ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
+ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
 
 # To start or update your cluster:
-$ ray up CLUSTER.YAML [-y]
+ray up CLUSTER.YAML [-y]
 
 # Shut-down all instances of your cluster:
-$ ray down CLUSTER.YAML [-y]
+ray down CLUSTER.YAML [-y]
 
 # Run TensorBoard and forward the port to your own machine.
-$ ray exec CLUSTER.YAML 'tensorboard --logdir ~/ray_results/ --port 6006' --port-forward 6006
+ray exec CLUSTER.YAML 'tensorboard --logdir ~/ray_results/ --port 6006' --port-forward 6006
 
 # Run Jupyter Lab and forward the port to your own machine.
-$ ray exec CLUSTER.YAML 'jupyter lab --port 6006' --port-forward 6006
+ray exec CLUSTER.YAML 'jupyter lab --port 6006' --port-forward 6006
 
 # Get a summary of all the experiments and trials that have executed so far.
-$ ray exec CLUSTER.YAML 'tune ls ~/ray_results'
+ray exec CLUSTER.YAML 'tune ls ~/ray_results'
 
 # Upload and sync file_mounts up to the cluster with this command.
-$ ray rsync-up CLUSTER.YAML
+ray rsync-up CLUSTER.YAML
 
 # Download the results directory from your cluster head node to your local machine on ``~/cluster_results``.
-$ ray rsync-down CLUSTER.YAML '~/ray_results' ~/cluster_results
+ray rsync-down CLUSTER.YAML '~/ray_results' ~/cluster_results
 
 # Launching multiple clusters using the same configuration.
-$ ray up CLUSTER.YAML -n="cluster1"
-$ ray up CLUSTER.YAML -n="cluster2"
-$ ray up CLUSTER.YAML -n="cluster3"
+ray up CLUSTER.YAML -n="cluster1"
+ray up CLUSTER.YAML -n="cluster2"
+ray up CLUSTER.YAML -n="cluster3"
 ```
 
 ## Troubleshooting
@@ -267,5 +267,5 @@ $ ray up CLUSTER.YAML -n="cluster3"
 If your program freezes, run the following command to restart the Ray cluster without running any of the installation commands:
 
 ```bash
-$ ray up CLUSTER.YAML --restart-only
+ray up CLUSTER.YAML --restart-only
 ```
