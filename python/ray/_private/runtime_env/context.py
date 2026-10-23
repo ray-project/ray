@@ -270,4 +270,9 @@ class RuntimeEnvContext:
             ]
         )
         logger.debug(f"Exec'ing worker in container image {self.container['image']}.")
-        os.execvpe(cmd[0], cmd, launcher_env)
+        try:
+            os.execvpe(cmd[0], cmd, launcher_env)
+        finally:
+            # Only reached if the exec failed, e.g. podman isn't installed.
+            if job_env_fd is not None:
+                os.close(job_env_fd)

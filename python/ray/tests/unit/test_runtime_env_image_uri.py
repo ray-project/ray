@@ -100,7 +100,6 @@ def _launch_with_env_file(
                 fd = int(arg.rsplit("/", 1)[1])
                 assert os.get_inheritable(fd)
                 env_file = os.pread(fd, 1 << 20, 0).decode()
-                os.close(fd)
         raise _Exec(args, env, env_file)
 
     def shell_launch(*args: Any, **kwargs: Any) -> NoReturn:
@@ -434,6 +433,34 @@ def test_job_ray_var_in_env_file_beats_host_var(auth_env):
     # in the container.
     assert env_file == "RAY_RAYLET_PID=from-job\n"
     assert "RAY_RAYLET_PID" not in argv
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses /dev/fd.")
+def test_env_file_fd_is_closed_when_exec_fails(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
+    _modify_context_impl(
+        "fake-image",
+        "/fake/default_worker.py",
+        [],
+        context,
+        logging.getLogger(__name__),
+        "/tmp/ray",
+    )
+    fds = []
+
+    def failing_execvpe(file: str, args: List[str], env: Dict[str, str]) -> NoReturn:
+        fds.extend(int(a.rsplit("/", 1)[1]) for a in args if "--env-file=" in a)
+        raise FileNotFoundError(errno.ENOENT, "podman", file)
+
+    with _memfd("ok"), mock.patch.object(os, "execvpe", failing_execvpe):
+        with pytest.raises(FileNotFoundError):
+            context.exec_worker(["/host/default_worker.py"], Language.PYTHON)
+
+    assert len(fds) == 1
+    with pytest.raises(OSError):
+        os.fstat(fds[0])
 
 
 def test_no_env_file_without_job_env_vars(auth_env):
