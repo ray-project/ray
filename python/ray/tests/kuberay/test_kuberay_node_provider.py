@@ -305,6 +305,60 @@ def test_submit_scale_request(node_data_dict, scale_request, expected_patch_payl
         assert patch_payload == expected_patch_payload
 
 
+@pytest.mark.parametrize(
+    "min_replicas,expected_replicas_patch",
+    [
+        # At minReplicas, deleting the worker keeps replicas at minReplicas.
+        (1, []),
+        # Above minReplicas, replicas is decremented.
+        (
+            0,
+            [
+                {
+                    "op": "replace",
+                    "path": "/spec/workerGroupSpecs/0/replicas",
+                    "value": 0,
+                }
+            ],
+        ),
+    ],
+)
+def test_submit_scale_request_respects_min_replicas(
+    min_replicas, expected_replicas_patch
+):
+    """The autoscaler never patches replicas below minReplicas, because KubeRay
+    keeps at least minReplicas Pods anyway.
+    """
+    raycluster = get_basic_ray_cr()
+    raycluster["spec"]["workerGroupSpecs"][0]["minReplicas"] = min_replicas
+    worker = "raycluster-autoscaler-worker-small-group-dkz2r"
+    with mock.patch.object(KubeRayNodeProvider, "__init__", return_value=None):
+        kr_node_provider = KubeRayNodeProvider(provider_config={}, cluster_name="fake")
+        kr_node_provider.node_data_dict = {
+            worker: NodeData(
+                kind="worker",
+                type="small-group",
+                replica_index=None,
+                ip="10.4.1.8",
+                status="up-to-date",
+            ),
+        }
+        patch_payload = kr_node_provider._scale_request_to_patch_payload(
+            scale_request=ScaleRequest(
+                desired_num_workers={"small-group": 0},
+                workers_to_delete={worker},
+            ),
+            raycluster=raycluster,
+        )
+    assert patch_payload == expected_replicas_patch + [
+        {
+            "op": "replace",
+            "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+            "value": {"workersToDelete": [worker]},
+        },
+    ]
+
+
 @pytest.mark.parametrize("node_set", [{"A", "B", "C", "D", "E"}])
 @pytest.mark.parametrize("cpu_workers_to_delete", ["A", "Z"])
 @pytest.mark.parametrize("gpu_workers_to_delete", ["B", "Y"])
