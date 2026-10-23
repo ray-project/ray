@@ -84,6 +84,13 @@ RayServerBidiReactor::RayServerBidiReactor(
       Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Invalid bearer token"));
       return;
     }
+  } else if (server_context->client_metadata().count(kAuthTokenKey) > 0) {
+    // Auth is disabled here; reject clients that send a token so that they opt out too.
+    RAY_LOG(WARNING) << "Authorization header in syncer connection from node "
+                     << NodeID::FromBinary(GetRemoteNodeID()) << " but auth is disabled";
+    Finish(
+        grpc::Status(grpc::StatusCode::UNAUTHENTICATED, kAuthModeMismatchErrorMessage));
+    return;
   }
 
   if (NodeID::FromBinary(GetRemoteNodeID()).IsNil()) {

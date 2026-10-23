@@ -70,10 +70,10 @@ See [Access Cloud Storage buckets with the Cloud Storage FUSE CSI driver](https:
 
 ## Deploy the RayJob
 
-Download the RayJob that executes all the steps documented in [Finetuning a Pytorch Image Classifier with Ray Train](../../train/examples/pytorch/pytorch-resnet-finetune.ipynb). The [source code](https://github.com/ray-project/kuberay/tree/master/ray-operator/config/samples/pytorch-resnet-image-classifier) is also in the KubeRay repository.
+Download the RayJob that executes all the steps documented in [Finetuning a Pytorch Image Classifier with Ray Train](../../train/examples/pytorch/pytorch-resnet-finetune.ipynb). The [source code](https://github.com/kuberay-project/kuberay/tree/master/ray-operator/config/samples/pytorch-resnet-image-classifier) is also in the KubeRay repository.
 
 ```
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/pytorch-resnet-image-classifier/ray-job.pytorch-image-classifier.yaml
+curl -LO https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/pytorch-resnet-image-classifier/ray-job.pytorch-image-classifier.yaml
 ```
 
 Modify the RayJob by replacing all instances of the `GCS_BUCKET` placeholder with the Google Cloud Storage bucket you created earlier. Alternatively you can use `sed`:

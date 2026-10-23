@@ -10,6 +10,52 @@ steps:
       PYTHON: "3.10"
     tags: cibase
 
+  # The "docstring-only" label's examples environment, without torch or
+  # TensorFlow. See ci/docker/docstring.build.Dockerfile.
+  - name: docstringbuild
+    wanda: ci/docker/docstring.build.wanda.yaml
+    depends_on: oss-ci-base_test-multipy(python=3.10)
+    env:
+      PYTHON: "3.10"
+    tags: cibase
+
+  # Runs instead of a library's test steps when the "docstring-only" label is
+  # present: the >>> examples in the docstrings of only the modules the PR
+  # changed, in every library, as plain Python with the PR's Ray
+  # (ci/ray_ci/doc/run_docstring_examples.sh). It runs only modules a CPU
+  # doctest() target covers, in the docstringbuild image, which leaves out
+  # torch and TensorFlow; examples that need them are reported as skipped and
+  # run in their library's doctest() target instead: in premerge for libraries
+  # whose suites the label doesn't skip, and postmerge for Ray Data. The
+  # label's scope guard (lint: validate docstring-only scope) fails the build
+  # unless the PR changes nothing but docstrings and comments.
+  #
+  # Tagged with every library tag a python/ray/ change can emit, so a labeled
+  # PR selects it whatever it touches. Until rayci can gate step selection on
+  # PR labels, an unlabeled PR that selects it still builds docstringbuild,
+  # though Buildkite drops the step itself.
+  - label: ":book: doc: docstring examples"
+    if: build.pull_request.labels includes "docstring-only"
+    tags:
+      - oss
+      - data
+      - core_python
+      - serve
+      - ml
+      - train
+      - tune
+      - rllib
+      - llm
+      - dashboard
+      - workflow
+    instance_type: medium
+    commands:
+      - ./ci/ray_ci/doc/run_docstring_examples.sh docstringbuild 3.10
+    depends_on:
+      - docstringbuild
+      - ray-core-build(python=3.10)
+      - ray-dashboard-build
+
   # Runs //doc:doctest, the catch-all doctest target for documentation prose that
   # no library owns (tagged team:none). The five per-library docs example steps
   # each filter on their own team:<lib>, so this is the only step that reaches it.
