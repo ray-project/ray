@@ -6,7 +6,7 @@ import random
 import string
 import time
 import traceback
-from typing import Any, AsyncIterator, Dict, Optional, Union
+from typing import Any, AsyncIterator, Dict, Generator, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -678,6 +678,10 @@ class JobManager:
     def get_job_logs(self, job_id: str) -> str:
         """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
+
+    def get_job_log_chunks(self, job_id: str) -> Generator[str, None, None]:
+        """Get logs produced by a job in bounded chunks."""
+        return self._log_client.get_log_chunks(job_id)
 
     async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Return an iterator following the logs of a job."""
