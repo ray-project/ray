@@ -279,10 +279,37 @@ TEST_F(ShutdownCoordinatorTest, Worker_ExecuteWorkerExit_OnUserError) {
 }
 
 TEST_F(ShutdownCoordinatorTest, Worker_HandleExit_OnIdleTimeout) {
-  auto coordinator = CreateCoordinator(rpc::WorkerType::WORKER);
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  auto *fake_ptr = fake.get();
+  fake_ptr->idle_exit_allowed = true;
+  auto coordinator =
+      std::make_unique<ShutdownCoordinator>(std::move(fake), rpc::WorkerType::WORKER);
 
   EXPECT_TRUE(coordinator->RequestShutdown(false,  // graceful
                                            ShutdownReason::kIdleTimeout));
+  EXPECT_EQ(fake_ptr->handle_exit_calls.load(), 1);
+}
+
+// A worker that is not idle declines the request rather than half-committing to it. The
+// state machine has no transition back to kRunning, so a worker left in kDisconnecting
+// would neither exit nor accept a later graceful shutdown.
+TEST_F(ShutdownCoordinatorTest, Worker_IdleTimeout_WhenNotIdle_StaysRunning) {
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  auto *fake_ptr = fake.get();
+  fake_ptr->idle_exit_allowed = false;
+  auto coordinator =
+      std::make_unique<ShutdownCoordinator>(std::move(fake), rpc::WorkerType::WORKER);
+
+  EXPECT_FALSE(coordinator->RequestShutdown(false,  // graceful
+                                            ShutdownReason::kIdleTimeout));
+
+  EXPECT_EQ(coordinator->GetState(), ShutdownState::kRunning);
+  EXPECT_EQ(coordinator->GetReason(), ShutdownReason::kNone);
+  EXPECT_FALSE(coordinator->ShouldEarlyExit());
+  EXPECT_EQ(fake_ptr->handle_exit_calls.load(), 0);
+
+  EXPECT_TRUE(coordinator->RequestShutdown(false, ShutdownReason::kGracefulExit));
+  EXPECT_EQ(fake_ptr->worker_exit_calls.load(), 1);
 }
 
 TEST_F(ShutdownCoordinatorTest, StringRepresentations_StateAndReason_AreReadable) {
@@ -314,7 +341,9 @@ TEST_F(ShutdownCoordinatorTest, ExitTypeStringMapping_OOM_IsNODE_OUT_OF_MEMORY) 
 
 TEST_F(ShutdownCoordinatorTest,
        ExitTypeStringMapping_IdleTimeout_IsINTENDED_SYSTEM_EXIT) {
-  auto coordinator = CreateCoordinator();
+  auto fake = std::make_unique<FakeShutdownExecutor>();
+  fake->idle_exit_allowed = true;
+  auto coordinator = std::make_unique<ShutdownCoordinator>(std::move(fake));
   coordinator->RequestShutdown(false, ShutdownReason::kIdleTimeout);
   EXPECT_EQ(coordinator->GetExitTypeString(), "INTENDED_SYSTEM_EXIT");
 }
