@@ -4,8 +4,10 @@ import logging
 import os
 import platform
 import re
+import shutil
 import stat
 import sys
+import threading
 import time
 from dataclasses import replace
 from typing import List, Tuple
@@ -555,7 +557,11 @@ async def test_image_uri_cache_cleans_failed_staging(tmp_path, monkeypatch):
         await plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
 
     assert not os.path.exists(plugin._get_cache_path(uri))
-    assert not list((tmp_path / "resources" / "image_uri").glob("*.staging-*"))
+    assert not [
+        path
+        for path in (tmp_path / "resources" / "image_uri").glob("*.staging-*")
+        if ".deleting-" not in path.name
+    ]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -585,7 +591,68 @@ async def test_image_uri_cache_cleans_cancelled_staging(tmp_path, monkeypatch):
         await create_task
 
     assert not os.path.exists(plugin._get_cache_path(uri))
-    assert not list((tmp_path / "resources" / "image_uri").glob("*.staging-*"))
+    assert not [
+        path
+        for path in (tmp_path / "resources" / "image_uri").glob("*.staging-*")
+        if ".deleting-" not in path.name
+    ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.asyncio
+async def test_image_uri_cancelled_cleanup_cannot_remove_retry(tmp_path, monkeypatch):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    plugin.set_resources_dir(str(tmp_path / "resources"))
+    uri = "image-pip://cleanup-retry"
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    plugin._install_env_by_uri[uri] = {}
+    final_path = plugin._get_cache_path(uri)
+    os.makedirs(final_path)  # An incomplete entry from an earlier attempt.
+    deleting = threading.Event()
+    resume_delete = threading.Event()
+    deleted = threading.Event()
+    real_rmtree = shutil.rmtree
+    first_delete = True
+    block_prepare = True
+
+    def slow_rmtree(path, *args, **kwargs):
+        nonlocal first_delete
+        if first_delete:
+            first_delete = False
+            deleting.set()
+            try:
+                assert resume_delete.wait(10)
+                return real_rmtree(path, *args, **kwargs)
+            finally:
+                deleted.set()
+        return real_rmtree(path, *args, **kwargs)
+
+    async def prepare(uri, env, metadata, staging_path, final_path, logger):
+        if block_prepare:
+            await asyncio.Future()
+        python_path = os.path.join(staging_path, "virtualenv", "bin", "python")
+        os.makedirs(os.path.dirname(python_path))
+        os.symlink("/inside-image/python", python_path)
+
+    monkeypatch.setattr("ray._private.runtime_env.image_uri.shutil.rmtree", slow_rmtree)
+    monkeypatch.setattr(plugin, "_prepare_pip_environment", prepare)
+    runtime_env = RuntimeEnv(image_uri="example/image", pip=["package==1"])
+    first = asyncio.create_task(
+        plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
+    )
+    try:
+        assert await asyncio.to_thread(deleting.wait, 10)
+        first.cancel()
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+        block_prepare = False
+        await plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
+    finally:
+        resume_delete.set()
+        assert await asyncio.to_thread(deleted.wait, 10)
+
+    assert plugin._manifest_is_valid(final_path, uri, has_pip=True)
 
 
 def test_canonical_pip_config_rejects_virtualenv_name():

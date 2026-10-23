@@ -40,6 +40,26 @@ _DEFAULT_PIP_INSTALL_OPTIONS = [
 ]
 
 
+def _delete_detached_tree(path: str) -> None:
+    """Remove only this detached generation, never rescan live cache names."""
+    threading.Thread(
+        target=shutil.rmtree,
+        args=(path,),
+        kwargs={"ignore_errors": True},
+        daemon=True,
+    ).start()
+
+
+def _detach_cache_tree(path: str) -> None:
+    """Detach a tree while its mutation lock is held, then reclaim it."""
+    trash_path = path + f".deleting-{uuid.uuid4().hex}"
+    try:
+        os.replace(path, trash_path)
+    except FileNotFoundError:
+        return
+    _delete_detached_tree(trash_path)
+
+
 def _normalize_image_uri(image_uri: str) -> str:
     if image_uri.startswith("podman://"):
         return image_uri[len("podman://") :]
@@ -504,12 +524,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             if ".deleting-" in entry:
                 # Orphaned trash from an interrupted eviction; no lock is
                 # needed because the rename already detached it from its key.
-                threading.Thread(
-                    target=shutil.rmtree,
-                    args=(os.path.join(self._cache_dir, entry),),
-                    kwargs={"ignore_errors": True},
-                    daemon=True,
-                ).start()
+                _delete_detached_tree(os.path.join(self._cache_dir, entry))
                 continue
             key, separator, _ = entry.partition(".staging-")
             if not separator:
@@ -520,7 +535,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             if lock_file is None:
                 continue
             try:
-                shutil.rmtree(os.path.join(self._cache_dir, entry), ignore_errors=True)
+                _detach_cache_tree(os.path.join(self._cache_dir, entry))
             finally:
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
                 lock_file.close()
@@ -837,19 +852,18 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                 if self._manifest_is_valid(final_path, uri, runtime_env.has_pip()):
                     return await loop.run_in_executor(None, measure)
 
-                def remove_previous_trees() -> None:
-                    if os.path.exists(final_path):
-                        shutil.rmtree(final_path, ignore_errors=True)
-                    for stale_path in os.listdir(self._cache_dir):
-                        if stale_path.startswith(
+                # Namespace changes stay under the lock, without an await.
+                # Cancellation may leave a deletion thread running, but that
+                # thread can only remove a detached generation, never a retry.
+                _detach_cache_tree(final_path)
+                for stale_path in os.listdir(self._cache_dir):
+                    if (
+                        stale_path.startswith(
                             os.path.basename(final_path) + ".staging-"
-                        ):
-                            shutil.rmtree(
-                                os.path.join(self._cache_dir, stale_path),
-                                ignore_errors=True,
-                            )
-
-                await loop.run_in_executor(None, remove_previous_trees)
+                        )
+                        and ".deleting-" not in stale_path
+                    ):
+                        _detach_cache_tree(os.path.join(self._cache_dir, stale_path))
 
                 staging_path = final_path + f".staging-{uuid.uuid4().hex}"
                 os.makedirs(staging_path)
@@ -888,15 +902,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                     finally:
                         os.close(directory_fd)
                 except BaseException:
-                    try:
-                        await asyncio.shield(
-                            loop.run_in_executor(
-                                None,
-                                lambda: shutil.rmtree(staging_path, ignore_errors=True),
-                            )
-                        )
-                    except asyncio.CancelledError:
-                        pass  # The executor thread still finishes the removal.
+                    _detach_cache_tree(staging_path)
                     raise
             finally:
                 fcntl.flock(lock_file, fcntl.LOCK_UN)
@@ -926,14 +932,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                         size_bytes = get_directory_size_bytes(cache_path)
                     # Renaming is fast; the tree removal happens on a thread
                     # so eviction never blocks the agent's event loop.
-                    trash_path = cache_path + f".deleting-{uuid.uuid4().hex}"
-                    os.replace(cache_path, trash_path)
-                    threading.Thread(
-                        target=shutil.rmtree,
-                        args=(trash_path,),
-                        kwargs={"ignore_errors": True},
-                        daemon=True,
-                    ).start()
+                    _detach_cache_tree(cache_path)
             except OSError as error:
                 logger.warning(f"Failed to delete {cache_path}: {error}")
                 return None
