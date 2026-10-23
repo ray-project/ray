@@ -2,6 +2,7 @@ import asyncio
 import copy
 import logging
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -19,7 +20,7 @@ default_logger = logging.getLogger(__name__)
 # Nsight options used when runtime_env={"_nsight": "default"}
 NSIGHT_DEFAULT_CONFIG = {
     "t": "cuda,cudnn,cublas,nvtx",
-    "o": "'worker_process_%p'",
+    "o": "worker_process_%p",
     "stop-on-exit": "true",
 }
 
@@ -46,12 +47,13 @@ def parse_nsight_config(nsight_config: Dict[str, str]) -> List[str]:
 class NsightPlugin(RuntimeEnvPlugin):
     name = "_nsight"
 
-    def __init__(self, resources_dir: str):
+    def __init__(self, resources_dir: str, logs_dir: Optional[str] = None):
         self.nsight_cmd = []
 
-        # replace this with better way to get logs dir
-        session_dir, runtime_dir = os.path.split(resources_dir)
-        self._nsight_dir = Path(session_dir) / "logs" / "nsight"
+        if logs_dir is None:
+            session_dir, _ = os.path.split(resources_dir)
+            logs_dir = os.path.join(session_dir, "logs")
+        self._nsight_dir = Path(logs_dir) / "nsight"
         try_to_create_directory(self._nsight_dir)
 
     async def _check_nsight_script(
@@ -130,6 +132,9 @@ class NsightPlugin(RuntimeEnvPlugin):
                 "nsight profile failed to run with the following "
                 f"error message:\n {error_msg}"
             )
+        # Keep the node-specific output path out of the shared default and
+        # caller's configuration.
+        nsight_config = copy.deepcopy(nsight_config)
         # add set output path to logs dir
         nsight_config["o"] = str(
             Path(self._nsight_dir) / nsight_config.get("o", NSIGHT_DEFAULT_CONFIG["o"])
@@ -146,4 +151,4 @@ class NsightPlugin(RuntimeEnvPlugin):
         logger: Optional[logging.Logger] = default_logger,
     ):
         logger.info("Running nsight profiler")
-        context.py_executable = " ".join(self.nsight_cmd) + " python"
+        context.py_executable = shlex.join(self.nsight_cmd + ["python"])
