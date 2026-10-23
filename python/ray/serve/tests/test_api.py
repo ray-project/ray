@@ -1265,6 +1265,120 @@ def test_get_deployment_handle_basic(serve_instance):
     assert app_handle.remote().result() == "hello world!!"
 
 
+async def test_get_handle_async_basic(serve_instance_async):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, handle):
+            self._h = handle
+
+        async def __call__(self):
+            return f"{await self._h.remote()}!!"
+
+    serve.run(MyDriver.bind(f.bind()), name="app")
+
+    handle = await serve.get_deployment_handle_async("f", app_name="app")
+    assert await handle.remote() == "hello world"
+
+    app_handle = await serve.get_app_handle_async("app")
+    assert await app_handle.remote() == "hello world!!"
+
+
+async def test_get_handle_async_does_not_call_ray_get(
+    serve_instance_async, monkeypatch
+):
+    """The async getters must await the controller rather than block on it."""
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    def fail_on_ray_get(*args, **kwargs):
+        raise AssertionError("ray.get must not be called by the async getters.")
+
+    monkeypatch.setattr(ray, "get", fail_on_ray_get)
+
+    assert isinstance(await serve.get_app_handle_async("app"), DeploymentHandle)
+    assert isinstance(
+        await serve.get_deployment_handle_async("f", app_name="app"),
+        DeploymentHandle,
+    )
+
+
+async def test_get_deployment_handle_async_concurrent_calls_share_handle(
+    serve_instance_async,
+):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    first, second = await asyncio.gather(
+        serve.get_deployment_handle_async("f", app_name="app"),
+        serve.get_deployment_handle_async("f", app_name="app"),
+    )
+    assert first is second
+
+
+async def test_get_app_handle_async_dne(serve_instance_async):
+    with pytest.raises(RayServeException, match="Application 'random' does not exist"):
+        await serve.get_app_handle_async("random")
+
+
+async def test_get_deployment_handle_async_dne(serve_instance_async):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    with pytest.raises(KeyError, match="does not exist"):
+        await serve.get_deployment_handle_async("random", app_name="app")
+
+
+async def test_get_deployment_handle_async_requires_app_name_outside_replica(
+    serve_instance_async,
+):
+    with pytest.raises(RayServeException, match="Please specify an application name"):
+        await serve.get_deployment_handle_async("f")
+
+
+def test_get_handle_async_within_deployment(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class Adder:
+        def __call__(self, val: int) -> int:
+            return val + 2
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class Multiplier:
+        def __call__(self, val: int) -> int:
+            return val * 3
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class Caller:
+        def __init__(self, unused_multiplier: DeploymentHandle):
+            # Bound only so `Multiplier` is deployed in this application; the
+            # call below must look it up by name instead.
+            pass
+
+        async def __call__(self, val: int) -> int:
+            adder = await serve.get_app_handle_async("adder")
+            # No app_name: defaults to this replica's application.
+            multiplier = await serve.get_deployment_handle_async("Multiplier")
+            return await multiplier.remote(await adder.remote(val))
+
+    serve.run(Adder.bind(), name="adder", route_prefix="/adder")
+    handle = serve.run(Caller.bind(Multiplier.bind()), name="caller")
+
+    assert handle.remote(5).result() == 21
+
+
 def test_deployment_handle_nested_in_obj(serve_instance):
     """Test binding a handle within a custom object."""
 
