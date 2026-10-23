@@ -173,7 +173,7 @@ Retire the version in this order:
 1. Ask a maintainer with Read the Docs admin access to deactivate the version.
 1. Confirm a few of its URLs return `301` to `/en/latest/`.
 
-Deactivation is permanent. It deletes the version's built pages, and reactivating the version only starts a new build, which most older docs versions can no longer complete. Confirm that the version should be retired before you ask for it to be deactivated. After deactivation, removing the version's line from the rule only turns its URLs into 404s, and the version's GitHub release branch is the only remaining source for its docs.
+Deactivation is permanent. It deletes the version's built pages, and reactivating the version only starts a new build, which most older docs versions can no longer complete. Confirm that you want to retire the version before you ask a maintainer to deactivate it. After deactivation, removing the version's line from the rule only makes its URLs return 404, and the version's GitHub release branch is the only remaining source for its docs.
 
 ## Auditing drift
 
