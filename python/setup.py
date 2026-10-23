@@ -278,6 +278,9 @@ if setup_spec.type == SetupType.RAY:
         "serve": [
             "uvicorn[standard] >= 0.26.0",  # >= 0.26.0 includes root_path in the ASGI path.
             "requests",
+            # >= 4.2 for CapacityLimiter.total_tokens updates dequeuing waiters
+            # (used by serve.batching); older versions hang batch admission.
+            "anyio >= 4.2",
             "starlette >= 1.0.1",  # >= 1.0.1 for CVE fix.
             "fastapi >= 0.133.0",  # >= 0.133.0 required for starlette >= 1.0.
             "watchfiles",
