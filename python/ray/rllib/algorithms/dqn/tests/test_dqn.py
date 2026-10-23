@@ -45,6 +45,28 @@ class TestDQN(unittest.TestCase):
 
         algo.stop()
 
+    def test_dqn_learner_connector_builder(self):
+        """A builder that removes a default learner piece must not crash the build.
+
+        `DQNLearner.build` used to call
+        `insert_after(AddObservationsFromEpisodesToBatch, ...)` unguarded, which now
+        raises if a builder removed that piece. The insertion moved into
+        `DQNConfig._default_learner_connectors`, so the build succeeds.
+        """
+        from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch
+
+        def builder(pipeline, device):
+            pipeline.remove(AddObservationsFromEpisodesToBatch)
+            return pipeline
+
+        config = (
+            dqn.dqn.DQNConfig()
+            .environment("CartPole-v1")
+            .learners(learner_connector_builder=builder)
+        )
+        algo = config.build()
+        algo.stop()
+
 
 if __name__ == "__main__":
     import sys

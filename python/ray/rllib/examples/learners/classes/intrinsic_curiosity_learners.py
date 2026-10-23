@@ -3,89 +3,12 @@ from typing import Any, List, Optional
 import gymnasium as gym
 import torch
 
-from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import DQNTorchLearner
-from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
-from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
-    AddObservationsFromEpisodesToBatch,
-)
-from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
-    AddNextObservationsFromEpisodesToTrainBatch,
-)
 from ray.rllib.core import DEFAULT_MODULE_ID, Columns
-from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.typing import EpisodeType
 
 ICM_MODULE_ID = "_intrinsic_curiosity_model"
-
-
-class DQNTorchLearnerWithCuriosity(DQNTorchLearner):
-    def build(self) -> None:
-        super().build()
-        add_intrinsic_curiosity_connectors(self)
-
-
-class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
-    def build(self) -> None:
-        super().build()
-        add_intrinsic_curiosity_connectors(self)
-
-
-def add_intrinsic_curiosity_connectors(torch_learner: TorchLearner) -> None:
-    """Adds two connector pieces to the Learner pipeline, needed for ICM training.
-
-    - The `AddNextObservationsFromEpisodesToTrainBatch` connector makes sure the train
-    batch contains the NEXT_OBS for ICM's forward- and inverse dynamics net training.
-    - The `IntrinsicCuriosityModelConnector` piece computes intrinsic rewards from the
-    ICM and adds the results to the extrinsic reward of the main module's train batch.
-
-    Args:
-        torch_learner: The TorchLearner, to whose Learner pipeline the two ICM connector
-            pieces should be added.
-    """
-    learner_config_dict = torch_learner.config.learner_config_dict
-
-    # Assert, we are only training one policy (RLModule) and we have the ICM
-    # in our MultiRLModule.
-    assert (
-        len(torch_learner.module) == 2
-        and DEFAULT_MODULE_ID in torch_learner.module
-        and ICM_MODULE_ID in torch_learner.module
-    )
-
-    # Make sure both curiosity loss settings are explicitly set in the
-    # `learner_config_dict`.
-    if (
-        "forward_loss_weight" not in learner_config_dict
-        or "intrinsic_reward_coeff" not in learner_config_dict
-    ):
-        raise KeyError(
-            "When using the IntrinsicCuriosityTorchLearner, both `forward_loss_weight` "
-            " and `intrinsic_reward_coeff` must be part of your config's "
-            "`learner_config_dict`! Add these values through: `config.training("
-            "learner_config_dict={'forward_loss_weight': .., 'intrinsic_reward_coeff': "
-            "..})`."
-        )
-
-    if torch_learner.config.add_default_connectors_to_learner_pipeline:
-        # Prepend a "add-NEXT_OBS-from-episodes-to-train-batch" connector piece
-        # (right after the corresponding "add-OBS-..." default piece).
-        torch_learner._learner_connector.insert_after(
-            AddObservationsFromEpisodesToBatch,
-            AddNextObservationsFromEpisodesToTrainBatch(),
-        )
-        # Append the ICM connector, computing intrinsic rewards and adding these to
-        # the main model's extrinsic rewards.
-        torch_learner._learner_connector.insert_after(
-            NumpyToTensor,
-            IntrinsicCuriosityModelConnector(
-                intrinsic_reward_coeff=(
-                    torch_learner.config.learner_config_dict["intrinsic_reward_coeff"]
-                )
-            ),
-        )
 
 
 class IntrinsicCuriosityModelConnector(ConnectorV2):

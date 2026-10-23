@@ -104,6 +104,7 @@ The following pages discuss the three pipeline types in more detail. All three s
 * All connector pieces and pipelines are Python callables that override the {py:meth}`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method.
 * The call signatures are uniform across the pipeline types. The main required arguments are the list of episodes, the batch to build, and the {py:class}`~ray.rllib.core.rl_module.rl_module.RLModule` instance. See the {py:meth}`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method for details.
 * All connector pipelines can read from and write to the provided list of episodes and the batch, performing data transforms as needed.
+* You can customize a pipeline in three ways: prepend pieces with the `*_connector` config options, disable all default pieces with `add_default_connectors_to_*_pipeline=False`, or modify the fully-built pipeline (insert/remove/reorder pieces) with the `*_connector_builder` config options.
 
 
 ## Batch construction phases and formats
