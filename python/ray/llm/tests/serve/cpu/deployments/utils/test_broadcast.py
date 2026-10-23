@@ -28,8 +28,14 @@ class MockLLMDeployment:
     async def self_destruct(self):
         """Kill this replica's actor. Used for testing dead replica handling."""
         import os
+        import threading
 
-        os._exit(1)
+        # Exit shortly after this call returns, not inside it. The router only
+        # treats a request as delivered once the replica's "accepted" message
+        # arrives; os._exit() inside the call can kill the process before that
+        # message leaves it, so the router retries on the other replica, which
+        # then exits too and leaves no live replica.
+        threading.Timer(0.5, os._exit, args=(1,)).start()
 
 
 @pytest.fixture(scope="module")
