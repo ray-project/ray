@@ -460,107 +460,6 @@
 
 
 #######################
-# AIR examples
-#######################
-
-
-# Test additional CPU nodes for preprocessing.
-- name: air_example_dreambooth_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dreambooth
-
-  # https://github.com/ray-project/ray/issues/49847
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: dreambooth_compute_aws.yaml
-
-  run:
-    timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
-    artifact_path: /tmp/artifacts/example_out.jpg
-
-  # variations: A10G not available on GCE, yet.
-
-- name: air_example_dreambooth_finetuning_lora
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dreambooth
-
-  # https://github.com/ray-project/ray/issues/49846
-  frequency: manual
-  team: ml
-
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-    cluster_compute: dreambooth_compute_aws.yaml
-
-  run:
-    timeout: 1800
-    script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
-    artifact_path: /tmp/artifacts/example_out.jpg
-
-- name: air_example_gptj_deepspeed_fine_tuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/gptj_deepspeed_finetuning
-  frequency: manual
-  team: ml
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_gptj_test.sh
-    cluster_compute: gptj_deepspeed_compute_aws.yaml
-
-  run:
-    timeout: 4500
-    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
-
-- name: air_example_dolly_v2_lightning_fsdp_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-  frequency: manual
-  team: ml
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_dolly_test.sh
-    cluster_compute: dolly_v2_fsdp_compute_aws.yaml
-
-  run:
-    timeout: 4700
-    script: RAY_TRAIN_V2_ENABLED=1 python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
-
-  # variations: TODO(jungong): add GCP variation.
-
-- name: air_example_vicuna_13b_lightning_deepspeed_finetuning
-  python: "3.10"
-  group: AIR examples
-  working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-  frequency: manual
-  team: ml
-  cluster:
-    anyscale_sdk_2026: true
-    byod:
-      type: gpu
-      post_build_script: byod_vicuna_test.sh
-    cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
-
-  run:
-    timeout: 4700
-    script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
-
-#######################
 # Tune tests
 #######################
 - name: tune_with_frequent_pausing
@@ -1783,17 +1682,6 @@
         byod:
           runtime_env:
             RAY_SERVE_ENABLE_HA_PROXY: "1"
-      run:
-        timeout: 7200
-        long_running: false
-        # HAProxy is HTTP-only and does not proxy the gRPC server bound by
-        # gRPCOptions(port=9000); --run-grpc would crash with connection refused
-        # under RAY_SERVE_ENABLE_HA_PROXY=1. Run the HAProxy-proxied transports
-        # only.
-        script: >-
-          python workloads/microbenchmarks.py
-          --run-http --run-handle --run-latency --run-throughput
-          --run-streaming
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -4722,6 +4610,27 @@
     long_running: false
     script: python run_llm_serve_test_and_bms.py --serve-config-file configs/serve_qwen3dot5_9b_quantized_tp1_prefix_cache.yaml
 
+# Routing cost of PrefixCacheAffinityRouter with replicas that reply immediately,
+# on a CPU node: throughput, latency and router event loop stalls.
+- name: llm_serve_prefix_router_overhead_benchmark
+  frequency: weekly
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/serve
+
+  cluster:
+    byod:
+      # For ray.llm's dependencies. The benchmark uses no GPU.
+      type: llm-cu130
+    anyscale_sdk_2026: true
+    cluster_compute: llm_cpu_single_node.yaml
+
+  run:
+    timeout: 3600
+    long_running: false
+    script: python prefix_router_overhead_benchmark.py
+
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
@@ -5253,7 +5162,30 @@
 
   run:
     timeout: 3600
-    script: pytest -vs . --ignore=test_token_channel_cross_node.py
+    script: pytest -vs . --ignore=test_token_channel_cross_node.py --ignore=test_frontend_config.py
+
+- name: llm_serve_kv_router_frontend_config
+  frequency: manual
+  python: "3.12"
+  group: llm-serve
+  team: llm
+  working_dir: llm_tests/kv_router_test
+
+  cluster:
+    byod:
+      type: llm-cu130
+      runtime_env:
+        RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+        RAY_SERVE_ENABLE_HA_PROXY: "1"
+        RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY: "1"
+        RAY_SERVE_DEFAULT_HTTP_HOST: "0.0.0.0"
+      post_build_script: byod_llm_kv_router_test.sh
+    anyscale_sdk_2026: true
+    cluster_compute: llm_4xl4.yaml
+
+  run:
+    timeout: 3600
+    script: pytest -vs test_frontend_config.py
 
 - name: llm_serve_kv_router_cross_node
   frequency: manual
@@ -5378,6 +5310,10 @@
   cluster:
     byod:
       runtime_env:
+        HF_HOME: "/home/ray/.cache/huggingface"
+        RAY_LLM_BENCHMARK_DATASET_PATH: "/tmp/ray_llm_benchmark_dataset"
+        RAY_DATA_LLM_BENCHMARK_METRICS_WAIT_TIMEOUT_S: "35"
+        RAY_DATA_LLM_BENCHMARK_METRICS_POLL_INTERVAL_S: "1"
         VLLM_DISABLE_COMPILE_CACHE: "1"
       type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
@@ -5426,7 +5362,7 @@
   frequency: weekly
   group: ray-examples
   team: ml
-  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
+  working_dir: //doc/source/train/examples/transformers/transformer-reinforcement-learning
 
   cluster:
     byod:

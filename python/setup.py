@@ -385,7 +385,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.30.0",
+                "vllm[audio]==0.31.0",
                 "nixl==1.4.1",
                 "nixl-cu13==1.4.1",
                 "jsonref>=1.1.0",
@@ -779,6 +779,8 @@ if __name__ == "__main__":
                 "includes/*.pxd",
                 "*.pxd",
                 "serve/_private/ingress_request_router.lua.tmpl",
+                "serve/_private/request_router_common.lua.tmpl",
+                "serve/_private/router_application.lua.tmpl",
             ],
         },
         include_package_data=True,

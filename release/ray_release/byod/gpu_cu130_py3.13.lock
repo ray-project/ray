@@ -149,9 +149,9 @@ anyio==4.13.0 \
     #   -c python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py3.13.lock
     #   httpx
     #   jupyter-server
-anyscale==0.26.105 \
-    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
-    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
+anyscale==0.26.110 \
+    --hash=sha256:8216a4ac067afa874a6cc0bcabb4430cff48d061339ba5ef4e20f6d6ff4a4906 \
+    --hash=sha256:8472baef910d872dd8724115fe8fde433894a558985b55cfb8b68647cbf684dd
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py3.13.lock
     #   -r docker/base-extra/requirements.in
@@ -298,9 +298,9 @@ cachetools==5.5.2 \
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py3.13.lock
     #   google-auth
-certifi==2026.4.22 \
-    --hash=sha256:3cb2210c8f88ba2318d29b0388d1023c8492ff72ecdde4ebdaddbb13a31b1c4a \
-    --hash=sha256:8d455352a37b71bf76a79caa83a3d6c25afee4a385d632127b6afb3963f1c580
+certifi==2026.10.19 \
+    --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \
+    --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
     # via
     #   -c python/deplocks/base_extra_testdeps/ray-gpu-cu130-base_extra_testdeps_py3.13.lock
     #   anyscale

@@ -13,7 +13,6 @@ exclude: |
     thirdparty/patches/|
     python/requirements/llm/patches/|
     src/ray/thirdparty/|
-    doc/external/|
     # Excludes doc/source, except the Markdown and rST prose under doc/source/data
     # that the `vale` hook below lints and Bazel BUILD files for buildifier.
     # pre-commit ANDs this top-level `exclude` with each hook's own `files`, so
@@ -97,7 +96,6 @@ repos:
       - id: black
         exclude: |
           (?x)^(
-            doc/external/|
             python/build/|
             python/ray/_private/thirdparty/|
             python/ray/cloudpickle/|

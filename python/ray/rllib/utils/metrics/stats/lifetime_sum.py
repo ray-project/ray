@@ -26,6 +26,8 @@ class LifetimeSumStats(StatsBase):
 
         Args:
             with_throughput: If True, track the throughput since the last restore from a checkpoint.
+            *args: Additional positional args passed on to `StatsBase.__init__`.
+            **kwargs: Additional keyword args passed on to `StatsBase.__init__`.
         """
         super().__init__(*args, **kwargs)
 
@@ -101,6 +103,10 @@ class LifetimeSumStats(StatsBase):
             latest_merged_only: If True, only considers the latest merged values.
                 This parameter only works on aggregation stats (root or intermediate nodes).
                 When enabled, peek() will only return the sum that was added in the most recent merge operation.
+
+        Returns:
+            The current lifetime sum or, if `compile` is False, a list containing
+            this single value.
         """
         # Check latest_merged_only validity
         if latest_merged_only and self.is_leaf:

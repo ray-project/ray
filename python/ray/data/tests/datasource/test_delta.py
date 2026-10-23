@@ -1,4 +1,5 @@
 import os
+from unittest import mock
 
 import pandas as pd
 import pyarrow as pa
@@ -163,6 +164,52 @@ def test_delta_read_empty_table(tmp_path):
 def test_delta_read_rejects_multiple_paths():
     with pytest.raises(ValueError, match="Only a single Delta Lake table path"):
         ray.data.read_delta(["path1", "path2"])
+
+
+def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
+    """A deletion-vector table must fail with advice that actually works.
+
+    Reading one is impossible through `to_pyarrow_dataset` -- pyarrow cannot
+    apply the deletion-vector bitmaps, so deltalake refuses rather than return
+    deleted rows, and no deltalake version changes that. The message therefore
+    has to point at the table property, not at a library upgrade.
+
+    deltalake cannot *write* a table declaring the feature either, so the
+    protocol error is injected rather than provoked; what is under test is
+    Ray's translation of it.
+    """
+    from deltalake import write_deltalake
+    from deltalake.exceptions import DeltaProtocolError
+
+    path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
+    write_deltalake(path, pa.table({"id": [1, 2, 3]}))
+
+    protocol_error = DeltaProtocolError(
+        "The table has set these reader features: {'deletionVectors'} but these "
+        "are not yet supported by the deltalake reader."
+    )
+
+    with mock.patch(
+        "deltalake.DeltaTable.to_pyarrow_dataset", side_effect=protocol_error
+    ):
+        with pytest.raises(RuntimeError) as excinfo:
+            ray.data.read_delta(path)
+
+    message = str(excinfo.value)
+    # Names the cause and the reader path, so the reason is understandable.
+    assert "deletionVectors" in message
+    assert "pyarrow" in message
+    # Names the property to look into, so the reader knows what to research.
+    assert "delta.enableDeletionVectors" in message
+    # Deliberately does NOT prescribe the steps: dropping the feature rewrites
+    # data files and changes what other readers and writers see, which is not a
+    # decision to make from a stack trace.
+    for recipe in ("ALTER TABLE", "DROP FEATURE", "REORG TABLE"):
+        assert recipe not in message, f"message should not prescribe {recipe!r}"
+    # Does not send anyone chasing a library upgrade that cannot help.
+    assert "deltalake>=" not in message
+    # Keeps the original error for anyone debugging deeper.
+    assert "not yet supported by the deltalake reader" in message
 
 
 if __name__ == "__main__":

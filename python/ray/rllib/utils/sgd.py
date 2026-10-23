@@ -2,12 +2,18 @@
 
 import logging
 import random
+from typing import TYPE_CHECKING, Any, Dict, Generator, List
 
 import numpy as np
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.typing import PolicyID
+
+if TYPE_CHECKING:
+    from ray.rllib.evaluation.rollout_worker import RolloutWorker
+    from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +23,7 @@ def standardized(array: np.ndarray):
     """Normalize the values in an array.
 
     Args:
-        array (np.ndarray): Array of values to normalize.
+        array: Array of values to normalize.
 
     Returns:
         array with zero mean and unit standard deviation.
@@ -26,7 +32,9 @@ def standardized(array: np.ndarray):
 
 
 @OldAPIStack
-def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = True):
+def minibatches(
+    samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = True
+) -> Generator[SampleBatch, None, None]:
     """Return a generator yielding minibatches from a sample batch.
 
     Args:
@@ -71,13 +79,13 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
 
 @OldAPIStack
 def do_minibatch_sgd(
-    samples,
-    policies,
-    local_worker,
-    num_sgd_iter,
-    sgd_minibatch_size,
-    standardize_fields,
-):
+    samples: SampleBatch,
+    policies: Dict[PolicyID, "Policy"],
+    local_worker: "RolloutWorker",
+    num_sgd_iter: int,
+    sgd_minibatch_size: int,
+    standardize_fields: List[str],
+) -> Dict[PolicyID, Dict[str, Any]]:
     """Execute minibatch SGD.
 
     Args:
