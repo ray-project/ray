@@ -83,7 +83,7 @@ tuner = tune.Tuner(
 tuner.fit()
 ```
 
-In this example, you can find all experiment results in the shared storage at `/path/to/shared/storage/experiment_name` for further processing.
+In this example, you can find all experiment results in the shared storage at `/mnt/path/to/shared/storage/experiment_name` for further processing.
 
 (tune-default-syncing)=
 
@@ -120,7 +120,7 @@ Using the head node's local filesystem as the persistent storage location on a m
 
 This section shows how to configure the storage location and synchronization options, and how to resume an experiment if it gets interrupted. See {ref}`tune-fault-tolerance-ref` for more information on resuming experiments.
 
-Each example explains how Tune saves *trial checkpoints* across the cluster and to the external storage location, if you provide one. See {ref}`tune-persisted-experiment-data` for an overview of other experiment data that Tune needs to persist.
+The example explains how Tune saves *trial checkpoints* across the cluster and to the external storage location, if you provide one. See {ref}`tune-persisted-experiment-data` for an overview of other experiment data that Tune needs to persist.
 
 ### Example: Run Tune with cloud storage
 
@@ -141,11 +141,11 @@ tuner = tune.Tuner(
         # Name of your experiment
         name="my-tune-exp",
         # Configure how experiment data and checkpoints are persisted.
-        # We recommend cloud storage checkpointing as it survives the cluster when
-        # instances are terminated and has better performance.
+        # Cloud storage checkpointing survives the cluster when instances
+        # are terminated, and performs better.
         storage_path="s3://my-checkpoints-bucket/path/",
         checkpoint_config=tune.CheckpointConfig(
-            # We'll keep the best five checkpoints at all times
+            # Keep the best five checkpoints at all times
             # (with the highest AUC scores, a metric reported by the trainable)
             checkpoint_score_attribute="max-auc",
             checkpoint_score_order="max",

@@ -50,7 +50,7 @@ tuner.fit()
 # 13 different configs.
 tuner = tune.Tuner(trainable, tune_config=tune.TuneConfig(num_samples=13), param_space={
     "x": tune.choice([0, 1, 2]),
-    "y": tune.randn([0, 1, 2]),
+    "y": tune.randn(0, 1),
     }
 )
 tuner.fit()
