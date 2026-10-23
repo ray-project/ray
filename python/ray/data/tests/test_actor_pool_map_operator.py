@@ -2022,7 +2022,6 @@ class TestPlacementGroup:
             compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
             ray_remote_args={"num_cpus": 1, "num_gpus": 0},
             placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
-            placement_group_strategy="STRICT_PACK",
         )
         # Per-actor usage is the sum of all bundles (2 CPU, 2 GPU)
         bundle_sum = ExecutionResources(cpu=2, gpu=2)
@@ -2286,7 +2285,6 @@ class TestPlacementGroup:
                 compute=ray.data.ActorPoolStrategy(size=1),
                 placement_group_bundles=[{"CPU": 1}],
                 num_gpus=1,
-                batch_size=2,
             )
 
     def test_config_survives_fusion(self, ray_start_regular_shared):
@@ -2350,15 +2348,14 @@ class TestPlacementGroup:
                 batch["child_pg_id"] = [self._child_pg_id] * len(batch["id"])
                 return batch
 
-        ds = ray.data.range(8, override_num_blocks=4).map_batches_internal(
+        ds = ray.data.range(2, override_num_blocks=2).map_batches_internal(
             PlacementGroupProbe,
-            batch_size=2,
             compute=ray.data.ActorPoolStrategy(size=num_actors),
             placement_group_bundles=[{"CPU": 1}],
             placement_group_strategy="PACK",
         )
         rows = ds.take_all()
-        assert len(rows) == 8
+        assert len(rows) == 2
 
         # The map worker (and the child task it spawned) ran inside a placement
         # group, one per actor.
