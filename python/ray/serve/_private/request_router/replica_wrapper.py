@@ -4,7 +4,7 @@ import pickle
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Set, Tuple, Union
+from typing import Any, cast
 
 import ray
 from ray._private.grpc_utils import init_grpc_channel
@@ -50,7 +50,6 @@ class ReplicaWrapper(ABC):
     @abstractmethod
     def send_request_java(self, pr: PendingRequest) -> ReplicaResult:
         """Send request to Java replica."""
-        pass
 
     @abstractmethod
     def send_request_python(
@@ -65,7 +64,6 @@ class ReplicaWrapper(ABC):
         requests it's up to the caller to resolve it to its first (and
         only) ObjectRef.
         """
-        pass
 
 
 class ActorReplicaWrapper(ReplicaWrapper):
@@ -87,9 +85,11 @@ class ActorReplicaWrapper(ReplicaWrapper):
                 RequestMetadataProto(
                     request_id=pr.metadata.request_id,
                     # Default call method in java is "call," not "__call__" like Python.
-                    call_method="call"
-                    if pr.metadata.call_method == "__call__"
-                    else pr.metadata.call_method,
+                    call_method=(
+                        "call"
+                        if pr.metadata.call_method == "__call__"
+                        else pr.metadata.call_method
+                    ),
                 ).SerializeToString(),
                 pr.args,
             ),
@@ -189,23 +189,50 @@ class RunningReplica:
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
-        # Fetch and cache the actor handle once per RunningReplica instance.
-        # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
-        actor_handle = replica_info.get_actor_handle()
-        if replica_info.is_cross_language:
-            self._actor_handle: Union[
-                ActorHandle, JavaActorHandleProxy
-            ] = JavaActorHandleProxy(actor_handle)
-        else:
-            self._actor_handle = actor_handle
+        # NOTE: actor handles are resolved lazily on first use (see
+        # _resolved_actor_handle and _actor_replica_wrapper properties below).
+        # Eagerly looking up every replica handle here creates an O(Routers × Replicas)
+        # GCS named-actor lookup storm at Serve startup when many worker processes
+        # each create a DeploymentHandle and receive the full replica set.
+        # Deferring resolution moves the GCS traffic out of the critical startup
+        # path; Ray's C++ CoreWorker and RunningReplicaInfo._actor_handle_cache then
+        # efficiently dedupe lookups across RunningReplica instances in the same
+        # process, and only replicas that actually receive requests need to be
+        # resolved.  See issue #65782.
 
         # Lazily created
         self._channel = None
         self._stub = None
 
-        # Replica wrappers
-        self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
-        self._grpc_replica_wrapper: Optional[gRPCReplicaWrapper] = None
+        # Lazily resolved (populated on first access).
+        self._actor_handle: ActorHandle | JavaActorHandleProxy | None = None
+        self._actor_replica_wrapper: ActorReplicaWrapper | None = None
+        self._grpc_replica_wrapper: gRPCReplicaWrapper | None = None
+
+    @property
+    def _resolved_actor_handle(self) -> ActorHandle | JavaActorHandleProxy:
+        """Resolve and cache the actor handle on first use.
+
+        This is the single point of entry that lazily performs the GCS named-actor
+        lookup.  Once resolved, the handle is cached for the lifetime of this
+        RunningReplica, matching the previous eager-initialization semantics.
+        """
+        if self._actor_handle is None:
+            actor_handle = self._replica_info.get_actor_handle()
+            if self._replica_info.is_cross_language:
+                self._actor_handle = JavaActorHandleProxy(actor_handle)
+            else:
+                self._actor_handle = actor_handle
+        return cast(ActorHandle | JavaActorHandleProxy, self._actor_handle)
+
+    @property
+    def _resolved_actor_replica_wrapper(self) -> ActorReplicaWrapper:
+        """Lazily create the ActorReplicaWrapper on first use."""
+        if self._actor_replica_wrapper is None:
+            self._actor_replica_wrapper = ActorReplicaWrapper(
+                self._resolved_actor_handle
+            )
+        return cast(ActorReplicaWrapper, self._actor_replica_wrapper)
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
         """Update mutable fields from a new RunningReplicaInfo.
@@ -233,7 +260,7 @@ class RunningReplica:
     @property
     def actor_id(self) -> ray.ActorID:
         """Actor ID of this replica."""
-        return self._actor_handle._actor_id
+        return self._resolved_actor_handle._actor_id
 
     @property
     def node_id(self) -> str:
@@ -243,22 +270,22 @@ class RunningReplica:
         return self._replica_info.node_id  # type: ignore[return-value]
 
     @property
-    def availability_zone(self) -> Optional[str]:
+    def availability_zone(self) -> str | None:
         """Availability zone of the node this replica is running on."""
         return self._replica_info.availability_zone
 
     @property
-    def multiplexed_model_ids(self) -> Set[str]:
+    def multiplexed_model_ids(self) -> set[str]:
         """Set of model IDs on this replica."""
         return self._multiplexed_model_ids
 
     @property
-    def routing_stats(self) -> Dict[str, Any]:
+    def routing_stats(self) -> dict[str, Any]:
         """Dictionary of routing stats."""
         return self._replica_info.routing_stats
 
     @property
-    def replica_metadata(self) -> Dict[str, Any]:
+    def replica_metadata(self) -> dict[str, Any]:
         """Static per-replica metadata captured once when the replica became ready."""
         # Return a copy so callers can't mutate the RunningReplicaInfo's dict.
         return self._replica_info.replica_metadata.copy()
@@ -274,7 +301,7 @@ class RunningReplica:
         return self._replica_info.is_cross_language
 
     @property
-    def backend_http_endpoint(self) -> Optional[Tuple[str, int]]:
+    def backend_http_endpoint(self) -> tuple[str, int] | None:
         """Return (host, port) of the replica's backend HTTP server."""
         port = self._replica_info.backend_http_port
         host = self._replica_info.node_ip
@@ -305,18 +332,18 @@ class RunningReplica:
     def _get_replica_wrapper(self, pr: PendingRequest) -> ReplicaWrapper:
         if self._grpc_replica_wrapper is None:
             self._grpc_replica_wrapper = gRPCReplicaWrapper(
-                self.stub, self._actor_handle._actor_id
+                self.stub, self._resolved_actor_handle._actor_id
             )
 
         return (
-            self._actor_replica_wrapper
+            self._resolved_actor_replica_wrapper
             if pr.metadata._by_reference
             else self._grpc_replica_wrapper
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
         """When on proxy, push proxy's self handle to replica"""
-        self._actor_handle.push_proxy_handle.remote(handle)
+        self._resolved_actor_handle.push_proxy_handle.remote(handle)
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
         """Returns current queue len for the replica.
@@ -325,7 +352,7 @@ class RunningReplica:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
-        obj_ref = self._actor_handle.get_num_ongoing_requests.remote()
+        obj_ref = self._resolved_actor_handle.get_num_ongoing_requests.remote()
         try:
             return await obj_ref
         except asyncio.CancelledError:
@@ -345,7 +372,7 @@ class RunningReplica:
 
     async def reserve_slot(
         self, request_metadata: RequestMetadata
-    ) -> Tuple[str, ReplicaQueueLengthInfo]:
+    ) -> tuple[str, ReplicaQueueLengthInfo]:
         """Reserve a slot on this replica for an upcoming request.
 
         Returns a unique token that can be used to release the slot later.
@@ -356,18 +383,20 @@ class RunningReplica:
             raise RuntimeError("Slot reservation not supported for Java.")
 
         slot_token = str(uuid.uuid4())
-        obj_ref = self._actor_handle.reserve_slot.remote(request_metadata, slot_token)
+        obj_ref = self._resolved_actor_handle.reserve_slot.remote(
+            request_metadata, slot_token
+        )
         try:
             accepted, num_ongoing_requests = await obj_ref
         except asyncio.CancelledError:
             ray.cancel(obj_ref)
-            self._actor_handle.release_slot.remote(slot_token)
+            self._resolved_actor_handle.release_slot.remote(slot_token)
             raise
         except Exception:
             # The actor may have reserved the slot before the reply was lost
             # (e.g. ActorUnavailableError). `release_slot` is idempotent for unknown
             # tokens, so this is safe even when the reservation never actually happened.
-            self._actor_handle.release_slot.remote(slot_token)
+            self._resolved_actor_handle.release_slot.remote(slot_token)
             raise
 
         return slot_token, ReplicaQueueLengthInfo(
@@ -386,7 +415,7 @@ class RunningReplica:
         if self._replica_info.is_cross_language:
             raise RuntimeError("Slot reservation not supported for Java.")
 
-        _, num_ongoing_requests = await self._actor_handle.release_slot.remote(
+        _, num_ongoing_requests = await self._resolved_actor_handle.release_slot.remote(
             slot_token
         )
         return num_ongoing_requests
@@ -407,28 +436,28 @@ class ReplicaSelection:
     node_ip: str
     """IP address of the node running this replica."""
 
-    port: Optional[int]
+    port: int | None
     """Port number for direct communication (if configured)."""
 
     node_id: str
     """Ray node ID where the replica is running."""
 
-    availability_zone: Optional[str]
+    availability_zone: str | None
     """Cloud availability zone of the replica's node."""
 
-    replica_metadata: Dict[str, Any]
+    replica_metadata: dict[str, Any]
     """Static, immutable per-replica metadata published by the deployment's
     ``record_replica_metadata`` hook (captured once when the replica became
     ready). Empty dict if the deployment does not define the hook."""
 
     # Internal fields (not part of public API)
     _replica: RunningReplica
-    _deployment_id: Optional[DeploymentID]
+    _deployment_id: DeploymentID | None
     _request_metadata: RequestMetadata
     _method_name: str
     # Token to be used for replica reservation;
     # Can be None when created via the pick-only path
-    _slot_token: Optional[str]
+    _slot_token: str | None
     _dispatched: bool = field(
         default=False, init=False
     )  # Tracks if dispatch was called
@@ -445,7 +474,7 @@ class ReplicaSelection:
             return f"{self.node_ip}:{self.port}"
         return self.node_ip
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Serialize public fields to a dictionary."""
         return {
             "replica_id": self.replica_id,
@@ -469,7 +498,7 @@ class ReplicaSelection:
             )
         self._dispatched = True
 
-    async def _release_slot(self, *, force: bool = False) -> Optional[int]:
+    async def _release_slot(self, *, force: bool = False) -> int | None:
         """Internal: Release the reserved slot.
 
         Returns the replica's reported num_ongoing_requests after the release,
