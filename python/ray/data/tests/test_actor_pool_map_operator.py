@@ -2026,7 +2026,7 @@ class TestPlacementGroup:
 
         # Per-actor usage is the sum of all bundles (2 CPU, 2 GPU)
         bundle_sum = ExecutionResources(cpu=2, gpu=2)
-        assert op._placement_group_resource_usage() == bundle_sum
+        assert op._placement_group_resource_usage == bundle_sum
         assert op._actor_pool.per_actor_resource_usage() == bundle_sum
         assert op.min_scheduling_resources() == bundle_sum
         assert op.per_task_resource_allocation() == bundle_sum

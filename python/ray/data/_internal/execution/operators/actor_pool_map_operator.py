@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import time
 import uuid
@@ -254,6 +255,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             placement_group_strategy=self._placement_group_strategy,
         )
 
+    @functools.cached_property
     def _placement_group_resource_usage(self) -> Optional[ExecutionResources]:
         """Resources reserved by a single actor's placement group, or ``None``.
 
@@ -264,27 +266,22 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         """
         if self._placement_group_bundles is None:
             return None
-        usage = ExecutionResources.zero()
-        for bundle in self._placement_group_bundles:
-            usage = usage.add(
-                ExecutionResources(
-                    cpu=bundle.get("CPU", 0),
-                    gpu=bundle.get("GPU", 0),
-                    memory=bundle.get("memory", 0),
-                )
-            )
-        return usage
+        return ExecutionResources.combine_sum(
+            ExecutionResources.from_resource_dict(bundle)
+            for bundle in self._placement_group_bundles
+        )
+
+    def _per_actor_resource_usage(
+        self, ray_remote_args: Dict[str, Any]
+    ) -> ExecutionResources:
+        if self._placement_group_resource_usage is not None:
+            return self._placement_group_resource_usage
+        return ExecutionResources.from_resource_dict(ray_remote_args)
 
     def _create_actor_pool_config(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorConfig":
-        per_actor_resource_usage = self._placement_group_resource_usage()
-        if per_actor_resource_usage is None:
-            per_actor_resource_usage = ExecutionResources(
-                cpu=self._ray_remote_args.get("num_cpus"),
-                gpu=self._ray_remote_args.get("num_gpus"),
-                memory=self._ray_remote_args.get("memory"),
-            )
+        per_actor_resource_usage = self._per_actor_resource_usage(self._ray_remote_args)
         max_actor_concurrency = self._ray_remote_args.get("max_concurrency", 1)
         config = AutoscalingActorConfig(
             min_size=compute_strategy.min_size,
@@ -411,16 +408,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 placement_group_capture_child_tasks=True,
             )
         extra_labels = actual_remote_args.pop("_labels", {})
-        # When a placement group is provisioned, the cluster reserves the whole
-        # PG for this actor, so attribute that to the actor. Otherwise fall back
-        # to the per-actor remote args.
-        actor_resource_usage = self._placement_group_resource_usage()
-        if actor_resource_usage is None:
-            actor_resource_usage = ExecutionResources(
-                cpu=actual_remote_args.get("num_cpus", 0),
-                gpu=actual_remote_args.get("num_gpus", 0),
-                memory=actual_remote_args.get("memory", 0),
-            )
+        actor_resource_usage = self._per_actor_resource_usage(actual_remote_args)
         actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels, **extra_labels},
             **actual_remote_args,
@@ -642,15 +630,10 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         max_actors = self._actor_pool.max_size()
         assert min_actors is not None, min_actors
 
-        pg_resources = self._placement_group_resource_usage()
-        if pg_resources is not None:
-            num_cpus_per_actor = pg_resources.cpu
-            num_gpus_per_actor = pg_resources.gpu
-            memory_per_actor = pg_resources.memory
-        else:
-            num_cpus_per_actor = self._ray_remote_args.get("num_cpus", 0)
-            num_gpus_per_actor = self._ray_remote_args.get("num_gpus", 0)
-            memory_per_actor = self._ray_remote_args.get("memory", 0)
+        per_actor_resource_usage = self._per_actor_resource_usage(self._ray_remote_args)
+        num_cpus_per_actor = per_actor_resource_usage.cpu
+        num_gpus_per_actor = per_actor_resource_usage.gpu
+        memory_per_actor = per_actor_resource_usage.memory
 
         min_resource_usage = ExecutionResources(
             cpu=num_cpus_per_actor * min_actors,
