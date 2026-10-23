@@ -1,4 +1,4 @@
-"""Tests for the push-based streaming_split (push_based_split_iterator.py)."""
+"""Tests for the push-based streaming_split (push_split_iterator.py)."""
 
 import threading
 import time
@@ -9,16 +9,16 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.data._internal.iterator.push_based_split_iterator import (
-    PushSplitReceiverMixin,
-    _BlockDelivery,
-    _PushReceiver,
-    streaming_split_push_based,
-)
 from ray.data._internal.iterator.push_split_coordinator import (
     _BlockPush,
     _EndOfEpoch,
     _ExecutorError,
+)
+from ray.data._internal.iterator.push_split_iterator import (
+    PushSplitReceiverMixin,
+    _BlockDelivery,
+    _PushReceiver,
+    streaming_split_push_based,
 )
 
 # ---------------------------------------------------------------------------
@@ -160,9 +160,9 @@ class _Consumer(PushSplitReceiverMixin):
     def num_receivers(self) -> int:
         # Imported here so this reads the worker process's registry; a
         # module-level name would be pickled by value with this class.
-        from ray.data._internal.iterator import push_based_split_iterator
+        from ray.data._internal.iterator import push_split_iterator
 
-        return len(push_based_split_iterator._RECEIVER_REGISTRY)
+        return len(push_split_iterator._RECEIVER_REGISTRY)
 
 
 def _make_consumers(iterators) -> List[Any]:

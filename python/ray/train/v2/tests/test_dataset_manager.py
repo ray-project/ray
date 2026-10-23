@@ -241,7 +241,7 @@ async def test_dataset_manager_shutdown_multiple_datasets(ray_start_4_cpus):
 async def test_push_based_split_coordinators_are_cleaned_up(ray_start_4_cpus):
     """Push-based split coordinators are tracked for executor shutdown, the
     same as pull-based ones."""
-    from ray.data._internal.iterator.push_based_split_iterator import (
+    from ray.data._internal.iterator.push_split_iterator import (
         PushBasedDataIterator,
     )
     from ray.train._internal.push_based_data_config import PushBasedDataConfig

@@ -43,7 +43,7 @@ Overview::
     +--------------------------------------------------+
 
 This module holds the coordinator; the consumer side lives in
-``push_based_split_iterator.py``.
+``push_split_iterator.py``.
 
 In the next PRs: stats/metrics export, locality-aware pushing, mid-epoch
 consumer replacement.
@@ -66,6 +66,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
+
+# Identifies one split's receive state (its ``_PushReceiver``) inside the
+# consumer actor's process: "<coordinator actor id hex>:<split index>". The
+# consumer's PushBasedDataIterator builds it and registers it with the
+# coordinator, which sends it with every delivery.
+ReceiverKey = str
 
 
 @dataclass
@@ -234,8 +240,9 @@ class PushSplitCoordinator:
         # fails for every split, as SplitCoordinator does.
         self._teardown_error: Optional[Exception] = None
 
-        # split_idx -> (handle, key); see register().
-        self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, str]] = {}
+        # split_idx -> (consumer actor handle, receiver key); see
+        # register_consumer().
+        self._consumers: Dict[int, Tuple[ray.actor.ActorHandle, ReceiverKey]] = {}
         self._pusher_threads: List[threading.Thread] = []
         self._pusher_stop_events: Dict[int, threading.Event] = {}
 
@@ -255,16 +262,18 @@ class PushSplitCoordinator:
     # Control plane (actor tasks).
     # ------------------------------------------------------------------
 
-    def register(
+    def register_consumer(
         self,
         split_idx: int,
         consumer: ray.actor.ActorHandle,
-        key: str,
+        key: ReceiverKey,
     ) -> None:
         """Register the consumer actor for a split (called once per epoch;
         re-registering is fine). The actor class must mix in
         ``PushSplitReceiverMixin``."""
         self._check_split_idx(split_idx)
+        # Without the mixin, deliveries and error reports can't reach the
+        # consumer, which would wait forever; fail fast instead.
         if not hasattr(consumer, "_push_split_deliver"):
             raise ValueError(
                 f"The consumer actor for split {split_idx} does not expose "

@@ -10,7 +10,7 @@ Drop-in replacement for :class:`ray.train.DataConfig`::
 
 Split datasets are served by a ``PushSplitCoordinator`` that pushes blocks
 to each train worker (see
-``ray/data/_internal/iterator/push_based_split_iterator.py``). Each returned
+``ray/data/_internal/iterator/push_split_iterator.py``). Each returned
 ``PushBasedDataIterator`` registers its train worker with the coordinator on
 first iteration; deliveries arrive through the ``PushSplitReceiverMixin``
 methods that ``RayTrainWorker`` mixes in.
@@ -57,7 +57,7 @@ class PushBasedDataConfig(DataConfig):
         worker_node_ids: Optional[List["NodeIdStr"]],
         **kwargs,
     ) -> List[Dict[str, "DataIterator"]]:
-        from ray.data._internal.iterator.push_based_split_iterator import (
+        from ray.data._internal.iterator.push_split_iterator import (
             streaming_split_push_based,
         )
 

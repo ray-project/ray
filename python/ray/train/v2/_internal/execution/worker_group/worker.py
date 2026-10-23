@@ -11,7 +11,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
-from ray.data._internal.iterator.push_based_split_iterator import (
+from ray.data._internal.iterator.push_split_iterator import (
     PushSplitReceiverMixin,
 )
 from ray.train import Checkpoint

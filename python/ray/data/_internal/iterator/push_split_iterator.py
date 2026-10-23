@@ -25,6 +25,7 @@ from ray.data._internal.block_batching.interfaces import ResolvedBlock
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
+    ReceiverKey,
     _BlockPush,
     _EndOfEpoch,
     _ExecutorError,
@@ -83,7 +84,7 @@ def streaming_split_push_based(
 # ---------------------------------------------------------------------------
 
 _RECEIVER_REGISTRY_LOCK = threading.Lock()
-_RECEIVER_REGISTRY: Dict[str, "_PushReceiver"] = {}
+_RECEIVER_REGISTRY: Dict[ReceiverKey, "_PushReceiver"] = {}
 
 
 class _PushReceiver:
@@ -169,7 +170,7 @@ class PushSplitReceiverMixin:
 
     def _push_split_deliver(
         self,
-        key: str,
+        key: ReceiverKey,
         epoch_id: int,
         seq: int,
         item: _SequencedItem,
@@ -184,7 +185,7 @@ class PushSplitReceiverMixin:
             receiver.deliver(epoch_id, seq, item, block)
 
     def _push_split_deliver_error(
-        self, key: str, epoch_id: int, error: _ExecutorError
+        self, key: ReceiverKey, epoch_id: int, error: _ExecutorError
     ) -> None:
         receiver = _RECEIVER_REGISTRY.get(key)
         # None for stale deliveries; see _push_split_deliver.
@@ -258,7 +259,7 @@ class PushBasedDataIterator(DataIterator):
         self._prefetch_batches = 1
         self._prefetch_batch_size: Optional[int] = None
 
-    def _receiver_key(self) -> str:
+    def _receiver_key(self) -> ReceiverKey:
         return f"{self._coord_actor._actor_id.hex()}:{self._output_split_idx}"
 
     def _to_ref_bundle_iterator(self):
@@ -326,7 +327,7 @@ class PushBasedDataIterator(DataIterator):
         # epoch is fine (idempotent overwrite).
         receiver.reset()
         ray.get(
-            self._coord_actor.register.remote(
+            self._coord_actor.register_consumer.remote(
                 self._output_split_idx, self_handle, key=key
             )
         )

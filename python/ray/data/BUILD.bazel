@@ -1958,9 +1958,9 @@ py_test(
 )
 
 py_test(
-    name = "test_push_based_split_iterator",
+    name = "test_push_split_coordinator",
     size = "large",
-    srcs = ["tests/test_push_based_split_iterator.py"],
+    srcs = ["tests/test_push_split_coordinator.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1972,9 +1972,9 @@ py_test(
 )
 
 py_test(
-    name = "test_push_split_coordinator",
+    name = "test_push_split_iterator",
     size = "large",
-    srcs = ["tests/test_push_split_coordinator.py"],
+    srcs = ["tests/test_push_split_iterator.py"],
     tags = [
         "exclusive",
         "team:data",
