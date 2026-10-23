@@ -351,11 +351,12 @@ class PushBasedDataIterator(DataIterator):
         else:
             target_rows = 1
 
-        def report(consumed_rows: int, consumed_bytes: int) -> None:
-            # One RPC per consumed block. Rows are reported at pop (they
-            # drive the window); bytes are reported one block late so
-            # the block currently being batched still counts as
-            # consumer-held for producer pacing.
+        def update_flow_window(consumed_rows: int, consumed_bytes: int) -> None:
+            # One RPC per consumed block: reports what was consumed and
+            # re-declares the row window, which frees room for more rows.
+            # Rows are reported at pop (they drive the window); bytes are
+            # reported one block late so the block currently being batched
+            # still counts as consumer-held for producer pacing.
             self._coord_actor.request_rows.remote(
                 self._output_split_idx,
                 epoch,
@@ -365,7 +366,7 @@ class PushBasedDataIterator(DataIterator):
             )
 
         pending_consumed_bytes = 0
-        report(0, 0)
+        update_flow_window(0, 0)
         # reset() gave this epoch a fresh queue, so a lingering
         # generator from an early-exited epoch can't steal deliveries;
         # the loop condition below reaps such generators.
@@ -387,7 +388,7 @@ class PushBasedDataIterator(DataIterator):
             if isinstance(item, _ExecutorError):
                 raise item.error
             assert isinstance(item, _BlockDelivery)
-            report(item.num_rows, pending_consumed_bytes)
+            update_flow_window(item.num_rows, pending_consumed_bytes)
             pending_consumed_bytes = item.size_bytes
             yield ResolvedBlock(block=item.block)
 
