@@ -16,6 +16,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     Union,
     cast,
 )
@@ -302,8 +303,41 @@ class PushBasedDataIterator(DataIterator):
         return _BatchSource(batch_iterator, self._iter_stats, None, dataset_tags)
 
     def _iter_blocks(self) -> Iterator[ResolvedBlock]:
-        """Register with the coordinator, start the epoch, and yield the
-        blocks pushed to this split."""
+        """Join the next epoch and yield the blocks pushed to this split."""
+        receiver, epoch = self._join_epoch()
+        target_rows = self._prefetch_window_rows()
+        pending_consumed_bytes = 0
+        self._update_flow_window(epoch, target_rows, 0, 0)
+        # reset() gave this epoch a fresh queue, so a lingering
+        # generator from an early-exited epoch can't steal deliveries;
+        # the loop condition below reaps such generators.
+        epoch_queue = receiver.queue
+
+        while self._active_epoch == epoch:
+            try:
+                # Queue-wait time lands in the get_ref_bundles iterator
+                # stat: the push analog of waiting on the coordinator.
+                with self._iter_stats.iter_get_ref_bundles_s.timer():
+                    item = epoch_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            if isinstance(item, _EndOfEpoch):
+                logger.debug(
+                    f"Split {self._output_split_idx}: epoch {epoch} exhausted."
+                )
+                return
+            if isinstance(item, _ExecutorError):
+                raise item.error
+            assert isinstance(item, _BlockDelivery)
+            self._update_flow_window(
+                epoch, target_rows, item.num_rows, pending_consumed_bytes
+            )
+            pending_consumed_bytes = item.size_bytes
+            yield ResolvedBlock(block=item.block)
+
+    def _join_epoch(self) -> Tuple["_PushReceiver", int]:
+        """Register this split's receiver with the coordinator and wait at
+        the epoch barrier. Returns the receiver and the new epoch id."""
         try:
             self_handle = ray.get_runtime_context().current_actor
             assert self_handle is not None
@@ -335,60 +369,43 @@ class PushBasedDataIterator(DataIterator):
         )
         self._active_epoch = epoch
         receiver.begin_epoch(epoch)
+        return receiver, epoch
 
-        # Prefetch window, in rows: declare a `prefetch_batches *
-        # batch_size` row window and report consumption; the coordinator
-        # computes what to send (target_rows - (rows_pushed -
-        # rows_consumed)) and pushes whole blocks while that is
-        # positive, so any positive window yields at least one block.
-        # Blocks pushed but not yet consumed sit in the local receiver
-        # queue — that queue IS the prefetch buffer. Without a batch
-        # size the window degenerates to one block in flight.
+    def _prefetch_window_rows(self) -> int:
+        """Prefetch window, in rows: ``prefetch_batches * batch_size``.
+
+        The coordinator computes what to send (target_rows - (rows_pushed -
+        rows_consumed)) and pushes whole blocks while that is positive, so
+        any positive window yields at least one block. Blocks pushed but not
+        yet consumed sit in the local receiver queue — that queue IS the
+        prefetch buffer. Without a batch size the window degenerates to one
+        block in flight.
+        """
         if self._prefetch_batches > 0 and self._prefetch_batch_size:
-            target_rows = self._prefetch_batches * self._prefetch_batch_size
-        else:
-            target_rows = 1
+            return self._prefetch_batches * self._prefetch_batch_size
+        return 1
 
-        def update_flow_window(consumed_rows: int, consumed_bytes: int) -> None:
-            # One RPC per consumed block: reports what was consumed and
-            # re-declares the row window, which frees room for more rows.
-            # Rows are reported at pop (they drive the window); bytes are
-            # reported one block late so the block currently being batched
-            # still counts as consumer-held for producer pacing.
-            self._coord_actor.request_rows.remote(
-                self._output_split_idx,
-                epoch,
-                target_rows,
-                consumed_rows,
-                consumed_bytes,
-            )
+    def _update_flow_window(
+        self,
+        epoch: int,
+        target_rows: int,
+        consumed_rows: int,
+        consumed_bytes: int,
+    ) -> None:
+        """One RPC per consumed block: reports what was consumed and
+        re-declares the row window, which frees room for more rows.
 
-        pending_consumed_bytes = 0
-        update_flow_window(0, 0)
-        # reset() gave this epoch a fresh queue, so a lingering
-        # generator from an early-exited epoch can't steal deliveries;
-        # the loop condition below reaps such generators.
-        epoch_queue = receiver.queue
-
-        while self._active_epoch == epoch:
-            try:
-                # Queue-wait time lands in the get_ref_bundles iterator
-                # stat: the push analog of waiting on the coordinator.
-                with self._iter_stats.iter_get_ref_bundles_s.timer():
-                    item = epoch_queue.get(timeout=1.0)
-            except queue.Empty:
-                continue
-            if isinstance(item, _EndOfEpoch):
-                logger.debug(
-                    f"Split {self._output_split_idx}: epoch {epoch} exhausted."
-                )
-                return
-            if isinstance(item, _ExecutorError):
-                raise item.error
-            assert isinstance(item, _BlockDelivery)
-            update_flow_window(item.num_rows, pending_consumed_bytes)
-            pending_consumed_bytes = item.size_bytes
-            yield ResolvedBlock(block=item.block)
+        Rows are reported at pop (they drive the window); bytes are reported
+        one block late so the block currently being batched still counts as
+        consumer-held for producer pacing.
+        """
+        self._coord_actor.request_rows.remote(
+            self._output_split_idx,
+            epoch,
+            target_rows,
+            consumed_rows,
+            consumed_bytes,
+        )
 
     def _on_iteration_end(self, executor) -> None:
         """Notify the coordinator on any end of iteration (exhaustion, early
