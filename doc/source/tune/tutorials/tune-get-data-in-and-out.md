@@ -293,7 +293,7 @@ tuner = tune.Tuner(
 
 Besides metrics, you might want to save the state of your trained model and other artifacts, so you can resume after a training failure and inspect or use them later. You can't save these as metrics, because they're often far too large and might be hard to serialize. Persist them on disk or in cloud storage so you can access them after the Tune run is interrupted or terminated.
 
-Ray Train provides a {class}`Checkpoint <ray.tune.Checkpoint>` API for that purpose. You can create `Checkpoint` objects from various sources, such as local directories and cloud storage.
+Ray Tune provides a {class}`Checkpoint <ray.tune.Checkpoint>` API for that purpose. You can create `Checkpoint` objects from various sources, such as local directories and cloud storage.
 
 In Ray Tune, you create `Checkpoint` objects in your function trainable and report them with the optional `checkpoint` argument of `tune.report`. A checkpoint can contain arbitrary data, and you can pass it freely around the Ray cluster. After a tuning run finishes, you can [get the checkpoints from the results](tune-analysis-guide).
 

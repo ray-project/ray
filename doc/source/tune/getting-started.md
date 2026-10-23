@@ -88,7 +88,7 @@ Tune automatically runs trials in parallel across all available cores and GPUs o
 
 Next, add early stopping to the optimization process with {ref}`Asynchronous Successive Halving (ASHA) <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
 
-At a high level, ASHA stops less promising trials and allocates more time and resources to more promising ones. Because the optimization process becomes more efficient, you can afford to increase the search space by 5x by adjusting the `num_samples` parameter.
+At a high level, ASHA stops less promising trials and allocates more time and resources to more promising ones. Because the optimization process becomes more efficient, you can afford to run 5x more trials by adjusting the `num_samples` parameter.
 
 Tune implements ASHA as a trial scheduler, `ASHAScheduler`. Trial schedulers can stop bad trials early, pause trials, clone trials, and alter the hyperparameters of a running trial. For details on the available schedulers and library integrations, see {ref}`Tune trial schedulers <tune-schedulers>`.
 
