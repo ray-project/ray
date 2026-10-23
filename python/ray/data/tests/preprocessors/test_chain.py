@@ -755,6 +755,32 @@ def test_member_without_declared_columns_is_a_barrier(
     assert list(out["a"]) == pytest.approx([-1.2247449, 0.0, 1.2247449])
 
 
+def test_member_without_declared_columns_keeps_its_fit_position(
+    deferred_fit_enabled,
+):
+    """Fit-time reordering must not move members across a member that doesn't
+    declare its columns: it may rewrite any column, so moving it ahead of a
+    member that still has to fit would change that member's statistics."""
+    from ray.data.preprocessors.dag import _fit_order
+
+    ds = ray.data.from_pandas(
+        pd.DataFrame({"x": [1.0, 2.0, 3.0], "y": [10.0, 20.0, 30.0]})
+    )
+    scaler_x = StandardScaler(["x"])
+    rescaler_x = StandardScaler(["x"])  # fits on scaler_x's output
+    undeclared = _make_undeclared_in_place_scale("x", 10)
+    scaler_y = StandardScaler(["y"])
+    members = [scaler_x, rescaler_x, undeclared, scaler_y]
+
+    assert _fit_order(members) == [0, 1, 2, 3]
+
+    Chain(*members).fit_transform(ds).to_pandas()
+
+    # Same as fitting step by step: rescaler_x sees standardized x (std 1),
+    # not standardized x * 10.
+    assert rescaler_x.stats_["std(x)"] == pytest.approx(1.0)
+
+
 def test_member_without_base_init(deferred_fit_enabled):
     """A non-fittable user-defined member that doesn't call
     `Preprocessor.__init__` (and so has no stat computation plan) works in a

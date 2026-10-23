@@ -7,9 +7,9 @@ def _fit_levels(preprocessors: Sequence[Preprocessor]) -> List[int]:
     """Layered topological sort of a chain's column-dependency graph.
 
     Returns each member's level. A member's statistics are computed in scan
-    number ``level``, over the fit dataset with every member of smaller
-    levels already applied; members that share a level share one scan, so a
-    deferred fit costs ``max(levels) + 1`` dataset scans.
+    number ``level``, over the fit dataset with every member it depends on,
+    and every member before those, already applied; members that share a level
+    share one scan, so a deferred fit costs ``max(levels) + 1`` dataset scans.
 
     A member depends on an earlier member if and only if it reads a column
     the earlier one writes (a member that doesn't declare both its input and

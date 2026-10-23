@@ -33,6 +33,13 @@ class Chain(SerializablePreprocessorBase):
     dataset, batching independent members' aggregations into a single dataset
     scan per dependency level. The fitted statistics are identical either way.
 
+    Deferred fitting relies on each member's declared input and output
+    columns: a member that declares both is assumed to change only those
+    columns, row by row. A member that adds or drops rows (for example, a
+    user-defined preprocessor that filters out nulls) must not declare both;
+    such members are treated as reading and writing every column, so the
+    members around them fit in chain order.
+
     Example:
         >>> import pandas as pd
         >>> import ray
@@ -166,11 +173,10 @@ class Chain(SerializablePreprocessorBase):
         return ds
 
     def _needs_stats_materialization(self) -> bool:
-        # getattr: instances deserialized from older versions lack these fields.
         return (
-            getattr(self, "_deferred_fit", False)
-            and not getattr(self, "_stats_materialized", False)
-            and getattr(self, "_fit_ds", None) is not None
+            self._deferred_fit
+            and not self._stats_materialized
+            and self._fit_ds is not None
         )
 
     @staticmethod
@@ -205,7 +211,7 @@ class Chain(SerializablePreprocessorBase):
            write each result into the owning preprocessor's ``stats_`` under
            the aggregator's alias.
         2. Advance the data: apply the transforms of the now fully-fitted
-           preprocessors, in chain order, so the next level's statistics are
+           preprocessors, in fit order, so the next level's statistics are
            computed over the data those preprocessors will actually see.
 
         The fitted statistics are identical to sequential fitting; the cost
@@ -262,11 +268,9 @@ class Chain(SerializablePreprocessorBase):
                     preprocessor.stats_[spec.stat_fn.name] = results[spec.stat_fn.name]
                 ready = rest
 
-            # Apply this level's transforms, in fit order - a later member
-            # must not rewrite data before an earlier conflicting member has
-            # computed its statistics on it, and `_fit_levels` guarantees
-            # levels along the sequence never exceed the running level of the
-            # prefix.
+            # Apply transforms in fit order, stopping at the first member that
+            # hasn't fitted yet, so no member rewrites data that an earlier
+            # conflicting member still needs to fit on.
             while num_transformed < len(levels) and levels[num_transformed] <= level:
                 preprocessor = fit_sequence[num_transformed]
                 self._sync_nested_chain_fit_ds(preprocessor, ds)
