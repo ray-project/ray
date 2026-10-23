@@ -110,8 +110,8 @@ class Node:
         """
         if (
             auth_utils.is_k8s_token_auth_enabled()
-            and not auth_utils.is_token_auth_enabled()
-        ):
+            or ray_params._system_config.get("ENABLE_K8S_TOKEN_AUTH")
+        ) and not auth_utils.is_token_auth_enabled():
             raise ValueError(K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE)
         if shutdown_at_exit:
             if connect_only:

@@ -17,6 +17,8 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -144,6 +146,23 @@ class TestGrpcServerClientTokenAuthFixture : public ::testing::Test {
   }
 
  protected:
+  // Ping through a plain stub, which sends exactly the given metadata, unlike the
+  // GrpcClient, which attaches the loader's token.
+  grpc::Status PingWithMetadata(
+      const std::vector<std::pair<std::string, std::string>> &metadata) {
+    auto stub = TestService::NewStub(
+        grpc::CreateChannel("127.0.0.1:" + std::to_string(grpc_server_->GetPort()),
+                            grpc::InsecureChannelCredentials()));
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+    for (const auto &[key, value] : metadata) {
+      context.AddMetadata(key, value);
+    }
+    PingRequest request;
+    PingReply reply;
+    return stub->Ping(&context, request, &reply);
+  }
+
   VOID_RPC_CLIENT_METHOD(TestService, Ping, grpc_client_, /*method_timeout_ms*/ -1, )
 
   TestServiceHandler test_service_handler_;
@@ -185,15 +204,7 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureWrongToken) {
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
   SetUpServerAndClient("server_token", "server_token");
 
-  // A plain stub sends no token, unlike the GrpcClient, which attaches one.
-  auto stub = TestService::NewStub(
-      grpc::CreateChannel("127.0.0.1:" + std::to_string(grpc_server_->GetPort()),
-                          grpc::InsecureChannelCredentials()));
-  grpc::ClientContext context;
-  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
-  PingRequest request;
-  PingReply reply;
-  auto status = stub->Ping(&context, request, &reply);
+  auto status = PingWithMetadata({});
 
   ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED)
       << status.error_message();
@@ -201,19 +212,14 @@ TEST_F(TestGrpcServerClientTokenAuthFixture, TestTokenAuthFailureMissingToken) {
 
 TEST_F(TestGrpcServerClientTokenAuthFixture, TestServerWithAuthDisabledRejectsToken) {
   SetUpServerAndClient("", "client_token");
-  // Cache the client token, then switch the process, and so the server, to disabled.
-  AuthenticationTokenLoader::instance().GetToken();
   RayConfig::instance().initialize(R"({"AUTH_MODE": "disabled"})");
 
-  auto result = ExecutePingAndWait();
+  auto status = PingWithMetadata({{"authorization", "Bearer client_token"}});
 
-  ASSERT_TRUE(result.completed) << "Request did not complete in time";
-  ASSERT_FALSE(result.success)
-      << "A server with auth disabled should reject a request that carries a token";
-  ASSERT_TRUE(result.error_msg.find("AuthModeMismatch: cluster has "
-                                    "RAY_AUTH_MODE=disabled; set it on the client "
-                                    "too") != std::string::npos)
-      << "Got: " << result.error_msg;
+  ASSERT_EQ(status.error_code(), grpc::StatusCode::UNAUTHENTICATED);
+  ASSERT_EQ(status.error_message(),
+            "AuthModeMismatch: cluster has RAY_AUTH_MODE=disabled; set it on the client "
+            "too");
 }
 
 TEST_F(TestGrpcServerClientTokenAuthFixture,
@@ -230,7 +236,8 @@ TEST_F(TestGrpcServerClientTokenAuthFixture,
       R"({"AUTH_MODE": "token", "ENABLE_K8S_TOKEN_AUTH": false})");
   ASSERT_TRUE(result.completed) << "Request did not complete in time";
   ASSERT_FALSE(result.success);
-  ASSERT_EQ(result.error_msg.find("AuthModeMismatch"), std::string::npos)
+  // Rejected by token validation (no Kubernetes API here), not as a disabled server.
+  ASSERT_NE(result.error_msg.find("InvalidAuthToken"), std::string::npos)
       << "Got: " << result.error_msg;
 }
 

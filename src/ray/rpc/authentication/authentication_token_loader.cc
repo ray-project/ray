@@ -54,8 +54,8 @@ constexpr const char *kNoTokenErrorMessage =
 // python/ray/_private/authentication/authentication_constants.py.
 constexpr const char *kK8sTokenAuthRequiresTokenModeErrorMessage =
     "Kubernetes token authentication (ENABLE_K8S_TOKEN_AUTH) requires "
-    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or unset "
-    "RAY_ENABLE_K8S_TOKEN_AUTH to run with auth disabled.";
+    "RAY_AUTH_MODE=token. Set RAY_AUTH_MODE=token, or turn off "
+    "ENABLE_K8S_TOKEN_AUTH to run with auth disabled.";
 
 std::optional<std::chrono::system_clock::time_point>
 AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {

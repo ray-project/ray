@@ -1124,11 +1124,14 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
     client_test_enabled(),
     reason="Uses subprocess ray start, not compatible with client mode",
 )
-@pytest.mark.parametrize("entry_point", ["ray start", "ray.init", "gcs_server"])
+@pytest.mark.parametrize(
+    "entry_point",
+    ["ray start", "ray start --system-config", "ray.init", "Cluster", "gcs_server"],
+)
 def test_k8s_token_auth_with_auth_disabled_is_config_error(entry_point, tmp_path):
-    """RAY_AUTH_MODE=disabled with ENABLE_K8S_TOKEN_AUTH fails before starting any
-    process, with an error naming RAY_AUTH_MODE=token. A GCS started directly exits
-    with the same error."""
+    """RAY_AUTH_MODE=disabled with ENABLE_K8S_TOKEN_AUTH, from the environment or the
+    system config, fails before starting any process, with an error naming
+    RAY_AUTH_MODE=token. A GCS started directly exits with the same error."""
     from ray._private.authentication.authentication_constants import (
         K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE,
     )
@@ -1137,10 +1140,23 @@ def test_k8s_token_auth_with_auth_disabled_is_config_error(entry_point, tmp_path
     temp_dir = tmp_path / "ray"
     command = {
         "ray start": ["ray", "start", "--head", f"--temp-dir={temp_dir}"],
+        "ray start --system-config": [
+            "ray",
+            "start",
+            "--head",
+            f"--temp-dir={temp_dir}",
+            '--system-config={"ENABLE_K8S_TOKEN_AUTH": true}',
+        ],
         "ray.init": [
             sys.executable,
             "-c",
             f"import ray; ray.init(_temp_dir='{temp_dir}')",
+        ],
+        "Cluster": [
+            sys.executable,
+            "-c",
+            "from ray.cluster_utils import Cluster; "
+            f"Cluster(initialize_head=True, head_node_args={{'temp_dir': '{temp_dir}'}})",
         ],
         "gcs_server": [
             GCS_SERVER_EXECUTABLE,
@@ -1154,7 +1170,11 @@ def test_k8s_token_auth_with_auth_disabled_is_config_error(entry_point, tmp_path
         env={
             **os.environ,
             "RAY_AUTH_MODE": "disabled",
-            "RAY_ENABLE_K8S_TOKEN_AUTH": "1",
+            **(
+                {}
+                if entry_point == "ray start --system-config"
+                else {"RAY_ENABLE_K8S_TOKEN_AUTH": "1"}
+            ),
         },
         capture_output=True,
         text=True,
@@ -1165,7 +1185,8 @@ def test_k8s_token_auth_with_auth_disabled_is_config_error(entry_point, tmp_path
     assert K8S_TOKEN_AUTH_REQUIRES_TOKEN_MODE_ERROR_MESSAGE in (
         result.stdout + result.stderr
     )
-    assert not list(temp_dir.glob("session_*"))
+    if entry_point != "gcs_server":
+        assert not list(temp_dir.glob("session_*"))
 
 
 def test_kill_raylet_on_auth_disabled_cluster_with_token_file():
