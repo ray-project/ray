@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import ray
 from ray.llm._internal.serve.engines.vllm.kv_transfer.base import (
-    BaseConnectorBackend,
+    VLLMConnectorBackend,
     base_prefill_kv_transfer_params,
     clamp_request_to_single_token,
 )
@@ -113,7 +113,7 @@ def _read_mode_enabled(extra_config: Dict[str, Any]) -> bool:
     )
 
 
-class MoRIIOConnectorBackend(BaseConnectorBackend):
+class MoRIIOConnectorBackend(VLLMConnectorBackend):
     """Set up MoRIIO ports/extra_config and implement the PD connector protocol."""
 
     # The advertised zmq address ("host:IP,handshake:PORT,notify:PORT"),
