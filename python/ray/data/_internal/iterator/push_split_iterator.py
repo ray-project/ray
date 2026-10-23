@@ -88,6 +88,15 @@ _RECEIVER_REGISTRY_LOCK = threading.Lock()
 _RECEIVER_REGISTRY: Dict[ReceiverKey, "_PushReceiver"] = {}
 
 
+def _get_or_create_receiver(key: ReceiverKey) -> "_PushReceiver":
+    with _RECEIVER_REGISTRY_LOCK:
+        receiver = _RECEIVER_REGISTRY.get(key)
+        if receiver is None:
+            receiver = _PushReceiver()
+            _RECEIVER_REGISTRY[key] = receiver
+        return receiver
+
+
 class _PushReceiver:
     """Receive state for one (coordinator, split) pair: the local block
     queue plus the sequence-reorder buffer.
@@ -350,11 +359,7 @@ class PushBasedDataIterator(DataIterator):
             ) from e
 
         key = self._receiver_key()
-        with _RECEIVER_REGISTRY_LOCK:
-            receiver = _RECEIVER_REGISTRY.get(key)
-            if receiver is None:
-                receiver = _PushReceiver()
-                _RECEIVER_REGISTRY[key] = receiver
+        receiver = _get_or_create_receiver(key)
         # Reset receiver state before the barrier; re-registering every
         # epoch is fine (idempotent overwrite).
         receiver.reset()
