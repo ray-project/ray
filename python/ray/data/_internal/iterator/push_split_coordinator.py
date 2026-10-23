@@ -542,33 +542,10 @@ class PushSplitCoordinator:
             thread.start()
             self._pusher_threads.append(thread)
 
-    def _make_consumer_ops(self, epoch_id: int, split_idx: int):
-        """Build (push_block, push_eof, push_error) targeting the consumer's
-        PushSplitReceiverMixin methods."""
-        consumer, key = self._consumers[split_idx]
-
-        def push_block(seq, entry, size_bytes, num_rows):
-            # entry.ref is a top-level arg, so Ray resolves it and the
-            # consumer receives the Block by value — no ObjectRef crosses
-            # the wire, and the executor can free the block once delivered.
-            consumer._push_split_deliver.remote(
-                key, epoch_id, seq, _BlockPush(size_bytes, num_rows), entry.ref
-            )
-
-        def push_eof(seq):
-            consumer._push_split_deliver.remote(
-                key, epoch_id, seq, _EndOfEpoch(epoch_id)
-            )
-
-        def push_error(error):
-            consumer._push_split_deliver_error.remote(key, epoch_id, error)
-
-        return push_block, push_eof, push_error
-
     def _pusher_loop(
         self, epoch_id: int, split_idx: int, stop: threading.Event
     ) -> None:
-        push_block, push_eof, push_error = self._make_consumer_ops(epoch_id, split_idx)
+        consumer, key = self._consumers[split_idx]
         output_iterator = self._output_iterator
         assert output_iterator is not None
         flow = self._flows[split_idx]
@@ -608,7 +585,12 @@ class PushSplitCoordinator:
                     # Record before sending, so a fast consumer's report can
                     # never make consumed exceed pushed.
                     flow.record_push(num_rows, size_bytes, entry.ref)
-                    push_block(seq, entry, size_bytes, num_rows)
+                    # entry.ref is a top-level arg, so Ray resolves it and
+                    # the consumer receives the Block by value — no
+                    # ObjectRef crosses the wire.
+                    consumer._push_split_deliver.remote(
+                        key, epoch_id, seq, _BlockPush(size_bytes, num_rows), entry.ref
+                    )
                     seq += 1
                 self._update_external_consumer_bytes()
                 # Fetching and sending count as coordinator overhead, like
@@ -621,16 +603,20 @@ class PushSplitCoordinator:
                 )
                 # EOF is sequenced too, so it cannot overtake blocks that
                 # are still fetching their args.
-                push_eof(seq)
+                consumer._push_split_deliver.remote(
+                    key, epoch_id, seq, _EndOfEpoch(epoch_id)
+                )
             return
         except Exception as e:
             if not stop.is_set():
                 logger.warning(f"Split {split_idx} epoch {epoch_id} pusher failed: {e}")
                 try:
-                    push_error(_ExecutorError(e))
+                    error = _ExecutorError(e)
+                    consumer._push_split_deliver_error.remote(key, epoch_id, error)
                 except Exception:
                     # e.g. unpicklable exception.
-                    push_error(_ExecutorError(RuntimeError(repr(e))))
+                    error = _ExecutorError(RuntimeError(repr(e)))
+                    consumer._push_split_deliver_error.remote(key, epoch_id, error)
             return
 
     def _finish_split(self, epoch_id: int, split_idx: int) -> None:
