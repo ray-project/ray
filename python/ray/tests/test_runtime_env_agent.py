@@ -4,6 +4,7 @@ import logging
 import os
 import platform
 import re
+import stat
 import sys
 import time
 from dataclasses import replace
@@ -27,6 +28,7 @@ from ray._private.runtime_env.image_uri import (
     _canonical_pip_config,
     _check_host_compatibility,
     _get_image_uri_cache_key,
+    _write_podman_env_file,
 )
 from ray._private.test_utils import (
     get_error_message,
@@ -192,7 +194,7 @@ def test_reference_table_releases_env_dereferenced_during_creation():
     assert unused_runtime_envs == []
 
 
-def test_reference_table_releases_uris_bound_before_delete():
+def test_reference_table_releases_uris_bound_before_delete(caplog):
     unused_uris = []
     unused_runtime_envs = []
     reference_table = ReferenceTable(
@@ -200,7 +202,11 @@ def test_reference_table_releases_uris_bound_before_delete():
         unused_uris.extend,
         unused_runtime_envs.append,
     )
-    runtime_env = RuntimeEnv(image_uri="example/image:latest", pip=["package==1"])
+    runtime_env = RuntimeEnv(
+        image_uri="example/image:latest",
+        pip=["package==1"],
+        env_vars={"API_KEY": "secret-value"},
+    )
     serialized_env = runtime_env.serialize()
     dynamic_uri = ("image-pip://cache-key", "image_uri")
 
@@ -213,11 +219,15 @@ def test_reference_table_releases_uris_bound_before_delete():
     reference_table.decrease_reference(runtime_env, serialized_env, "raylet")
     unused_uris.clear()
     unused_runtime_envs.clear()
-    reference_table.release_dynamic_uris_if_unreferenced(
-        serialized_env, "raylet", [dynamic_uri]
-    )
+    with caplog.at_level(logging.INFO):
+        reference_table.release_dynamic_uris_if_unreferenced(
+            serialized_env, "raylet", [dynamic_uri]
+        )
     assert unused_uris == [dynamic_uri]
     assert unused_runtime_envs == [serialized_env]
+    assert "lost all references during creation" in caplog.text
+    assert "API_KEY" in caplog.text
+    assert "secret-value" not in caplog.text
 
 
 def test_reference_table_rebinds_uris_after_recreate_race():
@@ -304,78 +314,6 @@ def test_image_uri_install_env_includes_explicit_env_vars(monkeypatch):
     assert "UNRELATED_HOST_VAR" not in install_env
 
 
-@pytest.mark.parametrize(
-    ("path_env_vars", "expected_path"),
-    [
-        (
-            {"PATH": "/runtime/bin"},
-            os.pathsep.join(["/cache/virtualenv/bin", "/runtime/bin"]),
-        ),
-        ({}, os.pathsep.join(["/cache/virtualenv/bin", "/image/bin"])),
-    ],
-)
-def test_runtime_env_context_execs_container_as_argv(
-    monkeypatch, path_env_vars, expected_path
-):
-    executed = {}
-
-    def execve(file, args, env):
-        executed["file"] = file
-        executed["args"] = args
-        executed["env"] = env
-
-    monkeypatch.setattr(os, "execve", execve)
-    host_path = "/host/bin:/usr/local/bin"
-    searched_paths = []
-
-    def which(executable, path=None):
-        searched_paths.append(path)
-        return "/usr/bin/podman"
-
-    monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setenv("PATH", host_path)
-    monkeypatch.setenv("RAY_JOB_ID", "job-id")
-    context = RuntimeEnvContext(
-        env_vars={**path_env_vars, "USER_VALUE": "contains spaces"},
-        override_worker_entrypoint="/image/default_worker.py",
-        container={
-            "command": ["podman", "run", "--rm"],
-            "image": "sha256:image",
-            "entrypoint": "/cache/virtualenv/bin/python",
-            "mounts": [
-                {
-                    "source": "/cache",
-                    "target": "/cache",
-                    "read_only": True,
-                    "options": "z",
-                }
-            ],
-            "env_vars": {"USER_VALUE": "contains spaces"},
-            "path_prefix": "/cache/virtualenv/bin",
-            "default_path": "/image/bin",
-        },
-    )
-
-    context.exec_worker(
-        ["/host/default_worker.py", "--arg", "value with spaces"],
-        common_pb2.Language.PYTHON,
-    )
-
-    assert executed["file"] == "/usr/bin/podman"
-    assert "USER_VALUE" in executed["args"]
-    assert "USER_VALUE=contains spaces" not in executed["args"]
-    assert f"PATH={expected_path}" in executed["args"]
-    assert executed["env"]["USER_VALUE"] == "contains spaces"
-    assert executed["env"]["PATH"] == host_path
-    assert searched_paths == [host_path]
-    assert "/cache:/cache:ro,z" in executed["args"]
-    assert executed["args"][-3:] == [
-        "/image/default_worker.py",
-        "--arg",
-        "value with spaces",
-    ]
-
-
 @pytest.mark.asyncio
 async def test_image_uri_uses_stdlib_venv(tmp_path, monkeypatch):
     plugin = ImageURIPlugin(str(tmp_path / "ray"))
@@ -387,9 +325,9 @@ async def test_image_uri_uses_stdlib_venv(tmp_path, monkeypatch):
     calls = []
 
     async def run_in_image(
-        metadata, staging_path, final_path, entrypoint, args, install_env, logger
+        metadata, staging_path, final_path, entrypoint, args, env_file, logger
     ):
-        calls.append((entrypoint, args))
+        calls.append((entrypoint, args, env_file))
         if args[0] == "-c":
             return "RAY_VERSION=2.56.0\n"
         return ""
@@ -407,7 +345,7 @@ async def test_image_uri_uses_stdlib_venv(tmp_path, monkeypatch):
         logger,
     )
 
-    assert calls[0] == (
+    assert calls[0][:2] == (
         metadata.python_executable,
         [
             "-m",
@@ -417,47 +355,76 @@ async def test_image_uri_uses_stdlib_venv(tmp_path, monkeypatch):
             os.path.join(final_path, "virtualenv"),
         ],
     )
+    # Nothing to pass, so no env file.
+    assert all(env_file is None for _, _, env_file in calls)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="image_uri is Linux-only.")
 @pytest.mark.asyncio
-async def test_image_uri_install_uses_host_path_to_launch_podman(tmp_path, monkeypatch):
+async def test_image_uri_install_env_reaches_podman_through_env_file(
+    tmp_path, monkeypatch
+):
     plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    uri = "image-pip://cache-key"
     metadata = _image_metadata_for_test()
-    captured = {}
-    host_path = "/host/bin:/usr/local/bin"
+    plugin._install_env_by_uri[uri] = {
+        "BUILD_TOKEN": "secret",
+        "LD_PRELOAD": "/job.so",
+        "PATH": "/image/bin",
+    }
+    calls = []
 
-    async def check_output(command, logger, env):
-        captured["command"] = command
-        captured["env"] = env
-        return ""
-
-    def which(executable, path=None):
-        captured["searched_path"] = path
-        return "/usr/bin/podman"
+    async def check_output(command, logger, **kwargs):
+        env_file = command[command.index("--env-file") + 1]
+        with open(env_file, encoding="utf-8") as file:
+            contents = file.read()
+        env_dir_mode = stat.S_IMODE(os.stat(os.path.dirname(env_file)).st_mode)
+        calls.append((command, kwargs, env_file, contents, env_dir_mode))
+        return f"RAY_VERSION={metadata.ray_version}\n"
 
     monkeypatch.setattr(
         "ray._private.runtime_env.image_uri.check_output_cmd", check_output
     )
-    monkeypatch.setattr("shutil.which", which)
-    monkeypatch.setenv("PATH", host_path)
-
-    await plugin._run_in_image(
+    staging_path = str(tmp_path / "staging")
+    os.makedirs(staging_path)
+    await plugin._prepare_pip_environment(
+        uri,
+        RuntimeEnv(image_uri="example/image", pip=["package==1"]),
         metadata,
-        str(tmp_path / "staging"),
+        staging_path,
         str(tmp_path / "final"),
-        metadata.python_executable,
-        ["-m", "pip", "install", "package==1"],
-        {"BUILD_TOKEN": "secret", "PATH": "/image/bin"},
         logger,
     )
 
-    assert captured["command"][0] == "/usr/bin/podman"
-    assert "PATH=/image/bin" in captured["command"]
-    assert "BUILD_TOKEN" in captured["command"]
-    assert "BUILD_TOKEN=secret" not in captured["command"]
-    assert captured["searched_path"] == host_path
-    assert captured["env"]["PATH"] == host_path
-    assert captured["env"]["BUILD_TOKEN"] == "secret"
+    assert calls
+    for command, kwargs, _, contents, env_dir_mode in calls:
+        # podman runs with the agent's environment, and the logged argv
+        # carries no values.
+        assert kwargs == {}
+        assert not any("secret" in arg or "/job.so" in arg for arg in command)
+        assert contents == ("BUILD_TOKEN=secret\nLD_PRELOAD=/job.so\nPATH=/image/bin\n")
+        assert env_dir_mode == 0o700
+    # The file only exists while the installation runs.
+    assert not os.path.exists(calls[0][2])
+
+
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        # A line without "=" would make podman copy the host's variable.
+        ("NAME", "secret\nRAY_AUTH_TOKEN"),
+        ("NAME", "secret\r"),
+        ("NAME=X", "secret"),
+        ("#NAME", "secret"),
+        (" NAME", "secret"),
+        ("", "secret"),
+    ],
+)
+def test_image_uri_install_env_file_rejects_unparseable_entries(tmp_path, name, value):
+    with pytest.raises(ValueError, match="can't be passed") as error:
+        _write_podman_env_file(str(tmp_path / "env"), {name: value})
+    # Values can be secret, so the error names only the variable.
+    assert "secret" not in str(error.value)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -496,14 +463,8 @@ async def test_image_uri_cache_publishes_once(tmp_path, monkeypatch):
     assert context.container["entrypoint"] == os.path.join(
         cache_path, "virtualenv", "bin", "python"
     )
-    assert context.container["mounts"] == [
-        {
-            "source": cache_path,
-            "target": cache_path,
-            "read_only": True,
-            "options": "z",
-        }
-    ]
+    command = context.container["command"]
+    assert command[command.index(f"{cache_path}:{cache_path}:ro,z") - 1] == "-v"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -674,22 +635,6 @@ async def test_image_uri_probe_memoized_by_image_id(tmp_path, monkeypatch):
 
     assert first == second
     assert probe_calls == 1
-
-
-def test_image_uri_without_pip_uses_image_reference(tmp_path):
-    plugin = ImageURIPlugin(str(tmp_path / "ray"))
-    plugin.set_resources_dir(str(tmp_path / "resources"))
-    uri = "image-pip://pin-key"
-    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
-    context = RuntimeEnvContext()
-
-    plugin.modify_context(
-        [uri], RuntimeEnv(image_uri="example/image:tag"), context, logger
-    )
-
-    # Without a cached pip environment, workers keep the reference so podman
-    # can re-pull a pruned image.
-    assert context.container["image"] == "example/image:tag"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")

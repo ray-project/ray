@@ -40,30 +40,6 @@ _DEFAULT_PIP_INSTALL_OPTIONS = [
 ]
 
 
-def _podman_run_base_command(ray_tmp_dir: str) -> List[str]:
-    """The podman flags shared by ContainerPlugin and ImageURIPlugin workers."""
-    return [
-        "podman",
-        "run",
-        "-v",
-        ray_tmp_dir + ":" + ray_tmp_dir,
-        "--cgroup-manager=cgroupfs",
-        "--network=host",
-        "--pid=host",
-        "--ipc=host",
-        # NOTE(zcin): Mounted volumes in rootless containers are
-        # owned by the user `root`. The user on host (which will
-        # usually be `ray` if this is being run in a ray docker
-        # image) who started the container is mapped using user
-        # namespaces to the user `root` in a rootless container. In
-        # order for the Ray Python worker to access the mounted ray
-        # tmp dir, we need to use keep-id mode which maps the user
-        # as itself (instead of as `root`) into the container.
-        # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
-        "--userns=keep-id",
-    ]
-
-
 def _normalize_image_uri(image_uri: str) -> str:
     if image_uri.startswith("podman://"):
         return image_uri[len("podman://") :]
@@ -140,6 +116,31 @@ def _get_image_uri_cache_key(
             "utf-8"
         )
     ).hexdigest()
+
+
+def _write_podman_env_file(path: str, env: Dict[str, str]) -> None:
+    """Writes env for `podman run --env-file`, one literal NAME=VALUE per line.
+
+    podman ends an entry at a line break and copies a line without "=" from
+    its own environment, so a line break inside a name or value could pass a
+    host variable such as RAY_AUTH_TOKEN into the container. Reject those
+    instead, along with names podman would read differently.
+    """
+    with open(path, "w", encoding="utf-8") as env_file:
+        for name, value in env.items():
+            if (
+                not name
+                or name[0] in "# \t"
+                or "=" in name
+                or any(c in name or c in value for c in "\r\n")
+            ):
+                # The value can be secret, so only the name is reported.
+                raise ValueError(
+                    f"Environment variable {name!r} can't be passed to the "
+                    "image_uri pip installation: its name is not a plain "
+                    "variable name or its value contains a line break."
+                )
+            env_file.write(f"{name}={value}\n")
 
 
 async def _capture_command(cmd: List[str]) -> Tuple[int, str, str]:
@@ -387,15 +388,39 @@ def _modify_context_impl(
     context: RuntimeEnvContext,
     logger: logging.Logger,
     ray_tmp_dir: str,
+    entrypoint: str = "python",
+    extra_args: Optional[List[str]] = None,
+    container_env: Optional[Dict[str, str]] = None,
 ):
     context.override_worker_entrypoint = worker_path
 
-    container_command = _podman_run_base_command(ray_tmp_dir)
+    container_driver = "podman"
+    container_command = [
+        container_driver,
+        "run",
+        "-v",
+        ray_tmp_dir + ":" + ray_tmp_dir,
+        "--cgroup-manager=cgroupfs",
+        "--network=host",
+        "--pid=host",
+        "--ipc=host",
+        # NOTE(zcin): Mounted volumes in rootless containers are
+        # owned by the user `root`. The user on host (which will
+        # usually be `ray` if this is being run in a ray docker
+        # image) who started the container is mapped using user
+        # namespaces to the user `root` in a rootless container. In
+        # order for the Ray Python worker to access the mounted ray
+        # tmp dir, we need to use keep-id mode which maps the user
+        # as itself (instead of as `root`) into the container.
+        # https://www.redhat.com/sysadmin/rootless-podman-user-namespace-modes
+        "--userns=keep-id",
+        *(extra_args or []),
+    ]
 
     # Ray-owned values for the container. The job's env_vars and the host's
     # RAY_* vars are added when the worker is exec'd; see
     # RuntimeEnvContext._exec_container_worker.
-    ray_container_env = dict()
+    ray_container_env = dict(container_env or {})
 
     # A token kept only in a file has no value in podman's environment to pass
     # by name, so mount the file read-only. A token in RAY_AUTH_TOKEN reaches
@@ -435,7 +460,7 @@ def _modify_context_impl(
         "command": container_command,
         "run_options": run_options,
         "image": image_uri,
-        "entrypoint": "python",
+        "entrypoint": entrypoint,
         "env_vars": ray_container_env,
     }
 
@@ -658,7 +683,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         final_path: str,
         entrypoint: str,
         args: List[str],
-        install_env: Dict[str, str],
+        env_file: Optional[str],
         logger: logging.Logger,
     ) -> str:
         container_name = f"ray-runtime-env-{uuid.uuid4().hex}"
@@ -673,32 +698,11 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             "-v",
             f"{staging_path}:{final_path}:rw,z",
         ]
-        launcher_path = os.environ.get("PATH")
-        child_env = os.environ.copy()
-        child_env.update(install_env)
-        for key in sorted(install_env):
-            # Podman reads the value from its own environment. This keeps secrets
-            # out of the logged command line.
-            if key == "PATH":
-                command.extend(["--env", f"PATH={install_env[key]}"])
-            else:
-                command.extend(["--env", key])
+        if env_file is not None:
+            command.extend(["--env-file", env_file])
         command.extend(["--entrypoint", entrypoint, metadata.image_id, *args])
-        executable_path = shutil.which(
-            command[0], path=launcher_path if launcher_path is not None else os.defpath
-        )
-        if not executable_path:
-            raise FileNotFoundError(
-                f"'{command[0]}' was not found in the host PATH; it is required "
-                "to prepare pip dependencies for image_uri."
-            )
-        command[0] = executable_path
-        if launcher_path is None:
-            child_env.pop("PATH", None)
-        else:
-            child_env["PATH"] = launcher_path
         try:
-            return await check_output_cmd(command, logger=logger, env=child_env)
+            return await check_output_cmd(command, logger=logger)
         except BaseException:
             await _cleanup_container(container_name)
             raise
@@ -713,81 +717,76 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         logger: logging.Logger,
     ) -> None:
         pip_config = _canonical_pip_config(runtime_env)
-        install_env = self._install_env_by_uri[uri]
         requirements_path = os.path.join(staging_path, "requirements.txt")
         with open(requirements_path, "w", encoding="utf-8") as requirements_file:
             for package in pip_config["packages"]:
                 requirements_file.write(package + "\n")
 
-        virtualenv_path = os.path.join(final_path, "virtualenv")
-        await self._run_in_image(
-            metadata,
-            staging_path,
-            final_path,
-            metadata.python_executable,
-            [
-                "-m",
-                "venv",
-                "--system-site-packages",
-                "--without-pip",
-                virtualenv_path,
-            ],
-            install_env,
-            logger,
-        )
-        virtualenv_python = os.path.join(virtualenv_path, "bin", "python")
-        pip_version = pip_config["pip_version"]
-        if pip_version:
-            await self._run_in_image(
-                metadata,
-                staging_path,
-                final_path,
+        # The install env holds the job's env_vars, so it reaches the
+        # container through a file in a private directory. Its values stay off
+        # podman's argv, which is logged, and out of podman's own environment,
+        # where values such as LD_PRELOAD would affect the host.
+        with tempfile.TemporaryDirectory(prefix="ray-image-uri-env-") as env_dir:
+            env_file = None
+            if self._install_env_by_uri[uri]:
+                env_file = os.path.join(env_dir, "env")
+                _write_podman_env_file(env_file, self._install_env_by_uri[uri])
+
+            async def run(entrypoint: str, args: List[str]) -> str:
+                return await self._run_in_image(
+                    metadata,
+                    staging_path,
+                    final_path,
+                    entrypoint,
+                    args,
+                    env_file,
+                    logger,
+                )
+
+            virtualenv_path = os.path.join(final_path, "virtualenv")
+            await run(
+                metadata.python_executable,
+                [
+                    "-m",
+                    "venv",
+                    "--system-site-packages",
+                    "--without-pip",
+                    virtualenv_path,
+                ],
+            )
+            virtualenv_python = os.path.join(virtualenv_path, "bin", "python")
+            pip_version = pip_config["pip_version"]
+            if pip_version:
+                await run(
+                    virtualenv_python,
+                    [
+                        "-m",
+                        "pip",
+                        "install",
+                        "--disable-pip-version-check",
+                        f"pip{pip_version}",
+                    ],
+                )
+            await run(
                 virtualenv_python,
                 [
                     "-m",
                     "pip",
                     "install",
-                    "--disable-pip-version-check",
-                    f"pip{pip_version}",
+                    "-r",
+                    os.path.join(final_path, "requirements.txt"),
+                    *pip_config["pip_install_options"],
                 ],
-                install_env,
-                logger,
             )
-        await self._run_in_image(
-            metadata,
-            staging_path,
-            final_path,
-            virtualenv_python,
-            [
-                "-m",
-                "pip",
-                "install",
-                "-r",
-                os.path.join(final_path, "requirements.txt"),
-                *pip_config["pip_install_options"],
-            ],
-            install_env,
-            logger,
-        )
-        if pip_config["pip_check"]:
-            await self._run_in_image(
-                metadata,
-                staging_path,
-                final_path,
+            if pip_config["pip_check"]:
+                await run(
+                    virtualenv_python,
+                    ["-m", "pip", "check", "--disable-pip-version-check"],
+                )
+            ray_version_output = await run(
                 virtualenv_python,
-                ["-m", "pip", "check", "--disable-pip-version-check"],
-                install_env,
-                logger,
+                ["-c", "import ray; print('RAY_VERSION=' + ray.__version__)"],
             )
-        ray_version_output = await self._run_in_image(
-            metadata,
-            staging_path,
-            final_path,
-            virtualenv_python,
-            ["-c", "import ray; print('RAY_VERSION=' + ray.__version__)"],
-            install_env,
-            logger,
-        )
         ray_versions = [
             line.removeprefix("RAY_VERSION=")
             for line in ray_version_output.splitlines()
@@ -960,48 +959,42 @@ class ImageURIPlugin(RuntimeEnvPlugin):
 
         uri = uris[0]
         metadata = self._metadata_by_uri[uri]
+        # Without a cached pip environment there is no cached state to
+        # corrupt, so workers use the image reference and podman can re-pull
+        # an image that was pruned from the node.
+        image = _normalize_image_uri(runtime_env.image_uri())
         entrypoint = metadata.python_executable
-        mounts = []
+        extra_args = ["--rm"]
         container_env = {}
-        path_prefix = None
         if runtime_env.has_pip():
             cache_path = self._get_cache_path(uri)
             if not self._manifest_is_valid(cache_path, uri, has_pip=True):
                 raise RuntimeError(f"Cached image pip environment is incomplete: {uri}")
-            mounts.append(
-                {
-                    "source": cache_path,
-                    "target": cache_path,
-                    "read_only": True,
-                    "options": "z",
-                }
-            )
+            # Workers must run the exact image the environment was built
+            # against.
+            image = metadata.image_id
+            extra_args.extend(["-v", f"{cache_path}:{cache_path}:ro,z"])
             virtualenv_path = os.path.join(cache_path, "virtualenv")
-            entrypoint = os.path.join(virtualenv_path, "bin", "python")
+            virtualenv_bin = os.path.join(virtualenv_path, "bin")
+            entrypoint = os.path.join(virtualenv_bin, "python")
+            # Ray-owned values replace the job's, so keep the job's PATH (or
+            # the image's, if the job sets none) after the virtualenv.
+            path = context.env_vars.get("PATH", metadata.python_path)
             container_env["VIRTUAL_ENV"] = virtualenv_path
-            path_prefix = os.path.join(virtualenv_path, "bin")
+            container_env["PATH"] = (
+                f"{virtualenv_bin}:{path}" if path else virtualenv_bin
+            )
 
-        context.override_worker_entrypoint = metadata.worker_path
-        context.py_executable = entrypoint
-        context.container = {
-            "command": [*_podman_run_base_command(self._ray_tmp_dir), "--rm"],
-            # With a cached pip environment, workers must run the exact image
-            # the environment was built against. Without one there is no
-            # cached state to corrupt, so workers use the image reference and
-            # podman can re-pull an image that was pruned from the node.
-            "image": metadata.image_id
-            if runtime_env.has_pip()
-            else _normalize_image_uri(runtime_env.image_uri()),
-            "entrypoint": entrypoint,
-            "mounts": mounts,
-            "env_vars": container_env,
-            "path_prefix": path_prefix,
-            "default_path": metadata.python_path,
-        }
-        logger.info(
-            "Configured worker image %s with cache URI %s.",
-            runtime_env.image_uri(),
-            uri,
+        _modify_context_impl(
+            image,
+            metadata.worker_path,
+            [],
+            context,
+            logger,
+            self._ray_tmp_dir,
+            entrypoint=entrypoint,
+            extra_args=extra_args,
+            container_env=container_env,
         )
 
 
