@@ -17,10 +17,11 @@
 // RAY_{VARIABLE NAME}.
 //
 // The format is used to avoid code duplication.
-// It can be included multiple times in ray_config.h, and each inclusion
-// could use a different definition of the RAY_INTERNAL_FLAG macro.
+// It can be included multiple times in ray_config.h and ray_config.cc, and each
+// inclusion could use a different definition of the RAY_INTERNAL_FLAG macro.
 // Macro definition format: RAY_INTERNAL_FLAG(type, name, default_value).
-// NOTE: This file should NOT be included in any file other than ray_config.h.
+// NOTE: This file should NOT be included in any file other than ray_config.h
+// and ray_config.cc.
 
 // WARNING: if you update this file, please also update RAY_INTERNAL_FLAGS in
 // ray_constants.py.

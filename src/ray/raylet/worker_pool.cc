@@ -879,13 +879,19 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   worker->SetProcess(std::move(process));
 #if !defined(_WIN32)
   // Save the worker's actual PGID at registration for safe cleanup later.
-  // If setpgrp() succeeded in the child, pgid will equal pid; otherwise it will be the
-  // parent's PGID. We save whatever the OS reports and will validate again at cleanup.
+  // Only save if the worker is its own process group leader (pgid == pid), so cleanup
+  // never signals the raylet's, fork server's, or runtime_env_agent's process group.
   pid_t pgid = -1;
   errno = 0;
   pgid = getpgid(pid);
   if (pgid != -1) {
-    worker->SetSavedProcessGroupId(pgid);
+    if (pgid == pid) {
+      worker->SetSavedProcessGroupId(pgid);
+    } else {
+      RAY_LOG(WARNING) << "Worker " << pid << " pgid (" << pgid
+                       << ") != pid; skipping SetSavedProcessGroupId to avoid "
+                       << "signaling parent process group.";
+    }
   } else {
     RAY_LOG(WARNING) << "getpgid(" << pid
                      << ") failed at registration: " << strerror(errno);
