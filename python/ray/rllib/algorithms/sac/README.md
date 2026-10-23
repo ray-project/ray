@@ -17,6 +17,6 @@ also implemented.
 
 [Soft Actor-Critic Algorithm (SAC)](https://arxiv.org/abs/1801.01290).
 
-**[Detailed Documentation](https://docs.ray.io/en/master/rllib-algorithms.html#sac)**
+**[Detailed Documentation](https://docs.ray.io/en/latest/rllib/algorithms.html#sac)**
 
 **[Implementation](https://github.com/ray-project/ray/blob/master/python/ray/rllib/algorithms/sac/sac.py)**
