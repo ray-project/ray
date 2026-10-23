@@ -13,6 +13,10 @@ from click.testing import CliRunner
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private.authentication import authentication_utils as auth_utils
+from ray._private.authentication.http_token_authentication import (
+    get_token_auth_wsgi_app,
+)
 from ray._private.authentication_test_utils import reset_auth_token_state
 from ray.cluster_utils import Cluster
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
@@ -28,7 +32,12 @@ from ray.scripts.scripts import metrics_group
 def auth_env(monkeypatch, tmp_path):
     """Isolate HOME and the auth env vars; yields the default token path."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    for var in ("RAY_AUTH_MODE", "RAY_AUTH_TOKEN", "RAY_AUTH_TOKEN_PATH"):
+    for var in (
+        "RAY_AUTH_MODE",
+        "RAY_AUTH_TOKEN",
+        "RAY_AUTH_TOKEN_PATH",
+        "RAY_AUTH_SKIP_METRICS",
+    ):
         monkeypatch.delenv(var, raising=False)
     yield tmp_path / ".ray" / "auth_token"
     monkeypatch.undo()
@@ -38,6 +47,46 @@ def auth_env(monkeypatch, tmp_path):
 def _enable_token_auth(monkeypatch):
     monkeypatch.setenv("RAY_AUTH_MODE", "token")
     reset_auth_token_state()
+
+
+@pytest.mark.parametrize(
+    "metrics_auth_disabled, expected_status",
+    [
+        (None, "401 Unauthorized"),
+        ("0", "401 Unauthorized"),
+        ("true", "200 OK"),
+        ("1", "200 OK"),
+    ],
+)
+def test_metrics_wsgi_auth_can_be_disabled_explicitly(
+    monkeypatch, metrics_auth_disabled, expected_status
+):
+    monkeypatch.setattr(auth_utils, "is_token_auth_enabled", lambda: True)
+    if metrics_auth_disabled is None:
+        monkeypatch.delenv("RAY_AUTH_SKIP_METRICS", raising=False)
+    else:
+        monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", metrics_auth_disabled)
+
+    def metrics_app(environ, start_response):
+        start_response("200 OK", [])
+        return [b"metrics"]
+
+    app = get_token_auth_wsgi_app(metrics_app)
+    responses = []
+    body = app({}, lambda status, headers: responses.append(status))
+
+    assert responses == [expected_status]
+    if expected_status == "200 OK":
+        assert body == [b"metrics"]
+
+
+def test_prometheus_authorization_config_omitted_when_metrics_auth_disabled(
+    auth_env, monkeypatch
+):
+    monkeypatch.setenv("RAY_AUTH_MODE", "token")
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    reset_auth_token_state()
+    assert get_prometheus_authorization_config() == ""
 
 
 def test_prometheus_authorization_config_empty_when_auth_disabled(
