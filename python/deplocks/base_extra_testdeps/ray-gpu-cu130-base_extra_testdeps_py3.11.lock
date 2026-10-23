@@ -192,9 +192,9 @@ anyio==4.13.0 \
     #   starlette
     #   taskiq
     #   watchfiles
-anyscale==0.26.105 \
-    --hash=sha256:4dd4d348312e5cbc6ccde8e484ffa1e09c866eacde5fae45cd2dd242994f46cb \
-    --hash=sha256:5e6258599be70051deb8156e5d3f748f090e2b830bc2e6cf49dfbec5b4ee04e9
+anyscale==0.26.110 \
+    --hash=sha256:8216a4ac067afa874a6cc0bcabb4430cff48d061339ba5ef4e20f6d6ff4a4906 \
+    --hash=sha256:8472baef910d872dd8724115fe8fde433894a558985b55cfb8b68647cbf684dd
     # via -r docker/base-extra/requirements.in
 argon2-cffi==25.1.0 \
     --hash=sha256:694ae5cc8a42f4c4e2bf2ca0e64e51e23a040c6a517a85074683d3959e1346c1 \
@@ -1586,9 +1586,9 @@ json5==0.14.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   jupyterlab-server
-jsonpatch==1.32 \
-    --hash=sha256:26ac385719ac9f54df8a2f0827bb8253aa3ea8ab7b3368457bcdb8c14595a397 \
-    --hash=sha256:b6ddfe6c3db30d81a96aaeceb6baf916094ffa23d7dd5fa2c13e13f8b6e600c2
+jsonpatch==1.33 \
+    --hash=sha256:0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade \
+    --hash=sha256:9fcd4009c41e6d12348b4a0ff2563ba56a2923a7dfee731d004e212e1ee5030c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   anyscale

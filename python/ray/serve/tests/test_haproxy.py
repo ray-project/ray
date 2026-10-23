@@ -28,7 +28,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_NAMESPACE,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
@@ -41,6 +43,7 @@ from ray.serve.config import HTTPOptions, RequestRouterConfig
 from ray.serve.context import _get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.experimental.round_robin_router import RoundRobinRouter
+from ray.serve.request_router import RequestRouter
 from ray.serve.schema import (
     ProxyStatus,
     ServeDeploySchema,
@@ -67,6 +70,28 @@ class _DelayedMultiplexedMetadataRouter(RoundRobinRouter):
         # Hold the location index empty to deterministically exercise requests
         # arriving before multiplexed model metadata propagates.
         pass
+
+
+class _AlternatingRouter(RequestRouter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_routed_replica_id = None
+
+    async def choose_replicas(self, candidate_replicas, pending_request=None):
+        # Rank the replica from the last on_request_routed call last. If the
+        # callback never runs, every request goes to the same replica.
+        return [
+            sorted(
+                candidate_replicas,
+                key=lambda r: (
+                    r.replica_id == self._last_routed_replica_id,
+                    r.replica_id.unique_id,
+                ),
+            )
+        ]
+
+    def on_request_routed(self, pending_request, replica_id, result):
+        self._last_routed_replica_id = replica_id
 
 
 @pytest.fixture(autouse=True)
@@ -1223,12 +1248,10 @@ def test_multiplexed_routing_retry(shutdown_ray):
 
     server = ModelServer.bind()
     serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
-    # Wait for HAProxy to install the ingress router before exercising model
-    # selection. Readiness requests do not touch multiplexed routing state.
-    wait_for_condition(
-        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
-        timeout=30,
-    )
+    # Blocking serve.run() guarantees that the ingress request router is installed.
+    response = httpx.post("http://localhost:8000/ready")
+    assert response.status_code == 200, response.text
+    assert response.text == "ready"
     serve.get_deployment_handle(
         "IngressRouter", app_name="default"
     ).enable_multiplexing.remote().result()
@@ -1243,8 +1266,61 @@ def test_multiplexed_routing_retry(shutdown_ray):
             assert response.text == "model"
 
 
+def test_pick_only_routing_calls_on_request_routed(shutdown_ray):
+    """Pick-only selections must reach on_request_routed, or a stateful policy
+    sends every request to the same replica."""
+    ray.init(num_cpus=4)
+    serve.start(http_options={"host": "0.0.0.0"})
+
+    @serve.deployment(
+        num_replicas=2,
+        request_router_config=RequestRouterConfig(
+            request_router_class=_AlternatingRouter,
+        ),
+    )
+    class Server:
+        async def __call__(self, request: Request):
+            if request.url.path == "/ready":
+                return request.headers.get("x-routed", "")
+            return serve.get_replica_context().replica_id.unique_id
+
+    app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(app)
+    class IngressRouter:
+        def __init__(self, server):
+            self.server = server
+
+        @app.post("/internal/route")
+        async def route(self):
+            async with self.server.choose_replica(_reserve=False) as selection:
+                replica = selection._replica
+                host, port = replica.backend_http_endpoint
+                return {
+                    "host": host,
+                    "port": port,
+                    "replica_id": replica.replica_id.to_full_id_str(),
+                    "request_headers": {"x-routed": "ready"},
+                }
+
+    server = Server.bind()
+    serve.run(server._with_ingress_request_router(IngressRouter.bind(server)))
+    wait_for_condition(
+        lambda: httpx.post("http://localhost:8000/ready").text == "ready",
+        timeout=30,
+    )
+
+    with httpx.Client(timeout=30) as client:
+        replica_ids = []
+        for _ in range(4):
+            response = client.post("http://localhost:8000/")
+            assert response.status_code == 200, response.text
+            replica_ids.append(response.text)
+    assert len(set(replica_ids)) == 2, replica_ids
+
+
 def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
-    """serve.run rejects a custom router on the ingress under HAProxy."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
 
@@ -1262,8 +1338,7 @@ def test_serve_run_rejects_custom_ingress_request_router(ray_shutdown):
 
 
 def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
-    """A config override that sets a custom router on the ingress fails to deploy
-    under HAProxy."""
+    """A config override cannot silently bypass the ingress request router."""
     ray.init(num_cpus=8)
     serve.start(http_options=dict(port=8003))
     client = _get_global_client()
@@ -1296,6 +1371,108 @@ def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
         return True
 
     wait_for_condition(deploy_failed)
+
+
+def test_router_application_dispatches_across_applications(ray_shutdown):
+    """A router app picks sibling-app replicas; HAProxy sends requests there."""
+    from fastapi.responses import JSONResponse
+
+    ray.init(num_cpus=8)
+    serve.start()
+
+    def make_backend_app():
+        api = FastAPI()
+
+        @serve.deployment(num_replicas=2)
+        @serve.ingress(api)
+        class Backend:
+            @api.api_route("/{path:path}", methods=["GET", "POST"])
+            async def handle(self, path: str, request: Request):
+                return {
+                    "replica_id": serve.get_replica_context().replica_id.to_full_id_str(),
+                    "request_id": request.headers.get("x-request-id"),
+                    "path": request.url.path,
+                }
+
+        return Backend.bind()
+
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve._router_application
+    @serve.ingress(router_api)
+    class Router:
+        def __init__(self):
+            self._decisions = {}
+
+        async def _decide(self, app_name: str, request: Request):
+            handle = serve.get_deployment_handle("Backend", app_name=app_name)
+            async with handle.choose_replica(_reserve=False) as selection:
+                replica_id = selection._replica.replica_id.to_full_id_str()
+            self._decisions[request.headers["x-request-id"]] = replica_id
+            return {"application": app_name, "replica_id": replica_id}
+
+        @router_api.post("/internal/route")
+        async def route(self, request: Request):
+            method = request.headers[SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER]
+            request_target = request.headers[SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER]
+            path = request_target.partition("?")[0]
+            if method == "GET" and path == "/v1/models":
+                return await self._decide("control", request)
+
+            model = (await request.json()).get("model")
+            if model not in ("model-a", "model-b"):
+                return JSONResponse({"error": "unknown model"}, status_code=404)
+            return await self._decide(model, request)
+
+        def get_decisions(self):
+            return self._decisions
+
+    serve.run(make_backend_app(), name="model-a", route_prefix="/v1/model-a")
+    serve.run(make_backend_app(), name="model-b", route_prefix="/v1/model-b")
+    serve.run(make_backend_app(), name="control", route_prefix="/v1/control")
+    router_handle = serve.run(Router.bind(), name="router", route_prefix="/llm")
+
+    def chat(model, request_id):
+        return httpx.post(
+            "http://localhost:8000/llm/v1/chat/completions",
+            json={"model": model},
+            headers={"x-request-id": request_id},
+            timeout=10,
+        )
+
+    wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
+
+    served = {}
+    for i in range(8):
+        model = ["model-a", "model-b"][i % 2]
+        resp = chat(model, f"req-{i}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["request_id"] == f"req-{i}"
+        assert body["path"] == f"/v1/{model}/v1/chat/completions"
+        assert f"::{model}#Backend#" in body["replica_id"]
+        served[f"req-{i}"] = body["replica_id"]
+    resp = httpx.get(
+        "http://localhost:8000/llm/v1/models", headers={"x-request-id": "models"}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["path"] == "/v1/control/v1/models"
+    assert "::control#Backend#" in resp.json()["replica_id"]
+
+    # Each response came from the replica the router chose.
+    decisions = router_handle.get_decisions.remote().result()
+    assert {k: decisions[k] for k in served} == served
+
+    resp = chat("model-c", "req-unknown")
+    assert resp.status_code == 404
+    assert resp.json() == {"error": "unknown model"}
+
+    # Direct application routes are unchanged.
+    resp = httpx.post("http://localhost:8000/v1/model-a/v1/chat/completions")
+    assert "::model-a#Backend#" in resp.json()["replica_id"]
+
+    serve.shutdown()
 
 
 if __name__ == "__main__":

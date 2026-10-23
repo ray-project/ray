@@ -27,8 +27,8 @@ Ray Data is a scalable data processing library for AI workloads, built on Ray. I
 
 To learn more about installing Ray and its libraries, see {ref}`Installing Ray <installation>`. To install Ray Data, run the following command:
 
-```console
-$ pip install -U 'ray[data]'
+```bash
+pip install -U 'ray[data]'
 ```
 
 The following example runs a batch text classification task with Ray Data:
@@ -103,7 +103,7 @@ Quickstart
 **Key concepts**
 ^^^
 
-Learn the key concepts behind Ray Data, including what Datasets are and how to use them.
+Learn the key concepts behind Ray Data, including what a `Dataset` is and how to use it.
 
 +++
 ```{button-ref} data_key_concepts

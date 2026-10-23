@@ -14,7 +14,7 @@ This page describes how to aggregate a {class}`~ray.data.dataset.Dataset` with t
 
 ## Use built-in aggregations
 
-Ray Data provides built-in aggregation functions such as {class}`~ray.data.Dataset.max`, {class}`~ray.data.Dataset.min`, and {class}`~ray.data.Dataset.sum`.
+Ray Data provides built-in aggregation functions such as {meth}`~ray.data.Dataset.max`, {meth}`~ray.data.Dataset.min`, and {meth}`~ray.data.Dataset.sum`.
 
 You can call these functions directly on a Dataset or on a GroupedData object, as the following example shows:
 
@@ -163,5 +163,5 @@ class Mean(AggregateFnV2):
 ```
 
 :::{note}
-Hash-based shuffling can improve aggregation performance in some cases. For more information, see this [comparison of hash-based and range-based shuffling](https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks/).
+Hash-based shuffling can improve aggregation performance in some cases. For more information, see this [comparison of hash-based and range-based shuffling](https://www.anyscale.com/blog/ray-data-joins-hash-shuffle#performance-benchmarks).
 :::

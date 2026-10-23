@@ -573,6 +573,45 @@ class PrefixTree:
                 if count == min_count
             ]
 
+    def prefix_match_or_smallest_tenants(
+        self,
+        text: str,
+        available_tenants: Optional[List[str]] = None,
+        match_rate_threshold: float = 0.0,
+        key_prefix: str = "",
+    ) -> Optional[List[str]]:
+        """
+        Match text against the tree, falling back to the smallest tenants on a weak match.
+
+        Combines prefix_match and get_smallest_tenants, so a caller that routes on the
+        result makes one call instead of two.
+
+        Args:
+            text: Text to match
+            available_tenants: List of tenants to choose from (or None for all)
+            match_rate_threshold: Minimum fraction of the text that must match. Below
+                it, the smallest tenants are returned instead of the matched ones.
+            key_prefix: What the text was inserted under, e.g. a model ID. It's
+                matched before the text but doesn't count toward the match rate.
+
+        Returns:
+            The tenants that own the matched prefix, or the tenants with the smallest
+            character count if the match rate is below match_rate_threshold. None if
+            there are no such tenants.
+        """
+        with self.lock:
+            matched_text, matched_tenants = self.prefix_match(
+                key_prefix + text, available_tenants
+            )
+            # Count only text matched under the key prefix: key prefixes can share a
+            # prefix with each other.
+            matched_chars = max(len(matched_text) - len(key_prefix), 0)
+            # Empty text (e.g. image-only messages) has no prefix to match.
+            match_rate = matched_chars / len(text) if text else 0.0
+            if match_rate < match_rate_threshold:
+                return self.get_smallest_tenants(available_tenants)
+            return matched_tenants
+
     def start_eviction_loop(
         self, eviction_threshold: int, eviction_target: int, interval_secs: float
     ) -> bool:

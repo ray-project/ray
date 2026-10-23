@@ -8,12 +8,7 @@ myst:
 
 # Ray Data quickstart
 
-Get started with Ray Data's {class}`Dataset <ray.data.Dataset>` abstraction for distributed data processing. This guide covers four core capabilities of Ray Data:
-
-* {ref}`Load data <loading_key_concept>`
-* {ref}`Transform data <transforming_key_concept>`
-* {ref}`Consume data <consuming_key_concept>`
-* {ref}`Save data <saving_key_concept>`
+Get started with Ray Data's {class}`Dataset <ray.data.Dataset>` abstraction for distributed data processing. This guide walks through a complete workflow. You {ref}`load data <loading_key_concept>` into a dataset, {ref}`transform <transforming_key_concept>` it, and then {ref}`consume <consuming_key_concept>` the results or {ref}`save <saving_key_concept>` them to storage.
 
 ## What's a dataset?
 

@@ -220,11 +220,77 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         model_id = pending_request.metadata.multiplexed_model_id
         return f"\0{model_id}\0" if model_id else ""
 
+    def _send_tree_lookup(
+        self,
+        input_text: str,
+        key_prefix: str,
+        candidate_replicas: List[RunningReplica],
+    ) -> ray.ObjectRef:
+        """Sends the prefix tree lookup for a request's text among the candidates."""
+        return self._tree_actor.prefix_match_or_smallest_tenants.remote(
+            input_text,
+            [r.replica_id.to_full_id_str() for r in candidate_replicas],
+            self._match_rate_threshold,
+            key_prefix,
+        )
+
+    async def _send_tree_lookup_if_balanced(
+        self,
+        input_text: str,
+        key_prefix: str,
+        candidate_replicas: List[RunningReplica],
+    ) -> Optional[ray.ObjectRef]:
+        """Sends the prefix tree lookup unless the candidates' load is imbalanced.
+
+        Load is imbalanced when queue lengths differ by more than
+        imbalanced_threshold. Returns None then, because prefix matching is
+        skipped.
+        """
+        if self._imbalanced_threshold == float("inf"):
+            # Load can't be imbalanced, so don't check queue lengths.
+            return self._send_tree_lookup(input_text, key_prefix, candidate_replicas)
+
+        # Check for imbalanced load.
+        highest_queue_len = 0
+        lowest_queue_len = float("inf")
+        not_in_cache: List[RunningReplica] = []
+        if self._use_replica_queue_len_cache:
+            # Populate available queue lens from the cache.
+            for r in candidate_replicas:
+                queue_len = self._replica_queue_len_cache.get(r.replica_id)
+                if queue_len is None or queue_len >= r.max_ongoing_requests:
+                    not_in_cache.append(r)
+                else:
+                    highest_queue_len = max(highest_queue_len, queue_len)
+                    lowest_queue_len = min(lowest_queue_len, queue_len)
+        else:
+            not_in_cache = candidate_replicas
+        # Probing more replicas can only widen the range of queue lengths, so if the
+        # cached ones already differ too much, load is imbalanced.
+        if highest_queue_len - lowest_queue_len > self._imbalanced_threshold:
+            return None
+
+        # Send the lookup before probing, so the actor round trip overlaps the
+        # probes.
+        tree_lookup = self._send_tree_lookup(input_text, key_prefix, candidate_replicas)
+        if len(not_in_cache) > 0:
+            for r, queue_len in await self._probe_queue_lens(
+                not_in_cache,
+                0,
+            ):
+                if queue_len is None:
+                    continue
+                highest_queue_len = max(highest_queue_len, queue_len)
+                lowest_queue_len = min(lowest_queue_len, queue_len)
+        if highest_queue_len - lowest_queue_len > self._imbalanced_threshold:
+            return None
+        return tree_lookup
+
     async def _prefix_match_best_replicas(
         self,
         pending_request: Optional[PendingRequest],
         candidate_replicas: List[RunningReplica],
-    ) -> List[RunningReplica]:
+    ) -> List[List[RunningReplica]]:
         """
         Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
         0. Default: same as pow 2 request router, return 2 replicas at random.
@@ -239,78 +305,27 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
-                key_prefix = self._prefix_tree_key_prefix(pending_request)
-                # Check for imbalanced load.
-                highest_queue_len = 0
-                lowest_queue_len = float("inf")
-                not_in_cache: List[ReplicaID] = []
-                if self._use_replica_queue_len_cache:
-                    # Populate available queue lens from the cache.
-                    for r in candidate_replicas:
-                        queue_len = self._replica_queue_len_cache.get(r.replica_id)
-                        if queue_len is None or queue_len >= r.max_ongoing_requests:
-                            not_in_cache.append(r)
-                        else:
-                            highest_queue_len = max(highest_queue_len, queue_len)
-                            lowest_queue_len = min(lowest_queue_len, queue_len)
-                else:
-                    not_in_cache = candidate_replicas
-                if len(not_in_cache) > 0:
-                    for r, queue_len in await self._probe_queue_lens(
-                        not_in_cache,
-                        0,
-                    ):
-                        if queue_len is None:
-                            continue
-                        highest_queue_len = max(highest_queue_len, queue_len)
-                        lowest_queue_len = min(lowest_queue_len, queue_len)
-
-                is_imbalanced = (
-                    highest_queue_len - lowest_queue_len > self._imbalanced_threshold
+                tree_lookup = await self._send_tree_lookup_if_balanced(
+                    input_text,
+                    self._prefix_tree_key_prefix(pending_request),
+                    candidate_replicas,
                 )
-                if not is_imbalanced:
-                    # Convert candidate replica IDs to strings for prefix matching.
-                    candidate_replica_ids_strings = [
-                        r.replica_id.to_full_id_str() for r in candidate_replicas
-                    ]
-                    (matched_text, matched_tenant_id_strings,) = ray.get(
-                        self._tree_actor.prefix_match.remote(
-                            key_prefix + input_text, candidate_replica_ids_strings
-                        )
-                    )
-                    # Count only text matched under this request's model: model IDs
-                    # can share a prefix with each other.
-                    matched_chars = max(len(matched_text) - len(key_prefix), 0)
-                    # Empty text (e.g. image-only messages) has no prefix to match.
-                    match_rate = matched_chars / len(input_text) if input_text else 0.0
-                    if match_rate < self._match_rate_threshold:
-                        smallest_tenants_id_strings = ray.get(
-                            self._tree_actor.get_smallest_tenants.remote(
-                                candidate_replica_ids_strings
-                            )
-                        )
-                        if (
-                            smallest_tenants_id_strings is not None
-                            and len(smallest_tenants_id_strings) > 0
-                        ):
-                            chosen_replica_id_strings = smallest_tenants_id_strings
-                    else:
-                        if (
-                            matched_tenant_id_strings is not None
-                            and len(matched_tenant_id_strings) > 0
-                        ):
-                            chosen_replica_id_strings = matched_tenant_id_strings
-        return [
-            [
-                self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
-                for chosen_id_string in chosen_replica_id_strings
-            ]
-        ]
+                if tree_lookup is not None:
+                    # Await rather than ray.get, which would block the event loop
+                    # that every router in this process shares.
+                    chosen_replica_id_strings = (await tree_lookup) or []
+        chosen_replicas = []
+        for chosen_id_string in chosen_replica_id_strings:
+            # The replica set can change while the tree lookup is in flight.
+            replica = self._replicas.get(ReplicaID.from_full_id_str(chosen_id_string))
+            if replica is not None:
+                chosen_replicas.append(replica)
+        return [chosen_replicas]
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
         """Drop replica from replica set so it's not considered for future requests."""
         super().on_replica_actor_died(replica_id)
-        ray.get(self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()]))
+        self._tree_actor.remove_tenants.remote([replica_id.to_full_id_str()])
 
     def update_replicas(self, replicas: List[RunningReplica]):
         """Update the set of available replicas to be considered for routing.
@@ -329,23 +344,23 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         added = new_ids - old_ids
         removed = old_ids - new_ids
 
-        # 4) Update the prefix tree with the changes
+        # 4) Update the prefix tree with the changes. These calls don't wait on
+        # the actor: it runs them before this process's later lookups, because it
+        # executes tasks from one caller in submission order.
         if added:
             added_strings = [rid.to_full_id_str() for rid in added]
-            ray.get(self._tree_actor.add_tenants.remote(added_strings, time.time()))
+            self._tree_actor.add_tenants.remote(added_strings, time.time())
 
         if removed:
             removed_strings = [rid.to_full_id_str() for rid in removed]
-            ray.get(self._tree_actor.remove_tenants.remote(removed_strings))
+            self._tree_actor.remove_tenants.remote(removed_strings)
 
         # === Start tasks (if enabled and not already running) ===
         if self._do_eviction and not self._eviction_loop_running:
-            ray.get(
-                self._tree_actor.start_eviction_loop.remote(
-                    self._eviction_threshold_chars,
-                    self._eviction_target_chars,
-                    self._eviction_interval_secs,
-                )
+            self._tree_actor.start_eviction_loop.remote(
+                self._eviction_threshold_chars,
+                self._eviction_target_chars,
+                self._eviction_interval_secs,
             )
             self._eviction_loop_running = True
 
@@ -460,11 +475,12 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         ):
             input_text = self._extract_text_from_request(pending_request)
             if input_text is not None:
-                # Insert into prefix tree
-                ray.get(
-                    self._tree_actor.insert.remote(
-                        self._prefix_tree_key_prefix(pending_request) + input_text,
-                        replica_id.to_full_id_str(),
-                        time.time(),
-                    )
+                # Insert into prefix tree without waiting: the replica already
+                # accepted the request, and the actor runs this process's later
+                # lookups after the insert because it executes tasks from one
+                # caller in submission order.
+                self._tree_actor.insert.remote(
+                    self._prefix_tree_key_prefix(pending_request) + input_text,
+                    replica_id.to_full_id_str(),
+                    time.time(),
                 )
