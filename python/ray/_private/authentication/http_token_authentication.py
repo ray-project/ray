@@ -29,7 +29,6 @@ def get_token_auth_middleware(
     aiohttp_module: ModuleType,
     whitelisted_exact_paths: Optional[List[str]] = None,
     whitelisted_path_prefixes: Optional[List[str]] = None,
-    reject_token_when_auth_disabled: bool = False,
 ):
     """Internal helper to create token auth middleware with provided modules.
 
@@ -37,9 +36,6 @@ def get_token_auth_middleware(
         aiohttp_module: The aiohttp module to use
         whitelisted_exact_paths: List of exact paths that don't require authentication
         whitelisted_path_prefixes: List of path prefixes that don't require authentication
-        reject_token_when_auth_disabled: With auth disabled, reject requests that
-            carry a Ray token in a header with AuthModeMismatch, so token-mode
-            clients opt out too.
     Returns:
         An aiohttp middleware function
     """
@@ -49,13 +45,12 @@ def get_token_auth_middleware(
         """Middleware to validate bearer tokens when token authentication is enabled.
 
         With auth disabled, or in minimal Ray installations (without ray._raylet), it
-        authenticates nothing; it only rejects Ray token headers when
-        reject_token_when_auth_disabled is set.
+        authenticates nothing and only rejects requests that carry a Ray token in a
+        header, with AuthModeMismatch, so token-mode clients opt out too.
         """
         if not auth_utils.is_token_auth_enabled():
             if (
-                reject_token_when_auth_disabled
-                and _carries_ray_token_header(request.headers)
+                _carries_ray_token_header(request.headers)
                 # A Kubernetes service-account bearer token is not a Ray token.
                 and not auth_utils.is_k8s_token_auth_enabled()
             ):

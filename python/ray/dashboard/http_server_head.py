@@ -446,10 +446,7 @@ class HttpServerDashboardHead:
             middlewares=[
                 self.metrics_middleware,
                 get_token_auth_middleware(
-                    aiohttp,
-                    public_exact_paths,
-                    public_path_prefixes,
-                    reject_token_when_auth_disabled=True,
+                    aiohttp, public_exact_paths, public_path_prefixes
                 ),
                 self.path_clean_middleware,
                 dashboard_optional_utils.get_browser_request_middleware(

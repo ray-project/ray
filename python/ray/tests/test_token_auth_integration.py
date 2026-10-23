@@ -999,24 +999,21 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
 
 
 @pytest.mark.parametrize(
-    "reject_token, k8s_token_auth, headers, expected_status",
+    "k8s_token_auth, headers, expected_status",
     [
-        (True, False, {"Authorization": "Bearer t"}, 401),
-        (True, False, {"X-Ray-Authorization": "Bearer t"}, 401),
-        (True, False, {"Authorization": "Basic dXNlcjpwYXNz"}, 200),
-        (True, False, {}, 200),
-        (True, True, {"Authorization": "Bearer t"}, 200),
-        (False, False, {"Authorization": "Bearer t"}, 200),
+        (False, {"Authorization": "Bearer t"}, 401),
+        (False, {"X-Ray-Authorization": "Bearer t"}, 401),
+        (False, {"Authorization": "Basic dXNlcjpwYXNz"}, 200),
+        (False, {}, 200),
+        (True, {"Authorization": "Bearer t"}, 200),
     ],
 )
 def test_token_auth_middleware_with_auth_disabled(
-    reject_token: bool,
     k8s_token_auth: bool,
     headers: dict,
     expected_status: int,
 ):
-    """With auth disabled, only a middleware built with
-    reject_token_when_auth_disabled rejects a Ray token header, and not under
+    """With auth disabled, the middleware rejects a Ray token header, except under
     Kubernetes token auth."""
     import asyncio
     from unittest import mock
@@ -1029,9 +1026,7 @@ def test_token_auth_middleware_with_auth_disabled(
         get_token_auth_middleware,
     )
 
-    middleware = get_token_auth_middleware(
-        aiohttp, reject_token_when_auth_disabled=reject_token
-    )
+    middleware = get_token_auth_middleware(aiohttp)
 
     async def handler(request):
         return aiohttp.web.Response(status=200)
