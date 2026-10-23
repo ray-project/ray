@@ -256,6 +256,8 @@ class Deployment:
         gang_scheduling_config: Default[
             Union[Dict, GangSchedulingConfig, None]
         ] = DEFAULT.VALUE,
+        prefer_local_node_routing: Default[bool] = DEFAULT.VALUE,
+        prefer_local_az_routing: Default[bool] = DEFAULT.VALUE,
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
@@ -311,6 +313,17 @@ class Deployment:
                 constructor before the deployment is marked failed.
             gang_scheduling_config: Options for scheduling replicas together in
                 groups called gangs.
+            prefer_local_node_routing: Prefer routing requests to replicas on
+                the same node as the caller. Applies to both proxy-to-replica and
+                replica-to-replica routing. The default differs by caller: proxy
+                handles default to ``RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING``
+                (on by default), while inter-deployment handles default to off.
+                An explicit value overrides both defaults.
+            prefer_local_az_routing: Prefer routing requests to replicas in the
+                same availability zone as the caller. Applies to both
+                proxy-to-replica and replica-to-replica routing. If not set,
+                defaults to the value of ``RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING``
+                (on by default). Explicit deployment config overrides the env var.
             deployment_actors: Actors shared by all replicas of this deployment.
             max_surge_percent: Extra replicas allowed during a rolling restart,
                 as a percentage of the target count. Must be in ``[0, 100]``.
@@ -468,6 +481,12 @@ class Deployment:
         if gang_scheduling_config is not DEFAULT.VALUE:
             new_deployment_config.gang_scheduling_config = gang_scheduling_config
 
+        if prefer_local_node_routing is not DEFAULT.VALUE:
+            new_deployment_config.prefer_local_node_routing = prefer_local_node_routing
+
+        if prefer_local_az_routing is not DEFAULT.VALUE:
+            new_deployment_config.prefer_local_az_routing = prefer_local_az_routing
+
         if deployment_actors is not DEFAULT.VALUE:
             new_deployment_config.deployment_actors = deployment_actors
 
@@ -578,6 +597,8 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "deployment_actors": d._deployment_config.deployment_actors,
         "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
         "max_surge_percent": d._deployment_config.max_surge_percent,
+        "prefer_local_node_routing": d._deployment_config.prefer_local_node_routing,
+        "prefer_local_az_routing": d._deployment_config.prefer_local_az_routing,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -644,6 +665,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         deployment_actors=s.deployment_actors,
         rolling_update_percentage=s.rolling_update_percentage,
         max_surge_percent=s.max_surge_percent,
+        prefer_local_node_routing=s.prefer_local_node_routing,
+        prefer_local_az_routing=s.prefer_local_az_routing,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

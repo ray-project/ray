@@ -16,6 +16,8 @@ from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -452,6 +454,62 @@ class TestDeploymentConfig:
             == "DummyActor"
         )
         assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+    @pytest.mark.parametrize(
+        ("prefer_local_node_routing", "prefer_local_az_routing"),
+        [
+            (True, True),
+            (True, False),
+            (False, True),
+            (False, False),
+        ],
+    )
+    def test_prefer_local_routing_proto_roundtrip(
+        self, prefer_local_node_routing, prefer_local_az_routing
+    ):
+        """Locality routing flags survive to_proto/from_proto, including explicit False.
+
+        Proto fields are optional bools (synthetic oneofs). HasField must be set so
+        an explicit False is not confused with an unset field on deserialization.
+        """
+        user_configured = {
+            "prefer_local_node_routing",
+            "prefer_local_az_routing",
+        }
+        config = DeploymentConfig(
+            num_replicas=1,
+            prefer_local_node_routing=prefer_local_node_routing,
+            prefer_local_az_routing=prefer_local_az_routing,
+            user_configured_option_names=user_configured,
+        )
+        proto = config.to_proto()
+        assert proto.HasField("prefer_local_node_routing")
+        assert proto.HasField("prefer_local_az_routing")
+        assert proto.prefer_local_node_routing == prefer_local_node_routing
+        assert proto.prefer_local_az_routing == prefer_local_az_routing
+
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert deserialized.prefer_local_node_routing == prefer_local_node_routing
+        assert deserialized.prefer_local_az_routing == prefer_local_az_routing
+        assert deserialized.user_configured_option_names == user_configured
+
+    def test_prefer_local_routing_proto_unset_fields_use_defaults(self):
+        """Unset optional fields fall back to Pydantic defaults, not proto3 False."""
+        proto = DeploymentConfig().to_proto()
+        proto.ClearField("prefer_local_node_routing")
+        proto.ClearField("prefer_local_az_routing")
+        assert not proto.HasField("prefer_local_node_routing")
+        assert not proto.HasField("prefer_local_az_routing")
+
+        deserialized = DeploymentConfig.from_proto_bytes(proto.SerializeToString())
+        assert (
+            deserialized.prefer_local_node_routing
+            == RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING
+        )
+        assert (
+            deserialized.prefer_local_az_routing
+            == RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
+        )
 
     def test_deployment_actors_config_duplicate_names_raise(self):
         """Test that duplicate deployment_actor names raise ValueError."""
