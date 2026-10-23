@@ -1340,6 +1340,20 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    def testConvertOptunaQuantizedLogInteger(self):
+        import optuna
+
+        from ray.tune.search.optuna import OptunaSearch
+
+        # Optuna rejects ``step != 1`` together with ``log=True``, so the
+        # quantization is dropped (as it already is for floats) instead of raising.
+        converted = OptunaSearch.convert_search_space(
+            {"x": tune.qlograndint(1, 100, 5)}
+        )
+        self.assertEqual(
+            converted["x"], optuna.distributions.IntDistribution(1, 99, log=True)
+        )
+
     def testConvertOptuna(self):
         import optuna
         from optuna.samplers import RandomSampler

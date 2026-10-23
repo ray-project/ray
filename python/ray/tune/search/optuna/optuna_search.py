@@ -703,8 +703,13 @@ class OptunaSearch(Searcher):
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, LogUniform):
+                    if quantize:
+                        logger.warning(
+                            "Optuna does not support both quantization and "
+                            "sampling from LogUniform. Dropped quantization."
+                        )
                     return ot.distributions.IntDistribution(
-                        domain.lower, domain.upper - 1, step=quantize or 1, log=True
+                        domain.lower, domain.upper - 1, log=True
                     )
                 elif isinstance(sampler, Uniform):
                     # Upper bound should be inclusive for quantization and
