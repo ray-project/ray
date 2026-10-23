@@ -2590,6 +2590,13 @@ cdef execute_task_with_cancellation_handler(
             if omp_num_threads_overriden:
                 # Reset the OMP_NUM_THREADS environ if it was set.
                 os.environ.pop("OMP_NUM_THREADS", None)
+                # Restore default single-thread fallback (default_worker.py sets
+                # OMP_NUM_THREADS=1 when unset) if torch was imported pre-fork.
+                if "torch" in sys.modules:
+                    try:
+                        sys.modules["torch"].set_num_threads(1)
+                    except Exception:
+                        pass
 
 
     if execution_info.max_calls != 0:
