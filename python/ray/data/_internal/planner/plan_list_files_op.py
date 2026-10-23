@@ -18,19 +18,17 @@ from __future__ import annotations
 
 import logging
 from functools import partial
-from typing import List
+from typing import List, cast
 
 import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.data._internal.datasource_v2.listing.file_manifest import (
-    PATH_COLUMN_NAME,
-)
-from ray.data._internal.datasource_v2.listing.listing_utils import (
+from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     partition_files,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import PATH_COLUMN_NAME
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -48,6 +46,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.logical.operators import ListFiles
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +78,7 @@ def plan_list_files_op(
                 list_files_for_each_block,
                 indexer=indexer,
                 filesystem=filesystem,
+                prelisted_file_infos=op.prelisted_file_infos is not None,
                 file_extensions=file_extensions,
                 partition_filter=partition_filter,
                 partition_pruner=op.partition_pruner,
@@ -139,11 +139,32 @@ def _create_input_data_buffer(
     *,
     should_parallelize: bool,
 ) -> InputDataBuffer:
-    """Wrap ``op.paths`` into listing-input RefBundles.
+    """Wrap root paths or retained file infos into listing-input RefBundles.
 
-    Each bundle's block is a 1-column arrow table ``{"__path": [paths...]}``
-    that :func:`list_files_for_each_block` expands into manifest blocks.
+    Prelisted blocks share one bundle so the listing transform can apply a
+    global file shuffle and feed one bin packer with the complete stream.
     """
+    if op.prelisted_file_infos is not None:
+        entries = []
+        for block in op.prelisted_file_infos:
+            metadata = BlockAccessor.for_block(block).get_metadata(
+                input_files=None, block_exec_stats=None
+            )
+            prelisted_block_ref = cast(ObjectRef[Block], ray.put(block))
+            entries.append(BlockEntry(prelisted_block_ref, metadata))
+        if not entries:
+            return InputDataBuffer(data_context, input_data=[])
+        return InputDataBuffer(
+            data_context,
+            input_data=[
+                RefBundle(
+                    tuple(entries),
+                    owns_blocks=False,
+                    schema=BlockAccessor.for_block(op.prelisted_file_infos[0]).schema(),
+                )
+            ],
+        )
+
     if should_parallelize and op.paths:
         path_splits = np.array_split(
             list(op.paths),

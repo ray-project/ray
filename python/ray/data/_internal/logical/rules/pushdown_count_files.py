@@ -2,11 +2,11 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING, Optional
 
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.readers.supports_metadata import (
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
     SupportsMetadata,
 )
@@ -26,7 +26,7 @@ class PushdownCountFiles(Rule):
 
     When a ``Count`` sits directly on top of a bare DataSourceV2 ``ReadFiles``
     (optionally through a row-preserving ``Project``) whose reader implements
-    :class:`~ray.data._internal.datasource_v2.readers.supports_metadata.SupportsMetadata`,
+    :class:`~ray.data._internal.datasource_v2.interfaces.supports_metadata.SupportsMetadata`,
     this rule rewrites the plan to::
 
         Count(ReadFiles(ListFiles))  ->  MapBatches(count_rows, ListFiles)

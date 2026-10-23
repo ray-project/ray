@@ -495,19 +495,6 @@ class Benchmark:
         # Auto-stop profiling and upload artifacts to S3. Protected so a
         # teardown failure doesn't mask a successful benchmark run.
         if self._profiling is not None:
-            # The copy has its own guard so a failure still stops the profilers,
-            # which is what flushes their output.
-            try:
-                import shutil
-
-                if os.path.exists(test_output_json):
-                    os.makedirs(self._profiling.outdir, exist_ok=True)
-                    shutil.copy2(test_output_json, self._profiling.outdir)
-            except Exception:
-                logger.warning(
-                    "Failed to copy the benchmark result into the profiling outdir.",
-                    exc_info=True,
-                )
             try:
                 self._profiling.stop(s3_prefix=self._profiling_s3_prefix)
             except Exception:

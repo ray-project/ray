@@ -58,8 +58,7 @@ Ray is a unified framework for scaling AI and Python applications. Its source is
 laid out as:
 
 - `src/ray/`: C++ core runtime
-- `python/ray/`: Python API and libraries (data, serve, train, tune)
-- `rllib/`: RLlib (symlinked from `python/ray/rllib`)
+- `python/ray/`: Python API and libraries (data, rllib, serve, train, tune)
 - `doc/source/`: Sphinx documentation
 
 The default test timeout is 180s (`pytest.ini`). For build, test, lint, and
@@ -70,7 +69,18 @@ here:
   [`doc/source/ray-contribute/getting-involved.md`](doc/source/ray-contribute/getting-involved.md)
 - Building Ray:
   [`doc/source/ray-contribute/development.md`](doc/source/ray-contribute/development.md)
-- General contribution process: [`CONTRIBUTING.rst`](CONTRIBUTING.rst)
+- General contribution process: [`CONTRIBUTING.md`](CONTRIBUTING.md)
+
+### Changes that move docs.ray.io URLs
+
+Renaming, moving, or removing a public API under `python/ray/` changes or
+removes the URL of its generated API reference page, even when the PR touches
+nothing under `doc/`. So does moving or renaming a page under `doc/source/`. In
+the same PR, add a redirect in `doc/redirects/current.yaml` from each old path to
+its new path, or for a removed API to its successor's path, and run
+`rtd-redirects validate doc/redirects/current.yaml` before pushing.
+[`doc/redirects/README.md`](doc/redirects/README.md) covers which rule to write
+and how to install the tool, which needs no credentials.
 
 ### Required for every commit
 

@@ -450,6 +450,22 @@ SERVE_SESSION_ID = get_env_str("RAY_SERVE_SESSION_ID_HEADER_KEY", "x-session-id"
 # returned by /internal/route.
 SERVE_INGRESS_ROUTER_HEADER_PREFIX = "x-serve-router-"
 
+# Marks a router-application response that HAProxy should return directly to
+# the client instead of interpreting as an application/replica decision.
+SERVE_ROUTER_APPLICATION_DIRECT_RESPONSE_HEADER = "x-serve-router-direct-response"
+
+# Original client method forwarded to a router application's internal decision
+# request. The decision transport itself always uses POST so it can carry a body.
+SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "original-method"
+)
+
+# Original client request target forwarded by HAProxy to /internal/route. Router
+# applications receive the path and query; ingress request routers receive the path.
+SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER = (
+    SERVE_INGRESS_ROUTER_HEADER_PREFIX + "request-path"
+)
+
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
@@ -621,6 +637,19 @@ RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY = get_env_bool(
     os.environ.get("RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY", "0"),
 )
 
+# Cancel an in-progress node compaction after this long.
+RAY_SERVE_COMPACTION_TIMEOUT_S = get_env_float("RAY_SERVE_COMPACTION_TIMEOUT_S", 1800.0)
+
+# Deployments must be stable for this long before a new compaction starts.
+RAY_SERVE_NODE_COMPACTION_DELAY_S = get_env_float(
+    "RAY_SERVE_NODE_COMPACTION_DELAY_S", 300.0
+)
+
+# Cap on the exponential backoff between failed compaction attempts.
+RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S = get_env_float(
+    "RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S", 3600.0
+)
+
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(
@@ -634,14 +663,12 @@ RAY_SERVE_FORCE_LOCAL_TESTING_MODE = get_env_bool(
 )
 
 # Run sync methods defined in the replica in a thread pool by default.
-RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0")
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = get_env_bool("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1")
 
 RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
-    "Calling sync method '{method_name}' directly on the "
-    "asyncio loop. In a future version, sync methods will be run in a "
-    "threadpool by default. Ensure your sync methods are thread safe "
-    "or keep the existing behavior by making them `async def`. Opt "
-    "into the new behavior by setting "
+    "Calling sync method '{method_name}' directly on the asyncio loop because "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=0. This can block other requests. Make "
+    "the method `async def` or restore threadpool dispatch by setting "
     "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
 )
 
@@ -1034,17 +1061,19 @@ RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH = os.environ.get(
     "RAY_SERVE_HAPROXY_METRICS_SOCKET_PATH", "/tmp/haproxy-serve/metrics.sock"
 )
 
+# Both ranges sit below the Linux ephemeral range (32768-60999), where Ray
+# workers bind their own listen ports.
 RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT", "30000")
 )
 RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "40000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT", "31500")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT", "31000")
 )
 RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT = int(
-    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "41000")
+    os.environ.get("RAY_SERVE_DIRECT_INGRESS_MAX_GRPC_PORT", "32500")
 )
 RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT = int(
     os.environ.get("RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT", "100")

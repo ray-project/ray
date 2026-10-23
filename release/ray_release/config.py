@@ -86,6 +86,7 @@ CLOUD_ID_TO_NAME = {
     "cld_vy7xqacrvddvbuy95auinvuqmt": "oss_release_tests_gce",
     "cld_k8WcxPgjUtSE8RVmfZpTLuKM": "anyscale_k8s_gcp_cloud",
     "cld_tPsS3nQz8p5cautbyWgEdr4y": "anyscale_gce_cloud",
+    "cld_82np1njz31y9lwk56mc2xcc23x": "rkn-gpu-cloud",
 }
 
 

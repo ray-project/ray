@@ -43,7 +43,7 @@ usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
 # Install uv
-curl -sSL -o- https://astral.sh/uv/0.11.33/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
+curl -sSL -o- https://astral.sh/uv/0.13.4/install.sh | env UV_UNMANAGED_INSTALL="/usr/local/bin" sh
 
 # Determine the architecture of the host
 if [[ "${HOSTTYPE}" =~ ^x86_64 ]]; then
@@ -120,8 +120,23 @@ rm /tmp/miniforge.sh
 /home/ray/anaconda3/bin/conda init bash
 
 eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+# conda-forge certifi builds from 2026 on require python>=3.11. Downgrading the
+# Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
+# requests and conda itself, and the transaction fails with RemoveError.
+# conda-forge pip 26.2.2 (the eMudhra CA fix) also requires python>=3.11, so
+# 3.10 installs it from PyPI after the conda step.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PYTHON_EXTRA_SPECS=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_PYTHON_EXTRA_SPECS=("certifi<2026")
+fi
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
 /home/ray/anaconda3/bin/conda clean -a
+
+# conda-forge pip 26.2.2 requires python>=3.11; PyPI's supports 3.10.
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    uv pip install --system --no-cache-dir pip==26.2.2
+fi
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r $HOME/python_depset.lock

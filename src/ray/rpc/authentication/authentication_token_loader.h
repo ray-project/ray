@@ -73,7 +73,7 @@ class AuthenticationTokenLoader {
   AuthenticationTokenLoader() = default;
   ~AuthenticationTokenLoader() = default;
 
-  /// Read and trim token from file.
+  /// Read the first non-blank line of the token file.
   std::string ReadTokenFromFile(const std::string &file_path);
 
   /// Try to load token from environment or file, returning error instead of crashing.
@@ -95,6 +95,13 @@ class AuthenticationTokenLoader {
   std::shared_ptr<const AuthenticationToken> cached_token_;
   std::optional<std::chrono::system_clock::time_point> cached_token_expiration_time_;
 };
+
+/// For a driver that starts its own head with `ray start --head`. That command
+/// enables token auth when RAY_AUTH_MODE is unset and a token exists, so the driver
+/// must make the same decision or it connects without a token. Sets RAY_AUTH_MODE=token
+/// in this process's environment, which the `ray start` subprocess inherits and which
+/// survives later RayConfig re-initialization.
+void MaybeEnableTokenAuthIfTokenAvailable();
 
 }  // namespace rpc
 }  // namespace ray
