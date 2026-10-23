@@ -86,6 +86,11 @@ class RedisAsyncContext {
   /// Reset the raw 'redisAsyncContext' pointer to nullptr.
   void ResetRawRedisAsyncContext();
 
+  /// Run `fn` on the raw context while holding the lock HandleIo takes. For a
+  /// caller that mutates the context after the io_service may have started
+  /// driving it on another thread. `fn` must not submit commands.
+  void WithRawContextLocked(const std::function<void(redisAsyncContext *)> &fn);
+
   /// Rebind this object to a freshly connected raw 'redisAsyncContext'.
   ///
   /// The object's own address is preserved, which matters because in-flight

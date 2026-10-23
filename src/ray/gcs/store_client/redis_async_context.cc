@@ -140,6 +140,12 @@ void RedisAsyncContext::ResetRawRedisAsyncContext() {
   redis_async_context_.release();
 }
 
+void RedisAsyncContext::WithRawContextLocked(
+    const std::function<void(redisAsyncContext *)> &fn) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  fn(redis_async_context_.get());
+}
+
 void RedisAsyncContext::Reset(
     std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context) {
   std::lock_guard<std::mutex> lock(mutex_);

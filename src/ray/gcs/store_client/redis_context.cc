@@ -1398,8 +1398,11 @@ Status RedisContext::ConnectImpl(const std::string &address,
     // io_service picks up at once when it already runs on another thread, while
     // the Sentinel and Cluster discovery above may still destroy the context
     // from this one. A nested Connect() registered its own context instead.
-    SetConnectionCallbacks(redis_async_context_->GetRawRedisAsyncContext(),
-                           redis_async_context_.get());
+    // The discovery commands above already run on the io_service, so take the
+    // lock it reads the callbacks under.
+    redis_async_context_->WithRawContextLocked([this](redisAsyncContext *raw) {
+      SetConnectionCallbacks(raw, redis_async_context_.get());
+    });
     if (async_connected_hook_for_testing_) {
       std::exchange(async_connected_hook_for_testing_, nullptr)(*redis_async_context_);
     }
