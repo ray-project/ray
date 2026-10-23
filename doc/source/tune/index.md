@@ -33,7 +33,7 @@ Select a tab to see code examples for different machine learning frameworks.
 
 To run this example, install Ray Tune with `pip install "ray[tune]"`.
 
-This quickstart example minimizes a function of the form `f(x) = a**2 + b`, the `objective` function. The closer `a` is to zero and the smaller `b` is, the smaller the value of `f(x)`. You define a *search space* for `a` and `b`, and Ray Tune explores the space for good values.
+This quickstart example minimizes the `objective` function, which computes `a**2 + b`. The closer `a` is to zero and the smaller `b` is, the smaller the result. You define a *search space* for `a` and `b`, and Ray Tune explores the space for good values.
 
 :::{callout}
 ```{literalinclude} ../../../python/ray/tune/tests/example.py

@@ -108,7 +108,7 @@ A new trial might occasionally run into GPU memory issues. The cause might be th
 
 To tune distributed training jobs, you can use Ray Tune with Ray Train. Tune runs multiple trials in parallel, and each trial runs distributed training with Ray Train.
 
-For more details, see {ref}`Ray Train Hyperparameter Optimization <train-tune>`.
+For more details, see {ref}`Hyperparameter tuning with Ray Tune <train-tune>`.
 
 ## Limit concurrency in Tune
 
