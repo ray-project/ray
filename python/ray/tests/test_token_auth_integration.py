@@ -1336,7 +1336,9 @@ def test_kill_raylet_on_auth_disabled_cluster_with_token_file():
     set_default_auth_token("e" * 64)
     set_auth_mode("disabled")
     reset_auth_token_state()
-    cluster = Cluster(initialize_head=True, head_node_args={"num_cpus": 1})
+    cluster = Cluster(
+        initialize_head=True, enable_token_auth=False, head_node_args={"num_cpus": 1}
+    )
     try:
         worker = cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
