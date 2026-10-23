@@ -64,7 +64,7 @@ To do this, call {func}`tune.report() <ray.tune.report>` in the training functio
 :end-before: __train_func_end__
 ```
 
-Run one trial by calling {ref}`Tuner.fit <tune-run-ref>`, and {ref}`randomly sample <tune-search-space>` the learning rate and momentum from a uniform distribution.
+Run one trial by calling {ref}`Tuner.fit <tune-run-ref>`, and {ref}`randomly sample <tune-search-space>` the learning rate from a log-uniform distribution and the momentum from a uniform distribution.
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python
@@ -84,9 +84,9 @@ Run one trial by calling {ref}`Tuner.fit <tune-run-ref>`, and {ref}`randomly sam
 Tune automatically runs trials in parallel across all available cores and GPUs on your machine or cluster. To limit the number of concurrent trials, use the {ref}`ConcurrencyLimiter <limiter>`.
 :::
 
-## Stop trials early with Adaptive Successive Halving
+## Stop trials early with Asynchronous Successive Halving
 
-Next, add early stopping to the optimization process with {ref}`ASHA <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
+Next, add early stopping to the optimization process with {ref}`Asynchronous Successive Halving (ASHA) <tune-scheduler-hyperband>`, a scalable algorithm for [principled early stopping](https://blog.ml.cmu.edu/2018/12/12/massively-parallel-hyperparameter-optimization/).
 
 At a high level, ASHA stops less promising trials and allocates more time and resources to more promising ones. Because the optimization process becomes more efficient, you can afford to increase the search space by 5x by adjusting the `num_samples` parameter.
 
@@ -136,7 +136,7 @@ You can combine some search algorithms with different trial schedulers. For deta
 
 ## Evaluate your model after tuning
 
-To evaluate the best trained model, retrieve it with the {ref}`ExperimentAnalysis object <tune-analysis-docs>`:
+To evaluate the best trained model, retrieve it with the {ref}`ResultGrid <tune-analysis-docs>` object:
 
 ```{literalinclude} /../../python/ray/tune/tests/tutorial.py
 :language: python

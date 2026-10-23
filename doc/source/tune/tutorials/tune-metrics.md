@@ -69,13 +69,13 @@ During training, Tune automatically logs a set of auto-filled metrics in additio
 * `done`: `True` if the trial has finished, `False` otherwise
 * `episodes_total`: Total number of episodes, for RLlib trainables
 * `experiment_id`: Unique experiment ID
-* `experiment_tag`: Unique experiment tag, which includes parameter values
+* `experiment_tag`: Tag of the trial, which includes parameter values
 * `hostname`: Hostname of the worker
 * `iterations_since_restore`: The number of times `tune.report()` has been called after restoring the worker from a checkpoint
 * `node_ip`: Host IP of the worker
 * `pid`: Process ID (PID) of the worker process
 * `time_since_restore`: Time in seconds since restoring from a checkpoint
-* `time_this_iter_s`: Runtime of the current training iteration in seconds, meaning one call to the trainable function or to `_train()` in the class API
+* `time_this_iter_s`: Runtime of the current training iteration in seconds, meaning one call to the trainable function or to `step()` in the class API
 * `time_total_s`: Total runtime in seconds
 * `timestamp`: Timestamp when the result was processed
 * `timesteps_since_restore`: Number of timesteps since restoring from a checkpoint

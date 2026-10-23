@@ -72,7 +72,7 @@ Tune uses the resources you specify this way only to schedule trials. It doesn't
 
 ## Use GPUs in Tune
 
-To use GPUs, set `gpu` in `tune.with_resources(trainable, resources_per_trial)`. Setting `gpu` also sets `CUDA_VISIBLE_DEVICES` for each trial automatically.
+To use GPUs, set `gpu` in `tune.with_resources(trainable, resources)`. Setting `gpu` also sets `CUDA_VISIBLE_DEVICES` for each trial automatically.
 
 ```python
 # If you have 8 GPUs, this will run 8 trials at once.
