@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -449,9 +450,11 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
       const PlacementGroupID &placement_group_id);
 
-  /// Create scheduling options.
-  SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
-                                            rpc::PlacementStrategy strategy);
+  /// Create the scheduling options for `placement_group`: the node-level options
+  /// for `strategy`, plus the topology target. std::nullopt if the placement
+  /// group carries an unsupported topology strategy.
+  std::optional<SchedulingOptions> CreateSchedulingOptions(
+      const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy);
 
   instrumented_io_context &io_context_;
 

@@ -259,18 +259,20 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       }
     }
 
-    // Populate locality_requirement if this PG uses a topology strategy.
-    const auto &topology_strategy = pg_data.topology_strategy();
-    if (!topology_strategy.empty()) {
-      const auto &[topology_label_key, _strategy] = *topology_strategy.begin();
+    // Populate locality_requirement if this PG uses a topology strategy. Only
+    // one topology label is supported (see GcsPlacementGroup::GetTopologyStrategy).
+    const auto &topology_strategies = pg_data.topology_strategy();
+    if (!topology_strategies.empty()) {
+      const auto &[topology_label_key, topology_strategy] = *topology_strategies.begin();
 
       auto *locality_req = bundle_selector->mutable_locality_requirement();
       auto *locality_constraint = locality_req->mutable_locality_constraint();
       locality_constraint->set_label_name(topology_label_key);
-      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+      locality_constraint->set_placement_strategy(topology_strategy);
 
       // If the scheduler has already picked a value for this topology label
-      // (rescheduling case), pin the autoscaler request to that value.
+      // (rescheduling case), pin the autoscaler request to that value. Only
+      // STRICT_PACK persists one.
       const auto &assignments = pg_data.topology_assignments();
       if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
         auto *label_constraint =

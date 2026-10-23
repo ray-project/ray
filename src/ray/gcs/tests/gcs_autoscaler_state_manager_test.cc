@@ -1316,32 +1316,32 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_EQ(c2.label_values(0), "TPU");
 }
 
-TEST_F(GcsAutoscalerStateManagerTest,
+// Parameterized over the topology strategies a placement group can carry.
+class GcsAutoscalerStateManagerTopologyStrategyTest
+    : public GcsAutoscalerStateManagerTest,
+      public ::testing::WithParamInterface<rpc::PlacementStrategy> {};
+
+TEST_P(GcsAutoscalerStateManagerTopologyStrategyTest,
        TestGetPendingGangResourceRequestsWithLocalityRequirementPending) {
+  // The PG's own topology strategy is forwarded to the autoscaler as the
+  // locality constraint. A PENDING PG has no topology assignment yet, so no
+  // label_selector is added.
+  const rpc::PlacementStrategy topology_strategy = GetParam();
   rpc::PlacementGroupLoad load;
   auto *pg_data = load.add_placement_group_data();
   pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
-  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
-  pg_data->set_placement_group_id(pg_id.Binary());
-  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] =
-      rpc::PlacementStrategy::STRICT_PACK;
-
-  auto *bundle1 = pg_data->add_bundles();
-  (*bundle1->mutable_unit_resources())["GPU"] = 4;
-
-  auto *bundle2 = pg_data->add_bundles();
-  (*bundle2->mutable_unit_resources())["GPU"] = 4;
+  pg_data->set_placement_group_id(PlacementGroupID::Of(JobID::FromInt(1)).Binary());
+  (*pg_data->mutable_topology_strategy())["ray.io/gpu-domain"] = topology_strategy;
+  (*pg_data->add_bundles()->mutable_unit_resources())["GPU"] = 4;
+  (*pg_data->add_bundles()->mutable_unit_resources())["GPU"] = 4;
 
   gcs_placement_group_manager_->get_placement_group_load_return =
       std::make_shared<rpc::PlacementGroupLoad>(std::move(load));
 
   const auto &state = GetClusterResourceStateSync();
-  const auto &requests = state.pending_gang_resource_requests();
-  ASSERT_EQ(requests.size(), 1);
-
-  const auto &req = requests.Get(0);
+  ASSERT_EQ(state.pending_gang_resource_requests_size(), 1);
+  const auto &req = state.pending_gang_resource_requests(0);
   ASSERT_EQ(req.bundle_selectors_size(), 1);
-
   const auto &selector = req.bundle_selectors(0);
   ASSERT_EQ(selector.resource_requests_size(), 2);
 
@@ -1349,12 +1349,14 @@ TEST_F(GcsAutoscalerStateManagerTest,
   const auto &locality_req = selector.locality_requirement();
   ASSERT_TRUE(locality_req.has_locality_constraint());
   EXPECT_EQ(locality_req.locality_constraint().label_name(), "ray.io/gpu-domain");
-  EXPECT_EQ(locality_req.locality_constraint().placement_strategy(),
-            rpc::PlacementStrategy::STRICT_PACK);
-
-  // Not a rescheduling PG, so label_selector should not be set.
+  EXPECT_EQ(locality_req.locality_constraint().placement_strategy(), topology_strategy);
   EXPECT_FALSE(locality_req.has_label_selector());
 }
+
+INSTANTIATE_TEST_SUITE_P(TopologyStrategies,
+                         GcsAutoscalerStateManagerTopologyStrategyTest,
+                         ::testing::Values(rpc::PlacementStrategy::STRICT_PACK,
+                                           rpc::PlacementStrategy::STRICT_SPREAD));
 
 TEST_F(GcsAutoscalerStateManagerTest,
        TestGetPendingGangResourceRequestsWithLocalityRequirementRescheduling) {

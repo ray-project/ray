@@ -25,6 +25,20 @@
 namespace ray {
 namespace gcs {
 
+namespace {
+
+std::optional<raylet_scheduling_policy::TopologySchedulingStrategy>
+ToTopologySchedulingStrategy(rpc::PlacementStrategy strategy) {
+  switch (strategy) {
+  case rpc::PlacementStrategy::STRICT_PACK:
+    return raylet_scheduling_policy::TopologySchedulingStrategy::STRICT_PACK;
+  default:
+    return std::nullopt;
+  }
+}
+
+}  // namespace
+
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     instrumented_io_context &io_context,
     gcs::GcsTableStorage &gcs_table_storage,
@@ -61,7 +75,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   // are unplaced (partial failure), we attempt to reschedule onto the same
   // assignments.
   if (placement_group->AllUnplacedBundles() &&
-      placement_group->GetTopologyStrategyKeys().has_value()) {
+      placement_group->GetTopologyStrategy().has_value()) {
     placement_group->ClearTopologyAssignments();
     RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
                   << " are unplaced, rescheduling on a new topology assignment";
@@ -78,8 +92,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   }
 
   auto scheduling_options = CreateSchedulingOptions(*placement_group, strategy);
+  if (!scheduling_options.has_value()) {
+    RAY_LOG(WARNING) << "Placement group " << placement_group->GetPlacementGroupID()
+                     << " has an unsupported topology strategy; marking it infeasible.";
+    failure_callback(placement_group, /*is_feasible*/ false);
+    return;
+  }
   auto scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
-      resource_request_list, scheduling_options);
+      resource_request_list, *scheduling_options);
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -518,44 +538,52 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
   return std::make_unique<BundleSchedulingContext>(std::move(bundle_locations));
 }
 
-SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
+std::optional<SchedulingOptions> GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group, rpc::PlacementStrategy strategy) {
-  std::optional<std::pair<std::string, std::optional<std::string>>>
-      target_topology_assignment;
-  std::optional<std::vector<std::string>> topology_keys =
-      placement_group.GetTopologyStrategyKeys();
-  if (topology_keys.has_value()) {
-    // Currently supports one topology label.
-    const std::string &topology_label_key = topology_keys->front();
-    std::optional<std::string> topology_label_value =
-        placement_group.GetTopologyAssignment(topology_label_key);
-    // If a topology value has already been selected for this PG, the bundles
-    // are being rescheduled and must land on the same selection.
-    target_topology_assignment = {topology_label_key, topology_label_value};
+  using raylet_scheduling_policy::TopologySchedulingStrategy;
+  using raylet_scheduling_policy::TopologyTarget;
+
+  std::optional<TopologyTarget> topology_target;
+  if (auto topology_entry = placement_group.GetTopologyStrategy();
+      topology_entry.has_value()) {
+    const auto &[topology_label_key, placement_strategy] = *topology_entry;
+    std::optional<TopologySchedulingStrategy> topology_strategy =
+        ToTopologySchedulingStrategy(placement_strategy);
+    // Specs reach the GCS from any client; reject what the policies RAY_CHECK on.
+    if (topology_label_key.empty() || !topology_strategy.has_value()) {
+      return std::nullopt;
+    }
+    // target_value is STRICT_PACK-only; see TopologyTarget.
+    topology_target =
+        TopologyTarget{topology_label_key,
+                       *topology_strategy,
+                       placement_group.GetTopologyAssignment(topology_label_key)};
   }
 
-  NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();
-  PlacementGroupID placement_group_id = placement_group.GetPlacementGroupID();
-
-  switch (strategy) {
-  case rpc::PlacementStrategy::PACK:
-    return SchedulingOptions::BundlePack(std::move(target_topology_assignment));
-  case rpc::PlacementStrategy::SPREAD:
-    return SchedulingOptions::BundleSpread(std::move(target_topology_assignment));
-  case rpc::PlacementStrategy::STRICT_PACK:
-    return SchedulingOptions::BundleStrictPack(
-        soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
-                                    : scheduling::NodeID(soft_target_node_id.Binary()),
-        std::move(target_topology_assignment));
-  case rpc::PlacementStrategy::STRICT_SPREAD:
-    return SchedulingOptions::BundleStrictSpread(
-        CreateSchedulingContext(placement_group_id),
-        std::move(target_topology_assignment));
-  default:
-    RAY_LOG(FATAL) << "Unsupported scheduling type: "
-                   << rpc::PlacementStrategy_Name(strategy);
-  }
-  UNREACHABLE;
+  const PlacementGroupID placement_group_id = placement_group.GetPlacementGroupID();
+  SchedulingOptions options = [&]() -> SchedulingOptions {
+    switch (strategy) {
+    case rpc::PlacementStrategy::PACK:
+      return SchedulingOptions::BundlePack(std::move(topology_target));
+    case rpc::PlacementStrategy::SPREAD:
+      return SchedulingOptions::BundleSpread(std::move(topology_target));
+    case rpc::PlacementStrategy::STRICT_PACK: {
+      NodeID soft_target_node_id = placement_group.GetSoftTargetNodeID();
+      return SchedulingOptions::BundleStrictPack(
+          soft_target_node_id.IsNil() ? scheduling::NodeID::Nil()
+                                      : scheduling::NodeID(soft_target_node_id.Binary()),
+          std::move(topology_target));
+    }
+    case rpc::PlacementStrategy::STRICT_SPREAD:
+      return SchedulingOptions::BundleStrictSpread(
+          CreateSchedulingContext(placement_group_id), std::move(topology_target));
+    default:
+      RAY_LOG(FATAL) << "Unsupported scheduling type: "
+                     << rpc::PlacementStrategy_Name(strategy);
+    }
+    UNREACHABLE;
+  }();
+  return options;
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
