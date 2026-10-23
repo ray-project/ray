@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     ReservedResources,
@@ -153,26 +152,10 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         return 0
 
-    def _get_resize_decision(
-        self, num_workers: int, reserved_resources: ReservedResources
-    ) -> Optional[ResizeDecision]:
-        """Build a resize decision pinned to ``reserved_resources``.
-
-        The pins come from the same snapshot that chose ``num_workers``, so the
-        worker group starts on exactly the reservation the decision was based
-        on. Returns ``None`` if that snapshot can't be pinned.
-        """
-        label_selectors = None
-        if self._should_pin_to_reservation():
-            label_selectors = self._get_reserved_label_selectors(
-                reserved_resources, num_workers
-            )
-            if label_selectors is None:
-                return None
+    def _get_resize_decision(self, num_workers: int) -> ResizeDecision:
         return ResizeDecision(
             num_workers=num_workers,
             resources_per_worker=self.scaling_config._resources_per_worker_not_none,
-            label_selectors=label_selectors,
         )
 
     def make_decision_for_non_running_worker_group(self) -> ScalingDecision:
@@ -180,17 +163,9 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         reserved_resources = self._get_reserved_resources()
         if not reserved_resources:
-            self._maybe_log_waiting_for_reservation(
-                num_reserved=0, num_required=self.scaling_config.min_workers
-            )
             return NoopDecision()
 
         num_workers = self._count_possible_workers(reserved_resources)
-        if num_workers >= self.scaling_config.min_workers:
-            # The cached view looks ready. Decide and pin from a fresh view, so
-            # the decision doesn't count a node that just died.
-            reserved_resources = self._get_reserved_resources(recompute=True) or {}
-            num_workers = self._count_possible_workers(reserved_resources)
 
         if num_workers < self.scaling_config.min_workers:
             now = time_monotonic()
@@ -209,16 +184,12 @@ class ElasticScalingPolicy(ScalingPolicy):
                 self._latest_insufficient_workers_warning_time = now
             return NoopDecision()
 
-        decision = self._get_resize_decision(num_workers, reserved_resources)
-        if decision is None:
-            return NoopDecision()
-
         logger.info(
             f"Detected ready resources for {num_workers} workers "
             "in the cluster. "
             "Deciding to start/restart training with this worker group size."
         )
-        return decision
+        return self._get_resize_decision(num_workers)
 
     def make_decision_for_running_worker_group(
         self,
@@ -251,8 +222,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         self._latest_monitor_time = now
 
-        # Fresh view: a resize decision is pinned to this snapshot.
-        reserved_resources = self._get_reserved_resources(recompute=True)
+        reserved_resources = self._get_reserved_resources()
         if reserved_resources is None:
             return NoopDecision()
 
@@ -273,13 +243,19 @@ class ElasticScalingPolicy(ScalingPolicy):
             # avoid entering an invalid state with fewer workers than the minimum.
             return NoopDecision()
 
-        decision = self._get_resize_decision(num_workers, reserved_resources)
-        if decision is None:
-            return NoopDecision()
-
         logger.info(
             "Detected changes in the cluster resources. "
             "Deciding to resize the worker group from "
             f"{worker_group_state.num_workers} -> {num_workers} workers."
         )
-        return decision
+        return self._get_resize_decision(num_workers)
+
+    # ---------------------------------------------------
+    # Methods for interacting with AutoscalingCoordinator
+    # ---------------------------------------------------
+
+    def _get_reserved_resources(self) -> ReservedResources:
+        """Get reserved resources from AutoscalingCoordinator.
+        Return None if there is an error."""
+        assert self._coordinator_client is not None
+        return self._coordinator_client.get_reserved_resources()
