@@ -139,14 +139,21 @@ def get_request_metadata(init_options, handle_options):
 
 def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
     node_id = ray.get_runtime_context().get_node_id()
-    try:
-        cluster_node_info_cache = create_cluster_node_info_cache(
-            GcsClient(address=ray.get_runtime_context().gcs_address)
-        )
-        cluster_node_info_cache.update()
-        az = cluster_node_info_cache.get_node_az(node_id)
-    except Exception:
-        az = None
+
+    az: Optional[str] = None
+    # Under Ray Client the caller runs outside the cluster, so it can't reach
+    # the head node's GCS server (e.g. when it's firewalled or port-forwarded).
+    # This lookup would then block for RAY_GCS_RPC_TIMEOUT_S on every new
+    # handle before falling back to `None` anyway, so skip it there.
+    if not inside_ray_client_context():
+        try:
+            cluster_node_info_cache = create_cluster_node_info_cache(
+                GcsClient(address=ray.get_runtime_context().gcs_address)
+            )
+            cluster_node_info_cache.update()
+            az = cluster_node_info_cache.get_node_az(node_id)
+        except Exception:
+            az = None
 
     return node_id, az
 
