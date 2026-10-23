@@ -112,14 +112,13 @@ rm /tmp/miniforge.sh
 # patch (conda-forge/conda-forge-repodata-patches-feedstock@d7dcb640); its other
 # 2026 builds require python>=3.11, and without a 3.10 build the solver drops
 # certifi, requests and conda itself and fails with RemoveError.
-# conda-forge pip 26.2.2 requires python>=3.11, so 3.10 installs it from PyPI
-# after the conda step.
 # TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
-CONDA_PYTHON_EXTRA_SPECS=("certifi=2026.10.19")
-if [[ "${PYTHON_VERSION}" != "3.10" ]]; then
-    CONDA_PYTHON_EXTRA_SPECS+=("pip=26.2.2")
+CONDA_PIP_SPEC=("pip=26.2.2")
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    # conda-forge pip 26.2.2 requires python>=3.11; 3.10 installs it from PyPI below.
+    CONDA_PIP_SPEC=()
 fi
-$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3.4.6" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
+$HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION "libffi>=3.4.6" "certifi=2026.10.19" "${CONDA_PIP_SPEC[@]}"
 $HOME/anaconda3/bin/conda clean -y --all
 
 # Install uv
