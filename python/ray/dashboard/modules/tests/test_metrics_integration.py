@@ -36,7 +36,7 @@ def auth_env(monkeypatch, tmp_path):
         "RAY_AUTH_MODE",
         "RAY_AUTH_TOKEN",
         "RAY_AUTH_TOKEN_PATH",
-        "RAY_AUTH_METRICS_DISABLED",
+        "RAY_AUTH_SKIP_METRICS",
     ):
         monkeypatch.delenv(var, raising=False)
     yield tmp_path / ".ray" / "auth_token"
@@ -54,7 +54,7 @@ def _enable_token_auth(monkeypatch):
     [
         (None, "401 Unauthorized"),
         ("0", "401 Unauthorized"),
-        ("true", "401 Unauthorized"),
+        ("true", "200 OK"),
         ("1", "200 OK"),
     ],
 )
@@ -63,9 +63,9 @@ def test_metrics_wsgi_auth_can_be_disabled_explicitly(
 ):
     monkeypatch.setattr(auth_utils, "is_token_auth_enabled", lambda: True)
     if metrics_auth_disabled is None:
-        monkeypatch.delenv("RAY_AUTH_METRICS_DISABLED", raising=False)
+        monkeypatch.delenv("RAY_AUTH_SKIP_METRICS", raising=False)
     else:
-        monkeypatch.setenv("RAY_AUTH_METRICS_DISABLED", metrics_auth_disabled)
+        monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", metrics_auth_disabled)
 
     def metrics_app(environ, start_response):
         start_response("200 OK", [])
@@ -84,7 +84,7 @@ def test_prometheus_authorization_config_omitted_when_metrics_auth_disabled(
     auth_env, monkeypatch
 ):
     monkeypatch.setenv("RAY_AUTH_MODE", "token")
-    monkeypatch.setenv("RAY_AUTH_METRICS_DISABLED", "1")
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
     reset_auth_token_state()
     assert get_prometheus_authorization_config() == ""
 
@@ -93,6 +93,16 @@ def test_prometheus_authorization_config_empty_when_auth_disabled(
     auth_env, monkeypatch
 ):
     monkeypatch.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    assert get_prometheus_authorization_config() == ""
+
+
+@pytest.mark.parametrize("auth_mode", ["token", "disabled"])
+def test_prometheus_authorization_config_empty_when_metrics_auth_skipped(
+    auth_env, monkeypatch, auth_mode
+):
+    monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
+    monkeypatch.setenv("RAY_AUTH_MODE", auth_mode)
     reset_auth_token_state()
     assert get_prometheus_authorization_config() == ""
 
@@ -236,6 +246,8 @@ def test_launch_prometheus_warns_when_no_token_found(
 
     # An explicit opt-out is intended, so only the unset mode warns.
     assert ("401" in caplog.text) == (auth_mode is None)
+    # The launcher can't see whether the cluster's nodes skip metrics auth.
+    assert ("RAY_AUTH_SKIP_METRICS" in caplog.text) == (auth_mode is None)
 
 
 def test_launch_prometheus_exits_cleanly_when_config_write_fails(
@@ -356,7 +368,7 @@ def test_dashboard_prometheus_config_has_no_authorization_block(auth_env, monkey
 DISCOVERY_FILE_PATH = "/tmp/ray/prom_metrics_service_discovery.json"
 
 
-@pytest.mark.parametrize("token_source", ["file", "env"])
+@pytest.mark.parametrize("token_source", ["file", "env", "env_skip_metrics"])
 def test_launch_prometheus_scrapes_token_auth_cluster(
     auth_env, monkeypatch, capsys, token_source
 ):
@@ -369,6 +381,8 @@ def test_launch_prometheus_scrapes_token_auth_cluster(
         monkeypatch.setenv("RAY_AUTH_TOKEN_PATH", str(token_file))
     else:
         monkeypatch.setenv("RAY_AUTH_TOKEN", token)
+    if token_source == "env_skip_metrics":
+        monkeypatch.setenv("RAY_AUTH_SKIP_METRICS", "1")
     _enable_token_auth(monkeypatch)
 
     cluster = Cluster()
@@ -405,6 +419,9 @@ def test_launch_prometheus_scrapes_token_auth_cluster(
             (config,) = written_configs
             assert config.stat().st_mode & 0o777 == 0o600
             assert f"credentials: '{token}'" in config.read_text()
+        if token_source == "env_skip_metrics":
+            # No authorization block, so Prometheus runs the bundled config as is.
+            assert written_configs == []
 
         def all_targets_up():
             try:

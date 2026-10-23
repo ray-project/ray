@@ -3,12 +3,14 @@ import os
 import threading
 from typing import Callable, Dict, List, Optional, Union
 
+from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
 from ray.experimental.sandbox.backend.base import (
     ExecResult,
     SandboxStatus,
 )
 from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
-from ray.experimental.sandbox.config import SandboxConfig
+from ray.experimental.sandbox.config import SandboxConfig, parse_memory_bytes
+from ray.experimental.sandbox.exceptions import SandboxCreationError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
 
@@ -43,6 +45,39 @@ class SandboxRuntime:
             Extracted image directory path.
         """
         return self._image_manager.pull_image(image, timeout_seconds=timeout_seconds)
+
+    def check_resources(
+        self,
+        cpu: float = 0.0,
+        memory: Union[str, int, float] = 0,
+    ) -> None:
+        """Reject unsupported resource limits before downloading an image.
+
+        Args:
+            cpu: CPU limit to enforce. Zero means no limit.
+            memory: Memory limit to enforce, such as "512Mi". Zero means no limit.
+        """
+        try:
+            config = SandboxConfig(image="resource-preflight", cpu=cpu, memory=memory)
+            memory_bytes = parse_memory_bytes(config.memory) or 0
+            if config.cpu > 0 or memory_bytes > 0:
+                SandboxCgroupManager().check(config.cpu, memory_bytes)
+        except Exception as err:
+            raise SandboxCreationError(
+                f"Cannot enforce sandbox resources: {err}"
+            ) from err
+
+    def get_termination_reason(self, instance_id: str) -> Optional[str]:
+        """Report an unexpected runtime exit, including a cgroup OOM kill.
+
+        Args:
+            instance_id: Sandbox instance ID.
+
+        Returns:
+            Why the sandbox stopped unexpectedly, or None if it's running or
+            this runtime no longer tracks it.
+        """
+        return self._backend.get_termination_reason(instance_id)
 
     def create(
         self,
@@ -133,7 +168,6 @@ class SandboxRuntime:
             disk=disk,
             **kwargs,
         )
-        self._image_manager.pull_image(cfg.image, timeout_seconds=cfg.timeout_seconds)
         instance_id = self._backend.create_sandbox(cfg)
         if cfg.ttl_seconds is not None and cfg.ttl_seconds > 0:
             timer = threading.Timer(cfg.ttl_seconds, self._expire, args=(instance_id,))

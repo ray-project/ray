@@ -1,4 +1,3 @@
-import os
 import socket
 import threading
 from http.cookies import CookieError, SimpleCookie
@@ -86,19 +85,18 @@ def get_token_auth_middleware(
 
 
 def get_token_auth_wsgi_app(app):
-    """Wrap a WSGI app so it requires the token when token auth is on.
+    """Wrap a metrics WSGI app so it requires the token when token auth is on,
+    unless RAY_AUTH_SKIP_METRICS is set.
 
     Accepts the same token sources as the dashboard. A missing token gets 401
     with ``WWW-Authenticate: Bearer``, a wrong one 403.
     """
 
     def token_auth_app(environ, start_response):
-        # Metrics may be exposed without a token when explicitly requested.
-        # This wrapper is only used by Ray's metrics WSGI servers.
-        if os.environ.get("RAY_AUTH_METRICS_DISABLED") == "1":
-            return app(environ, start_response)
-
-        if not auth_utils.is_token_auth_enabled():
+        if (
+            not auth_utils.is_token_auth_enabled()
+            or auth_utils.is_metrics_auth_skipped()
+        ):
             return app(environ, start_response)
 
         auth_header = environ.get("HTTP_AUTHORIZATION") or environ.get(
