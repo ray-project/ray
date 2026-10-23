@@ -507,12 +507,23 @@ void RedisAsyncContext::AddRead() {
 }
 
 void RedisAsyncContext::AddWrite() {
+  // hiredis asks for a write event after every command it queues, and more
+  // commands can be queued before the io_service gets to the first request: a
+  // write and its watermark marker always are, and concurrent submitters often
+  // are. One outstanding request arms the socket for all of them, since the
+  // write handler flushes everything queued by then. Posting one per command
+  // instead costs a wakeup of the io_service thread each.
+  if (write_dispatch_pending_.exchange(true)) {
+    return;
+  }
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
   io_service_.dispatch(
       [this, alive = std::weak_ptr<bool>(alive_)] {
         if (alive.expired()) {
           return;
         }
+        // Clear before arming: a command queued from here on posts again.
+        write_dispatch_pending_ = false;
         write_requested_ = true;
         Operate();
       },

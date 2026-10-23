@@ -266,6 +266,9 @@ class RedisAsyncContext {
   bool read_in_progress_{false};
   // A write is currently in progress
   bool write_in_progress_{false};
+  /// An addWrite request is posted to the io_service and has not run yet. Set
+  /// by submitting threads, cleared on the io_service thread.
+  std::atomic<bool> write_dispatch_pending_{false};
   /// Bumped every time a new raw context, and with it a new socket, is
   /// adopted. A socket operation queued against an earlier socket must not
   /// touch the flags above once they describe a different connection.
