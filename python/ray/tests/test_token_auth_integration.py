@@ -1001,11 +1001,11 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
 @pytest.mark.parametrize(
     "headers, expected_status",
     [
-        ([("Authorization", "Bearer t")], 401),
-        ([("Authorization", "bearer t")], 401),
-        ([("Authorization", "Basic dXNlcjpwYXNz")], 401),
-        ([("X-Ray-Authorization", "Bearer t")], 401),
-        ([("Authorization", ""), ("Authorization", "Bearer t")], 401),
+        ([("Authorization", "Bearer t")], 400),
+        ([("Authorization", "bearer t")], 400),
+        ([("Authorization", "Basic dXNlcjpwYXNz")], 400),
+        ([("X-Ray-Authorization", "Bearer t")], 400),
+        ([("Authorization", ""), ("Authorization", "Bearer t")], 400),
         ([("Authorization", "")], 200),
         ([("X-Ray-Authorization", "")], 200),
         ([("Cookie", "ray-authentication-token=t")], 200),
@@ -1042,7 +1042,7 @@ def test_token_auth_middleware_with_auth_disabled(
         response = asyncio.run(middleware(request, handler))
 
     assert response.status == expected_status
-    if expected_status == 401:
+    if expected_status == 400:
         assert _AUTH_MODE_MISMATCH in response.text
 
 
@@ -1089,7 +1089,7 @@ def test_dashboard_on_auth_disabled_cluster(disabled_head_with_token_file):
             f"{dashboard_url}{path}", headers=headers, cookies=cookies, timeout=5
         )
         if expect_mismatch:
-            assert response.status_code == 401, (path, headers, response.text)
+            assert response.status_code == 400, (path, headers, response.text)
             assert _AUTH_MODE_MISMATCH in response.text
         else:
             assert response.status_code == 200, (path, headers, cookies, response.text)

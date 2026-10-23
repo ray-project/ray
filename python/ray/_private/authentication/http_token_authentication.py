@@ -57,7 +57,7 @@ def get_token_auth_middleware(
                     "because auth is disabled"
                 )
                 return aiohttp_module.web.Response(
-                    status=401,
+                    status=400,
                     text=authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE,
                 )
             return await handler(request)
@@ -219,10 +219,14 @@ def get_auth_headers_if_auth_enabled(user_headers: Dict[str, str]) -> Dict[str, 
 def format_authentication_http_error(status: int, body: str) -> Optional[str]:
     """Return a user-friendly authentication error message, if applicable."""
 
+    # The fix is to opt out of auth, so the help on getting a token would mislead.
+    if (
+        status == 400
+        and authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE in body
+    ):
+        return body
+
     if status == 401:
-        # The fix is to opt out of auth, so the help on getting a token would mislead.
-        if authentication_constants.AUTH_MODE_MISMATCH_ERROR_MESSAGE in body:
-            return body
         return "Authentication required: {body}\n\n{details}".format(
             body=body,
             details=authentication_constants.TOKEN_AUTH_ENABLED_BUT_NO_TOKEN_FOUND_ERROR_MESSAGE,
