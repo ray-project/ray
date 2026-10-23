@@ -867,9 +867,9 @@ defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
     --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
     # via nbconvert
-distlib==0.4.0 \
-    --hash=sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16 \
-    --hash=sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
+distlib==0.4.3 \
+    --hash=sha256:4b0ce306c966eb73bc3a7b6abad017c556dadd92c44701562cd528ac7fde4d5b \
+    --hash=sha256:f152097224a0ae24be5a0f6bae1b9359af82133bce63f98a95f86cae1aede9ed
     # via virtualenv
 dm-tree==0.1.10 \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
@@ -1791,9 +1791,9 @@ kubernetes==35.0.0 \
     --hash=sha256:39e2b33b46e5834ef6c3985ebfe2047ab39135d41de51ce7641a7ca5b372a13d \
     --hash=sha256:3d00d344944239821458b9efd484d6df9f011da367ecb155dadf9513f05f09ee
     # via anyscale
-langchain-core==0.3.84 \
-    --hash=sha256:814b75bfe67a8460a53f5839bae9505bbfffc7af6f1aa0a5155715563f5cc490 \
-    --hash=sha256:d0b3a7b6473e30a2b3d4588ee09dc6471b8d38c46cd48f3e7c3d1ab6547f63cb
+langchain-core==0.3.76 \
+    --hash=sha256:46e0eb48c7ac532432d51f8ca1ece1804c82afe9ae3dcf027b867edadf82b3ec \
+    --hash=sha256:71136a122dd1abae2c289c5809d035cf12b5f2bb682d8a4c1078cd94feae7419
     # via langchain-text-splitters
 langchain-text-splitters==0.3.9 \
     --hash=sha256:7cd1e5a3aaf609979583eeca2eb34177622570b8fa8f586a605c6b1c34e7ebdb \
@@ -2578,9 +2578,9 @@ overrides==7.7.0 ; python_full_version < '3.12' \
     --hash=sha256:55158fa3d93b98cc75299b1e67078ad9003ca27945c76162c1c0766d6f91820a \
     --hash=sha256:c7ed9d062f78b8e4c1a7b70bd8796b35ead4d9f510227ef9c5dc7626c60d7e49
     # via jupyter-server
-packaging==25.0 \
-    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
-    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
+packaging==26.3 \
+    --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
     # via
     #   anyscale
     #   ipykernel
@@ -2596,6 +2596,7 @@ packaging==25.0 \
     #   ray
     #   taskiq
     #   tensorboardx
+    #   virtualenv
 pandas==3.0.2 \
     --hash=sha256:01f31a546acd5574ef77fe199bc90b55527c225c20ccda6601cf6b0fd5ed597c \
     --hash=sha256:0555c5882688a39317179ab4a0ed41d3ebc8812ab14c69364bbee8fb7a3f6288 \
@@ -2667,7 +2668,6 @@ platformdirs==4.9.6 \
     --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
     #   jupyter-core
-    #   python-discovery
     #   textual
     #   virtualenv
 pluggy==1.6.0 \
@@ -3155,9 +3155,9 @@ python-dateutil==2.9.0.post0 \
     #   jupyter-client
     #   kubernetes
     #   pandas
-python-discovery==1.2.2 \
-    --hash=sha256:876e9c57139eb757cb5878cbdd9ae5379e5d96266c99ef731119e04fffe533bb \
-    --hash=sha256:e1ae95d9af875e78f15e19aed0c6137ab1bb49c200f21f5061786490c9585c7a
+python-discovery==1.6.1 \
+    --hash=sha256:cf87d3627dfb4412437fdd5b13eae402607722998d21567993aedbc59b23c15e \
+    --hash=sha256:d43fcdef879fe795352bd13ccf8d185ba5a9f86f36cfcd00529f596e737442b3
     # via virtualenv
 python-dotenv==1.2.2 \
     --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
@@ -3711,8 +3711,9 @@ traitlets==5.14.3 \
     #   nbclient
     #   nbconvert
     #   nbformat
-typing-extensions==4.15.0 \
-    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
+    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
     #   aiohttp
     #   aiosignal
@@ -3799,9 +3800,7 @@ uuid-utils==0.14.1 \
     --hash=sha256:ce6743ba194de3910b5feb1a62590cd2587e33a73ab6af8a01b642ceb5055862 \
     --hash=sha256:da2234387b45fde40b0fedfee64a0ba591caeea9c48c7698ab6e2d85c7991533 \
     --hash=sha256:fc27638c2ce267a0ce3e06828aff786f91367f093c80625ee21dad0208e0f5ba
-    # via
-    #   langchain-core
-    #   langsmith
+    # via langsmith
 uvicorn==0.46.0 \
     --hash=sha256:bbebbcbed972d162afca128605223022bedd345b7bc7855ce66deb31487a9048 \
     --hash=sha256:fb9da0926999cc6cb22dc7cd71a94a632f078e6ae47ff683c5c420750fb7413d
@@ -3864,9 +3863,9 @@ vine==5.1.0 \
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.3.0 \
-    --hash=sha256:4d28ee41f6d9ec8f1f00cd472b9ffbcedda1b3d3b9a575b5c94a2d004fd51bd7 \
-    --hash=sha256:733750db978ec95c2d8eb4feadaa57091002bce404cb39ba69899cf7bd28944e
+virtualenv==21.14.12 \
+    --hash=sha256:7820aeaef23f1f59a96458edfc7f9d3deac937155718de15f1c9a64471e15551 \
+    --hash=sha256:bbcfb78e36c22ad70c6917c4aecb5e63477d3c138e9f88c946f320e31859c76a
     # via ray
 watchfiles==1.1.1 \
     --hash=sha256:00485f441d183717038ed2e887a7c868154f216877653121068107b227a2f64c \

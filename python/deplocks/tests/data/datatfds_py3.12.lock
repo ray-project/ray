@@ -511,9 +511,9 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:e78409ea72f5ac7d6b6f3d33d99426a94005254fa57e10617f430f9fd7c3a0a1 \
     --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
     # via ray
-distlib==0.4.0 \
-    --hash=sha256:9659f7d87e46584a30b5780e43ac7a2143098441670ff0a49d5f9034c54a6c16 \
-    --hash=sha256:feec40075be03a04501a973d81f633735b4b69f98b05450592310c0f401a4e0d
+distlib==0.4.3 \
+    --hash=sha256:4b0ce306c966eb73bc3a7b6abad017c556dadd92c44701562cd528ac7fde4d5b \
+    --hash=sha256:f152097224a0ae24be5a0f6bae1b9359af82133bce63f98a95f86cae1aede9ed
     # via virtualenv
 dm-tree==0.1.9 \
     --hash=sha256:12f4cc6cd52a39aa38ff31577b6d79b6136a9a89273a876bf62335c9f65c27bf \
@@ -636,10 +636,11 @@ fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:f68c551cf8a34b6460a3a0eba44bd7897ebfc820854e19970c52a76bf064a59f \
     --hash=sha256:fcb50e195ec981c92d0211a201704aecbd9e4f9451aea3a6f71ac5b1ec2c98cf
     # via cupy-cuda12x
-filelock==3.20.0 \
-    --hash=sha256:339b4732ffda5cd79b13f4e2711a31b0365ce445d95d243bb996273d072546a2 \
-    --hash=sha256:711e943b4ec6be42e1d4e6690b48dc175c822967466bb31c0c293f34334c13f4
+filelock==3.29.0 \
+    --hash=sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90 \
+    --hash=sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258
     # via
+    #   python-discovery
     #   ray
     #   virtualenv
 flatbuffers==25.9.23 \
@@ -1841,9 +1842,9 @@ ormsgpack==1.7.0 \
     --hash=sha256:e86124cdbc8ed249806347c2fba96843e8941122b161b429139a0c973d270de4 \
     --hash=sha256:f9967a7f3647ad118751abf090f8397fda3e4bca6833340cab95a3f2bec598cd
     # via ray
-packaging==25.0 \
-    --hash=sha256:29572ef2b1f17581046b3a2227d5c611fb25ec70ca1ba8554b24b0e69331a484 \
-    --hash=sha256:d443872c98d677bf60f6a1f2f8c1cb748e8fe762d2bf9d3148b5599295b0fc4f
+packaging==26.3 \
+    --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
     # via
     #   keras
     #   kombu
@@ -1852,6 +1853,7 @@ packaging==25.0 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
+    #   virtualenv
 pandas==2.3.3 \
     --hash=sha256:0242fe9a49aa8b4d78a4fa03acb397a58833ef6199e9aa40a95f027bb3a1b6e7 \
     --hash=sha256:1611aedd912e1ff81ff41c745822980c49ce4a7907537be8692c8dbc31924593 \
@@ -2002,9 +2004,9 @@ pillow==12.0.0 \
     --hash=sha256:fa3ed2a29a9e9d2d488b4da81dcb54720ac3104a20bf0bd273f1e4648aff5af9 \
     --hash=sha256:fb3096c30df99fd01c7bf8e544f392103d0795b9f98ba71a8054bcbf56b255f1
     # via tensorboard
-platformdirs==4.5.1 \
-    --hash=sha256:61d5cdcc6065745cdd94f0f878977f8de9437be93de97c1c12f853c9c0cdcbda \
-    --hash=sha256:d03afa3963c806a9bed9d5125c8f4cb2fdaf74a55ab60e5d59b3fde758104d31
+platformdirs==4.9.6 \
+    --hash=sha256:3bfa75b0ad0db84096ae777218481852c0ebc6c727b3168c1b9e0118e458cf0a \
+    --hash=sha256:e61adb1d5e5cb3441b4b7710bea7e4c12250ca49439228cc1021c00dcfac0917
     # via
     #   textual
     #   virtualenv
@@ -2408,6 +2410,10 @@ python-dateutil==2.9.0.post0 \
     # via
     #   celery
     #   pandas
+python-discovery==1.6.1 \
+    --hash=sha256:cf87d3627dfb4412437fdd5b13eae402607722998d21567993aedbc59b23c15e \
+    --hash=sha256:d43fcdef879fe795352bd13ccf8d185ba5a9f86f36cfcd00529f596e737442b3
+    # via virtualenv
 python-dotenv==1.2.1 \
     --hash=sha256:42667e897e16ab0d66954af0e60a9caa94f0fd4ecf3aaf6d2d260eec1aa36ad6 \
     --hash=sha256:b81ee9561e9ca4004139c6cbba3a238c32b03e4894671e181b671e8cb8425d61
@@ -2797,9 +2803,9 @@ tqdm==4.67.1 \
     # via
     #   etils
     #   tensorflow-datasets
-typing-extensions==4.15.0 \
-    --hash=sha256:0cea48d173cc12fa28ecabc3b837ea3cf6f38c6d1136f85cbaaf598984861466 \
-    --hash=sha256:f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548
+typing-extensions==4.16.0 \
+    --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
+    --hash=sha256:dc983d19a509c94dba722ee6abd33940f7c05a89e243c47e907eb4db6f1a43e5
     # via
     #   aiohttp
     #   aiosignal
@@ -2908,9 +2914,9 @@ vine==5.1.0 \
     #   amqp
     #   celery
     #   kombu
-virtualenv==20.35.4 \
-    --hash=sha256:643d3914d73d3eeb0c552cbb12d7e82adf0e504dbf86a3182f8771a153a1971c \
-    --hash=sha256:c21c9cede36c9753eeade68ba7d523529f228a403463376cf821eaae2b650f1b
+virtualenv==21.14.12 \
+    --hash=sha256:7820aeaef23f1f59a96458edfc7f9d3deac937155718de15f1c9a64471e15551 \
+    --hash=sha256:bbcfb78e36c22ad70c6917c4aecb5e63477d3c138e9f88c946f320e31859c76a
     # via ray
 watchfiles==1.1.1 \
     --hash=sha256:00485f441d183717038ed2e887a7c868154f216877653121068107b227a2f64c \
