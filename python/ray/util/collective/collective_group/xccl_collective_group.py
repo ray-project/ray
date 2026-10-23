@@ -52,10 +52,12 @@ def _store_key(group_name: str) -> str:
 
     The internal KV is shared by the whole cluster, so the Ray namespace is part
     of the key: same-named groups in different namespaces must not see (or
-    delete) each other's address.
+    delete) each other's address. The namespace is length-prefixed so that
+    (namespace, group) pairs map to keys one-to-one even when either contains
+    ``:``.
     """
     namespace = ray.get_runtime_context().namespace
-    return f"xccl_collective_store:{namespace}:{group_name}"
+    return f"xccl_collective_store:{len(namespace)}:{namespace}:{group_name}"
 
 
 def _xpu_available() -> bool:

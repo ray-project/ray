@@ -26,6 +26,14 @@ def test_store_key_is_isolated_per_namespace():
     assert "job_a" in key_a and "default" in key_a
 
 
+def test_store_key_is_unambiguous_when_names_contain_the_separator():
+    with _namespace("a:b"):
+        key_1 = xccl._store_key("c")
+    with _namespace("a"):
+        key_2 = xccl._store_key("b:c")
+    assert key_1 != key_2
+
+
 @pytest.mark.parametrize(
     "dist_available,compiled,xpu,expected",
     [
