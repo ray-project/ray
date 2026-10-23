@@ -248,7 +248,7 @@ tuner = Tuner(
 
 During the tuning run, Tune [callbacks](tune-logging) can access every metric logged with `tune.report`. Ray Tune provides [built-in integrations](loggers-docstring) with popular frameworks, such as MLflow, Weights & Biases, and CometML. You can also create your own callbacks with the [Callback API](tune-callbacks-docs).
 
-Pass callbacks in the `callbacks` argument of the `RunConfig` that you pass to the `Tuner`.
+Pass callbacks in the `callback` argument of the `RunConfig` that you pass to the `Tuner`.
 
 In this example, use the MLflow callback to track the progress of the tuning run and the changing value of `metric`. To use this callback, install `mlflow`.
 
@@ -303,7 +303,7 @@ You can also configure how Ray Tune handles checkpoints. For example, you can co
 Tune checkpoints the experiment state itself separately. For more details, see {ref}`tune-persisted-experiment-data`.
 ```
 
-In this example, you want to resume training from the latest checkpoint and save the `trained_model` in a checkpoint every iteration. To do this, use `tune.get_checkpoint()` and the `Checkpoint` API.
+In this example, you want to resume training from the latest checkpoint and save the `trained_model` in a checkpoint every iteration. To do this, use the `session` and `Checkpoint` APIs.
 
 ```python
 import os

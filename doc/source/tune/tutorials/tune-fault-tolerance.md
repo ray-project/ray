@@ -10,7 +10,7 @@ myst:
 
 In distributed machine learning experiments, fault tolerance can help mitigate the impact of node failures caused by out-of-memory and out-of-disk issues.
 
-Fault tolerance preserves training progress when a node fails, which saves time and resources. In a distributed setting, it also gives you access to the cost savings of preemptible spot instance nodes.
+Fault tolerance can preserve training progress when a node fails, which saves time and resources. In a distributed setting, it also gives you access to the cost savings of preemptible spot instance nodes.
 
 :::{seealso}
 Before you enable fault tolerance in a *distributed* Tune experiment, configure persistent storage that consolidates all trial results and checkpoints. See {ref}`tune-storage-options`.

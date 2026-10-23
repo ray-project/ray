@@ -83,7 +83,7 @@ tuner = tune.Tuner(
 tuner.fit()
 ```
 
-In this example, you can find all experiment results in the shared storage at `/mnt/path/to/shared/storage/experiment_name` for further processing.
+In this example, you can find all experiment results in the shared storage at `/path/to/shared/storage/experiment_name` for further processing.
 
 (tune-default-syncing)=
 
@@ -110,7 +110,7 @@ tuner.fit()
 
 In this example, you can find all experiment results locally at `/tmp/custom/storage/path/experiment_name` for further processing.
 
-#### On a multi-node cluster
+#### On a multi-node cluster (deprecated)
 
 :::{warning}
 Using the head node's local filesystem as the persistent storage location on a multi-node cluster is deprecated. By default, if you save trial checkpoints on a multi-node cluster without NFS or cloud storage set up, Tune raises an error. See [GitHub issue 37177](https://github.com/ray-project/ray/issues/37177) for more information.

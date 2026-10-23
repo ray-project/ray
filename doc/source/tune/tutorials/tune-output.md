@@ -22,7 +22,7 @@ tuner = tune.Tuner(trainable, run_config=RunConfig(num_samples=2))
 results = tuner.fit()
 ```
 
-You can specify the `storage_path` and the experiment `name`:
+You can specify the `storage_path` and `trainable_name`:
 
 ```python
 # This logs to 2 different trial folders:

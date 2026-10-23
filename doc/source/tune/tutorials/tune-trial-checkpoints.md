@@ -76,7 +76,7 @@ In the preceding example, when `detect_instance_preemption` returns `True`, the 
 
 ### Checkpoint manually from a Tuner callback
 
-As with {ref}`manual checkpointing from the trainable <tune-class-trainable-checkpointing_manual-checkpointing>`, you can trigger checkpointing from {class}`Tuner <ray.tune.Tuner>` {class}`Callback <ray.tune.Callback>` methods. In the {meth}`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback, set the `result["should_checkpoint"] = True` flag, or `result[tune.result.SHOULD_CHECKPOINT] = True`. Unlike checkpointing in the class API, this approach decouples checkpointing logic from training logic. It also gives you access to all {class}`Trial <ray.tune.experiment.trial.Trial>` instances, so you can build more complex checkpointing strategies.
+As with {ref}`manual checkpointing from the trainable <tune-class-trainable-checkpointing_manual-checkpointing>`, you can trigger checkpointing from {class}`Tuner <ray.tune.Tuner>` {class}`Callback <ray.tune.callback.Callback>` methods. In the {meth}`on_trial_result() <ray.tune.Callback.on_trial_result>` method of your custom callback, set the `result["should_checkpoint"] = True` flag, or `result[tune.result.SHOULD_CHECKPOINT] = True`. Unlike checkpointing in the class API, this approach decouples checkpointing logic from training logic. It also gives you access to all {class}`Trial <ray.tune.Trial>` instances, so you can build more complex checkpointing strategies.
 
 ```{literalinclude} /tune/doc_code/trial_checkpoint.py
 :language: python
@@ -96,7 +96,7 @@ To checkpoint trials every *N* iterations, set `checkpoint_frequency=N`, as in t
 
 ### Checkpoint at termination
 
-The `checkpoint_frequency` might not coincide with the exact end of a trial. To also create a checkpoint at the end of a trial, set `checkpoint_at_end=True`:
+The `checkpoint_frequency` might not coincide with the exact end of an experiment. To also create a checkpoint at the end of a trial, set `checkpoint_at_end=True`:
 
 ```{literalinclude} /tune/doc_code/trial_checkpoint.py
 :language: python
