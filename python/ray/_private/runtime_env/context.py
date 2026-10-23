@@ -113,7 +113,11 @@ def _create_env_file(env_vars: Dict[str, str]) -> Optional[int]:
             )
         )
         while data:
-            data = data[os.write(fd, data) :]
+            written = os.write(fd, data)
+            if written == 0:
+                raise OSError("os.write returned 0 bytes written")
+            data = data[written:]
+        os.lseek(fd, 0, os.SEEK_SET)
         os.set_inheritable(fd, True)
     except BaseException:
         os.close(fd)
