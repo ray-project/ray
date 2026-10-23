@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, call
 
 import pyarrow as pa
@@ -648,6 +649,8 @@ def test_timestamp_cast_preserves_sliced_nested_containers(shape, chunked):
     micros = [-2, -1, -1, -1, 0, 0, 0, 1, 1]
     source_type = pa.timestamp("ns")
     target_type = pa.timestamp("us")
+    data: List[Any]
+    expected: List[Any]
     if shape == "timestamp":
         data, expected = [None] + ticks, [None] + micros
         prefix = suffix = 9999
@@ -1258,7 +1261,8 @@ def test_orc_positional_mixed_names_missing_projection_and_limit(tmp_path):
     result = pa.concat_tables(
         list(scanner.create_reader().read(_manifest_for_paths(paths)))
     )
-    assert result.to_pylist() == [{"missing": None}] * 3
+    missing_row: Dict[str, Optional[int]] = {"missing": None}
+    assert result.to_pylist() == [missing_row] * 3
     # Empty projection must preserve rows across multiple batches and files.
     scanner = source.create_scanner(source.infer_schema(None)).prune_columns([])
     from dataclasses import replace
@@ -1460,6 +1464,7 @@ def test_parquet_schema_read_closes_file(
         assert not parquet_file.closed
         if fail_schema:
             raise OSError("schema lookup failed")
+        assert schema_getter is not None
         return schema_getter(parquet_file)
 
     monkeypatch.setattr(pq.ParquetFile, "schema_arrow", property(read_schema))
@@ -1516,6 +1521,7 @@ def test_orc_rejects_decoded_pickle_before_filter(tmp_path, monkeypatch, nested)
         ),
     )
     reader = scanner.create_reader()
+    assert isinstance(reader, hive_direct._HiveOrcFileReader)
     with pytest.raises(ValueError, match="arrow_pickled_object"):
         list(reader._iter_fragment_tables(fragment, {}))
     check_pickle.assert_called_once()
@@ -1657,12 +1663,18 @@ def test_scanner_options_preserve_native_behavior(tmp_path, monkeypatch, file_fo
     assert scanner.schema == schema
     assert scanner.partitioning is None
     reader = scanner.create_reader()
-    native_reader = reader._reader if file_format == "parquet" else reader
-    assert native_reader._partition_parser is None
+    assert isinstance(
+        reader,
+        (
+            hive_direct._HiveParquetSchemaValidatingReader,
+            hive_direct._HiveOrcFileReader,
+        ),
+    )
+    assert reader._partition_parser is None
     # Parquet consumes this option; ORC retains its native factory's default.
     expected_prefixes = ignore_prefixes if file_format == "parquet" else None
     assert scanner.ignore_prefixes == expected_prefixes
-    assert native_reader._ignore_prefixes == expected_prefixes
+    assert reader._ignore_prefixes == expected_prefixes
 
 
 @pytest.mark.parametrize(
@@ -1676,7 +1688,11 @@ def test_empty_table_keeps_declared_schema(tmp_path, file_format, merge_schema):
     assert source.infer_schema(None) == declared
     if merge_schema:
         assert (
-            list(source._get_file_indexer().list_file_infos(pa.array(source.paths)))
+            list(
+                source._get_file_indexer().list_file_infos(
+                    pa.array(source.paths), filesystem=None
+                )
+            )
             == []
         )
 
@@ -1844,9 +1860,12 @@ def test_full_schema_mode_retains_the_hive_file_set(tmp_path, file_format):
     sampled = HiveDirectDatasource(table)
     assert sampled._retained is None
     full = HiveDirectDatasource(table, merge_schema=True)
+    assert full._retained is not None
     assert len(full._retained) == 17
     _write_table_file(tmp_path / "published_later", file_format, pa.table({"id": [99]}))
-    infos = list(full._get_file_indexer().list_file_infos(pa.array(full.paths)))
+    infos = list(
+        full._get_file_indexer().list_file_infos(pa.array(full.paths), filesystem=None)
+    )
     assert len(infos) == 17
     assert not any(info.path.endswith("published_later") for info in infos)
 

@@ -8,6 +8,7 @@ import uuid
 from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any, Dict, List, Optional, Union, cast
 from unittest.mock import patch
 from urllib.parse import urlparse
 
@@ -18,6 +19,7 @@ import pytest
 from pyarrow import orc
 
 import ray
+from ray.actor import ActorHandle
 from ray.data import DataContext
 from ray.data.tests.datasource.test_hive_integration import (
     _connection_options,
@@ -240,12 +242,12 @@ def test_orc_rename_matches_real_hs2_mapping_boundary(direct_runtime, positional
             == reference
         )
         statements = []
-        kwargs = dict(
+        dataset = ray.data.read_hive(
+            table,
             connection_factory=_metadata_only_factory(factory, statements),
             read_mode="direct",
             filesystem=filesystem,
         )
-        dataset = ray.data.read_hive(table, **kwargs)
         assert sorted(dataset.take_all(), key=lambda row: row["id"]) == reference
         assert dataset.schema().base_schema == pa.schema(
             [("id", pa.int32()), ("new_value", pa.int64())]
@@ -991,17 +993,17 @@ def test_orc_positional_missing_fields_count_projection_and_limit(direct_runtime
         )
         result = sorted(dataset.take_all(), key=lambda row: row["id"])
         assert result == _reference_rows(cursor, table)
+        old_row: Dict[str, Optional[int]] = {"id": 1, "added": None}
         assert (
             result
-            == [{"id": 1, "added": None}] * 2
-            + [{"id": 2, "added": None}]
-            + [{"id": 3, "added": 30}] * 2
+            == [old_row] * 2 + [{"id": 2, "added": None}] + [{"id": 3, "added": 30}] * 2
         )
         assert dataset.schema().base_schema == pa.schema(
             [("id", pa.int64()), ("added", pa.int64())]
         )
         missing = dataset.filter(expr=col("id") < 3).select_columns(["added"])
-        assert missing.take_all() == [{"added": None}] * 3
+        missing_row: Dict[str, Optional[int]] = {"added": None}
+        assert missing.take_all() == [missing_row] * 3
         assert dataset.filter(expr=col("id") >= 3).select_columns(["added"]).limit(
             1
         ).take_all() == [{"added": 30}]
@@ -1262,22 +1264,27 @@ def test_nonpartitioned_native_read(direct_runtime, backend, file_format):
                 connection_factory, statements
             )
 
-            @ray.remote(num_cpus=0)
             class ReadObserver:
                 def __init__(self):
-                    self.pids = set()
+                    self.pids: set[int] = set()
 
-                def record(self, pid):
+                def record(self, pid: int) -> int:
                     self.pids.add(pid)
                     return len(self.pids)
 
-            observer = ReadObserver.remote()
+            observer_handle = cast(
+                ActorHandle[Any],
+                ray.remote(ReadObserver).options(num_cpus=0).remote(),
+            )
+            observer = observer_handle
 
             def _tag_read_worker(batch):
                 # Defined locally so worker deserialization doesn't depend on
                 # pytest's bare test-module import name. It must fuse with ReadFiles.
                 deadline = time.monotonic() + 20
-                while ray.get(observer.record.remote(os.getpid())) < 2:
+                while (
+                    cast(int, ray.get(observer_handle.record.remote(os.getpid()))) < 2
+                ):
                     if time.monotonic() >= deadline:
                         raise AssertionError(
                             "Two native reading workers did not participate"
@@ -1444,7 +1451,7 @@ def test_parquet_merge_schema_retains_nonempty_file_set(direct_runtime):
         factory,
     ):
         for index in range(17):
-            values = {"id": [index]}
+            values: Dict[str, Union[List[int], List[str]]] = {"id": [index]}
             if index == 16:
                 values["late"] = ["present"]
             with filesystem.open_output_stream(f"{path}/{index:06d}_0") as stream:

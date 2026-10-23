@@ -9,7 +9,18 @@ from dataclasses import (
     fields as dataclass_fields,
     replace,
 )
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    cast,
+)
 from urllib.parse import urlsplit
 
 import pyarrow as pa
@@ -29,6 +40,9 @@ from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import _connect
 from ray.data._internal.datasource_v2.formats.hive.hive_schema import hive_type_to_arrow
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    ParquetFileReader,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
     ParquetScanner,
 )
@@ -42,10 +56,6 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileInfo,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
-from ray.data._internal.datasource_v2.interfaces.reader import Reader
-from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
-    SupportsMetadata,
-)
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
@@ -156,12 +166,12 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
 
 
 def _parse_file_table(rows) -> HiveFileTable:
-    columns = []
-    details = {}
-    table_properties = {}
-    serde_properties = {}
+    columns: List[pa.Field] = []
+    details: Dict[str, str] = {}
+    table_properties: Dict[str, str] = {}
+    serde_properties: Dict[str, str] = {}
     in_columns = True
-    properties = None
+    properties: Optional[Dict[str, str]] = None
     for row in rows:
         if len(row) < 3:
             raise ValueError("Hive direct-read requires complete table metadata")
@@ -217,7 +227,7 @@ def _parse_file_table(rows) -> HiveFileTable:
     if provider not in ("hive", "parquet", "orc"):
         raise ValueError("Hive direct-read does not support this table provider")
     file_format = _FORMATS.get(
-        (details.get("InputFormat:"), details.get("SerDe Library:"))
+        (details.get("InputFormat:", ""), details.get("SerDe Library:", ""))
     )
     positional_options = ("parquet.column.index.access",)
     if file_format != "orc":
@@ -295,8 +305,8 @@ def _schema_fields_by_name(
     required_names: Optional[Set[str]] = None,
     *,
     normalize=str.casefold,
-):
-    by_name = {}
+) -> Dict[str, pa.Field]:
+    by_name: Dict[str, pa.Field] = {}
     for field in schema:
         folded = normalize(field.name)
         if folded in by_name:
@@ -310,7 +320,10 @@ def _schema_fields_by_name(
 def _sampled_column_names(hive_schema: pa.Schema, file_schema: pa.Schema):
     by_name = _schema_fields_by_name(file_schema, "file schema", normalize=str.lower)
     return {
-        field.name: by_name.get(field.name.lower(), field).name for field in hive_schema
+        field.name: by_name[field.name.lower()].name
+        if field.name.lower() in by_name
+        else field.name
+        for field in hive_schema
     }
 
 
@@ -479,29 +492,28 @@ def _required_hive_fields(reader, sampled_names: dict) -> Optional[Set[str]]:
     }
 
 
-class _HiveSchemaValidatingReader(Reader[FileManifest]):
-    """Validate per-file names, then delegate all decoding to Ray's reader."""
+class _HiveParquetSchemaValidatingReader(ParquetFileReader):
+    """Validate per-file names before native Parquet reading and metadata."""
 
     def __init__(
         self,
-        reader,
-        hive_schema,
-        sampled_names,
-        file_format,
+        *,
+        hive_schema: pa.Schema,
+        sampled_names: Dict[str, str],
+        **options,
     ):
-        self._reader = reader
+        super().__init__(**options)
         self._hive_schema = hive_schema
         self._sampled_names = sampled_names
-        self._file_format = file_format
 
     def read(self, input_split: FileManifest):
-        required_fields = _required_hive_fields(self._reader, self._sampled_names)
+        required_fields = _required_hive_fields(self, self._sampled_names)
         retryable_errors = DataContext.get_current().retried_io_errors
         for path in dict.fromkeys(str(path) for path in input_split.paths):
             file_schema = _read_physical_schema_with_retry(
                 path,
-                self._file_format,
-                self._reader._filesystem,
+                "parquet",
+                self._filesystem,
                 retryable_errors,
             )
             _validate_file_schema(
@@ -510,20 +522,7 @@ class _HiveSchemaValidatingReader(Reader[FileManifest]):
                 self._sampled_names,
                 required_fields=required_fields,
             )
-        yield from self._reader.read(input_split)
-
-
-class _HiveParquetSchemaValidatingReader(_HiveSchemaValidatingReader, SupportsMetadata):
-    """Preserve Parquet's metadata-only count optimization through the adapter."""
-
-    def read_metadata(self, file_manifest: FileManifest):
-        return self._reader.read_metadata(file_manifest)
-
-    def available_metadata(self):
-        return self._reader.available_metadata()
-
-    def get_target_metadata_batch_size(self):
-        return self._reader.get_target_metadata_batch_size()
+        yield from super().read(input_split)
 
 
 @dataclass(frozen=True)
@@ -535,10 +534,21 @@ class _HiveParquetScanner(ParquetScanner):
         kw_only=True, repr=False
     )
 
-    def create_reader(self):
-        reader = super().create_reader()
+    def create_reader(self) -> _HiveParquetSchemaValidatingReader:
         return _HiveParquetSchemaValidatingReader(
-            reader, self.hive_schema, dict(self.sampled_names), "parquet"
+            hive_schema=self.hive_schema,
+            sampled_names=dict(self.sampled_names),
+            batch_size=self.batch_size,
+            columns=list(self.columns) if self.columns is not None else None,
+            predicate=self.predicate,
+            limit=self.limit,
+            filesystem=self.filesystem,
+            partitioning=self.partitioning,
+            ignore_prefixes=self.ignore_prefixes,
+            target_block_size=self.target_block_size,
+            synthesized_columns=self.synthesized_columns,
+            schema=self.schema,
+            parquet_format_kwargs=dict(self.parquet_format_kwargs),
         )
 
 
@@ -698,6 +708,7 @@ class _HiveOrcFileReader(OrcFileReader):
             self._schema_evolution_case_sensitive,
             required,
         )
+        assert self._schema is not None
         fields = list(physical)
         projection = {}
         for field, index in zip(self._hive_schema, indices):
@@ -710,7 +721,7 @@ class _HiveOrcFileReader(OrcFileReader):
                 fields[index] = fields[index].with_type(target)
                 projection[field.name] = pds.field(index)
         # A reader can scan fragments concurrently. Keep schema and kwargs local.
-        kwargs = dict(scanner_kwargs)
+        kwargs: Dict[str, Any] = dict(scanner_kwargs)
         # The physical scan doesn't yet expose the Hive names used by predicates.
         kwargs.update(columns=projection, filter=None)
         scanner = fragment.scanner(schema=pa.schema(fields), **kwargs)
@@ -737,7 +748,7 @@ class _HiveOrcScanner(OrcScanner):
     tolerate_missing_schema: bool = dataclass_field(kw_only=True, default=True)
     schema_evolution_case_sensitive: bool = dataclass_field(kw_only=True, default=False)
 
-    def create_reader(self):
+    def create_reader(self) -> _HiveOrcFileReader:
         return _HiveOrcFileReader(
             hive_schema=self.hive_schema,
             sampled_names=dict(self.sampled_names),
@@ -778,10 +789,16 @@ def _cast_hive_timestamps(values, target_type: pa.DataType):
         # digits within the second. Correct only the negative fractional values.
         # Work in the target unit to avoid overflowing a nanosecond floor.
         restored = pc.cast(result, values.type)
-        return pc.if_else(
-            pc.less(values, restored),
-            pc.subtract_checked(result, pa.scalar(1, pa.duration(target_type.unit))),
-            result,
+        return pc.call_function(
+            "if_else",
+            [
+                pc.call_function("less", [values, restored]),
+                pc.call_function(
+                    "subtract_checked",
+                    [result, pa.scalar(1, pa.duration(target_type.unit))],
+                ),
+                result,
+            ],
         )
     if pa.types.is_struct(target_type):
         return pa.StructArray.from_arrays(
@@ -798,7 +815,7 @@ def _cast_hive_timestamps(values, target_type: pa.DataType):
         offsets = values.offsets
         start = offsets[0].as_py()
         length = offsets[-1].as_py() - start
-        offsets = pc.subtract(offsets, offsets[0])
+        offsets = pc.call_function("subtract", [offsets, offsets[0]])
         if pa.types.is_list(target_type):
             return _combine_as_list_array(
                 offsets=offsets,
@@ -932,7 +949,7 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         Timestamp values use Arrow kernels; container offsets and nulls are kept.
         """
         from ray.data.datatype import DataType
-        from ray.data.expressions import col, pyarrow_udf
+        from ray.data.expressions import Expr, col, pyarrow_udf
 
         expressions = {}
         for field, read_field in zip(self._hive_schema, self._schema):
@@ -940,11 +957,14 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             if field.type != read_field.type:
                 target = field.type
 
-                @pyarrow_udf(return_dtype=DataType.from_arrow(target))
                 def cast_time(values, target_type=target):
                     return _cast_hive_timestamps(values, target_type)
 
-                expression = cast_time(expression)
+                cast_time_udf = cast(
+                    Callable[[Expr], Expr],
+                    pyarrow_udf(return_dtype=DataType.from_arrow(target))(cast_time),
+                )
+                expression = cast_time_udf(expression)
                 expressions[field.name] = expression
             description = (field.metadata or {}).get(b"hive_type", b"").decode()
             bounded = re.fullmatch(
@@ -972,8 +992,11 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         return self._schema
 
     def create_scanner(self, schema: pa.Schema, filesystem=None, **options):
-        scanner = self._source.create_scanner(
-            schema, filesystem=self._source.filesystem, **options
+        scanner = cast(
+            Union[ParquetScanner, OrcScanner],
+            self._source.create_scanner(
+                schema, filesystem=self._source.filesystem, **options
+            ),
         )
         scanner_type = (
             _HiveParquetScanner if self._file_format == "parquet" else _HiveOrcScanner
