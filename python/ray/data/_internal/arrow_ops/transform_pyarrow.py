@@ -1466,11 +1466,14 @@ def to_numpy(
 
 
 def converts_to_non_object_numpy(schema: "pyarrow.Schema") -> bool:
-    """Whether every column of ``schema`` converts to a non-object NumPy array.
+    """Whether copying each column's NumPy array copies all of its data.
 
-    Copying such an array copies all of its data. Other types (lists, structs,
-    strings, variable-shaped tensors, etc.) convert to object arrays, and copying
-    those only copies references to the original elements.
+    True when every column converts to a non-object NumPy array. Nullable
+    boolean columns are the one exception: they convert to object arrays, but
+    the elements are immutable ``bool``/``None``, so the copy is still complete.
+    Other types (lists, structs, strings, variable-shaped tensors, etc.) convert
+    to object arrays, and copying those only copies references to the original
+    elements.
     """
     import pyarrow as pa
 
