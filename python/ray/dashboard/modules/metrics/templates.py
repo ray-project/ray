@@ -60,4 +60,8 @@ scrape_configs:
   file_sd_configs:
   - files:
     - '{prom_metrics_service_discovery_file_path}'
+    # On Linux, Prometheus misses file change events when the service discovery file
+    # path is a symlink, so proactively re-read the file every 5s instead of
+    # the default 5m.
+    refresh_interval: 5s
 """
