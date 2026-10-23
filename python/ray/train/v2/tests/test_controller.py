@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import create_autospec
 
 import pytest
@@ -1004,6 +1005,52 @@ async def test_abort_resilient_to_callback_failure(monkeypatch):
         callbacks=[FailingAbortCallback()],
     )
     await controller.abort()
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
+
+
+@pytest.mark.asyncio
+async def test_waiting_for_a_scaling_decision_yields_the_event_loop(monkeypatch):
+    """While the scaling policy keeps deciding not to start (e.g. an elastic
+    run waiting for `min_workers` to fit), the control loop must still yield,
+    so calls like `abort()` can reach the controller actor."""
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.01")
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=MockFailurePolicy(failure_config=None),
+    )
+
+    run_task = asyncio.create_task(controller.run())
+    # Never resumes if the control loop starves the event loop.
+    await asyncio.sleep(0.1)
+
+    assert not run_task.done()
+    assert isinstance(controller.get_state(), InitializingState)
+    run_task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_abort_while_waiting_for_a_scaling_decision(monkeypatch):
+    """`abort()` reaches a controller that is waiting to start, and the control
+    loop doesn't overwrite the aborted state when its wait ends."""
+    monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0.05")
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=MockScalingPolicy(scaling_config=ScalingConfig()),
+        failure_policy=MockFailurePolicy(failure_config=None),
+    )
+
+    run_task = asyncio.create_task(controller.run())
+    await asyncio.sleep(0.1)
+    await controller.abort()
+
+    # The control loop exits on the aborted state instead of resuming the wait.
+    await asyncio.wait_for(run_task, timeout=5)
     assert mock_exit_actor.call_count == 1
     assert isinstance(controller.get_state(), AbortedState)
 
