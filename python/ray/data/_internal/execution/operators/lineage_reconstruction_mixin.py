@@ -43,7 +43,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         self._reconstruction_outputs: Dict[
             ReconstructionPlanId, Dict[ParentBlockOutput, RefBundle]
         ] = {}
-        # Mapping of lineage task ID -> the plans batched into this task's re-execution
+        # Mapping of lineage task ID -> the plans batched into its reconstruction task
         # while it is queued but not yet submitted. An entry in this dict exists exactly for the duration the task
         # (in the dict key) is queued. Batched plans are added to the value set the task while it is queued and added to
         # the plans the task serves on submission.
@@ -98,8 +98,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         Only called for a lineage-tracked operator. Returns
         ``(lineage_task_id, reconstruction_plan_ids, dependencies)``, where ``reconstruction_plan_ids`` are the
         reconstruction plans this task serves if it is a reconstruction task, and empty for a fresh task.
-        A reconstruction task serves the plans on its stamp, plus any plans batched into its
-        re-execution while it was queued.
+        A reconstruction task serves the plans on its stamp, plus any plans batched into it
+        while it was queued.
 
         A fresh task returns lineage task ID ``f"{operator_id}:{task_index}"``. A *reconstruction* attempt
         must re-use the original logical id of the original task attempt, or the plan never resolves and
@@ -118,10 +118,10 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             assert self.owns_data_task(stamp.lineage_task_id), stamp
             # Pop the plans batched in while this task attempt was queued
             batched_plan_ids = self._batched_plans.pop(stamp.lineage_task_id, None)
-            if batched_plan_ids is None and self._is_seed_operator():
+            if batched_plan_ids is None:
                 raise ValueError(
-                    f"Seed task {stamp.lineage_task_id} was submitted as a "
-                    "re-execution, but no re-execution of it was queued."
+                    f"Task {stamp.lineage_task_id} was submitted as a "
+                    "reconstruction task, but no reconstruction task for it was queued."
                 )
             reconstruction_plan_ids = stamp.reconstruction_plan_ids
             if batched_plan_ids:
@@ -131,7 +131,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
 
         return self._lineage_task_id_for(task_index), frozenset(), dependencies
 
-    def stamp_seed_reexecution(
+    def stamp_seed_reconstruction_task(
         self,
         seed_task_id: LineageTaskId,
         reconstruction_plan_ids: Iterable[ReconstructionPlanId],
@@ -139,7 +139,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
     ) -> RefBundle:
         """Prepare a seed task's retained input to be re-injected for reconstruction.
 
-        Stamping marks the input as a re-execution of ``seed_task_id`` rather than a
+        Stamping marks the input as a reconstruction task for ``seed_task_id`` rather than a
         fresh task. When the seed operator submits it, the task registers under the
         seed's original lineage task ID (rather than creating a new task node/ID),
         and we classify the outputs of the task (whether pruned/dropped/kept) per reconstruction plan.
@@ -149,8 +149,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         On submission the task serves the plans on the stamp and the batched plans, and the stamps it releases to its children carry all of them.
 
         Args:
-            seed_task_id: The ID of the seed task to re-execute.
-            reconstruction_plan_ids: The reconstruction plans the re-execution serves.
+            seed_task_id: The ID of the seed task to reconstruct.
+            reconstruction_plan_ids: The reconstruction plans the reconstruction task serves.
             seed_input: The retained input of the seed task.
 
         Returns:
@@ -158,10 +158,7 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         """
         plan_ids = frozenset(reconstruction_plan_ids)
         assert plan_ids, seed_task_id
-        assert seed_task_id not in self._batched_plans, seed_task_id
-        # The stamp holds the plans the input was queued with. Plans batched in later
-        # go to `_batched_plans` until submission.
-        self._batched_plans[seed_task_id] = set()
+        self._queue_reconstruction_task(seed_task_id)
         return replace(
             seed_input,
             reconstruction_stamp=ReconstructionStamp(
@@ -170,30 +167,46 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             ),
         )
 
-    def join_queued_seed_reexecution(
+    def _queue_reconstruction_task(self, lineage_task_id: LineageTaskId) -> None:
+        """Record that a stamped input for ``lineage_task_id`` was queued, so plans can
+        be batched into that reconstruction task until it is submitted."""
+        assert lineage_task_id not in self._batched_plans, lineage_task_id
+        # The stamp holds the plans the input was queued with. Plans batched in later
+        # go to `_batched_plans` until submission.
+        self._batched_plans[lineage_task_id] = set()
+
+    def join_queued_reconstruction_task(
         self,
-        seed_task_id: LineageTaskId,
+        lineage_task_id: LineageTaskId,
         reconstruction_plan_ids: Iterable[ReconstructionPlanId],
     ) -> bool:
-        """Batch plans into a re-execution of a seed task that is queued
-        but not yet submitted (its input bundle is still in the operator's queue).
-
-        Plans that share a pending child of the seed can join too. When the
-        re-execution completes, it releases that child once for all of them.
+        """Batch plans into a reconstruction task of this operator that is
+        queued but not yet submitted (its input bundle is still in an operator queue).
 
         Args:
-            seed_task_id: The ID of the seed task to re-execute.
+            lineage_task_id: The lineage task ID of the reconstruction task.
             reconstruction_plan_ids: The reconstruction plans to add.
 
         Returns:
-            True if the queued re-execution now serves the plans. False if the
-            caller must re-inject the seed with ``stamp_seed_reexecution``.
+            True if the queued reconstruction task now serves the plans. False if no
+            reconstruction task for it is queued, so the caller must queue one.
         """
-        batched_plan_ids = self._batched_plans.get(seed_task_id)
+        batched_plan_ids = self._batched_plans.get(lineage_task_id)
         if batched_plan_ids is None:
             return False
         batched_plan_ids.update(reconstruction_plan_ids)
         return True
+
+    def _consumer_of(self, child_task_id: LineageTaskId) -> "LineageReconstructionMixin":
+        """The downstream operator that owns ``child_task_id``."""
+        for op in self.output_dependencies:
+            if isinstance(op, LineageReconstructionMixin) and op.owns_data_task(
+                child_task_id
+            ):
+                return op
+        raise ValueError(
+            f"No downstream operator of {self.name} owns child task {child_task_id}."
+        )
 
     def _release_reconstruction_blocks_to_child(
         self,
@@ -273,21 +286,12 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                 continue
 
             # Pop the child's blocks from every ready plan. Plans that shared a parent's
-            # re-execution hold the same blocks. Otherwise each plan holds its own copy of
+            # reconstruction task hold the same blocks. Otherwise each plan holds its own copy of
             # the same rows, so the first plan's blocks serve all of them.
             blocks_per_plan = [
                 [self._reconstruction_outputs[plan_id].pop(slot) for slot in slots]
                 for plan_id in ready_plan_ids
             ]
-            # Create a complete RefBundle containing all reconstruction blocks withheld for a child task,
-            # stamp it with the child's lineage task ID and every plan it serves.
-            inputs = replace(
-                RefBundle.merge_ref_bundles(blocks_per_plan[0]),
-                reconstruction_stamp=ReconstructionStamp(
-                    lineage_task_id=child_task_id,
-                    reconstruction_plan_ids=frozenset(ready_plan_ids),
-                ),
-            )
             # Register with the lineage tracker that all the blocks for this task are now
             # queued for each of the plans
             for reconstruction_plan_id in ready_plan_ids:
@@ -299,6 +303,22 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                     )
                 if not self._reconstruction_outputs[reconstruction_plan_id]:
                     del self._reconstruction_outputs[reconstruction_plan_id]
+            # If a reconstruction task for the child is already queued, batch these plans into
+            # it instead of queueing the child again. The queued input holds the same
+            # rows, so these blocks are dropped.
+            consumer = self._consumer_of(child_task_id)
+            if consumer.join_queued_reconstruction_task(child_task_id, ready_plan_ids):
+                continue
+            # Create a complete RefBundle containing all reconstruction blocks withheld for a child task,
+            # stamp it with the child's lineage task ID and every plan it serves.
+            inputs = replace(
+                RefBundle.merge_ref_bundles(blocks_per_plan[0]),
+                reconstruction_stamp=ReconstructionStamp(
+                    lineage_task_id=child_task_id,
+                    reconstruction_plan_ids=frozenset(ready_plan_ids),
+                ),
+            )
+            consumer._queue_reconstruction_task(child_task_id)
             # Add to the output queue of the current task
             self._enqueue_reconstruction_output(inputs, task_index)
 

@@ -772,10 +772,10 @@ def _reconstruct_lost_object(
         # Clear the completion state of the seed op and everything downstream so a
         # re-injected seed input can flow through again.
         _clear_downstream_completion_state(topology, seed_op)
-        # If a re-execution of this seed is already queued, these plans join it.
-        if seed_op.join_queued_seed_reexecution(seed_id, reconstruction_plan_ids):
+        # If a reconstruction task for this seed is already queued, these plans join it.
+        if seed_op.join_queued_reconstruction_task(seed_id, reconstruction_plan_ids):
             logger.info(
-                "[lineage-reconstruction] Plan(s) %s joined the queued re-execution "
+                "[lineage-reconstruction] Plan(s) %s joined the queued reconstruction task "
                 "of seed task %s on operator %r.",
                 plans_str,
                 seed_id,
@@ -788,7 +788,7 @@ def _reconstruct_lost_object(
         # The seed's identity travels on the bundle as its `reconstruction_stamp`.
         # Without it the resubmitted bundle is minted a fresh id and the plan never
         # resolves.
-        seed_input = seed_op.stamp_seed_reexecution(
+        seed_input = seed_op.stamp_seed_reconstruction_task(
             seed_id, reconstruction_plan_ids, seed_input
         )
         source_op = seed_op.input_dependencies[0]

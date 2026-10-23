@@ -33,14 +33,14 @@ class ReconstructionStamp(NamedTuple):
     - We need the consuming task's lineage task ID, which is stable across reconstruction attempts,
       to find what downstream tasks depend on this reconstruction task.
     - We need the reconstruction plan IDs to identify which target tasks triggered the reconstruction plans
-      served by this re-execution, and therefore which output blocks of this particular reconstruction task need
+      served by this reconstruction task, and therefore which output blocks of this particular reconstruction task need
       to be reused for downstream reconstruction tasks, which blocks can be discarded/pruned,
       and which blocks can be propagated as new/fresh blocks.
     """
 
     # Logical Ray Data ID of the task being re-executed.
     lineage_task_id: str
-    # The reconstruction plans the re-execution serves.
+    # The reconstruction plans the reconstruction task serves.
     reconstruction_plan_ids: FrozenSet[str]
 
 
