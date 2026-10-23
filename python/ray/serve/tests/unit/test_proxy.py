@@ -210,6 +210,58 @@ class FakeHTTPHandle:
         return self.deployment_id.app_name
 
 
+class FakeHangingResponse:
+    """A unary response whose awaitable is not woken up by `cancel()`.
+
+    This mimics a request whose cancellation is delayed (e.g., the replica is
+    slow to acknowledge it), so the proxy must cancel its own local await
+    instead of relying on `cancel()` to unblock it.
+    """
+
+    def __init__(self):
+        self.cancel_called = False
+        self.awaiting = False
+        self._never_set = asyncio.Event()
+
+    def cancel(self):
+        self.cancel_called = True
+
+    def cancelled(self) -> bool:
+        return self.cancel_called
+
+    async def _wait(self):
+        self.awaiting = True
+        try:
+            await self._never_set.wait()
+        finally:
+            self.awaiting = False
+
+    def __await__(self):
+        return self._wait().__await__()
+
+
+class FakeHangingHandle:
+    def __init__(self):
+        self.deployment_id = DeploymentID(
+            name="fake_deployment_name", app_name="fake_app_name"
+        )
+        self.response = FakeHangingResponse()
+
+    def remote(self, *args, **kwargs):
+        return self.response
+
+    def options(self, *args, **kwargs):
+        return self
+
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
+
+
 class FakeHttpReceive:
     def __init__(self, messages=None):
         self.messages = messages or []
@@ -486,6 +538,38 @@ class TestgRPCProxy:
         assert context.code() == grpc.StatusCode.OK
         assert context.details() == ""
 
+    @pytest.mark.asyncio
+    async def test_unary_timeout_cancels_pending_response(self):
+        """A timed out unary request shouldn't leave the response await pending.
+
+        Even if cancelling the response doesn't wake up the await on it, the
+        proxy should cancel the await before returning the timeout status.
+        """
+        grpc_proxy = gRPCProxy(
+            node_id="fake-node_id",
+            node_ip_address="fake-node_ip_address",
+            is_head=False,
+            proxy_router=FakeProxyRouter(),
+            request_timeout_s=0.01,
+        )
+        handle = FakeHangingHandle()
+        grpc_proxy.proxy_router.route = "route"
+        grpc_proxy.proxy_router.handle = handle
+        grpc_proxy.proxy_router.app_is_cross_language = False
+
+        unary_entrypoint = grpc_proxy.service_handler_factory(
+            service_method="service_method",
+            streaming_type=gRPCStreamingType.UNARY_UNARY,
+        )
+        context = FakeGrpcContext()
+        await unary_entrypoint(
+            request_proto=serve_pb2.UserDefinedMessage(name="foo"), context=context
+        )
+
+        assert context.code() == grpc.StatusCode.DEADLINE_EXCEEDED
+        assert handle.response.cancel_called
+        assert not handle.response.awaiting
+
 
 class TestHTTPProxy:
     """Test methods implemented on HTTPProxy"""
@@ -678,6 +762,28 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
+
+    @pytest.mark.asyncio
+    async def test_disconnect_cancels_pending_response(self):
+        """A client disconnect shouldn't leave the response await pending.
+
+        Even if cancelling the response doesn't wake up the await on it, the
+        proxy should cancel the await before finishing the request.
+        """
+        http_proxy = self.create_http_proxy()
+        handle = FakeHangingHandle()
+        http_proxy.proxy_router.route = "route"
+        http_proxy.proxy_router.handle = handle
+        http_proxy.proxy_router.app_is_cross_language = False
+
+        await http_proxy(
+            scope={"type": "http", "headers": [(b"x-request-id", b"fake_id")]},
+            receive=FakeHttpReceive(messages=[{"type": "http.disconnect"}]),
+            send=FakeHttpSend(),
+        )
+
+        assert handle.response.cancel_called
+        assert not handle.response.awaiting
 
     @pytest.mark.asyncio
     async def test_proxy_asgi_receive(self):
