@@ -120,7 +120,15 @@ rm /tmp/miniforge.sh
 /home/ray/anaconda3/bin/conda init bash
 
 eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
-/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
+# conda-forge certifi builds from 2026 on require python>=3.11. Downgrading the
+# Miniforge python to 3.10 without a certifi cap makes the solver drop certifi,
+# requests and conda itself, and the transaction fails with RemoveError.
+# TODO(elliot-barn): remove this conditional once Python 3.10 is deprecated.
+CONDA_PYTHON_EXTRA_SPECS=()
+if [[ "${PYTHON_VERSION}" == "3.10" ]]; then
+    CONDA_PYTHON_EXTRA_SPECS=("certifi<2026")
+fi
+/home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}" "${CONDA_PYTHON_EXTRA_SPECS[@]}"
 /home/ray/anaconda3/bin/conda clean -a
 
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
