@@ -4,7 +4,7 @@ import threading
 from http.cookies import CookieError, SimpleCookie
 from socketserver import ThreadingMixIn
 from types import ModuleType
-from typing import Dict, List, Mapping, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from ray._private.authentication import (
@@ -12,16 +12,22 @@ from ray._private.authentication import (
     authentication_utils as auth_utils,
 )
 
+if TYPE_CHECKING:
+    from multidict import CIMultiDictProxy
+
 logger = logging.getLogger(__name__)
 
 
-def _carries_ray_token_header(headers: Mapping[str, str]) -> bool:
+def _carries_ray_token_header(headers: "CIMultiDictProxy[str]") -> bool:
     """Whether a request carries a Ray token in a header. The token cookie doesn't
     count: a browser can keep it from an earlier token-mode cluster at the same
     address. Non-Bearer Authorization schemes, such as basic auth, don't count."""
-    authorization = headers.get(authentication_constants.AUTHORIZATION_HEADER_NAME, "")
-    return authorization.lower().startswith(
-        authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+    bearer_prefix = authentication_constants.AUTHORIZATION_BEARER_PREFIX.lower()
+    return any(
+        value.lower().startswith(bearer_prefix)
+        for value in headers.getall(
+            authentication_constants.AUTHORIZATION_HEADER_NAME, []
+        )
     ) or bool(headers.get(authentication_constants.RAY_AUTHORIZATION_HEADER_NAME))
 
 
@@ -44,9 +50,9 @@ def get_token_auth_middleware(
     async def token_auth_middleware(request, handler):
         """Middleware to validate bearer tokens when token authentication is enabled.
 
-        With auth disabled, or in minimal Ray installations (without ray._raylet), it
-        authenticates nothing and only rejects requests that carry a Ray token in a
-        header, with AuthModeMismatch, so token-mode clients opt out too.
+        With auth disabled, or without ray._raylet (doc builds), it authenticates
+        nothing and only rejects requests that carry a Ray token in a header, with
+        AuthModeMismatch, so token-mode clients opt out too.
         """
         if not auth_utils.is_token_auth_enabled():
             if (

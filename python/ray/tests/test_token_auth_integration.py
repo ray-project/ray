@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import pytest
 
@@ -1001,16 +1001,24 @@ def test_dashboard_agent_grpc_on_auth_disabled_cluster(disabled_head_with_token_
 @pytest.mark.parametrize(
     "k8s_token_auth, headers, expected_status",
     [
-        (False, {"Authorization": "Bearer t"}, 401),
-        (False, {"X-Ray-Authorization": "Bearer t"}, 401),
-        (False, {"Authorization": "Basic dXNlcjpwYXNz"}, 200),
-        (False, {}, 200),
-        (True, {"Authorization": "Bearer t"}, 200),
+        (False, [("Authorization", "Bearer t")], 401),
+        (False, [("Authorization", "bearer t")], 401),
+        (False, [("X-Ray-Authorization", "Bearer t")], 401),
+        (
+            False,
+            [("Authorization", "Basic dXNlcjpwYXNz"), ("Authorization", "Bearer t")],
+            401,
+        ),
+        (False, [("Authorization", "Basic dXNlcjpwYXNz")], 200),
+        (False, [("X-Ray-Authorization", "")], 200),
+        (False, [("Cookie", "ray-authentication-token=t")], 200),
+        (False, [], 200),
+        (True, [("Authorization", "Bearer t")], 200),
     ],
 )
 def test_token_auth_middleware_with_auth_disabled(
     k8s_token_auth: bool,
-    headers: dict,
+    headers: List[Tuple[str, str]],
     expected_status: int,
 ):
     """With auth disabled, the middleware rejects a Ray token header, except under
@@ -1020,6 +1028,7 @@ def test_token_auth_middleware_with_auth_disabled(
 
     import aiohttp
     from aiohttp.test_utils import make_mocked_request
+    from multidict import CIMultiDict
 
     from ray._private.authentication import authentication_utils
     from ray._private.authentication.http_token_authentication import (
@@ -1031,7 +1040,7 @@ def test_token_auth_middleware_with_auth_disabled(
     async def handler(request):
         return aiohttp.web.Response(status=200)
 
-    request = make_mocked_request("GET", "/api/version", headers=headers)
+    request = make_mocked_request("GET", "/api/version", headers=CIMultiDict(headers))
     with mock.patch.object(
         authentication_utils, "is_token_auth_enabled", return_value=False
     ), mock.patch.object(
