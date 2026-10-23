@@ -816,6 +816,35 @@ def test_file_jobs_fail_instead_of_hanging() -> None:
     assert first["status"] == again["status"] == "error"
 
 
+def test_final_stdin_write_returns_before_the_file_is_written() -> None:
+    """Writing a large file can outlast the facade's deadline for one call,
+    so the final stdin write returns at once, and the job finishes when the
+    file is written."""
+    runtime = FakeSandboxRuntime()
+    host = _write_host(runtime)
+    release = threading.Event()
+    write = runtime.write_file
+
+    def slow_write(*args, **kwargs):
+        release.wait(10)
+        return write(*args, **kwargs)
+
+    async def scenario():
+        await host.boot()
+        runtime.write_file = slow_write
+        await host.fs_write_open("k", "/tmp/f")
+        closed = await asyncio.wait_for(host.stdin_write("k", b"abc", 0, eof=True), 2)
+        writing = await host.get_exec_by_key("k")
+        release.set()
+        return closed, writing, await host.get_exec_by_key("k", 5)
+
+    closed, writing, done = asyncio.run(scenario())
+    assert closed == {"num_bytes_written": 3, "closed": True}
+    assert writing["status"] == "running"
+    assert done["status"] == "completed"
+    assert runtime.written_files["/tmp/f"] == b"abc"
+
+
 def test_host_joins_starts_with_the_same_exec_key() -> None:
     """The host keeps each exec under the client's exec id, so a start that
     any facade replica retries joins the first one."""

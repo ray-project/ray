@@ -721,9 +721,10 @@ class SandboxHost:
     async def stdin_write(
         self, exec_key: str, data: bytes, offset: int, eof: bool = False
     ) -> Dict[str, Any]:
-        """Buffer stdin for an fs_write job; at ``eof``, write the file.
+        """Buffer stdin for an fs_write job; at ``eof``, start writing the file.
 
-        Returns the job's stdin state, or an ``error_code``: exec_not_found,
+        The job finishes once the file is written. Returns the job's stdin
+        state, or an ``error_code``: exec_not_found,
         stdin_unsupported (commands get no stdin), offset_mismatch, or
         too_large (over ``max_file_bytes``; the job fails and takes no more
         input). A repeat of the last accepted chunk, as when its reply was
@@ -771,7 +772,13 @@ class SandboxHost:
             job.stdin_bytes += len(data)
         if eof and not job.stdin_closed:
             job.stdin_closed = True
-            await self._finish_write(job)
+            # A large file can take longer to write than the caller waits for
+            # one call, so it's written in the background, and the job's exit
+            # code, which clients already wait on, says how the write went.
+            exec_id = job.exec_id
+            task = asyncio.create_task(self._finish_write(job))
+            self._exec_tasks[exec_id] = task
+            task.add_done_callback(lambda _: self._exec_tasks.pop(exec_id, None))
         return {"num_bytes_written": job.stdin_bytes, "closed": job.stdin_closed}
 
     async def _finish_write(self, job: _ExecJob) -> None:
