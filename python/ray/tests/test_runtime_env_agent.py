@@ -6,6 +6,7 @@ import platform
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -32,6 +33,8 @@ from ray._private.runtime_env.image_uri import (
     _get_image_uri_cache_key,
     _write_podman_env_file,
 )
+from ray._private.runtime_env.plugin import create_for_plugin_if_needed
+from ray._private.runtime_env.uri_cache import URICache
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
@@ -506,6 +509,242 @@ async def test_image_uri_cache_shared_between_plugin_instances(tmp_path, monkeyp
     assert plugins[1]._manifest_is_valid(
         plugins[1]._get_cache_path(uri), uri, has_pip=True
     )
+    for plugin in plugins:
+        assert not os.get_inheritable(plugin._cache_entries[uri].use_lock.fileno())
+    plugins[0].on_uri_unused(uri)
+    assert plugins[0].delete_uri(uri) is None
+    plugins[1].on_uri_unused(uri)
+    assert plugins[0].delete_uri(uri) == sizes[0]
+
+
+def _evict_image_uri_in_subprocess(resources_dir, uri):
+    script = """
+import json, sys
+from ray._private.runtime_env.image_uri import ImageURIPlugin
+plugin = ImageURIPlugin('/tmp/ray')
+plugin.set_resources_dir(sys.argv[1])
+print(json.dumps(plugin.delete_uri(sys.argv[2])))
+"""
+    return json.loads(
+        subprocess.check_output(
+            [sys.executable, "-c", script, str(resources_dir), uri],
+            text=True,
+            timeout=30,
+        )
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.asyncio
+async def test_image_uri_cache_hit_holds_lease_through_use(tmp_path, monkeypatch):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    resources = tmp_path / "resources"
+    plugin.set_resources_dir(str(resources))
+    uri = "image-pip://leased-key"
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    env = RuntimeEnv(image_uri="example/image")
+    await plugin.create(uri, env, RuntimeEnvContext(), logger)
+    plugin.on_uri_unused(uri)
+    read_size = plugin._read_manifest_size
+
+    def measure(path):
+        # This separate process tries eviction after validation but before
+        # the hit can read its size or hand its lease back to the cache.
+        assert _evict_image_uri_in_subprocess(resources, uri) is None
+        return read_size(path)
+
+    monkeypatch.setattr(plugin, "_read_manifest_size", measure)
+    await plugin.create(uri, env, RuntimeEnvContext(), logger)
+    assert _evict_image_uri_in_subprocess(resources, uri) is None
+    assert os.path.exists(plugin._get_cache_path(uri))
+    plugin.on_uri_unused(uri)
+    assert _evict_image_uri_in_subprocess(resources, uri) == 0
+    assert not os.path.exists(plugin._get_cache_path(uri))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.asyncio
+async def test_image_uri_revalidates_unused_local_cache(tmp_path, monkeypatch):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    sibling = ImageURIPlugin(str(tmp_path / "ray"))
+    for instance in (plugin, sibling):
+        instance.set_resources_dir(str(tmp_path / "resources"))
+    uri = "image-pip://recreated-key"
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    cache = URICache(
+        plugin.delete_uri, on_uri_unused=plugin.on_uri_unused, debug_mode=True
+    )
+    env = RuntimeEnv(image_uri="example/image", pip=["package==1"])
+    installs = 0
+
+    async def prepare(*args):
+        nonlocal installs
+        installs += 1
+        python = os.path.join(args[3], "virtualenv", "bin", "python")
+        os.makedirs(os.path.dirname(python))
+        with open(python, "w") as file:
+            file.write("x" * (10 * installs))
+        os.chmod(python, 0o755)
+
+    monkeypatch.setattr(plugin, "_prepare_pip_environment", prepare)
+    for expected_installs in (1, 2):
+        context = RuntimeEnvContext()
+        await create_for_plugin_if_needed(
+            env, plugin, cache, context, resolved_uris=[uri]
+        )
+        assert installs == expected_installs
+        assert cache.get_total_size_bytes() == expected_installs * 10
+        assert os.path.exists(context.container["entrypoint"])
+        assert sibling.delete_uri(uri) is None
+        cache.mark_unused(uri)
+        assert sibling.delete_uri(uri) == expected_installs * 10
+        assert uri in cache  # This agent still has the now-stale local entry.
+
+    cache.max_total_size_bytes = 0
+    cache._evict_if_needed()
+    assert uri not in cache
+    assert cache.get_total_size_bytes() == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.parametrize("recreate", [False, True])
+@pytest.mark.asyncio
+async def test_image_uri_reference_handoff_during_setup(
+    tmp_path, monkeypatch, recreate
+):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    sibling = ImageURIPlugin(str(tmp_path / "ray"))
+    for instance in (plugin, sibling):
+        instance.set_resources_dir(str(tmp_path / "resources"))
+    uri = "image-pip://handoff-key"
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    cache = URICache(plugin.delete_uri, on_uri_unused=plugin.on_uri_unused)
+    contexts = {}
+    refs = ReferenceTable(
+        lambda env: [],
+        lambda uris: [cache.mark_unused(uri) for uri, _ in uris],
+        lambda env: contexts.pop(env, None),
+    )
+    env = RuntimeEnv(image_uri="example/image")
+    serialized = env.serialize()
+    dynamic_uris = [(uri, "image_uri")]
+    refs.increase_reference(env, serialized, "raylet")
+    refs.add_dynamic_uris(serialized, dynamic_uris)
+    published, finish = asyncio.Event(), asyncio.Event()
+    publish = plugin._publish_environment
+
+    async def pause_publication(*args):
+        size = await publish(*args)
+        published.set()
+        await finish.wait()
+        return size
+
+    monkeypatch.setattr(plugin, "_publish_environment", pause_publication)
+    setup = asyncio.create_task(
+        create_for_plugin_if_needed(
+            env, plugin, cache, RuntimeEnvContext(), resolved_uris=[uri]
+        )
+    )
+    await published.wait()
+    refs.decrease_reference(env, serialized, "raylet")
+    assert uri not in cache  # The unused notification must reach in-flight setup.
+    assert sibling.delete_uri(uri) is None
+    if recreate:
+        refs.increase_reference(env, serialized, "raylet")
+    finish.set()
+    await setup
+    contexts[serialized] = "cached context"
+    refs.release_dynamic_uris_if_unreferenced(serialized, "raylet", dynamic_uris)
+    if recreate:
+        # A cached context hit adds a reference without re-running create.
+        refs.increase_reference(env, serialized, "raylet")
+        refs.decrease_reference(env, serialized, "raylet")
+        assert serialized in contexts
+        assert sibling.delete_uri(uri) is None
+        refs.decrease_reference(env, serialized, "raylet")
+    assert serialized not in contexts
+    assert sibling.delete_uri(uri) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.asyncio
+async def test_image_uri_lease_released_on_process_exit(tmp_path):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    resources = tmp_path / "resources"
+    plugin.set_resources_dir(str(resources))
+    uri = "image-pip://process-key"
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    await plugin.create(
+        uri, RuntimeEnv(image_uri="example/image"), RuntimeEnvContext(), logger
+    )
+    plugin.on_uri_unused(uri)
+    script = """
+import asyncio, logging, sys
+from ray._private.runtime_env.image_uri import ImageURIPlugin
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray.runtime_env import RuntimeEnv
+plugin = ImageURIPlugin('/tmp/ray')
+plugin.set_resources_dir(sys.argv[1])
+uri = sys.argv[2]
+plugin._metadata_by_uri[uri] = None  # The existing manifest is sufficient on a hit.
+asyncio.run(plugin.create(uri, RuntimeEnv(image_uri='example/image'),
+                          RuntimeEnvContext(), logging.getLogger()))
+print('ready', flush=True)
+sys.stdin.read()
+"""
+    with subprocess.Popen(
+        [sys.executable, "-c", script, str(resources), uri],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            assert process.stdout.readline().strip() == "ready"
+            assert plugin.delete_uri(uri) is None
+        finally:
+            process.kill()
+            process.wait(timeout=30)
+    assert plugin.delete_uri(uri) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
+@pytest.mark.asyncio
+async def test_image_uri_cancelled_setup_keeps_waiter_state(tmp_path, monkeypatch):
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    plugin.set_resources_dir(str(tmp_path / "resources"))
+    uri = "image-pip://waiter-key"
+    plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+    env = RuntimeEnv(image_uri="example/image")
+    started = asyncio.Event()
+    publish = plugin._publish_environment
+    attempts = 0
+
+    async def pause_first_attempt(*args):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            started.set()
+            await asyncio.Event().wait()
+        return await publish(*args)
+
+    monkeypatch.setattr(plugin, "_publish_environment", pause_first_attempt)
+    first = asyncio.create_task(plugin.create(uri, env, RuntimeEnvContext(), logger))
+    await started.wait()
+    second = asyncio.create_task(plugin.create(uri, env, RuntimeEnvContext(), logger))
+    await asyncio.sleep(0)  # Let the second setup register as a lock waiter.
+    entry = plugin._cache_entries[uri]
+    assert entry.setups == 2
+    plugin.on_uri_unused(uri)
+    assert plugin.delete_uri(uri) is None
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    await second
+    assert plugin._cache_entries[uri] is entry
+    assert entry.use_lock is not None
+    assert entry.setups == 0
+    plugin.on_uri_unused(uri)
+    assert plugin.delete_uri(uri) == 0
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink test is POSIX-only.")
@@ -711,7 +950,6 @@ def test_image_uri_delete_uri_respects_file_lock(tmp_path):
     plugin = ImageURIPlugin(str(tmp_path / "ray"))
     plugin.set_resources_dir(str(tmp_path / "resources"))
     uri = "image-pip://delete-key"
-    plugin._create_locks[uri] = asyncio.Lock()
     plugin._metadata_by_uri[uri] = _image_metadata_for_test()
     plugin._install_env_by_uri[uri] = {}
     cache_path = plugin._get_cache_path(uri)
@@ -735,7 +973,6 @@ def test_image_uri_delete_uri_respects_file_lock(tmp_path):
         fcntl.flock(holder, fcntl.LOCK_EX | fcntl.LOCK_NB)
         assert plugin.delete_uri(uri, logger) is None
         assert os.path.exists(cache_path)
-        assert uri in plugin._create_locks
         assert uri in plugin._metadata_by_uri
         assert uri in plugin._install_env_by_uri
         fcntl.flock(holder, fcntl.LOCK_UN)
@@ -745,7 +982,6 @@ def test_image_uri_delete_uri_respects_file_lock(tmp_path):
     assert plugin.delete_uri(uri, logger) == 1234
     assert not os.path.exists(cache_path)
     assert os.path.exists(cache_path + ".lock")
-    assert uri not in plugin._create_locks
     assert uri not in plugin._metadata_by_uri
     assert uri not in plugin._install_env_by_uri
 

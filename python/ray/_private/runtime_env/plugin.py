@@ -26,6 +26,11 @@ class RuntimeEnvPlugin(ABC):
 
     name: str = None
     priority: int = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
+    requires_uri_cache_validation: bool = False
+
+    def on_uri_unused(self, uri: str) -> None:
+        """Release local usage protection, including during in-flight setup."""
+        return
 
     @staticmethod
     def validate(runtime_env_dict: dict) -> None:
@@ -238,7 +243,9 @@ class RuntimeEnvPluginManager:
         cache_size_bytes = int(
             (1024**3) * float(os.environ.get(cache_size_env_var, 10))
         )
-        return URICache(plugin.delete_uri, cache_size_bytes)
+        return URICache(
+            plugin.delete_uri, cache_size_bytes, on_uri_unused=plugin.on_uri_unused
+        )
 
     def sorted_plugin_setup_contexts(self) -> List[PluginSetupContext]:
         """Get the sorted plugin setup contexts, sorted by increasing priority.
@@ -273,8 +280,8 @@ async def create_for_plugin_if_needed(
         await plugin.create(None, runtime_env, context, logger=logger)
 
     for uri in uris:
-        if uri not in uri_cache:
-            logger.debug(f"Cache miss for URI {uri}.")
+        if uri not in uri_cache or plugin.requires_uri_cache_validation:
+            logger.debug(f"Preparing or revalidating URI {uri}.")
             size_bytes = await plugin.create(uri, runtime_env, context, logger=logger)
             uri_cache.add(uri, size_bytes, logger=logger)
         else:

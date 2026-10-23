@@ -9,8 +9,8 @@ import shutil
 import tempfile
 import threading
 import uuid
-from dataclasses import asdict, dataclass
-from typing import Dict, List, Optional, Tuple
+from dataclasses import asdict, dataclass, field
+from typing import IO, Dict, List, Optional, Tuple
 
 import ray
 from ray._private.authentication.authentication_token_setup import (
@@ -32,7 +32,8 @@ try:
 except ImportError:  # pragma: no cover - image_uri is only supported on Linux.
     fcntl = None
 
-_CACHE_SCHEMA_VERSION = 2
+# Earlier agents do not hold usage leases, so they must use different entries.
+_CACHE_SCHEMA_VERSION = 3
 _CACHE_URI_PREFIX = "image-pip://"
 _DEFAULT_PIP_INSTALL_OPTIONS = [
     "--disable-pip-version-check",
@@ -82,6 +83,19 @@ class ImageMetadata:
     ray_version: str
     ray_commit: str
     worker_path: str
+
+
+@dataclass
+class _ImageCacheEntry:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    use_lock: Optional[IO] = None
+    setups: int = 0
+    used: bool = False
+
+    def release_if_unused(self) -> None:
+        if not self.used and not self.setups and self.use_lock is not None:
+            self.use_lock.close()
+            self.use_lock = None
 
 
 def _canonical_pip_config(runtime_env: "RuntimeEnv") -> Dict:  # noqa: F821
@@ -489,6 +503,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
     """Starts workers in an image with an optional cached pip environment."""
 
     name = "image_uri"
+    requires_uri_cache_validation = True
 
     @staticmethod
     def get_compatible_keys():
@@ -510,7 +525,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         self._probe_locks: Dict[str, asyncio.Lock] = {}
         self._metadata_by_uri: Dict[str, ImageMetadata] = {}
         self._install_env_by_uri: Dict[str, Dict[str, str]] = {}
-        self._create_locks: Dict[str, asyncio.Lock] = {}
+        self._cache_entries: Dict[str, _ImageCacheEntry] = {}
 
     def set_resources_dir(self, resources_dir: str) -> None:
         self._cache_dir = os.path.join(resources_dir, "image_uri")
@@ -541,7 +556,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                 lock_file.close()
 
     @staticmethod
-    def _try_acquire_file_lock(lock_path: str):
+    def _try_acquire_file_lock(lock_path: str, *, shared: bool = False):
         """Non-blocking flock; returns the open lock file or None if held."""
         if fcntl is None:
             return None
@@ -550,7 +565,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         except OSError:
             return None
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+            fcntl.flock(lock_file, mode | fcntl.LOCK_NB)
         except (BlockingIOError, OSError):
             lock_file.close()
             return None
@@ -827,95 +843,139 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             return 0
         if uri is None or uri not in self._metadata_by_uri:
             raise RuntimeError("Image metadata was not resolved before setup.")
-        if uri not in self._create_locks:
-            self._create_locks[uri] = asyncio.Lock()
+        entry = self._cache_entries.setdefault(uri, _ImageCacheEntry())
+        # Count waiters too: a last-reference notification must not release a
+        # lease or discard this synchronization object during another setup.
+        entry.setups += 1
+        try:
+            async with entry.lock:
+                size_bytes = await self._create_and_acquire(
+                    uri, runtime_env, entry, logger
+                )
+                # Hand off the setup hold to the cache before returning. The
+                # agent reconciles references dropped while creation was running.
+                entry.used = True
+                return size_bytes
+        finally:
+            entry.setups -= 1
+            entry.release_if_unused()
 
-        # The virtualenv can hold hundreds of thousands of files; run the
-        # directory walks and removals in a thread to keep the agent's event
-        # loop responsive.
+    def on_uri_unused(self, uri: str) -> None:
+        entry = self._cache_entries.get(uri)
+        if entry is not None:
+            entry.used = False
+            entry.release_if_unused()
+
+    async def _create_and_acquire(
+        self,
+        uri: str,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        entry: _ImageCacheEntry,
+        logger: logging.Logger,
+    ) -> int:
         loop = asyncio.get_running_loop()
         final_path = self._get_cache_path(uri)
 
-        def measure() -> float:
+        def measure() -> int:
             size_bytes = self._read_manifest_size(final_path)
-            if size_bytes is not None:
-                return size_bytes
-            return get_directory_size_bytes(final_path)
-
-        async with self._create_locks[uri]:
-            if self._manifest_is_valid(final_path, uri, runtime_env.has_pip()):
-                return await loop.run_in_executor(None, measure)
-
-            lock_path = final_path + ".lock"
-            lock_file = await self._acquire_file_lock(lock_path)
-            try:
-                if self._manifest_is_valid(final_path, uri, runtime_env.has_pip()):
-                    return await loop.run_in_executor(None, measure)
-
-                # Namespace changes stay under the lock, without an await.
-                # Cancellation may leave a deletion thread running, but that
-                # thread can only remove a detached generation, never a retry.
-                _detach_cache_tree(final_path)
-                for stale_path in os.listdir(self._cache_dir):
-                    if (
-                        stale_path.startswith(
-                            os.path.basename(final_path) + ".staging-"
-                        )
-                        and ".deleting-" not in stale_path
-                    ):
-                        _detach_cache_tree(os.path.join(self._cache_dir, stale_path))
-
-                staging_path = final_path + f".staging-{uuid.uuid4().hex}"
-                os.makedirs(staging_path)
-                try:
-                    if runtime_env.has_pip():
-                        await self._prepare_pip_environment(
-                            uri,
-                            runtime_env,
-                            self._metadata_by_uri[uri],
-                            staging_path,
-                            final_path,
-                            logger,
-                        )
-                    size_bytes = await loop.run_in_executor(
-                        None, lambda: get_directory_size_bytes(staging_path)
-                    )
-                    manifest = {
-                        "schema_version": _CACHE_SCHEMA_VERSION,
-                        "uri": uri,
-                        "has_pip": runtime_env.has_pip(),
-                        "image": asdict(self._metadata_by_uri[uri]),
-                        "pip": _canonical_pip_config(runtime_env),
-                        # Recorded so cache hits and eviction never have to
-                        # walk the tree.
-                        "size_bytes": size_bytes,
-                    }
-                    manifest_path = os.path.join(staging_path, "manifest.json")
-                    with open(manifest_path, "w", encoding="utf-8") as manifest_file:
-                        json.dump(manifest, manifest_file, sort_keys=True)
-                        manifest_file.flush()
-                        os.fsync(manifest_file.fileno())
-                    os.replace(staging_path, final_path)
-                    directory_fd = os.open(self._cache_dir, os.O_DIRECTORY)
-                    try:
-                        os.fsync(directory_fd)
-                    finally:
-                        os.close(directory_fd)
-                except BaseException:
-                    _detach_cache_tree(staging_path)
-                    raise
-            finally:
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
-                lock_file.close()
-
+            if size_bytes is None:
+                raise RuntimeError(f"Cached image environment has no valid size: {uri}")
             return size_bytes
+
+        if entry.use_lock is not None:
+            # A retained lease makes this hit safe without retaking the gate.
+            if not self._manifest_is_valid(final_path, uri, runtime_env.has_pip()):
+                raise RuntimeError(
+                    f"Cached image environment changed while in use: {uri}"
+                )
+            return await loop.run_in_executor(None, measure)
+
+        lock_file = await self._acquire_file_lock(final_path + ".lock")
+        use_lock = None
+        try:
+            valid = self._manifest_is_valid(final_path, uri, runtime_env.has_pip())
+            use_lock = self._try_acquire_file_lock(
+                final_path + ".use.lock", shared=valid
+            )
+            if use_lock is None:
+                raise RuntimeError(
+                    f"Cannot acquire image environment {uri}: another process is "
+                    "using it. An in-use environment cannot be replaced."
+                )
+            if valid:
+                size_bytes = await loop.run_in_executor(None, measure)
+            else:
+                size_bytes = await self._publish_environment(uri, runtime_env, logger)
+                # The gate stays held during the exclusive-to-shared conversion.
+                fcntl.flock(use_lock, fcntl.LOCK_SH)
+            entry.use_lock = use_lock
+            use_lock = None  # Ownership passes to the local cache entry.
+            return size_bytes
+        finally:
+            if use_lock is not None:
+                use_lock.close()
+            lock_file.close()
+
+    async def _publish_environment(
+        self, uri: str, runtime_env: "RuntimeEnv", logger: logging.Logger  # noqa: F821
+    ) -> int:
+        """Publish under exclusive mutation and usage locks."""
+        final_path = self._get_cache_path(uri)
+        # Namespace changes stay under the locks, without an await. Deletion
+        # threads can only remove detached generations, never a later retry.
+        _detach_cache_tree(final_path)
+        for stale_path in os.listdir(self._cache_dir):
+            if stale_path.startswith(os.path.basename(final_path) + ".staging-") and (
+                ".deleting-" not in stale_path
+            ):
+                _detach_cache_tree(os.path.join(self._cache_dir, stale_path))
+
+        staging_path = final_path + f".staging-{uuid.uuid4().hex}"
+        os.makedirs(staging_path)
+        try:
+            if runtime_env.has_pip():
+                await self._prepare_pip_environment(
+                    uri,
+                    runtime_env,
+                    self._metadata_by_uri[uri],
+                    staging_path,
+                    final_path,
+                    logger,
+                )
+            size_bytes = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: get_directory_size_bytes(staging_path)
+            )
+            manifest = {
+                "schema_version": _CACHE_SCHEMA_VERSION,
+                "uri": uri,
+                "has_pip": runtime_env.has_pip(),
+                "image": asdict(self._metadata_by_uri[uri]),
+                "pip": _canonical_pip_config(runtime_env),
+                "size_bytes": size_bytes,
+            }
+            manifest_path = os.path.join(staging_path, "manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as manifest_file:
+                json.dump(manifest, manifest_file, sort_keys=True)
+                manifest_file.flush()
+                os.fsync(manifest_file.fileno())
+            os.replace(staging_path, final_path)
+            directory_fd = os.open(self._cache_dir, os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+            return size_bytes
+        except BaseException:
+            _detach_cache_tree(staging_path)
+            raise
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
     ) -> Optional[int]:
+        entry = self._cache_entries.get(uri)
+        if entry is not None and (entry.used or entry.setups):
+            return None
         cache_path = self._get_cache_path(uri)
-        manifest_size = self._read_manifest_size(cache_path)
-        size_bytes = manifest_size or 0
         lock_file = self._try_acquire_file_lock(cache_path + ".lock")
         if lock_file is None:
             # An agent sharing this directory is preparing the same key.
@@ -925,7 +985,13 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                 f"Not deleting {cache_path}: another process holds its lock."
             )
             return None
-        else:
+        use_lock = None
+        try:
+            use_lock = self._try_acquire_file_lock(cache_path + ".use.lock")
+            if use_lock is None:
+                return None
+            manifest_size = self._read_manifest_size(cache_path)
+            size_bytes = manifest_size or 0
             try:
                 if os.path.exists(cache_path):
                     if manifest_size is None:
@@ -936,10 +1002,11 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             except OSError as error:
                 logger.warning(f"Failed to delete {cache_path}: {error}")
                 return None
-            finally:
-                fcntl.flock(lock_file, fcntl.LOCK_UN)
-                lock_file.close()
-        self._create_locks.pop(uri, None)
+        finally:
+            if use_lock is not None:
+                use_lock.close()
+            lock_file.close()
+        self._cache_entries.pop(uri, None)
         self._metadata_by_uri.pop(uri, None)
         self._install_env_by_uri.pop(uri, None)
         return size_bytes

@@ -152,6 +152,24 @@ def test_container_option_serialize(runtime_env_class):
 
 
 class TestURICache:
+    def test_refresh_size_and_external_deletion(self):
+        cache = URICache(lambda uri, logger: 0, debug_mode=True)
+        cache.add("a", 4)
+        cache.mark_unused("a")
+        cache.add("a", 7)
+        cache.add("a", 7)
+        assert cache.get_total_size_bytes() == 7
+        cache.max_total_size_bytes = 0
+        cache.mark_unused("a")
+        assert "a" not in cache
+        assert cache.get_total_size_bytes() == 0
+
+    def test_unused_notification_before_add(self):
+        unused = []
+        cache = URICache(on_uri_unused=unused.append, debug_mode=True)
+        cache.mark_unused("creating")
+        assert unused == ["creating"]
+
     def test_add_existing_uri_is_idempotent(self):
         cache = URICache(debug_mode=True)
         cache.add("a", 4)
