@@ -696,6 +696,37 @@ def test_cluster_utils_auth_mode_mismatch_fails_before_starting_the_head(
     assert not (Path.home() / ".ray" / "auth_token").exists()
 
 
+def test_autoscaling_cluster_auth_mode_mismatch_fails_before_stopping_ray():
+    """AutoscalingCluster.start() whose enable_token_auth disagrees with the
+    RAY_AUTH_MODE the test process set raises before `ray stop --force` or
+    `ray start --head` runs."""
+    from ray.cluster_utils import AutoscalingCluster
+
+    set_auth_mode("token")
+    reset_auth_token_state()
+    cluster = AutoscalingCluster(head_resources={"CPU": 1}, worker_node_types={})
+
+    with patch("subprocess.check_call") as check_call:
+        with pytest.raises(RuntimeError, match="enable_token_auth"):
+            cluster.start()
+    check_call.assert_not_called()
+    assert os.environ["RAY_AUTH_MODE"] == "token"
+
+
+def test_cluster_utils_head_start_failure_unsets_auth_mode(monkeypatch):
+    """When Cluster(initialize_head=True) fails to start the head, it unsets the
+    RAY_AUTH_MODE it set, since the caller has no object to shut down."""
+    from ray.cluster_utils import Cluster
+
+    monkeypatch.delenv("RAY_AUTH_MODE", raising=False)
+    reset_auth_token_state()
+
+    with patch("ray._private.node.Node", side_effect=RuntimeError("head failed")):
+        with pytest.raises(RuntimeError, match="head failed"):
+            Cluster(initialize_head=True)
+    assert "RAY_AUTH_MODE" not in os.environ
+
+
 @pytest.mark.skipif(
     client_test_enabled(),
     reason="Starts a new local cluster; not compatible with client mode",

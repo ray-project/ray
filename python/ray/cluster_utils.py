@@ -16,8 +16,9 @@ from ray._private.authentication.authentication_token_setup import (
     AUTH_MODE_ENV_VAR,
     ensure_token_if_auth_enabled,
 )
+from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.client_mode_hook import disable_client_hook
-from ray._raylet import AuthenticationTokenLoader, Config, GcsClientOptions
+from ray._raylet import GcsClientOptions
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI
 
@@ -55,7 +56,7 @@ class _TestClusterAuthMode:
             )
         # Also when the mode was already set: RayConfig may have been read before
         # the test set it.
-        _reset_auth_state()
+        reset_auth_token_state()
         try:
             ensure_token_if_auth_enabled(system_config, create_token_if_missing=True)
         except BaseException:
@@ -68,14 +69,7 @@ class _TestClusterAuthMode:
             return
         os.environ.pop(AUTH_MODE_ENV_VAR, None)
         self._set_mode = False
-        _reset_auth_state()
-
-
-def _reset_auth_state() -> None:
-    # Refresh the config before dropping the token cache, so nothing reloads the
-    # token under the old mode.
-    Config.initialize("")
-    AuthenticationTokenLoader.instance().reset_cache()
+        reset_auth_token_state()
 
 
 @DeveloperAPI
@@ -307,12 +301,18 @@ class Cluster:
         with disable_client_hook():
             if self.head_node is None:
                 self._auth_mode.apply(ray_params._system_config)
-                node = ray._private.node.Node(
-                    ray_params,
-                    head=True,
-                    shutdown_at_exit=self._shutdown_at_exit,
-                    spawn_reaper=self._shutdown_at_exit,
-                )
+                try:
+                    node = ray._private.node.Node(
+                        ray_params,
+                        head=True,
+                        shutdown_at_exit=self._shutdown_at_exit,
+                        spawn_reaper=self._shutdown_at_exit,
+                    )
+                except BaseException:
+                    # Cluster(initialize_head=True) raises from its constructor,
+                    # leaving the caller no object to call shutdown() on.
+                    self._auth_mode.restore()
+                    raise
                 self.head_node = node
                 self.redis_address = self.head_node.redis_address
                 self.redis_username = node_args.get(
