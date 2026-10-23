@@ -1689,7 +1689,7 @@ def setup_cluster_with_token_auth(cleanup_auth_token_env):
     set_env_auth_token(test_token)
     reset_auth_token_state()
 
-    cluster = Cluster(enable_token_auth=True)
+    cluster = Cluster()
     # Use dynamic port to avoid port conflicts on Windows where sockets
     # linger in TIME_WAIT state between tests
     cluster.add_node(dashboard_agent_listen_port=find_free_port())
@@ -1715,7 +1715,7 @@ def setup_cluster_without_token_auth(cleanup_auth_token_env):
     clear_auth_token_sources(remove_default=True)
     reset_auth_token_state()
 
-    cluster = Cluster()
+    cluster = Cluster(enable_token_auth=False)
     # Use dynamic port to avoid port conflicts on Windows where sockets
     # linger in TIME_WAIT state between tests
     cluster.add_node(dashboard_agent_listen_port=find_free_port())

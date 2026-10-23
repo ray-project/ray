@@ -28,34 +28,24 @@ cluster_not_supported = os.name == "nt"
 
 
 class _TestClusterAuthMode:
-    """Gives a test cluster the auth mode its ``enable_token_auth`` asks for.
-
-    When RAY_AUTH_MODE is unset, sets it in this process for the cluster's
-    lifetime, so its nodes, the test's own driver and the drivers it starts all
-    agree on the mode. When it is set, it must agree with ``enable_token_auth``.
-    """
+    """Sets RAY_AUTH_MODE in this process for a test cluster's lifetime, as its
+    ``enable_token_auth`` asks, so its nodes, the test's own driver and the
+    drivers it starts all agree on the mode."""
 
     def __init__(self, enable_token_auth: bool):
         self._enable_token_auth = enable_token_auth
-        self._set_mode = False
+        self._applied = False
+        self._previous_mode: Optional[str] = None
 
     def apply(self, system_config: Optional[dict]) -> None:
-        """Set or check the mode, and create a missing token in token mode."""
-        current_mode = os.environ.get(AUTH_MODE_ENV_VAR)
-        if current_mode is None:
-            os.environ[AUTH_MODE_ENV_VAR] = (
-                "token" if self._enable_token_auth else "disabled"
-            )
-            self._set_mode = True
-        elif (current_mode.lower() == "token") != self._enable_token_auth:
-            raise RuntimeError(
-                f"{AUTH_MODE_ENV_VAR}={current_mode} is set, but the cluster was "
-                f"created with enable_token_auth={self._enable_token_auth}. Pass "
-                f"enable_token_auth={not self._enable_token_auth}, or unset "
-                f"{AUTH_MODE_ENV_VAR}."
-            )
-        # Also when the mode was already set: RayConfig may have been read before
-        # the test set it.
+        """Set the mode, and create a missing token in token mode."""
+        if not self._applied:
+            self._previous_mode = os.environ.get(AUTH_MODE_ENV_VAR)
+            self._applied = True
+        os.environ[AUTH_MODE_ENV_VAR] = (
+            "token" if self._enable_token_auth else "disabled"
+        )
+        # RayConfig may have read the mode before this process set it.
         reset_auth_token_state()
         try:
             ensure_token_if_auth_enabled(system_config, create_token_if_missing=True)
@@ -64,11 +54,14 @@ class _TestClusterAuthMode:
             raise
 
     def restore(self) -> None:
-        """Unset RAY_AUTH_MODE again if ``apply`` set it."""
-        if not self._set_mode:
+        """Put back the RAY_AUTH_MODE this process had before ``apply``."""
+        if not self._applied:
             return
-        os.environ.pop(AUTH_MODE_ENV_VAR, None)
-        self._set_mode = False
+        if self._previous_mode is None:
+            os.environ.pop(AUTH_MODE_ENV_VAR, None)
+        else:
+            os.environ[AUTH_MODE_ENV_VAR] = self._previous_mode
+        self._applied = False
         reset_auth_token_state()
 
 
@@ -84,7 +77,7 @@ class AutoscalingCluster:
         head_resources: dict,
         worker_node_types: dict,
         autoscaler_v2: bool = False,
-        enable_token_auth: bool = False,
+        enable_token_auth: bool = True,
         **config_kwargs,
     ):
         """Create the cluster.
@@ -96,10 +89,9 @@ class AutoscalingCluster:
                 generated config.
             enable_token_auth: If True, run the cluster with token
                 authentication and create ~/.ray/auth_token when no token
-                exists. If False, run it with authentication disabled. When
-                RAY_AUTH_MODE is unset, ``start`` sets it in this process and
-                ``shutdown`` unsets it. When it is set and disagrees with this
-                argument, ``start`` raises ``RuntimeError``.
+                exists. If False, run it with authentication disabled. Either
+                way, ``start`` sets RAY_AUTH_MODE in this process, overriding any
+                earlier value, and ``shutdown`` restores the earlier value.
             **config_kwargs: Additional configuration values merged into the
                 generated cluster config.
         """
@@ -205,7 +197,7 @@ class Cluster:
         connect: bool = False,
         head_node_args: dict = None,
         shutdown_at_exit: bool = True,
-        enable_token_auth: bool = False,
+        enable_token_auth: bool = True,
     ):
         """Initializes all services of a Ray cluster.
 
@@ -221,10 +213,10 @@ class Cluster:
                 for shutting down all started processes.
             enable_token_auth: If True, run the cluster with token
                 authentication and create ~/.ray/auth_token when no token
-                exists. If False, run it with authentication disabled. When
-                RAY_AUTH_MODE is unset, starting the head sets it in this process and
-                ``shutdown`` unsets it. When it is set and disagrees with this
-                argument, starting the head raises ``RuntimeError``.
+                exists. If False, run it with authentication disabled. Either
+                way, starting the head sets RAY_AUTH_MODE in this process,
+                overriding any earlier value, and ``shutdown`` restores the
+                earlier value.
         """
         if cluster_not_supported:
             logger.warning(

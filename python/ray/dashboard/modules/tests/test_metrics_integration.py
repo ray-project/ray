@@ -322,7 +322,7 @@ def test_launch_prometheus_scrapes_token_auth_cluster(
         monkeypatch.setenv("RAY_AUTH_TOKEN", token)
     _enable_token_auth(monkeypatch)
 
-    cluster = Cluster(enable_token_auth=True)
+    cluster = Cluster()
     prometheus_pid = None
     try:
         cluster.add_node()

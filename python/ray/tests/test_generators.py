@@ -1,8 +1,17 @@
 import gc
+import os
 import secrets
 import sys
 import time
 from unittest.mock import Mock
+
+# test_ray_client starts the head in a subprocess but connects the driver in this
+# process via the in-process client server. RayConfig reads the auth mode once at
+# import, so set it before importing ray; an explicit env token lets both sides
+# agree without depending on the ~/.ray/auth_token file (whose home resolution
+# differs across platforms).
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
 
 import numpy as np
 import pytest
@@ -11,7 +20,6 @@ import ray
 from ray._common.test_utils import (
     wait_for_condition,
 )
-from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.client_mode_hook import enable_client_mode
 from ray.tests.conftest import call_ray_start_context
 from ray.util.client.ray_client_helpers import (
@@ -951,35 +959,19 @@ def test_async_actor_yield_exception(ray_start_cluster):
 SHARED_CLIENT_SERVER_PORT = 25555
 
 
-# test_ray_client starts the head in a subprocess but connects the driver in this
-# process via the in-process client server. An explicit env token lets both sides
-# agree without depending on the ~/.ray/auth_token file (whose home resolution
-# differs across platforms).
-_RAY_CLIENT_AUTH_ENV = {
-    "RAY_AUTH_MODE": "token",
-    "RAY_AUTH_TOKEN": secrets.token_hex(32),
-}
-
-
 @pytest.fixture(scope="module")
 def call_ray_start_shared(request):
     request = Mock()
-    request.param = {
-        "cmd": (
-            "ray start --head --min-worker-port=0 --max-worker-port=0 --port 0 "
-            f"--ray-client-server-port={SHARED_CLIENT_SERVER_PORT}"
-        ),
-        "env": _RAY_CLIENT_AUTH_ENV,
-    }
+    request.param = (
+        "ray start --head --min-worker-port=0 --max-worker-port=0 --port 0 "
+        f"--ray-client-server-port={SHARED_CLIENT_SERVER_PORT}"
+    )
     with call_ray_start_context(request) as address:
         yield address
 
 
 @pytest.mark.parametrize("store_in_plasma", [False, True])
-def test_ray_client(call_ray_start_shared, store_in_plasma, monkeypatch):
-    for key, value in _RAY_CLIENT_AUTH_ENV.items():
-        monkeypatch.setenv(key, value)
-    reset_auth_token_state()
+def test_ray_client(call_ray_start_shared, store_in_plasma):
     with ray_start_client_server_for_address(call_ray_start_shared):
         enable_client_mode()
 
