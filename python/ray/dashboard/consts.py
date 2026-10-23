@@ -99,6 +99,13 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
 
+# Whether the dashboard agent serves its HTTP API (job submission, logs, healthz).
+# Set RAY_DASHBOARD_AGENT_HTTP_SERVER_ENABLED=0 on nodes that need none of it, so
+# the agent does not claim its listen port. KubeRay's health probes use this server.
+DASHBOARD_AGENT_HTTP_SERVER_ENABLED = env_bool(
+    "RAY_DASHBOARD_AGENT_HTTP_SERVER_ENABLED", True
+)
+
 # Maximum time to wait for the subprocess module to be ready.
 SUBPROCESS_MODULE_WAIT_READY_TIMEOUT = env_float(
     "RAY_DASHBOARD_SUBPROCESS_MODULE_WAIT_READY_TIMEOUT", 30.0

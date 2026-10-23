@@ -177,6 +177,10 @@ Set `spec.headGroupSpec.rayStartParams.include-dashboard` to `False`. Check out 
 :::
 ::::
 
+### Disabling the dashboard agent's HTTP server
+
+Every node also runs a dashboard agent, which serves an HTTP API on port 52365 (`--dashboard-agent-listen-port`) whether or not the dashboard is included. Ray Job submission and KubeRay's health probes use it. On nodes that need neither, for example several local clusters on one host, set `RAY_DASHBOARD_AGENT_HTTP_SERVER_ENABLED=0` in the environment that starts Ray (`ray start`, or the process that calls `ray.init()`) so the agent doesn't claim the port.
+
 
 (runtime-env-redaction)=
 ## Runtime environment redaction
