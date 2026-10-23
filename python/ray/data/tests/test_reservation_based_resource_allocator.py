@@ -965,9 +965,7 @@ class TestReservationOpResourceAllocator:
         assert total_gpu_reserved + allocator._total_shared.gpu == 8
 
     @pytest.mark.parametrize("max_actors", [2, float("inf")])
-    def test_gpu_not_reserved_for_join_operator(
-        self, restore_data_context, max_actors
-    ):
+    def test_gpu_not_reserved_for_join_operator(self, restore_data_context, max_actors):
         """Test that JoinOperator (and HashShufflingOperatorBase subclasses)
         reports max gpu=0 so it does not receive reserved or shared GPU budget.
         """
@@ -977,9 +975,7 @@ class TestReservationOpResourceAllocator:
         left_in = InputDataBuffer(DataContext.get_current(), [])
         right_in = InputDataBuffer(DataContext.get_current(), [])
 
-        infer1_op = mock_map_op(
-            left_in, ray_remote_args={"num_gpus": 1}, name="Infer1"
-        )
+        infer1_op = mock_map_op(left_in, ray_remote_args={"num_gpus": 1}, name="Infer1")
         infer1_op.min_max_resource_requirements = MagicMock(
             return_value=(
                 ExecutionResources(cpu=0, gpu=1, object_store_memory=0),
@@ -1051,9 +1047,7 @@ class TestReservationOpResourceAllocator:
         left_in = InputDataBuffer(DataContext.get_current(), [])
         right_in = InputDataBuffer(DataContext.get_current(), [])
 
-        infer1_op = mock_map_op(
-            left_in, ray_remote_args={"num_gpus": 1}, name="Infer1"
-        )
+        infer1_op = mock_map_op(left_in, ray_remote_args={"num_gpus": 1}, name="Infer1")
         infer2_op = mock_map_op(
             right_in, ray_remote_args={"num_gpus": 1}, name="Infer2"
         )
