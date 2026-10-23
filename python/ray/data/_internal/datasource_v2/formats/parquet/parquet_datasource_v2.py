@@ -141,6 +141,16 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # ``infer_schema`` raises if a file already has one of their names.
         self._extra_synthesized_columns = tuple(extra_synthesized_columns)
         synthesized_columns.extend(self._extra_synthesized_columns)
+
+        used_column_names = set()
+        for column in synthesized_columns:
+            if column.name in used_column_names:
+                raise ValueError(
+                    f"Duplicate synthesized column name {column.name!r}. "
+                    "Choose a different name for one of the synthesized columns."
+                )
+            used_column_names.add(column.name)
+
         self._synthesized_columns = tuple(synthesized_columns)
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
