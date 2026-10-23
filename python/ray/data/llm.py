@@ -17,6 +17,7 @@ from ray.llm._internal.batch.stages.configs import (
     PrepareMultimodalStageConfig as _PrepareMultimodalStageConfig,
     TokenizerStageConfig as _TokenizerStageConfig,
 )
+from ray.llm._internal.common.accelerators import GPUConfig, TPUConfig
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -145,6 +146,9 @@ class vLLMEngineProcessorConfig(_vLLMEngineProcessorConfig, ProcessorConfig):
             ``tp*pp``) or ``bundles`` (full list of resource dicts), plus an
             optional ``strategy``
             (``PACK``/``STRICT_PACK``/``SPREAD``/``STRICT_SPREAD``).
+        accelerator_config: Hardware-specific configuration parameters for the
+            chosen accelerator. The expected schema is dynamically typed based
+            on the ``kind`` discriminator.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
@@ -689,6 +693,8 @@ __all__ = [
     "vLLMEngineProcessorConfig",
     "SGLangEngineProcessorConfig",
     "ServeDeploymentProcessorConfig",
+    "GPUConfig",
+    "TPUConfig",
     "ChatTemplateStageConfig",
     "DetokenizeStageConfig",
     "PrepareMultimodalStageConfig",
