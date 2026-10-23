@@ -296,7 +296,7 @@ These metrics track task execution and scheduling.
 ```
 
 :::{note}
-Ray Data estimates task USS on Linux by subtracting shared memory from Resident Set Size (RSS). Ray Data doesn't collect these samples on macOS or Windows.
+Ray Data's task USS estimator runs only on Linux. It subtracts shared memory from Resident Set Size (RSS).
 
 In Ray Data logs, a `max_uss_bytes.num_samples` value of `0` means no measurements are available. Treat the empty distribution's `mean` of `0.0` as unavailable memory usage.
 :::
