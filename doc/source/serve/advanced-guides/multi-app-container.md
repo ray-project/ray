@@ -133,17 +133,9 @@ runtime_env = {
 }
 ```
 
-The cache identity includes the immutable image identity, operating system and
-architecture, Python ABI, Ray version, normalized pip configuration, and pip
-installation environment. Runtime environment setup timeout settings apply to
-image inspection and dependency installation. Failed or timed-out installation
-attempts aren't published to the cache.
+The cache identity includes the immutable image identity, operating system and architecture, Python ABI, Ray version, normalized pip configuration, and pip installation environment. Runtime environment setup timeout settings apply to image inspection and dependency installation. Failed or timed-out installation attempts aren't published to the cache. If multiple runtime environment agents share a cache directory, each agent holds a lease while it uses an environment. Eviction waits until all agents release their leases.
 
-Ray sets the variables in `env_vars` during the installation too, so they can
-configure pip, for example with `PIP_INDEX_URL`, or a package build. In the worker
-container, Ray sets `VIRTUAL_ENV` to the cached environment and puts its `bin`
-directory first on `PATH`, ahead of the `PATH` from `env_vars` or, if `env_vars`
-doesn't set one, from the image.
+Ray sets the variables in `env_vars` during the installation too, so they can configure pip, for example with `PIP_INDEX_URL`, or a package build. Installation values pass literally through a temporary JSON file, preserving line breaks and quotes within the operating system's environment size limits. Ray removes the file when installation ends and doesn't apply these values to the host container launcher. In the worker container, Ray sets `VIRTUAL_ENV` to the cached environment and puts its `bin` directory first on `PATH`, ahead of the `PATH` from `env_vars` or, if `env_vars` doesn't set one, from the image.
 
 Ray keys the cache on the immutable image that the tag resolves to on each node
 when the environment is created, and workers run that exact image so the cached

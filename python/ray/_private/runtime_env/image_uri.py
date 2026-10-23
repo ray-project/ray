@@ -152,29 +152,29 @@ def _get_image_uri_cache_key(
     ).hexdigest()
 
 
-def _write_podman_env_file(path: str, env: Dict[str, str]) -> None:
-    """Writes env for `podman run --env-file`, one literal NAME=VALUE per line.
+_INSTALL_ENV_PATH = "/tmp/ray-runtime-env-install.json"
+_INSTALL_ENV_BOOTSTRAP = """
+import json, os, sys
+with open(sys.argv[1], encoding="utf-8") as file:
+    install_env = json.load(file)
+env = os.environ.copy()
+env.update(install_env)
+os.execve(sys.argv[2], sys.argv[2:], env)
+"""
 
-    podman ends an entry at a line break and copies a line without "=" from
-    its own environment, so a line break inside a name or value could pass a
-    host variable such as RAY_AUTH_TOKEN into the container. Reject those
-    instead, along with names podman would read differently.
-    """
-    with open(path, "w", encoding="utf-8") as env_file:
-        for name, value in env.items():
-            if (
-                not name
-                or name[0] in "# \t"
-                or "=" in name
-                or any(c in name or c in value for c in "\r\n")
-            ):
-                # The value can be secret, so only the name is reported.
-                raise ValueError(
-                    f"Environment variable {name!r} can't be passed to the "
-                    "image_uri pip installation: its name is not a plain "
-                    "variable name or its value contains a line break."
-                )
-            env_file.write(f"{name}={value}\n")
+
+def _write_install_env(path: str, env: Dict[str, str]) -> None:
+    """Write literal OS environment entries without podman's line/size limits."""
+    for name, value in env.items():
+        if not name or "=" in name or "\0" in name or "\0" in value:
+            # The value can be secret, so only the name is reported.
+            raise ValueError(
+                f"Environment variable {name!r} can't be passed to the "
+                "image_uri pip installation: invalid OS environment entry."
+            )
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as env_file:
+        json.dump(env, env_file)
 
 
 async def _capture_command(cmd: List[str]) -> Tuple[int, str, str]:
@@ -730,7 +730,9 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             f"{staging_path}:{final_path}:rw,z",
         ]
         if env_file is not None:
-            command.extend(["--env-file", env_file])
+            command.extend(["-v", f"{env_file}:{_INSTALL_ENV_PATH}:ro,z"])
+            args = ["-c", _INSTALL_ENV_BOOTSTRAP, _INSTALL_ENV_PATH, entrypoint, *args]
+            entrypoint = metadata.python_executable
         command.extend(["--entrypoint", entrypoint, metadata.image_id, *args])
         try:
             return await check_output_cmd(command, logger=logger)
@@ -760,8 +762,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         with tempfile.TemporaryDirectory(prefix="ray-image-uri-env-") as env_dir:
             env_file = None
             if self._install_env_by_uri[uri]:
-                env_file = os.path.join(env_dir, "env")
-                _write_podman_env_file(env_file, self._install_env_by_uri[uri])
+                env_file = os.path.join(env_dir, "env.json")
+                _write_install_env(env_file, self._install_env_by_uri[uri])
 
             async def run(entrypoint: str, args: List[str]) -> str:
                 return await self._run_in_image(

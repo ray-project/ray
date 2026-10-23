@@ -1,10 +1,20 @@
 import argparse
+import asyncio
 import glob
+import hashlib
+import json
+import logging
 import os
 import subprocess
 import sys
+import tempfile
 
 import ray
+from ray._private.runtime_env.image_uri import (
+    ImageMetadata,
+    ImageURIPlugin,
+    _write_install_env,
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", required=True)
@@ -45,6 +55,49 @@ manifests = glob.glob(
     )
 )
 assert len(manifests) == 1, manifests
+
+
+async def check_install_env_transport():
+    # Exercise the real podman transport with values that --env-file truncated
+    # or rejected. Compare hashes so values never need to enter logged argv.
+    with open(manifests[0], encoding="utf-8") as file:
+        metadata = ImageMetadata(**json.load(file)["image"])
+    install_env = {
+        "MULTILINE": "first\nsecond\r\n",
+        "LONG": "x" * 70000,
+        "QUOTED": "\"'$VALUE`command`中文",
+        "EMPTY": "",
+        "# NAME\n": "valid OS name",
+        "PATH": "/synthetic/job/bin",
+    }
+    expected = hashlib.sha256(
+        json.dumps(install_env, sort_keys=True).encode()
+    ).hexdigest()
+    script = (
+        "import hashlib,json,os,sys; "
+        "env={name:os.environ[name] for name in sys.argv[1:]}; "
+        "print('ENV_DIGEST=' + hashlib.sha256("
+        "json.dumps(env,sort_keys=True).encode()).hexdigest())"
+    )
+    plugin = ImageURIPlugin("/tmp/ray")
+    with tempfile.TemporaryDirectory(prefix="ray-install-env-test-") as directory:
+        env_file = os.path.join(directory, "env.json")
+        _write_install_env(env_file, install_env)
+        staging = os.path.join(directory, "staging")
+        os.mkdir(staging)
+        output = await plugin._run_in_image(
+            metadata,
+            staging,
+            staging,
+            metadata.python_executable,
+            ["-c", script, *install_env],
+            env_file,
+            logging.getLogger(__name__),
+        )
+        assert f"ENV_DIGEST={expected}" in output
+
+
+asyncio.run(check_install_env_transport())
 
 base_image_import = subprocess.run(
     [
