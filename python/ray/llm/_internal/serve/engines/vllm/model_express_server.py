@@ -95,9 +95,15 @@ class ModelExpressServer:
             self._proc.terminate()
 
 
-def build_model_express_app(**kwargs) -> serve.Application:
+def build_model_express_app(builder_config: Optional[dict] = None) -> serve.Application:
     """Build the `mx` app. Deploy it with ``route_prefix=None``.
 
-    Keyword arguments go to ``ModelExpressServer``.
+    Takes one dict so it also works as a Serve config ``import_path`` builder.
+
+    Args:
+        builder_config: Keyword arguments for ``ModelExpressServer``.
+
+    Returns:
+        The `mx` application.
     """
-    return ModelExpressServer.bind(**kwargs)
+    return ModelExpressServer.bind(**(builder_config or {}))
