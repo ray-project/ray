@@ -8,8 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
+from ray.llm._internal.serve.constants import DEFAULT_MX_SERVER_BINARY_PATH
 from ray.llm._internal.serve.engines.vllm import model_express
 from ray.llm._internal.serve.engines.vllm.compile_cache_compat import _rewrite
+from ray.llm._internal.serve.engines.vllm.model_express_server import (
+    mx_server_binary_path,
+)
 from ray.serve.llm import LLMConfig
 from ray.serve.schema import ReplicaRank
 
@@ -122,6 +126,13 @@ def test_ready_endpoint_reports_engine_start(ready_port_base):
 
     model_express.mark_engine_ready()
     assert urllib.request.urlopen(url, timeout=5).status == 200
+
+
+def test_mx_server_binary_path():
+    with patch.dict("os.environ", {}, clear=True):
+        assert mx_server_binary_path() == DEFAULT_MX_SERVER_BINARY_PATH
+    with patch.dict("os.environ", {"RAY_MX_SERVER_BINARY_PATH": "/opt/mx/server"}):
+        assert mx_server_binary_path() == "/opt/mx/server"
 
 
 def test_compile_cache_compat_rewrites_device_literals():

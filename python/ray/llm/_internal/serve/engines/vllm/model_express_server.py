@@ -4,6 +4,9 @@ One replica, pinned to the head node like the Serve controller, runs the MX
 server binary. LLM replicas reach it at the head node's IP (see
 ``model_express.py``). The server is only a registry of serving peers; weights
 and JIT caches move directly between LLM replicas.
+
+The binary ships in the ray-llm image. For a custom image, point
+``RAY_MX_SERVER_BINARY_PATH`` at its binary in the replica's environment.
 """
 
 import os
@@ -14,6 +17,11 @@ from typing import Optional
 
 import ray
 from ray import serve
+from ray.llm._internal.serve.constants import DEFAULT_MX_SERVER_BINARY_PATH
+
+
+def mx_server_binary_path() -> str:
+    return os.environ.get("RAY_MX_SERVER_BINARY_PATH", DEFAULT_MX_SERVER_BINARY_PATH)
 
 
 @serve.deployment(
@@ -26,13 +34,29 @@ from ray import serve
 class ModelExpressServer:
     def __init__(
         self,
-        binary: str,
         port: int = 8001,
         metadata_backend: str = "memory",
         cache_dir: Optional[str] = None,
         log_path: Optional[str] = None,
         startup_timeout_s: float = 30,
     ):
+        """Start the MX server.
+
+        Args:
+            port: gRPC port the server listens on.
+            metadata_backend: "memory" or "redis". For "redis", set REDIS_URL
+                in the replica's environment.
+            cache_dir: Server-side model file cache directory.
+            log_path: File to append the server's output to; inherits the
+                replica's stdout/stderr when unset.
+            startup_timeout_s: How long to wait for the server to listen.
+        """
+        binary = mx_server_binary_path()
+        if not os.access(binary, os.X_OK):
+            raise FileNotFoundError(
+                f"MX server binary not found at {binary}. Set "
+                "RAY_MX_SERVER_BINARY_PATH when not using the ray-llm image."
+            )
         env = dict(os.environ)
         env.update(
             MX_METADATA_BACKEND=metadata_backend,
@@ -71,6 +95,9 @@ class ModelExpressServer:
             self._proc.terminate()
 
 
-def build_model_express_app(binary: str, **kwargs) -> serve.Application:
-    """Build the `mx` app. Deploy it with ``route_prefix=None``."""
-    return ModelExpressServer.bind(binary=binary, **kwargs)
+def build_model_express_app(**kwargs) -> serve.Application:
+    """Build the `mx` app. Deploy it with ``route_prefix=None``.
+
+    Keyword arguments go to ``ModelExpressServer``.
+    """
+    return ModelExpressServer.bind(**kwargs)
