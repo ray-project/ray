@@ -139,8 +139,19 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         return None
 
     def get_ray_data_config(self) -> ray.train.DataConfig:
+        dataloader_config = self.get_dataloader_config()
+        if dataloader_config.ray_data_push_based_split:
+            # Push-based streaming split (coordinator pushes
+            # blocks to train workers instead of workers pulling).
+            from ray.train._internal.push_based_data_config import (
+                PushBasedDataConfig,
+            )
+
+            return PushBasedDataConfig(
+                enable_shard_locality=dataloader_config.enable_shard_locality,
+            )
         return ray.train.DataConfig(
-            enable_shard_locality=self.get_dataloader_config().enable_shard_locality,
+            enable_shard_locality=dataloader_config.enable_shard_locality,
         )
 
     def get_train_dataloader(self):
