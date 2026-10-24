@@ -1807,7 +1807,7 @@ def init(
                 "Failed to merge the Job's runtime env "
                 f"{redact_runtime_env(injected_job_config.runtime_env)} with "
                 f"a ray.init's runtime env {redact_runtime_env(driver_runtime_env)} "
-                "because of a conflict."
+                "because of a conflict. "
                 "Specifying the same runtime_env fields "
                 "or the same environment variable keys is not allowed. "
                 "Use RAY_OVERRIDE_JOB_RUNTIME_ENV=1 to instruct Ray to "

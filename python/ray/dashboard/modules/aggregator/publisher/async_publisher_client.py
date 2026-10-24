@@ -30,9 +30,7 @@ from ray.dashboard.runtime_env_redaction import redact_runtime_env_deep
 
 logger = logging.getLogger(__name__)
 
-# Event types with no `runtime_env` field, which the HTTP publisher can send without
-# walking them for secrets. These include the high-volume lifecycle events. Every
-# other type, including any added later, is redacted.
+# Event types with no `runtime_env` field, so no redaction is needed.
 _EVENT_TYPES_WITHOUT_RUNTIME_ENV = frozenset(
     events_base_event_pb2.RayEvent.EventType.Value(name)
     for name in (
@@ -204,8 +202,6 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
             event.event_type not in _EVENT_TYPES_WITHOUT_RUNTIME_ENV
             and ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV
         ):
-            # Definition events carry the serialized runtime_env, `env_vars`
-            # included, and this sends them to a service outside the cluster.
             event_json = redact_runtime_env_deep(event_json)
         return event_json
 
