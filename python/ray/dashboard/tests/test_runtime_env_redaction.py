@@ -14,9 +14,6 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.runtime_env_redaction import (
     REDACTED_PLACEHOLDER,
-    RUNTIME_ENV_DICT_KEYS,
-    RUNTIME_ENV_INFO_KEYS,
-    SERIALIZED_RUNTIME_ENV_KEYS,
     redact_runtime_env,
     redact_runtime_env_deep,
     redact_runtime_env_info,
@@ -317,7 +314,7 @@ def test_should_not_redact_for_non_browser_requests(headers):
 @pytest.mark.parametrize("headers", BROWSER_HEADERS + NON_BROWSER_HEADERS)
 def test_flag_disables_redaction_entirely(headers, monkeypatch):
     monkeypatch.setattr(
-        "ray._private.ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV", False
+        "ray.dashboard.runtime_env_redaction.RAY_DASHBOARD_REDACT_RUNTIME_ENV", False
     )
     assert should_redact_runtime_env(_mock_request(headers)) is False
 
@@ -636,11 +633,16 @@ def test_http_event_publisher_skipped_event_types_have_no_runtime_env():
     from ray.dashboard.modules.aggregator.publisher.async_publisher_client import (
         _EVENT_TYPES_WITHOUT_RUNTIME_ENV,
     )
+    from ray.dashboard.runtime_env_redaction import (
+        _RUNTIME_ENV_DICT_KEYS,
+        _RUNTIME_ENV_INFO_KEYS,
+        _SERIALIZED_RUNTIME_ENV_KEYS,
+    )
 
     redacted_keys = (
-        set(RUNTIME_ENV_DICT_KEYS)
-        | set(SERIALIZED_RUNTIME_ENV_KEYS)
-        | set(RUNTIME_ENV_INFO_KEYS)
+        set(_RUNTIME_ENV_DICT_KEYS)
+        | set(_SERIALIZED_RUNTIME_ENV_KEYS)
+        | set(_RUNTIME_ENV_INFO_KEYS)
     )
 
     def runtime_env_fields(descriptor, seen):

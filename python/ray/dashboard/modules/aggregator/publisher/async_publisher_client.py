@@ -12,10 +12,6 @@ import ray.dashboard.utils as dashboard_utils
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.protobuf_compat import message_to_json
-from ray._private.runtime_env.redaction import (
-    is_runtime_env_redaction_enabled,
-    redact_runtime_env_deep,
-)
 from ray._raylet import GcsClient
 from ray.core.generated import (
     events_base_event_pb2,
@@ -30,6 +26,7 @@ from ray.dashboard.modules.aggregator.publisher.configs import (
     PUBLISHER_TIMEOUT_SECONDS,
     TASK_EVENT_TYPES,
 )
+from ray.dashboard.runtime_env_redaction import redact_runtime_env_deep
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +202,7 @@ class AsyncHttpPublisherClient(PublisherClientInterface):
         )
         if (
             event.event_type not in _EVENT_TYPES_WITHOUT_RUNTIME_ENV
-            and is_runtime_env_redaction_enabled()
+            and ray_constants.RAY_DASHBOARD_REDACT_RUNTIME_ENV
         ):
             # Definition events carry the serialized runtime_env, `env_vars`
             # included, and this sends them to a service outside the cluster.

@@ -12,7 +12,11 @@ from aiohttp.web import Response
 import ray
 from ray import ActorID
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.ray_constants import env_bool, env_integer
+from ray._private.ray_constants import (
+    RAY_DASHBOARD_REDACT_RUNTIME_ENV,
+    env_bool,
+    env_integer,
+)
 from ray.core.generated.gcs_pb2 import ActorTableData
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
@@ -22,7 +26,6 @@ from ray.dashboard.consts import (
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.runtime_env_redaction import (
-    is_runtime_env_redaction_enabled,
     redact_state_rows,
     should_redact_runtime_env,
 )
@@ -177,7 +180,7 @@ class StateHead(SubprocessModule, RateLimitedModule):
         return rest_response(
             status_code=HTTPStatusCode.OK,
             message="",
-            redaction_enabled=is_runtime_env_redaction_enabled(),
+            redaction_enabled=RAY_DASHBOARD_REDACT_RUNTIME_ENV,
         )
 
     @routes.get("/api/v0/logs")
