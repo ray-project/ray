@@ -66,8 +66,10 @@ export type GPUStats = {
   index: number;
   name: string;
   utilizationGpu?: number;
-  memoryUsed: number;
-  memoryTotal: number;
+  /** null when the device reports no separate GPU memory pool (unknown, not zero) */
+  memoryUsed: number | null;
+  /** null when the device reports no separate GPU memory pool (unknown, not zero) */
+  memoryTotal: number | null;
   processesPids?: ProcessGPUUsage[];
   /** Current power draw in milliwatts (e.g. NVIDIA, AMD) */
   powerMw?: number;
