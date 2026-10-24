@@ -736,8 +736,12 @@ def test_cluster_utils_enable_token_auth_overrides_auth_mode(
         {} if enable_token_auth is None else {"enable_token_auth": enable_token_auth}
     )
     expect_token_auth = enable_token_auth is not False
+    from ray.cluster_utils import _TestClusterAuthMode
+
     cluster = Cluster(initialize_head=True, **cluster_kwargs)
     try:
+        # Per-test env cleanup in conftest.py skips while this is non-zero.
+        assert _TestClusterAuthMode.active_count == 1
         assert os.environ["RAY_AUTH_MODE"] == (
             "token" if expect_token_auth else "disabled"
         )
@@ -752,6 +756,7 @@ def test_cluster_utils_enable_token_auth_overrides_auth_mode(
     finally:
         ray.shutdown()
         cluster.shutdown()
+    assert _TestClusterAuthMode.active_count == 0
     assert os.environ.get("RAY_AUTH_MODE") == earlier_mode
 
 

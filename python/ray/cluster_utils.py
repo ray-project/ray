@@ -32,6 +32,10 @@ class _TestClusterAuthMode:
     ``enable_token_auth`` asks, so its nodes, the test's own driver and the
     drivers it starts all agree on the mode."""
 
+    # Test clusters that currently own RAY_AUTH_MODE; per-test env cleanup must
+    # leave the mode and token alone while one is alive.
+    active_count = 0
+
     def __init__(self, enable_token_auth: bool):
         self._enable_token_auth = enable_token_auth
         self._applied = False
@@ -52,6 +56,7 @@ class _TestClusterAuthMode:
         if not self._applied:
             self._previous_mode = os.environ.get(AUTH_MODE_ENV_VAR)
             self._applied = True
+            _TestClusterAuthMode.active_count += 1
         os.environ[AUTH_MODE_ENV_VAR] = mode
         # RayConfig may have read the mode before this process set it.
         reset_auth_token_state()
@@ -70,6 +75,7 @@ class _TestClusterAuthMode:
         else:
             os.environ[AUTH_MODE_ENV_VAR] = self._previous_mode
         self._applied = False
+        _TestClusterAuthMode.active_count -= 1
         reset_auth_token_state()
 
 

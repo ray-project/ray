@@ -51,7 +51,12 @@ from ray._private.test_utils import (
     start_redis_sentinel_instance,
     teardown_tls,
 )
-from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+from ray.cluster_utils import (
+    AutoscalingCluster,
+    Cluster,
+    _TestClusterAuthMode,
+    cluster_not_supported,
+)
 
 import psutil
 
@@ -1664,7 +1669,7 @@ def _token_auth_env_baseline():
 def _restore_token_auth_env(_token_auth_env_baseline):
     """Restore the auth env vars to the session baseline after each test."""
     yield
-    if ray.is_initialized():
+    if ray.is_initialized() or _TestClusterAuthMode.active_count:
         return
     for key, value in _token_auth_env_baseline.items():
         if value is None:
