@@ -177,6 +177,19 @@ repos:
         exclude: |
           (?x)^python/ray/serve/_private/(benchmarks|thirdparty)/
 
+  # Run the same Pyrefly version as Ray Data CI on only changed, non-excluded
+  # Data Python files passed by pre-commit.
+  - repo: local
+    hooks:
+      - id: pyrefly-ray-data
+        name: pyrefly (changed Ray Data files)
+        language: python
+        additional_dependencies: [pyrefly==0.51.0]
+        entry: python ci/lint/pyrefly_changed_files.py
+        types: [python]
+        files: ^python/ray/data/.*\.py$
+        pass_filenames: true
+
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
     hooks:

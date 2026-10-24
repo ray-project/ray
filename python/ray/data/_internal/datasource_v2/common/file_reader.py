@@ -26,7 +26,11 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 )
 from ray.data._internal.util import iterate_with_retry, make_async_gen
 from ray.data.context import DataContext
-from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    PathPartitionParser,
+    _broadcast_partition_value,
+)
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
@@ -147,9 +151,10 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        if self._schema is None:
+        schema = self._schema
+        if schema is None:
             return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+        if any(isinstance(f.type, pa.ExtensionType) for f in schema):
             return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])
@@ -159,7 +164,7 @@ class FileReader(Reader[FileManifest]):
         synthesized = {c.name for c in self._synthesized_columns}
         fields = [
             f
-            for f in self._schema
+            for f in schema
             if f.name not in partition_keys and f.name not in synthesized
         ]
         return pa.schema(fields) if fields else None
@@ -175,13 +180,7 @@ class FileReader(Reader[FileManifest]):
         then cast to the target type, so ``Partitioning(field_types=
         {"year": int})`` still promotes them correctly.
         """
-        str_val = None if value is None else str(value)
-        arr = pa.repeat(pa.scalar(str_val, type=pa.string()), num_rows)
-        if self._schema is not None:
-            idx = self._schema.get_field_index(name)
-            if idx != -1 and self._schema.field(idx).type != pa.string():
-                arr = arr.cast(self._schema.field(idx).type)
-        return arr
+        return _broadcast_partition_value(name, value, num_rows, self._schema)
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
