@@ -113,8 +113,7 @@ def download_file(url, filename):
                 file.write(chunk)
                 downloaded_size_in_mb += len(chunk) / (1024 * 1024)
                 print(
-                    f"Downloaded: {downloaded_size_in_mb:.2f} MB / "
-                    f"{total_size_in_mb:.2f} MB",
+                    f"Downloaded: {downloaded_size_in_mb:.2f} MB / {total_size_in_mb:.2f} MB",
                     end="\r",
                 )
 
@@ -306,8 +305,8 @@ def main():
     assert file_name.endswith(".tar.gz")
     try:
         process = start_prometheus(
-            # remove the .tar.gz extension
-            prometheus_dir=file_name.removesuffix(".tar.gz"),
+            # remove the .tar.gz extension; slice avoids requiring Python 3.9+
+            prometheus_dir=file_name[:-7],
             authorization_config=authorization_config,
         )
     except OSError as e:
