@@ -2534,6 +2534,15 @@ cdef execute_task_with_cancellation_handler(
         actor = actor_class.__new__(actor_class)
         worker.actors[actor_id] = actor
 
+        # `__on_object_freed__` is a private, experimental hook right now. It is not
+        # part of the public API and may change or be removed.
+        on_object_freed_hook = getattr(actor_class, "__on_object_freed__", None)
+        if on_object_freed_hook is not None:
+            hook_concurrency_group = getattr(
+                on_object_freed_hook, "__ray_concurrency_group__", None) or ""
+            CCoreWorkerProcess.GetCoreWorker().SetProducerFreedCallback(
+                True, hook_concurrency_group.encode("utf-8"))
+
         # Record the actor class via :actor_name: magic token in the log.
         #
         # (Phase 1): this covers code run before __init__ finishes.
@@ -3497,6 +3506,14 @@ cdef class CoreWorker:
     def get_actor_id(self):
         return ActorID(
             CCoreWorkerProcess.GetCoreWorker().GetActorId().Binary())
+
+    def get_producer_freed_callback(self):
+        """Return whether this worker's actor class defines the
+        `__on_object_freed__` hook, and the concurrency group it runs in."""
+        return (
+            CCoreWorkerProcess.GetCoreWorker().ProducerFreedCallbackEnabled(),
+            CCoreWorkerProcess.GetCoreWorker()
+            .ProducerFreedCallbackConcurrencyGroup().decode("utf-8"))
 
     def get_actor_name(self):
         return CCoreWorkerProcess.GetCoreWorker().GetActorName()

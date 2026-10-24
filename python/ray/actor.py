@@ -1256,6 +1256,44 @@ class _ActorMethodOptionsWrapper:
         return self._actor_method._bind(args=args, kwargs=kwargs, **self._options)
 
 
+# Called by Ray with the ID of an object the actor created when that object is freed.
+# `__on_object_freed__` is a private, experimental hook right now. It is not part of
+# the public API.
+_ON_OBJECT_FREED_HOOK = "__on_object_freed__"
+
+
+def _validate_on_object_freed_hook(modified_class: type) -> None:
+    """Check that the actor class's `__on_object_freed__` hook, if defined, is a
+    method Ray can call with one argument, the freed object's ID as a hex string."""
+    if not hasattr(modified_class, _ON_OBJECT_FREED_HOOK):
+        return
+    hook = getattr(modified_class, _ON_OBJECT_FREED_HOOK)
+    if not is_function_or_method(hook):
+        raise TypeError(
+            f"{_ON_OBJECT_FREED_HOOK} on actor class {modified_class.__name__} must "
+            f"be a method, got {type(hook).__name__}."
+        )
+    unwrapped = inspect.unwrap(hook)
+    if inspect.isgeneratorfunction(unwrapped) or inspect.isasyncgenfunction(unwrapped):
+        raise TypeError(
+            f"{_ON_OBJECT_FREED_HOOK} on actor class {modified_class.__name__} can't "
+            "be a generator."
+        )
+    # An instance method also takes `self`; class and static methods don't.
+    is_bound = is_class_method(hook) or is_static_method(
+        modified_class, _ON_OBJECT_FREED_HOOK
+    )
+    hook_signature = inspect.signature(hook)
+    try:
+        hook_signature.bind(*(("",) if is_bound else (None, "")))
+    except TypeError:
+        raise TypeError(
+            f"{_ON_OBJECT_FREED_HOOK} on actor class {modified_class.__name__} must "
+            "be callable with one argument, the freed object's ID as a hex string, got "
+            f"{_ON_OBJECT_FREED_HOOK}{hook_signature}."
+        ) from None
+
+
 class _ActorClassMethodMetadata(object):
     """Metadata for all methods in an actor class. This data can be cached.
 
@@ -1299,6 +1337,9 @@ class _ActorClassMethodMetadata(object):
         cached_meta = cls._cache.get(actor_creation_function_descriptor)
         if cached_meta is not None:
             return cached_meta
+
+        if modified_class is not None:
+            _validate_on_object_freed_hook(modified_class)
 
         # Create an instance without __init__ called.
         self = cls.__new__(cls)
@@ -2458,6 +2499,8 @@ class ActorHandle(Generic[T]):
         # Instead, we will lazily bind this ActorHandle to the _ActorMethodMetadata when a method is invoked.
         self._method_shells = {}
         for method_name, method_signature in self._ray_method_signatures.items():
+            if method_name == _ON_OBJECT_FREED_HOOK:
+                continue
             self._method_shells[method_name] = _ActorMethodMetadata(
                 method_name=method_name,
                 num_returns=self._ray_method_num_returns.get(method_name, None),
@@ -2662,6 +2705,12 @@ class ActorHandle(Generic[T]):
         # If this name matches a remote method, bind and return it.
         if item in self._method_shells:
             return self._method_shells[item].bind(self)
+
+        if item == _ON_OBJECT_FREED_HOOK:
+            raise AttributeError(
+                f"{_ON_OBJECT_FREED_HOOK} is called by Ray when an object the actor "
+                "created is freed, and can't be called through an actor handle."
+            )
 
         if not self._ray_is_cross_language:
             raise AttributeError(

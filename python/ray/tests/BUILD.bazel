@@ -564,6 +564,7 @@ py_test_module_list(
         "test_numba.py",
         "test_object_out_of_scope_callback.py",
         "test_object_spilling_no_asan.py",
+        "test_on_object_freed.py",
         "test_open_telemetry_metric_recorder.py",
         "test_placement_group_metrics.py",
         "test_protobuf_compatibility.py",
