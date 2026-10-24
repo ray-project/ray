@@ -471,7 +471,9 @@ def test_no_env_file_without_job_env_vars(auth_env):
 
 
 @pytest.mark.parametrize("memfd", ["missing", "oserror"])
-def test_env_vars_fall_back_to_argv_without_memfd(auth_env, caplog, memfd):
+def test_env_vars_fall_back_to_argv_without_memfd(
+    auth_env, caplog, propagate_logs, memfd
+):
     context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
 
     with caplog.at_level(logging.WARNING):
