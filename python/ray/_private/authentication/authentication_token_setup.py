@@ -98,7 +98,7 @@ def ensure_token_if_auth_enabled(
     Only callers that start a throwaway cluster on this machine pass
     ``create_token_if_missing=True``: a bare ``ray.init()``, and
     ``ray.cluster_utils.Cluster()`` and ``ray.cluster_utils.AutoscalingCluster``
-    when passed ``enable_token_auth=True``.
+    unless passed ``enable_token_auth=False``.
     A token made anywhere else can't match the one the rest of the cluster uses.
 
     Args:

@@ -668,6 +668,22 @@ def test_autoscaling_cluster_enable_token_auth_false_disables_auth() -> None:
     assert not (Path.home() / ".ray" / "auth_token").exists()
 
 
+def test_autoscaling_cluster_rejects_auth_mode_in_system_config() -> None:
+    """AutoscalingCluster.start() rejects a disagreeing _system_config AUTH_MODE
+    before `ray stop --force` or `ray start --head` runs."""
+    from ray.cluster_utils import AutoscalingCluster
+
+    set_auth_mode("token")
+    reset_auth_token_state()
+    cluster = AutoscalingCluster(head_resources={"CPU": 1}, worker_node_types={})
+
+    with patch("subprocess.check_call") as check_call:
+        with pytest.raises(RuntimeError, match="RAY_AUTH_MODE"):
+            cluster.start(_system_config={"AUTH_MODE": "disabled"})
+    check_call.assert_not_called()
+    assert os.environ["RAY_AUTH_MODE"] == "token"
+
+
 def test_autoscaling_cluster_start_failure_restores_auth_mode() -> None:
     """When AutoscalingCluster.start() fails after setting RAY_AUTH_MODE, it puts
     back the earlier mode."""
@@ -773,7 +789,7 @@ def test_cluster_utils_connect_failure_unsets_auth_mode(
     reset_auth_token_state()
     started_clusters = []
 
-    def fail_connect(cluster, *args, **kwargs):
+    def fail_connect(cluster: Cluster, *args, **kwargs) -> None:
         started_clusters.append(cluster)
         raise RuntimeError("connect failed")
 

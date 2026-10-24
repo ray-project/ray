@@ -42,7 +42,7 @@ class _TestClusterAuthMode:
         mode = "token" if self._enable_token_auth else "disabled"
         # ensure_token_if_auth_enabled checks _system_config only outside token mode.
         config_mode = (system_config or {}).get("AUTH_MODE")
-        if config_mode is not None and str(config_mode).lower() != mode:
+        if config_mode is not None and config_mode != mode:
             raise RuntimeError(
                 f"_system_config sets AUTH_MODE={config_mode!r}, but "
                 f"enable_token_auth={self._enable_token_auth} runs the cluster in "
